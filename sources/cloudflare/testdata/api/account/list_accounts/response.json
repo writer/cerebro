@@ -1,0 +1,77 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "created_on": "2018-04-03T20:55:02.113290Z",
+      "id": "example-b260c742",
+      "legacy_flags": {
+        "enterprise_zone_quota": {
+          "available": 6,
+          "current": 24,
+          "maximum": 30
+        }
+      },
+      "name": "Foo Production",
+      "settings": {
+        "abuse_contact_email": null,
+        "access_approval_expiry": null,
+        "api_access_enabled": null,
+        "default_nameservers": "cloudflare.standard",
+        "enforce_twofactor": true,
+        "use_account_custom_ns_by_default": false
+      },
+      "type": "enterprise"
+    },
+    {
+      "created_on": "2023-05-10T22:38:36.254757Z",
+      "id": "example-72b75488",
+      "legacy_flags": {
+        "enterprise_zone_quota": {
+          "available": 8,
+          "current": 2,
+          "maximum": 10
+        }
+      },
+      "name": "Foo Staging",
+      "settings": {
+        "abuse_contact_email": null,
+        "access_approval_expiry": null,
+        "api_access_enabled": null,
+        "default_nameservers": "cloudflare.standard",
+        "enforce_twofactor": false,
+        "use_account_custom_ns_by_default": false
+      },
+      "type": "enterprise"
+    },
+    {
+      "created_on": "2019-04-17T21:34:12.768127Z",
+      "id": "example-fdfdbab2",
+      "legacy_flags": {
+        "enterprise_zone_quota": {
+          "available": 998,
+          "current": 2,
+          "maximum": 1000
+        }
+      },
+      "name": "Foo Acceptance Testing",
+      "settings": {
+        "abuse_contact_email": null,
+        "access_approval_expiry": null,
+        "api_access_enabled": null,
+        "default_nameservers": "cloudflare.standard",
+        "enforce_twofactor": false,
+        "use_account_custom_ns_by_default": false
+      },
+      "type": "enterprise"
+    }
+  ],
+  "result_info": {
+    "count": 3,
+    "page": 1,
+    "per_page": 20,
+    "total_count": 3,
+    "total_pages": 1
+  },
+  "success": true
+}

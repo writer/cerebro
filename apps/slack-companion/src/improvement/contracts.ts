@@ -3,6 +3,10 @@ import type {
   ExecutionSession,
   WorkLeaseV1,
 } from "../execution/model.js";
+import type {
+  AssistantTurnEvaluationV1,
+  AssistantTurnPromotionDecisionV1,
+} from "../assistant-turn/evaluation.js";
 
 export const IMPROVEMENT_EVIDENCE_KINDS = [
   "ci",
@@ -14,6 +18,11 @@ export const IMPROVEMENT_EVIDENCE_KINDS = [
 
 export type ImprovementEvidenceKind =
   (typeof IMPROVEMENT_EVIDENCE_KINDS)[number];
+
+export const IMPROVEMENT_INDEPENDENT_EVIDENCE_KINDS = ["ci", "canary"] as const;
+
+export type ImprovementIndependentEvidenceKind =
+  (typeof IMPROVEMENT_INDEPENDENT_EVIDENCE_KINDS)[number];
 
 export type ImprovementCandidateStatus =
   | "open"
@@ -147,13 +156,16 @@ export interface ImprovementAuthorVerification {
   state: "failed" | "verified";
 }
 
-export interface ImprovementEvidenceStateV1 {
-  author_generation: number;
-  candidate_id: string;
+export interface ImprovementEvidenceIdentityV1 {
+  readonly author_generation: number;
+  readonly candidate_id: string;
+  readonly kind: ImprovementEvidenceKind;
+}
+
+export interface ImprovementEvidenceStateV1 extends ImprovementEvidenceIdentityV1 {
   evidence_digest?: string;
   evidence_ref?: string;
   head_digest?: string;
-  kind: ImprovementEvidenceKind;
   schema_version: "improvement-evidence-state/v1";
   state: "invalidated" | "fresh";
   updated_at: string;
@@ -182,14 +194,50 @@ export interface ImprovementEvidenceInvalidationReceipt {
   invalidation_ref: string;
 }
 
-export interface ImprovementFreshEvidenceInput {
+export interface ImprovementEvidenceRecord extends ImprovementEvidenceIdentityV1 {
+  readonly evidence_digest: string;
+  readonly evidence_ref: string;
+  readonly expected_revision: number;
+  readonly head_digest: string;
+}
+
+export interface ImprovementFreshEvidenceInput extends Omit<
+  ImprovementEvidenceRecord,
+  "kind"
+> {
+  readonly kind: ImprovementIndependentEvidenceKind;
+}
+
+export interface ImprovementOutcomeEvaluationSetV1 {
+  /** Rows are sealed by the evaluator receipt; a caller-supplied head label is not authoritative. */
+  readonly evaluations: readonly AssistantTurnEvaluationV1[];
+  readonly receipt: ImprovementOutcomeEvaluationSetReceiptV1;
+}
+
+export interface ImprovementOutcomeEvaluationSetReceiptV1 {
+  /** Exact source head used to produce every ordered evaluation row. */
+  readonly evaluated_head_digest: string;
+  readonly evaluator_ref: string;
+  readonly ordered_row_digests: readonly string[];
+  readonly receipt_digest: string;
+  readonly schema_version: "improvement-outcome-evaluation-set-receipt/v1";
+}
+
+export interface ImprovementOutcomeEvidenceInput {
   author_generation: number;
+  baseline: ImprovementOutcomeEvaluationSetV1;
+  candidate: ImprovementOutcomeEvaluationSetV1;
   candidate_id: string;
-  evidence_digest: string;
-  evidence_ref: string;
   expected_revision: number;
   head_digest: string;
-  kind: ImprovementEvidenceKind;
+  held_out_evidence_ref: string;
+  promotion_evidence_ref: string;
+  shadow_evidence_ref: string;
+}
+
+export interface ImprovementOutcomeEvidenceOutcome {
+  candidate: ImprovementCandidateV1;
+  decision: AssistantTurnPromotionDecisionV1;
 }
 
 export interface ImprovementAuthorCompletion {

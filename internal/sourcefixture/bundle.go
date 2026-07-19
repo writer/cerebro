@@ -33,13 +33,25 @@ var (
 	ErrPersonalEmail   = errors.New("provider response contains non-example email")
 	ErrProviderID      = errors.New("provider response contains unsanitized provider identifier")
 
-	emailPattern       = regexp.MustCompile(`(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b`)
-	credentialFieldKey = regexp.MustCompile(`(?i)^(?:authorization|credentials?|tokens?|secrets?|passwords?|access[_-]?tokens?|refresh[_-]?tokens?|api[_-]?keys?|client[_-]?secrets?|private[_-]?keys?)$|(?:^|[_-])(?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|password|private[_-]?key|secret|token)$`)
-	allowedEmailHost   = regexp.MustCompile(`(?i)@(example\.(?:com|net|org|test)|users\.noreply\.github\.com)$`)
-	providerIDPattern  = regexp.MustCompile(`(?i)\b(?:(?:00[tuoga]|0oa)[0-9a-z]{17}|aut[0-9a-z][0-9][0-9a-z]{15})\b`)
-	fullCommit         = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	sha256Digest       = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	replayTestName     = regexp.MustCompile(`^Test[A-Za-z0-9_]+$`)
+	emailPattern             = regexp.MustCompile(`(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b`)
+	credentialFieldKey       = regexp.MustCompile(`(?i)^(?:authorization|credentials?|tokens?|secrets?|passwords?|access[_-]?tokens?|refresh[_-]?tokens?|api[_-]?keys?|client[_-]?secrets?|private[_-]?keys?)$|(?:^|[_-])(?:access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|password|private[_-]?key|secret|token)$`)
+	allowedEmailHost         = regexp.MustCompile(`(?i)@(example\.(?:com|net|org|test)|users\.noreply\.github\.com)$`)
+	zendeskTenantHost        = regexp.MustCompile(`(?i)(^|[^%a-z0-9.-])[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.zendesk\.com\b`)
+	escapedZendeskTenantHost = regexp.MustCompile(`(?i)(%2f%2f)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.zendesk\.com\b`)
+	auth0FixtureHost         = regexp.MustCompile(`(?i)(^|[^%a-z0-9.-])(?:[a-z0-9-]+\.)*terraform-provider-auth0\.com\b`)
+	escapedAuth0FixtureHost  = regexp.MustCompile(`(?i)(%2f%2f)(?:[a-z0-9-]+\.)*terraform-provider-auth0\.com\b`)
+	auth0TenantHost          = regexp.MustCompile(`(?i)(^|[^%a-z0-9.-])(?:[a-z0-9-]+\.)+auth0\.com\b`)
+	escapedAuth0TenantHost   = regexp.MustCompile(`(?i)(%2f%2f)(?:[a-z0-9-]+\.)+auth0\.com\b`)
+	auth0FixtureTenant       = regexp.MustCompile(`(?i)\bterraform-provider-auth0(?:-[a-z0-9-]+)?\b`)
+	mailchimpListPath        = regexp.MustCompile(`(?i)^(https://[a-z0-9-]+\.api\.mailchimp\.com/3\.0/lists/)([0-9a-f]{10})\b`)
+	contentfulAssetURL       = regexp.MustCompile(`(?i)^((?:https:)?//images\.ctfassets\.net/)([^/?#]+)/([^/?#]+)/([^/?#]+)(/[^?#]*)(\?[^#]*)?(#.*)?$`)
+	contentfulSpaceURL       = regexp.MustCompile(`(?i)^(https://(?:cdn|preview)\.contentful\.com/spaces/)([^/?#]+)(/[^?#]*)(\?[^#]*)?(#.*)?$`)
+	ipv4Pattern              = regexp.MustCompile(`\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b`)
+	providerIDPattern        = regexp.MustCompile(`(?i)\b(?:(?:00[tuoga]|0oa)[0-9a-z]{17}|aut[0-9a-z][0-9][0-9a-z]{15}|(?:org|rol|con|cgr)_[0-9a-z]{8,}|user_[0-9a-f]{32}|auth0(?:\||%7c)[0-9a-z]{8,}|[0-9a-f]{24})\b`)
+	objectID                 = regexp.MustCompile(`(?i)^[0-9a-f]{24}$`)
+	fullCommit               = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	sha256Digest             = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	replayTestName           = regexp.MustCompile(`^Test[A-Za-z0-9_]+$`)
 )
 
 type Manifest struct {
@@ -235,14 +247,14 @@ func ValidateManifest(manifest Manifest, payload []byte) error {
 			return fmt.Errorf("%w %q", ErrCredentialQuery, key)
 		}
 	}
-	if providerIDPattern.MatchString(manifest.Request.URL) {
+	if containsUnsanitizedProviderText(manifest.Request.URL) {
 		return fmt.Errorf("%w in request.url", ErrProviderID)
 	}
 	if manifest.Response.Status < 200 || manifest.Response.Status > 299 {
 		return fmt.Errorf("response.status = %d, want 2xx", manifest.Response.Status)
 	}
 	for name, value := range manifest.Response.Headers {
-		if providerIDPattern.MatchString(value) {
+		if containsUnsanitizedProviderText(value) {
 			return fmt.Errorf("%w in response.headers.%s", ErrProviderID, name)
 		}
 	}
@@ -432,7 +444,7 @@ func walkJSON(value any, path string) error {
 	case map[string]any:
 		for key, child := range typed {
 			childPath := path + "." + key
-			if credentialFieldKey.MatchString(key) {
+			if isCredentialFieldKey(key) {
 				if err := validateCredentialJSONValue(child, childPath); err != nil {
 					return err
 				}
@@ -449,7 +461,7 @@ func walkJSON(value any, path string) error {
 			}
 		}
 	case string:
-		if providerIDPattern.MatchString(typed) {
+		if containsUnsanitizedProviderText(typed) {
 			return fmt.Errorf("%w %s", ErrProviderID, path)
 		}
 		for _, email := range emailPattern.FindAllString(typed, -1) {
@@ -486,13 +498,32 @@ func validateCredentialJSONValue(value any, path string) error {
 		if typed == "" {
 			return nil
 		}
+	case json.Number:
+		if typed == "0" {
+			return nil
+		}
+	case bool:
+		if !typed {
+			return nil
+		}
 	}
 	return fmt.Errorf("%w %s", ErrCredentialField, path)
+}
+
+func isCredentialFieldKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "continuation_token", "cursor_token", "delta_token", "next_page_token", "next_token", "page_token", "pagination_token", "sync_token":
+		return false
+	default:
+		return credentialFieldKey.MatchString(key)
+	}
 }
 
 func isCredentialQueryKey(key string) bool {
 	normalized := strings.NewReplacer("-", "_", ".", "_").Replace(strings.ToLower(strings.TrimSpace(key)))
 	switch normalized {
+	case "continuation_token", "cursor_token", "delta_token", "next_page_token", "next_token", "page_token", "pagination_token", "sync_token":
+		return false
 	case "auth", "authorization", "token", "secret", "key", "sig", "signature", "pat", "password",
 		"access_token", "accesstoken", "refresh_token", "refreshtoken", "api_key", "apikey",
 		"client_secret", "clientsecret", "private_key", "privatekey", "private_token", "privatetoken":

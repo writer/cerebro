@@ -122,6 +122,11 @@ import (
 // and composition of existing read ports. Resolution, decision derivation,
 // immutable receipts, and protobuf response conversion remain behind
 // internal/decisionpacket packages.
+// Native source event admission adds caller-lifetime worker-pool composition,
+// Connect service reuse, and shutdown wiring only. Admission policy, framing,
+// restart behavior, and receipt validation remain in
+// internal/sourceruntime/eventadmission; the boundary is recorded in
+// docs/engineering/rust-source-runtime-adr.md.
 // Agent service lifecycle discovery adds only authenticated route registration
 // and response mapping; the state machines, records, validation, and generated
 // bindings remain behind internal/agentplatform.
@@ -153,7 +158,7 @@ import (
 // Portable audit-event reads add only authenticated route registration,
 // tenant resolution, safe error mapping, and state-store capability wiring.
 // Query bounds, cursors, and response allowlisting stay in auditevents.
-const bootstrapProductionGoLineBudget = 29072
+const bootstrapProductionGoLineBudget = 29114
 
 type bootstrapFileLineCount struct {
 	path  string

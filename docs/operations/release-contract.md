@@ -20,7 +20,7 @@ candidate-<40-character-commit>
 ghcr.io/writer/cerebro@sha256:<digest>
 ```
 
-The Candidate Build workflow waits for CI, builds the binary archives, runtime image, and web image once, packs the portable Slack companion and TypeScript SDK, writes checksums and a dependency inventory, attaches provenance, signs the images and contracts, and stores a `cerebro.release-candidate/v1` receipt. Candidate builds do not create Git tags, GitHub releases, stable semantic-version image tags, `latest`, or deployment requests.
+The Candidate Build workflow waits for CI, builds the binary archives, runtime image, and web image once, packs the portable Slack companion and TypeScript SDK, writes checksums and a dependency inventory, verifies the exact image platform set, scans both images, attaches provenance, signs the images and product manifest, and stores a `cerebro.release-candidate/v1` receipt. Candidate builds do not create Git tags, GitHub releases, stable semantic-version image tags, `latest`, or consumer events.
 
 Stable releases are promoted from a successful Candidate Build run through the `stable-release` GitHub environment. The operator supplies the candidate run ID, stable tag, completed release notes, and a successful smoke receipt URL. The workflow verifies the candidate bundle checksums, commit, run ID, image digest, and image signature before it assigns stable tags.
 
@@ -36,7 +36,7 @@ Examples:
 v1.2.3
 ```
 
-`latest` is updated only by the Stable Release workflow. Deployment automation receives requests only after the stable GitHub release is published. Candidate testing must pin the candidate digest; it does not use the stable deployment dispatch.
+`latest` is updated only by the Stable Release workflow. A configured release consumer receives one topology-neutral event only after the stable GitHub release is published. Candidate testing must pin the candidate digest; it does not use the stable consumer event.
 
 Use [`release-notes-template.md`](release-notes-template.md) for the required compatibility, migration, configuration, content-pack, rollback, runtime-contract, smoke-evidence, and supported-version record.
 
@@ -50,9 +50,7 @@ A release can include:
 - portable Slack companion and TypeScript SDK archives,
 - image provenance and signatures,
 - a signed `cerebro-product-release.json` manifest that binds every component to one commit,
-- target-specific runtime contracts, named `cerebro-runtime-contract-<target>.json`,
-- matching runtime contract signatures,
-- matching runtime contract certificates.
+- the strict `product-release-published.schema.json` consumer event contract.
 
 Runtime image:
 
@@ -264,15 +262,17 @@ Keep those in your deployment system.
 
 ## Signature artifacts
 
-Releases can upload one signed contract per deployment target:
+Releases upload one signed product manifest:
 
 ```text
-cerebro-runtime-contract-<target>.json
-cerebro-runtime-contract-<target>.json.sig
-cerebro-runtime-contract-<target>.json.pem
+cerebro-product-release.json
+cerebro-product-release.json.sig
+cerebro-product-release.json.pem
 ```
 
-Use the signature and certificate with your preferred Sigstore verification workflow. Verification policy is environment-specific, but the contract content is public and should not contain live secrets.
+Use the signature and certificate with your preferred Sigstore verification workflow. A deployment system can render and sign its own runtime deploy contract from the verified release tag plus its private configuration. The public release does not contain deployment-specific contract instances.
+
+After publication, the optional `product-release-published` consumer event contains exactly the schema version, release tag, release commit, release URL, manifest URL, and manifest SHA-256. Consumers verify the signed manifest before reading component images and digests. The event contains no target, topology, rollout mode, credential source, or downstream workflow details.
 
 ## Consuming a release
 
@@ -282,8 +282,8 @@ Suggested flow:
 2. Download and verify `cerebro-product-release.json`.
 3. Pull the runtime and web image digests named by the manifest.
 4. Download the Slack companion, SDK, and public contracts named by the manifest and verify their SHA-256 values.
-5. Download the runtime contract whose suffix matches your deployment target, such as `cerebro-runtime-contract-<target>.json`.
-6. Verify the runtime contract signature if your deployment process requires it.
+5. Render a runtime deploy contract using the verified release tag and configuration owned by your deployment system.
+6. Sign and verify that contract if your deployment process requires it.
 7. Check `required_secrets` against your secret manager.
 8. Deploy each selected component with matching config.
 9. Run `/livez`, `/health`, source runtime health, graph health, and web health checks.
@@ -296,7 +296,7 @@ Suggested flow:
 4. Complete every section in the release notes template. Name migration order, downgrade limits, configuration changes, and the rollback digest.
 5. Start the Stable Release workflow with the candidate run ID, `vMAJOR.MINOR.PATCH` tag, completed notes, and smoke receipt URL.
 6. Approve the `stable-release` environment after checking the candidate receipt, smoke receipt, and release notes.
-7. Confirm the GitHub release, both semantic-version image tags, both `latest` tags, portable archives, signed product manifest, signed runtime contracts, and deployment requests all use the candidate commit and recorded digests.
+7. Confirm the GitHub release, both semantic-version image tags, both `latest` tags, portable archives, and signed product manifest all use the candidate commit and recorded digests. If a release consumer is configured, confirm it accepted the six-field consumer event.
 
 Stable release windows are scheduled by the release operator. A schedule controls when the operator starts and approves the workflow; it does not create an unattended tag.
 
@@ -309,9 +309,9 @@ Use the same candidate and stable workflows for an emergency release. Do not bui
 3. Capture a smoke receipt covering the failing path plus readiness, graph health, source health, and `version`.
 4. Complete the release notes. State the incident scope, compatibility result, migration requirement, configuration change, and rollback digest.
 5. Start Stable Release and request the configured emergency approver for the `stable-release` environment.
-6. After promotion, confirm the deployment request selected the stable channel and the promoted digest.
+6. After promotion, verify the signed stable manifest and use its recorded digests for the maintenance rollout.
 
-Emergency handling may shorten the release window. It does not bypass CI, candidate verification, checksums, signatures, provenance, runtime contracts, release-note checks, or environment approval.
+Emergency handling may shorten the release window. It does not bypass CI, candidate verification, checksums, signatures, provenance, image scans, release-note checks, or environment approval.
 
 ## Rollback
 
@@ -358,7 +358,7 @@ PY
 
 ## Compatibility expectations
 
-Consumers should treat `schema_version` as the compatibility boundary. Validate `cerebro.product-release/v1` before selecting any component, and update contract consumers before accepting a new schema version.
+Consumers should treat `schema_version` as the compatibility boundary. Validate `cerebro.product-release-published/v1` before accepting an event, then validate the referenced `cerebro.product-release/v1` manifest before selecting any component. Update consumers before accepting a new schema version.
 
 Within the current schema:
 

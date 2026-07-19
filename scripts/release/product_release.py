@@ -8,11 +8,13 @@ import hashlib
 import json
 import re
 import sys
+import tarfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 
 SCHEMA_VERSION = "cerebro.product-release/v1"
+EVENT_SCHEMA_VERSION = "cerebro.product-release-published/v1"
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -21,6 +23,25 @@ IMAGE_RE = re.compile(
     r"^ghcr\.io/[a-z0-9._-]+/[a-z0-9._/-]+:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
 )
 PACKAGE_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
+REPOSITORY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+MAX_NPM_ARCHIVE_MEMBERS = 10_000
+MAX_NPM_PACKAGE_JSON_BYTES = 256 * 1024
+NPM_PACKAGE_JSON = "package/package.json"
+SDK_REQUIRED_MEMBERS = frozenset(
+    {
+        "package/src/index.js",
+        "package/src/index.ts",
+        "package/src/generated/openapi-types.ts",
+        "package/src/generated/agent-service-lifecycle.ts",
+        "package/src/generated/agent-service-lifecycle-contract.ts",
+    }
+)
+SLACK_REQUIRED_MEMBERS = frozenset(
+    {
+        "package/dist/src/index.js",
+        "package/dist/src/index.d.ts",
+    }
+)
 
 
 class ManifestError(ValueError):
@@ -143,6 +164,81 @@ def validate_file_record(
         require(sha256_file(artifact) == record["sha256"], f"{label} artifact digest does not match")
 
 
+def read_npm_archive_manifest(path: Path, label: str) -> tuple[dict[str, Any], frozenset[str]]:
+    members: set[str] = set()
+    package_manifest: dict[str, Any] | None = None
+    member_count = 0
+
+    try:
+        with tarfile.open(path, mode="r|gz") as archive:
+            for member in archive:
+                member_count += 1
+                require(
+                    member_count <= MAX_NPM_ARCHIVE_MEMBERS,
+                    f"{label} archive has too many members",
+                )
+                member_path = PurePosixPath(member.name)
+                require(
+                    member.name == member_path.as_posix()
+                    and not member_path.is_absolute()
+                    and ".." not in member_path.parts
+                    and len(member_path.parts) > 1
+                    and member_path.parts[0] == "package",
+                    f"{label} archive member is unsafe: {member.name}",
+                )
+                require(member.name not in members, f"{label} archive has duplicate member: {member.name}")
+                members.add(member.name)
+                require(
+                    member.isfile() or member.isdir(),
+                    f"{label} archive member must be a regular file or directory: {member.name}",
+                )
+                if member.name != NPM_PACKAGE_JSON:
+                    continue
+                require(member.isfile(), f"{label} {NPM_PACKAGE_JSON} must be a regular file")
+                require(
+                    0 < member.size <= MAX_NPM_PACKAGE_JSON_BYTES,
+                    f"{label} package metadata size is invalid",
+                )
+                package_file = archive.extractfile(member)
+                require(package_file is not None, f"{label} package metadata cannot be read")
+                package_bytes = package_file.read(MAX_NPM_PACKAGE_JSON_BYTES + 1)
+                require(
+                    len(package_bytes) <= MAX_NPM_PACKAGE_JSON_BYTES,
+                    f"{label} package metadata is too large",
+                )
+                parsed = json.loads(package_bytes.decode("utf-8"))
+                require(isinstance(parsed, dict), f"{label} package metadata must be an object")
+                package_manifest = parsed
+    except ManifestError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, tarfile.TarError) as exc:
+        raise ManifestError(f"{label} archive is invalid: {exc}") from exc
+
+    require(package_manifest is not None, f"{label} archive is missing {NPM_PACKAGE_JSON}")
+    return package_manifest, frozenset(members)
+
+
+def validate_npm_archive(
+    record: dict[str, Any],
+    label: str,
+    bundle_root: Path,
+    *,
+    expected_package: str,
+    required_members: frozenset[str],
+) -> dict[str, Any]:
+    archive_path = bundle_root / PurePosixPath(record["file"])
+    package_manifest, members = read_npm_archive_manifest(archive_path, label)
+    require(record["package"] == expected_package, f"{label}.package is invalid")
+    require(package_manifest.get("name") == expected_package, f"{label} archive package name does not match")
+    require(
+        package_manifest.get("version") == record["package_version"],
+        f"{label} archive package version does not match",
+    )
+    missing = sorted(required_members - members)
+    require(not missing, f"{label} archive is missing required members: {', '.join(missing)}")
+    return package_manifest
+
+
 def validate_manifest(manifest: Any, bundle_root: Path | None = None) -> None:
     require(isinstance(manifest, dict), "manifest must be an object")
     require(
@@ -178,12 +274,105 @@ def validate_manifest(manifest: Any, bundle_root: Path | None = None) -> None:
 
     validate_file_record(components["slack_companion"], "components.slack_companion", bundle_root, archive=True)
     validate_file_record(components["typescript_sdk"], "components.typescript_sdk", bundle_root, archive=True)
+    require(
+        components["slack_companion"]["package"] == "@writer/cerebro-slack-companion",
+        "components.slack_companion.package is invalid",
+    )
+    require(
+        components["typescript_sdk"]["package"] == "@writer/cerebro-sdk",
+        "components.typescript_sdk.package is invalid",
+    )
+    if bundle_root is not None:
+        sdk_manifest = validate_npm_archive(
+            components["typescript_sdk"],
+            "components.typescript_sdk",
+            bundle_root,
+            expected_package="@writer/cerebro-sdk",
+            required_members=SDK_REQUIRED_MEMBERS,
+        )
+        slack_manifest = validate_npm_archive(
+            components["slack_companion"],
+            "components.slack_companion",
+            bundle_root,
+            expected_package="@writer/cerebro-slack-companion",
+            required_members=SLACK_REQUIRED_MEMBERS,
+        )
+        slack_dependencies = slack_manifest.get("dependencies")
+        require(
+            isinstance(slack_dependencies, dict)
+            and slack_dependencies.get("@writer/cerebro-sdk") == sdk_manifest.get("version"),
+            "components.slack_companion archive must depend on the archived TypeScript SDK version",
+        )
 
     contracts = manifest.get("contracts")
     require(isinstance(contracts, dict), "contracts must be an object")
     require(set(contracts) == {"openapi", "agent_service_lifecycle"}, "contracts has unexpected or missing fields")
     validate_file_record(contracts["openapi"], "contracts.openapi", bundle_root)
     validate_file_record(contracts["agent_service_lifecycle"], "contracts.agent_service_lifecycle", bundle_root)
+
+
+def build_release_event(args: argparse.Namespace) -> dict[str, str]:
+    release_url = f"https://github.com/{args.repository}/releases/tag/{args.release_tag}"
+    manifest_url = (
+        f"https://github.com/{args.repository}/releases/download/{args.release_tag}/"
+        "cerebro-product-release.json"
+    )
+    return {
+        "schema_version": EVENT_SCHEMA_VERSION,
+        "release_tag": args.release_tag,
+        "release_commit": args.release_commit,
+        "release_url": release_url,
+        "manifest_url": manifest_url,
+        "manifest_sha256": args.manifest_sha256,
+    }
+
+
+def validate_release_event(event: Any) -> None:
+    require(isinstance(event, dict), "release event must be an object")
+    require(
+        set(event)
+        == {
+            "schema_version",
+            "release_tag",
+            "release_commit",
+            "release_url",
+            "manifest_url",
+            "manifest_sha256",
+        },
+        "release event has unexpected or missing fields",
+    )
+    require(event.get("schema_version") == EVENT_SCHEMA_VERSION, "release event schema_version is invalid")
+    release_tag = event.get("release_tag")
+    release_commit = event.get("release_commit")
+    release_url = event.get("release_url")
+    manifest_url = event.get("manifest_url")
+    require(
+        isinstance(release_tag, str) and VERSION_RE.fullmatch(release_tag) is not None and release_tag.startswith("v"),
+        "release event release_tag is invalid",
+    )
+    require(
+        isinstance(release_commit, str) and COMMIT_RE.fullmatch(release_commit) is not None,
+        "release event release_commit is invalid",
+    )
+    require(
+        isinstance(release_url, str) and release_url.startswith("https://github.com/"),
+        "release event release_url is invalid",
+    )
+    repository = release_url.removeprefix("https://github.com/").removesuffix(f"/releases/tag/{release_tag}")
+    require(re.fullmatch(REPOSITORY_PATTERN, repository) is not None, "release event repository is invalid")
+    require(
+        release_url == f"https://github.com/{repository}/releases/tag/{release_tag}",
+        "release event release_url is inconsistent",
+    )
+    require(
+        manifest_url
+        == f"https://github.com/{repository}/releases/download/{release_tag}/cerebro-product-release.json",
+        "release event manifest_url is inconsistent",
+    )
+    require(
+        SHA256_RE.fullmatch(event.get("manifest_sha256", "")) is not None,
+        "release event manifest_sha256 is invalid",
+    )
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -210,6 +399,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     validate = subparsers.add_parser("validate", help="validate a product-release manifest")
     validate.add_argument("manifest", type=Path)
     validate.add_argument("--bundle-root", type=Path)
+
+    event = subparsers.add_parser("event", help="write a product-release consumer event")
+    event.add_argument("--repository", required=True)
+    event.add_argument("--release-tag", required=True)
+    event.add_argument("--release-commit", required=True)
+    event.add_argument("--manifest-sha256", required=True)
+    event.add_argument("--out", type=Path, required=True)
+
+    validate_event = subparsers.add_parser("validate-event", help="validate a product-release consumer event")
+    validate_event.add_argument("event", type=Path)
     return parser.parse_args(argv)
 
 
@@ -221,9 +420,17 @@ def main(argv: list[str] | None = None) -> int:
             validate_manifest(manifest, args.bundle_root.resolve())
             args.out.parent.mkdir(parents=True, exist_ok=True)
             args.out.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        else:
+        elif args.command == "validate":
             manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
             validate_manifest(manifest, args.bundle_root.resolve() if args.bundle_root else None)
+        elif args.command == "event":
+            event = build_release_event(args)
+            validate_release_event(event)
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(json.dumps(event, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        else:
+            event = json.loads(args.event.read_text(encoding="utf-8"))
+            validate_release_event(event)
     except (ManifestError, OSError, json.JSONDecodeError) as exc:
         print(f"product release validation failed: {exc}", file=sys.stderr)
         return 1

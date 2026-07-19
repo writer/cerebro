@@ -3,6 +3,7 @@
 .PHONY: release-train-test
 .PHONY: app-workspace-check web-docker-smoke
 .PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
+.PHONY: rust-event-admission-benchmark sourceruntime-event-admission-generate sourceruntime-event-admission-check
 .PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test source-fixture-check openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 .PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence
 .PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
@@ -12,6 +13,9 @@ GO_BIN ?= $(shell go env GOPATH)/bin
 PYTHON ?= python3
 CARGO ?= cargo
 CARGO_DENY ?= cargo deny
+ADMISSION_BENCH_SAMPLE_MS ?= 500
+ADMISSION_BENCH_SAMPLES ?= 5
+EVENT_ADMISSION_WORKER := target/release/cerebro-event-admission-worker
 RUST_FUZZ_TOOLCHAIN ?= nightly-2026-06-09
 RUST_FUZZ_RUNS ?= 10000
 RUST_FUZZ_MAX_LEN ?= 65544
@@ -163,7 +167,10 @@ help: ## Show this help message.
 
 # ==== Build ====
 ##@ Build
-build: ## Build the Cerebro CLI binary.
+build: ## Build the Cerebro CLI and native source event admission worker.
+	$(CARGO) build --locked --release -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker
+	mkdir -p bin
+	cp $(EVENT_ADMISSION_WORKER) bin/cerebro-event-admission-worker
 	go build -o bin/cerebro ./cmd/cerebro
 
 serve: build ## Build and run the local HTTP server.
@@ -489,7 +496,14 @@ rust-coverage: ## Enforce the Rust workspace line-coverage floor with the pinned
 
 rust-benchmark-smoke: ## Run bounded embedded Wasm host benchmarks and record their output.
 	@mkdir -p tmp
-	@go test ./internal/wasmhost ./internal/graphagent ./internal/sourcecoverage ./internal/mitre ./internal/sourceprojection -run '^$$' -bench '^(BenchmarkRuntimeRun|BenchmarkStaticValidator|BenchmarkCoverageEvaluator|BenchmarkContextEvaluator|BenchmarkPanopticonResourceExtractor)$$' -benchtime=20x -count=1 > tmp/rust-wasm-benchmark.txt 2>&1; status=$$?; cat tmp/rust-wasm-benchmark.txt; exit $$status
+	@go test ./internal/wasmhost ./internal/graphagent ./internal/sourcecoverage ./internal/mitre ./internal/sourceprojection ./internal/sourceruntime/eventadmission -run '^$$' -bench '^(BenchmarkRuntimeRun|BenchmarkStaticValidator|BenchmarkCoverageEvaluator|BenchmarkContextEvaluator|BenchmarkPanopticonResourceExtractor|BenchmarkAdmissionSmoke)$$' -benchtime=20x -count=1 > tmp/rust-wasm-benchmark.txt 2>&1; status=$$?; cat tmp/rust-wasm-benchmark.txt; exit $$status
+
+rust-event-admission-benchmark: ## Measure admission cost by boundary and representative workload.
+	@mkdir -p tmp
+	@$(CARGO) build --locked --release -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker
+	@CEREBRO_EVENT_ADMISSION_WORKER="$(abspath $(EVENT_ADMISSION_WORKER))" go test ./internal/sourceruntime/eventadmission -run '^TestAdmission(NativeWorkerMatchesWasmCorpus|NativePoolHandlesConcurrentPages|BenchmarkGoReferenceMatchesRustCorpus)$$' -bench '^BenchmarkAdmission(EndToEnd|NativeEndToEnd|HostRequestEncoding|WasmEvaluation|NativeEvaluation|NativeCBOREvaluation|HostResponseDecoding|EquivalentGoJSON|WasmIsolationFloor|ColdWasmEvaluation)$$' -benchmem -benchtime=$(ADMISSION_BENCH_SAMPLE_MS)ms -count=$(ADMISSION_BENCH_SAMPLES) > tmp/rust-event-admission-benchmark.txt 2>&1; status=$$?; cat tmp/rust-event-admission-benchmark.txt; test $$status -eq 0
+	@CEREBRO_EVENT_ADMISSION_WORKER="$(abspath $(EVENT_ADMISSION_WORKER))" go test ./internal/sourceruntime -run '^TestSyncRuntimeNativeAdmissionCommitsOnlyAcceptedEvents$$'
+	@ADMISSION_BENCH_SAMPLE_MS=$(ADMISSION_BENCH_SAMPLE_MS) ADMISSION_BENCH_SAMPLES=$(ADMISSION_BENCH_SAMPLES) $(CARGO) bench --locked -p cerebro-sourceruntime-eventadmission --bench admission > tmp/rust-event-admission-native-benchmark.txt 2>&1; status=$$?; cat tmp/rust-event-admission-native-benchmark.txt; exit $$status
 
 rust-security-path-properties: ## Run deterministic security path kernel properties.
 	$(CARGO) test --locked -p cerebro-security-path-kernel --test properties
@@ -526,6 +540,12 @@ mitre-context-evaluator-generate: ## Rebuild the embedded MITRE context evaluato
 
 mitre-context-evaluator-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded MITRE context evaluator is current.
 	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check mitre-context-evaluator
+
+sourceruntime-event-admission-generate: ## Rebuild the embedded source event admission kernel.
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate sourceruntime-event-admission
+
+sourceruntime-event-admission-check: rust-fmt-check rust-clippy rust-test ## Verify the embedded source event admission kernel is current.
+	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py check sourceruntime-event-admission
 
 security-path-evaluator-generate: ## Rebuild the embedded security path evaluator.
 	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate security-path-evaluator

@@ -1,6 +1,7 @@
 sourceId: trello
 secretKeys:
   - TRELLO_BASE_URL
+  - TRELLO_API_KEY
   - TRELLO_TOKEN
 runtimes:
   - localId: users
@@ -8,8 +9,9 @@ runtimes:
       base_url: env:TRELLO_BASE_URL
       family: users
       failure_modes: api_error,auth_error,rate_limit,schema_drift
-      health_path: /v1/me
+      health_path: /1/members/me
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
+      api_key: env:TRELLO_API_KEY
       token: env:TRELLO_TOKEN

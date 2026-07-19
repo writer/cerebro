@@ -1,0 +1,67 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: gitguardian
+family: incidents
+case: list_incidents
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedGitGuardianFamilies
+request:
+    method: GET
+    url: https://api.gitguardian.com/v1/incidents/secrets?per_page=5
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-06-23T12:44:10Z"
+    sha256: 1d2ac8a033797a52b8411127a81fe0dc778d7cd171ab46c69504b29874150a41
+    headers:
+        link: <https://api.gitguardian.com/v1/incidents/secrets?cursor=cD0yMTQ2NA%3D%3D&per_page=5>; rel="next"
+        x-per-page: "5"
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0].assignee_email
+        - $[0].destination_tickets[0].id
+        - $[0].destination_tickets[0].link
+        - $[0].detector.display_name
+        - $[0].feedback_list[0].answers[3].text
+        - $[0].feedback_list[0].email
+        - $[0].gitguardian_url
+        - $[0].hmsl_hash
+        - $[0].secret_hash
+        - $[1].assignee_email
+        - $[1].destination_tickets[0].id
+        - $[1].destination_tickets[0].link
+        - $[1].destination_tickets[1].id
+        - $[1].destination_tickets[1].link
+        - $[1].detector.display_name
+        - $[1].feedback_list[0].answers[3].text
+        - $[1].feedback_list[0].email
+        - $[1].gitguardian_url
+        - $[1].hmsl_hash
+        - $[1].secret_hash
+        - $[2].assignee_email
+        - $[2].detector.display_name
+        - $[2].gitguardian_url
+        - $[2].hmsl_hash
+        - $[2].secret_hash
+        - $[3].detector.display_name
+        - $[3].gitguardian_url
+        - $[3].hmsl_hash
+        - $[3].secret_hash
+        - $[4].assignee_email
+        - $[4].destination_tickets[0].id
+        - $[4].destination_tickets[0].link
+        - $[4].detector.display_name
+        - $[4].gitguardian_url
+        - $[4].hmsl_hash
+        - $[4].secret_hash
+origin:
+    type: upstream_recording
+    repository: https://github.com/GitGuardian/ggmcp
+    commit: edb604c340d15da42b4927f6a6a04705efcb0421
+    path: tests/cassettes/client/vcr/test_list_incidents_basic.yaml
+    artifact_sha256: 2c7fb460883174f2ebd13302a3535e81bef5900c4e9b587ec7807277d0ca4e46
+    license: MIT
+    recording_tool: vcrpy-8
+    harness_path: tests/conftest.py
+    freshness: current
+    capture_time_basis: response_header

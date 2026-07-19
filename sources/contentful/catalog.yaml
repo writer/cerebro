@@ -120,7 +120,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - sys.id
   - kind: contentful.audit_events
     schema_ref: contentful/audit_events/v1
     required_attributes:

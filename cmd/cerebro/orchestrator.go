@@ -24,6 +24,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -362,6 +363,21 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 	}
 	leaseOwner := orchestratorLeaseOwner()
 	runtimeService := newOrchestratorRuntimeService(registry, lister, deps.AppendLog, deps.StateStore)
+	admitter, err := eventadmission.NewNativeAdmitter(
+		ctx,
+		cfg.SourceRuntime.EventAdmissionWorkerPath,
+		cfg.SourceRuntime.EventAdmissionWorkers,
+	)
+	if err != nil {
+		captureOrchestratorError(ctx, "orchestrator.error", 0, nil, "source_event_admission", err)
+		return nil, fmt.Errorf("configure source event admission: %w", err)
+	}
+	defer func() {
+		if err := admitter.Close(); err != nil {
+			log.Printf("close source event admission: %v", err)
+		}
+	}()
+	runtimeService.WithEventAdmitter(admitter)
 	findingService := findings.New(
 		lister,
 		eventReplayer(deps.AppendLog),

@@ -1,0 +1,113 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: trello
+family: workspaces
+case: member_boards
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedTrelloFamilies
+request:
+    method: GET
+    url: https://api.trello.com/1/members/me/boards?
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2016-08-14T16:58:30Z"
+    sha256: bc89e95790eb6a16af98c708a4e87d3613e30dc9e2ff5d321a563040f5aa73c8
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0].id
+        - $[0].memberships[0].id
+        - $[0].memberships[0].idMember
+        - $[0].name
+        - $[0].shortLink
+        - $[0].shortUrl
+        - $[0].url
+        - $[1].id
+        - $[1].idOrganization
+        - $[1].memberships[0].id
+        - $[1].memberships[0].idMember
+        - $[1].memberships[1].id
+        - $[1].memberships[1].idMember
+        - $[1].name
+        - $[1].shortLink
+        - $[1].shortUrl
+        - $[1].url
+        - $[2].desc
+        - $[2].id
+        - $[2].memberships[0].id
+        - $[2].memberships[0].idMember
+        - $[2].name
+        - $[2].shortLink
+        - $[2].shortUrl
+        - $[2].url
+        - $[3].id
+        - $[3].idOrganization
+        - $[3].memberships[0].id
+        - $[3].memberships[0].idMember
+        - $[3].memberships[1].id
+        - $[3].memberships[1].idMember
+        - $[3].name
+        - $[3].shortLink
+        - $[3].shortUrl
+        - $[3].url
+        - $[4].id
+        - $[4].idOrganization
+        - $[4].memberships[0].id
+        - $[4].memberships[0].idMember
+        - $[4].memberships[1].id
+        - $[4].memberships[1].idMember
+        - $[4].name
+        - $[4].shortLink
+        - $[4].shortUrl
+        - $[4].url
+        - $[5].id
+        - $[5].memberships[0].id
+        - $[5].memberships[0].idMember
+        - $[5].memberships[1].id
+        - $[5].memberships[1].idMember
+        - $[5].name
+        - $[5].shortLink
+        - $[5].shortUrl
+        - $[5].url
+        - $[6].id
+        - $[6].idOrganization
+        - $[6].memberships[0].id
+        - $[6].memberships[0].idMember
+        - $[6].name
+        - $[6].shortLink
+        - $[6].shortUrl
+        - $[6].url
+        - $[7].id
+        - $[7].memberships[0].id
+        - $[7].memberships[0].idMember
+        - $[7].memberships[1].id
+        - $[7].memberships[1].idMember
+        - $[7].name
+        - $[7].shortLink
+        - $[7].shortUrl
+        - $[7].url
+        - $[8].id
+        - $[8].memberships[0].id
+        - $[8].memberships[0].idMember
+        - $[8].name
+        - $[8].shortLink
+        - $[8].shortUrl
+        - $[8].url
+        - $[9].id
+        - $[9].memberships[0].id
+        - $[9].memberships[0].idMember
+        - $[9].name
+        - $[9].shortLink
+        - $[9].shortUrl
+        - $[9].url
+origin:
+    type: upstream_recording
+    repository: https://github.com/yammine/ex_trello
+    commit: a252cb34a2c08500ba62ad2f86f9d55ca609170f
+    path: fixtures/vcr_cassettes/authenticated_user_boards.json
+    artifact_sha256: d5a907973270340de4d395f07dc9059f1fec374c6bf9637a38170643e371d42a
+    license: MIT
+    recording_tool: ExVCR
+    harness_path: test/test_helper.exs
+    freshness: historical
+    capture_time_basis: response_header

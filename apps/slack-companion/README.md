@@ -45,9 +45,83 @@ The same shape applies to longer-running work. Slack-visible status can show que
 
 Hosts should record the message parts Slack accepted, not an internal draft. Evaluation and conversation continuity then describe what the person actually received, including partial and failed deliveries.
 
+`evaluateAssistantTurn` scores one text-free observation derived from durable delivery, claim, source, feedback, and outcome records. An unwanted response, missed response, incomplete delivery, omitted required action, ungrounded or subject-misbound claim, unused available source, missing coverage boundary, hidden source failure, exposed internal machinery, redundant tool call, unnecessary clarification, user correction, or negative feedback is explicit in the receipt. `decideAssistantTurnPromotion` compares one candidate with its exact baseline on at least eight sealed static cases and eight independently generated shadow cases. Duplicate case content cannot count in both partitions. Promotion requires a strict score gain, no blocker increase, fewer blockers when the baseline has any, no material case regression, and no new per-case blocker.
+
+`ImprovementCoordinator.recordOutcomeEvidence` is the only path that can make evaluation, shadow, and promotion evidence fresh. It binds the baseline rows to the pre-authoring head, binds candidate rows to the authored head, runs the promotion decision, and records those three evidence classes only when the decision passes. Generic CI and canary receipts cannot bypass the outcome gate. A candidate becomes ready only when all five exact-head evidence classes are fresh.
+
 ## Command and delivery projections
 
 `encodeSlackCommandEnvelope` and `encodeSlackActionEnvelope` produce bounded, versioned values for transport-owned command and interaction handlers. Their decoders reject unknown fields and malformed input before admission. `projectSlackVisibleStatus`, `projectAssistantTurnProgress`, and `projectSlackMultipartDelivery` produce stable host-neutral operations and exact accepted-part records. Private adapters choose routes and Slack API methods.
+
+Durable schedule definitions keep a stable schedule identity, revision, work
+digest, cadence anchor, and misfire policy. The portable planner derives the
+same due times after a restart or topology change and materializes occurrences
+with the existing `(schedule_id, due_at, schedule_revision)` identity. Runtime
+stores, destination bindings, and scheduler deployment policy remain host-owned.
+
+## Canonical work cases
+
+`src/canonical-work` projects a Cerebro compliance work item into a resumable
+Slack-facing case. Cerebro remains authoritative for queue state, ownership,
+versions, occurrences, remediation, and assurance verification. The companion
+stores the case projection, exact command intent, and digest-bound approval
+receipt.
+
+Every write is fenced by the current work-item version. A retry after an
+unknown command result first reads canonical state and does not repeat an
+effect that Cerebro already applied. Remediation and fresh assurance remain
+separate commands; the case closes only after the canonical response reaches a
+terminal state.
+
+Hosts implement `CanonicalWorkItemPort` with the public Cerebro SDK and provide
+a durable `DurableCanonicalWorkCasePort`. Credentials, endpoints, deployment
+configuration, and provider-specific stores are outside this workspace.
+
+## Alert triage
+
+`src/triage` owns portable alert-triage, evidence, and suggestion lifecycles.
+Machine-specific transitions keep triage, evidence freshness, and suggestion
+delivery states distinct. An actionable decision can plan a suggestion only
+when every referenced receipt is current, accessible, and within its validity
+window. Planning uses stable caller-provided action identity so a retry produces
+the same suggestion identity.
+
+The portable channel policy classifies host-supplied message text and applies
+host-supplied channel membership and confidence thresholds. The host owns
+channel membership lookup, source queries, prompts, persistence, and delivery
+adapters. Those adapters persist the versioned records and transition events
+without changing the portable decision policy.
+
+The deterministic fallback accepts host-supplied alert text and research
+records. It never authorizes a reply: explicit test markers are non-actionable,
+and every other degraded result needs more context. Model and research calls,
+credentials, transport, persistence, and deployment remain host-owned.
+
+## Proactive follow-ups
+
+`src/followup` decides whether, and what, to proactively offer after a delivered
+assistant turn so the companion stays engaged without nagging. `planProactiveFollowup`
+only offers on an answered or partial turn, drops candidates whose kind is not
+allowed or that carry no grounding reference, and dedupes any action already
+offered or accepted in the thread. A cooldown and a per-window engagement budget
+bound how often the companion re-engages. The result is bounded, deterministically
+ordered by priority, and carries stable idempotent identities so a retry never
+double-offers. The host owns candidate derivation, durable engagement history,
+and Slack transport.
+
+## History learning admission
+
+`slackLearningCandidateRejection` classifies a host-supplied message projection
+before it can become a learning candidate. Machine-authored messages, Slack
+subtypes, incomplete records, empty text, and direct mentions of the companion
+are rejected with stable reason codes. Slack history fetching, authorization,
+storage, and learning execution remain host-owned.
+
+## Source health
+
+`src/execution/source-health-policy.ts` applies failure cooldown, successful recovery, slow-source degradation, and stable ranking to caller-owned state. It reuses the portable consecutive-failure and capacity-cooldown records so the host can commit one coherent aggregate.
+
+The host owns source calls, persistence, probe scheduling, and policy values. This module does not poll sources, create a store, or choose deployment behavior.
 
 ## Durable answer watches
 
@@ -89,6 +163,14 @@ duplicate, in-progress, completed, degraded, and rejected states.
 The public module contains only records, validation, deterministic policy, and
 synthetic tests. Evidence resolution, persistence, execution, authorization
 lookup, and Slack transport remain host-owned.
+
+## Dangerous-intent safety policy
+
+`src/safety` owns deterministic normalization, dangerous-intent classification,
+category precedence, safety decisions, and refusal text. Hosts decide where to
+apply the policy and own authorization, tool selection, configuration, logging,
+telemetry, persistence, and Slack transport.
+
 Production implementations of `DurableAdmissionPort` must use durable storage with one transaction or an equivalent recoverable commit protocol. The in-memory implementation under `src/testing` is a conformance fixture only.
 
 This workspace must not contain credentials, infrastructure identifiers, environment routes, deployment manifests, or provider-specific persistence adapters. Those belong in the private operational repository. A deployment may replace every port without changing the Slack application identity, binding identity, run identity, or thread identity.

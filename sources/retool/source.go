@@ -17,7 +17,7 @@ var catalogFS embed.FS
 const (
 	sourceID               = "retool"
 	defaultFamily          = familyUsers
-	defaultHealthPath      = "/v1/me"
+	defaultHealthPath      = "/api/v2/users"
 	defaultBaseURLTemplate = "${config.base_url}"
 	tokenHeader            = ""
 	tokenScheme            = "Bearer"
@@ -50,15 +50,16 @@ func New() (*Source, error) {
 		Families: []jsonapi.Family{
 			{
 				Name:             familyUsers,
-				Path:             "/v1/users",
+				Path:             "/api/v2/users",
 				URNKind:          "retool_users",
 				IDKeys:           []string{"id", "name", "user_id", "email", "primary_email", "login"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
+				CursorParam:      "next_token",
+				NextCursorKeys:   []string{"next_token"},
 				PageSizeParams:   []string{"limit"},
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "department|profile.department", "display_name": "name", "domain": "domain|tenant_domain|organization_domain", "email": "email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_login_at|last_login|last_seen_at", "login": "login|username|email|profile.login", "manager": "manager|profile.manager", "observed_at": "observed_at|updated_at|last_seen_at", "primary_email": "primary_email|email|profile.email", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "status": "status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
+				Attributes:       map[string]string{"created_at": "created_at|created|profile.created_at", "department": "metadata.department|department|profile.department", "display_name": "first_name|email|name", "domain": "domain|tenant_domain|organization_domain", "email": "email", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "job_title": "job_title|title|profile.title", "last_login_at": "last_active|last_login_at|last_login|last_seen_at", "login": "email|login|username|profile.login", "manager": "manager|profile.manager", "observed_at": "last_active|created_at|observed_at|updated_at|last_seen_at", "primary_email": "email|primary_email|profile.email", "resource_id": "id|resource_id|metadata.resource_id", "resource_name": "first_name|email|name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "id|event_id|metadata.event_id", "status": "active|status", "tenant_id": "tenant_id|metadata.tenant_id", "user_id": "id"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}},
 				StaticAttributes: map[string]string{"record_class": "identity_user", "schema": "users", "source_system": "retool"},
 			},
 			{

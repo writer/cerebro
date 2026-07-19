@@ -1,0 +1,12 @@
+{
+  "Events": [
+    {
+      "EventId": "e037b713-9bf8-49d9-b947-b17dc4941ead",
+      "EventName": "RegisterTaskDefinition",
+      "EventTime": "2026-07-15T08:41:25Z",
+      "Username": "operator@example.com",
+      "Resources": [],
+      "CloudTrailEvent": "{\"eventID\":\"e037b713-9bf8-49d9-b947-b17dc4941ead\",\"eventName\":\"RegisterTaskDefinition\",\"eventTime\":\"2026-07-15T08:41:25Z\",\"userIdentity\":{\"arn\":\"arn:aws:sts::000000000000:assumed-role/Admin/operator\"},\"userAgent\":\"aws-cli/2.x\",\"sourceIPAddress\":\"127.0.0.1\"}"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 package sourcefixture
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -90,7 +91,11 @@ func TestValidateManifestAllowsEmptyCredentialShapesAndMetadataFields(t *testing
 		"credential_id":"credential-1",
 		"credential_name":"primary",
 		"api_key_id":"key-1",
-		"credentials":{"provider":{"type":""}}
+		"credentials":{"provider":{"type":""}},
+		"issue_token":0,
+		"next_token":"4611686018799963893",
+		"pagination_token":"page-2",
+		"credential_enabled":false
 	}`))
 	if err != nil {
 		t.Fatal(err)
@@ -154,6 +159,17 @@ func TestScanPayloadAcceptsCommitSHABeginningWithProviderPrefix(t *testing.T) {
 	}
 	if err := scanPayload(payload); err != nil {
 		t.Fatalf("scanPayload(commit SHA) error = %v", err)
+	}
+}
+
+func TestScanPayloadRejectsBase64EncodedProviderIdentifier(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString([]byte("cursor,auth0|69e90a4415cfe76760975a99"))
+	payload, err := CanonicalJSON([]byte(fmt.Sprintf(`{"next":%q}`, encoded)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scanPayload(payload); !errors.Is(err, ErrProviderID) {
+		t.Fatalf("scanPayload(base64 provider ID) error = %v, want errors.Is(_, ErrProviderID)", err)
 	}
 }
 

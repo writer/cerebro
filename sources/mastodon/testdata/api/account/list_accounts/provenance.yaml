@@ -1,0 +1,32 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: mastodon
+family: account
+case: list_accounts
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedMastodonFamilies
+request:
+    method: GET
+    url: https://mastodon.example.test/api/v1/lists/3/accounts
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-05-28T10:01:39Z"
+    sha256: a4136431e3b9bbf115272af02c58c65e6ce1ad72059de032f93fdf49a1205827
+    headers:
+        link: <http://localhost:3000/api/v1/lists/3/accounts?since_id=116387030920493064>; rel="prev"
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0].username
+origin:
+    type: upstream_recording
+    repository: https://github.com/halcy/Mastodon.py
+    commit: e125dc87f3933e5c5b4c8be41883595f60bb5080
+    path: tests/cassettes/test_list_add_remove_account.yaml
+    artifact_sha256: 046fab934e4e777a6c3b5d8e89dd82777dbab790de35f7aceafc94c7f99ade4d
+    license: MIT
+    recording_tool: VCR.py
+    harness_path: tests/conftest.py
+    interaction_index: 4
+    freshness: current
+    capture_time_basis: artifact_commit

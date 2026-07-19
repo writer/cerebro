@@ -7,10 +7,18 @@ export * from "./assistance/contracts.js";
 export * from "./assistance/coordinator.js";
 export * from "./assistance/ports.js";
 export * from "./assistant-turn/contracts.js";
+export * from "./assistant-turn/evaluation.js";
 export * from "./assistant-turn/policy.js";
 export * from "./contracts.js";
+export * from "./commands/contracts.js";
+export * from "./commands/catalog.js";
 export * from "./commands/registry.js";
 export * from "./commands/codec.js";
+export * from "./commands/remember.js";
+export * from "./canonical-work/contracts.js";
+export * from "./canonical-work/coordinator.js";
+export * from "./canonical-work/ports.js";
+export * from "./canonical-work/reference-store.js";
 export * from "./delivery/contracts.js";
 export * from "./delivery/coordinator.js";
 export * from "./delivery/ports.js";
@@ -36,6 +44,7 @@ export {
 export * from "./execution/effect-reconciliation.js";
 export * from "./execution/effect-intent.js";
 export * from "./execution/repeated-failure-policy.js";
+export * from "./execution/source-health-policy.js";
 export type {
   EffectIntentValue,
   ExecutionSession,
@@ -47,19 +56,30 @@ export type {
   DurableExecutionPort,
   ExecutionClockPort,
 } from "./execution/ports.js";
+export * from "./followup/contracts.js";
+export * from "./followup/policy.js";
 export * from "./installation.js";
 export * from "./improvement/contracts.js";
 export * from "./improvement/coordinator.js";
+export * from "./improvement/evaluation-set-receipt.js";
 export * from "./improvement/ports.js";
+export * from "./history/contracts.js";
+export * from "./history/message-policy.js";
+export * from "./history/policy.js";
 export * from "./lifecycle.js";
 export * from "./mission/coordinator.js";
 export * from "./mission/model.js";
 export * from "./operations/compatibility.js";
 export * from "./operations/maintenance.js";
 export * from "./operations/migration.js";
+export * from "./operations/schedule-definitions.js";
 export * from "./operations/schedules.js";
 export * from "./operations/status.js";
 export * from "./ports.js";
+export * from "./projections/blocks.js";
+export * from "./projections/home.js";
+export * from "./projections/messages.js";
+export * from "./projections/modals.js";
 export * from "./projections/multipart.js";
 export * from "./projections/status.js";
 export * from "./question-work/contracts.js";
@@ -69,7 +89,19 @@ export * from "./question-work/ports.js";
 export * from "./question-work/reference-store.js";
 export * from "./recheck/contracts.js";
 export * from "./recheck/policy.js";
+export * from "./research/contracts.js";
+export * from "./research/policy.js";
+export * from "./risk-attestation/contracts.js";
+export * from "./risk-attestation/policy.js";
+export * from "./safety/policy.js";
 export * from "./thread-binding.js";
+export * from "./tools/catalog.js";
+export * from "./tools/contracts.js";
+export * from "./triage/alert-triage-fallback.js";
+export * from "./triage/alert-triage-signals.js";
+export * from "./triage/channel-policy.js";
+export * from "./triage/contracts.js";
+export * from "./triage/policy.js";
 export * from "./transport/contracts.js";
 export * from "./transport/handler.js";
 export * from "./transport/normalization.js";

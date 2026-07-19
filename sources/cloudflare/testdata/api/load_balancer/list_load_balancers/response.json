@@ -1,0 +1,147 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "adaptive_routing": {
+        "failover_across_pools": false
+      },
+      "created_on": "2025-02-27T22:31:48.033418Z",
+      "default_pools": [
+        "example-a20b7572"
+      ],
+      "description": "",
+      "enabled": true,
+      "fallback_pool": "example-a20b7572",
+      "id": "example-552a8807",
+      "location_strategy": {
+        "mode": "pop",
+        "prefer_ecs": "proximity"
+      },
+      "modified_on": "2025-02-27T22:31:48.033418Z",
+      "name": "tf-testacc-lb-fwwjdnedoi.terraform.cfapi.net",
+      "networks": [
+        "cloudflare"
+      ],
+      "pop_pools": {},
+      "proxied": false,
+      "random_steering": {
+        "default_weight": 1
+      },
+      "region_pools": {},
+      "session_affinity": "none",
+      "session_affinity_attributes": {
+        "drain_duration": 0,
+        "samesite": "Auto",
+        "secure": "Auto",
+        "zero_downtime_failover": "none"
+      },
+      "steering_policy": "off",
+      "ttl": 30,
+      "zone_name": "terraform.cfapi.net"
+    },
+    {
+      "adaptive_routing": {
+        "failover_across_pools": false
+      },
+      "created_on": "2025-02-27T22:34:45.092566Z",
+      "default_pools": [
+        "example-a3f92878"
+      ],
+      "description": "rules lb",
+      "enabled": true,
+      "fallback_pool": "example-a3f92878",
+      "id": "example-429be03b",
+      "location_strategy": {
+        "mode": "pop",
+        "prefer_ecs": "proximity"
+      },
+      "modified_on": "2025-02-27T22:34:45.092566Z",
+      "name": "tf-testacc-lb-sidcrfxrak.terraform.cfapi.net",
+      "networks": [
+        "cloudflare"
+      ],
+      "pop_pools": {},
+      "proxied": false,
+      "random_steering": {
+        "default_weight": 1
+      },
+      "region_pools": {},
+      "rules": [
+        {
+          "condition": "dns.qry.type == 28",
+          "disabled": false,
+          "name": "test rule 1",
+          "overrides": {
+            "adaptive_routing": {
+              "failover_across_pools": true
+            },
+            "location_strategy": {
+              "mode": "resolver_ip",
+              "prefer_ecs": "always"
+            },
+            "random_steering": {
+              "default_weight": 0.2,
+              "pool_weights": {
+                "c29c1dc121903fbea9f0c92e83a1b1e2": 0.4
+              }
+            },
+            "session_affinity_attributes": {
+              "require_all_headers": false,
+              "samesite": "Auto",
+              "secure": "Auto",
+              "zero_downtime_failover": "sticky"
+            },
+            "steering_policy": "geo"
+          },
+          "priority": 0
+        },
+        {
+          "condition": "dns.qry.type == 28",
+          "disabled": false,
+          "fixed_response": {
+            "content_type": "html",
+            "location": "www.example.com",
+            "message_body": "hello",
+            "status_code": 200
+          },
+          "name": "test rule 2",
+          "overrides": {},
+          "priority": 10,
+          "terminates": true
+        },
+        {
+          "condition": "dns.qry.type == 28",
+          "disabled": false,
+          "name": "test rule 3",
+          "overrides": {
+            "region_pools": {
+              "ENAM": [
+                "example-a3f92878"
+              ]
+            }
+          },
+          "priority": 20
+        }
+      ],
+      "session_affinity": "none",
+      "session_affinity_attributes": {
+        "drain_duration": 0,
+        "samesite": "Auto",
+        "secure": "Auto",
+        "zero_downtime_failover": "none"
+      },
+      "steering_policy": "off",
+      "ttl": 30,
+      "zone_name": "terraform.cfapi.net"
+    }
+  ],
+  "result_info": {
+    "count": 2,
+    "page": 1,
+    "per_page": 9223372036854775807,
+    "total_count": 2,
+    "total_pages": 1
+  },
+  "success": true
+}

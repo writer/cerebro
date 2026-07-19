@@ -16,10 +16,10 @@ var ErrInvalidEventEnvelope = errors.New("invalid event envelope")
 
 // EventContract captures per-kind schema expectations declared by source catalogs.
 type EventContract struct {
-	Kind                  string   `json:"kind" yaml:"kind"`
-	SchemaRef             string   `json:"schema_ref" yaml:"schema_ref"`
-	RequiredAttributes    []string `json:"required_attributes" yaml:"required_attributes"`
-	RequiredPayloadFields []string `json:"required_payload_fields" yaml:"required_payload_fields"`
+	Kind                  string   `json:"kind" yaml:"kind" cbor:"kind"`
+	SchemaRef             string   `json:"schema_ref" yaml:"schema_ref" cbor:"schema_ref"`
+	RequiredAttributes    []string `json:"required_attributes" yaml:"required_attributes" cbor:"required_attributes"`
+	RequiredPayloadFields []string `json:"required_payload_fields" yaml:"required_payload_fields" cbor:"required_payload_fields"`
 }
 
 const (

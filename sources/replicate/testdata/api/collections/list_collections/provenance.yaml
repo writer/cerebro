@@ -1,0 +1,27 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: replicate
+family: collections
+case: list_collections
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedReplicateFamilies
+request:
+    method: GET
+    url: https://api.replicate.com/v1/collections
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2023-11-16T13:40:22Z"
+    sha256: f20b71b88622909a7cb3527782b76e83de65d9bf6381e30c3f753ebaa44f052b
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/replicate/replicate-python
+    commit: d2956ff9c3e26ef434bc839cc5c87a50c49dfe20
+    path: tests/cassettes/collections-list.yaml
+    artifact_sha256: dc00e12498f050e7c72f48fa165593a9dd156f552ca237d5a7f22d7133feb6bd
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    freshness: historical
+    capture_time_basis: response_header

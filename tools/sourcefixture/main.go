@@ -75,9 +75,26 @@ func resanitize(arguments []string) {
 		if readErr != nil {
 			fail(readErr)
 		}
-		sanitized, changedFields, sanitizeErr := sourcefixture.SanitizeImportedCredentials(payload)
+		credentialSanitized, credentialFields, sanitizeErr := sourcefixture.SanitizeImportedCredentials(payload)
 		if sanitizeErr != nil {
 			fail(fmt.Errorf("sanitize %s: %w", responsePath, sanitizeErr))
+		}
+		sanitized, textFields, sanitizeErr := sourcefixture.SanitizeImportedTextValues(credentialSanitized)
+		if sanitizeErr != nil {
+			fail(fmt.Errorf("sanitize text values in %s: %w", responsePath, sanitizeErr))
+		}
+		changedFields := append(credentialFields, textFields...)
+		originalRequestURL := manifest.Request.URL
+		manifest.Request.URL = sourcefixture.SanitizeImportedText(manifest.Request.URL)
+		if manifest.Request.URL != originalRequestURL {
+			changedFields = append(changedFields, "$request.url")
+		}
+		for name, value := range manifest.Response.Headers {
+			sanitizedValue := sourcefixture.SanitizeImportedText(value)
+			if sanitizedValue != value {
+				manifest.Response.Headers[name] = sanitizedValue
+				changedFields = append(changedFields, "$response.headers."+name)
+			}
 		}
 		if len(changedFields) == 0 {
 			continue
@@ -182,7 +199,7 @@ func importRecording(arguments []string) {
 	var sanitizeKeys stringList
 	flags.Var(&declaredChangedFields, "changed-field", "manually sanitized request or JSON field path (repeatable)")
 	flags.Var(&removedFields, "removed-field", "removed JSON field path (repeatable)")
-	flags.Var(&sanitizeKeys, "sanitize-key", "replace every string field with this exact key (repeatable)")
+	flags.Var(&sanitizeKeys, "sanitize-key", "replace every value with this exact key while preserving its JSON type (repeatable)")
 	if err := flags.Parse(arguments); err != nil {
 		fail(err)
 	}
@@ -261,10 +278,37 @@ func importRecording(arguments []string) {
 func validateSanitizedRequestURL(recorded, sanitized string) error {
 	recordedURL, recordedErr := url.ParseRequestURI(recorded)
 	sanitizedURL, sanitizedErr := url.ParseRequestURI(sanitized)
-	if recordedErr != nil || sanitizedErr != nil || recordedURL.Scheme != sanitizedURL.Scheme || !strings.EqualFold(recordedURL.Host, sanitizedURL.Host) || recordedURL.EscapedPath() != sanitizedURL.EscapedPath() {
-		return errors.New("-url may sanitize query values but must preserve the recorded scheme, host, and path")
+	if recordedErr != nil || sanitizedErr != nil || !sanitizedRecordingPath(recordedURL.EscapedPath(), sanitizedURL.EscapedPath()) {
+		return errors.New("-url may sanitize query values, provider identifiers in path segments, and the provider host but must preserve the recorded route")
+	}
+	if recordedURL.Scheme == sanitizedURL.Scheme && strings.EqualFold(recordedURL.Host, sanitizedURL.Host) {
+		return nil
+	}
+	sanitizedHost := strings.ToLower(strings.TrimSuffix(sanitizedURL.Hostname(), "."))
+	if sanitizedURL.Scheme != "https" || (sanitizedHost != "example.test" && !strings.HasSuffix(sanitizedHost, ".example.test")) {
+		return errors.New("-url may replace the recorded scheme and host only with an HTTPS example.test host")
 	}
 	return nil
+}
+
+func sanitizedRecordingPath(recorded, sanitized string) bool {
+	if recorded == sanitized {
+		return true
+	}
+	recordedSegments := strings.Split(strings.Trim(recorded, "/"), "/")
+	sanitizedSegments := strings.Split(strings.Trim(sanitized, "/"), "/")
+	if len(recordedSegments) != len(sanitizedSegments) {
+		return false
+	}
+	for index := range recordedSegments {
+		if recordedSegments[index] == sanitizedSegments[index] {
+			continue
+		}
+		if !strings.HasPrefix(strings.ToLower(sanitizedSegments[index]), "example-") {
+			return false
+		}
+	}
+	return true
 }
 
 func readBoundedFile(fileName string, limit int64) ([]byte, error) {

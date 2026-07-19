@@ -1,0 +1,19 @@
+{
+  "attachments": [
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/attachments/fichemetierpdf_zip",
+      "metas": {
+        "id": "fichemetierpdf_zip",
+        "mimetype": "application/zip",
+        "title": "ficheMetierPdf.zip",
+        "url": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/attachments/fichemetierpdf_zip"
+      }
+    }
+  ],
+  "links": [
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/attachments",
+      "rel": "self"
+    }
+  ]
+}

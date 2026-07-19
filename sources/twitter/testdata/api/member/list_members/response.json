@@ -1,0 +1,513 @@
+{
+  "data": [
+    {
+      "id": "1319036828964454402",
+      "name": "Birdwatch",
+      "username": "example-de4b0008"
+    },
+    {
+      "id": "1244731491088809984",
+      "name": "Twitter Thailand",
+      "username": "example-fb8db0c7"
+    },
+    {
+      "id": "1194267639100723200",
+      "name": "Twitter Retweets",
+      "username": "example-2e61ff18"
+    },
+    {
+      "id": "1168976680867762177",
+      "name": "Twitter Able",
+      "username": "example-4c21430b"
+    },
+    {
+      "id": "1065249714214457345",
+      "name": "Spaces",
+      "username": "example-856498bd"
+    },
+    {
+      "id": "1049385226424786944",
+      "name": "Twitter Miami",
+      "username": "example-4f14e36d"
+    },
+    {
+      "id": "1004367799588880384",
+      "name": "Twitter México",
+      "username": "example-99de9ccb"
+    },
+    {
+      "id": "773578328498372608",
+      "name": "Twitter Together",
+      "username": "example-c4c421a0"
+    },
+    {
+      "id": "766296039036948480",
+      "name": "Moments MENA",
+      "username": "example-c8b8d712"
+    },
+    {
+      "id": "738118487122419712",
+      "name": "Twitter Asians",
+      "username": "example-7da0719e"
+    },
+    {
+      "id": "738118115595165697",
+      "name": "Twitter Stripes",
+      "username": "example-acd90dc6"
+    },
+    {
+      "id": "738117623737552896",
+      "name": "Twitter Parents",
+      "username": "example-ff09714c"
+    },
+    {
+      "id": "738115375477362688",
+      "name": "Twitter Moments India",
+      "username": "example-ac37b66b"
+    },
+    {
+      "id": "717465714357972992",
+      "name": "Twitter Video India",
+      "username": "example-b2e95c21"
+    },
+    {
+      "id": "717463776170119169",
+      "name": "Twitter Detroit",
+      "username": "example-e121d3c4"
+    },
+    {
+      "id": "717462990983856129",
+      "name": "Twitter Paris",
+      "username": "example-264c06af"
+    },
+    {
+      "id": "4588114813",
+      "name": "Twitter Moments Australia",
+      "username": "example-c68fd035"
+    },
+    {
+      "id": "4172587277",
+      "name": "Twitter Moments Brasil",
+      "username": "example-04336565"
+    },
+    {
+      "id": "3896350692",
+      "name": "Twitter モーメント",
+      "username": "example-00dfb60e"
+    },
+    {
+      "id": "3873984133",
+      "name": "Twitter Moments Canada",
+      "username": "example-4d24d95a"
+    },
+    {
+      "id": "3873965293",
+      "name": "Twitter Moments en Español",
+      "username": "example-e4804b69"
+    },
+    {
+      "id": "3873936134",
+      "name": "Twitter Gaming",
+      "username": "example-fd3629fe"
+    },
+    {
+      "id": "3873867072",
+      "name": "Twitter Philippines",
+      "username": "example-c64c60ca"
+    },
+    {
+      "id": "3282898525",
+      "name": "Twitter Marketing SG",
+      "username": "example-fdf10d88"
+    },
+    {
+      "id": "3282860300",
+      "name": "Twitter Marketing IN",
+      "username": "example-a78d6a5b"
+    },
+    {
+      "id": "3282859598",
+      "name": "Twitter Creators",
+      "username": "example-ae57767c"
+    },
+    {
+      "id": "3282802674",
+      "name": "Twitter Marketing MENA",
+      "username": "example-0e419b67"
+    },
+    {
+      "id": "3260518932",
+      "name": "Twitter Moments",
+      "username": "example-114117ae"
+    },
+    {
+      "id": "3260517252",
+      "name": "Twitter Marketing ID",
+      "username": "example-06835522"
+    },
+    {
+      "id": "3099993704",
+      "name": "Periscope Help",
+      "username": "example-8343f550"
+    },
+    {
+      "id": "3015734250",
+      "name": "Twitter Marketing AU",
+      "username": "example-dccbeec0"
+    },
+    {
+      "id": "3015301350",
+      "name": "Twitter Stage",
+      "username": "example-5227b941"
+    },
+    {
+      "id": "3015271772",
+      "name": "Twitter Food",
+      "username": "example-78011c67"
+    },
+    {
+      "id": "3001165942",
+      "name": "Revue",
+      "username": "example-19933577"
+    },
+    {
+      "id": "2861317614",
+      "name": "Twitter ファッション",
+      "username": "example-382eed29"
+    },
+    {
+      "id": "2796700846",
+      "name": "TwisitorLA",
+      "username": "example-0efe5a13"
+    },
+    {
+      "id": "2551015628",
+      "name": "Twitterビジネス",
+      "username": "example-5d1c5703"
+    },
+    {
+      "id": "2551000952",
+      "name": "Twitter Marketing DACH",
+      "username": "example-0f74e2aa"
+    },
+    {
+      "id": "2551000568",
+      "name": "Twitter Mktg Latam",
+      "username": "example-0646c4f7"
+    },
+    {
+      "id": "2550997820",
+      "name": "Twitter Indonesia",
+      "username": "example-4c543953"
+    },
+    {
+      "id": "2549011969",
+      "name": "Twitter NeighborNest",
+      "username": "example-b69a8d8b"
+    },
+    {
+      "id": "2548985366",
+      "name": "Twitter Blackbirds",
+      "username": "example-255a85fc"
+    },
+    {
+      "id": "2548979088",
+      "name": "Twitter Alas",
+      "username": "example-f0540aa5"
+    },
+    {
+      "id": "2548977510",
+      "name": "Twitter Careers Brasil",
+      "username": "example-3fd15453"
+    },
+    {
+      "id": "2445809510",
+      "name": "Periscope",
+      "username": "example-e94bc626",
+      "withheld": {
+        "country_codes": [
+          "TR"
+        ]
+      }
+    },
+    {
+      "id": "2328002822",
+      "name": "Twitter Women",
+      "username": "example-15c10706"
+    },
+    {
+      "id": "2296297326",
+      "name": "Twitter Moments UK \u0026 Ireland",
+      "username": "example-1ec52d32"
+    },
+    {
+      "id": "2249227634",
+      "name": "Twitter Boulder",
+      "username": "example-a82f326b"
+    },
+    {
+      "id": "2249227194",
+      "name": "Twitter Sports",
+      "username": "example-4d979eb8"
+    },
+    {
+      "id": "2244997579",
+      "name": "Twitter Marketing BR",
+      "username": "example-fa2dea34"
+    },
+    {
+      "id": "2244994945",
+      "name": "Twitter Dev",
+      "username": "example-2f6efbfd"
+    },
+    {
+      "id": "2244983430",
+      "name": "Twitter Singapore",
+      "username": "example-05152510"
+    },
+    {
+      "id": "2244981348",
+      "name": "Twitterライフライン",
+      "username": "example-c454e2c5"
+    },
+    {
+      "id": "2228891959",
+      "name": "Twitter MENA",
+      "username": "example-d0547d56"
+    },
+    {
+      "id": "1884191208",
+      "name": "Twitter For Good",
+      "username": "example-41e35657"
+    },
+    {
+      "id": "1705676064",
+      "name": "Twitter公式採用アカウント",
+      "username": "example-c689c5f4"
+    },
+    {
+      "id": "1665823832",
+      "name": "Twitter University",
+      "username": "example-adba6c0e"
+    },
+    {
+      "id": "1640990204",
+      "name": "Twitter Marketing ES",
+      "username": "example-edf09081"
+    },
+    {
+      "id": "1639309946",
+      "name": "Twitter Marketing FR",
+      "username": "example-9f0db35f"
+    },
+    {
+      "id": "1636762128",
+      "name": "Twitter Marketing Korea 트위터 마케팅",
+      "username": "example-b1bf7528"
+    },
+    {
+      "id": "1631299117",
+      "name": "Twitter Accessibility",
+      "username": "example-6aecafb2"
+    },
+    {
+      "id": "1603818258",
+      "name": "Twitter Investor Relations",
+      "username": "example-96b61f08"
+    },
+    {
+      "id": "1533573656",
+      "name": "Twitter Dublin",
+      "username": "example-7d6f2d03"
+    },
+    {
+      "id": "1526228120",
+      "name": "Twitter Data",
+      "username": "example-6c215c47"
+    },
+    {
+      "id": "1524832640",
+      "name": "ArtHouse",
+      "username": "example-1da4e0c4"
+    },
+    {
+      "id": "1462327554",
+      "name": "Twitter メディア",
+      "username": "example-55a5b8f0"
+    },
+    {
+      "id": "1411434049",
+      "name": "Event Parrot",
+      "username": "example-dd5cd7a1"
+    },
+    {
+      "id": "1347756012",
+      "name": "Twitter España",
+      "username": "example-770ceefa"
+    },
+    {
+      "id": "1347713256",
+      "name": "Twitter Canada",
+      "username": "example-dc65781b"
+    },
+    {
+      "id": "1287248143",
+      "name": "Twitter REW",
+      "username": "example-b0a8ce72"
+    },
+    {
+      "id": "1228433617",
+      "name": "Twitter Seattle",
+      "username": "example-e201a88e"
+    },
+    {
+      "id": "1225933934",
+      "name": "Twitter Ads API",
+      "username": "example-49e0be2a"
+    },
+    {
+      "id": "1173514177",
+      "name": "Twitter Boston",
+      "username": "example-568ac0b4"
+    },
+    {
+      "id": "1159458169",
+      "name": "Twitter 公共政策",
+      "username": "example-d8e144b0"
+    },
+    {
+      "id": "1159422488",
+      "name": "Twitter ニュース",
+      "username": "example-8e45f126"
+    },
+    {
+      "id": "1159274324",
+      "name": "Twitter スポーツ",
+      "username": "example-3d7cb6c7"
+    },
+    {
+      "id": "1137751093",
+      "name": "Twitter Security",
+      "username": "example-0e7b7f65"
+    },
+    {
+      "id": "1117573164",
+      "name": "Hadoop @Twitter",
+      "username": "example-0c048888"
+    },
+    {
+      "id": "1077914569",
+      "name": "Twitter Marketing UK",
+      "username": "example-f2b33197"
+    },
+    {
+      "id": "1072232960",
+      "name": "Twisitor",
+      "username": "example-cb11e22a"
+    },
+    {
+      "id": "905409822",
+      "name": "Twitter SRE",
+      "username": "example-2600f273"
+    },
+    {
+      "id": "862314223",
+      "name": "Twitter ミュージック",
+      "username": "example-3762571b"
+    },
+    {
+      "id": "818212956",
+      "name": "Twitter Australia",
+      "username": "example-a36d3cf6"
+    },
+    {
+      "id": "791978718",
+      "name": "Twitter Official Partner",
+      "username": "example-a971c63a"
+    },
+    {
+      "id": "726960710",
+      "name": "Twitter Media",
+      "username": "example-04e26a82"
+    },
+    {
+      "id": "707249550",
+      "name": "Twitter Atlanta",
+      "username": "example-d263c1d8"
+    },
+    {
+      "id": "632708673",
+      "name": "Twitter マーケティング",
+      "username": "example-f062438e"
+    },
+    {
+      "id": "627222883",
+      "name": "Join The Flock EMEA",
+      "username": "example-189cb0cf"
+    },
+    {
+      "id": "593893034",
+      "name": "Twitter DC",
+      "username": "example-41988b9c"
+    },
+    {
+      "id": "586198217",
+      "name": "TwitterTV",
+      "username": "example-2cb84508"
+    },
+    {
+      "id": "544524144",
+      "name": "Twitter Research",
+      "username": "example-42e83068"
+    },
+    {
+      "id": "495309159",
+      "name": "Twitter New York City",
+      "username": "example-efcd0f30"
+    },
+    {
+      "id": "484495045",
+      "name": "Twitter Los Angeles",
+      "username": "example-986dca0e"
+    },
+    {
+      "id": "437698597",
+      "name": "Twitter Women Eng",
+      "username": "example-5d7df0e1"
+    },
+    {
+      "id": "436266454",
+      "name": "Twitter Movies",
+      "username": "example-42bc3138"
+    },
+    {
+      "id": "427475002",
+      "name": "Twitter Books",
+      "username": "example-05c478c6"
+    },
+    {
+      "id": "414869890",
+      "name": "Twitter Faith",
+      "username": "example-bab900ae"
+    },
+    {
+      "id": "376825877",
+      "name": "Twitter Open Source",
+      "username": "example-bdf629c8"
+    },
+    {
+      "id": "373471064",
+      "name": "Twitter Music is listening to Bad Bunny",
+      "username": "example-87203ff6"
+    },
+    {
+      "id": "372575989",
+      "name": "Twitter News",
+      "username": "example-34f92f4f"
+    }
+  ],
+  "meta": {
+    "next_token": "4611686018799963893",
+    "result_count": 100
+  }
+}
