@@ -361,7 +361,7 @@ func sanitizePlainImportedText(value string) string {
 		digest := sha256.Sum256([]byte(strings.ToLower(identifier)))
 		length := 8
 		normalized := strings.ToLower(identifier)
-		if strings.HasPrefix(normalized, "auth0|") || strings.HasPrefix(normalized, "auth0%7c") {
+		if strings.HasPrefix(normalized, "auth0|") || strings.HasPrefix(normalized, "auth0%7c") || objectID.MatchString(normalized) {
 			length = 4
 		}
 		return "example-" + hex.EncodeToString(digest[:length])

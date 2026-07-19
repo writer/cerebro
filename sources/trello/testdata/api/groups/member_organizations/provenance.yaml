@@ -10,7 +10,7 @@ response:
     status: 200
     content_type: application/json; charset=utf-8
     captured_at: "2016-08-15T18:11:30Z"
-    sha256: 6090fddd1e1abf2041e20773cac0a864fd24361ac1f587ddfe87ee11adea4588
+    sha256: d5e9e8bc9e8a18152d2fb696ecab7749d8c3f63a0ea660aaaeaf6e114b737941
 sanitization:
     tool: sourcefixture
     version: 1
@@ -33,6 +33,7 @@ sanitization:
         - $.idBoards[7]
         - $.idBoards[8]
         - $.idBoards[9]
+        - $.idOrganizations[0]
         - $.initials
         - $.organizations[0].desc
         - $.organizations[0].displayName

@@ -10,7 +10,7 @@ response:
     status: 200
     content_type: application/json; charset=utf-8
     captured_at: "2020-08-20T13:33:47Z"
-    sha256: 3ae7e1355714c033f65dc03b2eb0ad46a3c49c0c4834794926d3effa8ee700bf
+    sha256: 921b65588f53ce7f57adcaf6082e947ce8c2a42d086a41534aa4f75ae26ec674
 sanitization:
     tool: sourcefixture
     version: 1
@@ -340,6 +340,7 @@ sanitization:
         - $[40].data.board.id
         - $[40].data.board.name
         - $[40].data.board.shortLink
+        - $[40].data.old.prefs.background
         - $[40].id
         - $[40].idMemberCreator
         - $[40].memberCreator.fullName
@@ -417,9 +418,12 @@ sanitization:
         - $[48].data.board.id
         - $[48].data.board.name
         - $[48].data.board.shortLink
+        - $[48].data.plugin.heroImageUrl.@1x
+        - $[48].data.plugin.heroImageUrl.@2x
         - $[48].data.plugin.heroImageUrl._id
         - $[48].data.plugin.icon.url
         - $[48].data.plugin.id
+        - $[48].data.plugin.idOrganizationOwner
         - $[48].data.plugin.listing.description
         - $[48].data.plugin.listing.name
         - $[48].data.plugin.name
@@ -465,6 +469,7 @@ sanitization:
         - $[6].data.board.shortLink
         - $[6].data.plugin.icon.url
         - $[6].data.plugin.id
+        - $[6].data.plugin.idOrganizationOwner
         - $[6].data.plugin.listing.description
         - $[6].data.plugin.listing.name
         - $[6].data.plugin.name

@@ -45,6 +45,30 @@ func TestSanitizeImportedJSONReplacesTokenShapedProviderIdentifiers(t *testing.T
 	}
 }
 
+func TestSanitizeImportedJSONPreservesObjectIDCrossReferences(t *testing.T) {
+	const identifier = "56e8e25c6615e469f60938a8"
+	payload, changed, err := SanitizeImportedJSON([]byte(`{
+		"idOrganizations":["` + identifier + `"],
+		"organizations":[{"id":"` + identifier + `"}],
+		"url":"https://provider.example.test/organizations/` + identifier + `"
+	}`))
+	if err != nil {
+		t.Fatalf("SanitizeImportedJSON() error = %v", err)
+	}
+	if strings.Contains(string(payload), identifier) || strings.Count(string(payload), "example-369c62e6") != 3 {
+		t.Fatalf("sanitized payload = %s", payload)
+	}
+	want := []string{"$.idOrganizations[0]", "$.organizations[0].id", "$.url"}
+	if len(changed) != len(want) {
+		t.Fatalf("changed fields = %#v, want %#v", changed, want)
+	}
+	for index := range want {
+		if changed[index] != want[index] {
+			t.Fatalf("changed fields = %#v, want %#v", changed, want)
+		}
+	}
+}
+
 func TestSanitizeImportedJSONClearsNestedCredentialValues(t *testing.T) {
 	accessKey := "AKIA" + "IOSFODNN7EXAMPLE"
 	payload, changed, err := SanitizeImportedJSON([]byte(fmt.Sprintf(`{
