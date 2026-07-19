@@ -199,6 +199,7 @@ func (r *statusRecorder) Write(data []byte) (int, error) {
 	if !r.wroteHeader {
 		r.WriteHeader(http.StatusOK)
 	}
+	// codeql[go/reflected-xss] The recorder transparently forwards the handler-selected response body and headers.
 	n, err := r.ResponseWriter.Write(data)
 	r.bytes += int64(n)
 	return n, err
