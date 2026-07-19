@@ -159,7 +159,7 @@ class ProductReleaseTest(unittest.TestCase):
         with self.assertRaisesRegex(ManifestError, "must depend on the archived TypeScript SDK version"):
             validate_manifest(manifest, self.root)
 
-    def test_rejects_archive_with_duplicate_package_metadata(self) -> None:
+    def test_rejects_archive_with_duplicate_package_json_member(self) -> None:
         package_json = json.dumps({"name": "@writer/cerebro-sdk", "version": "0.1.0"})
         write_archive(
             self.root / "sdk.tgz",

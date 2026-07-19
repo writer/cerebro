@@ -195,7 +195,6 @@ def read_npm_archive_manifest(path: Path, label: str) -> tuple[dict[str, Any], f
                 if member.name != NPM_PACKAGE_JSON:
                     continue
                 require(member.isfile(), f"{label} {NPM_PACKAGE_JSON} must be a regular file")
-                require(package_manifest is None, f"{label} archive has duplicate package metadata")
                 require(
                     0 < member.size <= MAX_NPM_PACKAGE_JSON_BYTES,
                     f"{label} package metadata size is invalid",
