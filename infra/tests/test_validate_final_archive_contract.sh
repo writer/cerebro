@@ -156,7 +156,7 @@ jq -e . "${repository_root}/infra/repository_retirement/final-archive-lock.schem
 jq -e . "${repository_root}/infra/repository_retirement/final-archive-receipt.schema.json" >/dev/null
 jq -e . "${repository_root}/infra/repository_retirement/web-cutover-receipt.schema.json" >/dev/null
 jq -e . "${repository_root}/infra/repository_retirement/web-rollback-readiness-receipt.schema.json" >/dev/null
-if rg -q 'WriterInternal|writer/' \
+if grep -Eq 'WriterInternal|writer/' \
   "${repository_root}/infra/repository_retirement/final-archive-lock.schema.json" \
   "${repository_root}/infra/repository_retirement/final-archive-receipt.schema.json" \
   "${repository_root}/infra/repository_retirement/web-cutover-receipt.schema.json" \
@@ -325,5 +325,14 @@ rewrite_json "${case_directory}/final-receipt.json" \
   '.intent = "apply" | .state = "archived"'
 run_validator "${case_directory}"
 assert_failure "apply without archived postcondition is rejected" "invalid-receipt"
+
+case_directory="$(new_case fractional-apply-postcondition)"
+refresh_receipt_lock "${case_directory}"
+rewrite_json "${case_directory}/final-receipt.json" \
+  '.intent = "apply" | .state = "archived"
+    | .postcondition.checked = true | .postcondition.archived = true
+    | .postcondition.observed_at_epoch = 995.5'
+run_validator "${case_directory}"
+assert_failure "fractional apply postcondition time is rejected" "invalid-receipt"
 
 echo "all final archive contract tests passed"

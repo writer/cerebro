@@ -345,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
                 / f"{args.source_id}.rollback-readiness-receipt.json",
                 rollback,
             )
-        except ReceiptError:
+        except (OSError, ReceiptError):
             (args.output_directory / f"{args.source_id}.cutover-receipt.json").unlink(
                 missing_ok=True
             )

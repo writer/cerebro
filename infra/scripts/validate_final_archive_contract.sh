@@ -395,7 +395,7 @@ jq -e \
       and .postcondition.observed_at_epoch == 0)
       or (.intent == "apply" and .state == "archived"
       and .postcondition.checked == true and .postcondition.archived == true
-      and (.postcondition.observed_at_epoch | type == "number" and . > 0)))' \
+      and (.postcondition.observed_at_epoch | type == "number" and floor == . and . > 0)))' \
   "${receipt_file}" >/dev/null 2>&1 || fail "invalid-receipt"
 
 max_age="$(jq -r '.authorities.max_observation_age_seconds' "${lock_file}")"

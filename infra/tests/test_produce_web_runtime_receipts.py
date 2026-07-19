@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from scripts import produce_web_runtime_receipts as producer
 
@@ -201,6 +202,23 @@ class WebRuntimeReceiptTest(unittest.TestCase):
         self.assertFalse(
             (self.output / "web_public.rollback-readiness-receipt.json").exists()
         )
+
+    def test_removes_cutover_receipt_when_rollback_write_has_io_failure(self) -> None:
+        write_new = producer._write_new
+        write_count = 0
+
+        def fail_second_write(path: Path, value: dict[str, object]) -> None:
+            nonlocal write_count
+            write_count += 1
+            if write_count == 2:
+                raise OSError("write failed")
+            write_new(path, value)
+
+        with mock.patch.object(producer, "_write_new", side_effect=fail_second_write):
+            self.assertEqual(producer.main(self.arguments()), 1)
+
+        self.assertEqual(write_count, 2)
+        self.assertEqual(list(self.output.iterdir()), [])
 
 
 if __name__ == "__main__":
