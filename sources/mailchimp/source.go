@@ -132,7 +132,7 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 
 func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcecdk.Config, error) {
 	values := cfg.Values()
-	if apiKey := strings.TrimSpace(sourcecdk.ConfigValue(cfg, "api_key")); apiKey != "" {
+	if apiKey := strings.TrimSpace(firstNonEmpty(sourcecdk.ConfigValue(cfg, "api_key"), sourcecdk.ConfigValue(cfg, "api_token"))); apiKey != "" {
 		values["token"] = base64.StdEncoding.EncodeToString([]byte("cerebro:" + apiKey))
 	}
 	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, sourcecdk.NewConfig(values), templateKeys)

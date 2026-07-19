@@ -32,7 +32,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"lists": []map[string]string{{"id": "record-1", "name": "Record One", "date_created": "2026-06-01T00:00:00Z"}}})
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "api_key": "test-token", "dc": "test-dc", "list_id": "test-list_id"}
+	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "api_token": "test-token", "dc": "test-dc", "list_id": "test-list_id"}
 	cfg := sourcecdk.NewConfig(cfgValues)
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)
