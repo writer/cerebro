@@ -1,0 +1,52 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: bamboohr
+family: users
+case: employee_directory
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedBambooHRUsers
+request:
+    method: GET
+    url: https://api.bamboohr.com/api/gateway.php/hogwarts/v1/employees/directory?
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2020-09-30T15:54:20Z"
+    sha256: 6912ce0358a2d536a982e7516e402fc06dc1af3ddb77eed7320c57058b390631
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.employees[0].displayName
+        - $.employees[0].firstName
+        - $.employees[0].id
+        - $.employees[0].lastName
+        - $.employees[0].workEmail
+        - $.fields[0].id
+        - $.fields[10].id
+        - $.fields[11].id
+        - $.fields[12].id
+        - $.fields[13].id
+        - $.fields[14].id
+        - $.fields[15].id
+        - $.fields[16].id
+        - $.fields[17].id
+        - $.fields[18].id
+        - $.fields[1].id
+        - $.fields[2].id
+        - $.fields[3].id
+        - $.fields[4].id
+        - $.fields[5].id
+        - $.fields[6].id
+        - $.fields[7].id
+        - $.fields[8].id
+        - $.fields[9].id
+origin:
+    type: upstream_recording
+    repository: https://github.com/thebugcatcher/bamboohr_api
+    commit: e45a54e32cc6231b12de2bb42cd6569fcb7d4858
+    path: fixture/vcr_cassettes/employee/list/valid.json
+    artifact_sha256: 27147f2a6dea24e624ae22d509d106ced6a0a3dab906fe16df6d7518203ade9c
+    license: MIT
+    recording_tool: ExVCR
+    harness_path: test/test_helper.exs
+    freshness: historical
+    capture_time_basis: response_header

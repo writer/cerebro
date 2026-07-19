@@ -1,0 +1,33 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: postmark
+family: domains
+case: list_domains
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedPostmarkDomains
+request:
+    method: GET
+    url: https://api.postmarkapp.com/domains?count=2&offset=0
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2016-12-04T20:21:58Z"
+    sha256: eebb0ea1f36d15448b9951943fc1d80c04b84be5d0f21bed00cb305ed5563af9
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.Domains[0].ID
+        - $.Domains[0].Name
+        - $.Domains[1].ID
+        - $.Domains[1].Name
+origin:
+    type: upstream_recording
+    repository: https://github.com/Stranger6667/postmarker
+    commit: a060d4955e8b41a322a90c8e261765aa5e57d028
+    path: test/cassettes/domains.json
+    artifact_sha256: af5e2bf35a208138ed685502ee8ca15e796e5af845ef1fe1a94af6dd93d34806
+    license: MIT
+    recording_tool: Betamax
+    harness_path: test/conftest.py
+    interaction_index: 2
+    freshness: historical
+    capture_time_basis: response_header

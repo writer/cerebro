@@ -278,8 +278,8 @@ func importRecording(arguments []string) {
 func validateSanitizedRequestURL(recorded, sanitized string) error {
 	recordedURL, recordedErr := url.ParseRequestURI(recorded)
 	sanitizedURL, sanitizedErr := url.ParseRequestURI(sanitized)
-	if recordedErr != nil || sanitizedErr != nil || recordedURL.EscapedPath() != sanitizedURL.EscapedPath() {
-		return errors.New("-url may sanitize query values and the provider host but must preserve the recorded path")
+	if recordedErr != nil || sanitizedErr != nil || !sanitizedRecordingPath(recordedURL.EscapedPath(), sanitizedURL.EscapedPath()) {
+		return errors.New("-url may sanitize query values, provider identifiers in path segments, and the provider host but must preserve the recorded route")
 	}
 	if recordedURL.Scheme == sanitizedURL.Scheme && strings.EqualFold(recordedURL.Host, sanitizedURL.Host) {
 		return nil
@@ -289,6 +289,26 @@ func validateSanitizedRequestURL(recorded, sanitized string) error {
 		return errors.New("-url may replace the recorded scheme and host only with an HTTPS example.test host")
 	}
 	return nil
+}
+
+func sanitizedRecordingPath(recorded, sanitized string) bool {
+	if recorded == sanitized {
+		return true
+	}
+	recordedSegments := strings.Split(strings.Trim(recorded, "/"), "/")
+	sanitizedSegments := strings.Split(strings.Trim(sanitized, "/"), "/")
+	if len(recordedSegments) != len(sanitizedSegments) {
+		return false
+	}
+	for index := range recordedSegments {
+		if recordedSegments[index] == sanitizedSegments[index] {
+			continue
+		}
+		if !strings.HasPrefix(strings.ToLower(sanitizedSegments[index]), "example-") {
+			return false
+		}
+	}
+	return true
 }
 
 func readBoundedFile(fileName string, limit int64) ([]byte, error) {

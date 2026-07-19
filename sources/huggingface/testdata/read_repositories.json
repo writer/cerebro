@@ -1,13 +1,13 @@
 [
   {
-    "id": "huggingface-tenant-repositories-610980524f4a3410",
+    "id": "huggingface-tenant-repositories-d542e45f0a0049d2",
     "tenant_id": "tenant",
     "source_id": "huggingface",
     "kind": "huggingface.repositories",
     "occurred_at": "2022-03-02T23:29:04Z",
     "schema_ref": "huggingface/repositories/v1",
     "payload": {
-      "_id": "621ffdc036468d709f174332",
+      "_id": "example-0b3a92a6",
       "createdAt": "2022-03-02T23:29:04.000Z",
       "downloads": 802203,
       "id": "google-bert/bert-base-chinese",

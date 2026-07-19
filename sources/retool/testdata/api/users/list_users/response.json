@@ -1,0 +1,523 @@
+{
+  "data": [
+    {
+      "active": false,
+      "created_at": "2026-06-10T23:57:10.428Z",
+      "email": "user-88ddeffb@example.test",
+      "first_name": "example-37a8eec1",
+      "id": "example-3e793b2d",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 145482637,
+      "metadata": {},
+      "seat_type": "internalUser",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2026-06-11T00:03:44.122Z",
+      "email": "user-680b923c@example.test",
+      "first_name": "example-27eb5e51",
+      "id": "example-44b9dc47",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-ae5deb82",
+      "legacy_id": 266668343,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "internalUser",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2026-06-11T00:29:07.745Z",
+      "email": "user-986911f8@example.test",
+      "first_name": "example-27eb5e51",
+      "id": "example-849e4d40",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-ae5deb82",
+      "legacy_id": 776229392,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "internalUser",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:19:54.574Z",
+      "email": "tf-acc-test-user-1762820394@example.com",
+      "first_name": "example-9f86d081",
+      "id": "example-b9225ae3",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 379747538,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:44:34.125Z",
+      "email": "user-89921cfc@example.test",
+      "first_name": "example-37a8eec1",
+      "id": "example-4d5d7396",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 367006368,
+      "metadata": {},
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:20:56.693Z",
+      "email": "tf-acc-test-user-1762820456@example.com",
+      "first_name": "example-9f86d081",
+      "id": "example-f8ca2f73",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 237784852,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2026-06-10T23:57:10.432Z",
+      "email": "user-321e4079@example.test",
+      "first_name": "example-9f86d081",
+      "id": "example-6a56b227",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 935755936,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "internalUser",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2026-06-11T00:09:24.692Z",
+      "email": "user-e59c4ad0@example.test",
+      "first_name": "example-9f86d081",
+      "id": "example-32d9c6d7",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 990850393,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "internalUser",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2026-06-11T00:09:25.527Z",
+      "email": "user-d602f817@example.test",
+      "first_name": "example-37a8eec1",
+      "id": "example-702b6045",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 832899856,
+      "metadata": {},
+      "seat_type": "internalUser",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:21:35.652Z",
+      "email": "tf-acc-test-user-1762820495@example.com",
+      "first_name": "example-27eb5e51",
+      "id": "example-cd110c1b",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-ae5deb82",
+      "legacy_id": 287876934,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:21:37.144Z",
+      "email": "tf-acc-test-user-1762820495-defaults@example.com",
+      "first_name": "example-37a8eec1",
+      "id": "example-bcb49be2",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 353870441,
+      "metadata": {},
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:23:05.648Z",
+      "email": "user-9460098d@example.test",
+      "first_name": "example-27eb5e51",
+      "id": "example-04dd6e35",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-ae5deb82",
+      "legacy_id": 131443062,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:23:07.242Z",
+      "email": "user-c2ee276a@example.test",
+      "first_name": "example-37a8eec1",
+      "id": "example-b3213c4e",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 712649502,
+      "metadata": {},
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:45:21.668Z",
+      "email": "user-15622caf@example.test",
+      "first_name": "example-37a8eec1",
+      "id": "example-0a8d4d52",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 804263435,
+      "metadata": {},
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:33:41.621Z",
+      "email": "user-283308b8@example.test",
+      "first_name": "example-27eb5e51",
+      "id": "example-523f443d",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-ae5deb82",
+      "legacy_id": 155779351,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:33:42.873Z",
+      "email": "user-37e6330d@example.test",
+      "first_name": "example-37a8eec1",
+      "id": "example-16deee63",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 966923126,
+      "metadata": {},
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:45:21.668Z",
+      "email": "user-27923641@example.test",
+      "first_name": "example-27eb5e51",
+      "id": "example-4d4237eb",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-ae5deb82",
+      "legacy_id": 881844106,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:16:48.471Z",
+      "email": "tf-acc-test-user@example.com",
+      "first_name": "example-9f86d081",
+      "id": "example-a2845e81",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 785712040,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:40:17.074Z",
+      "email": "user-25bb0d5a@example.test",
+      "first_name": "example-e9d8992f",
+      "id": "example-736ee201",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-9f86d081",
+      "legacy_id": 401441495,
+      "metadata": {},
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2026-02-04T22:09:34.228Z",
+      "email": "user-71659222@example.test",
+      "first_name": "example-37a8eec1",
+      "id": "example-98854b04",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 900451860,
+      "metadata": {},
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:44:32.716Z",
+      "email": "user-36db41f1@example.test",
+      "first_name": "example-27eb5e51",
+      "id": "example-da0346f4",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-ae5deb82",
+      "legacy_id": 914540266,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:47:58.090Z",
+      "email": "user-eac7ac1e@example.test",
+      "first_name": "example-37a8eec1",
+      "id": "example-6dee3c4d",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 234364572,
+      "metadata": {},
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:47:58.091Z",
+      "email": "user-0446b1e7@example.test",
+      "first_name": "example-27eb5e51",
+      "id": "example-50fb88df",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-ae5deb82",
+      "legacy_id": 775734316,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:58:58.722Z",
+      "email": "user-d94799ac@example.test",
+      "first_name": "example-37a8eec1",
+      "id": "example-dd760167",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 883291025,
+      "metadata": {},
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:53:49.905Z",
+      "email": "user-da3c8974@example.test",
+      "first_name": "example-37a8eec1",
+      "id": "example-9bc463da",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 504827991,
+      "metadata": {},
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:53:49.908Z",
+      "email": "user-b67885cd@example.test",
+      "first_name": "example-27eb5e51",
+      "id": "example-144c7fc6",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-ae5deb82",
+      "legacy_id": 486646358,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2025-11-11T00:58:58.718Z",
+      "email": "user-9691e3b4@example.test",
+      "first_name": "example-27eb5e51",
+      "id": "example-dfcb1d2f",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-ae5deb82",
+      "legacy_id": 836544246,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2026-02-04T22:09:34.223Z",
+      "email": "user-43567fd8@example.test",
+      "first_name": "example-27eb5e51",
+      "id": "example-76b67ecb",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-ae5deb82",
+      "legacy_id": 639504304,
+      "metadata": {
+        "department": "engineering"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": true,
+      "created_at": "2025-11-13T01:00:00.197Z",
+      "email": "user-70252be0@example.test",
+      "first_name": "example-96d9632f",
+      "id": "example-cd6ead2e",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-799ef92a",
+      "legacy_id": 854195963,
+      "metadata": {
+        "department": "engineering",
+        "team": "platform"
+      },
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": true,
+      "created_at": "2026-06-01T23:54:23.156Z",
+      "email": "user-94500c80@example.test",
+      "first_name": "example-a02f920d",
+      "id": "example-ab97ff38",
+      "is_admin": true,
+      "last_active": "2026-06-01T23:54:23.233Z",
+      "last_name": "example-d75beb6a",
+      "legacy_id": 825264558,
+      "metadata": {},
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": true,
+      "created_at": "2025-11-06T17:00:13.388Z",
+      "email": "user-4a342f46@example.test",
+      "first_name": "example-cccf52f3",
+      "id": "example-59f7aa8a",
+      "is_admin": true,
+      "last_active": "2026-06-11T00:29:07.774Z",
+      "last_name": "example-72b67242",
+      "legacy_id": 310162913,
+      "metadata": {},
+      "seat_type": "builder",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    },
+    {
+      "active": false,
+      "created_at": "2026-06-11T00:03:44.116Z",
+      "email": "user-731c69e5@example.test",
+      "first_name": "example-37a8eec1",
+      "id": "example-1b362949",
+      "is_admin": false,
+      "last_active": null,
+      "last_name": "example-04f8996d",
+      "legacy_id": 995878623,
+      "metadata": {},
+      "seat_type": "internalUser",
+      "two_factor_auth_enabled": false,
+      "user_type": "default"
+    }
+  ],
+  "has_more": false,
+  "next_token": null,
+  "success": true,
+  "total_count": 32
+}

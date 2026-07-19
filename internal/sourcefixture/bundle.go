@@ -43,8 +43,12 @@ var (
 	auth0TenantHost          = regexp.MustCompile(`(?i)(^|[^%a-z0-9.-])(?:[a-z0-9-]+\.)+auth0\.com\b`)
 	escapedAuth0TenantHost   = regexp.MustCompile(`(?i)(%2f%2f)(?:[a-z0-9-]+\.)+auth0\.com\b`)
 	auth0FixtureTenant       = regexp.MustCompile(`(?i)\bterraform-provider-auth0(?:-[a-z0-9-]+)?\b`)
+	mailchimpListPath        = regexp.MustCompile(`(?i)^(https://[a-z0-9-]+\.api\.mailchimp\.com/3\.0/lists/)([0-9a-f]{10})\b`)
+	contentfulAssetURL       = regexp.MustCompile(`(?i)^((?:https:)?//images\.ctfassets\.net/)([^/?#]+)/([^/?#]+)/([^/?#]+)(/[^?#]*)(\?[^#]*)?(#.*)?$`)
+	contentfulSpaceURL       = regexp.MustCompile(`(?i)^(https://(?:cdn|preview)\.contentful\.com/spaces/)([^/?#]+)(/[^?#]*)(\?[^#]*)?(#.*)?$`)
 	ipv4Pattern              = regexp.MustCompile(`\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b`)
-	providerIDPattern        = regexp.MustCompile(`(?i)\b(?:(?:00[tuoga]|0oa)[0-9a-z]{17}|aut[0-9a-z][0-9][0-9a-z]{15}|(?:org|rol|con|cgr)_[0-9a-z]{8,}|auth0(?:\||%7c)[0-9a-z]{8,})\b`)
+	providerIDPattern        = regexp.MustCompile(`(?i)\b(?:(?:00[tuoga]|0oa)[0-9a-z]{17}|aut[0-9a-z][0-9][0-9a-z]{15}|(?:org|rol|con|cgr)_[0-9a-z]{8,}|user_[0-9a-f]{32}|auth0(?:\||%7c)[0-9a-z]{8,}|[0-9a-f]{24})\b`)
+	objectID                 = regexp.MustCompile(`(?i)^[0-9a-f]{24}$`)
 	fullCommit               = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	sha256Digest             = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	replayTestName           = regexp.MustCompile(`^Test[A-Za-z0-9_]+$`)
@@ -518,6 +522,8 @@ func isCredentialFieldKey(key string) bool {
 func isCredentialQueryKey(key string) bool {
 	normalized := strings.NewReplacer("-", "_", ".", "_").Replace(strings.ToLower(strings.TrimSpace(key)))
 	switch normalized {
+	case "continuation_token", "cursor_token", "delta_token", "next_page_token", "next_token", "page_token", "pagination_token", "sync_token":
+		return false
 	case "auth", "authorization", "token", "secret", "key", "sig", "signature", "pat", "password",
 		"access_token", "accesstoken", "refresh_token", "refreshtoken", "api_key", "apikey",
 		"client_secret", "clientsecret", "private_key", "privatekey", "private_token", "privatetoken":

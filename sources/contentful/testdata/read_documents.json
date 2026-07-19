@@ -1,64 +1,686 @@
 [
   {
+    "id": "contentful-tenant-documents-5c40541d5104b36e",
+    "tenant_id": "tenant",
+    "source_id": "contentful",
+    "kind": "contentful.documents",
+    "occurred_at": "2013-09-09T16:15:01Z",
+    "schema_ref": "contentful/documents/v1",
+    "payload": {
+      "fields": {
+        "description": "example-de1db516",
+        "likes": [
+          "adventure"
+        ],
+        "name": "example-e0e2087b"
+      },
+      "sys": {
+        "contentType": {
+          "sys": {
+            "id": "example-79a54787",
+            "linkType": "ContentType",
+            "type": "Link"
+          }
+        },
+        "createdAt": "2013-06-27T22:46:21.450Z",
+        "environment": {
+          "sys": {
+            "id": "example-fc613b4d",
+            "linkType": "Environment",
+            "type": "Link"
+          }
+        },
+        "id": "example-e0e2087b",
+        "locale": "en-US",
+        "revision": 6,
+        "space": {
+          "sys": {
+            "id": "example-1b1d338f",
+            "linkType": "Space",
+            "type": "Link"
+          }
+        },
+        "type": "Entry",
+        "updatedAt": "2013-09-09T16:15:01.297Z"
+      }
+    },
     "attributes": {
-      "api_method": "GET",
-      "api_path": "/v1/documents",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-contentful-documents-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-contentful-documents-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/contentful/documents/source-contentful-documents-1",
-      "external_id": "source-contentful-documents-1",
+      "external_id": "example-e0e2087b",
       "family": "documents",
-      "id": "source-contentful-documents-1",
-      "name": "Contentful Documents Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
+      "id": "example-e0e2087b",
+      "name": "example-e0e2087b",
+      "observed_at": "2013-09-09T16:15:01.297Z",
       "provider": "contentful",
       "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-contentful-documents-1",
-      "resource_name": "Contentful Documents Fixture",
-      "resource_type": "document",
-      "resource_urn": "urn:cerebro:tenant:contentful_documents:source-contentful-documents-1",
+      "resource_id": "example-e0e2087b",
+      "resource_name": "example-e0e2087b",
+      "resource_type": "contentful_entry",
+      "resource_urn": "urn:cerebro:tenant:contentful_documents:example-e0e2087b",
       "schema": "documents",
-      "source_event_id": "source-contentful-documents-1",
+      "source_event_id": "example-e0e2087b",
       "source_provider": "contentful",
       "source_system": "contentful",
       "tenant_id": "tenant"
-    },
-    "id": "source-contentful-documents-event-1",
-    "kind": "contentful.documents",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/v1/documents",
-      "document": "document",
-      "event_id": "source-contentful-documents-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-contentful-documents-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-contentful-documents-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/contentful/documents/source-contentful-documents-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/contentful/documents/source-contentful-documents-1",
-      "family": "documents",
-      "id": "source-contentful-documents-1",
-      "name": "Contentful Documents Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-contentful-documents-1",
-      "resource_type": "documents",
-      "resource_urn": "urn:cerebro:tenant:contentful_documents:source-contentful-documents-1",
-      "schema_ref": "contentful/documents/v1",
-      "source_id": "contentful",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "contentful/documents/v1",
+    }
+  },
+  {
+    "id": "contentful-tenant-documents-b13a183987c827fe",
+    "tenant_id": "tenant",
     "source_id": "contentful",
-    "tenant_id": "tenant"
+    "kind": "contentful.documents",
+    "occurred_at": "2013-11-18T15:58:02Z",
+    "schema_ref": "contentful/documents/v1",
+    "payload": {
+      "fields": {
+        "bestFriend": {
+          "sys": {
+            "id": "example-f9f6dc92",
+            "linkType": "Entry",
+            "type": "Link"
+          }
+        },
+        "birthday": "2003-10-28T23:00:00+00:00",
+        "color": "gray",
+        "image": {
+          "sys": {
+            "id": "example-e0b26b5e",
+            "linkType": "Asset",
+            "type": "Link"
+          }
+        },
+        "likes": [
+          "cheezburger"
+        ],
+        "lives": 1,
+        "name": "example-6440ab57"
+      },
+      "sys": {
+        "contentType": {
+          "sys": {
+            "id": "example-77af778b",
+            "linkType": "ContentType",
+            "type": "Link"
+          }
+        },
+        "createdAt": "2013-06-27T22:46:20.171Z",
+        "environment": {
+          "sys": {
+            "id": "example-fc613b4d",
+            "linkType": "Environment",
+            "type": "Link"
+          }
+        },
+        "id": "example-e0b26b5e",
+        "locale": "en-US",
+        "revision": 8,
+        "space": {
+          "sys": {
+            "id": "example-1b1d338f",
+            "linkType": "Space",
+            "type": "Link"
+          }
+        },
+        "type": "Entry",
+        "updatedAt": "2013-11-18T15:58:02.018Z"
+      }
+    },
+    "attributes": {
+      "external_id": "example-e0b26b5e",
+      "family": "documents",
+      "id": "example-e0b26b5e",
+      "name": "example-6440ab57",
+      "observed_at": "2013-11-18T15:58:02.018Z",
+      "provider": "contentful",
+      "record_class": "asset",
+      "resource_id": "example-e0b26b5e",
+      "resource_name": "example-6440ab57",
+      "resource_type": "contentful_entry",
+      "resource_urn": "urn:cerebro:tenant:contentful_documents:example-e0b26b5e",
+      "schema": "documents",
+      "source_event_id": "example-e0b26b5e",
+      "source_provider": "contentful",
+      "source_system": "contentful",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "contentful-tenant-documents-6b68c04dfae472b7",
+    "tenant_id": "tenant",
+    "source_id": "contentful",
+    "kind": "contentful.documents",
+    "occurred_at": "2013-12-18T13:10:26Z",
+    "schema_ref": "contentful/documents/v1",
+    "payload": {
+      "fields": {
+        "description": "example-96a83770",
+        "image": {
+          "sys": {
+            "id": "example-cdf30c6b",
+            "linkType": "Asset",
+            "type": "Link"
+          }
+        },
+        "name": "example-cdf30c6b"
+      },
+      "sys": {
+        "contentType": {
+          "sys": {
+            "id": "example-cd6357ef",
+            "linkType": "ContentType",
+            "type": "Link"
+          }
+        },
+        "createdAt": "2013-06-27T22:46:22.096Z",
+        "environment": {
+          "sys": {
+            "id": "example-fc613b4d",
+            "linkType": "Environment",
+            "type": "Link"
+          }
+        },
+        "id": "example-cdf30c6b",
+        "locale": "en-US",
+        "revision": 5,
+        "space": {
+          "sys": {
+            "id": "example-1b1d338f",
+            "linkType": "Space",
+            "type": "Link"
+          }
+        },
+        "type": "Entry",
+        "updatedAt": "2013-12-18T13:10:26.212Z"
+      }
+    },
+    "attributes": {
+      "external_id": "example-cdf30c6b",
+      "family": "documents",
+      "id": "example-cdf30c6b",
+      "name": "example-cdf30c6b",
+      "observed_at": "2013-12-18T13:10:26.212Z",
+      "provider": "contentful",
+      "record_class": "asset",
+      "resource_id": "example-cdf30c6b",
+      "resource_name": "example-cdf30c6b",
+      "resource_type": "contentful_entry",
+      "resource_urn": "urn:cerebro:tenant:contentful_documents:example-cdf30c6b",
+      "schema": "documents",
+      "source_event_id": "example-cdf30c6b",
+      "source_provider": "contentful",
+      "source_system": "contentful",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "contentful-tenant-documents-e0f6843aac3da150",
+    "tenant_id": "tenant",
+    "source_id": "contentful",
+    "kind": "contentful.documents",
+    "occurred_at": "2014-02-21T13:43:23Z",
+    "schema_ref": "contentful/documents/v1",
+    "payload": {
+      "fields": {
+        "center": {
+          "lat": 48.856614,
+          "lon": 2.3522219000000177
+        },
+        "name": "example-1670f2e4"
+      },
+      "sys": {
+        "contentType": {
+          "sys": {
+            "id": "example-bf4576ce",
+            "linkType": "ContentType",
+            "type": "Link"
+          }
+        },
+        "createdAt": "2014-02-21T13:43:23.210Z",
+        "environment": {
+          "sys": {
+            "id": "example-fc613b4d",
+            "linkType": "Environment",
+            "type": "Link"
+          }
+        },
+        "id": "example-c382872d",
+        "locale": "en-US",
+        "revision": 1,
+        "space": {
+          "sys": {
+            "id": "example-1b1d338f",
+            "linkType": "Space",
+            "type": "Link"
+          }
+        },
+        "type": "Entry",
+        "updatedAt": "2014-02-21T13:43:23.210Z"
+      }
+    },
+    "attributes": {
+      "external_id": "example-c382872d",
+      "family": "documents",
+      "id": "example-c382872d",
+      "name": "example-1670f2e4",
+      "observed_at": "2014-02-21T13:43:23.210Z",
+      "provider": "contentful",
+      "record_class": "asset",
+      "resource_id": "example-c382872d",
+      "resource_name": "example-1670f2e4",
+      "resource_type": "contentful_entry",
+      "resource_urn": "urn:cerebro:tenant:contentful_documents:example-c382872d",
+      "schema": "documents",
+      "source_event_id": "example-c382872d",
+      "source_provider": "contentful",
+      "source_system": "contentful",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "contentful-tenant-documents-a72fa5b387612819",
+    "tenant_id": "tenant",
+    "source_id": "contentful",
+    "kind": "contentful.documents",
+    "occurred_at": "2014-04-15T08:22:22Z",
+    "schema_ref": "contentful/documents/v1",
+    "payload": {
+      "fields": {
+        "center": {
+          "lat": 37.7749295,
+          "lon": -122.41941550000001
+        },
+        "name": "example-1a229047"
+      },
+      "sys": {
+        "contentType": {
+          "sys": {
+            "id": "example-bf4576ce",
+            "linkType": "ContentType",
+            "type": "Link"
+          }
+        },
+        "createdAt": "2014-02-21T13:43:38.258Z",
+        "environment": {
+          "sys": {
+            "id": "example-fc613b4d",
+            "linkType": "Environment",
+            "type": "Link"
+          }
+        },
+        "id": "example-4dbb20eb",
+        "locale": "en-US",
+        "revision": 2,
+        "space": {
+          "sys": {
+            "id": "example-1b1d338f",
+            "linkType": "Space",
+            "type": "Link"
+          }
+        },
+        "type": "Entry",
+        "updatedAt": "2014-04-15T08:22:22.010Z"
+      }
+    },
+    "attributes": {
+      "external_id": "example-4dbb20eb",
+      "family": "documents",
+      "id": "example-4dbb20eb",
+      "name": "example-1a229047",
+      "observed_at": "2014-04-15T08:22:22.010Z",
+      "provider": "contentful",
+      "record_class": "asset",
+      "resource_id": "example-4dbb20eb",
+      "resource_name": "example-1a229047",
+      "resource_type": "contentful_entry",
+      "resource_urn": "urn:cerebro:tenant:contentful_documents:example-4dbb20eb",
+      "schema": "documents",
+      "source_event_id": "example-4dbb20eb",
+      "source_provider": "contentful",
+      "source_system": "contentful",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "contentful-tenant-documents-909a45a3f1b1f5c2",
+    "tenant_id": "tenant",
+    "source_id": "contentful",
+    "kind": "contentful.documents",
+    "occurred_at": "2013-08-27T10:09:07Z",
+    "schema_ref": "contentful/documents/v1",
+    "payload": {
+      "fields": {
+        "birthday": "1979-06-18T23:00:00+00:00",
+        "color": "orange",
+        "lifes": null,
+        "likes": [
+          "lasagna"
+        ],
+        "lives": 9,
+        "name": "example-5094dcad"
+      },
+      "sys": {
+        "contentType": {
+          "sys": {
+            "id": "example-77af778b",
+            "linkType": "ContentType",
+            "type": "Link"
+          }
+        },
+        "createdAt": "2013-06-27T22:46:20.821Z",
+        "environment": {
+          "sys": {
+            "id": "example-fc613b4d",
+            "linkType": "Environment",
+            "type": "Link"
+          }
+        },
+        "id": "example-5094dcad",
+        "locale": "en-US",
+        "revision": 2,
+        "space": {
+          "sys": {
+            "id": "example-1b1d338f",
+            "linkType": "Space",
+            "type": "Link"
+          }
+        },
+        "type": "Entry",
+        "updatedAt": "2013-08-27T10:09:07.929Z"
+      }
+    },
+    "attributes": {
+      "external_id": "example-5094dcad",
+      "family": "documents",
+      "id": "example-5094dcad",
+      "name": "example-5094dcad",
+      "observed_at": "2013-08-27T10:09:07.929Z",
+      "provider": "contentful",
+      "record_class": "asset",
+      "resource_id": "example-5094dcad",
+      "resource_name": "example-5094dcad",
+      "resource_type": "contentful_entry",
+      "resource_urn": "urn:cerebro:tenant:contentful_documents:example-5094dcad",
+      "schema": "documents",
+      "source_event_id": "example-5094dcad",
+      "source_provider": "contentful",
+      "source_system": "contentful",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "contentful-tenant-documents-66c3596e3ef0a5ba",
+    "tenant_id": "tenant",
+    "source_id": "contentful",
+    "kind": "contentful.documents",
+    "occurred_at": "2014-08-23T14:42:35Z",
+    "schema_ref": "contentful/documents/v1",
+    "payload": {
+      "fields": {
+        "center": {
+          "lat": 51.508515,
+          "lon": -0.12548719999995228
+        },
+        "name": "example-6089854c"
+      },
+      "sys": {
+        "contentType": {
+          "sys": {
+            "id": "example-bf4576ce",
+            "linkType": "ContentType",
+            "type": "Link"
+          }
+        },
+        "createdAt": "2014-02-21T13:42:57.752Z",
+        "environment": {
+          "sys": {
+            "id": "example-fc613b4d",
+            "linkType": "Environment",
+            "type": "Link"
+          }
+        },
+        "id": "example-d8f19ef8",
+        "locale": "en-US",
+        "revision": 3,
+        "space": {
+          "sys": {
+            "id": "example-1b1d338f",
+            "linkType": "Space",
+            "type": "Link"
+          }
+        },
+        "type": "Entry",
+        "updatedAt": "2014-08-23T14:42:35.207Z"
+      }
+    },
+    "attributes": {
+      "external_id": "example-d8f19ef8",
+      "family": "documents",
+      "id": "example-d8f19ef8",
+      "name": "example-6089854c",
+      "observed_at": "2014-08-23T14:42:35.207Z",
+      "provider": "contentful",
+      "record_class": "asset",
+      "resource_id": "example-d8f19ef8",
+      "resource_name": "example-6089854c",
+      "resource_type": "contentful_entry",
+      "resource_urn": "urn:cerebro:tenant:contentful_documents:example-d8f19ef8",
+      "schema": "documents",
+      "source_event_id": "example-d8f19ef8",
+      "source_provider": "contentful",
+      "source_system": "contentful",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "contentful-tenant-documents-a748921865d4ce9d",
+    "tenant_id": "tenant",
+    "source_id": "contentful",
+    "kind": "contentful.documents",
+    "occurred_at": "2013-09-04T09:19:39Z",
+    "schema_ref": "contentful/documents/v1",
+    "payload": {
+      "fields": {
+        "bestFriend": {
+          "sys": {
+            "id": "example-e0b26b5e",
+            "linkType": "Entry",
+            "type": "Link"
+          }
+        },
+        "birthday": "2011-04-04T22:00:00+00:00",
+        "color": "rainbow",
+        "image": {
+          "sys": {
+            "id": "example-f9f6dc92",
+            "linkType": "Asset",
+            "type": "Link"
+          }
+        },
+        "likes": [
+          "rainbows",
+          "fish"
+        ],
+        "lives": 1337,
+        "name": "example-2fd0d64b"
+      },
+      "sys": {
+        "contentType": {
+          "sys": {
+            "id": "example-77af778b",
+            "linkType": "ContentType",
+            "type": "Link"
+          }
+        },
+        "createdAt": "2013-06-27T22:46:19.513Z",
+        "environment": {
+          "sys": {
+            "id": "example-fc613b4d",
+            "linkType": "Environment",
+            "type": "Link"
+          }
+        },
+        "id": "example-f9f6dc92",
+        "locale": "en-US",
+        "revision": 5,
+        "space": {
+          "sys": {
+            "id": "example-1b1d338f",
+            "linkType": "Space",
+            "type": "Link"
+          }
+        },
+        "type": "Entry",
+        "updatedAt": "2013-09-04T09:19:39.027Z"
+      }
+    },
+    "attributes": {
+      "external_id": "example-f9f6dc92",
+      "family": "documents",
+      "id": "example-f9f6dc92",
+      "name": "example-2fd0d64b",
+      "observed_at": "2013-09-04T09:19:39.027Z",
+      "provider": "contentful",
+      "record_class": "asset",
+      "resource_id": "example-f9f6dc92",
+      "resource_name": "example-2fd0d64b",
+      "resource_type": "contentful_entry",
+      "resource_urn": "urn:cerebro:tenant:contentful_documents:example-f9f6dc92",
+      "schema": "documents",
+      "source_event_id": "example-f9f6dc92",
+      "source_provider": "contentful",
+      "source_system": "contentful",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "contentful-tenant-documents-5607ec96a95b3be9",
+    "tenant_id": "tenant",
+    "source_id": "contentful",
+    "kind": "contentful.documents",
+    "occurred_at": "2013-11-18T09:13:37Z",
+    "schema_ref": "contentful/documents/v1",
+    "payload": {
+      "fields": {
+        "description": "example-1a2c692b",
+        "image": {
+          "sys": {
+            "id": "example-a09b4847",
+            "linkType": "Asset",
+            "type": "Link"
+          }
+        },
+        "name": "example-c4e793c8"
+      },
+      "sys": {
+        "contentType": {
+          "sys": {
+            "id": "example-cd6357ef",
+            "linkType": "ContentType",
+            "type": "Link"
+          }
+        },
+        "createdAt": "2013-11-06T09:45:27.475Z",
+        "environment": {
+          "sys": {
+            "id": "example-fc613b4d",
+            "linkType": "Environment",
+            "type": "Link"
+          }
+        },
+        "id": "example-17d38bc8",
+        "locale": "en-US",
+        "revision": 2,
+        "space": {
+          "sys": {
+            "id": "example-1b1d338f",
+            "linkType": "Space",
+            "type": "Link"
+          }
+        },
+        "type": "Entry",
+        "updatedAt": "2013-11-18T09:13:37.808Z"
+      }
+    },
+    "attributes": {
+      "external_id": "example-17d38bc8",
+      "family": "documents",
+      "id": "example-17d38bc8",
+      "name": "example-c4e793c8",
+      "observed_at": "2013-11-18T09:13:37.808Z",
+      "provider": "contentful",
+      "record_class": "asset",
+      "resource_id": "example-17d38bc8",
+      "resource_name": "example-c4e793c8",
+      "resource_type": "contentful_entry",
+      "resource_urn": "urn:cerebro:tenant:contentful_documents:example-17d38bc8",
+      "schema": "documents",
+      "source_event_id": "example-17d38bc8",
+      "source_provider": "contentful",
+      "source_system": "contentful",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "contentful-tenant-documents-b1530e309982c111",
+    "tenant_id": "tenant",
+    "source_id": "contentful",
+    "kind": "contentful.documents",
+    "occurred_at": "2014-02-21T13:42:45Z",
+    "schema_ref": "contentful/documents/v1",
+    "payload": {
+      "fields": {
+        "center": {
+          "lat": 52.52000659999999,
+          "lon": 13.404953999999975
+        },
+        "name": "example-fb38a93f"
+      },
+      "sys": {
+        "contentType": {
+          "sys": {
+            "id": "example-bf4576ce",
+            "linkType": "ContentType",
+            "type": "Link"
+          }
+        },
+        "createdAt": "2014-02-21T13:42:45.926Z",
+        "environment": {
+          "sys": {
+            "id": "example-fc613b4d",
+            "linkType": "Environment",
+            "type": "Link"
+          }
+        },
+        "id": "example-3ab78219",
+        "locale": "en-US",
+        "revision": 1,
+        "space": {
+          "sys": {
+            "id": "example-1b1d338f",
+            "linkType": "Space",
+            "type": "Link"
+          }
+        },
+        "type": "Entry",
+        "updatedAt": "2014-02-21T13:42:45.926Z"
+      }
+    },
+    "attributes": {
+      "external_id": "example-3ab78219",
+      "family": "documents",
+      "id": "example-3ab78219",
+      "name": "example-fb38a93f",
+      "observed_at": "2014-02-21T13:42:45.926Z",
+      "provider": "contentful",
+      "record_class": "asset",
+      "resource_id": "example-3ab78219",
+      "resource_name": "example-fb38a93f",
+      "resource_type": "contentful_entry",
+      "resource_urn": "urn:cerebro:tenant:contentful_documents:example-3ab78219",
+      "schema": "documents",
+      "source_event_id": "example-3ab78219",
+      "source_provider": "contentful",
+      "source_system": "contentful",
+      "tenant_id": "tenant"
+    }
   }
 ]

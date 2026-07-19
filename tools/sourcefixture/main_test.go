@@ -20,9 +20,20 @@ func TestValidateSanitizedRequestURL(t *testing.T) {
 			sanitized: "https://mastodon.example.test/api/v1/instance/activity",
 		},
 		{
-			name:      "path must not change",
+			name:      "provider identifiers in path segments may become example values",
+			recorded:  "https://api.provider.test/v1/accounts/acct-123/items",
+			sanitized: "https://api.provider.test/v1/accounts/example-account/items",
+		},
+		{
+			name:      "static route segments must not change",
 			recorded:  "http://localhost:3000/api/v1/instance/activity",
 			sanitized: "https://mastodon.example.test/api/v2/instance/activity",
+			wantError: true,
+		},
+		{
+			name:      "path segment count must not change",
+			recorded:  "https://api.provider.test/v1/accounts/acct-123/items",
+			sanitized: "https://api.provider.test/v1/accounts/example-account/items/current",
 			wantError: true,
 		},
 		{

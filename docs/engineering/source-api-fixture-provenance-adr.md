@@ -169,6 +169,12 @@ not replace a successful family fixture. SDK model snapshots, mocked responses,
 documentation examples, screenshots, generated schemas, and test payloads with
 no recording harness remain synthetic regardless of how realistic they look.
 
+The importer may normalize recorder-specific envelopes, including VCR YAML or
+JSON, pytest-recording `response.content`, ExVCR interaction arrays, and go-vcr
+status fields. Supporting an envelope does not qualify its payload: the pinned
+artifact, recording harness, successful read-only interaction, license, and
+exact production method/path check remain mandatory.
+
 ## Migration
 
 The migration is complete when every active runtime family passes the proof
@@ -183,6 +189,11 @@ invalidated must be corrected before capture.
 Migration commits should be grouped by provider so the capture provenance,
 decoder change, normalized output, and projection assertions remain reviewable
 together.
+
+An online-corpus pass is complete only when its search frameworks, result caps,
+pinned candidate repositories, accepted interactions, and exact reasons for
+rejection are recorded. Dependency declarations and repository names are
+discovery signals, not response evidence.
 
 The first no-signup verification pass and its access boundaries are recorded in
 [`source-api-fixture-verification-2026-07-18.md`](source-api-fixture-verification-2026-07-18.md).

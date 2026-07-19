@@ -1,0 +1,123 @@
+{
+  "employees": [
+    {
+      "canUploadPhoto": null,
+      "department": "Student",
+      "displayName": "example-7ad42a4d",
+      "division": "Wizard",
+      "firstName": "example-df462195",
+      "gender": "Male",
+      "id": "example-73a2af88",
+      "jobTitle": "Wizard",
+      "lastName": "example-65872ad3",
+      "linkedIn": null,
+      "location": "London",
+      "mobilePhone": null,
+      "photoUploaded": false,
+      "photoUrl": null,
+      "preferredName": null,
+      "supervisor": null,
+      "twitterFeed": null,
+      "workEmail": "user-88c18403@example.test",
+      "workPhone": null,
+      "workPhoneExtension": null
+    }
+  ],
+  "fields": [
+    {
+      "id": "example-a235f656",
+      "name": "Display name",
+      "type": "text"
+    },
+    {
+      "id": "example-4cfdde69",
+      "name": "First name",
+      "type": "text"
+    },
+    {
+      "id": "example-55b5c51f",
+      "name": "Last name",
+      "type": "text"
+    },
+    {
+      "id": "example-33c68094",
+      "name": "Preferred name",
+      "type": "text"
+    },
+    {
+      "id": "example-de9feaea",
+      "name": "Gender",
+      "type": "gender"
+    },
+    {
+      "id": "example-68b4a3fa",
+      "name": "Job title",
+      "type": "list"
+    },
+    {
+      "id": "example-c6cb04e6",
+      "name": "Work Phone",
+      "type": "text"
+    },
+    {
+      "id": "example-79f44629",
+      "name": "Mobile Phone",
+      "type": "text"
+    },
+    {
+      "id": "example-4181efbc",
+      "name": "Work Email",
+      "type": "email"
+    },
+    {
+      "id": "example-2ad29f65",
+      "name": "Department",
+      "type": "list"
+    },
+    {
+      "id": "example-e6eaea18",
+      "name": "Location",
+      "type": "list"
+    },
+    {
+      "id": "example-990b23e8",
+      "name": "Division",
+      "type": "list"
+    },
+    {
+      "id": "example-84308bea",
+      "name": "LinkedIn URL",
+      "type": "text"
+    },
+    {
+      "id": "example-be3ace8c",
+      "name": "Twitter Feed",
+      "type": "text"
+    },
+    {
+      "id": "example-8ed7416b",
+      "name": "Work Ext.",
+      "type": "text"
+    },
+    {
+      "id": "example-0834c2d6",
+      "name": "Manager",
+      "type": "employee"
+    },
+    {
+      "id": "example-0e321ee6",
+      "name": "Employee photo exists",
+      "type": "bool"
+    },
+    {
+      "id": "example-53a713b8",
+      "name": "Employee photo url",
+      "type": "url"
+    },
+    {
+      "id": "example-01982591",
+      "name": "",
+      "type": "bool"
+    }
+  ]
+}
