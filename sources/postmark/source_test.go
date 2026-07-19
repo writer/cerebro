@@ -50,4 +50,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 	if event.Attributes["resource_id"] != "123" || event.Attributes["resource_name"] != "Record One" || event.Attributes["source_event_id"] != "123" {
 		t.Fatalf("uppercase Postmark attributes = %#v", event.Attributes)
 	}
+	if event.Attributes["resource_urn"] != "urn:cerebro:tenant:postmark_servers:123" {
+		t.Fatalf("server resource_urn = %q", event.Attributes["resource_urn"])
+	}
 }
