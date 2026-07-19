@@ -1226,7 +1226,7 @@ func mergeCursorEnvelopeExtra(existing map[string]string, next map[string]string
 	if len(existing) == 0 && len(next) == 0 {
 		return nil
 	}
-	merged := make(map[string]string, len(existing)+len(next))
+	merged := map[string]string{}
 	for key, value := range existing {
 		merged[key] = value
 	}

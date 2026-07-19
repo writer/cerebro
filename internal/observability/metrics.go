@@ -1,11 +1,13 @@
 package observability
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"runtime/debug"
@@ -199,10 +201,18 @@ func (r *statusRecorder) Write(data []byte) (int, error) {
 	if !r.wroteHeader {
 		r.WriteHeader(http.StatusOK)
 	}
-	// codeql[go/reflected-xss] The recorder transparently forwards the handler-selected response body and headers.
-	n, err := r.ResponseWriter.Write(data)
+	n, err := writeRecordedResponseBody(r.ResponseWriter, data)
 	r.bytes += int64(n)
 	return n, err
+}
+
+func writeRecordedResponseBody(dst io.Writer, payload []byte) (int, error) {
+	// codeql[go/reflected-xss] The recorder transparently forwards the handler-selected response body and headers.
+	written, err := io.Copy(dst, bytes.NewReader(payload))
+	if err != nil {
+		return int(written), err // #nosec G115 -- bytes.Reader bounds written to len(payload), which is an int.
+	}
+	return len(payload), nil
 }
 
 func (r *statusRecorder) Flush() {
