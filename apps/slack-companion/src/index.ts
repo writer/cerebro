@@ -55,6 +55,8 @@ export type {
   DurableExecutionPort,
   ExecutionClockPort,
 } from "./execution/ports.js";
+export * from "./followup/contracts.js";
+export * from "./followup/policy.js";
 export * from "./installation.js";
 export * from "./improvement/contracts.js";
 export * from "./improvement/coordinator.js";
