@@ -1,24 +1,113 @@
 [
   {
-    "id": "okta-app-assignment-fixture-1",
+    "id": "okta-writer-okta-com-app_assignment-db34e9e2c75f15c9",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.app_assignment",
-    "occurred_at": "2026-04-23T01:00:00Z",
+    "occurred_at": "2020-08-27T18:14:07Z",
     "schema_ref": "okta/app_assignment/v1",
     "payload": {
-      "app_id": "app-prod",
+      "app_id": "example-f0a6c6d9df5c0037",
+      "credentials": {
+        "userName": ""
+      },
       "domain": "writer.okta.com",
-      "subject_id": "00u1"
+      "profile": {},
+      "raw": {
+        "_links": {
+          "app": {
+            "href": "https://test.okta.com/api/v1/apps/example-f0a6c6d9df5c0037"
+          },
+          "user": {
+            "href": "https://test.okta.com/api/v1/users/example-2cdfffa4b77eaf2a"
+          }
+        },
+        "created": "2020-08-27T18:14:07.000Z",
+        "credentials": {
+          "userName": ""
+        },
+        "externalId": null,
+        "id": "example-2cdfffa4b77eaf2a",
+        "lastUpdated": "2020-08-27T18:14:07.000Z",
+        "passwordChanged": null,
+        "profile": {},
+        "scope": "USER",
+        "status": "ACTIVE",
+        "statusChanged": "2020-08-27T18:14:07.000Z",
+        "syncState": "DISABLED"
+      },
+      "scope": "USER",
+      "status": "ACTIVE",
+      "subject_id": "example-2cdfffa4b77eaf2a",
+      "subject_type": "user"
     },
     "attributes": {
-      "app_id": "app-prod",
+      "app_id": "example-f0a6c6d9df5c0037",
+      "assignee_id": "example-2cdfffa4b77eaf2a",
+      "assignee_type": "user",
       "domain": "writer.okta.com",
-      "email": "admin@writer.com",
       "family": "app_assignment",
       "principal_type": "user",
-      "subject_email": "admin@writer.com",
-      "subject_id": "00u1",
+      "scope": "USER",
+      "status": "ACTIVE",
+      "subject_id": "example-2cdfffa4b77eaf2a",
+      "subject_name": "example-2cdfffa4b77eaf2a",
+      "subject_type": "user"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-app_assignment-74ade3842b900421",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.app_assignment",
+    "occurred_at": "2020-08-27T18:14:08Z",
+    "schema_ref": "okta/app_assignment/v1",
+    "payload": {
+      "app_id": "example-f0a6c6d9df5c0037",
+      "credentials": {
+        "userName": ""
+      },
+      "domain": "writer.okta.com",
+      "profile": {},
+      "raw": {
+        "_links": {
+          "app": {
+            "href": "https://test.okta.com/api/v1/apps/example-f0a6c6d9df5c0037"
+          },
+          "user": {
+            "href": "https://test.okta.com/api/v1/users/example-052400848b73ab58"
+          }
+        },
+        "created": "2020-08-27T18:14:08.000Z",
+        "credentials": {
+          "userName": ""
+        },
+        "externalId": null,
+        "id": "example-052400848b73ab58",
+        "lastUpdated": "2020-08-27T18:14:08.000Z",
+        "passwordChanged": null,
+        "profile": {},
+        "scope": "USER",
+        "status": "ACTIVE",
+        "statusChanged": "2020-08-27T18:14:08.000Z",
+        "syncState": "DISABLED"
+      },
+      "scope": "USER",
+      "status": "ACTIVE",
+      "subject_id": "example-052400848b73ab58",
+      "subject_type": "user"
+    },
+    "attributes": {
+      "app_id": "example-f0a6c6d9df5c0037",
+      "assignee_id": "example-052400848b73ab58",
+      "assignee_type": "user",
+      "domain": "writer.okta.com",
+      "family": "app_assignment",
+      "principal_type": "user",
+      "scope": "USER",
+      "status": "ACTIVE",
+      "subject_id": "example-052400848b73ab58",
+      "subject_name": "example-052400848b73ab58",
       "subject_type": "user"
     }
   }

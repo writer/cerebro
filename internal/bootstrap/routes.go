@@ -23,6 +23,7 @@ import (
 	evidenceledgerhttp "github.com/writer/cerebro/internal/sourcehttp/evidenceledger"
 	grcauditpackethttp "github.com/writer/cerebro/internal/sourcehttp/grcauditpacket"
 	"github.com/writer/cerebro/internal/sourcehttp/identitydirectory"
+	"github.com/writer/cerebro/internal/sourcehttp/policyevaluationdatasets"
 	"github.com/writer/cerebro/internal/sourcehttp/userpreferences"
 	"github.com/writer/cerebro/internal/sourceplanapi"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -51,6 +52,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	registerHTTPRoute(mux, "GET /identity/users", routeSurfacePlatformHTTP, identityHandler.ListUsers)
 	app.registerGRCRoutes(mux)
 	app.registerFindingRoutes(mux)
+	app.registerPolicyCandidateRoutes(mux)
 	app.registerSourceRoutes(mux)
 	app.registerConnectorRoutes(mux)
 	app.registerKnowledgeRoutes(mux)
@@ -62,8 +64,28 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerMCPRoutes(mux)
 	app.registerDeviceRoutes(mux)
 }
+func (app *App) registerPolicyCandidateRoutes(mux *http.ServeMux) {
+	datasets := policyevaluationdatasets.NewHandler(app.policyCandidateService(), effectiveTenantFilter, authorizeTenantID, customDashboardActorID, writePolicyCandidateError)
+	registerHTTPRoute(mux, "POST /policy-candidates", routeSurfacePlatformHTTP, app.handleCreatePolicyCandidate)
+	registerHTTPRoute(mux, "GET /policy-candidates", routeSurfacePlatformHTTP, app.handleListPolicyCandidates)
+	registerHTTPRoute(mux, "GET /policy-candidates/{candidateID}", routeSurfacePlatformHTTP, app.handleGetPolicyCandidate)
+	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/evaluation-datasets", routeSurfacePlatformHTTP, datasets.Create)
+	registerHTTPRoute(mux, "GET /policy-candidates/{candidateID}/evaluation-datasets", routeSurfacePlatformHTTP, datasets.List)
+	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/experiments", routeSurfacePlatformHTTP, app.handleCreatePolicyExperiment)
+	registerHTTPRoute(mux, "GET /policy-candidates/{candidateID}/experiments", routeSurfacePlatformHTTP, app.handleListPolicyExperiments)
+	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/prove", routeSurfacePlatformHTTP, app.handleProvePolicyCandidate)
+	registerHTTPRoute(mux, "POST /policy-candidates/{candidateID}/shadow", routeSurfacePlatformHTTP, app.handleShadowPolicyCandidate)
+	registerHTTPRoute(mux, "GET /policy-evaluation-datasets/{datasetID}", routeSurfacePlatformHTTP, datasets.Get)
+	registerHTTPRoute(mux, "POST /policy-evaluation-datasets/{datasetID}/revisions", routeSurfacePlatformHTTP, datasets.AppendRevision)
+	registerHTTPRoute(mux, "GET /policy-evaluation-datasets/{datasetID}/revisions", routeSurfacePlatformHTTP, datasets.ListRevisions)
+	registerHTTPRoute(mux, "GET /policy-evaluation-datasets/{datasetID}/revisions/{revisionID}", routeSurfacePlatformHTTP, datasets.GetRevision)
+	registerHTTPRoute(mux, "GET /policy-evaluation-datasets/{datasetID}/revisions/{revisionID}/cases", routeSurfacePlatformHTTP, datasets.ListCases)
+	registerHTTPRoute(mux, "GET /policy-experiments/{experimentID}", routeSurfacePlatformHTTP, app.handleGetPolicyExperiment)
+	registerHTTPRoute(mux, "GET /policy-experiments/{experimentID}/observations", routeSurfacePlatformHTTP, app.handleListPolicyExperimentObservations)
+	registerHTTPRoute(mux, "POST /policy-experiments/{experimentID}/run", routeSurfacePlatformHTTP, app.handleRunPolicyExperiment)
+}
 func (app *App) registerConnectRoutes(mux *http.ServeMux, cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) {
-	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources, graphActions: app.services.graphActions}
+	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources, graphActions: app.services.graphActions, decisionPackets: app.services.decisionPackets, runtimeOps: app.services.runtimeOps}
 	path, handler := cerebrov1connect.NewBootstrapServiceHandler(service, connect.WithInterceptors(authInterceptor(cfg.Auth)))
 	mux.Handle(path, handler)
 }
@@ -81,8 +103,10 @@ func (app *App) registerAgentPlatformRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /api/v1/a2a", routeSurfacePlatformHTTP, app.handleA2AJSONRPC)
 	registerHTTPRoute(mux, "GET /api/v1/agent/context", routeSurfacePlatformHTTP, agentTasks.Context)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/contract", routeSurfacePlatformHTTP, app.handleAgentPlatformContract)
+	registerHTTPRoute(mux, "GET /api/v1/agent-platform/service-lifecycle/contract", routeSurfacePlatformHTTP, app.handleAgentServiceLifecycleContract)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/capabilities", routeSurfacePlatformHTTP, app.handleAgentPlatformCapabilities)
 	registerHTTPRoute(mux, "GET /api/v1/agent-platform/security-control-plane", routeSurfacePlatformHTTP, app.handleAgentPlatformSecurityControlPlane)
+	registerHTTPRoute(mux, "GET /api/v1/agent-platform/missions/contract", routeSurfacePlatformHTTP, app.handleAgentPlatformMissionContract)
 	registerHTTPRoute(mux, "GET /api/v1/event-subscriptions/contract", routeSurfacePlatformHTTP, app.handleEventSubscriptionContract)
 	registerHTTPRoute(mux, "GET /api/v1/idempotency-contract", routeSurfacePlatformHTTP, app.handleIdempotencyContract)
 	registerHTTPRoute(mux, "POST /api/v1/agent-platform/capability-decisions", routeSurfacePlatformHTTP, app.handleAgentPlatformCapabilityDecision)
@@ -90,6 +114,8 @@ func (app *App) registerAgentPlatformRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /api/v1/agent-platform/evidence-packets", routeSurfacePlatformHTTP, app.handleAgentPlatformEvidencePacket)
 	registerHTTPRoute(mux, "POST /api/v1/agent-platform/claims/verify", routeSurfacePlatformHTTP, app.handleAgentPlatformClaimVerification)
 	registerHTTPRoute(mux, "POST /api/v1/agent-platform/graph/reason", routeSurfacePlatformHTTP, app.handleAgentPlatformGraphReason)
+	registerHTTPRoute(mux, "POST /api/v1/platform/decision-packets", routeSurfacePlatformHTTP, app.handleBuildDecisionPacket)
+	registerHTTPRoute(mux, "GET /api/v1/platform/decision-packets/{packetID}", routeSurfacePlatformHTTP, app.handleGetDecisionPacket)
 	registerHTTPRoute(mux, "POST /api/v1/agent/tasks/findings/{findingID}/explain", routeSurfacePlatformHTTP, agentTasks.FindingExplain)
 	registerHTTPRoute(mux, "POST /api/v1/agent/tasks/findings/{findingID}/triage", routeSurfacePlatformHTTP, agentTasks.FindingTriage)
 	registerHTTPRoute(mux, "POST /api/v1/agent/tasks/findings/{findingID}/audit-packet", routeSurfacePlatformHTTP, agentTasks.FindingAuditPacket)

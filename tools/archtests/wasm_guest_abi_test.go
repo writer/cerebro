@@ -33,6 +33,7 @@ type wasmGuestProtocol struct {
 	malformedStatus    uint64
 	unknownFieldStatus uint64
 	staticValidator    bool
+	validInput         string
 }
 
 func TestEmbeddedWasmGuestMemoryProtocol(t *testing.T) {
@@ -65,6 +66,18 @@ func TestEmbeddedWasmGuestMemoryProtocol(t *testing.T) {
 			exports:    wasmGuestExports{abi: "cerebro_panopticon_resources_abi_version", allocate: "cerebro_panopticon_resources_alloc", operation: "cerebro_panopticon_resources_extract"},
 			abiVersion: 2, resultBytes: 16, maxInputBytes: 8 << 20, invalidRangeStatus: 1, tooLargeStatus: 1, zeroInputStatus: 1, invalidUTF8Status: 0, malformedStatus: 0, unknownFieldStatus: 0,
 		},
+		{
+			name: "source event admission", artifact: "internal/sourceruntime/eventadmission/eventadmission.wasm",
+			exports:    wasmGuestExports{abi: "cerebro_event_admission_abi_version", allocate: "cerebro_event_admission_alloc", operation: "cerebro_event_admission_evaluate"},
+			abiVersion: 1, resultBytes: 16, maxInputBytes: 32 << 20, invalidRangeStatus: 3, tooLargeStatus: 3, zeroInputStatus: 3, invalidUTF8Status: 1, malformedStatus: 1, unknownFieldStatus: 1,
+			validInput: `{"schema_version":"source-event-admission.v1","contracts":[],"events":[]}`,
+		},
+		{
+			name: "security path evaluator", artifact: "internal/securitypathdelta/evaluator.wasm",
+			exports:    wasmGuestExports{abi: "cerebro_security_path_abi_version", allocate: "cerebro_security_path_alloc", operation: "cerebro_security_path_evaluate"},
+			abiVersion: 1, resultBytes: 16, maxInputBytes: 8 << 20, invalidRangeStatus: 4, tooLargeStatus: 4, zeroInputStatus: 4, invalidUTF8Status: 1, malformedStatus: 1, unknownFieldStatus: 1,
+			validInput: `{"schema_version":"security-path-decision-input/v1","input_digest":"sha256:858b1b55eb85a9d599ae5f9925e65bf8f3509229e5430f153e5d93e3f4c6708f","request":{"operation":"rank_candidate_cuts","paths":[]}}`,
+		},
 	}
 
 	for _, protocol := range protocols {
@@ -73,8 +86,14 @@ func TestEmbeddedWasmGuestMemoryProtocol(t *testing.T) {
 			assertWasmGuestABI(t, ctx, module, protocol)
 			assertWasmGuestAllocationLimit(t, ctx, module, protocol)
 
-			inputPointer := allocateWasmGuestMemory(t, ctx, module, protocol, 32)
-			if !module.Memory().Write(inputPointer, []byte("{}")) {
+			validInput := protocol.validInput
+			if validInput == "" {
+				validInput = "{}"
+			}
+			validInputLength := uint32(len(validInput)) // #nosec G115 -- fixed test payloads fit Wasm32.
+			inputSize := max(validInputLength+protocol.resultBytes, 32)
+			inputPointer := allocateWasmGuestMemory(t, ctx, module, protocol, inputSize)
+			if !module.Memory().Write(inputPointer, []byte(validInput)) {
 				t.Fatal("write valid input memory")
 			}
 
@@ -115,7 +134,7 @@ func TestEmbeddedWasmGuestMemoryProtocol(t *testing.T) {
 			assertWasmGuestPayloadStatus(t, ctx, module, protocol, []byte("{"), protocol.malformedStatus)
 			assertWasmGuestPayloadStatus(t, ctx, module, protocol, []byte(`{"unknown":true}`), protocol.unknownFieldStatus)
 
-			adjacentStatus := callWasmGuest(t, ctx, module, protocol, inputPointer, 2, inputPointer+2)
+			adjacentStatus := callWasmGuest(t, ctx, module, protocol, inputPointer, validInputLength, inputPointer+validInputLength)
 			if adjacentStatus != 0 {
 				t.Fatalf("adjacent input and result status = %d, want 0", adjacentStatus)
 			}

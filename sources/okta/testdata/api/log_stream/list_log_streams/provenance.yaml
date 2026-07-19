@@ -1,0 +1,34 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: okta
+family: log_stream
+case: list_log_streams
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://test.okta.com/api/v1/logStreams
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2025-09-25T08:02:46Z"
+    sha256: 6a789e203e774231a6668b018750513b69d864bd15e2d357b06af5bf6d6b2472
+    headers:
+        Link: <https://node-sdk-oie.oktapreview.com/api/v1/logStreams?limit=20>; rel="self"
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0]._links.deactivate.href
+        - $[0]._links.self.href
+        - $[0].id
+origin:
+    type: upstream_recording
+    repository: https://github.com/okta/okta-sdk-python
+    commit: f68509793adefde945ab53ff38f83fab578e3966
+    path: tests/integration/cassettes/test_log_stream_it/TestLogStreamResource.test_list_log_streams.yaml
+    artifact_sha256: 3dae17242dc2ebbddaa698d84ed59d0b754007293416bee8b98db34500776899
+    license: Apache-2.0
+    recording_tool: pytest-recording
+    harness_path: tests/conftest.py
+    interaction_index: 1
+    freshness: current
+    capture_time_basis: response_header

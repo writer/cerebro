@@ -284,6 +284,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentPlatformContract'
+  /api/v1/agent-platform/service-lifecycle/contract:
+    get:
+      operationId: getAgentServiceLifecycleContract
+      summary: Get the proposed agent service lifecycle contract
+      description: Returns the cloud- and interaction-surface-neutral lifecycle proposal. Runtime adoption remains gated on lifecycle owner approval.
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Lifecycle states, transitions, ports, records, health surfaces, compatibility rules, invariants, and legacy adapters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentServiceLifecycleContract'
   /api/v1/agent-platform/capabilities:
     get:
       operationId: listAgentPlatformCapabilities
@@ -380,6 +394,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AgentPlatformSecurityControlPlane'
+  /api/v1/agent-platform/missions/contract:
+    get:
+      operationId: getAgentPlatformMissionOperatingContract
+      summary: Get mission operating contract
+      tags:
+        - Platform
+      responses:
+        '200':
+          description: Durable mandate, mission, belief, plan revision, commitment, wake, interruption, and verified-closure contract.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentPlatformMissionOperatingContract'
   /api/v1/event-subscriptions/contract:
     get:
       operationId: getEventSubscriptionContract
@@ -429,6 +456,59 @@ paths:
           description: Invalid evidence packet request.
         '403':
           description: Tenant or graph scope is not allowed.
+  /api/v1/platform/decision-packets:
+    post:
+      operationId: buildDecisionPacket
+      summary: Build an evidence-backed decision packet
+      tags:
+        - Platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildDecisionPacketRequest'
+      responses:
+        '201':
+          description: Persisted decision-time receipt with resolved evidence, gaps, contradictions, and deterministic confidence.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionPacket'
+        '400':
+          description: Invalid workflow, scope, or result budget.
+        '403':
+          description: The authenticated principal cannot use the requested tenant.
+        '404':
+          description: A protected input could not be resolved.
+        '503':
+          description: A required decision resolver or receipt store is unavailable.
+  /api/v1/platform/decision-packets/{packetID}:
+    get:
+      operationId: getDecisionPacket
+      summary: Reopen a decision packet receipt
+      tags:
+        - Platform
+      parameters:
+        - name: packetID
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^dpr_[0-9a-f]{32}$'
+      responses:
+        '200':
+          description: The immutable tenant-scoped decision packet receipt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionPacket'
+        '403':
+          description: The authenticated principal cannot use the requested tenant.
+        '404':
+          description: The packet receipt is not available for the authenticated tenant.
+        '503':
+          description: The receipt store is unavailable.
   /api/v1/agent-platform/claims/verify:
     post:
       operationId: verifyAgentPlatformClaim
@@ -6275,6 +6355,351 @@ paths:
           description: The dead-letter record is terminal or has an active replay claim.
         '503':
           description: Pending dead-letter purge storage is not configured.
+  /policy-candidates:
+    post:
+      operationId: createPolicyCandidate
+      summary: Create a grounded policy candidate draft
+      description: Persists one redacted hypothesis only after server-authored, tenant-scoped graph reads verify every declared node, edge, relation, source, and risk-relevant attribute. The operation does not author files, create findings, or promote a rule.
+      tags: [Findings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePolicyCandidateRequest'
+      responses:
+        '201':
+          description: Grounded draft candidate.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyCandidate'
+        '400': {description: Invalid or unredacted candidate input.}
+        '403': {description: Tenant or scope is not authorized.}
+        '409': {description: A registered graph rule already covers the candidate subpath.}
+        '503': {description: 'Durable candidate storage, graph grounding, or complete coverage semantics are unavailable.'}
+    get:
+      operationId: listPolicyCandidates
+      summary: List policy candidate drafts
+      tags: [Findings]
+      parameters:
+        - {name: tenant_id, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [grounded, proved, ready_for_review, blocked]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Tenant-scoped candidate drafts without private origin references or raw graph evidence.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [candidates]
+                properties:
+                  candidates:
+                    type: array
+                    items: {$ref: '#/components/schemas/PolicyCandidate'}
+        '403': {description: Tenant or scope is not authorized.}
+        '503': {description: Durable candidate storage is unavailable.}
+  /policy-candidates/{candidateID}:
+    get:
+      operationId: getPolicyCandidate
+      summary: Get one policy candidate draft
+      tags: [Findings]
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Candidate state with safe graph summary and available review artifacts.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyCandidate'}
+        '403': {description: Tenant or scope is not authorized.}
+        '404': {description: Candidate does not exist.}
+  /policy-candidates/{candidateID}/prove:
+    post:
+      operationId: provePolicyCandidate
+      summary: Author and prove one policy candidate
+      description: Revalidates the server-minted coverage gap, authors exactly one policy and paired tests, then executes the existing proof boundary. This remains draft-only and performs no repository or graph writes outside isolated proof fixtures.
+      tags: [Findings]
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Proved candidate with bounded policy and test artifacts.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyCandidate'}
+        '409': {description: Candidate state does not permit proof.}
+        '503': {description: Authoring or graph proof runtime is unavailable.}
+  /policy-candidates/{candidateID}/shadow:
+    post:
+      operationId: shadowPolicyCandidate
+      summary: Shadow one proved policy against current graph state
+      description: Revalidates the server-minted coverage gap, then executes one validated read-only rule with a bounded look-ahead row. Rows and provider identifiers are not returned or stored in the receipt. Review readiness requires at least one current match and an untruncated result; otherwise the successful response retains status proved with pr_ready false and an explicit zero-match or truncated shadow receipt.
+      tags: [Findings]
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Review-ready candidate with a bounded shadow receipt.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyCandidate'}
+        '409': {description: Candidate has not passed proof.}
+        '503': {description: Current graph reads are unavailable.}
+  /policy-candidates/{candidateID}/evaluation-datasets:
+    post:
+      operationId: createPolicyEvaluationDataset
+      summary: Create a versioned evaluation dataset from a proved candidate
+      description: Imports the candidate's current synthetic graph-fixture suite as immutable revision one. Authored fixture tenants, URNs, runtime IDs, case names, labels, and non-predicate values are canonicalized into durable fixture tokens before persistence. Live provider identifiers, query rows, resources, and untyped attributes are rejected.
+      tags: [Findings]
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreatePolicyEvaluationDatasetRequest'}
+      responses:
+        '201':
+          description: Dataset identity and immutable initial revision.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyEvaluationDatasetResult'}
+        '400': {description: Dataset labels or candidate-authored fixtures are invalid or not redacted.}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Candidate does not exist in the authorized tenant.}
+        '409': {description: The idempotency key was reused with different content.}
+        '503': {description: Durable dataset storage is unavailable.}
+    get:
+      operationId: listPolicyEvaluationDatasets
+      summary: List evaluation datasets for one candidate
+      tags: [Findings]
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Candidate-scoped durable dataset identities.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [datasets]
+                properties:
+                  datasets: {type: array, items: {$ref: '#/components/schemas/PolicyEvaluationDataset'}}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Candidate does not exist.}
+  /policy-evaluation-datasets/{datasetID}:
+    get:
+      operationId: getPolicyEvaluationDataset
+      summary: Get one durable evaluation dataset
+      tags: [Findings]
+      parameters:
+        - {name: datasetID, in: path, required: true, schema: {type: string}}
+        - {name: tenant_id, in: query, schema: {type: string}, description: Required when the authenticated principal does not provide a tenant.}
+      responses:
+        '200':
+          description: Current dataset identity and revision pointer.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dataset]
+                properties:
+                  dataset: {$ref: '#/components/schemas/PolicyEvaluationDataset'}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Dataset does not exist in the authorized tenant.}
+        '409': {description: Stored revision content no longer matches its immutable digest.}
+  /policy-evaluation-datasets/{datasetID}/revisions:
+    post:
+      operationId: appendPolicyEvaluationDatasetRevision
+      summary: Append an immutable evaluation dataset revision
+      description: Appends a complete synthetic graph-fixture snapshot with optimistic aggregate-version and idempotency checks. Case names are replaced with the stable case ID before persistence; topology fields and scalar values must satisfy the typed synthetic fixture contract. No case update or delete operation exists.
+      tags: [Findings]
+      parameters:
+        - {name: datasetID, in: path, required: true, schema: {type: string}}
+        - {name: tenant_id, in: query, schema: {type: string}, description: Required when the authenticated principal does not provide a tenant.}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AppendPolicyEvaluationDatasetRevisionRequest'}
+      responses:
+        '201':
+          description: Current dataset identity and appended immutable revision.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyEvaluationDatasetResult'}
+        '400': {description: Revision fixtures or labels are invalid or not redacted.}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Dataset does not exist in the authorized tenant.}
+        '409': {description: 'Expected version, idempotency content, or immutable predecessor does not match.'}
+    get:
+      operationId: listPolicyEvaluationDatasetRevisions
+      summary: List immutable revisions for one evaluation dataset
+      tags: [Findings]
+      parameters:
+        - {name: datasetID, in: path, required: true, schema: {type: string}}
+        - {name: tenant_id, in: query, schema: {type: string}, description: Required when the authenticated principal does not provide a tenant.}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Ordered verified revision history.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revisions]
+                properties:
+                  revisions: {type: array, items: {$ref: '#/components/schemas/PolicyEvaluationDatasetRevision'}}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Dataset does not exist in the authorized tenant.}
+        '409': {description: Stored revision content no longer matches its immutable digest.}
+  /policy-evaluation-datasets/{datasetID}/revisions/{revisionID}:
+    get:
+      operationId: getPolicyEvaluationDatasetRevision
+      summary: Get one verified immutable dataset revision
+      tags: [Findings]
+      parameters:
+        - {name: datasetID, in: path, required: true, schema: {type: string}}
+        - {name: revisionID, in: path, required: true, schema: {type: string}}
+        - {name: tenant_id, in: query, schema: {type: string}, description: Required when the authenticated principal does not provide a tenant.}
+      responses:
+        '200':
+          description: Verified immutable revision metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revision]
+                properties:
+                  revision: {$ref: '#/components/schemas/PolicyEvaluationDatasetRevision'}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Dataset revision does not exist in the authorized tenant.}
+        '409': {description: Stored revision content no longer matches its immutable digest.}
+  /policy-evaluation-datasets/{datasetID}/revisions/{revisionID}/cases:
+    get:
+      operationId: listPolicyEvaluationDatasetCases
+      summary: List cases in one verified immutable dataset revision
+      description: Returns only bounded synthetic fixtures. Live provider identifiers, raw query rows, and resource payloads are not accepted by the write boundary.
+      tags: [Findings]
+      parameters:
+        - {name: datasetID, in: path, required: true, schema: {type: string}}
+        - {name: revisionID, in: path, required: true, schema: {type: string}}
+        - {name: tenant_id, in: query, schema: {type: string}, description: Required when the authenticated principal does not provide a tenant.}
+      responses:
+        '200':
+          description: Ordered verified case snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cases]
+                properties:
+                  cases:
+                    type: array
+                    items: {$ref: '#/components/schemas/PolicyEvaluationDatasetCase'}
+        '403': {description: Tenant or policy-candidate operator scope is not authorized.}
+        '404': {description: Dataset revision does not exist in the authorized tenant.}
+        '409': {description: Stored case content no longer matches its immutable digest.}
+  /policy-candidates/{candidateID}/experiments:
+    post:
+      operationId: createPolicyExperiment
+      summary: Create an immutable policy evaluation experiment
+      description: Resolves one source runtime's authoritative complete current graph checkpoint, then pins the proved candidate revision, artifact and catalog digests, server-owned current-canary dataset revision, and checkpoint receipt. The experiment is draft-only and cannot write findings or activate policy.
+      tags: [Findings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreatePolicyExperimentRequest'}
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+      responses:
+        '201':
+          description: Queued or explicitly blocked experiment.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyExperiment'}
+        '400': {description: Runtime or idempotency input is invalid.}
+        '403': {description: Tenant or operator scope is not authorized.}
+        '409': {description: Candidate is not proved or its artifacts are unavailable.}
+        '503': {description: Durable experiment storage is unavailable.}
+    get:
+      operationId: listPolicyExperiments
+      summary: List evaluation experiments for one policy candidate
+      tags: [Findings]
+      parameters:
+        - {name: candidateID, in: path, required: true, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [queued, running, completed, failed, blocked]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Candidate-scoped experiment history.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [experiments]
+                properties:
+                  experiments: {type: array, items: {$ref: '#/components/schemas/PolicyExperiment'}}
+        '403': {description: Tenant or operator scope is not authorized.}
+        '404': {description: Candidate does not exist.}
+  /policy-experiments/{experimentID}:
+    get:
+      operationId: getPolicyExperiment
+      summary: Get one immutable policy evaluation experiment
+      tags: [Findings]
+      parameters:
+        - {name: experimentID, in: path, required: true, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+      responses:
+        '200':
+          description: Experiment state and immutable pins.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PolicyExperiment'}
+        '403': {description: Tenant or operator scope is not authorized.}
+        '404': {description: Experiment does not exist.}
+  /policy-experiments/{experimentID}/observations:
+    get:
+      operationId: listPolicyExperimentObservations
+      summary: List append-only policy experiment observations
+      description: Returns bounded metrics and receipt digests; graph rows and provider identifiers are never returned.
+      tags: [Findings]
+      parameters:
+        - {name: experimentID, in: path, required: true, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500}}
+      responses:
+        '200':
+          description: Ordered experiment observations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [observations]
+                properties:
+                  observations: {type: array, items: {$ref: '#/components/schemas/PolicyExperimentObservation'}}
+        '403': {description: Tenant or operator scope is not authorized.}
+        '404': {description: Experiment does not exist.}
+  /policy-experiments/{experimentID}/run:
+    post:
+      operationId: runPolicyExperiment
+      summary: Start one policy experiment through its purpose-bound job
+      description: Creates or reuses the experiment's idempotent leased job. This route requires policy-candidate operator scope and does not grant access to other platform job kinds.
+      tags: [Findings]
+      parameters:
+        - {name: experimentID, in: path, required: true, schema: {type: string}}
+      responses:
+        '202': {description: Experiment job created and started.}
+        '200': {description: Existing idempotent experiment job returned.}
+        '403': {description: Tenant or operator scope is not authorized.}
+        '404': {description: Experiment does not exist.}
+        '503': {description: Durable job execution is unavailable.}
   /platform/jobs:
     get:
       operationId: listPlatformJobs
@@ -11023,6 +11448,9 @@ components:
       required:
         - version
         - evidence_packet
+        - claim_verification
+        - agent_work
+        - mission_operating
         - agent_profiles
         - verifier_layer
         - action_ladder
@@ -11037,6 +11465,14 @@ components:
         evidence_packet:
           type: object
           additionalProperties: true
+        claim_verification:
+          type: object
+          additionalProperties: true
+        agent_work:
+          type: object
+          additionalProperties: true
+        mission_operating:
+          $ref: '#/components/schemas/AgentPlatformMissionOperatingContract'
         agent_profiles:
           type: array
           items:
@@ -11071,6 +11507,464 @@ components:
           items:
             type: object
             additionalProperties: true
+    AgentPlatformMissionOperatingContract:
+      type: object
+      required:
+        - id
+        - purpose
+        - schema_version
+        - durable_records
+        - execution_depths
+        - supervisor_directives
+        - wake_conditions
+        - interruption_triggers
+        - close_conditions
+        - first_mandate
+      properties:
+        id:
+          type: string
+        purpose:
+          type: string
+        schema_version:
+          type: string
+        durable_records:
+          type: array
+          items:
+            type: object
+            required: [id, purpose, required]
+            properties:
+              id:
+                type: string
+              purpose:
+                type: string
+              required:
+                type: array
+                items:
+                  type: string
+        execution_depths:
+          type: array
+          items:
+            type: string
+        supervisor_directives:
+          type: array
+          items:
+            type: string
+        wake_conditions:
+          type: array
+          items:
+            type: string
+        interruption_triggers:
+          type: array
+          items:
+            type: string
+        close_conditions:
+          type: array
+          items:
+            type: string
+        first_mandate:
+          type: string
+    BuildDecisionPacketRequest:
+      type: object
+      required: [workflow, question]
+      properties:
+        workflow:
+          type: string
+        question:
+          type: string
+        scope_urn:
+          type: string
+        finding_ids:
+          type: array
+          items:
+            type: string
+        claim_ids:
+          type: array
+          items:
+            type: string
+        evidence_urns:
+          type: array
+          items:
+            type: string
+        audit_packet_ids:
+          type: array
+          items:
+            type: string
+        required_sources:
+          type: array
+          items:
+            type: string
+        requested_action:
+          type: string
+        budgets:
+          $ref: '#/components/schemas/DecisionPacketBudgets'
+    DecisionPacketBudgets:
+      type: object
+      properties:
+        evidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+        contradictions:
+          type: integer
+          minimum: 0
+          maximum: 25
+        coverage_gaps:
+          type: integer
+          minimum: 0
+          maximum: 25
+        affected:
+          type: integer
+          minimum: 0
+          maximum: 100
+        controls:
+          type: integer
+          minimum: 0
+          maximum: 100
+        audit_packets:
+          type: integer
+          minimum: 0
+          maximum: 25
+        actions:
+          type: integer
+          minimum: 0
+          maximum: 10
+        graph_rows:
+          type: integer
+          minimum: 0
+          maximum: 100
+        graph_depth:
+          type: integer
+          minimum: 0
+          maximum: 3
+    DecisionPacket:
+      type: object
+      required: [schema_version, id, generated_at, workflow, scope, inputs, guardrails, claim, decision, confidence, freshness, evidence, contradictions, coverage_gaps, affected, controls, audit_packets, actions, provenance, limits]
+      properties:
+        schema_version:
+          type: string
+        id:
+          type: string
+          pattern: '^dpr_[0-9a-f]{32}$'
+        generated_at:
+          type: string
+          format: date-time
+        workflow:
+          $ref: '#/components/schemas/DecisionPacketWorkflow'
+        scope:
+          $ref: '#/components/schemas/DecisionPacketScope'
+        inputs:
+          $ref: '#/components/schemas/DecisionPacketInputs'
+        guardrails:
+          type: object
+          additionalProperties: true
+        claim:
+          type: object
+          additionalProperties: true
+        decision:
+          $ref: '#/components/schemas/DecisionPacketDecision'
+        confidence:
+          $ref: '#/components/schemas/DecisionPacketConfidence'
+        freshness:
+          $ref: '#/components/schemas/DecisionPacketFreshness'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketEvidenceReference'
+        contradictions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketContradiction'
+        coverage_gaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketCoverageGap'
+        affected:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketSubjectReference'
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketControlReference'
+        audit_packets:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketAuditPacketReference'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionPacketActionProposal'
+        provenance:
+          $ref: '#/components/schemas/DecisionPacketProvenance'
+        limits:
+          $ref: '#/components/schemas/DecisionPacketResultLimits'
+    DecisionPacketWorkflow:
+      type: object
+      required: [id, question]
+      properties:
+        id:
+          type: string
+        question:
+          type: string
+    DecisionPacketInputs:
+      type: object
+      required: [finding_ids, claim_ids, evidence_urns, audit_packet_ids, required_sources]
+      properties:
+        finding_ids:
+          type: array
+          items:
+            type: string
+        claim_ids:
+          type: array
+          items:
+            type: string
+        evidence_urns:
+          type: array
+          items:
+            type: string
+        audit_packet_ids:
+          type: array
+          items:
+            type: string
+        required_sources:
+          type: array
+          items:
+            type: string
+        requested_action:
+          type: string
+    DecisionPacketScope:
+      type: object
+      required: [tenant_id, actor_id]
+      properties:
+        tenant_id:
+          type: string
+        actor_id:
+          type: string
+        urn:
+          type: string
+    DecisionPacketDecision:
+      type: object
+      required: [state, reasons]
+      properties:
+        state:
+          type: string
+          enum: [supported, supported_with_gaps, blocked, insufficient_evidence, not_applicable]
+        rationale:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+    DecisionPacketConfidence:
+      type: object
+      required: [level, basis]
+      properties:
+        level:
+          type: string
+          enum: [high, medium, low, unknown]
+        basis:
+          type: array
+          items:
+            type: string
+    DecisionPacketFreshness:
+      type: object
+      required: [state, required_stale]
+      properties:
+        state:
+          type: string
+          enum: [fresh, stale, unknown]
+        oldest_observed_at:
+          type: string
+          format: date-time
+        newest_observed_at:
+          type: string
+          format: date-time
+        required_stale:
+          type: boolean
+    DecisionPacketEvidenceReference:
+      type: object
+      required: [id, kind]
+      properties:
+        id:
+          type: string
+        urn:
+          type: string
+        kind:
+          type: string
+        source_id:
+          type: string
+        subject_urn:
+          type: string
+        predicate:
+          type: string
+        value:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        digest:
+          type: string
+    DecisionPacketContradiction:
+      type: object
+      required: [id, subject_urn, predicate, left, right, resolution_state, primary_claim]
+      properties:
+        id:
+          type: string
+        subject_urn:
+          type: string
+        predicate:
+          type: string
+        left:
+          $ref: '#/components/schemas/DecisionPacketEvidenceReference'
+        right:
+          $ref: '#/components/schemas/DecisionPacketEvidenceReference'
+        resolution_state:
+          type: string
+          enum: [unresolved, resolved]
+        primary_claim:
+          type: boolean
+    DecisionPacketCoverageGap:
+      type: object
+      required: [id, state, required, could_change_conclusion, reason]
+      properties:
+        id:
+          type: string
+        source_id:
+          type: string
+        dimension:
+          type: string
+        state:
+          type: string
+          enum: [complete, partial, stale, failed, unconfigured, unsupported, unverified]
+        required:
+          type: boolean
+        could_change_conclusion:
+          type: boolean
+        reason:
+          type: string
+    DecisionPacketSubjectReference:
+      type: object
+      required: [urn, kind]
+      properties:
+        urn:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+    DecisionPacketControlReference:
+      type: object
+      required: [id, applicability]
+      properties:
+        id:
+          type: string
+        framework:
+          type: string
+        applicability:
+          type: string
+    DecisionPacketAuditPacketReference:
+      type: object
+      required: [id, digest, generated_at, freshness]
+      properties:
+        id:
+          type: string
+        scope_urn:
+          type: string
+        digest:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        freshness:
+          type: string
+    DecisionPacketActionProposal:
+      type: object
+      required: [id, action_id, state, target_urns, rationale]
+      properties:
+        id:
+          type: string
+        action_id:
+          type: string
+        state:
+          type: string
+          enum: [informational, proposal, approval_required]
+        target_urns:
+          type: array
+          items:
+            type: string
+        rationale:
+          type: string
+        approval_requirements:
+          type: array
+          items:
+            type: string
+        catalog_version:
+          type: string
+        proposal_digest:
+          type: string
+    DecisionPacketProvenance:
+      type: object
+      required: [resolver_ids, source_ids, evidence_digest, coverage_digest]
+      properties:
+        trace_id:
+          type: string
+        resolver_ids:
+          type: array
+          items:
+            type: string
+        source_ids:
+          type: array
+          items:
+            type: string
+        evidence_digest:
+          type: string
+        coverage_digest:
+          type: string
+    DecisionPacketResultLimits:
+      type: object
+      properties:
+        evidence:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        contradictions:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        coverage_gaps:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        affected:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        controls:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        audit_packets:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        actions:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        graph_rows:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+        graph_depth:
+          $ref: '#/components/schemas/DecisionPacketResultLimit'
+    DecisionPacketResultLimit:
+      type: object
+      required: [requested, applied, returned, truncated]
+      properties:
+        requested:
+          type: integer
+          minimum: 0
+        applied:
+          type: integer
+          minimum: 0
+        returned:
+          type: integer
+          minimum: 0
+        total_known:
+          type: integer
+          minimum: 0
+        truncated:
+          type: boolean
     AgentPlatformEvidencePacketRequest:
       type: object
       properties:
@@ -13218,6 +14112,7 @@ components:
             - graph_ingest_runtime
             - finding_rules_evaluate
             - findings_evaluate
+            - policy_candidate_experiment
             - report_run
         tenant_id:
           type: string
@@ -17031,6 +17926,376 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FindingCandidate'
+    CreatePolicyCandidateRequest:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, hypothesis, domain, origin, graph_evidence, grounding]
+      properties:
+        tenant_id: {type: string, minLength: 1}
+        hypothesis:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: Redacted policy hypothesis. Live cloud identifiers, endpoints, and email addresses are rejected.
+        domain:
+          type: string
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+        origin:
+          $ref: '#/components/schemas/PolicyCandidateOriginInput'
+        graph_evidence:
+          $ref: '#/components/schemas/PolicyCandidateGraphEvidenceInput'
+        grounding:
+          $ref: '#/components/schemas/PolicyCandidateGroundingInput'
+    PolicyCandidateOriginInput:
+      type: object
+      additionalProperties: false
+      required: [kind, external_ref]
+      properties:
+        kind: {type: string, minLength: 1}
+        external_ref:
+          type: string
+          minLength: 1
+          description: Opaque private reference retained in current-state storage and omitted from API responses and model context.
+    PolicyCandidateGraphEvidenceInput:
+      type: object
+      additionalProperties: false
+      required: [nodes, edges, critical_edge, evidence_node_ids]
+      properties:
+        nodes:
+          type: array
+          minItems: 3
+          maxItems: 16
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, source_id, entity_type]
+            properties:
+              id: {type: string, minLength: 1, description: Request-local handle.}
+              source_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]*$'}
+              entity_type: {type: string, minLength: 1}
+              attributes: {type: object, additionalProperties: {type: string}}
+        edges:
+          type: array
+          minItems: 2
+          maxItems: 32
+          items:
+            type: object
+            additionalProperties: false
+            required: [from_id, to_id, source_id, relation]
+            properties:
+              from_id: {type: string, minLength: 1}
+              to_id: {type: string, minLength: 1}
+              source_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]*$'}
+              relation: {type: string, minLength: 1}
+              attributes: {type: object, additionalProperties: {type: string}}
+        critical_edge:
+          type: object
+          additionalProperties: false
+          required: [from_id, to_id, relation]
+          properties:
+            from_id: {type: string, minLength: 1}
+            to_id: {type: string, minLength: 1}
+            relation: {type: string, minLength: 1}
+        evidence_node_ids:
+          type: array
+          minItems: 1
+          items: {type: string, minLength: 1}
+    PolicyCandidateGroundingInput:
+      type: object
+      additionalProperties: false
+      required: [bindings]
+      properties:
+        bindings:
+          type: array
+          minItems: 1
+          maxItems: 16
+          description: Ephemeral node-to-current-graph bindings used only for server-side grounding. Entity URNs are omitted from stored public views and model context.
+          items:
+            type: object
+            additionalProperties: false
+            required: [node_id, entity_urn]
+            properties:
+              node_id: {type: string, minLength: 1}
+              entity_urn: {type: string, pattern: '^urn:cerebro:[^:]+:.+$'}
+    PolicyCandidate:
+      type: object
+      required: [id, tenant_id, status, revision, hypothesis, domain, origin_kind, graph, grounding, coverage_gap, pr_ready, created_at, updated_at]
+      properties:
+        id: {type: string}
+        tenant_id: {type: string}
+        status: {type: string, enum: [grounded, proved, ready_for_review, blocked]}
+        revision: {type: integer, format: int64, minimum: 1}
+        hypothesis: {type: string}
+        domain: {type: string}
+        origin_kind: {type: string}
+        graph:
+          type: object
+          required: [node_count, edge_count]
+          properties:
+            node_count: {type: integer, minimum: 0}
+            edge_count: {type: integer, minimum: 0}
+            entity_types: {type: array, items: {type: string}}
+            relations: {type: array, items: {type: string}}
+        grounding:
+          $ref: '#/components/schemas/PolicyCandidateGroundingReceipt'
+        coverage_gap:
+          $ref: '#/components/schemas/PolicyCandidateCoverageGapReceipt'
+        artifacts:
+          $ref: '#/components/schemas/PolicyCandidateArtifacts'
+        proof:
+          $ref: '#/components/schemas/PolicyCandidateProof'
+        shadow:
+          $ref: '#/components/schemas/PolicyCandidateShadowReceipt'
+        pr_ready: {type: boolean, description: 'True only after current coverage-gap revalidation, proof, and current-state shadow execution succeed.'}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    CreatePolicyEvaluationDatasetRequest:
+      type: object
+      additionalProperties: false
+      required: [name, change_summary]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        change_summary: {type: string, minLength: 1, maxLength: 1000}
+    AppendPolicyEvaluationDatasetRevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version, change_summary, cases]
+      properties:
+        expected_version: {type: integer, format: int64, minimum: 1}
+        change_summary: {type: string, minLength: 1, maxLength: 1000}
+        cases:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: '#/components/schemas/PolicyEvaluationDatasetCaseInput'}
+    PolicyEvaluationDatasetCaseInput:
+      type: object
+      additionalProperties: false
+      required: [id, test]
+      properties:
+        id: {type: string, pattern: '^[a-z][a-z0-9._-]{0,127}$'}
+        test: {$ref: '#/components/schemas/PolicyEvaluationDatasetTestCase'}
+    PolicyEvaluationDatasetTestCase:
+      type: object
+      additionalProperties: false
+      required: [name, graphFixture, wantFinding]
+      properties:
+        name: {type: string, pattern: '^[a-z][a-z0-9._-]{0,127}$', description: Canonical synthetic name; append requests must set this to the containing case ID.}
+        graphFixture: {$ref: '#/components/schemas/PolicyEvaluationDatasetGraphFixture'}
+        wantEvidenceUrns:
+          type: array
+          maxItems: 32
+          items: {type: string, pattern: '^urn:(test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$'}
+        wantFinding: {type: boolean}
+    PolicyEvaluationDatasetGraphFixture:
+      type: object
+      additionalProperties: false
+      required: [tenantId, nodes, edges]
+      properties:
+        tenantId: {type: string, enum: [fixture, test]}
+        nodes:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items: {$ref: '#/components/schemas/PolicyEvaluationDatasetGraphNode'}
+        edges:
+          type: array
+          maxItems: 128
+          items: {$ref: '#/components/schemas/PolicyEvaluationDatasetGraphEdge'}
+    PolicyEvaluationDatasetGraphNode:
+      type: object
+      additionalProperties: false
+      required: [urn, sourceId, entityType]
+      properties:
+        urn: {type: string, pattern: '^urn:(test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$'}
+        sourceId: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'}
+        runtimeId: {type: string, pattern: '^runtime:(test|fixture):', maxLength: 128}
+        entityType: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'}
+        label: {type: string, pattern: '^fixture-(?:(?:node|edge|ref|value)-[a-z0-9][a-z0-9-]{0,63}|candidate-marker)$'}
+        attributes:
+          type: object
+          maxProperties: 32
+          propertyNames: {pattern: '^[a-z][a-z0-9_]{0,63}$'}
+          description: Values must be fixture tokens, booleans for has_* keys, bounded integers for *_count keys, or identifier-free enums for the supported predicate keys.
+          additionalProperties: {type: string, maxLength: 256}
+    PolicyEvaluationDatasetGraphEdge:
+      type: object
+      additionalProperties: false
+      required: [fromUrn, toUrn, sourceId, relation]
+      properties:
+        fromUrn: {type: string, pattern: '^urn:(test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$'}
+        toUrn: {type: string, pattern: '^urn:(test|fixture):[a-z0-9][a-z0-9:._/-]{0,239}$'}
+        sourceId: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'}
+        runtimeId: {type: string, pattern: '^runtime:(test|fixture):', maxLength: 128}
+        relation: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'}
+        attributes:
+          type: object
+          maxProperties: 32
+          propertyNames: {pattern: '^[a-z][a-z0-9_]{0,63}$'}
+          description: Values must satisfy the same typed synthetic scalar contract as node attributes.
+          additionalProperties: {type: string, maxLength: 256}
+    PolicyEvaluationDataset:
+      type: object
+      additionalProperties: false
+      required: [id, candidate_id, name, current_revision_id, aggregate_version, created_at, updated_at]
+      properties:
+        id: {type: string}
+        candidate_id: {type: string}
+        name: {type: string}
+        current_revision_id: {type: string}
+        aggregate_version: {type: integer, format: int64, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    PolicyEvaluationDatasetRevision:
+      type: object
+      additionalProperties: false
+      required: [id, dataset_id, version, policy_digest, source_test_digest, content_digest, case_count, change_summary, created_at]
+      properties:
+        id: {type: string}
+        dataset_id: {type: string}
+        version: {type: integer, format: int64, minimum: 1}
+        predecessor_id: {type: string}
+        policy_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        source_test_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        content_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        case_count: {type: integer, minimum: 1, maximum: 100}
+        change_summary: {type: string}
+        created_at: {type: string, format: date-time}
+    PolicyEvaluationDatasetCase:
+      type: object
+      additionalProperties: false
+      required: [id, dataset_id, revision_id, ordinal, content_digest, test]
+      properties:
+        id: {type: string, pattern: '^[a-z][a-z0-9._-]{0,127}$'}
+        dataset_id: {type: string}
+        revision_id: {type: string}
+        ordinal: {type: integer, minimum: 0}
+        content_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        test: {$ref: '#/components/schemas/PolicyEvaluationDatasetTestCase'}
+    PolicyEvaluationDatasetResult:
+      type: object
+      additionalProperties: false
+      required: [dataset, revision]
+      properties:
+        dataset: {$ref: '#/components/schemas/PolicyEvaluationDataset'}
+        revision: {$ref: '#/components/schemas/PolicyEvaluationDatasetRevision'}
+    CreatePolicyExperimentRequest:
+      type: object
+      additionalProperties: false
+      required: [runtime_id]
+      properties:
+        runtime_id: {type: string, minLength: 1}
+    PolicyExperimentCheckpoint:
+      type: object
+      additionalProperties: false
+      required: [runtime_id, id, digest, complete, current]
+      properties:
+        runtime_id: {type: string, minLength: 1}
+        id: {type: string, minLength: 1}
+        digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        complete: {type: boolean}
+        current: {type: boolean}
+    PolicyExperimentPins:
+      type: object
+      required: [candidate_revision, policy_digest, test_digest, catalog_digest, dataset_digest, checkpoints]
+      properties:
+        candidate_revision: {type: integer, format: int64, minimum: 1}
+        policy_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        test_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        catalog_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        dataset_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        checkpoints:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items: {$ref: '#/components/schemas/PolicyExperimentCheckpoint'}
+    PolicyExperiment:
+      type: object
+      required: [id, candidate_id, tenant_id, status, revision, pins, observation_count, created_at, updated_at]
+      properties:
+        id: {type: string}
+        candidate_id: {type: string}
+        tenant_id: {type: string}
+        status: {type: string, enum: [queued, running, completed, failed, blocked]}
+        revision: {type: integer, format: int64, minimum: 1}
+        pins: {$ref: '#/components/schemas/PolicyExperimentPins'}
+        status_reason: {type: string}
+        observation_count: {type: integer, format: int64, minimum: 0}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        started_at: {type: string, format: date-time}
+        finished_at: {type: string, format: date-time}
+    PolicyExperimentObservation:
+      type: object
+      required: [id, experiment_id, sequence, kind, receipt_digest, observed_at, created_at]
+      properties:
+        id: {type: string}
+        experiment_id: {type: string}
+        sequence: {type: integer, format: int64, minimum: 1}
+        kind: {type: string, pattern: '^[a-z][a-z0-9_.-]*$'}
+        checkpoint_id: {type: string}
+        receipt_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        metrics:
+          type: object
+          additionalProperties: {type: number, format: double}
+        observed_at: {type: string, format: date-time}
+        created_at: {type: string, format: date-time}
+    PolicyCandidateArtifacts:
+      type: object
+      required: [rule, policy_path, policy_yaml, policy_digest, suite, test_path, test_yaml, test_digest]
+      properties:
+        rule: {type: object, additionalProperties: true}
+        policy_path: {type: string}
+        policy_yaml: {type: string}
+        policy_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        suite: {type: object, additionalProperties: true}
+        test_path: {type: string}
+        test_yaml: {type: string}
+        test_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+    PolicyCandidateGroundingReceipt:
+      type: object
+      required: [execution, node_count, edge_count, receipt_id, observed_at]
+      properties:
+        execution: {type: string, enum: [graph_store]}
+        node_count: {type: integer, minimum: 1, maximum: 16}
+        edge_count: {type: integer, minimum: 1, maximum: 32}
+        receipt_id: {type: string}
+        observed_at: {type: string, format: date-time}
+    PolicyCandidateCoverageGapReceipt:
+      type: object
+      required: [execution, catalog_digest, compared_rule_count, candidate_signature, observed_at]
+      properties:
+        execution: {type: string, enum: [finding_rule_catalog]}
+        catalog_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        compared_rule_count: {type: integer, minimum: 0, maximum: 512}
+        candidate_signature: {type: string, pattern: '^[a-f0-9]{64}$'}
+        observed_at: {type: string, format: date-time}
+    PolicyCandidateProof:
+      type: object
+      properties:
+        policy_id: {type: string}
+        policy_path: {type: string}
+        test_path: {type: string}
+        policy_digest: {type: string}
+        test_digest: {type: string}
+        receipts:
+          type: array
+          items:
+            type: object
+            properties:
+              gate: {type: string}
+              passed: {type: boolean}
+              execution: {type: string}
+              detail: {type: string}
+    PolicyCandidateShadowReceipt:
+      type: object
+      required: [execution, match_count, truncated, receipt_id, observed_at]
+      properties:
+        execution: {type: string, enum: [graph_store]}
+        match_count: {type: integer, minimum: 0, maximum: 100}
+        truncated: {type: boolean}
+        receipt_id: {type: string}
+        observed_at: {type: string, format: date-time}
     FindingCandidate:
       type: object
       properties:
@@ -17681,3 +18946,630 @@ components:
           type: object
           additionalProperties:
             type: string
+    AgentServiceLifecycleContract:
+      x-cerebro-skip-typescript: true
+      allOf:
+        -
+          {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "https://github.com/writer/cerebro/schemas/agent-service-lifecycle-contract.schema.json",
+            "title": "AgentServiceLifecycleContract",
+            "description": "Cloud- and chat-neutral lifecycle, continuity, and compatibility contracts for an agent service.",
+            "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/AgentServiceLifecycleContract",
+            "$defs": {
+              "AgentServiceLifecycleContract": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "The public contract an agent service implements independently of transport and deployment topology.",
+                "properties": {
+                  "schema_version": { "type": "string", "minLength": 1 },
+                  "contract_version": { "type": "string", "minLength": 1 },
+                  "compatibility": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/SchemaCompatibility" },
+                  "installation_states": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/InstallationStateDefinition" },
+                    "minItems": 1
+                  },
+                  "deployment_states": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeploymentStateDefinition" },
+                    "minItems": 1
+                  },
+                  "service_states": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ServiceStateDefinition" },
+                    "minItems": 1
+                  },
+                  "run_states": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/RunStateDefinition" },
+                    "minItems": 1
+                  },
+                  "transitions": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/StateTransition" },
+                    "minItems": 1
+                  },
+                  "ports": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/PortContract" },
+                    "minItems": 1
+                  },
+                  "records": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/RecordContract" },
+                    "minItems": 1
+                  },
+                  "health_surfaces": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/HealthSurface" },
+                    "minItems": 1
+                  },
+                  "invariants": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/LifecycleInvariant" },
+                    "minItems": 1
+                  },
+                  "legacy_adapters": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/LegacyAdapter" }
+                  }
+                },
+                "required": [
+                  "schema_version",
+                  "contract_version",
+                  "compatibility",
+                  "installation_states",
+                  "deployment_states",
+                  "service_states",
+                  "run_states",
+                  "transitions",
+                  "ports",
+                  "records",
+                  "health_surfaces",
+                  "invariants",
+                  "legacy_adapters"
+                ]
+              },
+              "SchemaCompatibility": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "current_version": { "type": "string", "minLength": 1 },
+                  "read_versions": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "write_versions": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "rolling_upgrade_rule": { "type": "string", "minLength": 1 },
+                  "capability_decisions": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/CapabilityCompatibilityDecision" },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                },
+                "required": ["current_version", "read_versions", "write_versions", "rolling_upgrade_rule", "capability_decisions"]
+              },
+              "CapabilityCompatibilityDecision": {
+                "type": "string",
+                "enum": ["supported", "degraded", "blocked", "incompatible"]
+              },
+              "InstallationLifecycleState": {
+                "type": "string",
+                "enum": ["authorizing", "binding", "verifying", "active", "suspended", "revoked", "retired"]
+              },
+              "DeploymentGenerationState": {
+                "type": "string",
+                "enum": ["proposed", "provisioning", "validating", "active", "failed", "rolled_back", "superseded", "retired"]
+              },
+              "ServiceAvailabilityState": {
+                "type": "string",
+                "enum": ["booting", "warming", "ready", "degraded", "draining", "offline", "recovering", "stopped"]
+              },
+              "RunLifecycleState": {
+                "type": "string",
+                "enum": ["received", "admitted", "rejected", "queued", "leased", "running", "waiting", "paused", "delivering", "completed", "cancelled", "expired", "blocked"]
+              },
+              "RunKind": {
+                "type": "string",
+                "enum": ["interactive", "scheduled", "autonomy", "triage", "risk_attestation", "reconciliation"]
+              },
+              "ScheduledOccurrenceState": {
+                "type": "string",
+                "enum": ["admitted", "queued", "leased", "running", "completed", "failed", "cancelled", "skipped"]
+              },
+              "ScheduleMisfirePolicy": {
+                "type": "string",
+                "enum": ["coalesce_once", "skip", "run_all_bounded"]
+              },
+              "EffectExecutionState": {
+                "type": "string",
+                "enum": ["planned", "executing", "succeeded", "failed", "unknown"]
+              },
+              "CapabilityRequirementLevel": {
+                "type": "string",
+                "enum": ["required", "optional"]
+              },
+              "InstallationStateDefinition": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/InstallationLifecycleState" },
+                  "admission_allowed": { "type": "boolean" },
+                  "meaning": { "type": "string", "minLength": 1 }
+                },
+                "required": ["state", "admission_allowed", "meaning"]
+              },
+              "DeploymentStateDefinition": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeploymentGenerationState" },
+                  "may_own_routes": { "type": "boolean" },
+                  "may_own_leases": { "type": "boolean" },
+                  "meaning": { "type": "string", "minLength": 1 }
+                },
+                "required": ["state", "may_own_routes", "may_own_leases", "meaning"]
+              },
+              "ServiceStateDefinition": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ServiceAvailabilityState" },
+                  "admission": { "type": "string", "minLength": 1 },
+                  "new_leases": { "type": "boolean" },
+                  "existing_work": { "type": "string", "minLength": 1 },
+                  "meaning": { "type": "string", "minLength": 1 }
+                },
+                "required": ["state", "admission", "new_leases", "existing_work", "meaning"]
+              },
+              "RunStateDefinition": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/RunLifecycleState" },
+                  "terminal": { "type": "boolean" },
+                  "meaning": { "type": "string", "minLength": 1 }
+                },
+                "required": ["state", "terminal", "meaning"]
+              },
+              "StateTransition": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "machine": { "type": "string", "enum": ["installation", "deployment", "service", "run"] },
+                  "from": { "type": "string", "minLength": 1 },
+                  "to": { "type": "string", "minLength": 1 },
+                  "condition": { "type": "string", "minLength": 1 }
+                },
+                "required": ["machine", "from", "to", "condition"],
+                "allOf": [
+                  {
+                    "if": { "properties": { "machine": { "const": "installation" } }, "required": ["machine"] },
+                    "then": {
+                      "properties": {
+                        "from": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/InstallationLifecycleState" },
+                        "to": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/InstallationLifecycleState" }
+                      }
+                    }
+                  },
+                  {
+                    "if": { "properties": { "machine": { "const": "deployment" } }, "required": ["machine"] },
+                    "then": {
+                      "properties": {
+                        "from": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeploymentGenerationState" },
+                        "to": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeploymentGenerationState" }
+                      }
+                    }
+                  },
+                  {
+                    "if": { "properties": { "machine": { "const": "service" } }, "required": ["machine"] },
+                    "then": {
+                      "properties": {
+                        "from": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ServiceAvailabilityState" },
+                        "to": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ServiceAvailabilityState" }
+                      }
+                    }
+                  },
+                  {
+                    "if": { "properties": { "machine": { "const": "run" } }, "required": ["machine"] },
+                    "then": {
+                      "properties": {
+                        "from": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/RunLifecycleState" },
+                        "to": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/RunLifecycleState" }
+                      }
+                    }
+                  }
+                ]
+              },
+              "PortContract": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": { "type": "string", "minLength": 1 },
+                  "purpose": { "type": "string", "minLength": 1 },
+                  "required_operations": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "production_durability_required": { "type": "boolean" }
+                },
+                "required": ["id", "purpose", "required_operations", "production_durability_required"]
+              },
+              "RecordContract": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": { "type": "string", "minLength": 1 },
+                  "schema_version": { "type": "string", "minLength": 1 },
+                  "schema_ref": { "type": "string", "pattern": "^(#/\\$defs/|[a-z0-9-]+\\.schema\\.json$)" },
+                  "identity_fields": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "fencing_fields": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "uniqueItems": true
+                  }
+                },
+                "required": ["kind", "schema_version", "schema_ref", "identity_fields", "fencing_fields"]
+              },
+              "HealthSurface": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": { "type": "string", "pattern": "^/" },
+                  "responsibility": { "type": "string", "minLength": 1 },
+                  "success_condition": { "type": "string", "minLength": 1 }
+                },
+                "required": ["path", "responsibility", "success_condition"]
+              },
+              "LifecycleInvariant": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": { "type": "string", "minLength": 1 },
+                  "statement": { "type": "string", "minLength": 1 }
+                },
+                "required": ["id", "statement"]
+              },
+              "LegacyAdapter": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": { "type": "string", "minLength": 1 },
+                  "target_schema": { "type": "string", "minLength": 1 },
+                  "write_authority": { "type": "boolean" },
+                  "retirement_condition": { "type": "string", "minLength": 1 }
+                },
+                "required": ["id", "target_schema", "write_authority", "retirement_condition"]
+              },
+              "CapabilityRequirement": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "capability_id": { "type": "string", "minLength": 1 },
+                  "version": { "type": "string", "minLength": 1 },
+                  "level": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/CapabilityRequirementLevel" }
+                },
+                "required": ["capability_id", "version", "level"]
+              },
+              "AgentServiceBindingV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "agent-service-binding/v1" },
+                  "binding_id": { "type": "string", "minLength": 1 },
+                  "tenant_id": { "type": "string", "minLength": 1 },
+                  "service_id": { "type": "string", "minLength": 1 },
+                  "route_generation": { "type": "integer", "minimum": 1 },
+                  "installation_generation": { "type": "integer", "minimum": 1 },
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/InstallationLifecycleState" },
+                  "retention_policy_ref": { "type": "string", "minLength": 1 },
+                  "created_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "binding_id", "tenant_id", "service_id", "route_generation", "installation_generation", "state", "retention_policy_ref", "created_at", "updated_at"]
+              },
+              "DeploymentGenerationV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "deployment-generation/v1" },
+                  "service_id": { "type": "string", "minLength": 1 },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "release_version": { "type": "string", "minLength": 1 },
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeploymentGenerationState" },
+                  "capability_manifest_digest": { "type": "string", "minLength": 1 },
+                  "contract_version": { "type": "string", "minLength": 1 },
+                  "fencing_token": { "type": "integer", "minimum": 1 },
+                  "created_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "service_id", "generation", "release_version", "state", "capability_manifest_digest", "contract_version", "fencing_token", "created_at", "updated_at"]
+              },
+              "CapabilityManifestV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "capability-manifest/v1" },
+                  "service_id": { "type": "string", "minLength": 1 },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "contract_versions": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "capabilities": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/CapabilityRequirement" },
+                    "uniqueItems": true
+                  },
+                  "produced_at": { "type": "string", "format": "date-time" },
+                  "digest": { "type": "string", "minLength": 1 }
+                },
+                "required": ["schema_version", "service_id", "generation", "contract_versions", "capabilities", "produced_at", "digest"]
+              },
+              "RunReceiptV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "run-receipt/v1" },
+                  "receipt_id": { "type": "string", "minLength": 1 },
+                  "tenant_id": { "type": "string", "minLength": 1 },
+                  "binding_id": { "type": "string", "minLength": 1 },
+                  "run_id": { "type": "string", "minLength": 1 },
+                  "run_kind": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/RunKind" },
+                  "subject_ref": { "type": "string", "minLength": 1 },
+                  "input_digest": { "type": "string", "minLength": 1 },
+                  "idempotency_key": { "type": "string", "minLength": 1 },
+                  "state": {
+                    "type": "string",
+                    "enum": ["admitted", "queued", "leased", "running", "waiting", "paused", "delivering", "completed", "cancelled", "expired", "blocked"]
+                  },
+                  "revision": { "type": "integer", "minimum": 1 },
+                  "required_capabilities": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/CapabilityRequirement" }
+                  },
+                  "retention_policy_ref": { "type": "string", "minLength": 1 },
+                  "received_at": { "type": "string", "format": "date-time" },
+                  "admitted_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "receipt_id", "tenant_id", "binding_id", "run_id", "run_kind", "subject_ref", "input_digest", "idempotency_key", "state", "revision", "required_capabilities", "retention_policy_ref", "received_at", "admitted_at", "updated_at"]
+              },
+              "ScheduledOccurrenceV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "scheduled-occurrence/v1" },
+                  "occurrence_id": { "type": "string", "minLength": 1 },
+                  "schedule_id": { "type": "string", "minLength": 1 },
+                  "schedule_revision": { "type": "integer", "minimum": 1 },
+                  "due_at": { "type": "string", "format": "date-time" },
+                  "run_id": { "type": "string", "minLength": 1 },
+                  "idempotency_key": { "type": "string", "minLength": 1 },
+                  "misfire_policy": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ScheduleMisfirePolicy" },
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ScheduledOccurrenceState" },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "owner_id": { "type": "string", "minLength": 1 },
+                  "lease_token": { "type": "string", "minLength": 1 },
+                  "fencing_token": { "type": "integer", "minimum": 1 },
+                  "lease_expires_at": { "type": "string", "format": "date-time" },
+                  "heartbeat_at": { "type": "string", "format": "date-time" },
+                  "created_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "occurrence_id", "schedule_id", "schedule_revision", "due_at", "run_id", "idempotency_key", "misfire_policy", "state", "generation", "created_at", "updated_at"],
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": { "state": { "enum": ["leased", "running"] } },
+                      "required": ["state"]
+                    },
+                    "then": { "required": ["owner_id", "lease_token", "fencing_token", "lease_expires_at", "heartbeat_at"] }
+                  }
+                ]
+              },
+              "WorkLeaseV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "work-lease/v1" },
+                  "run_id": { "type": "string", "minLength": 1 },
+                  "owner_id": { "type": "string", "minLength": 1 },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "lease_token": { "type": "string", "minLength": 1 },
+                  "fencing_token": { "type": "integer", "minimum": 1 },
+                  "lease_expires_at": { "type": "string", "format": "date-time" },
+                  "heartbeat_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "run_id", "owner_id", "generation", "lease_token", "fencing_token", "lease_expires_at", "heartbeat_at"]
+              },
+              "CheckpointV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "checkpoint/v1" },
+                  "checkpoint_id": { "type": "string", "minLength": 1 },
+                  "run_id": { "type": "string", "minLength": 1 },
+                  "run_revision": { "type": "integer", "minimum": 1 },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "sequence": { "type": "integer", "minimum": 1 },
+                  "resume_cursor": { "type": "string", "minLength": 1 },
+                  "completed_step_ids": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "uniqueItems": true
+                  },
+                  "effect_receipt_ids": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "uniqueItems": true
+                  },
+                  "waiting_on_ref": { "type": "string" },
+                  "payload_ref": { "type": "string", "minLength": 1 },
+                  "payload_digest": { "type": "string", "minLength": 1 },
+                  "created_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "checkpoint_id", "run_id", "run_revision", "generation", "sequence", "resume_cursor", "completed_step_ids", "effect_receipt_ids", "payload_ref", "payload_digest", "created_at"]
+              },
+              "EffectReceiptV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "effect-receipt/v1" },
+                  "effect_id": { "type": "string", "minLength": 1 },
+                  "run_id": { "type": "string", "minLength": 1 },
+                  "step_id": { "type": "string", "minLength": 1 },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "lease_token": { "type": "string", "minLength": 1 },
+                  "fencing_token": { "type": "integer", "minimum": 1 },
+                  "idempotency_key": { "type": "string", "minLength": 1 },
+                  "target_ref": { "type": "string", "minLength": 1 },
+                  "request_digest": { "type": "string", "minLength": 1 },
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/EffectExecutionState" },
+                  "result_ref": { "type": "string", "minLength": 1 },
+                  "result_digest": { "type": "string", "minLength": 1 },
+                  "approval_required": { "type": "boolean" },
+                  "approval_ref": { "type": "string", "minLength": 1 },
+                  "rollback_plan_ref": { "type": "string", "minLength": 1 },
+                  "verification_receipt_ref": { "type": "string", "minLength": 1 },
+                  "verification_state": { "type": "string", "enum": ["pending", "verified", "failed"] },
+                  "recorded_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "effect_id", "run_id", "step_id", "generation", "lease_token", "fencing_token", "idempotency_key", "target_ref", "request_digest", "state", "approval_required", "verification_state", "recorded_at"],
+                "allOf": [
+                  {
+                    "if": { "properties": { "approval_required": { "const": true } }, "required": ["approval_required"] },
+                    "then": { "required": ["approval_ref"] }
+                  },
+                  {
+                    "if": { "properties": { "verification_state": { "enum": ["verified", "failed"] } }, "required": ["verification_state"] },
+                    "then": { "required": ["verification_receipt_ref"] }
+                  },
+                  {
+                    "if": { "properties": { "state": { "enum": ["succeeded", "failed"] } }, "required": ["state"] },
+                    "then": { "required": ["result_ref", "result_digest"] }
+                  }
+                ]
+              },
+              "DeliveryPartV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "part_id": { "type": "string", "minLength": 1 },
+                  "sequence": { "type": "integer", "minimum": 1 },
+                  "idempotency_key": { "type": "string", "minLength": 1 },
+                  "payload_ref": { "type": "string", "minLength": 1 },
+                  "payload_digest": { "type": "string", "minLength": 1 },
+                  "state": { "type": "string", "enum": ["pending", "delivering", "delivered", "paused", "failed", "abandoned"] },
+                  "destination_receipt": { "type": "string", "minLength": 1 },
+                  "delivered_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["part_id", "sequence", "idempotency_key", "payload_ref", "payload_digest", "state"],
+                "allOf": [
+                  {
+                    "if": { "properties": { "state": { "const": "delivered" } }, "required": ["state"] },
+                    "then": { "required": ["destination_receipt", "delivered_at"] }
+                  }
+                ]
+              },
+              "DeliveryReceiptV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "delivery-receipt/v1" },
+                  "delivery_id": { "type": "string", "minLength": 1 },
+                  "run_id": { "type": "string", "minLength": 1 },
+                  "destination_ref": { "type": "string", "minLength": 1 },
+                  "state": { "type": "string", "enum": ["pending", "delivering", "paused", "completed", "failed", "abandoned"] },
+                  "parts": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeliveryPartV1" },
+                    "minItems": 1
+                  },
+                  "created_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "delivery_id", "run_id", "destination_ref", "state", "parts", "created_at", "updated_at"]
+              },
+              "PresenceSnapshotV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "presence-snapshot/v1" },
+                  "binding_id": { "type": "string", "minLength": 1 },
+                  "service_state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/ServiceAvailabilityState" },
+                  "compatibility": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/CapabilityCompatibilityDecision" },
+                  "route_generation": { "type": "integer", "minimum": 1 },
+                  "active_generation": { "type": "integer", "minimum": 1 },
+                  "reason_code": { "type": "string" },
+                  "observed_at": { "type": "string", "format": "date-time" },
+                  "expires_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "binding_id", "service_state", "compatibility", "route_generation", "active_generation", "reason_code", "observed_at", "expires_at"]
+              },
+              "ReleaseReceiptV2": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "release-receipt/v2" },
+                  "release_id": { "type": "string", "minLength": 1 },
+                  "service_id": { "type": "string", "minLength": 1 },
+                  "generation": { "type": "integer", "minimum": 1 },
+                  "state": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/DeploymentGenerationState" },
+                  "compatibility": { "$ref": "#/components/schemas/AgentServiceLifecycleContract/allOf/0/$defs/CapabilityCompatibilityDecision" },
+                  "active_lease_count": { "type": "integer", "minimum": 0 },
+                  "recoverable_run_count": { "type": "integer", "minimum": 0 },
+                  "orphaned_run_count": { "type": "integer", "minimum": 0 },
+                  "drained_run_count": { "type": "integer", "minimum": 0 },
+                  "resumed_run_count": { "type": "integer", "minimum": 0 },
+                  "pending_delivery_count": { "type": "integer", "minimum": 0 },
+                  "stuck_delivery_count": { "type": "integer", "minimum": 0 },
+                  "verification_receipt_refs": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 },
+                    "uniqueItems": true
+                  },
+                  "created_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "release_id", "service_id", "generation", "state", "compatibility", "active_lease_count", "recoverable_run_count", "orphaned_run_count", "drained_run_count", "resumed_run_count", "pending_delivery_count", "stuck_delivery_count", "verification_receipt_refs", "created_at", "updated_at"]
+              },
+              "MigrationReceiptV1": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "schema_version": { "type": "string", "const": "migration-receipt/v1" },
+                  "migration_id": { "type": "string", "minLength": 1 },
+                  "binding_id": { "type": "string", "minLength": 1 },
+                  "source_generation": { "type": "integer", "minimum": 1 },
+                  "target_generation": { "type": "integer", "minimum": 1 },
+                  "route_generation": { "type": "integer", "minimum": 1 },
+                  "state": { "type": "string", "enum": ["proposed", "validating", "draining", "cutting_over", "recovering", "completed", "rolling_back", "rolled_back", "failed"] },
+                  "checkpoint_count": { "type": "integer", "minimum": 0 },
+                  "pending_delivery_count": { "type": "integer", "minimum": 0 },
+                  "rollback_generation": { "type": "integer", "minimum": 1 },
+                  "created_at": { "type": "string", "format": "date-time" },
+                  "updated_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["schema_version", "migration_id", "binding_id", "source_generation", "target_generation", "route_generation", "state", "checkpoint_count", "pending_delivery_count", "rollback_generation", "created_at", "updated_at"]
+              }
+            }
+          }

@@ -5,6 +5,10 @@ losing auditability, replayability, tenant safety, or public-repo clarity.
 
 The machine-readable vocabulary lives in `internal/agentplatform`.
 
+The proposed [Agent Service Lifecycle Contract](agent-service-lifecycle-contract.md) sits beside this contract. It
+defines topology-neutral service availability and durable run continuity while this contract remains authoritative
+for Cerebro capabilities, evidence, missions, actions, and policy.
+
 ## North Star
 
 Cerebro agents should explain and operate on security knowledge through typed contracts, governed capabilities,
@@ -63,6 +67,10 @@ Cerebro capabilities should be artifacts, not hidden prompt fragments:
 Security-agent behavior is exposed through `internal/agentplatform.SecurityControlPlaneSnapshot` and the
 `/api/v1/agent-platform/security-control-plane` route. The control plane is the registry that agents should reason
 from before touching graph context, connector tools, findings, memory, or remediation surfaces.
+
+The `mission_operating` block and `/api/v1/agent-platform/missions/contract` route define durable mandates,
+missions, beliefs, plan revisions, commitments, and wake conditions. Existing agent work is a projection of that
+contract, not a parallel transcript-backed lifecycle.
 
 The first supported integration strategies are:
 

@@ -395,6 +395,52 @@
       ]
     },
     {
+      "id": "agent-service-lifecycle",
+      "title": "Agent Service Lifecycle Contracts",
+      "summary": "Generates namespaced Go and TypeScript bindings from the public lifecycle contract and transition-event schemas.",
+      "change_reason": "Lifecycle schemas, generated bindings, or lifecycle generator behavior changed",
+      "triggers": [
+        "schemas/agent-service-lifecycle.schema.json",
+        "schemas/agent-service-lifecycle-contract.schema.json",
+        "internal/agentplatform/agent_service_lifecycle.go",
+        "internal/agentplatform/agent_service_lifecycle_generated.go",
+        "internal/agentplatform/lifecyclecontract/**",
+        "sdk/typescript/src/generated/agent-service-lifecycle.ts",
+        "sdk/typescript/src/generated/agent-service-lifecycle-contract.ts",
+        "tools/agentlifecyclegen/**"
+      ],
+      "generator": {
+        "make_target": "agent-service-lifecycle-generate",
+        "command": [
+          "make",
+          "agent-service-lifecycle-generate"
+        ],
+        "summary": "Regenerate Go and TypeScript lifecycle bindings from the reviewed JSON Schemas."
+      },
+      "checks": [
+        {
+          "key": "agent-service-lifecycle-check",
+          "summary": "Verify lifecycle schemas, generated bindings, and focused contract tests",
+          "make_target": "agent-service-lifecycle-check",
+          "command": [
+            "make",
+            "agent-service-lifecycle-check"
+          ],
+          "include_in_pr_generated_step": true
+        }
+      ],
+      "outputs": [
+        "internal/agentplatform/agent_service_lifecycle_generated.go",
+        "internal/agentplatform/lifecyclecontract/generated.go",
+        "sdk/typescript/src/generated/agent-service-lifecycle.ts",
+        "sdk/typescript/src/generated/agent-service-lifecycle-contract.ts"
+      ],
+      "ci_jobs": [
+        "codegen",
+        "sdk"
+      ]
+    },
+    {
       "id": "finding-dsl-schema",
       "title": "Finding DSL Schema",
       "summary": "Generates the JSON Schema used to validate PolicyFindingRule YAML authoring files.",

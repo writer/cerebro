@@ -30,6 +30,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -135,12 +136,12 @@ func serve() error {
 	deps.FindingRules = rules
 	recordContentPackStartup(context.Background(), selection.State)
 
-	app, err := bootstrap.NewWithError(cfg, deps, sources)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	app, err := bootstrap.NewWithContext(ctx, cfg, deps, sources)
 	if err != nil {
 		return fmt.Errorf("bootstrap app: %w", err)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	jobRecoveryDone := app.StartPlatformJobRecovery(ctx, log.Printf)
 	grcWarmupDone := startGRCReadModelWarmup(ctx, deps.StateStore, log.Printf)
 	riskBackfillDone := startFindingRiskBackfill(ctx, app, log.Printf)
@@ -522,6 +523,20 @@ func runSourceRuntime(args []string) error {
 		deps.AppendLog,
 		sourceProjector(deps.StateStore, deps.GraphStore),
 	))
+	admitter, err := eventadmission.NewNativeAdmitter(
+		ctx,
+		cfg.SourceRuntime.EventAdmissionWorkerPath,
+		cfg.SourceRuntime.EventAdmissionWorkers,
+	)
+	if err != nil {
+		return fmt.Errorf("configure source event admission: %w", err)
+	}
+	defer func() {
+		if err := admitter.Close(); err != nil {
+			log.Printf("close source event admission: %v", err)
+		}
+	}()
+	service.WithEventAdmitter(admitter)
 
 	switch args[0] {
 	case "bootstrap":

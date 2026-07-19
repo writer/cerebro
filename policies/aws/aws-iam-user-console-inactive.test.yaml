@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        password_enabled: true
+        password_last_used_days: 91
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        password_enabled: false
+        password_last_used_days: 91
+      wantFinding: false

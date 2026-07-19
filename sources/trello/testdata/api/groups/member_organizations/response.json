@@ -1,0 +1,125 @@
+{
+  "avatarHash": null,
+  "avatarSource": null,
+  "bio": "",
+  "bioData": {
+    "emoji": {}
+  },
+  "confirmed": true,
+  "email": "user-814bbfbd@example.test",
+  "fullName": "example-b1a1c2de",
+  "gravatarHash": "example-439d7119",
+  "id": "example-8c0ba460",
+  "idBoards": [
+    "example-be88cc7e",
+    "example-7eef733b",
+    "example-d71d8f23",
+    "example-47d46597",
+    "example-b9041a74",
+    "example-70ae51b3",
+    "example-bcee9ffd",
+    "example-e90dccc0",
+    "example-40c9e85a",
+    "example-0c46bc26",
+    "example-885b696a",
+    "example-240cbcca",
+    "example-72759845",
+    "example-7614105e"
+  ],
+  "idBoardsPinned": null,
+  "idOrganizations": [
+    "example-369c62e6"
+  ],
+  "idPremOrgsAdmin": [],
+  "initials": "example-3d30f595",
+  "loginTypes": [
+    "google",
+    "android",
+    "password"
+  ],
+  "memberType": "normal",
+  "oneTimeMessagesDismissed": [
+    "PowerUpsPaneExplainer",
+    "GoldIntro"
+  ],
+  "organizations": [
+    {
+      "activeBillableMemberCount": 2,
+      "billableMemberCount": 2,
+      "desc": "example-b514e4c6",
+      "descData": {
+        "emoji": {}
+      },
+      "displayName": "example-3e7d1e45",
+      "id": "example-369c62e6",
+      "idBoards": [
+        "example-d71d8f23",
+        "example-47d46597",
+        "example-b9041a74",
+        "example-70ae51b3"
+      ],
+      "idEnterprise": null,
+      "invitations": [],
+      "invited": false,
+      "logoHash": null,
+      "memberships": [
+        {
+          "id": "example-71068809",
+          "idMember": "example-8c0ba460",
+          "memberType": "admin",
+          "unconfirmed": false
+        },
+        {
+          "id": "example-8336356a",
+          "idMember": "example-71ad82ff",
+          "memberType": "normal",
+          "unconfirmed": false
+        }
+      ],
+      "name": "example-3e7d1e45",
+      "powerUps": [],
+      "prefs": {
+        "associatedDomain": null,
+        "boardVisibilityRestrict": {
+          "org": "org",
+          "private": "org",
+          "public": "org"
+        },
+        "externalMembersDisabled": false,
+        "googleAppsVersion": 1,
+        "orgInviteRestrict": [],
+        "permissionLevel": "private"
+      },
+      "premiumFeatures": [],
+      "products": [],
+      "url": "example-7e916ba0",
+      "website": null
+    }
+  ],
+  "prefs": {
+    "colorBlind": false,
+    "locale": "",
+    "minutesBeforeDeadlineToNotify": 1440,
+    "minutesBetweenSummaries": 1,
+    "sendSummaries": true
+  },
+  "premiumFeatures": [
+    "additionalStickers",
+    "customStickers",
+    "additionalBoardBackgrounds",
+    "customBoardBackgrounds",
+    "largeAttachments",
+    "customEmoji",
+    "savedSearches",
+    "crown",
+    "readSecrets"
+  ],
+  "products": [
+    37
+  ],
+  "status": "disconnected",
+  "trophies": [],
+  "uploadedAvatarHash": null,
+  "url": "example-207d3dda",
+  "username": "example-5c79ced4"
+}

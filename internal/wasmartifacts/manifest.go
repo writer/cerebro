@@ -97,23 +97,44 @@ var moduleSpecs = []ModuleSpec{
 	{
 		Name:         "sourcecoverage-evaluator",
 		ArtifactPath: "internal/sourcecoverage/evaluator.wasm",
-		SourcePath:   "internal/sourcecoverage/evaluator/src/lib.rs",
+		SourcePath:   "internal/sourcecoverage/evaluator/src/evaluation.rs",
 		ABIVersion:   1,
 		MaxSizeBytes: 175_000,
 	},
 	{
 		Name:         "panopticon-resource-extractor",
 		ArtifactPath: "internal/sourceprojection/panopticonresources.wasm",
-		SourcePath:   "internal/sourceprojection/panopticonresources/src/lib.rs",
+		SourcePath:   "internal/sourceprojection/panopticonresources/src/extraction.rs",
 		ABIVersion:   2,
 		MaxSizeBytes: 160_000,
 	},
 	{
 		Name:         "mitre-context-evaluator",
 		ArtifactPath: "internal/mitre/evaluator.wasm",
-		SourcePath:   "internal/mitre/evaluator/src/lib.rs",
+		SourcePath:   "internal/mitre/evaluator/src/evaluation.rs",
 		ABIVersion:   1,
 		MaxSizeBytes: 800_000,
+	},
+	{
+		Name:         "sourceruntime-event-admission",
+		ArtifactPath: "internal/sourceruntime/eventadmission/eventadmission.wasm",
+		SourcePath:   "internal/sourceruntime/eventadmission/src/lib.rs",
+		ABIVersion:   1,
+		MaxSizeBytes: 260_000,
+	},
+	{
+		Name:         "sourceruntime-record-kernel",
+		ArtifactPath: "internal/sourceruntime/recordkernel/recordkernel.wasm",
+		SourcePath:   "internal/sourceruntime/recordkernel/src/lib.rs",
+		ABIVersion:   1,
+		MaxSizeBytes: 200_000,
+	},
+	{
+		Name:         "security-path-evaluator",
+		ArtifactPath: "internal/securitypathdelta/evaluator.wasm",
+		SourcePath:   "crates/security-path-kernel/src/evaluation.rs",
+		ABIVersion:   1,
+		MaxSizeBytes: 400_000,
 	},
 }
 

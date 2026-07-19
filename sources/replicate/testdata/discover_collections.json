@@ -1,3 +1,21 @@
 [
-  "urn:cerebro:tenant:replicate_collections:source-replicate-collections-1"
+  "urn:cerebro:tenant:replicate_collections:vision-models",
+  "urn:cerebro:tenant:replicate_collections:t2i-adapter",
+  "urn:cerebro:tenant:replicate_collections:language-models-with-grammar",
+  "urn:cerebro:tenant:replicate_collections:sdxl-fine-tunes",
+  "urn:cerebro:tenant:replicate_collections:streaming-language-models",
+  "urn:cerebro:tenant:replicate_collections:image-editing",
+  "urn:cerebro:tenant:replicate_collections:embedding-models",
+  "urn:cerebro:tenant:replicate_collections:trainable-language-models",
+  "urn:cerebro:tenant:replicate_collections:language-models",
+  "urn:cerebro:tenant:replicate_collections:control-net",
+  "urn:cerebro:tenant:replicate_collections:audio-generation",
+  "urn:cerebro:tenant:replicate_collections:diffusion-models",
+  "urn:cerebro:tenant:replicate_collections:text-to-video",
+  "urn:cerebro:tenant:replicate_collections:image-to-text",
+  "urn:cerebro:tenant:replicate_collections:super-resolution",
+  "urn:cerebro:tenant:replicate_collections:style-transfer",
+  "urn:cerebro:tenant:replicate_collections:ml-makeovers",
+  "urn:cerebro:tenant:replicate_collections:image-restoration",
+  "urn:cerebro:tenant:replicate_collections:text-to-image"
 ]

@@ -1,0 +1,170 @@
+{
+  "data": [
+    {
+      "attributes": {
+        "bounty_awarded_at": null,
+        "closed_at": null,
+        "created_at": "2017-02-18T18:26:13.283Z",
+        "disclosed_at": null,
+        "first_program_activity_at": null,
+        "last_activity_at": "2017-02-18T18:26:13.387Z",
+        "last_program_activity_at": null,
+        "last_reporter_activity_at": "2017-02-18T18:26:13.387Z",
+        "state": "new",
+        "swag_awarded_at": null,
+        "title": "example-f3e14b7c",
+        "triaged_at": null,
+        "vulnerability_information": "example-047c0579"
+      },
+      "id": "example-2e2a5b58",
+      "relationships": {
+        "bounties": {
+          "data": []
+        },
+        "program": {
+          "data": {
+            "attributes": {
+              "created_at": "2015-05-29T20:12:03.091Z",
+              "handle": "example-c0b0109d",
+              "updated_at": "2017-02-17T15:18:04.114Z"
+            },
+            "id": "example-12fb7b83",
+            "type": "program"
+          }
+        },
+        "reporter": {
+          "data": {
+            "attributes": {
+              "created_at": "2017-02-18T18:21:28.638Z",
+              "disabled": false,
+              "name": "example-126cd01c",
+              "profile_picture": {
+                "110x110": "example-55f1d065",
+                "260x260": "example-55f1d065",
+                "62x62": "example-55f1d065",
+                "82x82": "example-55f1d065"
+              },
+              "username": "example-ef32d8d9"
+            },
+            "id": "example-a665a459",
+            "type": "user"
+          }
+        },
+        "severity": {
+          "data": {
+            "attributes": {
+              "attack_complexity": "low",
+              "attack_vector": "network",
+              "author_type": "User",
+              "availability": "none",
+              "confidentiality": "high",
+              "created_at": "2017-02-18T18:26:13.373Z",
+              "integrity": "high",
+              "privileges_required": "none",
+              "rating": "critical",
+              "scope": "unchanged",
+              "score": 9.1,
+              "user_id": 544066717,
+              "user_interaction": "none"
+            },
+            "id": "example-5a02928c",
+            "type": "severity"
+          }
+        },
+        "vulnerability_types": {
+          "data": [
+            {
+              "attributes": {
+                "created_at": "2016-01-28T13:34:08.945Z",
+                "description": "nope",
+                "name": "example-1626bf1c"
+              },
+              "id": "example-8b3ce918",
+              "type": "vulnerability-type"
+            }
+          ]
+        }
+      },
+      "type": "report"
+    },
+    {
+      "attributes": {
+        "bounty_awarded_at": null,
+        "closed_at": null,
+        "created_at": "2017-02-17T21:51:00.916Z",
+        "disclosed_at": null,
+        "first_program_activity_at": null,
+        "last_activity_at": "2017-02-17T21:51:01.110Z",
+        "last_program_activity_at": null,
+        "last_reporter_activity_at": "2017-02-17T21:51:01.110Z",
+        "state": "new",
+        "swag_awarded_at": null,
+        "title": "example-8aa53362",
+        "triaged_at": null,
+        "vulnerability_information": "example-739b9d66"
+      },
+      "id": "example-6d66c6c0",
+      "relationships": {
+        "bounties": {
+          "data": []
+        },
+        "program": {
+          "data": {
+            "attributes": {
+              "created_at": "2015-05-29T20:12:03.091Z",
+              "handle": "example-c0b0109d",
+              "updated_at": "2017-02-17T15:18:04.114Z"
+            },
+            "id": "example-12fb7b83",
+            "type": "program"
+          }
+        },
+        "reporter": {
+          "data": {
+            "attributes": {
+              "created_at": "2017-02-17T20:52:56.666Z",
+              "disabled": false,
+              "name": "example-1412312e",
+              "profile_picture": {
+                "110x110": "example-55f1d065",
+                "260x260": "example-55f1d065",
+                "62x62": "example-55f1d065",
+                "82x82": "example-55f1d065"
+              },
+              "username": "example-3bec5a87"
+            },
+            "id": "example-03ac6742",
+            "type": "user"
+          }
+        },
+        "severity": {
+          "data": {
+            "attributes": {
+              "author_type": "User",
+              "created_at": "2017-02-17T21:51:01.093Z",
+              "rating": "low",
+              "user_id": 209792592
+            },
+            "id": "example-1b20262e",
+            "type": "severity"
+          }
+        },
+        "vulnerability_types": {
+          "data": [
+            {
+              "attributes": {
+                "created_at": "2016-01-28T13:34:08.945Z",
+                "description": "Exposure of system information, sensitive or private information, fingerprinting, etc.\n",
+                "name": "example-1626bf1c"
+              },
+              "id": "example-8b3ce918",
+              "type": "vulnerability-type"
+            }
+          ]
+        }
+      },
+      "type": "report"
+    }
+  ],
+  "links": {}
+}

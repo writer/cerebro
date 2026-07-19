@@ -1,3 +1,6 @@
 [
-  "urn:cerebro:tenant:opendatasoft_datasets_facet:source-opendatasoft-datasets_facet-1"
+  "urn:cerebro:tenant:opendatasoft_datasets_facet:libelle_grand_domaine",
+  "urn:cerebro:tenant:opendatasoft_datasets_facet:libelle_domaine_professionnel",
+  "urn:cerebro:tenant:opendatasoft_datasets_facet:code_rome",
+  "urn:cerebro:tenant:opendatasoft_datasets_facet:libelle"
 ]

@@ -512,6 +512,19 @@ export type AgentPlatformInvariant = {
   statement: string;
 };
 
+export type AgentPlatformMissionOperatingContract = {
+  close_conditions: string[];
+  durable_records: { id?: string; purpose?: string; required?: string[] }[];
+  execution_depths: string[];
+  first_mandate: string;
+  id: string;
+  interruption_triggers: string[];
+  purpose: string;
+  schema_version: string;
+  supervisor_directives: string[];
+  wake_conditions: string[];
+};
+
 export type AgentPlatformPolicyCheck = {
   fields?: string[];
   id: string;
@@ -589,10 +602,13 @@ export type AgentPlatformRuntimeEvent = {
 export type AgentPlatformSecurityControlPlane = {
   action_ladder: Record<string, unknown>[];
   agent_profiles: Record<string, unknown>[];
+  agent_work: Record<string, unknown>;
+  claim_verification: Record<string, unknown>;
   connector_tool_gates: Record<string, unknown>[];
   eval_suite: Record<string, unknown>;
   evidence_packet: Record<string, unknown>;
   integration_strategies: Record<string, unknown>[];
+  mission_operating: AgentPlatformMissionOperatingContract;
   security_memory: Record<string, unknown>;
   simulation_harness: Record<string, unknown>;
   verifier_layer: Record<string, unknown>[];
@@ -676,6 +692,13 @@ export type AgentWorkflow = {
   resource: string;
   slack_bot_intent?: string;
   state_check: AgentNextAction;
+};
+
+export type AppendPolicyEvaluationDatasetRevisionRequest = {
+  cases: PolicyEvaluationDatasetCaseInput[];
+  change_summary: string;
+  expected_version: number;
+  [key: string]: unknown;
 };
 
 export type AssessmentCollectionReceipt = {
@@ -1128,6 +1151,19 @@ export type AuthErrorResponse = {
   required_scope?: string;
   retryable?: boolean;
   status: number;
+};
+
+export type BuildDecisionPacketRequest = {
+  audit_packet_ids?: string[];
+  budgets?: DecisionPacketBudgets;
+  claim_ids?: string[];
+  evidence_urns?: string[];
+  finding_ids?: string[];
+  question: string;
+  requested_action?: string;
+  required_sources?: string[];
+  scope_urn?: string;
+  workflow: string;
 };
 
 export type Claim = {
@@ -1591,11 +1627,32 @@ export type CoverageControlRef = {
 
 export type CreatePlatformJobRequest = {
   idempotency_key?: string;
-  kind: "source_runtime_sync" | "source_runtime_orchestrate" | "graph_ingest_runtime" | "finding_rules_evaluate" | "findings_evaluate" | "report_run";
+  kind: "source_runtime_sync" | "source_runtime_orchestrate" | "graph_ingest_runtime" | "finding_rules_evaluate" | "findings_evaluate" | "policy_candidate_experiment" | "report_run";
   payload?: Record<string, unknown>;
   subject_id?: string;
   subject_type?: string;
   tenant_id?: string;
+};
+
+export type CreatePolicyCandidateRequest = {
+  domain: string;
+  graph_evidence: PolicyCandidateGraphEvidenceInput;
+  grounding: PolicyCandidateGroundingInput;
+  hypothesis: string;
+  origin: PolicyCandidateOriginInput;
+  tenant_id: string;
+  [key: string]: unknown;
+};
+
+export type CreatePolicyEvaluationDatasetRequest = {
+  change_summary: string;
+  name: string;
+  [key: string]: unknown;
+};
+
+export type CreatePolicyExperimentRequest = {
+  runtime_id: string;
+  [key: string]: unknown;
 };
 
 export type CredentialStoreBinding = {
@@ -1691,6 +1748,172 @@ export type CredentialStoreUsage = {
   field_references: number;
   issues: number;
   last_updated_at?: string;
+};
+
+export type DecisionPacket = {
+  actions: DecisionPacketActionProposal[];
+  affected: DecisionPacketSubjectReference[];
+  audit_packets: DecisionPacketAuditPacketReference[];
+  claim: Record<string, unknown>;
+  confidence: DecisionPacketConfidence;
+  contradictions: DecisionPacketContradiction[];
+  controls: DecisionPacketControlReference[];
+  coverage_gaps: DecisionPacketCoverageGap[];
+  decision: DecisionPacketDecision;
+  evidence: DecisionPacketEvidenceReference[];
+  freshness: DecisionPacketFreshness;
+  generated_at: string;
+  guardrails: Record<string, unknown>;
+  id: string;
+  inputs: DecisionPacketInputs;
+  limits: DecisionPacketResultLimits;
+  provenance: DecisionPacketProvenance;
+  schema_version: string;
+  scope: DecisionPacketScope;
+  workflow: DecisionPacketWorkflow;
+};
+
+export type DecisionPacketActionProposal = {
+  action_id: string;
+  approval_requirements?: string[];
+  catalog_version?: string;
+  id: string;
+  proposal_digest?: string;
+  rationale: string;
+  state: "informational" | "proposal" | "approval_required";
+  target_urns: string[];
+};
+
+export type DecisionPacketAuditPacketReference = {
+  digest: string;
+  freshness: string;
+  generated_at: string;
+  id: string;
+  scope_urn?: string;
+};
+
+export type DecisionPacketBudgets = {
+  actions?: number;
+  affected?: number;
+  audit_packets?: number;
+  contradictions?: number;
+  controls?: number;
+  coverage_gaps?: number;
+  evidence?: number;
+  graph_depth?: number;
+  graph_rows?: number;
+};
+
+export type DecisionPacketConfidence = {
+  basis: string[];
+  level: "high" | "medium" | "low" | "unknown";
+};
+
+export type DecisionPacketContradiction = {
+  id: string;
+  left: DecisionPacketEvidenceReference;
+  predicate: string;
+  primary_claim: boolean;
+  resolution_state: "unresolved" | "resolved";
+  right: DecisionPacketEvidenceReference;
+  subject_urn: string;
+};
+
+export type DecisionPacketControlReference = {
+  applicability: string;
+  framework?: string;
+  id: string;
+};
+
+export type DecisionPacketCoverageGap = {
+  could_change_conclusion: boolean;
+  dimension?: string;
+  id: string;
+  reason: string;
+  required: boolean;
+  source_id?: string;
+  state: "complete" | "partial" | "stale" | "failed" | "unconfigured" | "unsupported" | "unverified";
+};
+
+export type DecisionPacketDecision = {
+  rationale?: string;
+  reasons: string[];
+  state: "supported" | "supported_with_gaps" | "blocked" | "insufficient_evidence" | "not_applicable";
+};
+
+export type DecisionPacketEvidenceReference = {
+  digest?: string;
+  id: string;
+  kind: string;
+  observed_at?: string;
+  predicate?: string;
+  source_id?: string;
+  subject_urn?: string;
+  urn?: string;
+  valid_from?: string;
+  valid_to?: string;
+  value?: string;
+};
+
+export type DecisionPacketFreshness = {
+  newest_observed_at?: string;
+  oldest_observed_at?: string;
+  required_stale: boolean;
+  state: "fresh" | "stale" | "unknown";
+};
+
+export type DecisionPacketInputs = {
+  audit_packet_ids: string[];
+  claim_ids: string[];
+  evidence_urns: string[];
+  finding_ids: string[];
+  requested_action?: string;
+  required_sources: string[];
+};
+
+export type DecisionPacketProvenance = {
+  coverage_digest: string;
+  evidence_digest: string;
+  resolver_ids: string[];
+  source_ids: string[];
+  trace_id?: string;
+};
+
+export type DecisionPacketResultLimit = {
+  applied: number;
+  requested: number;
+  returned: number;
+  total_known?: number;
+  truncated: boolean;
+};
+
+export type DecisionPacketResultLimits = {
+  actions?: DecisionPacketResultLimit;
+  affected?: DecisionPacketResultLimit;
+  audit_packets?: DecisionPacketResultLimit;
+  contradictions?: DecisionPacketResultLimit;
+  controls?: DecisionPacketResultLimit;
+  coverage_gaps?: DecisionPacketResultLimit;
+  evidence?: DecisionPacketResultLimit;
+  graph_depth?: DecisionPacketResultLimit;
+  graph_rows?: DecisionPacketResultLimit;
+};
+
+export type DecisionPacketScope = {
+  actor_id: string;
+  tenant_id: string;
+  urn?: string;
+};
+
+export type DecisionPacketSubjectReference = {
+  kind: string;
+  name?: string;
+  urn: string;
+};
+
+export type DecisionPacketWorkflow = {
+  id: string;
+  question: string;
 };
 
 export type DeviceEnrollRequest = {
@@ -4150,6 +4373,215 @@ export type PlatformJobListResponse = {
 
 export type PlatformJobResponse = {
   job: PlatformJob;
+};
+
+export type PolicyCandidate = {
+  artifacts?: PolicyCandidateArtifacts;
+  coverage_gap: PolicyCandidateCoverageGapReceipt;
+  created_at: string;
+  domain: string;
+  graph: { edge_count?: number; entity_types?: string[]; node_count?: number; relations?: string[] };
+  grounding: PolicyCandidateGroundingReceipt;
+  hypothesis: string;
+  id: string;
+  origin_kind: string;
+  pr_ready: boolean;
+  proof?: PolicyCandidateProof;
+  revision: number;
+  shadow?: PolicyCandidateShadowReceipt;
+  status: "grounded" | "proved" | "ready_for_review" | "blocked";
+  tenant_id: string;
+  updated_at: string;
+};
+
+export type PolicyCandidateArtifacts = {
+  policy_digest: string;
+  policy_path: string;
+  policy_yaml: string;
+  rule: Record<string, unknown>;
+  suite: Record<string, unknown>;
+  test_digest: string;
+  test_path: string;
+  test_yaml: string;
+};
+
+export type PolicyCandidateCoverageGapReceipt = {
+  candidate_signature: string;
+  catalog_digest: string;
+  compared_rule_count: number;
+  execution: "finding_rule_catalog";
+  observed_at: string;
+};
+
+export type PolicyCandidateGraphEvidenceInput = {
+  critical_edge: Record<string, unknown>;
+  edges: Record<string, unknown>[];
+  evidence_node_ids: string[];
+  nodes: Record<string, unknown>[];
+  [key: string]: unknown;
+};
+
+export type PolicyCandidateGroundingInput = {
+  bindings: Record<string, unknown>[];
+  [key: string]: unknown;
+};
+
+export type PolicyCandidateGroundingReceipt = {
+  edge_count: number;
+  execution: "graph_store";
+  node_count: number;
+  observed_at: string;
+  receipt_id: string;
+};
+
+export type PolicyCandidateOriginInput = {
+  external_ref: string;
+  kind: string;
+  [key: string]: unknown;
+};
+
+export type PolicyCandidateProof = {
+  policy_digest?: string;
+  policy_id?: string;
+  policy_path?: string;
+  receipts?: { detail?: string; execution?: string; gate?: string; passed?: boolean }[];
+  test_digest?: string;
+  test_path?: string;
+};
+
+export type PolicyCandidateShadowReceipt = {
+  execution: "graph_store";
+  match_count: number;
+  observed_at: string;
+  receipt_id: string;
+  truncated: boolean;
+};
+
+export type PolicyEvaluationDataset = {
+  aggregate_version: number;
+  candidate_id: string;
+  created_at: string;
+  current_revision_id: string;
+  id: string;
+  name: string;
+  updated_at: string;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetCase = {
+  content_digest: string;
+  dataset_id: string;
+  id: string;
+  ordinal: number;
+  revision_id: string;
+  test: PolicyEvaluationDatasetTestCase;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetCaseInput = {
+  id: string;
+  test: PolicyEvaluationDatasetTestCase;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetGraphEdge = {
+  attributes?: Record<string, string>;
+  fromUrn: string;
+  relation: string;
+  runtimeId?: string;
+  sourceId: string;
+  toUrn: string;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetGraphFixture = {
+  edges: PolicyEvaluationDatasetGraphEdge[];
+  nodes: PolicyEvaluationDatasetGraphNode[];
+  tenantId: "fixture" | "test";
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetGraphNode = {
+  attributes?: Record<string, string>;
+  entityType: string;
+  label?: string;
+  runtimeId?: string;
+  sourceId: string;
+  urn: string;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetResult = {
+  dataset: PolicyEvaluationDataset;
+  revision: PolicyEvaluationDatasetRevision;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetRevision = {
+  case_count: number;
+  change_summary: string;
+  content_digest: string;
+  created_at: string;
+  dataset_id: string;
+  id: string;
+  policy_digest: string;
+  predecessor_id?: string;
+  source_test_digest: string;
+  version: number;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetTestCase = {
+  graphFixture: PolicyEvaluationDatasetGraphFixture;
+  name: string;
+  wantEvidenceUrns?: string[];
+  wantFinding: boolean;
+  [key: string]: unknown;
+};
+
+export type PolicyExperiment = {
+  candidate_id: string;
+  created_at: string;
+  finished_at?: string;
+  id: string;
+  observation_count: number;
+  pins: PolicyExperimentPins;
+  revision: number;
+  started_at?: string;
+  status: "queued" | "running" | "completed" | "failed" | "blocked";
+  status_reason?: string;
+  tenant_id: string;
+  updated_at: string;
+};
+
+export type PolicyExperimentCheckpoint = {
+  complete: boolean;
+  current: boolean;
+  digest: string;
+  id: string;
+  runtime_id: string;
+  [key: string]: unknown;
+};
+
+export type PolicyExperimentObservation = {
+  checkpoint_id?: string;
+  created_at: string;
+  experiment_id: string;
+  id: string;
+  kind: string;
+  metrics?: Record<string, number>;
+  observed_at: string;
+  receipt_digest: string;
+  sequence: number;
+};
+
+export type PolicyExperimentPins = {
+  candidate_revision: number;
+  catalog_digest: string;
+  checkpoints: PolicyExperimentCheckpoint[];
+  dataset_digest: string;
+  policy_digest: string;
+  test_digest: string;
 };
 
 export type PromoteFindingCandidateRequest = {

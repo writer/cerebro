@@ -22,17 +22,20 @@ const (
 	EventKindFindingTicketLinked       = "workflow.v1.finding.ticket_linked"
 	EventKindFindingStatusChanged      = "workflow.v1.finding.status_changed"
 
-	EventAttributeTenantID     = "tenant_id"
-	EventAttributeSourceSystem = "source_system"
-	EventAttributeWorkflowKind = "workflow_kind"
-	EventAttributeDecisionID   = "decision_id"
-	EventAttributeActionID     = "action_id"
-	EventAttributeObservation  = "observation_digest"
-	EventAttributeOutcomeID    = "outcome_id"
-	EventAttributeFindingID    = "finding_id"
-	EventAttributeSourceEvent  = "source_event_id"
-	EventAttributeStatusSource = "status_source"
+	EventAttributeTenantID      = "tenant_id"
+	EventAttributeSourceSystem  = "source_system"
+	EventAttributeWorkflowKind  = "workflow_kind"
+	EventAttributeDecisionID    = "decision_id"
+	EventAttributeDecisionTrust = "decision_trust"
+	EventAttributeActionID      = "action_id"
+	EventAttributeObservation   = "observation_digest"
+	EventAttributeOutcomeID     = "outcome_id"
+	EventAttributeFindingID     = "finding_id"
+	EventAttributeSourceEvent   = "source_event_id"
+	EventAttributeStatusSource  = "status_source"
 )
+
+const DecisionTrustAuthenticatedPacket = "authenticated_packet_workflow"
 
 const (
 	FindingStatusReasonNoLongerEmitted      = "No longer emitted by latest rule evaluation."

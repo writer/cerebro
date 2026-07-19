@@ -1,0 +1,18 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: github
+family: org_inventory
+case: members
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedOrganizationMembers
+request:
+    method: GET
+    url: https://api.github.com/orgs/github/members?per_page=1
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-07-18T08:32:55Z"
+    sha256: ce463c28a5831b9399f758be8bce5ab7cb9b66d5c6582956baf9f9fb4ae7e4d0
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: operator_request

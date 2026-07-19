@@ -18,21 +18,17 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	source.allowLoopbackForTest()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			t.Fatalf("Authorization"+" = %q", r.Header.Get("Authorization"))
+		if r.URL.Query().Get("key") != "test-key" || r.URL.Query().Get("token") != "test-token" {
+			t.Fatalf("query = %q", r.URL.RawQuery)
 		}
-		if r.URL.RequestURI() == "/v1/me" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if r.URL.Path != "/v1/users" {
+		if r.URL.Path != "/1/members/me" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "record-1", "fullName": "Record One", "username": "record-one"})
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "token": "test-token"}
+	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "api_key": "test-key", "token": "test-token"}
 	cfg := sourcecdk.NewConfig(cfgValues)
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)

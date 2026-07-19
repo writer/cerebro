@@ -1,71 +1,78 @@
 [
   {
+    "id": "trello-tenant-groups-4c127b3284ff3304",
+    "tenant_id": "tenant",
+    "source_id": "trello",
+    "kind": "trello.groups",
+    "occurred_at": "2016-08-15T18:11:30Z",
+    "schema_ref": "trello/groups/v1",
+    "payload": {
+      "activeBillableMemberCount": 2,
+      "billableMemberCount": 2,
+      "desc": "example-b514e4c6",
+      "descData": {
+        "emoji": {}
+      },
+      "displayName": "example-3e7d1e45",
+      "id": "example-369c62e6",
+      "idBoards": [
+        "example-d71d8f23",
+        "example-47d46597",
+        "example-b9041a74",
+        "example-70ae51b3"
+      ],
+      "idEnterprise": null,
+      "invitations": [],
+      "invited": false,
+      "logoHash": null,
+      "memberships": [
+        {
+          "id": "example-71068809",
+          "idMember": "example-8c0ba460",
+          "memberType": "admin",
+          "unconfirmed": false
+        },
+        {
+          "id": "example-8336356a",
+          "idMember": "example-71ad82ff",
+          "memberType": "normal",
+          "unconfirmed": false
+        }
+      ],
+      "name": "example-3e7d1e45",
+      "powerUps": [],
+      "prefs": {
+        "associatedDomain": null,
+        "boardVisibilityRestrict": {
+          "org": "org",
+          "private": "org",
+          "public": "org"
+        },
+        "externalMembersDisabled": false,
+        "googleAppsVersion": 1,
+        "orgInviteRestrict": [],
+        "permissionLevel": "private"
+      },
+      "premiumFeatures": [],
+      "products": [],
+      "url": "example-7e916ba0",
+      "website": null
+    },
     "attributes": {
-      "api_method": "GET",
-      "api_path": "/v1/groups",
-      "description": "Trello Groups Fixture identity_group",
-      "domain": "domain-source-trello-groups-1",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-trello-groups-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-trello-groups-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/trello/groups/source-trello-groups-1",
-      "external_id": "source-trello-groups-1",
+      "description": "example-b514e4c6",
+      "external_id": "example-369c62e6",
       "family": "groups",
-      "group_email": "group@trello.example.test",
-      "group_id": "source-trello-groups-1",
-      "group_name": "Trello Groups Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
+      "group_id": "example-369c62e6",
+      "group_name": "example-3e7d1e45",
       "provider": "trello",
       "record_class": "identity_group",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-trello-groups-1",
-      "resource_name": "Trello Groups Fixture",
-      "resource_type": "groups",
-      "resource_urn": "urn:cerebro:tenant:trello_groups:source-trello-groups-1",
+      "resource_id": "example-369c62e6",
+      "resource_name": "example-3e7d1e45",
       "schema": "groups",
-      "source_event_id": "source-trello-groups-1",
+      "source_event_id": "example-369c62e6",
       "source_provider": "trello",
       "source_system": "trello",
       "tenant_id": "tenant"
-    },
-    "id": "source-trello-groups-event-1",
-    "kind": "trello.groups",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/v1/groups",
-      "description": "Trello Groups Fixture identity_group",
-      "domain": "domain-source-trello-groups-1",
-      "event_id": "source-trello-groups-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-trello-groups-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-trello-groups-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/trello/groups/source-trello-groups-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/trello/groups/source-trello-groups-1",
-      "family": "groups",
-      "group_email": "group@trello.example.test",
-      "group_id": "source-trello-groups-1",
-      "group_name": "Trello Groups Fixture",
-      "id": "source-trello-groups-1",
-      "name": "Trello Groups Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "identity_group",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-trello-groups-1",
-      "resource_type": "groups",
-      "resource_urn": "urn:cerebro:tenant:trello_groups:source-trello-groups-1",
-      "schema_ref": "trello/groups/v1",
-      "source_id": "trello",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "trello/groups/v1",
-    "source_id": "trello",
-    "tenant_id": "tenant"
+    }
   }
 ]

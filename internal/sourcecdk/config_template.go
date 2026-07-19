@@ -11,6 +11,21 @@ func ConfigValue(cfg Config, key string) string {
 	return strings.TrimSpace(value)
 }
 
+// IsAuthoritativeProjectionFamily reports whether the configured source family
+// can reconcile a complete inventory instead of an incremental event stream.
+func IsAuthoritativeProjectionFamily(cfg Config, defaultFamily string, excluded ...string) bool {
+	family := ConfigValue(cfg, "family")
+	if family == "" {
+		family = strings.TrimSpace(defaultFamily)
+	}
+	for _, candidate := range excluded {
+		if family == strings.TrimSpace(candidate) {
+			return false
+		}
+	}
+	return true
+}
+
 // RequiredConfigValue returns a trimmed required config value.
 func RequiredConfigValue(sourceID string, cfg Config, key string) (string, error) {
 	key = strings.TrimSpace(key)

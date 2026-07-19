@@ -51,6 +51,23 @@ type LLMClient interface {
 	Summarize(context.Context, SummarizeRequest) (string, error)
 }
 
+// StructuredJSONRequest asks a configured model for one schema-bound JSON
+// object. Prompt and Context are never recorded by graph-agent telemetry.
+type StructuredJSONRequest struct {
+	TenantID   string
+	Kind       string
+	Prompt     string
+	SchemaJSON string
+	Context    map[string]any
+	Model      string
+}
+
+// StructuredJSONClient is an optional capability implemented by providers
+// that can serve non-Cypher schema-bound authoring through the same runtime.
+type StructuredJSONClient interface {
+	DraftStructuredJSON(context.Context, StructuredJSONRequest) ([]byte, error)
+}
+
 type LLMProber interface {
 	Probe(context.Context) error
 }

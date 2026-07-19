@@ -853,6 +853,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"sentinelone.threat":                            sentinelOneThreatProjections,
 	"sentinelone.vulnerability":                     sentinelOneVulnerabilityProjections,
 	"trusted_endpoint.action_outcome":               trustedEndpointProjections,
+	"trusted_endpoint.agent_execution_receipt":      trustedEndpointProjections,
 	"trusted_endpoint.agent_identity":               trustedEndpointProjections,
 	"trusted_endpoint.ai_session_summary":           trustedEndpointProjections,
 	"trusted_endpoint.ai_workflow_risk":             trustedEndpointProjections,

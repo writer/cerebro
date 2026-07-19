@@ -20,6 +20,10 @@ func (a *App) handleAgentPlatformContract(w http.ResponseWriter, _ *http.Request
 	writeJSON(w, http.StatusOK, agentplatform.Snapshot())
 }
 
+func (a *App) handleAgentServiceLifecycleContract(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, agentplatform.AgentServiceLifecycle())
+}
+
 func (a *App) handleA2AAgentCard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	writeJSON(w, http.StatusOK, agentplatform.BuildA2AAgentCard(externalOrigin(r, a.cfg.Auth.RequestOrigin)))
@@ -77,6 +81,9 @@ func (a *App) handleAgentPlatformCapabilities(w http.ResponseWriter, r *http.Req
 
 func (a *App) handleAgentPlatformSecurityControlPlane(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, agentplatform.SecurityControlPlaneSnapshot())
+}
+func (a *App) handleAgentPlatformMissionContract(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, agentplatform.SecurityControlPlaneSnapshot().MissionOperating)
 }
 
 func (a *App) handleAgentPlatformCapabilityDecision(w http.ResponseWriter, r *http.Request) {

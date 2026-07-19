@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        external_sharing_enabled: true
+        external_user_count: 1
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        external_sharing_enabled: false
+        external_user_count: 1
+      wantFinding: false

@@ -1,0 +1,59 @@
+{
+  "links": [
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/records?limit=1\u0026offset=0\u0026include_app_metas=False\u0026include_links=False",
+      "rel": "self"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/records?limit=1\u0026offset=0\u0026include_app_metas=False\u0026include_links=False",
+      "rel": "first"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/records?limit=1\u0026offset=9999\u0026include_app_metas=False\u0026include_links=False",
+      "rel": "last"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/records?limit=1\u0026offset=1\u0026include_app_metas=False\u0026include_links=False",
+      "rel": "next"
+    }
+  ],
+  "records": [
+    {
+      "links": [
+        {
+          "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale/records/afdc2e84853b71c841cb25f1bdfe2744518b7115",
+          "rel": "self"
+        },
+        {
+          "href": "https://public.opendatasoft.com/api/v2/catalog/datasets",
+          "rel": "datasets"
+        },
+        {
+          "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/pole-emploi-rome-arborescence-principale",
+          "rel": "dataset"
+        }
+      ],
+      "record": {
+        "fields": {
+          "code_naf": "01",
+          "code_ogr": "19705",
+          "code_rome": "A1301",
+          "code_rome_2": "A1301",
+          "domaine_pro": "A13",
+          "domaine_pro_2": "Etudes et assistance technique",
+          "domaine_professionnel": "13",
+          "fiche_rome": "01",
+          "grand_domaine": "A",
+          "label_naf": "Culture et production animale, chasse et services annexes",
+          "libelle": "Technicien / Technicienne cunicole",
+          "libelle_domaine_professionnel": "Etudes et assistance technique",
+          "libelle_grand_domaine": "Agriculture et Pêche, Espaces naturels et Espaces verts, Soins aux animaux"
+        },
+        "id": "afdc2e84853b71c841cb25f1bdfe2744518b7115",
+        "size": 296,
+        "timestamp": "2025-03-31T08:16:08.774Z"
+      }
+    }
+  ],
+  "total_count": 33722
+}

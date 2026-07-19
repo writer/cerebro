@@ -2,6 +2,7 @@
 
 # Build stage - use buildx cross-compilation (no QEMU needed)
 ARG GO_VERSION=1.26.5
+ARG RUST_VERSION=1.93.1
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
 
 ARG TARGETOS
@@ -29,6 +30,21 @@ RUN --mount=type=cache,id=cerebro-go-mod-cache,target=/go/pkg/mod,sharing=locked
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -p=${GO_BUILD_PARALLELISM} -buildvcs=false -trimpath -ldflags="-s -w" -o /cerebro ./cmd/cerebro
 
+FROM --platform=$TARGETPLATFORM rust:${RUST_VERSION}-alpine AS rust-builder
+
+WORKDIR /app
+
+RUN apk add --no-cache build-base musl-dev
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY internal ./internal
+COPY tools ./tools
+
+RUN --mount=type=cache,id=cerebro-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cerebro-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    cargo build --locked --release -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker
+
 # Runtime image
 FROM alpine:3.24
 
@@ -37,7 +53,8 @@ RUN apk upgrade --no-cache && \
     addgroup -S cerebro && \
     adduser -S -G cerebro -u 10001 cerebro
 
-COPY --from=builder /cerebro /usr/local/bin/cerebro
+COPY --from=builder --chmod=0755 /cerebro /usr/local/bin/cerebro
+COPY --from=rust-builder --chmod=0755 /app/target/release/cerebro-event-admission-worker /usr/local/bin/cerebro-event-admission-worker
 COPY policies /app/policies
 
 WORKDIR /app

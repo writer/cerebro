@@ -1,3 +1,10 @@
 [
-  "urn:cerebro:tenant:cloudflare_zone_ruleset:zone-ruleset-1"
+  "urn:cerebro:tenant:cloudflare_zone_ruleset:example-41d020cc",
+  "urn:cerebro:tenant:cloudflare_zone_ruleset:example-01ab8a8f",
+  "urn:cerebro:tenant:cloudflare_zone_ruleset:example-5f17964c",
+  "urn:cerebro:tenant:cloudflare_zone_ruleset:example-1b4577e1",
+  "urn:cerebro:tenant:cloudflare_zone_ruleset:example-183f56a2",
+  "urn:cerebro:tenant:cloudflare_zone_ruleset:example-be357264",
+  "urn:cerebro:tenant:cloudflare_zone_ruleset:example-6165bba5",
+  "urn:cerebro:tenant:cloudflare_zone_ruleset:example-2a6b721c"
 ]

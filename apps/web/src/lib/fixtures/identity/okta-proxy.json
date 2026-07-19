@@ -1,0 +1,17 @@
+{
+  "name": "Okta proxy headers",
+  "env": {
+    "CEREBRO_IDENTITY_PROFILE": "okta-proxy"
+  },
+  "headers": {
+    "x-okta-email": "security.person@example.com",
+    "x-okta-name": "Security Person",
+    "x-okta-user": "security.person"
+  },
+  "expected": {
+    "actorId": "security.person@example.com",
+    "confidence": "trusted-proxy",
+    "provider": "okta",
+    "source": "headers"
+  }
+}

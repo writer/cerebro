@@ -622,6 +622,7 @@ var exactRouteLabels = map[string]struct{}{
 	"/api/v1/agent-platform/contract":                                     {},
 	"/api/v1/agent-platform/capabilities":                                 {},
 	"/api/v1/agent-platform/security-control-plane":                       {},
+	"/api/v1/agent-platform/missions/contract":                            {},
 	"/api/v1/agent-platform/capability-decisions":                         {},
 	"/api/v1/agent-platform/preflight":                                    {},
 	"/api/v1/agent-platform/evidence-packets":                             {},

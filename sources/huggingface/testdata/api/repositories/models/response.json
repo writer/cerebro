@@ -1,0 +1,29 @@
+[
+  {
+    "_id": "example-0b3a92a6",
+    "createdAt": "2022-03-02T23:29:04.000Z",
+    "downloads": 802203,
+    "id": "google-bert/bert-base-chinese",
+    "library_name": "transformers",
+    "likes": 1448,
+    "modelId": "google-bert/bert-base-chinese",
+    "pipeline_tag": "fill-mask",
+    "private": false,
+    "tags": [
+      "transformers",
+      "pytorch",
+      "tf",
+      "jax",
+      "safetensors",
+      "bert",
+      "fill-mask",
+      "zh",
+      "arxiv:1810.04805",
+      "license:apache-2.0",
+      "endpoints_compatible",
+      "deploy:azure",
+      "region:us"
+    ],
+    "trendingScore": 2
+  }
+]

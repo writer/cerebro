@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/wasmhost"
 	"github.com/writer/cerebro/internal/wasmjson"
 )
 
@@ -85,7 +86,7 @@ func evaluateCoverage(ctx context.Context, contracts []sourcecdk.CoverageContrac
 	}
 	var response coverageEvaluationResponse
 	if err := json.Unmarshal(result, &response); err != nil {
-		return nil, fmt.Errorf("%w: decode response: %w", ErrEvaluatorUnavailable, err)
+		return nil, wasmhost.Diagnose(wasmhost.DiagnosticOutputInvalid, fmt.Errorf("%w: decode response: %w", ErrEvaluatorUnavailable, err))
 	}
 	if response.Records == nil {
 		response.Records = []Record{}

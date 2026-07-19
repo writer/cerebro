@@ -7,6 +7,7 @@ option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
 import "cerebro/v1/primitives.proto";
 import "cerebro/v1/source.proto";
 import "cerebro/v1/finding.proto";
+import "cerebro/v1/decision.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -58,6 +59,7 @@ service BootstrapService {
   rpc GetGraphIngestRun(GetGraphIngestRunRequest) returns (GetGraphIngestRunResponse);
   rpc ListGraphIngestRuns(ListGraphIngestRunsRequest) returns (ListGraphIngestRunsResponse);
   rpc CheckGraphIngestHealth(CheckGraphIngestHealthRequest) returns (CheckGraphIngestHealthResponse);
+  rpc BuildDecisionPacket(BuildDecisionPacketRequest) returns (BuildDecisionPacketResponse);
 }
 
 // GetVersionRequest requests static build metadata from the running service.
@@ -300,6 +302,8 @@ message GetSourceRuntimeResponse {
 message SyncSourceRuntimeRequest {
   string id = 1;
   uint32 page_limit = 2;
+  // event_limit bounds appended events at whole-page commit boundaries. Zero is unlimited.
+  uint32 event_limit = 3;
 }
 
 // SyncSourceRuntimeResponse returns the updated runtime and sync totals.
@@ -312,6 +316,7 @@ message SyncSourceRuntimeResponse {
   uint32 links_projected = 6;
   string short_circuit_reason = 7;
   string reconciliation_reason = 8;
+  bool event_limit_reached = 9;
 }
 
 // WriteClaimsRequest persists one batch of runtime-scoped claims.
@@ -665,6 +670,9 @@ message WriteDecisionRequest {
   google.protobuf.Timestamp valid_to = 13;
   double confidence = 14;
   google.protobuf.Struct metadata = 15;
+  string packet_id = 16;
+  string decision_disposition = 17;
+  string disposition_reason = 18;
 }
 
 // WriteDecisionResponse returns the recorded decision identifier and target count.
@@ -722,6 +730,7 @@ message WriteOutcomeRequest {
   google.protobuf.Timestamp valid_to = 11;
   double confidence = 12;
   google.protobuf.Struct metadata = 13;
+  string audit_packet_export_receipt_id = 14;
 }
 
 // WriteOutcomeResponse returns the recorded outcome identifier, decision, and target count.

@@ -145,8 +145,15 @@ class RustWorkspacePolicyTests(unittest.TestCase):
         #[unsafe(no_mangle)] pub extern "C" fn alloc() -> u32 { 0 }
         #[unsafe(no_mangle)] pub extern "C" fn evaluate() -> u32 { 0 }
         '''
-        abi_path = "internal/mitre/evaluator/src/wasm_abi.rs"
-        self.assertEqual(rust_workspace_policy.validate_unsafe_source(abi_path, abi_source), [])
+        for abi_path in (
+            "internal/mitre/evaluator/src/wasm_abi.rs",
+            "internal/sourceruntime/eventadmission/src/wasm_abi.rs",
+            "internal/sourceruntime/recordkernel/src/wasm_abi.rs",
+        ):
+            with self.subTest(abi_path=abi_path):
+                self.assertEqual(
+                    rust_workspace_policy.validate_unsafe_source(abi_path, abi_source), []
+                )
 
         widened = abi_source + "unsafe fn extra() {}\n"
         self.assertIn(
@@ -182,6 +189,45 @@ class RustWorkspacePolicyTests(unittest.TestCase):
 
         self.assertIn(
             "crates/control-kernel/src/lib.rs: safe-only crate must forbid unsafe_code", errors
+        )
+
+    def test_rejects_large_crate_root_and_filesystem_in_pure_module(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            manifest = self.root_manifest("serde = \"1.0.228\"").replace(
+                'members = ["member"]', 'members = ["tools/graphactiongen"]'
+            )
+            self.write_manifest(root / "Cargo.toml", manifest)
+            self.write_manifest(
+                root / "tools/graphactiongen/Cargo.toml",
+                """
+                [package]
+                name = "graphactiongen"
+                version = "0.1.0"
+
+                [dependencies]
+                serde.workspace = true
+
+                [lints]
+                workspace = true
+                """,
+            )
+            source = root / "tools/graphactiongen/src"
+            source.mkdir(parents=True)
+            (source / "lib.rs").write_text(
+                "mod catalog;\nmod error;\nmod filesystem;\nmod render;\n" + "// growth\n" * 40,
+                encoding="utf-8",
+            )
+            (source / "catalog.rs").write_text("use std::fs;\n", encoding="utf-8")
+            errors = rust_workspace_policy.validate_workspace(root)
+
+        self.assertIn(
+            "tools/graphactiongen/src/lib.rs: crate root must remain a thin module facade",
+            errors,
+        )
+        self.assertIn(
+            "tools/graphactiongen/src/catalog.rs: pure evaluation module must not access filesystem marker std::fs",
+            errors,
         )
 
     @staticmethod

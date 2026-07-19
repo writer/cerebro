@@ -64,13 +64,13 @@ func New(config Config) *Runtime {
 // Run invokes call with a fresh module instance governed by the configured timeout.
 func (r *Runtime) Run(ctx context.Context, call func(context.Context, api.Module) error) error {
 	if r == nil {
-		return fmt.Errorf("%w: runtime is required", ErrInvalidConfig)
+		return Diagnose(DiagnosticInvalidInput, fmt.Errorf("%w: runtime is required", ErrInvalidConfig))
 	}
 	if ctx == nil {
-		return r.errorfWith(ErrInvalidConfig, "context is required")
+		return Diagnose(DiagnosticInvalidInput, r.errorfWith(ErrInvalidConfig, "context is required"))
 	}
 	if call == nil {
-		return r.errorfWith(ErrInvalidConfig, "call function is required")
+		return Diagnose(DiagnosticInvalidInput, r.errorfWith(ErrInvalidConfig, "call function is required"))
 	}
 	r.once.Do(func() {
 		r.initialize(ctx)
@@ -83,12 +83,23 @@ func (r *Runtime) Run(ctx context.Context, call func(context.Context, api.Module
 	defer cancel()
 	module, err := r.runtime.InstantiateModule(callCtx, r.compiled, moduleConfig())
 	if err != nil {
-		return r.wrap("instantiate module", err)
+		return DiagnoseContextOr(callCtx, DiagnosticMemoryViolation, r.wrap("instantiate module", err))
 	}
 	defer func() {
 		_ = module.Close(callCtx)
 	}()
-	return call(callCtx, module)
+	return DiagnoseContext(callCtx, call(callCtx, module))
+}
+
+// Close releases the compiled module and runtime. It must not run concurrently with Run.
+func (r *Runtime) Close(ctx context.Context) error {
+	if r == nil || r.runtime == nil {
+		return nil
+	}
+	if ctx == nil {
+		return Diagnose(DiagnosticInvalidInput, r.errorfWith(ErrInvalidConfig, "context is required"))
+	}
+	return r.runtime.Close(ctx)
 }
 
 // Pointer returns the single Wasm32 pointer produced by an allocation call.
@@ -98,10 +109,10 @@ func Pointer(results []uint64, operation string) (uint32, error) {
 		operation = "allocation"
 	}
 	if len(results) != 1 {
-		return 0, fmt.Errorf("%s returned %d values; want 1", operation, len(results))
+		return 0, Diagnose(DiagnosticMemoryViolation, fmt.Errorf("%s returned %d values; want 1", operation, len(results)))
 	}
 	if results[0] > math.MaxUint32 {
-		return 0, fmt.Errorf("%s pointer exceeds the Wasm32 address space", operation)
+		return 0, Diagnose(DiagnosticMemoryViolation, fmt.Errorf("%s pointer exceeds the Wasm32 address space", operation))
 	}
 	return uint32(results[0]), nil // #nosec G115 -- the value is bounded to MaxUint32 above.
 }
@@ -117,7 +128,7 @@ func (r *Runtime) initialize(ctx context.Context) {
 	r.runtime = wazero.NewRuntimeWithConfig(initCtx, config)
 	r.compiled, r.err = r.runtime.CompileModule(initCtx, r.config.Module)
 	if r.err != nil {
-		r.err = r.wrap("compile module", r.err)
+		r.err = DiagnoseContextOr(initCtx, DiagnosticABIViolation, r.wrap("compile module", r.err))
 		r.closeRuntime(initCtx)
 		return
 	}
@@ -128,7 +139,7 @@ func (r *Runtime) initialize(ctx context.Context) {
 	}
 	module, err := r.runtime.InstantiateModule(initCtx, r.compiled, moduleConfig())
 	if err != nil {
-		r.err = r.wrap("instantiate module for ABI check", err)
+		r.err = DiagnoseContextOr(initCtx, DiagnosticMemoryViolation, r.wrap("instantiate module for ABI check", err))
 		r.closeRuntime(initCtx)
 		return
 	}
@@ -138,42 +149,46 @@ func (r *Runtime) initialize(ctx context.Context) {
 	versionFunction := module.ExportedFunction(r.config.ABIVersionExport)
 	version, err := versionFunction.Call(initCtx)
 	if err != nil {
-		r.err = r.wrap("read ABI version", err)
+		r.err = DiagnoseContextOr(initCtx, DiagnosticABIViolation, r.wrap("read ABI version", err))
 		r.closeRuntime(initCtx)
 		return
 	}
 	if len(version) != 1 || version[0] != r.config.ABIVersion {
-		r.err = r.errorf("ABI version = %v; want %d", version, r.config.ABIVersion)
+		r.err = Diagnose(DiagnosticABIViolation, r.errorf("ABI version = %v; want %d", version, r.config.ABIVersion))
 		r.closeRuntime(initCtx)
 	}
 }
 
 func (r *Runtime) validateConfig() error {
+	var err error
 	switch {
 	case r.config.Name == "":
-		return r.errorfWith(ErrInvalidConfig, "name is required")
+		err = r.errorfWith(ErrInvalidConfig, "name is required")
 	case len(r.config.Module) == 0:
-		return r.errorfWith(ErrInvalidConfig, "module is empty")
+		err = r.errorfWith(ErrInvalidConfig, "module is empty")
 	case r.config.ABIVersionExport == "":
-		return r.errorfWith(ErrInvalidConfig, "ABI version export is required")
+		err = r.errorfWith(ErrInvalidConfig, "ABI version export is required")
 	case len(r.config.Functions) == 0:
-		return r.errorfWith(ErrInvalidConfig, "required functions are empty")
+		err = r.errorfWith(ErrInvalidConfig, "required functions are empty")
 	case r.config.MemoryLimitPages == 0:
-		return r.errorfWith(ErrInvalidConfig, "memory limit must be positive")
+		err = r.errorfWith(ErrInvalidConfig, "memory limit must be positive")
 	case r.config.MemoryLimitPages > wasm32MaxMemoryPages:
-		return r.errorfWith(ErrInvalidConfig, "memory limit must not exceed %d pages", wasm32MaxMemoryPages)
+		err = r.errorfWith(ErrInvalidConfig, "memory limit must not exceed %d pages", wasm32MaxMemoryPages)
 	case r.config.InitializeTimeout <= 0:
-		return r.errorfWith(ErrInvalidConfig, "initialization timeout must be positive")
+		err = r.errorfWith(ErrInvalidConfig, "initialization timeout must be positive")
 	case r.config.CallTimeout <= 0:
-		return r.errorfWith(ErrInvalidConfig, "call timeout must be positive")
+		err = r.errorfWith(ErrInvalidConfig, "call timeout must be positive")
+	}
+	if err != nil {
+		return Diagnose(DiagnosticInvalidInput, err)
 	}
 	seen := make(map[string]struct{}, len(r.config.Functions))
 	for _, function := range r.config.Functions {
 		if function.Name == "" {
-			return r.errorfWith(ErrInvalidConfig, "required function name is empty")
+			return Diagnose(DiagnosticInvalidInput, r.errorfWith(ErrInvalidConfig, "required function name is empty"))
 		}
 		if _, ok := seen[function.Name]; ok {
-			return r.errorfWith(ErrInvalidConfig, "required function %q is duplicated", function.Name)
+			return Diagnose(DiagnosticInvalidInput, r.errorfWith(ErrInvalidConfig, "required function %q is duplicated", function.Name))
 		}
 		seen[function.Name] = struct{}{}
 	}
@@ -182,10 +197,10 @@ func (r *Runtime) validateConfig() error {
 
 func (r *Runtime) validateABI() error {
 	if len(r.compiled.ImportedFunctions()) != 0 || len(r.compiled.ImportedMemories()) != 0 {
-		return r.errorf("module must not import functions or memory")
+		return Diagnose(DiagnosticABIViolation, r.errorf("module must not import functions or memory"))
 	}
 	if _, ok := r.compiled.ExportedMemories()["memory"]; !ok {
-		return r.errorf("memory export is missing")
+		return Diagnose(DiagnosticMemoryViolation, r.errorf("memory export is missing"))
 	}
 	exports := r.compiled.ExportedFunctions()
 	required := append([]Function{{
@@ -195,10 +210,10 @@ func (r *Runtime) validateABI() error {
 	for _, expected := range required {
 		definition, ok := exports[expected.Name]
 		if !ok {
-			return r.errorf("export %q is missing", expected.Name)
+			return Diagnose(DiagnosticABIViolation, r.errorf("export %q is missing", expected.Name))
 		}
 		if !slices.Equal(definition.ParamTypes(), expected.Params) || !slices.Equal(definition.ResultTypes(), expected.Results) {
-			return r.errorf("export %q has an incompatible signature", expected.Name)
+			return Diagnose(DiagnosticABIViolation, r.errorf("export %q has an incompatible signature", expected.Name))
 		}
 	}
 	return nil

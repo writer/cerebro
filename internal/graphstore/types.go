@@ -97,6 +97,14 @@ const (
 	IngestRunStatusFailed    = "failed"
 )
 
+// IngestRunGraphCounts records graph topology before and after one ingest.
+type IngestRunGraphCounts struct {
+	GraphNodesBefore int64 `json:"graph_nodes_before,omitempty"`
+	GraphLinksBefore int64 `json:"graph_links_before,omitempty"`
+	GraphNodesAfter  int64 `json:"graph_nodes_after,omitempty"`
+	GraphLinksAfter  int64 `json:"graph_links_after,omitempty"`
+}
+
 // IngestRun records one operational graph ingest attempt.
 type IngestRun struct {
 	ID                 string `json:"id"`
@@ -108,20 +116,22 @@ type IngestRun struct {
 	CheckpointComplete bool   `json:"checkpoint_complete"`
 	// CheckpointCompleteKnown distinguishes legacy runs without checkpoint
 	// terminal-state metadata from runs that explicitly persisted false.
-	CheckpointCompleteKnown bool   `json:"-"`
-	Status                  string `json:"status"`
-	Trigger                 string `json:"trigger,omitempty"`
-	PagesRead               int64  `json:"pages_read"`
-	EventsRead              int64  `json:"events_read"`
-	EntitiesProjected       int64  `json:"entities_projected"`
-	LinksProjected          int64  `json:"links_projected"`
-	GraphNodesBefore        int64  `json:"graph_nodes_before,omitempty"`
-	GraphLinksBefore        int64  `json:"graph_links_before,omitempty"`
-	GraphNodesAfter         int64  `json:"graph_nodes_after,omitempty"`
-	GraphLinksAfter         int64  `json:"graph_links_after,omitempty"`
-	StartedAt               string `json:"started_at,omitempty"`
-	FinishedAt              string `json:"finished_at,omitempty"`
-	Error                   string `json:"error,omitempty"`
+	CheckpointCompleteKnown             bool   `json:"-"`
+	Status                              string `json:"status"`
+	Trigger                             string `json:"trigger,omitempty"`
+	PagesRead                           int64  `json:"pages_read"`
+	EventsRead                          int64  `json:"events_read"`
+	EntitiesProjected                   int64  `json:"entities_projected"`
+	LinksProjected                      int64  `json:"links_projected"`
+	MaterialLinkReconciliationRequested bool   `json:"material_link_reconciliation_requested,omitempty"`
+	MaterialLinkReconciliationSupported bool   `json:"material_link_reconciliation_supported,omitempty"`
+	MaterialLinkReconciliationCompleted bool   `json:"material_link_reconciliation_completed,omitempty"`
+	ProjectionReconciliationID          string `json:"projection_reconciliation_id,omitempty"`
+	StaleMaterialLinksDeleted           int64  `json:"stale_material_links_deleted,omitempty"`
+	IngestRunGraphCounts
+	StartedAt  string `json:"started_at,omitempty"`
+	FinishedAt string `json:"finished_at,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // CheckpointCompleteValue returns nil when a legacy run has no persisted

@@ -28,17 +28,14 @@ func TestMastodonAuditProjection(t *testing.T) {
 	}
 }
 
-func TestMastodonSecretProjection(t *testing.T) {
-	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "mastodon", Kind: "mastodon.verify_credential", Attributes: map[string]string{"secret_id": "secret-1", "secret_name": "DB Password", "secret_type": "password", "secret_status": "active", "evidence_id": "evidence-1"}}
-	entities, links, err := mastodonVerifyCredentialProjections(event)
+func TestMastodonVerifiedAccountProjection(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "mastodon", Kind: "mastodon.verify_credential", Attributes: map[string]string{"user_id": "user-1", "login": "user", "display_name": "User One"}}
+	entities, _, err := mastodonVerifyCredentialProjections(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
 	if len(entities) == 0 {
-		t.Fatal("expected projected secret")
-	}
-	if len(links) == 0 {
-		t.Fatal("expected projected evidence links")
+		t.Fatal("expected projected identity user")
 	}
 }
 

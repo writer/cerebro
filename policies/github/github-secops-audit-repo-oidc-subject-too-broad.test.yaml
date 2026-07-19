@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        auth_control_weakened: "true"
+        resource_type: oidc_trust
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        auth_control_weakened: "true"
+        resource_type: oidc_trust-passing
+      wantFinding: false

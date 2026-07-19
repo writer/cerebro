@@ -1,61 +1,940 @@
 [
   {
+    "id": "tenable_io-tenant-assets-3aa90c706bb395b0",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-18T10:11:48Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": null,
+      "acr_score": null,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.25,
+      "exposure_score": 787,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-ef08564a",
+      "ipv4": [
+        "203.0.113.213"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.213",
+      "last_seen": "2021-06-18T10:11:48.000Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 16,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 16,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 16,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-18T10:11:48.000Z",
+          "last_seen": "2021-06-18T10:11:48.000Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
     "attributes": {
-      "api_method": "GET",
-      "api_path": "/v1/assets",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-tenable_io-assets-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-tenable_io-assets-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/tenable_io/assets/source-tenable_io-assets-1",
-      "external_id": "source-tenable_io-assets-1",
+      "external_id": "example-ef08564a",
       "family": "assets",
-      "observed_at": "2026-06-01T00:00:00Z",
+      "observed_at": "2021-06-18T10:11:48.000Z",
       "provider": "tenable_io",
       "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-tenable_io-assets-1",
-      "resource_name": "Tenable Io Assets Fixture",
-      "resource_type": "assets",
-      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:source-tenable_io-assets-1",
+      "resource_id": "example-ef08564a",
+      "resource_name": "203.0.113.213",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-ef08564a",
       "schema": "assets",
-      "source_event_id": "source-tenable_io-assets-1",
+      "source_event_id": "example-ef08564a",
       "source_provider": "tenable_io",
       "source_system": "tenable_io",
       "tenant_id": "tenant"
-    },
-    "id": "source-tenable_io-assets-event-1",
-    "kind": "tenable_io.assets",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "api_method": "GET",
-      "api_path": "/v1/assets",
-      "event_id": "source-tenable_io-assets-1",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-tenable_io-assets-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-tenable_io-assets-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/tenable_io/assets/source-tenable_io-assets-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/tenable_io/assets/source-tenable_io-assets-1",
-      "family": "assets",
-      "id": "source-tenable_io-assets-1",
-      "name": "Tenable Io Assets Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "asset",
-      "record_selector": "$.data[*]",
-      "resource_id": "source-tenable_io-assets-1",
-      "resource_type": "assets",
-      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:source-tenable_io-assets-1",
-      "schema_ref": "tenable_io/assets/v1",
-      "source_id": "tenable_io",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "tenable_io/assets/v1",
+    }
+  },
+  {
+    "id": "tenable_io-tenant-assets-1dfabda36a9d3431",
+    "tenant_id": "tenant",
     "source_id": "tenable_io",
-    "tenant_id": "tenant"
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-10T11:45:02Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": null,
+      "acr_score": null,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.25,
+      "exposure_score": 808,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-b2b17e04",
+      "ipv4": [
+        "203.0.113.25"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.25",
+      "last_seen": "2021-06-10T11:45:02.000Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 25,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-10T11:07:43.000Z",
+          "last_seen": "2021-06-10T11:45:02.000Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
+    "attributes": {
+      "external_id": "example-b2b17e04",
+      "family": "assets",
+      "observed_at": "2021-06-10T11:45:02.000Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "resource_id": "example-b2b17e04",
+      "resource_name": "203.0.113.25",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-b2b17e04",
+      "schema": "assets",
+      "source_event_id": "example-b2b17e04",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "tenable_io-tenant-assets-2b178a1cc3e86b83",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-10T11:45:02Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": null,
+      "acr_score": null,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.25,
+      "exposure_score": 808,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-89d241d3",
+      "ipv4": [
+        "203.0.113.227"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.227",
+      "last_seen": "2021-06-10T11:45:02.000Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 25,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-10T11:07:43.000Z",
+          "last_seen": "2021-06-10T11:45:02.000Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
+    "attributes": {
+      "external_id": "example-89d241d3",
+      "family": "assets",
+      "observed_at": "2021-06-10T11:45:02.000Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "resource_id": "example-89d241d3",
+      "resource_name": "203.0.113.227",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-89d241d3",
+      "schema": "assets",
+      "source_event_id": "example-89d241d3",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "tenable_io-tenant-assets-41204ae49a943f21",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-10T11:45:02Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": null,
+      "acr_score": null,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.25,
+      "exposure_score": 808,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-8e62c506",
+      "ipv4": [
+        "203.0.113.193"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.193",
+      "last_seen": "2021-06-10T11:45:02.000Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 25,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-10T11:07:43.000Z",
+          "last_seen": "2021-06-10T11:45:02.000Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
+    "attributes": {
+      "external_id": "example-8e62c506",
+      "family": "assets",
+      "observed_at": "2021-06-10T11:45:02.000Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "resource_id": "example-8e62c506",
+      "resource_name": "203.0.113.193",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-8e62c506",
+      "schema": "assets",
+      "source_event_id": "example-8e62c506",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "tenable_io-tenant-assets-77a441721aea076e",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-10T11:45:02Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": null,
+      "acr_score": null,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.25,
+      "exposure_score": 808,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-665ff5f8",
+      "ipv4": [
+        "203.0.113.11"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.11",
+      "last_seen": "2021-06-10T11:45:02.000Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 25,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-10T11:07:43.000Z",
+          "last_seen": "2021-06-10T11:45:02.000Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
+    "attributes": {
+      "external_id": "example-665ff5f8",
+      "family": "assets",
+      "observed_at": "2021-06-10T11:45:02.000Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "resource_id": "example-665ff5f8",
+      "resource_name": "203.0.113.11",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-665ff5f8",
+      "schema": "assets",
+      "source_event_id": "example-665ff5f8",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "tenable_io-tenant-assets-1c21deeb47640ff9",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-10T11:45:02Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": null,
+      "acr_score": null,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.25,
+      "exposure_score": 808,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-d127d28a",
+      "ipv4": [
+        "203.0.113.57"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.57",
+      "last_seen": "2021-06-10T11:45:02.000Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 25,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-10T11:07:43.000Z",
+          "last_seen": "2021-06-10T11:45:02.000Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
+    "attributes": {
+      "external_id": "example-d127d28a",
+      "family": "assets",
+      "observed_at": "2021-06-10T11:45:02.000Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "resource_id": "example-d127d28a",
+      "resource_name": "203.0.113.57",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-d127d28a",
+      "schema": "assets",
+      "source_event_id": "example-d127d28a",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "tenable_io-tenant-assets-5cb39f3d9903f737",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-10T11:37:06Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": [
+        {
+          "driver_name": "device_type",
+          "driver_value": []
+        },
+        {
+          "driver_name": "device_capability",
+          "driver_value": []
+        },
+        {
+          "driver_name": "internet_exposure",
+          "driver_value": [
+            "external"
+          ]
+        }
+      ],
+      "acr_score": 8,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.5,
+      "exposure_score": 819,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-43ed7f6f",
+      "ipv4": [
+        "203.0.113.213"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.213",
+      "last_seen": "2021-06-10T11:37:06.626Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 24,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 24,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 24,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-10T11:37:06.626Z",
+          "last_seen": "2021-06-10T11:37:06.626Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
+    "attributes": {
+      "external_id": "example-43ed7f6f",
+      "family": "assets",
+      "observed_at": "2021-06-10T11:37:06.626Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "resource_id": "example-43ed7f6f",
+      "resource_name": "203.0.113.213",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-43ed7f6f",
+      "schema": "assets",
+      "source_event_id": "example-43ed7f6f",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "tenable_io-tenant-assets-8f347ba61e895c71",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-10T11:45:02Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": null,
+      "acr_score": null,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.25,
+      "exposure_score": 808,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-0411f505",
+      "ipv4": [
+        "203.0.113.45"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.45",
+      "last_seen": "2021-06-10T11:45:02.000Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 25,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-10T11:07:43.000Z",
+          "last_seen": "2021-06-10T11:45:02.000Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
+    "attributes": {
+      "external_id": "example-0411f505",
+      "family": "assets",
+      "observed_at": "2021-06-10T11:45:02.000Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "resource_id": "example-0411f505",
+      "resource_name": "203.0.113.45",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-0411f505",
+      "schema": "assets",
+      "source_event_id": "example-0411f505",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "tenable_io-tenant-assets-c358c73ff77fbb73",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-10T11:45:02Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": null,
+      "acr_score": null,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.25,
+      "exposure_score": 808,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-c5dfe291",
+      "ipv4": [
+        "203.0.113.242"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.242",
+      "last_seen": "2021-06-10T11:45:02.000Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 24,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 24,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 24,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-10T11:07:43.000Z",
+          "last_seen": "2021-06-10T11:45:02.000Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
+    "attributes": {
+      "external_id": "example-c5dfe291",
+      "family": "assets",
+      "observed_at": "2021-06-10T11:45:02.000Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "resource_id": "example-c5dfe291",
+      "resource_name": "203.0.113.242",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-c5dfe291",
+      "schema": "assets",
+      "source_event_id": "example-c5dfe291",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "tenable_io-tenant-assets-613ab476b2cb764c",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-10T11:45:02Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": null,
+      "acr_score": null,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.25,
+      "exposure_score": 808,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-977cd5e2",
+      "ipv4": [
+        "203.0.113.129"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.129",
+      "last_seen": "2021-06-10T11:45:02.000Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 25,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-10T11:07:43.000Z",
+          "last_seen": "2021-06-10T11:45:02.000Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
+    "attributes": {
+      "external_id": "example-977cd5e2",
+      "family": "assets",
+      "observed_at": "2021-06-10T11:45:02.000Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "resource_id": "example-977cd5e2",
+      "resource_name": "203.0.113.129",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-977cd5e2",
+      "schema": "assets",
+      "source_event_id": "example-977cd5e2",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "tenable_io-tenant-assets-b16ea2bac468fa2c",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-10T11:45:02Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": null,
+      "acr_score": null,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.25,
+      "exposure_score": 808,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-eca411e7",
+      "ipv4": [
+        "203.0.113.217"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.217",
+      "last_seen": "2021-06-10T11:45:02.000Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 25,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-10T11:07:43.000Z",
+          "last_seen": "2021-06-10T11:45:02.000Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
+    "attributes": {
+      "external_id": "example-eca411e7",
+      "family": "assets",
+      "observed_at": "2021-06-10T11:45:02.000Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "resource_id": "example-eca411e7",
+      "resource_name": "203.0.113.217",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-eca411e7",
+      "schema": "assets",
+      "source_event_id": "example-eca411e7",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "tenable_io-tenant-assets-5c3ddfbf4bbc6017",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-10T11:45:02Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": null,
+      "acr_score": null,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.25,
+      "exposure_score": 808,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-c915f6e3",
+      "ipv4": [
+        "203.0.113.234"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.234",
+      "last_seen": "2021-06-10T11:45:02.000Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 25,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-10T11:07:43.000Z",
+          "last_seen": "2021-06-10T11:45:02.000Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
+    "attributes": {
+      "external_id": "example-c915f6e3",
+      "family": "assets",
+      "observed_at": "2021-06-10T11:45:02.000Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "resource_id": "example-c915f6e3",
+      "resource_name": "203.0.113.234",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-c915f6e3",
+      "schema": "assets",
+      "source_event_id": "example-c915f6e3",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "tenable_io-tenant-assets-1805e6b58519fade",
+    "tenant_id": "tenant",
+    "source_id": "tenable_io",
+    "kind": "tenable_io.assets",
+    "occurred_at": "2021-06-10T11:45:02Z",
+    "schema_ref": "tenable_io/assets/v1",
+    "payload": {
+      "acr_drivers": null,
+      "acr_score": null,
+      "agent_name": [],
+      "aws_ec2_name": [],
+      "exposure_confidence_value": 0.25,
+      "exposure_score": 808,
+      "fqdn": [],
+      "has_agent": false,
+      "hostname": [],
+      "id": "example-75bb0af3",
+      "ipv4": [
+        "203.0.113.184"
+      ],
+      "ipv6": [],
+      "last_scan_target": "203.0.113.184",
+      "last_seen": "2021-06-10T11:45:02.000Z",
+      "mac_address": [],
+      "netbios_name": [],
+      "operating_system": [],
+      "scan_frequency": [
+        {
+          "frequency": 25,
+          "interval": 90,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 30,
+          "licensed": false
+        },
+        {
+          "frequency": 25,
+          "interval": 60,
+          "licensed": false
+        }
+      ],
+      "security_protection_level": null,
+      "security_protections": [],
+      "sources": [
+        {
+          "first_seen": "2021-06-10T11:07:43.000Z",
+          "last_seen": "2021-06-10T11:45:02.000Z",
+          "name": "NESSUS_SCAN"
+        }
+      ]
+    },
+    "attributes": {
+      "external_id": "example-75bb0af3",
+      "family": "assets",
+      "observed_at": "2021-06-10T11:45:02.000Z",
+      "provider": "tenable_io",
+      "record_class": "asset",
+      "resource_id": "example-75bb0af3",
+      "resource_name": "203.0.113.184",
+      "resource_type": "asset",
+      "resource_urn": "urn:cerebro:tenant:tenable_io_assets:example-75bb0af3",
+      "schema": "assets",
+      "source_event_id": "example-75bb0af3",
+      "source_provider": "tenable_io",
+      "source_system": "tenable_io",
+      "tenant_id": "tenant"
+    }
   }
 ]

@@ -1,0 +1,24 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: gitlab
+family: users
+case: users
+replay_test: source_test.go#TestSourceReplaysCapturedPublicFamilies
+request:
+    method: GET
+    url: https://gitlab.com/api/v4/users?username=gitlab-bot
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2026-07-18T08:06:53Z"
+    sha256: 5abc855a1a1fd220c4c18d6370cacf7d8695204bb028e145560d59a24dc0c9b4
+    headers:
+        Link: <https://gitlab.com/api/v4/users?active=false&admins=false&auditors=false&blocked=false&exclude_active=false&exclude_external=false&exclude_humans=false&exclude_internal=false&external=false&humans=false&order_by=id&page=1&per_page=20&skip_ldap=false&sort=desc&username=gitlab-bot&with_custom_attributes=false&without_project_bots=false&without_projects=false>; rel="first", <https://gitlab.com/api/v4/users?active=false&admins=false&auditors=false&blocked=false&exclude_active=false&exclude_external=false&exclude_humans=false&exclude_internal=false&external=false&humans=false&order_by=id&page=1&per_page=20&skip_ldap=false&sort=desc&username=gitlab-bot&with_custom_attributes=false&without_project_bots=false&without_projects=false>; rel="last"
+        X-Page: "1"
+        X-Per-Page: "20"
+        X-Total: "1"
+        X-Total-Pages: "1"
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: operator_request

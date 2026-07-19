@@ -1,10 +1,17 @@
-use std::{collections::BTreeSet, error::Error, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt,
+};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ActorId, Mission, MissionError, MissionId, MissionInput, MissionState, MissionTransition,
-    TenantId, VerificationReceipt,
+    ActorId, Belief, BeliefError, BeliefId, BeliefInput, BeliefRevision, Commitment,
+    CommitmentError, CommitmentId, CommitmentInput, CommitmentTransition, Mission, MissionError,
+    MissionId, MissionInput, MissionState, MissionTransition, PlanError, PlanRevision, TenantId,
+    VerificationReceipt, WakeCondition, WakeConditionError, WakeConditionId, WakeConditionKind,
+    WakeSignal,
 };
 
 const MAX_IDEMPOTENCY_KEY_BYTES: usize = 512;
@@ -37,12 +44,46 @@ pub enum MissionEvent {
         reason: String,
         receipt: VerificationReceipt,
     },
+    BeliefRecorded {
+        input: BeliefInput,
+    },
+    BeliefRevised {
+        belief_id: BeliefId,
+        revision: BeliefRevision,
+    },
+    PlanRevised {
+        revision: PlanRevision,
+    },
+    CommitmentProposed {
+        input: CommitmentInput,
+    },
+    CommitmentTransitioned {
+        commitment_id: CommitmentId,
+        transition: CommitmentTransition,
+    },
+    WakeConditionArmed {
+        wake_condition_id: WakeConditionId,
+        kind: WakeConditionKind,
+        reason: String,
+    },
+    WakeConditionSatisfied {
+        wake_condition_id: WakeConditionId,
+        signal: WakeSignal,
+    },
+    WakeConditionCancelled {
+        wake_condition_id: WakeConditionId,
+        reason: String,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MissionAggregate {
     pub mission: Mission,
     pub last_sequence: u64,
+    pub beliefs: BTreeMap<BeliefId, Belief>,
+    pub plan_revisions: Vec<PlanRevision>,
+    pub commitments: BTreeMap<CommitmentId, Commitment>,
+    pub wake_conditions: BTreeMap<WakeConditionId, WakeCondition>,
     seen_idempotency_keys: BTreeSet<String>,
 }
 
@@ -54,7 +95,14 @@ pub enum ReplayError {
     DuplicateIdempotencyKey,
     IdentityMismatch,
     StateMismatch,
+    DuplicateRecord,
+    MissingRecord,
+    ClosureBlocked,
     Mission(MissionError),
+    Belief(BeliefError),
+    Plan(PlanError),
+    Commitment(CommitmentError),
+    WakeCondition(WakeConditionError),
 }
 
 impl fmt::Display for ReplayError {
@@ -77,7 +125,18 @@ impl fmt::Display for ReplayError {
             Self::StateMismatch => {
                 formatter.write_str("mission event state does not match aggregate")
             }
+            Self::DuplicateRecord => formatter.write_str("mission record is duplicated"),
+            Self::MissingRecord => formatter.write_str("mission record is missing"),
+            Self::ClosureBlocked => formatter.write_str(
+                "mission verification is blocked by active commitments or wake conditions",
+            ),
             Self::Mission(error) => write!(formatter, "mission event is invalid: {error}"),
+            Self::Belief(error) => write!(formatter, "mission belief is invalid: {error}"),
+            Self::Plan(error) => write!(formatter, "mission plan is invalid: {error}"),
+            Self::Commitment(error) => write!(formatter, "mission commitment is invalid: {error}"),
+            Self::WakeCondition(error) => {
+                write!(formatter, "mission wake condition is invalid: {error}")
+            }
         }
     }
 }
@@ -90,6 +149,30 @@ impl From<MissionError> for ReplayError {
     }
 }
 
+impl From<BeliefError> for ReplayError {
+    fn from(value: BeliefError) -> Self {
+        Self::Belief(value)
+    }
+}
+
+impl From<PlanError> for ReplayError {
+    fn from(value: PlanError) -> Self {
+        Self::Plan(value)
+    }
+}
+
+impl From<CommitmentError> for ReplayError {
+    fn from(value: CommitmentError) -> Self {
+        Self::Commitment(value)
+    }
+}
+
+impl From<WakeConditionError> for ReplayError {
+    fn from(value: WakeConditionError) -> Self {
+        Self::WakeCondition(value)
+    }
+}
+
 impl MissionAggregate {
     pub fn replay(events: &[MissionEventEnvelope]) -> Result<Self, ReplayError> {
         let first = events.first().ok_or(ReplayError::Empty)?;
@@ -97,13 +180,20 @@ impl MissionAggregate {
         let MissionEvent::Opened { input } = &first.event else {
             return Err(ReplayError::StateMismatch);
         };
-        if input.tenant_id != first.tenant_id || input.mission_id != first.mission_id {
+        if input.tenant_id != first.tenant_id
+            || input.mission_id != first.mission_id
+            || input.actor_id != first.actor_id
+        {
             return Err(ReplayError::IdentityMismatch);
         }
         let mission = Mission::open(input.clone())?;
         let mut aggregate = Self {
             mission,
             last_sequence: 1,
+            beliefs: BTreeMap::new(),
+            plan_revisions: vec![],
+            commitments: BTreeMap::new(),
+            wake_conditions: BTreeMap::new(),
             seen_idempotency_keys: BTreeSet::from([first.idempotency_key.clone()]),
         };
         for event in &events[1..] {
@@ -147,9 +237,131 @@ impl MissionAggregate {
                 if *from != self.mission.state {
                     return Err(ReplayError::StateMismatch);
                 }
+                if envelope.actor_id != receipt.verifier_actor_id
+                    || self.commitments.values().any(|commitment| {
+                        !matches!(
+                            commitment.state,
+                            crate::CommitmentState::Fulfilled | crate::CommitmentState::Cancelled
+                        )
+                    })
+                    || self
+                        .wake_conditions
+                        .values()
+                        .any(|condition| condition.state == crate::WakeConditionState::Armed)
+                {
+                    return Err(ReplayError::ClosureBlocked);
+                }
                 self.mission =
                     self.mission
                         .verify(self.mission.revision, receipt, reason.clone())?;
+            }
+            MissionEvent::BeliefRecorded { input } => {
+                if input.actor_id != envelope.actor_id {
+                    return Err(ReplayError::IdentityMismatch);
+                }
+                if self.beliefs.contains_key(&input.belief_id) {
+                    return Err(ReplayError::DuplicateRecord);
+                }
+                let belief = Belief::record(input.clone())?;
+                self.beliefs.insert(belief.belief_id.clone(), belief);
+            }
+            MissionEvent::BeliefRevised {
+                belief_id,
+                revision,
+            } => {
+                if revision.actor_id != envelope.actor_id {
+                    return Err(ReplayError::IdentityMismatch);
+                }
+                let belief = self
+                    .beliefs
+                    .get(belief_id)
+                    .ok_or(ReplayError::MissingRecord)?
+                    .revise(revision.clone())?;
+                self.beliefs.insert(belief_id.clone(), belief);
+            }
+            MissionEvent::PlanRevised { revision } => {
+                if revision.created_by != envelope.actor_id {
+                    return Err(ReplayError::IdentityMismatch);
+                }
+                if revision
+                    .hypothesis_ids
+                    .iter()
+                    .any(|belief_id| !self.beliefs.contains_key(belief_id))
+                {
+                    return Err(ReplayError::MissingRecord);
+                }
+                revision.validate(self.plan_revisions.last())?;
+                self.plan_revisions.push(revision.clone());
+            }
+            MissionEvent::CommitmentProposed { input } => {
+                if self.commitments.contains_key(&input.commitment_id) {
+                    return Err(ReplayError::DuplicateRecord);
+                }
+                let plan = self
+                    .plan_revisions
+                    .iter()
+                    .find(|plan| {
+                        plan.plan_id == input.plan_id && plan.revision == input.plan_revision
+                    })
+                    .ok_or(ReplayError::MissingRecord)?;
+                if !plan.steps.iter().any(|step| step.step_id == input.step_id) {
+                    return Err(ReplayError::MissingRecord);
+                }
+                let commitment = Commitment::propose(input.clone())?;
+                self.commitments
+                    .insert(commitment.commitment_id.clone(), commitment);
+            }
+            MissionEvent::CommitmentTransitioned {
+                commitment_id,
+                transition,
+            } => {
+                let commitment = self
+                    .commitments
+                    .get(commitment_id)
+                    .ok_or(ReplayError::MissingRecord)?
+                    .transition(transition.clone())?;
+                self.commitments.insert(commitment_id.clone(), commitment);
+            }
+            MissionEvent::WakeConditionArmed {
+                wake_condition_id,
+                kind,
+                reason,
+            } => {
+                if self.wake_conditions.contains_key(wake_condition_id) {
+                    return Err(ReplayError::DuplicateRecord);
+                }
+                let condition = WakeCondition::arm(
+                    wake_condition_id.clone(),
+                    kind.clone(),
+                    envelope.observed_at_unix_ms,
+                    reason.clone(),
+                )?;
+                self.wake_conditions
+                    .insert(wake_condition_id.clone(), condition);
+            }
+            MissionEvent::WakeConditionSatisfied {
+                wake_condition_id,
+                signal,
+            } => {
+                let condition = self
+                    .wake_conditions
+                    .get(wake_condition_id)
+                    .ok_or(ReplayError::MissingRecord)?
+                    .satisfy(signal, envelope.observed_at_unix_ms)?;
+                self.wake_conditions
+                    .insert(wake_condition_id.clone(), condition);
+            }
+            MissionEvent::WakeConditionCancelled {
+                wake_condition_id,
+                reason,
+            } => {
+                let condition = self
+                    .wake_conditions
+                    .get(wake_condition_id)
+                    .ok_or(ReplayError::MissingRecord)?
+                    .cancel(reason.clone())?;
+                self.wake_conditions
+                    .insert(wake_condition_id.clone(), condition);
             }
         }
         self.last_sequence = envelope.sequence;

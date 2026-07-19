@@ -230,6 +230,28 @@ func TestInferIntentRecognizesMITREAttackCoverage(t *testing.T) {
 	}
 }
 
+func TestInferIntentRecognizesGenericGraphRows(t *testing.T) {
+	for _, question := range []string{
+		"show graph rows",
+		"list entity rows",
+		"show entities",
+		"list graph nodes",
+	} {
+		if got := inferIntent(question, ""); got != IntentGraphRows {
+			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentGraphRows)
+		}
+	}
+	for _, question := range []string{
+		"Which entities are risky?",
+		"show finding rows",
+		"show source health rows",
+	} {
+		if got := inferIntent(question, ""); got == IntentGraphRows {
+			t.Fatalf("inferIntent(%q) = %q, want a more specific or raw intent", question, got)
+		}
+	}
+}
+
 func TestInferIntentDoesNotStealGenericAttackQuestions(t *testing.T) {
 	for _, tc := range []struct {
 		question string
@@ -242,6 +264,34 @@ func TestInferIntentDoesNotStealGenericAttackQuestions(t *testing.T) {
 		if got := inferIntent(tc.question, ""); got != tc.want {
 			t.Fatalf("inferIntent(%q) = %q, want %q", tc.question, got, tc.want)
 		}
+	}
+}
+
+func TestConvertDraftToQueryCanonicalizesGenericRowsBeforeValidation(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "show graph rows"}, &DraftResponse{
+		Cypher: `MATCH (n) RETURN n LIMIT 25`,
+	})
+
+	if result.Plan.Intent != IntentGraphRows || !result.Deterministic || !result.Corrected {
+		t.Fatalf("conversion result = %#v, want corrected deterministic graph rows", result)
+	}
+	for _, want := range []string{
+		"MATCH (entity:Entity {tenant_id: $tenant_id})",
+		"WHERE $scope_urn = '' OR entity.urn = $scope_urn",
+		"entity.urn AS entity_urn",
+		"entity_attributes_json_internal",
+		"LIMIT 25",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("graph rows cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+	if strings.Contains(result.Cypher, "MATCH (n)") || strings.Contains(result.Cypher, "RETURN n") {
+		t.Fatalf("graph rows cypher preserved unscoped draft:\n%s", result.Cypher)
+	}
+	validation, limit, err := NewValidator(nil, ValidatorOptions{DisableExplain: true, MaxRows: 100}).validate(context.Background(), result.Cypher, nil)
+	if err != nil || !validation.OK || limit != 25 {
+		t.Fatalf("validate(converted cypher) = (%#v, %d, %v), want allowed LIMIT 25", validation, limit, err)
 	}
 }
 
@@ -1188,6 +1238,7 @@ func TestDeterministicTemplatesUseProjectedGraphContract(t *testing.T) {
 		scope   string
 		filters map[string]string
 	}{
+		{name: "graph rows", intent: IntentGraphRows, scope: "urn:cerebro:writer:asset:alpha"},
 		{name: "source aggregation", intent: IntentAggregateFindingsBySource, scope: "urn:cerebro:writer:asset:alpha"},
 		{name: "top risk", intent: IntentTopRiskFindings, scope: "urn:cerebro:writer:asset:alpha"},
 		{name: "failing controls", intent: IntentFailingControls, scope: "urn:cerebro:writer:asset:alpha"},
@@ -1306,7 +1357,7 @@ func containsDiagnosticCode(diagnostics []ConversionDiagnostic, code string) boo
 }
 
 func TestConvertDraftToQueryInjectsFallbackLimit(t *testing.T) {
-	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "show entities"}, &DraftResponse{
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "run this custom read query"}, &DraftResponse{
 		Cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn`,
 	})
 
@@ -1320,7 +1371,7 @@ func TestConvertDraftToQueryInjectsFallbackLimit(t *testing.T) {
 
 func TestConvertDraftToQueryInjectsLimitAfterLimitNamedArithmetic(t *testing.T) {
 	cypher := `MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit + 1`
-	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "show entities"}, &DraftResponse{
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "run this custom read query"}, &DraftResponse{
 		Cypher: cypher,
 	})
 
@@ -1342,7 +1393,7 @@ func TestConvertDraftToQueryPreservesParenthesizedLimitForValidatorRefusal(t *te
 		`MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT (1 + 2)`,
 	}
 	for _, cypher := range queries {
-		result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "show entities"}, &DraftResponse{Cypher: cypher})
+		result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "run this custom read query"}, &DraftResponse{Cypher: cypher})
 		if result.Cypher != cypher || result.Corrected || containsDiagnosticCode(result.Diagnostics, "limit_injected") {
 			t.Fatalf("conversion result = %#v, want parenthesized LIMIT preserved for validation", result)
 		}
@@ -1354,7 +1405,7 @@ func TestConvertDraftToQueryPreservesParenthesizedLimitForValidatorRefusal(t *te
 }
 
 func TestConvertDraftToQueryCapsFallbackLimit(t *testing.T) {
-	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "show entities"}, &DraftResponse{
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "run this custom read query"}, &DraftResponse{
 		Cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn LIMIT 500`,
 	})
 

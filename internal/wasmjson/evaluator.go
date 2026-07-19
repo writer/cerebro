@@ -84,11 +84,11 @@ func (e *Evaluator) Evaluate(ctx context.Context, payload []byte) ([]byte, error
 		allocate := module.ExportedFunction(e.config.AllocateExport)
 		evaluate := module.ExportedFunction(e.config.EvaluateExport)
 		if allocate == nil || evaluate == nil || module.Memory() == nil {
-			return e.errorf("exports are incomplete")
+			return wasmhost.Diagnose(wasmhost.DiagnosticABIViolation, e.errorf("exports are incomplete"))
 		}
 		inputAllocation, err := allocate.Call(callCtx, uint64(len(payload)))
 		if err != nil {
-			return e.wrap("allocate input", err)
+			return wasmhost.DiagnoseContextOr(callCtx, wasmhost.DiagnosticMemoryViolation, e.wrap("allocate input", err))
 		}
 		inputPointer, err := e.pointer(inputAllocation, "input allocation")
 		if err != nil {
@@ -96,40 +96,40 @@ func (e *Evaluator) Evaluate(ctx context.Context, payload []byte) ([]byte, error
 		}
 		descriptorAllocation, err := allocate.Call(callCtx, descriptorSize)
 		if err != nil {
-			return e.wrap("allocate result descriptor", err)
+			return wasmhost.DiagnoseContextOr(callCtx, wasmhost.DiagnosticMemoryViolation, e.wrap("allocate result descriptor", err))
 		}
 		descriptorPointer, err := e.pointer(descriptorAllocation, "result descriptor allocation")
 		if err != nil {
 			return err
 		}
 		if !module.Memory().Write(inputPointer, payload) {
-			return e.errorf("write input memory")
+			return wasmhost.Diagnose(wasmhost.DiagnosticMemoryViolation, e.errorf("write input memory"))
 		}
 		status, err := evaluate.Call(callCtx, uint64(inputPointer), uint64(len(payload)), uint64(descriptorPointer))
 		if err != nil {
-			return e.wrap("execute module", err)
+			return wasmhost.DiagnoseContextOr(callCtx, wasmhost.DiagnosticMemoryViolation, e.wrap("execute module", err))
 		}
 		if len(status) != 1 || status[0] != 0 {
-			return e.errorf("execution status = %v", status)
+			return wasmhost.Diagnose(wasmhost.DiagnosticGuestStatus, e.errorf("execution status = %v", status))
 		}
 		descriptor, ok := module.Memory().Read(descriptorPointer, descriptorSize)
 		if !ok {
-			return e.errorf("read result descriptor")
+			return wasmhost.Diagnose(wasmhost.DiagnosticMemoryViolation, e.errorf("read result descriptor"))
 		}
 		if resultStatus := binary.LittleEndian.Uint32(descriptor[0:4]); resultStatus != 0 {
-			return e.errorf("result status = %d", resultStatus)
+			return wasmhost.Diagnose(wasmhost.DiagnosticGuestStatus, e.errorf("result status = %d", resultStatus))
 		}
 		if reserved := binary.LittleEndian.Uint32(descriptor[12:16]); reserved != 0 {
-			return e.errorf("result reserved field = %d", reserved)
+			return wasmhost.Diagnose(wasmhost.DiagnosticMemoryViolation, e.errorf("result reserved field = %d", reserved))
 		}
 		outputPointer := binary.LittleEndian.Uint32(descriptor[4:8])
 		outputLength := binary.LittleEndian.Uint32(descriptor[8:12])
 		if outputLength > e.config.MaxOutputBytes {
-			return e.errorf("output is %d bytes; maximum is %d", outputLength, e.config.MaxOutputBytes)
+			return wasmhost.Diagnose(wasmhost.DiagnosticOutputInvalid, e.errorf("output is %d bytes; maximum is %d", outputLength, e.config.MaxOutputBytes))
 		}
 		outputBytes, ok := module.Memory().Read(outputPointer, outputLength)
 		if !ok {
-			return e.errorf("read output memory")
+			return wasmhost.Diagnose(wasmhost.DiagnosticMemoryViolation, e.errorf("read output memory"))
 		}
 		output = append([]byte(nil), outputBytes...)
 		return nil
@@ -140,31 +140,39 @@ func (e *Evaluator) Evaluate(ctx context.Context, payload []byte) ([]byte, error
 	return output, nil
 }
 
-func (e *Evaluator) validateConfig() error {
-	switch {
-	case e.config.Name == "":
-		return e.errorfWith(ErrInvalidConfig, "name is required")
-	case len(e.config.Module) == 0:
-		return e.errorfWith(ErrInvalidConfig, "module is empty")
-	case e.config.ABIVersionExport == "":
-		return e.errorfWith(ErrInvalidConfig, "ABI version export is required")
-	case e.config.AllocateExport == "":
-		return e.errorfWith(ErrInvalidConfig, "allocation export is required")
-	case e.config.EvaluateExport == "":
-		return e.errorfWith(ErrInvalidConfig, "evaluation export is required")
-	case e.config.MemoryLimitPages == 0:
-		return e.errorfWith(ErrInvalidConfig, "memory limit must be positive")
-	case e.config.MaxInputBytes == 0:
-		return e.errorfWith(ErrInvalidConfig, "input limit must be positive")
-	case e.config.MaxOutputBytes == 0:
-		return e.errorfWith(ErrInvalidConfig, "output limit must be positive")
-	case e.config.InitializeTimeout <= 0:
-		return e.errorfWith(ErrInvalidConfig, "initialization timeout must be positive")
-	case e.config.CallTimeout <= 0:
-		return e.errorfWith(ErrInvalidConfig, "call timeout must be positive")
-	default:
+// Close releases the evaluator's compiled module and runtime. It must not run concurrently with Evaluate.
+func (e *Evaluator) Close(ctx context.Context) error {
+	if e == nil || e.runtime == nil {
 		return nil
 	}
+	return e.runtime.Close(ctx)
+}
+
+func (e *Evaluator) validateConfig() error {
+	var err error
+	switch {
+	case e.config.Name == "":
+		err = e.errorfWith(ErrInvalidConfig, "name is required")
+	case len(e.config.Module) == 0:
+		err = e.errorfWith(ErrInvalidConfig, "module is empty")
+	case e.config.ABIVersionExport == "":
+		err = e.errorfWith(ErrInvalidConfig, "ABI version export is required")
+	case e.config.AllocateExport == "":
+		err = e.errorfWith(ErrInvalidConfig, "allocation export is required")
+	case e.config.EvaluateExport == "":
+		err = e.errorfWith(ErrInvalidConfig, "evaluation export is required")
+	case e.config.MemoryLimitPages == 0:
+		err = e.errorfWith(ErrInvalidConfig, "memory limit must be positive")
+	case e.config.MaxInputBytes == 0:
+		err = e.errorfWith(ErrInvalidConfig, "input limit must be positive")
+	case e.config.MaxOutputBytes == 0:
+		err = e.errorfWith(ErrInvalidConfig, "output limit must be positive")
+	case e.config.InitializeTimeout <= 0:
+		err = e.errorfWith(ErrInvalidConfig, "initialization timeout must be positive")
+	case e.config.CallTimeout <= 0:
+		err = e.errorfWith(ErrInvalidConfig, "call timeout must be positive")
+	}
+	return wasmhost.Diagnose(wasmhost.DiagnosticInvalidInput, err)
 }
 
 func (e *Evaluator) validatePayload(payload []byte) error {
@@ -180,7 +188,10 @@ func (e *Evaluator) validatePayload(payload []byte) error {
 func (e *Evaluator) pointer(results []uint64, operation string) (uint32, error) {
 	pointer, err := wasmhost.Pointer(results, operation)
 	if err != nil {
-		return 0, e.errorf("%s", err)
+		if e.config.Name == "" {
+			return 0, err
+		}
+		return 0, fmt.Errorf("%s: %w", e.config.Name, err)
 	}
 	return pointer, nil
 }
@@ -206,5 +217,5 @@ func (e *Evaluator) errorfWith(cause error, format string, args ...any) error {
 }
 
 func (e *Evaluator) inputTooLargeError(inputBytes, maxBytes uint64) error {
-	return e.errorfWith(ErrInputTooLarge, "input is %d bytes; maximum is %d", inputBytes, maxBytes)
+	return wasmhost.Diagnose(wasmhost.DiagnosticInvalidInput, e.errorfWith(ErrInputTooLarge, "input is %d bytes; maximum is %d", inputBytes, maxBytes))
 }

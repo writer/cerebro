@@ -1,0 +1,14 @@
+{
+  "name": "Local identity fallback",
+  "env": {
+    "CEREBRO_IDENTITY_PROFILE": "local",
+    "CEREBRO_LOCAL_IDENTITY_FALLBACK": "1"
+  },
+  "headers": {},
+  "expected": {
+    "actorId": "local-developer",
+    "confidence": "fallback",
+    "provider": "local",
+    "source": "local-fallback"
+  }
+}

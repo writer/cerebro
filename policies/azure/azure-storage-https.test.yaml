@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        enable_https_traffic_only: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        enable_https_traffic_only: true
+      wantFinding: false

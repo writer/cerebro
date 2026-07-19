@@ -274,6 +274,7 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		"cerebro.agent.preflight",
 		"cerebro.agent.claims.verify",
 		"cerebro.agent.work.contract",
+		"cerebro.agent.missions.contract",
 		"cerebro.graph.reason",
 		"cerebro.investigation.context",
 		"cerebro.findings.action.propose",
@@ -577,6 +578,7 @@ var mcpToolDomainSurfaceContracts = map[string]mcpToolDomainSurfaceContract{
 	"cerebro.agent.preflight":                 {Markers: []string{"POST /api/v1/agent-platform/preflight"}},
 	"cerebro.agent.claims.verify":             {Markers: []string{"agent-claim-verification"}},
 	"cerebro.agent.work.contract":             {Markers: []string{"agent-work-ledger"}},
+	"cerebro.agent.missions.contract":         {Markers: []string{"/api/v1/agent-platform/missions/contract"}},
 	"cerebro.graph.reason":                    {Markers: []string{"POST /api/v1/agent-platform/graph/reason"}},
 	"cerebro.investigation.context":           {Markers: []string{"GET /findings/{findingID}", "GET /source-runtimes/{runtimeID}/finding-evidence", "GET /platform/graph/neighborhood"}},
 	"cerebro.assessments.plan.create":         {Markers: []string{"POST /grc/assessment-plans"}},
@@ -856,6 +858,9 @@ func TestMCPTelemetryIncludesSafeToolContext(t *testing.T) {
 		if got := payload[key]; got != want {
 			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
 		}
+	}
+	if got, ok := payload["mcp.response_bytes"].(float64); !ok || got <= 0 {
+		t.Fatalf("telemetry mcp.response_bytes = %#v, want positive number; payload=%#v", payload["mcp.response_bytes"], payload)
 	}
 	if _, exists := payload["arguments"]; exists {
 		t.Fatalf("telemetry recorded raw arguments: %#v", payload)
@@ -1775,8 +1780,24 @@ func TestMCPAssetsGetGraphToolsAndDryRunProposals(t *testing.T) {
 					"reach_relation":         "can_reach",
 					"access_relation":        "can_admin",
 					"relation_chain":         []any{"runs_as"},
+					"exposure_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:aws_public_principal:internet", "from_entity_type": "aws.public_principal", "from_label": "internet",
+						"relation": "can_reach", "to_urn": "urn:cerebro:writer:asset:prod-db", "to_entity_type": "aws.rds.instance", "to_label": "prod-db", "direction": "forward",
+					},
+					"resource_account_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:asset:prod-db", "from_entity_type": "aws.rds.instance", "from_label": "prod-db",
+						"relation": "belongs_to", "to_urn": "urn:cerebro:writer:cloud_account:123", "to_entity_type": "cloud.account", "to_label": "123", "direction": "forward",
+					},
 					"traversal_edges": []any{
 						map[string]any{"from_urn": "urn:cerebro:writer:asset:prod-db", "from_entity_type": "aws.rds.instance", "from_label": "prod-db", "relation": "runs_as", "to_urn": "urn:cerebro:writer:aws_role:admin", "to_entity_type": "aws.role", "to_label": "admin", "direction": "forward"},
+					},
+					"privilege_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:aws_role:admin", "from_entity_type": "aws.role", "from_label": "admin",
+						"relation": "can_admin", "to_urn": "urn:cerebro:writer:aws_policy:admin", "to_entity_type": "aws.policy", "to_label": "admin", "direction": "forward",
+					},
+					"permission_account_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:aws_policy:admin", "from_entity_type": "aws.policy", "from_label": "admin",
+						"relation": "belongs_to", "to_urn": "urn:cerebro:writer:cloud_account:123", "to_entity_type": "cloud.account", "to_label": "123", "direction": "forward",
 					},
 				},
 			}},
@@ -2767,8 +2788,8 @@ func TestMCPAgentControlPlaneAndWorkContract(t *testing.T) {
 		t.Fatalf("agent.control_plane error = %#v", controlPlaneResp["error"])
 	}
 	controlPlane := controlPlaneResp["result"].(map[string]any)["structuredContent"].(map[string]any)
-	if controlPlane["claim_verification"] == nil || controlPlane["agent_work"] == nil {
-		t.Fatalf("control plane missing claim/work contracts: %#v", controlPlane)
+	if controlPlane["claim_verification"] == nil || controlPlane["agent_work"] == nil || controlPlane["mission_operating"] == nil {
+		t.Fatalf("control plane missing claim/work/mission contracts: %#v", controlPlane)
 	}
 
 	workResp, _ := postMCP(t, server, "", map[string]any{
@@ -2786,6 +2807,23 @@ func TestMCPAgentControlPlaneAndWorkContract(t *testing.T) {
 	work := workResp["result"].(map[string]any)["structuredContent"].(map[string]any)
 	if work["id"] != "agent-work-ledger" || len(work["state_model"].([]any)) == 0 {
 		t.Fatalf("work contract = %#v", work)
+	}
+
+	missionResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.agent.missions.contract",
+			"arguments": map[string]any{},
+		},
+	})
+	if missionResp["error"] != nil {
+		t.Fatalf("agent.missions.contract error = %#v", missionResp["error"])
+	}
+	mission := missionResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if mission["id"] != "native-mission-operating-contract" || len(mission["durable_records"].([]any)) != 6 {
+		t.Fatalf("mission contract = %#v", mission)
 	}
 }
 
@@ -2941,8 +2979,24 @@ func TestMCPGraphToolMetadataNormalizesLimits(t *testing.T) {
 					"reach_relation":         "can_reach",
 					"access_relation":        "can_admin",
 					"relation_chain":         []any{"runs_as"},
+					"exposure_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:aws_public_principal:internet", "from_entity_type": "aws.public_principal", "from_label": "internet",
+						"relation": "can_reach", "to_urn": "urn:cerebro:writer:asset:prod-db", "to_entity_type": "aws.rds.instance", "to_label": "prod-db", "direction": "forward",
+					},
+					"resource_account_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:asset:prod-db", "from_entity_type": "aws.rds.instance", "from_label": "prod-db",
+						"relation": "belongs_to", "to_urn": "urn:cerebro:writer:cloud_account:123", "to_entity_type": "cloud.account", "to_label": "123", "direction": "forward",
+					},
 					"traversal_edges": []any{
 						map[string]any{"from_urn": "urn:cerebro:writer:asset:prod-db", "from_entity_type": "aws.rds.instance", "from_label": "prod-db", "relation": "runs_as", "to_urn": "urn:cerebro:writer:aws_role:admin", "to_entity_type": "aws.role", "to_label": "admin", "direction": "forward"},
+					},
+					"privilege_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:aws_role:admin", "from_entity_type": "aws.role", "from_label": "admin",
+						"relation": "can_admin", "to_urn": "urn:cerebro:writer:aws_policy:admin", "to_entity_type": "aws.policy", "to_label": "admin", "direction": "forward",
+					},
+					"permission_account_edge": map[string]any{
+						"from_urn": "urn:cerebro:writer:aws_policy:admin", "from_entity_type": "aws.policy", "from_label": "admin",
+						"relation": "belongs_to", "to_urn": "urn:cerebro:writer:cloud_account:123", "to_entity_type": "cloud.account", "to_label": "123", "direction": "forward",
 					},
 				},
 			}},
@@ -3201,6 +3255,7 @@ func postMCPWithAuthHeader(t *testing.T, server *httptest.Server, sessionID stri
 		req.Header.Set("Authorization", authHeader)
 	}
 	req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
+	req.Header.Set("X-Cerebro-MCP-Toolsets", "full")
 	if sessionID != "" {
 		req.Header.Set("Mcp-Session-Id", sessionID)
 	}

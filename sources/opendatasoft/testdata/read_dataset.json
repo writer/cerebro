@@ -1,76 +1,507 @@
 [
   {
+    "id": "opendatasoft-tenant-dataset-e864c2b97b6e2a1e",
+    "tenant_id": "tenant",
+    "source_id": "opendatasoft",
+    "kind": "opendatasoft.dataset",
+    "occurred_at": "2026-07-19T17:19:22Z",
+    "schema_ref": "opendatasoft/dataset/v1",
+    "payload": {
+      "dataset": {
+        "alternative_exports": [],
+        "attachments": [],
+        "data_visible": true,
+        "dataset_id": "osm-new-zealand-playground",
+        "dataset_uid": "da_og98g1",
+        "features": [
+          "timeserie",
+          "analyze",
+          "geo"
+        ],
+        "fields": [
+          {
+            "annotations": {},
+            "description": "Name of the playground",
+            "description_en": "Name of the playground",
+            "description_fr": "Name of the playground",
+            "label": "Name",
+            "label_en": "Name",
+            "label_fr": "Name",
+            "name": "name",
+            "type": "text"
+          },
+          {
+            "annotations": {},
+            "description": "Type of surface (grass, sand, etc.)",
+            "description_en": "Type of surface (grass, sand, etc.)",
+            "description_fr": "Type of surface (grass, sand, etc.)",
+            "label": "Surface",
+            "label_en": "Surface",
+            "label_fr": "Surface",
+            "name": "surface",
+            "type": "text"
+          },
+          {
+            "annotations": {},
+            "description": "Accessibility for people with reduced mobility (yes/no)",
+            "description_en": "Accessibility for people with reduced mobility (yes/no)",
+            "description_fr": "Accessibility for people with reduced mobility (yes/no)",
+            "label": "Wheelchair Access",
+            "label_en": "Wheelchair Access",
+            "label_fr": "Wheelchair Access",
+            "name": "wheelchair",
+            "type": "text"
+          },
+          {
+            "annotations": {},
+            "description": "Minimum age limit (in years)",
+            "description_en": "Minimum age limit (in years)",
+            "description_fr": "Minimum age limit (in years)",
+            "label": "Min Age",
+            "label_en": "Min Age",
+            "label_fr": "Min Age",
+            "name": "min_age",
+            "type": "double"
+          },
+          {
+            "annotations": {},
+            "description": "Maximum age limit (in years)",
+            "description_en": "Maximum age limit (in years)",
+            "description_fr": "Maximum age limit (in years)",
+            "label": "Max Age",
+            "label_en": "Max Age",
+            "label_fr": "Max Age",
+            "name": "max_age",
+            "type": "double"
+          },
+          {
+            "annotations": {},
+            "description": null,
+            "description_en": null,
+            "description_fr": null,
+            "label": "Management",
+            "label_en": "Management",
+            "label_fr": "Management",
+            "name": "operator",
+            "type": "text"
+          },
+          {
+            "annotations": {},
+            "description": null,
+            "description_en": null,
+            "description_fr": null,
+            "label": "Opening Hours",
+            "label_en": "Opening Hours",
+            "label_fr": "Opening Hours",
+            "name": "opening_hours",
+            "type": "text"
+          },
+          {
+            "annotations": {},
+            "description": "Accessible to the public (yes) or to a type of user (customer, private)",
+            "description_en": "Accessible to the public (yes) or to a type of user (customer, private)",
+            "description_fr": "Accessible to the public (yes) or to a type of user (customer, private)",
+            "label": "Access",
+            "label_en": "Access",
+            "label_fr": "Access",
+            "name": "access",
+            "type": "text"
+          },
+          {
+            "annotations": {},
+            "description": "Is the playground indoor (yes/no)",
+            "description_en": "Is the playground indoor (yes/no)",
+            "description_fr": "Is the playground indoor (yes/no)",
+            "label": "Indoor",
+            "label_en": "Indoor",
+            "label_fr": "Indoor",
+            "name": "indoor",
+            "type": "text"
+          },
+          {
+            "annotations": {},
+            "description": "Is the playground paid (yes/no)",
+            "description_en": "Is the playground paid (yes/no)",
+            "description_fr": "Is the playground paid (yes/no)",
+            "label": "Fee",
+            "label_en": "Fee",
+            "label_fr": "Fee",
+            "name": "fee",
+            "type": "text"
+          },
+          {
+            "annotations": {},
+            "description": "Area where there is non-parental supervision (yes/no)",
+            "description_en": "Area where there is non-parental supervision (yes/no)",
+            "description_fr": "Area where there is non-parental supervision (yes/no)",
+            "label": "Supervision",
+            "label_en": "Supervision",
+            "label_fr": "Supervision",
+            "name": "supervised",
+            "type": "text"
+          },
+          {
+            "annotations": {},
+            "description": "OSM entity geolocation",
+            "description_en": "OSM entity geolocation",
+            "description_fr": "OSM entity geolocation",
+            "label": "OSM Point",
+            "label_en": "OSM Point",
+            "label_fr": "OSM Point",
+            "name": "meta_geo_point",
+            "type": "geo_point_2d"
+          },
+          {
+            "annotations": {
+              "sortable": true
+            },
+            "description": "OSM entity identifier",
+            "description_en": "OSM entity identifier",
+            "description_fr": "OSM entity identifier",
+            "label": "OSM Id",
+            "label_en": "OSM Id",
+            "label_fr": "OSM Id",
+            "name": "meta_osm_id",
+            "type": "text"
+          },
+          {
+            "annotations": {},
+            "description": "OSM entity URL",
+            "description_en": "OSM entity URL",
+            "description_fr": "OSM entity URL",
+            "label": "OSM URL",
+            "label_en": "OSM URL",
+            "label_fr": "OSM URL",
+            "name": "meta_osm_url",
+            "type": "text"
+          },
+          {
+            "annotations": {},
+            "description": "OSM entity creation date",
+            "description_en": "OSM entity creation date",
+            "description_fr": "OSM entity creation date",
+            "label": "OSM Creation date",
+            "label_en": "OSM Creation date",
+            "label_fr": "OSM Creation date",
+            "name": "meta_first_update",
+            "type": "datetime"
+          },
+          {
+            "annotations": {
+              "sortable": true,
+              "timeserie_precision": "day"
+            },
+            "description": "OSM entity update date",
+            "description_en": "OSM entity update date",
+            "description_fr": "OSM entity update date",
+            "label": "OSM Last update",
+            "label_en": "OSM Last update",
+            "label_fr": "OSM Last update",
+            "name": "meta_last_update",
+            "type": "date"
+          },
+          {
+            "annotations": {},
+            "description": "Number of versions for the OSM entity",
+            "description_en": "Number of versions for the OSM entity",
+            "description_fr": "Number of versions for the OSM entity",
+            "label": "OSM Versions",
+            "label_en": "OSM Versions",
+            "label_fr": "OSM Versions",
+            "name": "meta_versions_number",
+            "type": "int"
+          },
+          {
+            "annotations": {},
+            "description": "Number of OSM contributors",
+            "description_en": "Number of OSM contributors",
+            "description_fr": "Number of OSM contributors",
+            "label": "OSM Contributors",
+            "label_en": "OSM Contributors",
+            "label_fr": "OSM Contributors",
+            "name": "meta_users_number",
+            "type": "int"
+          }
+        ],
+        "has_records": true,
+        "metas": {
+          "custom": {
+            "depreciated": null,
+            "referential": null
+          },
+          "dcat": {
+            "accessRights": null,
+            "accrualperiodicity": "Monthly",
+            "conforms_to": null,
+            "contact_email": "",
+            "contact_name": "",
+            "contributor": "Huwise",
+            "created": null,
+            "creator": "OpenStreetMap",
+            "dataquality": null,
+            "granularity": null,
+            "issued": null,
+            "publisher_type": [
+              "Company"
+            ],
+            "relation": null,
+            "spatial": "Nouvelle-Zélande",
+            "temporal": null,
+            "temporal_coverage_end": null,
+            "temporal_coverage_start": null
+          },
+          "default": {
+            "attributions": [
+              "OpenStreetMap"
+            ],
+            "bbox": {
+              "geometry": {
+                "coordinates": [
+                  [
+                    [
+                      -176.52710309252143,
+                      -34.65063587296754
+                    ],
+                    [
+                      167.61762097477913,
+                      -34.65063587296754
+                    ],
+                    [
+                      167.61762097477913,
+                      -46.89875231590122
+                    ],
+                    [
+                      -176.52710309252143,
+                      -46.89875231590122
+                    ],
+                    [
+                      -176.52710309252143,
+                      -34.65063587296754
+                    ]
+                  ]
+                ],
+                "type": "Polygon"
+              },
+              "properties": {},
+              "type": "Feature"
+            },
+            "data_processed": "2026-06-30T12:04:34+00:00",
+            "description": "\u003cp\u003eThis dataset geolocates playgrounds and play areas for children in New Zealand. These are typically areas with slides, swings, roundabouts, etc.\u003c/p\u003e \u003cp\u003eIt is based on OpenStreetMap data, which is then compiled and processed by Opendatasoft. \nIt is updated weekly to retrieve the most recent OpenStreetMap elements. Fields prefixed with 'meta_' \nare additional information produced by ODS. These include data about the history of elements as well as their \nadministrative divisions. Other fields are based on the \u003ca href=\"https://geodatamine.fr/\"\u003eGeodatamine\u003c/a\u003e implementation.\u003c/p\u003e \u003ch2\u003eTags\u003c/h2\u003e\u003cp\u003eThe OSM tags used to extract this data are: \u003cul\u003e \u003cli\u003e\u003ccode\u003eleisure\u003c/code\u003e with the value 'playground'\u003c/li\u003e \u003cli\u003e\u003ccode\u003ename\u003c/code\u003e for the name\u003c/li\u003e \u003cli\u003e\u003ccode\u003esurface\u003c/code\u003e for the surface type\u003c/li\u003e \u003cli\u003e\u003ccode\u003emin_age\u003c/code\u003e and \u003ccode\u003emax_age\u003c/code\u003e for the children's age range\u003c/li\u003e \u003cli\u003e\u003ccode\u003eopening_hours\u003c/code\u003e for opening hours\u003c/li\u003e \u003cli\u003e\u003ccode\u003eoperator\u003c/code\u003e for the operator or manager of the playground\u003c/li\u003e \u003cli\u003e\u003ccode\u003efee\u003c/code\u003e to retrieve information about free access\u003c/li\u003e \u003c/ul\u003e Please note that this list is not exhaustive. \u003c/p\u003e",
+            "description_en": "\u003cp\u003eThis dataset geolocates playgrounds and play areas for children in New Zealand. These are typically areas with slides, swings, roundabouts, etc.\u003c/p\u003e \u003cp\u003eIt is based on OpenStreetMap data, which is then compiled and processed by Opendatasoft. \nIt is updated weekly to retrieve the most recent OpenStreetMap elements. Fields prefixed with 'meta_' \nare additional information produced by ODS. These include data about the history of elements as well as their \nadministrative divisions. Other fields are based on the \u003ca href=\"https://geodatamine.fr/\"\u003eGeodatamine\u003c/a\u003e implementation.\u003c/p\u003e \u003ch2\u003eTags\u003c/h2\u003e\u003cp\u003eThe OSM tags used to extract this data are: \u003cul\u003e \u003cli\u003e\u003ccode\u003eleisure\u003c/code\u003e with the value 'playground'\u003c/li\u003e \u003cli\u003e\u003ccode\u003ename\u003c/code\u003e for the name\u003c/li\u003e \u003cli\u003e\u003ccode\u003esurface\u003c/code\u003e for the surface type\u003c/li\u003e \u003cli\u003e\u003ccode\u003emin_age\u003c/code\u003e and \u003ccode\u003emax_age\u003c/code\u003e for the children's age range\u003c/li\u003e \u003cli\u003e\u003ccode\u003eopening_hours\u003c/code\u003e for opening hours\u003c/li\u003e \u003cli\u003e\u003ccode\u003eoperator\u003c/code\u003e for the operator or manager of the playground\u003c/li\u003e \u003cli\u003e\u003ccode\u003efee\u003c/code\u003e to retrieve information about free access\u003c/li\u003e \u003c/ul\u003e Please note that this list is not exhaustive. \u003c/p\u003e",
+            "description_fr": "\u003cp\u003eThis dataset geolocates playgrounds and play areas for children in New Zealand. These are typically areas with slides, swings, roundabouts, etc.\u003c/p\u003e \u003cp\u003eIt is based on OpenStreetMap data, which is then compiled and processed by Opendatasoft. \nIt is updated weekly to retrieve the most recent OpenStreetMap elements. Fields prefixed with 'meta_' \nare additional information produced by ODS. These include data about the history of elements as well as their \nadministrative divisions. Other fields are based on the \u003ca href=\"https://geodatamine.fr/\"\u003eGeodatamine\u003c/a\u003e implementation.\u003c/p\u003e \u003ch2\u003eTags\u003c/h2\u003e\u003cp\u003eThe OSM tags used to extract this data are: \u003cul\u003e \u003cli\u003e\u003ccode\u003eleisure\u003c/code\u003e with the value 'playground'\u003c/li\u003e \u003cli\u003e\u003ccode\u003ename\u003c/code\u003e for the name\u003c/li\u003e \u003cli\u003e\u003ccode\u003esurface\u003c/code\u003e for the surface type\u003c/li\u003e \u003cli\u003e\u003ccode\u003emin_age\u003c/code\u003e and \u003ccode\u003emax_age\u003c/code\u003e for the children's age range\u003c/li\u003e \u003cli\u003e\u003ccode\u003eopening_hours\u003c/code\u003e for opening hours\u003c/li\u003e \u003cli\u003e\u003ccode\u003eoperator\u003c/code\u003e for the operator or manager of the playground\u003c/li\u003e \u003cli\u003e\u003ccode\u003efee\u003c/code\u003e to retrieve information about free access\u003c/li\u003e \u003c/ul\u003e Please note that this list is not exhaustive. \u003c/p\u003e",
+            "federated": false,
+            "geographic_reference": [
+              "world_nz"
+            ],
+            "geographic_reference_auto": false,
+            "geometry_types": [
+              "Point"
+            ],
+            "keyword": [
+              "openstreetmap",
+              "osm",
+              "playground",
+              "new zealand"
+            ],
+            "keyword_en": [
+              "openstreetmap",
+              "osm",
+              "playground",
+              "new zealand"
+            ],
+            "keyword_fr": [
+              "openstreetmap",
+              "osm",
+              "playground",
+              "new zealand"
+            ],
+            "language": "en",
+            "license": "Open Database License (ODbL)",
+            "license_en": "Open Database License (ODbL)",
+            "license_fr": "Open Database License (ODbL)",
+            "license_url": "https://www.opendatacommons.org/licenses/odbl/1.0/",
+            "license_url_en": "https://www.opendatacommons.org/licenses/odbl/1.0/",
+            "license_url_fr": "https://www.opendatacommons.org/licenses/odbl/1.0/",
+            "metadata_languages": [
+              "en"
+            ],
+            "metadata_processed": "2026-06-30T12:04:34.853000+00:00",
+            "modified": "2026-06-30T12:04:34+00:00",
+            "modified_updates_on_data_change": true,
+            "modified_updates_on_metadata_change": false,
+            "parent_domain": null,
+            "publisher": "Huwise",
+            "publisher_en": "Huwise",
+            "publisher_fr": "Huwise",
+            "records_count": 5585,
+            "references": "OpenStreetMap",
+            "shared_catalog": null,
+            "source_dataset": null,
+            "source_domain": null,
+            "source_domain_address": null,
+            "source_domain_title": null,
+            "territory": [
+              "New Zealand"
+            ],
+            "theme": [
+              "Territory"
+            ],
+            "theme_en": [
+              "Territory"
+            ],
+            "theme_fr": [
+              "Territoire"
+            ],
+            "timezone": [
+              "Pacific/Auckland"
+            ],
+            "title": "Playgrounds - New Zealand - OSM data",
+            "title_en": "Playgrounds - New Zealand - OSM data",
+            "title_fr": "Playgrounds - New Zealand - OSM data",
+            "update_frequency": null
+          },
+          "dublin-core": {
+            "abstract": null,
+            "accessRights": null,
+            "accrualMethod": null,
+            "accrualPeriodicity": null,
+            "accrualPolicy": null,
+            "alternative": null,
+            "audience": null,
+            "available_end": null,
+            "available_start": null,
+            "bibliographicCitation": null,
+            "conformsTo": null,
+            "contributor": null,
+            "coverage": null,
+            "created": null,
+            "creator": null,
+            "dateAccepted": null,
+            "dateCopyrighted": null,
+            "dateSubmitted": null,
+            "date_end": null,
+            "date_start": null,
+            "description": "\u003cp\u003eThis dataset geolocates playgrounds and play areas for children in New Zealand. These are typically areas with slides, swings, roundabouts, etc.\u003c/p\u003e \u003cp\u003eIt is based on OpenStreetMap data, which is then compiled and processed by Opendatasoft. \nIt is updated weekly to retrieve the most recent OpenStreetMap elements. Fields prefixed with 'meta_' \nare additional information produced by ODS. These include data about the history of elements as well as their \nadministrative divisions. Other fields are based on the \u003ca href=\"https://geodatamine.fr/\"\u003eGeodatamine\u003c/a\u003e implementation.\u003c/p\u003e \u003ch2\u003eTags\u003c/h2\u003e\u003cp\u003eThe OSM tags used to extract this data are: \u003cul\u003e \u003cli\u003e\u003ccode\u003eleisure\u003c/code\u003e with the value 'playground'\u003c/li\u003e \u003cli\u003e\u003ccode\u003ename\u003c/code\u003e for the name\u003c/li\u003e \u003cli\u003e\u003ccode\u003esurface\u003c/code\u003e for the surface type\u003c/li\u003e \u003cli\u003e\u003ccode\u003emin_age\u003c/code\u003e and \u003ccode\u003emax_age\u003c/code\u003e for the children's age range\u003c/li\u003e \u003cli\u003e\u003ccode\u003eopening_hours\u003c/code\u003e for opening hours\u003c/li\u003e \u003cli\u003e\u003ccode\u003eoperator\u003c/code\u003e for the operator or manager of the playground\u003c/li\u003e \u003cli\u003e\u003ccode\u003efee\u003c/code\u003e to retrieve information about free access\u003c/li\u003e \u003c/ul\u003e Please note that this list is not exhaustive. \u003c/p\u003e",
+            "description_en": "\u003cp\u003eThis dataset geolocates playgrounds and play areas for children in New Zealand. These are typically areas with slides, swings, roundabouts, etc.\u003c/p\u003e \u003cp\u003eIt is based on OpenStreetMap data, which is then compiled and processed by Opendatasoft. \nIt is updated weekly to retrieve the most recent OpenStreetMap elements. Fields prefixed with 'meta_' \nare additional information produced by ODS. These include data about the history of elements as well as their \nadministrative divisions. Other fields are based on the \u003ca href=\"https://geodatamine.fr/\"\u003eGeodatamine\u003c/a\u003e implementation.\u003c/p\u003e \u003ch2\u003eTags\u003c/h2\u003e\u003cp\u003eThe OSM tags used to extract this data are: \u003cul\u003e \u003cli\u003e\u003ccode\u003eleisure\u003c/code\u003e with the value 'playground'\u003c/li\u003e \u003cli\u003e\u003ccode\u003ename\u003c/code\u003e for the name\u003c/li\u003e \u003cli\u003e\u003ccode\u003esurface\u003c/code\u003e for the surface type\u003c/li\u003e \u003cli\u003e\u003ccode\u003emin_age\u003c/code\u003e and \u003ccode\u003emax_age\u003c/code\u003e for the children's age range\u003c/li\u003e \u003cli\u003e\u003ccode\u003eopening_hours\u003c/code\u003e for opening hours\u003c/li\u003e \u003cli\u003e\u003ccode\u003eoperator\u003c/code\u003e for the operator or manager of the playground\u003c/li\u003e \u003cli\u003e\u003ccode\u003efee\u003c/code\u003e to retrieve information about free access\u003c/li\u003e \u003c/ul\u003e Please note that this list is not exhaustive. \u003c/p\u003e",
+            "description_fr": "\u003cp\u003eThis dataset geolocates playgrounds and play areas for children in New Zealand. These are typically areas with slides, swings, roundabouts, etc.\u003c/p\u003e \u003cp\u003eIt is based on OpenStreetMap data, which is then compiled and processed by Opendatasoft. \nIt is updated weekly to retrieve the most recent OpenStreetMap elements. Fields prefixed with 'meta_' \nare additional information produced by ODS. These include data about the history of elements as well as their \nadministrative divisions. Other fields are based on the \u003ca href=\"https://geodatamine.fr/\"\u003eGeodatamine\u003c/a\u003e implementation.\u003c/p\u003e \u003ch2\u003eTags\u003c/h2\u003e\u003cp\u003eThe OSM tags used to extract this data are: \u003cul\u003e \u003cli\u003e\u003ccode\u003eleisure\u003c/code\u003e with the value 'playground'\u003c/li\u003e \u003cli\u003e\u003ccode\u003ename\u003c/code\u003e for the name\u003c/li\u003e \u003cli\u003e\u003ccode\u003esurface\u003c/code\u003e for the surface type\u003c/li\u003e \u003cli\u003e\u003ccode\u003emin_age\u003c/code\u003e and \u003ccode\u003emax_age\u003c/code\u003e for the children's age range\u003c/li\u003e \u003cli\u003e\u003ccode\u003eopening_hours\u003c/code\u003e for opening hours\u003c/li\u003e \u003cli\u003e\u003ccode\u003eoperator\u003c/code\u003e for the operator or manager of the playground\u003c/li\u003e \u003cli\u003e\u003ccode\u003efee\u003c/code\u003e to retrieve information about free access\u003c/li\u003e \u003c/ul\u003e Please note that this list is not exhaustive. \u003c/p\u003e",
+            "educationLevel": null,
+            "extent": null,
+            "format": null,
+            "hasFormat": null,
+            "hasPart": null,
+            "hasVersion": null,
+            "identifier": null,
+            "instructionalMethod": null,
+            "isFormatOf": null,
+            "isPartOf": null,
+            "isReferencedBy": null,
+            "isReplacedBy": null,
+            "isRequiredBy": null,
+            "isVersionOf": null,
+            "issued": null,
+            "language": null,
+            "license": "Open Database License (ODbL)",
+            "license_en": "Open Database License (ODbL)",
+            "license_fr": "Open Database License (ODbL)",
+            "mediator": null,
+            "medium": null,
+            "modified": "2026-06-30T12:04:34+00:00",
+            "provenance": null,
+            "publisher": "Huwise",
+            "publisher_en": "Huwise",
+            "publisher_fr": "Huwise",
+            "references": null,
+            "relation": null,
+            "replaces": null,
+            "requires": null,
+            "rights": null,
+            "rightsHolder": null,
+            "source": null,
+            "spatial": null,
+            "subject": null,
+            "tableOfContent": null,
+            "temporal_end": null,
+            "temporal_start": null,
+            "title": "Playgrounds - New Zealand - OSM data",
+            "title_en": "Playgrounds - New Zealand - OSM data",
+            "title_fr": "Playgrounds - New Zealand - OSM data",
+            "type": null,
+            "valid_end": null,
+            "valid_start": null
+          },
+          "inspire": {
+            "contact_address": null,
+            "contact_email": null,
+            "contact_individual_name": null,
+            "contact_position": null,
+            "extend_bounding_box_eastbound_longitude": null,
+            "extend_bounding_box_northbound_latitude": null,
+            "extend_bounding_box_southbound_latitude": null,
+            "extend_bounding_box_westbound_longitude": null,
+            "extend_description": null,
+            "file_identifier": null,
+            "hierarchy_level": null,
+            "hierarchy_level_name": null,
+            "identification_purpose": null,
+            "spatial_resolution": null,
+            "theme": null,
+            "topologic_consistency": null,
+            "type": null
+          },
+          "semantic": {
+            "classes": null,
+            "properties": null,
+            "rml_mapping": null
+          }
+        },
+        "visibility": "domain"
+      },
+      "links": [
+        {
+          "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/osm-new-zealand-playground",
+          "rel": "self"
+        },
+        {
+          "href": "https://public.opendatasoft.com/api/v2/catalog/datasets",
+          "rel": "datasets"
+        },
+        {
+          "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/osm-new-zealand-playground/records",
+          "rel": "records"
+        },
+        {
+          "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/osm-new-zealand-playground/exports",
+          "rel": "exports"
+        },
+        {
+          "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/osm-new-zealand-playground/facets",
+          "rel": "facets"
+        },
+        {
+          "href": "https://public.opendatasoft.com/api/v2/catalog/datasets/osm-new-zealand-playground/static_exports",
+          "rel": "static_exports"
+        }
+      ]
+    },
     "attributes": {
-      "actor_email": "actor@opendatasoft.example.test",
-      "actor_id": "opendatasoft-users-1",
-      "actor_name": "actor-name-source-opendatasoft-dataset-1",
-      "api_method": "GET",
-      "api_path": "/${config.source}/datasets",
-      "event_type": "opendatasoft.dataset.observed",
-      "evidence_cas_commit_id": "evidence-cas-commit-id-source-opendatasoft-dataset-1",
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-opendatasoft-dataset-1",
-      "evidence_cas_ref_type": "source_fixture",
-      "evidence_cas_uri": "cas://cases/opendatasoft/dataset/source-opendatasoft-dataset-1",
-      "external_id": "source-opendatasoft-dataset-1",
+      "actor_id": "public.opendatasoft.com",
+      "event_type": "dataset",
+      "external_id": "osm-new-zealand-playground",
       "family": "dataset",
-      "id": "source-opendatasoft-dataset-1",
-      "name": "Opendatasoft Dataset Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
+      "id": "osm-new-zealand-playground",
+      "name": "Playgrounds - New Zealand - OSM data",
+      "observed_at": "2026-06-30T12:04:34+00:00",
       "provider": "opendatasoft",
-      "provider_id": "provider-id-source-opendatasoft-dataset-1",
+      "provider_id": "osm-new-zealand-playground",
       "record_class": "audit_event",
-      "record_selector": "$.datasets[*]",
-      "resource_email": "resource@opendatasoft.example.test",
-      "resource_id": "source-opendatasoft-dataset-1",
-      "resource_name": "Opendatasoft Dataset Fixture",
+      "resource_id": "osm-new-zealand-playground",
+      "resource_name": "Playgrounds - New Zealand - OSM data",
       "resource_type": "dataset",
-      "resource_urn": "urn:cerebro:tenant:opendatasoft_dataset:source-opendatasoft-dataset-1",
       "schema": "dataset",
-      "source_event_id": "source-opendatasoft-dataset-1",
+      "source_event_id": "osm-new-zealand-playground",
       "source_provider": "opendatasoft",
       "source_system": "opendatasoft",
       "tenant_id": "tenant"
-    },
-    "id": "source-opendatasoft-dataset-event-1",
-    "kind": "opendatasoft.dataset",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "actor_email": "actor@opendatasoft.example.test",
-      "actor_id": "opendatasoft-users-1",
-      "actor_name": "actor-name-source-opendatasoft-dataset-1",
-      "api_method": "GET",
-      "api_path": "/${config.source}/datasets",
-      "dataset": "source-opendatasoft-dataset-1",
-      "event_id": "source-opendatasoft-dataset-1",
-      "event_type": "opendatasoft.dataset.observed",
-      "evidence_cas": {
-        "commit_id": "evidence-cas-commit-id-source-opendatasoft-dataset-1",
-        "digest": "sha256:test",
-        "merkle_root": "evidence-cas-merkle-root-source-opendatasoft-dataset-1",
-        "ref_type": "source_fixture",
-        "uri": "cas://cases/opendatasoft/dataset/source-opendatasoft-dataset-1"
-      },
-      "evidence_cas_digest": "sha256:test",
-      "evidence_cas_uri": "cas://cases/opendatasoft/dataset/source-opendatasoft-dataset-1",
-      "family": "dataset",
-      "id": "source-opendatasoft-dataset-1",
-      "name": "Opendatasoft Dataset Fixture",
-      "observed_at": "2026-06-01T00:00:00Z",
-      "record_class": "audit_event",
-      "record_selector": "$.datasets[*]",
-      "resource_email": "resource@opendatasoft.example.test",
-      "resource_id": "source-opendatasoft-dataset-1",
-      "resource_name": "Opendatasoft Dataset Fixture",
-      "resource_type": "dataset",
-      "resource_urn": "urn:cerebro:tenant:opendatasoft_dataset:source-opendatasoft-dataset-1",
-      "schema_ref": "opendatasoft/dataset/v1",
-      "source_id": "opendatasoft",
-      "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
-    },
-    "schema_ref": "opendatasoft/dataset/v1",
-    "source_id": "opendatasoft",
-    "tenant_id": "tenant"
+    }
   }
 ]

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/writer/cerebro/internal/agentauthoring"
 	appendlogjetstream "github.com/writer/cerebro/internal/appendlog/jetstream"
 	appendlogrecovery "github.com/writer/cerebro/internal/appendlog/recovery"
 	"github.com/writer/cerebro/internal/config"
@@ -141,8 +142,28 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 			return fail(fmt.Errorf("open graph agent llm: %w", err))
 		}
 		deps.GraphAgentLLM = llm
+		if structured, ok := llm.(graphagent.StructuredJSONClient); ok {
+			deps.PolicyAuthoring = &agentauthoring.Service{Model: graphAgentStructuredDraftModel{client: structured}}
+		}
 	}
 	return deps, closeAll, nil
+}
+
+type graphAgentStructuredDraftModel struct {
+	client graphagent.StructuredJSONClient
+}
+
+func (m graphAgentStructuredDraftModel) DraftJSON(ctx context.Context, request agentauthoring.StructuredDraftRequest) ([]byte, error) {
+	if m.client == nil {
+		return nil, agentauthoring.ErrRuntimeUnavailable
+	}
+	return m.client.DraftStructuredJSON(ctx, graphagent.StructuredJSONRequest{
+		TenantID:   request.TenantID,
+		Kind:       request.Kind,
+		Prompt:     request.Prompt,
+		SchemaJSON: request.SchemaJSON,
+		Context:    request.Context,
+	})
 }
 
 // OpenSourceRuntimeBootstrapDependencies opens only the state-store dependency required to validate and persist source runtime definitions.

@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        dependabot_alerts_enabled: "false"
+        resource_type: dependabot_alerts
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        dependabot_alerts_enabled: "false"
+        resource_type: dependabot_alerts-passing
+      wantFinding: false

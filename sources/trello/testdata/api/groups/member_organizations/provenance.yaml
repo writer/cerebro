@@ -1,0 +1,63 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: trello
+family: groups
+case: member_organizations
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedTrelloFamilies
+request:
+    method: GET
+    url: https://api.trello.com/1/members/me?organizations=all
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2016-08-15T18:11:30Z"
+    sha256: d5e9e8bc9e8a18152d2fb696ecab7749d8c3f63a0ea660aaaeaf6e114b737941
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.email
+        - $.fullName
+        - $.gravatarHash
+        - $.id
+        - $.idBoards[0]
+        - $.idBoards[10]
+        - $.idBoards[11]
+        - $.idBoards[12]
+        - $.idBoards[13]
+        - $.idBoards[1]
+        - $.idBoards[2]
+        - $.idBoards[3]
+        - $.idBoards[4]
+        - $.idBoards[5]
+        - $.idBoards[6]
+        - $.idBoards[7]
+        - $.idBoards[8]
+        - $.idBoards[9]
+        - $.idOrganizations[0]
+        - $.initials
+        - $.organizations[0].desc
+        - $.organizations[0].displayName
+        - $.organizations[0].id
+        - $.organizations[0].idBoards[0]
+        - $.organizations[0].idBoards[1]
+        - $.organizations[0].idBoards[2]
+        - $.organizations[0].idBoards[3]
+        - $.organizations[0].memberships[0].id
+        - $.organizations[0].memberships[0].idMember
+        - $.organizations[0].memberships[1].id
+        - $.organizations[0].memberships[1].idMember
+        - $.organizations[0].name
+        - $.organizations[0].url
+        - $.url
+        - $.username
+origin:
+    type: upstream_recording
+    repository: https://github.com/yammine/ex_trello
+    commit: a252cb34a2c08500ba62ad2f86f9d55ca609170f
+    path: fixtures/vcr_cassettes/authenticated_member_with_organizations.json
+    artifact_sha256: af117569a45801ed1c0816ccf72d4f7aea044a5904fd8352f4be99450419ec0d
+    license: MIT
+    recording_tool: ExVCR
+    harness_path: test/test_helper.exs
+    freshness: historical
+    capture_time_basis: response_header

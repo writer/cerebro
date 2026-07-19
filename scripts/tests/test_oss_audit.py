@@ -6,6 +6,57 @@ import scripts.oss_audit as oss_audit
 
 
 class OSSAuditTests(unittest.TestCase):
+    def test_fixture_host_allows_exact_public_provider_origins(self):
+        for host in (
+            "api.datadoghq.com",
+            "docs.datadoghq.com",
+            "fivetran.com",
+            "nvd.nist.gov",
+            "ok11static.oktacdn.com",
+            "ok12static.oktacdn.com",
+            "replicate.delivery",
+            "trello.com",
+            "us19.api.mailchimp.com",
+        ):
+            with self.subTest(host=host):
+                self.assertTrue(oss_audit.fixture_host_allowed(host))
+                self.assertFalse(oss_audit.fixture_host_allowed("tenant." + host))
+
+    def test_fixture_url_scan_ignores_markdown_closing_punctuation(self):
+        findings = oss_audit.check_fixture_value(
+            "sources/docker_hub/testdata/read_repositories.json",
+            "$.description",
+            "[Release notes](https://ubuntu.com)",
+        )
+
+        self.assertEqual(findings, [])
+
+    def test_fixture_url_scan_still_rejects_sensitive_query_keys(self):
+        findings = oss_audit.check_fixture_value(
+            "sources/fivetran/testdata/read_public_connector_types.json",
+            "$.link",
+            "https://fivetran.com/docs?token=secret",
+        )
+
+        self.assertEqual(len(findings), 1)
+        self.assertIn("sensitive query key", findings[0])
+
+    def test_fixture_email_scan_recognizes_public_provider_ssh_urls(self):
+        allowed = oss_audit.check_fixture_value(
+            "sources/github/testdata/api/repository/repository/response.json",
+            "$.ssh_url",
+            "git@github.com:writer/cerebro.git",
+        )
+        rejected = oss_audit.check_fixture_value(
+            "sources/example/testdata/read_repositories.json",
+            "$.ssh_url",
+            "git@tenant.invalid:organization/repository.git",
+        )
+
+        self.assertEqual(allowed, [])
+        self.assertEqual(len(rejected), 1)
+        self.assertIn("non-synthetic fixture email domain", rejected[0])
+
     def test_file_scan_skips_cargo_target_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

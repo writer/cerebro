@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        route53_resolver_query_logging_compliant: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        route53_resolver_query_logging_compliant: true
+      wantFinding: false

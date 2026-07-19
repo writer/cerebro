@@ -1,0 +1,24 @@
+{
+  "links": [
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/metadata_templates",
+      "rel": "self"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/metadata_templates/interop",
+      "rel": "Interoperatibility"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/metadata_templates/basic",
+      "rel": "Basic"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/metadata_templates/extra",
+      "rel": "Extra"
+    },
+    {
+      "href": "https://public.opendatasoft.com/api/v2/catalog/metadata_templates/admin",
+      "rel": "Admin"
+    }
+  ]
+}

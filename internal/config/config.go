@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 const defaultHTTPAddr = ":8080"
 const defaultShutdownTimeout = 10 * time.Second
 const defaultJetStreamSubjectPrefix = "events"
+const defaultSourceEventAdmissionWorkers = 4
 
 const (
 	defaultPostgresMaxOpenConns        = 25
@@ -25,6 +27,7 @@ const (
 	defaultPostgresConnMaxIdleTime     = time.Minute
 	defaultDeadLetterPendingRetention  = 7 * 24 * time.Hour
 	defaultDeadLetterTerminalRetention = 30 * 24 * time.Hour
+	defaultDecisionPacketRetention     = 30 * 24 * time.Hour
 	defaultDeadLetterWarningRecords    = int64(10_000)
 	defaultDeadLetterHardRecords       = int64(100_000)
 	defaultDeadLetterWarningBytes      = int64(1 << 30)
@@ -67,8 +70,15 @@ type Config struct {
 	ContentPacks          ContentPackConfig
 	GraphActions          GraphActionsConfig
 	DocumentParsing       DocumentParsingConfig
+	SourceRuntime         SourceRuntimeConfig
 	OTEL                  OpenTelemetryConfig
 	RateLimit             RateLimitConfig
+}
+
+// SourceRuntimeConfig controls source event admission execution.
+type SourceRuntimeConfig struct {
+	EventAdmissionWorkerPath string
+	EventAdmissionWorkers    int
 }
 
 // ContentPackConfig selects signed declarative content without changing the kernel binary.
@@ -117,6 +127,7 @@ type StateStoreConfig struct {
 	PostgresConnMaxIdleTime     time.Duration
 	DeadLetterPendingRetention  time.Duration
 	DeadLetterTerminalRetention time.Duration
+	DecisionPacketRetention     time.Duration
 	DeadLetterWarningRecords    int64
 	DeadLetterHardRecords       int64
 	DeadLetterWarningBytes      int64
@@ -522,6 +533,9 @@ func Load() (Config, error) {
 				BaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_REDUCTO_BASE_URL")), "/"),
 			},
 		},
+		SourceRuntime: SourceRuntimeConfig{
+			EventAdmissionWorkerPath: strings.TrimSpace(os.Getenv("CEREBRO_EVENT_ADMISSION_WORKER")),
+		},
 		OTEL: OpenTelemetryConfig{
 			ServiceName:     strings.TrimSpace(os.Getenv("CEREBRO_OTEL_SERVICE_NAME")),
 			Protocol:        strings.TrimSpace(os.Getenv("CEREBRO_OTEL_EXPORTER_OTLP_PROTOCOL")),
@@ -540,6 +554,15 @@ func Load() (Config, error) {
 				TrustedProxyCIDRs: parseCSV(os.Getenv("CEREBRO_TRUSTED_PROXY_CIDRS")),
 			},
 		},
+	}
+	if cfg.SourceRuntime.EventAdmissionWorkerPath == "" {
+		cfg.SourceRuntime.EventAdmissionWorkerPath = defaultSourceEventAdmissionWorkerPath()
+	}
+	if cfg.SourceRuntime.EventAdmissionWorkers, err = parseIntEnv("CEREBRO_EVENT_ADMISSION_WORKERS", defaultSourceEventAdmissionWorkers); err != nil {
+		return Config{}, err
+	}
+	if cfg.SourceRuntime.EventAdmissionWorkers < 1 || cfg.SourceRuntime.EventAdmissionWorkers > 64 {
+		return Config{}, errors.New("CEREBRO_EVENT_ADMISSION_WORKERS must be between 1 and 64")
 	}
 	if cfg.ContentPacks.KernelVersion == "" {
 		cfg.ContentPacks.KernelVersion = "1.0.0"
@@ -681,6 +704,9 @@ func Load() (Config, error) {
 	if cfg.StateStore.DeadLetterTerminalRetention, err = parseDurationEnv("CEREBRO_APPEND_LOG_DEAD_LETTER_TERMINAL_RETENTION", defaultDeadLetterTerminalRetention); err != nil {
 		return Config{}, err
 	}
+	if cfg.StateStore.DecisionPacketRetention, err = parseDurationEnv("CEREBRO_DECISION_PACKET_RETENTION", defaultDecisionPacketRetention); err != nil {
+		return Config{}, err
+	}
 	if cfg.StateStore.DeadLetterWarningRecords, err = parseInt64Env("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_RECORDS", defaultDeadLetterWarningRecords); err != nil {
 		return Config{}, err
 	}
@@ -695,6 +721,9 @@ func Load() (Config, error) {
 	}
 	if err := validateDeadLetterPolicy(cfg.StateStore); err != nil {
 		return Config{}, err
+	}
+	if cfg.StateStore.DecisionPacketRetention <= 0 {
+		return Config{}, errors.New("CEREBRO_DECISION_PACKET_RETENTION must be greater than zero")
 	}
 	cfg.StateStore = ApplyPostgresPoolDefaults(cfg.StateStore)
 	if cfg.GraphStore.Neo4jQueryTimeout, err = parseDurationEnv("CEREBRO_NEO4J_QUERY_TIMEOUT", 0); err != nil {
@@ -873,6 +902,14 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
+func defaultSourceEventAdmissionWorkerPath() string {
+	executable, err := os.Executable()
+	if err != nil {
+		return "cerebro-event-admission-worker"
+	}
+	return filepath.Join(filepath.Dir(executable), "cerebro-event-admission-worker")
+}
+
 func ApplyPostgresPoolDefaults(cfg StateStoreConfig) StateStoreConfig {
 	if cfg.PostgresMaxOpenConns == 0 {
 		cfg.PostgresMaxOpenConns = defaultPostgresMaxOpenConns
@@ -894,6 +931,9 @@ func ApplyPostgresPoolDefaults(cfg StateStoreConfig) StateStoreConfig {
 	}
 	if cfg.DeadLetterTerminalRetention == 0 {
 		cfg.DeadLetterTerminalRetention = defaultDeadLetterTerminalRetention
+	}
+	if cfg.DecisionPacketRetention == 0 {
+		cfg.DecisionPacketRetention = defaultDecisionPacketRetention
 	}
 	if cfg.DeadLetterWarningRecords == 0 {
 		cfg.DeadLetterWarningRecords = defaultDeadLetterWarningRecords

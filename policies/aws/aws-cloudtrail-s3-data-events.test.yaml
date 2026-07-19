@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        has_s3_data_events: false
+        is_multi_region_trail: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        has_s3_data_events: false
+        is_multi_region_trail: false
+      wantFinding: false

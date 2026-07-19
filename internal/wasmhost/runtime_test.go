@@ -18,6 +18,68 @@ func TestRuntimeRejectsInvalidConfiguration(t *testing.T) {
 	if !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("Run() error = %v, want %v", err, ErrInvalidConfig)
 	}
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Run() error = %v, want %v", err, ErrInvalidInput)
+	}
+}
+
+func TestDiagnosticKindsPreserveCauses(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("stable operator message")
+	for _, test := range []struct {
+		kind DiagnosticKind
+		want error
+	}{
+		{DiagnosticInvalidInput, ErrInvalidInput},
+		{DiagnosticABIViolation, ErrABIViolation},
+		{DiagnosticMemoryViolation, ErrMemoryViolation},
+		{DiagnosticGuestStatus, ErrGuestStatus},
+		{DiagnosticOutputInvalid, ErrOutputInvalid},
+		{DiagnosticTimeout, ErrTimeout},
+		{DiagnosticCanceled, ErrCanceled},
+	} {
+		err := Diagnose(test.kind, cause)
+		if !errors.Is(err, cause) || !errors.Is(err, test.want) {
+			t.Errorf("Diagnose(%q) = %v; cause or sentinel not preserved", test.kind, err)
+		}
+		if got, ok := DiagnosticKindOf(err); !ok || got != test.kind {
+			t.Errorf("DiagnosticKindOf(Diagnose(%q)) = (%q, %t)", test.kind, got, ok)
+		}
+	}
+}
+
+func TestDiagnoseContextKinds(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		context func() context.Context
+		cause   error
+		want    error
+	}{
+		{
+			name: "canceled context",
+			context: func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			},
+			cause: errors.New("guest stopped"),
+			want:  ErrCanceled,
+		},
+		{
+			name:    "deadline cause",
+			context: context.Background,
+			cause:   context.DeadlineExceeded,
+			want:    ErrTimeout,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if err := DiagnoseContext(test.context(), test.cause); !errors.Is(err, test.want) || !errors.Is(err, test.cause) {
+				t.Fatalf("DiagnoseContext() error = %v, want %v and original cause", err, test.want)
+			}
+		})
+	}
 }
 
 func TestRuntimeRejectsMemoryLimitAboveWasm32Maximum(t *testing.T) {
@@ -55,8 +117,9 @@ func TestRuntimeValidatesABIVersionAndSignatures(t *testing.T) {
 			config := testRuntimeConfig()
 			test.mutate(&config)
 			runtime := New(config)
-			if err := runtime.Run(context.Background(), func(context.Context, api.Module) error { return nil }); err == nil {
-				t.Fatal("Run() error = nil")
+			err := runtime.Run(context.Background(), func(context.Context, api.Module) error { return nil })
+			if !errors.Is(err, ErrABIViolation) {
+				t.Fatalf("Run() error = %v, want %v", err, ErrABIViolation)
 			}
 		})
 	}
@@ -124,7 +187,26 @@ func TestPointer(t *testing.T) {
 			if (err != nil) != test.wantErr || got != test.want {
 				t.Fatalf("Pointer() = (%d, %v), want (%d, error=%t)", got, err, test.want, test.wantErr)
 			}
+			if test.wantErr && !errors.Is(err, ErrMemoryViolation) {
+				t.Fatalf("Pointer() error = %v, want %v", err, ErrMemoryViolation)
+			}
 		})
+	}
+}
+
+func BenchmarkRuntimeRun(b *testing.B) {
+	runtime := New(testRuntimeConfig())
+	ctx := context.Background()
+	call := func(context.Context, api.Module) error { return nil }
+	if err := runtime.Run(ctx, call); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		if err := runtime.Run(ctx, call); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

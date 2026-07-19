@@ -9,6 +9,8 @@ import (
 
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/findingdsl"
+	"github.com/writer/cerebro/internal/ports"
+	policyauthor "github.com/writer/cerebro/internal/testauthor/policy"
 )
 
 type stubDraftModel struct {
@@ -62,6 +64,208 @@ func TestDraftPolicyRuleRejectsInvalidDraft(t *testing.T) {
 	}
 	if result == nil || len(result.Issues) == 0 {
 		t.Fatalf("result issues = %#v, want validation issues", result)
+	}
+}
+
+func TestDraftPolicyBundleAuthorsRunnableTestsAndProof(t *testing.T) {
+	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{ID: "agent-public-bucket", Name: "Agent public bucket", Description: "Flags public buckets drafted by the agent.", Severity: "high", Conditions: []string{`cmp_eq(path(resource, "public"), true)`, `cmp_eq(path(resource, "approved"), false)`}, Frameworks: []findingdsl.PolicyFramework{{Name: "CIS", Controls: []string{"2.1.5"}}}})
+	raw, err := json.Marshal(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &stubDraftModel{raw: raw}
+	result, err := (Service{Model: model}).DraftPolicyBundle(context.Background(), PolicyBundleDraftRequest{Prompt: "author a policy for public buckets", Domain: "aws", Context: map[string]any{"source_kind": "aws.s3.bucket"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.req.Kind != "policy_finding_rule" || model.req.Context["source_kind"] != "aws.s3.bucket" || model.req.Context["test_author_contract"] == nil {
+		t.Fatalf("model request = %#v", model.req)
+	}
+	contract, ok := model.req.Context["test_author_contract"].(map[string]any)
+	if !ok || contract["grounding"] == nil {
+		t.Fatalf("test author contract grounding = %#v, want source-backed redaction and causality requirements", contract["grounding"])
+	}
+	if result.PolicyPath != "policies/aws/agent-public-bucket.yaml" || result.TestPath != "policies/aws/agent-public-bucket.test.yaml" {
+		t.Fatalf("paths = %q %q", result.PolicyPath, result.TestPath)
+	}
+	if len(result.Suite.Cases) != 2 || len(result.Proof.Receipts) != 2 || !result.Proof.Receipts[0].Passed || !result.Proof.Receipts[1].Passed {
+		t.Fatalf("bundle = %#v", result)
+	}
+}
+
+func TestDraftPolicyBundleRejectsPolicyWithoutSafeFixtureContract(t *testing.T) {
+	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{ID: "agent-complex", Name: "Agent complex", Description: "Complex agent policy.", Severity: "high", Conditions: []string{`cmp_eq(path(resource, "state"), path(resource, "expected_state"))`}, Frameworks: []findingdsl.PolicyFramework{{Name: "CIS", Controls: []string{"1"}}}})
+	raw, err := json.Marshal(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := (Service{Model: &stubDraftModel{raw: raw}}).DraftPolicyBundle(context.Background(), PolicyBundleDraftRequest{Prompt: "author complex policy", Domain: "aws"})
+	if !errors.Is(err, ErrDraftValidationFail) || result != nil {
+		t.Fatalf("result = %#v, error = %v", result, err)
+	}
+}
+
+func TestDraftPolicyBundleAuthorsAndExecutesGraphEvidence(t *testing.T) {
+	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{
+		ID: "agent-graph-path", Name: "Agent graph path", Description: "Finds a causal graph path.", Severity: "high",
+		Graph: findingdsl.PolicyRuleGraphFinding{
+			Query: `MATCH (actor:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'acted_on'}]->(task:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'depends_on'}]->(definition:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'runs_as'}]->(role:Entity {tenant_id: $tenant_id})
+RETURN definition.urn AS primary_urn, definition.urn + '|' + role.urn AS fingerprint_key, 'causal path' AS summary, [actor.urn, task.urn, definition.urn, role.urn] AS resource_urns, [{urn: actor.urn}, {urn: task.urn}, {urn: definition.urn}, {urn: role.urn}] AS evidence LIMIT $row_limit`,
+			RowLimit: 10, RequiredColumns: []string{"primary_urn", "fingerprint_key", "summary", "resource_urns"},
+		}, Frameworks: []findingdsl.PolicyFramework{{Name: "SOC 2", Controls: []string{"CC6.1"}}},
+	})
+	raw, err := json.Marshal(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence := &policyauthor.GraphEvidence{
+		Nodes: []policyauthor.GraphEvidenceNode{
+			{ID: "private-actor", SourceID: "aws", EntityType: "aws.assumed_role_session"},
+			{ID: "private-task", SourceID: "aws", EntityType: "aws.ecs.task"},
+			{ID: "private-definition", SourceID: "aws", EntityType: "aws.ecs.task_definition", Attributes: map[string]string{"has_secret_bindings": "true"}},
+			{ID: "private-role", SourceID: "aws", EntityType: "aws.role"},
+		},
+		Edges: []policyauthor.GraphEvidenceEdge{
+			{FromID: "private-actor", ToID: "private-task", SourceID: "aws", Relation: "acted_on"},
+			{FromID: "private-task", ToID: "private-definition", SourceID: "aws", Relation: "depends_on"},
+			{FromID: "private-definition", ToID: "private-role", SourceID: "aws", Relation: "runs_as"},
+		},
+		CriticalEdge:    policyauthor.GraphEvidenceEdgeRef{FromID: "private-definition", ToID: "private-role", Relation: "runs_as"},
+		EvidenceNodeIDs: []string{"private-actor", "private-task", "private-definition", "private-role"},
+	}
+	store := newAgentGraphStore()
+	model := &stubDraftModel{raw: raw}
+	result, err := (Service{Model: model, PolicyGraphStore: store}).DraftPolicyBundle(context.Background(), PolicyBundleDraftRequest{
+		Prompt: "author a causal graph policy", Domain: "aws", GraphEvidence: evidence,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.executions < len(result.Suite.Cases) {
+		t.Fatalf("graph executions = %d, want all %d authored cases executed", store.executions, len(result.Suite.Cases))
+	}
+	if len(result.Proof.Receipts) < 4 || result.Proof.Receipts[len(result.Proof.Receipts)-1].Execution != "graph_store" || !result.Proof.Receipts[len(result.Proof.Receipts)-1].Passed {
+		t.Fatalf("graph proof = %#v", result.Proof.Receipts)
+	}
+	modelGraphContext, err := json.Marshal(model.req.Context["graph_evidence"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	modelGraphJSON := string(modelGraphContext)
+	for _, forbidden := range []string{"private-actor", "private-task", "private-definition", "private-role"} {
+		if strings.Contains(string(result.TestYAML), forbidden) {
+			t.Fatalf("authored graph fixture exposes source handle %q", forbidden)
+		}
+		if strings.Contains(modelGraphJSON, forbidden) {
+			t.Fatalf("model graph context exposes source handle %q: %s", forbidden, modelGraphJSON)
+		}
+	}
+	for _, required := range []string{`"ref":"node-1"`, `"relation":"acted_on"`, `"entity_type":"aws.ecs.task_definition"`, `"has_secret_bindings":"true"`} {
+		if !strings.Contains(modelGraphJSON, required) {
+			t.Fatalf("model graph context missing %q: %s", required, modelGraphJSON)
+		}
+	}
+}
+
+type agentGraphStore struct {
+	entities   map[string]*ports.ProjectedEntity
+	links      map[string]*ports.ProjectedLink
+	executions int
+}
+
+func newAgentGraphStore() *agentGraphStore {
+	return &agentGraphStore{entities: map[string]*ports.ProjectedEntity{}, links: map[string]*ports.ProjectedLink{}}
+}
+
+func (s *agentGraphStore) Ping(context.Context) error { return nil }
+func (s *agentGraphStore) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
+	return nil, nil
+}
+func (s *agentGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	s.entities[entity.URN] = entity
+	return nil
+}
+func (s *agentGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	s.links[link.FromURN+"|"+link.Relation+"|"+link.ToURN] = link
+	return nil
+}
+func (s *agentGraphStore) DeleteProjectedEntity(_ context.Context, urn string) error {
+	delete(s.entities, urn)
+	for key, link := range s.links {
+		if link.FromURN == urn || link.ToURN == urn {
+			delete(s.links, key)
+		}
+	}
+	return nil
+}
+func (s *agentGraphStore) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	s.executions++
+	for _, launch := range s.links {
+		if launch.Relation != "acted_on" {
+			continue
+		}
+		for _, dependency := range s.links {
+			if dependency.Relation != "depends_on" || dependency.FromURN != launch.ToURN {
+				continue
+			}
+			for _, role := range s.links {
+				if role.Relation != "runs_as" || role.FromURN != dependency.ToURN {
+					continue
+				}
+				resourceURNs := []string{launch.FromURN, launch.ToURN, dependency.ToURN, role.ToURN}
+				evidence := make([]any, 0, len(resourceURNs))
+				for _, urn := range resourceURNs {
+					evidence = append(evidence, map[string]any{"urn": urn})
+				}
+				return []ports.CypherRow{{Values: map[string]any{
+					"primary_urn": dependency.ToURN, "fingerprint_key": dependency.ToURN + "|" + role.ToURN,
+					"summary": "causal path", "resource_urns": resourceURNs, "evidence": evidence,
+				}}}, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
+func TestDraftPolicyBundleRedactsSourceEvidenceBeforeModelCall(t *testing.T) {
+	rule := findingdsl.NewPolicyRule(findingdsl.NewPolicyRuleInput{ID: "agent-grounded-aws", Name: "Agent grounded AWS", Description: "Flags a source-grounded AWS state.", Severity: "high", Conditions: []string{`cmp_eq(path(resource, "has_secret_bindings"), true)`, `cmp_eq(path(resource, "status"), "ACTIVE")`}, Frameworks: []findingdsl.PolicyFramework{{Name: "SOC 2", Controls: []string{"CC6.1"}}}})
+	raw, err := json.Marshal(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &stubDraftModel{raw: raw}
+	_, err = (Service{Model: model}).DraftPolicyBundle(context.Background(), PolicyBundleDraftRequest{
+		Prompt: "author from source evidence",
+		Domain: "aws",
+		Context: map[string]any{"source_evidence": []map[string]any{
+			map[string]any{
+				"source_kind": "aws.cloudtrail", "event_type": "RunTask", "account_id": 123456789012,
+				"task_definition_arn": "arn:aws:ecs:us-east-1:123456789012:task-definition/private-candidate:7", "started_by": "operator@example.test",
+			},
+			map[string]any{
+				"source_kind": "aws.ecs_task_definition", "status": "ACTIVE", "has_candidate_marker": "true", "has_secret_bindings": "true", "secret_binding_count": 2,
+				"resource_id": "arn:aws:ecs:us-east-1:123456789012:task-definition/private-candidate:7", "container_images": "123456789012.dkr.ecr.us-east-1.amazonaws.com/private:candidate-7", "secret_name": "DATABASE_TOKEN",
+				"arn:aws:iam::123456789012:role/private-role": "dynamic-key-value",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(model.req.Context["source_evidence"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	contextJSON := string(encoded)
+	for _, forbidden := range []string{"123456789012", "private-candidate", "operator@example.test", "DATABASE_TOKEN", "dkr.ecr", "dynamic-key-value"} {
+		if strings.Contains(contextJSON, forbidden) {
+			t.Fatalf("source evidence sent to model contains %q: %s", forbidden, contextJSON)
+		}
+	}
+	for _, required := range []string{`"event_type":"RunTask"`, `"status":"ACTIVE"`, `"has_secret_bindings":"true"`, `"secret_binding_count":2`, "aws-ref-", "evidence-key-"} {
+		if !strings.Contains(contextJSON, required) {
+			t.Fatalf("source evidence sent to model missing %q: %s", required, contextJSON)
+		}
 	}
 }
 

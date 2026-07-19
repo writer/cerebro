@@ -1,35 +1,271 @@
 [
   {
-    "id": "okta-authorization-server-fixture-1",
+    "id": "okta-writer-okta-com-authorization_server-e6626768309e0b7f",
     "tenant_id": "writer.okta.com",
     "source_id": "okta",
     "kind": "okta.authorization_server",
-    "occurred_at": "2026-04-23T00:00:00Z",
+    "occurred_at": "2020-05-13T13:29:26Z",
     "schema_ref": "okta/authorization_server/v1",
     "payload": {
-      "id": "aus-api",
       "domain": "writer.okta.com",
-      "name": "API Gateway"
+      "id": "ausc04qbv1PS5ygdb4x6",
+      "name": "default",
+      "raw": {
+        "_links": {
+          "claims": {
+            "hints": {
+              "allow": [
+                "GET",
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/default/claims"
+          },
+          "deactivate": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/default/lifecycle/deactivate"
+          },
+          "keys": {
+            "hints": {
+              "allow": [
+                "GET"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/default/credentials/keys"
+          },
+          "metadata": [
+            {
+              "hints": {
+                "allow": [
+                  "GET"
+                ]
+              },
+              "href": "https://test.okta.com/oauth2/default/.well-known/oauth-authorization-server",
+              "name": "oauth-authorization-server"
+            },
+            {
+              "hints": {
+                "allow": [
+                  "GET"
+                ]
+              },
+              "href": "https://test.okta.com/oauth2/default/.well-known/openid-configuration",
+              "name": "openid-configuration"
+            }
+          ],
+          "policies": {
+            "hints": {
+              "allow": [
+                "GET",
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/default/policies"
+          },
+          "rotateKey": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/default/credentials/lifecycle/keyRotate"
+          },
+          "scopes": {
+            "hints": {
+              "allow": [
+                "GET",
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/default/scopes"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "DELETE",
+                "PUT"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/default"
+          }
+        },
+        "audiences": [
+          "api://default"
+        ],
+        "created": "2020-05-13T13:29:26.000Z",
+        "credentials": {
+          "signing": {
+            "kid": "",
+            "lastRotated": "",
+            "nextRotation": "",
+            "rotationMode": ""
+          }
+        },
+        "description": "Default Authorization Server for your Applications",
+        "id": "ausc04qbv1PS5ygdb4x6",
+        "issuer": "https://test.okta.com/oauth2/default",
+        "issuerMode": "ORG_URL",
+        "lastUpdated": "2020-05-13T13:29:26.000Z",
+        "name": "default",
+        "status": "ACTIVE"
+      },
+      "status": "ACTIVE"
     },
     "attributes": {
       "audience_count": "1",
-      "audiences": "api://prod",
-      "authorization_server_id": "aus-api",
-      "created_at": "2026-04-20T00:00:00Z",
-      "description": "Production API auth server",
+      "audiences": "api://default",
+      "authorization_server_id": "ausc04qbv1PS5ygdb4x6",
+      "created_at": "2020-05-13T13:29:26.000Z",
+      "description": "Default Authorization Server for your Applications",
       "domain": "writer.okta.com",
       "family": "authorization_server",
-      "issuer": "https://login.example.com/oauth2/aus-api",
-      "issuer_host": "login.example.com",
-      "issuer_mode": "CUSTOM_URL",
-      "jwks_uri_host": "login.example.com",
-      "kid": "kid-1",
-      "last_updated_at": "2026-04-23T00:00:00Z",
-      "name": "API Gateway",
-      "resource_id": "aus-api",
+      "issuer": "https://test.okta.com/oauth2/default",
+      "issuer_host": "test.okta.com",
+      "issuer_mode": "ORG_URL",
+      "last_updated_at": "2020-05-13T13:29:26.000Z",
+      "name": "default",
+      "resource_id": "ausc04qbv1PS5ygdb4x6",
       "resource_type": "AuthorizationServer",
-      "rotation_mode": "AUTO",
-      "signing_last_rotated_at": "2026-04-20T00:00:00Z",
+      "status": "ACTIVE"
+    }
+  },
+  {
+    "id": "okta-writer-okta-com-authorization_server-10a8b137de0f91c6",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.authorization_server",
+    "occurred_at": "2020-08-27T18:14:45Z",
+    "schema_ref": "okta/authorization_server/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "aussfbgzszrirZqOv4x6",
+      "name": "python_sdk_test_aaPeZ",
+      "raw": {
+        "_links": {
+          "claims": {
+            "hints": {
+              "allow": [
+                "GET",
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/aussfbgzszrirZqOv4x6/claims"
+          },
+          "deactivate": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/aussfbgzszrirZqOv4x6/lifecycle/deactivate"
+          },
+          "keys": {
+            "hints": {
+              "allow": [
+                "GET"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/aussfbgzszrirZqOv4x6/credentials/keys"
+          },
+          "metadata": [
+            {
+              "hints": {
+                "allow": [
+                  "GET"
+                ]
+              },
+              "href": "https://test.okta.com/oauth2/aussfbgzszrirZqOv4x6/.well-known/oauth-authorization-server",
+              "name": "oauth-authorization-server"
+            },
+            {
+              "hints": {
+                "allow": [
+                  "GET"
+                ]
+              },
+              "href": "https://test.okta.com/oauth2/aussfbgzszrirZqOv4x6/.well-known/openid-configuration",
+              "name": "openid-configuration"
+            }
+          ],
+          "policies": {
+            "hints": {
+              "allow": [
+                "GET",
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/aussfbgzszrirZqOv4x6/policies"
+          },
+          "rotateKey": {
+            "hints": {
+              "allow": [
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/aussfbgzszrirZqOv4x6/credentials/lifecycle/keyRotate"
+          },
+          "scopes": {
+            "hints": {
+              "allow": [
+                "GET",
+                "POST"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/aussfbgzszrirZqOv4x6/scopes"
+          },
+          "self": {
+            "hints": {
+              "allow": [
+                "GET",
+                "DELETE",
+                "PUT"
+              ]
+            },
+            "href": "https://test.okta.com/api/v1/authorizationServers/aussfbgzszrirZqOv4x6"
+          }
+        },
+        "audiences": [
+          "api://default"
+        ],
+        "created": "2020-08-27T18:14:45.000Z",
+        "credentials": {
+          "signing": {
+            "kid": "",
+            "lastRotated": "",
+            "nextRotation": "",
+            "rotationMode": ""
+          }
+        },
+        "description": "Test Auth Server",
+        "id": "aussfbgzszrirZqOv4x6",
+        "issuer": "https://test.okta.com/oauth2/aussfbgzszrirZqOv4x6",
+        "issuerMode": "ORG_URL",
+        "lastUpdated": "2020-08-27T18:14:45.000Z",
+        "name": "python_sdk_test_aaPeZ",
+        "status": "ACTIVE"
+      },
+      "status": "ACTIVE"
+    },
+    "attributes": {
+      "audience_count": "1",
+      "audiences": "api://default",
+      "authorization_server_id": "aussfbgzszrirZqOv4x6",
+      "created_at": "2020-08-27T18:14:45.000Z",
+      "description": "Test Auth Server",
+      "domain": "writer.okta.com",
+      "family": "authorization_server",
+      "issuer": "https://test.okta.com/oauth2/aussfbgzszrirZqOv4x6",
+      "issuer_host": "test.okta.com",
+      "issuer_mode": "ORG_URL",
+      "last_updated_at": "2020-08-27T18:14:45.000Z",
+      "name": "python_sdk_test_aaPeZ",
+      "resource_id": "aussfbgzszrirZqOv4x6",
+      "resource_type": "AuthorizationServer",
       "status": "ACTIVE"
     }
   }

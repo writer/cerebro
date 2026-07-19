@@ -67,10 +67,10 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ### The CDK is not a plugin marketplace yet.
 
-- Sources are in-process Go modules vendored in this repository. There is no first-party expectation that third parties drop binary plugins in at runtime, distribute sources via container images, or load them from a registry.
-- Why: an in-process CDK is the smallest thing that proves the contract. Out-of-process plugins are a separate operational surface (signing, sandboxing, auth, blast radius) and should land only when the in-process surface has stabilized and the operational case is concrete.
-- Enforced in: the in-process source registry in `internal/sourcecdk` and built-in source layout under `sources/`.
-- What would change this: a documented operational threshold (source count, deploy blast radius, third-party authoring need) that justifies the cost of an out-of-process plugin contract, with a separate design doc covering signing, sandboxing, and lifecycle.
+- Cerebro does not accept arbitrary third-party binaries, container images, native libraries, or runtime-downloaded source code. Source definitions and deep adapters remain first-party, repository-owned, versioned, and release-provenanced. The current Rust record helper is a vendored, first-party, zero-import Wasm module behind a fixed host ABI; it does not discover sources, perform provider I/O, receive credentials, or change source lifecycle.
+- Why: source execution receives credentials and controlled egress. An open plugin marketplace adds signing, sandboxing, revocation, compatibility, and incident-response obligations that a connector catalog does not need. A capability-free deterministic helper narrows one computation without creating a distribution surface.
+- Enforced in: the built-in source layout under `sources/`, connector-definition validation, release provenance, zero-import ABI validation in `internal/wasmjson`, and the absence of native dynamic-library or remote image loading. [`rust-source-runtime-adr.md`](rust-source-runtime-adr.md) proposes one first-party out-of-process worker for compiled declarative plans if it passes the documented parity and operational gates; it does not permit third-party code loading.
+- What would change this: a concrete third-party authoring and distribution requirement, followed by a separate design that covers artifact signing, capability-scoped host calls, sandboxing, resource limits, revocation, compatibility, and lifecycle. Source count and compile-time wiring may justify the gated first-party worker described in the ADR, not a marketplace.
 
 ### Agent push surface (device-keyed write) is bounded to first-party fleet agents.
 
@@ -208,12 +208,12 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ## Operational And Distribution
 
-### Cerebro does not ship an end-user web UI from this repository.
+### The Go service does not embed or serve end-user clients.
 
-- The repo exposes JSON HTTP, Connect RPC, and CLI surfaces. It will not host an end-user web console, a dashboarding UI, an investigation workbench, or a chat surface.
-- Why: a console is a separate product with separate distribution, accessibility, and security constraints. Pulling it into the bootstrap repo would couple every release of either to the other.
-- Enforced in: cmd/cerebro entrypoints and the documented CLI, JSON HTTP, Connect RPC, SDK, and MCP surfaces in [`README.md`](../../README.md).
-- What would change this: nothing. Console-shaped products consume Cerebro through its typed APIs from a separate repository.
+- The repository may contain independently built clients under `apps/`, including a browser application and chat companion. The Go service will not import those clients, embed their assets, proxy their provider traffic, or require them to start.
+- Why: colocation lets contracts and consumers change atomically without coupling their build artifacts, release cadence, accessibility obligations, or security boundaries.
+- Enforced in: [`docs/engineering/monorepo.md`](monorepo.md), root npm workspace checks, `cmd/cerebro` entrypoints, and `tools/archtests/monorepo_layout_test.go`.
+- What would change this: nothing for embedding clients in the Go service. A new client belongs in a portable, independently built workspace that consumes typed public contracts.
 
 ### Cerebro does not host or proxy LLM providers.
 
@@ -228,6 +228,13 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 - Why: cloud-agnosticism is a deliberate runtime boundary. The moment the control plane requires a specific cloud, "boring, proven, operable" stops being true for half the deployment surface.
 - Enforced in: absence of cloud-specific runtime dependencies in `internal/bootstrap`.
 - What would change this: a deployment shape that demonstrably cannot be served by Postgres, NATS, and Neo4j running in the operator's environment of choice.
+
+### The agent service lifecycle contract is not a deployment controller.
+
+- The public lifecycle contract names service states, generations, durable runs, leases, checkpoints, effects, deliveries, capabilities, and adapter ports. It does not provision infrastructure, select an orchestrator, store environment configuration, resolve private routes, or define concrete rollout and disaster-recovery thresholds.
+- Why: portable continuity semantics must survive a deployment-topology change. Combining those semantics with one operator's placement and rollout policy would make service identity and durable work depend on private infrastructure.
+- Enforced in: [`agent-service-lifecycle-contract.md`](../domains/agent-service-lifecycle-contract.md), generated bindings under `internal/agentplatform/lifecyclecontract`, and `tools/archtests/agent_service_lifecycle_test.go`.
+- What would change this: nothing inside the portable contract. Concrete deployment adapters and operational policy belong to the operator's deployment repository.
 
 ### Cerebro will not maintain undocumented compatibility aliases indefinitely.
 

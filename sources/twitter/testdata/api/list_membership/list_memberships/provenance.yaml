@@ -1,0 +1,27 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: twitter
+family: list_membership
+case: list_memberships
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedTwitterFamilies
+request:
+    method: GET
+    url: https://api.twitter.com/2/users/783214/list_memberships
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2022-05-07T12:56:25Z"
+    sha256: 4a918047dc80b875c35ece4a37c69a310776c0dfedfd40e1caad1a0400329e25
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/tweepy/tweepy
+    commit: c1978d643ecce491929084e4290b35f57e4921ad
+    path: cassettes/test_asyncclient_get_list_memberships.yaml
+    artifact_sha256: 352e988e9611d2f4e45f6a257bb413e93877d35aa7bebe4c1a3d5454fd5318d0
+    license: MIT
+    recording_tool: VCR.py
+    harness_path: tests/config.py
+    freshness: historical
+    capture_time_basis: response_header

@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        minimum_tls_version: TLS1_2-passing
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        minimum_tls_version: TLS1_2
+      wantFinding: false

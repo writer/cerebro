@@ -96,6 +96,8 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("REDUCTO_API_KEY", "")
 	t.Setenv("CEREBRO_REDUCTO_BASE_URL", "")
 	t.Setenv("CEREBRO_REDUCTO_TIMEOUT", "")
+	t.Setenv("CEREBRO_EVENT_ADMISSION_WORKER", "")
+	t.Setenv("CEREBRO_EVENT_ADMISSION_WORKERS", "")
 	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
@@ -108,6 +110,12 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.ShutdownTimeout != 10*time.Second {
 		t.Fatalf("ShutdownTimeout = %v, want %v", cfg.ShutdownTimeout, 10*time.Second)
+	}
+	if cfg.SourceRuntime.EventAdmissionWorkerPath != defaultSourceEventAdmissionWorkerPath() {
+		t.Fatalf("SourceRuntime.EventAdmissionWorkerPath = %q, want %q", cfg.SourceRuntime.EventAdmissionWorkerPath, defaultSourceEventAdmissionWorkerPath())
+	}
+	if cfg.SourceRuntime.EventAdmissionWorkers != defaultSourceEventAdmissionWorkers {
+		t.Fatalf("SourceRuntime.EventAdmissionWorkers = %d, want %d", cfg.SourceRuntime.EventAdmissionWorkers, defaultSourceEventAdmissionWorkers)
 	}
 	if cfg.AppendLog.Driver != "" {
 		t.Fatalf("AppendLog.Driver = %q, want empty", cfg.AppendLog.Driver)
@@ -214,6 +222,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", "5m")
 	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_PENDING_RETENTION", "216h")
 	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_TERMINAL_RETENTION", "48h")
+	t.Setenv("CEREBRO_DECISION_PACKET_RETENTION", "720h")
 	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_RECORDS", "80")
 	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_HARD_RECORDS", "100")
 	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_BYTES", "8000")
@@ -362,6 +371,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.StateStore.DeadLetterPendingRetention != 9*24*time.Hour || cfg.StateStore.DeadLetterTerminalRetention != 48*time.Hour || cfg.StateStore.DeadLetterWarningRecords != 80 || cfg.StateStore.DeadLetterHardRecords != 100 || cfg.StateStore.DeadLetterWarningBytes != 8000 || cfg.StateStore.DeadLetterHardBytes != 10000 {
 		t.Fatalf("StateStore dead-letter policy = %#v", cfg.StateStore)
+	}
+	if cfg.StateStore.DecisionPacketRetention != 30*24*time.Hour {
+		t.Fatalf("DecisionPacketRetention = %v, want 720h", cfg.StateStore.DecisionPacketRetention)
 	}
 	if cfg.Cache.Driver != CacheDriverValkey || cfg.Cache.URL != "rediss://cache.example.internal:6379" || cfg.Cache.Namespace != "cerebro:test" || cfg.Cache.DefaultTTL != 45*time.Second || cfg.Cache.StaleTTL != 10*time.Minute || cfg.Cache.MaxPayloadBytes != 2097152 || cfg.Cache.MaxEntries != 256 {
 		t.Fatalf("Cache config = %#v", cfg.Cache)
@@ -668,6 +680,7 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_PENDING_RETENTION", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_TERMINAL_RETENTION", "")
+	t.Setenv("CEREBRO_DECISION_PACKET_RETENTION", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_RECORDS", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_HARD_RECORDS", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DEAD_LETTER_WARNING_BYTES", "")

@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        image_pull_policy_always_missing_for_latest: true
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        image_pull_policy_always_missing_for_latest: false
+      wantFinding: false

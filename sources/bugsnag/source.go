@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -17,7 +16,6 @@ var catalogFS embed.FS
 const (
 	sourceID               = "bugsnag"
 	defaultFamily          = familyProjects
-	defaultHealthPath      = "/health"
 	defaultBaseURLTemplate = "https://api.bugsnag.com"
 	tokenHeader            = ""
 	tokenScheme            = "Token"
@@ -48,29 +46,25 @@ func New() (*Source, error) {
 		Families: []jsonapi.Family{
 			{
 				Name:             familyProjects,
-				Path:             "/projects",
+				Path:             "/organizations/${config.organization_id}/projects",
 				URNKind:          "bugsnag_projects",
 				IDKeys:           []string{"id", "urn", "resource_urn", "name"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
+				DisablePageSize:  true,
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
+				Config:           bugsnagRequestConfig("bugsnag_projects"),
 				StaticAttributes: map[string]string{"record_class": "asset", "schema": "projects", "source_system": "bugsnag"},
 			},
 			{
 				Name:             familyErrors,
-				Path:             "/errors",
+				Path:             "/projects/${config.project_id}/errors",
 				URNKind:          "bugsnag_errors",
 				IDKeys:           []string{"id", "finding_id", "resource_urn"},
-				CursorParam:      "cursor",
-				NextCursorKeys:   []string{"next_cursor"},
-				PageSizeParams:   []string{"limit"},
-				ListKeys:         []string{"data"},
-				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
-				Attributes:       map[string]string{"description": "description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "resource_id|id|metadata.resource_id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|risk|priority", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "title|name|summary"},
-				StaticAttributes: map[string]string{"record_class": "finding", "schema": "errors", "source_system": "bugsnag"},
+				DisablePageSize:  true,
+				TimestampKeys:    []string{"last_seen", "first_seen", "updated_at", "created_at"},
+				Attributes:       map[string]string{"description": "context|message|description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "last_seen|first_seen|updated_at|created_at", "resource_id": "project_id|resource_id|id|metadata.resource_id", "resource_name": "project_id|resource_id|id|metadata.resource_name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|risk|priority", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "error_class|message|title|name|summary"},
+				Config:           bugsnagRequestConfig("bugsnag_projects"),
+				StaticAttributes: map[string]string{"record_class": "finding", "resource_type": "bugsnag_project", "schema": "errors", "source_system": "bugsnag"},
 			},
 			{
 				Name:             familyAuditEvents,
@@ -105,9 +99,6 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
-	if err := s.checkHealth(ctx, runtimeCfg); err != nil {
-		return err
-	}
 	return s.inner.Check(ctx, runtimeCfg)
 }
 
@@ -131,9 +122,12 @@ func (s *Source) runtimeConfig(_ context.Context, cfg sourcecdk.Config) (sourcec
 	return sourcecdk.ResolveBaseURLConfig(sourceID, defaultBaseURLTemplate, cfg, templateKeys)
 }
 
-func (s *Source) checkHealth(ctx context.Context, cfg sourcecdk.Config) error {
-	path := firstNonEmpty(sourcecdk.ConfigValue(cfg, "health_path"), defaultHealthPath)
-	return s.inner.CheckPath(ctx, cfg, path, nil)
+func bugsnagRequestConfig(resourceURNKind string) jsonapi.FamilyConfig {
+	return jsonapi.FamilyConfig{
+		ConfigAttributes: map[string]string{"tenant_id": "tenant_id"},
+		ResourceURNKind:  resourceURNKind,
+		StaticHeaders:    map[string]string{"X-Bugsnag-Api": "true", "X-Version": "2"},
+	}
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
@@ -146,15 +140,6 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 	return spec, nil
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func (s *Source) allowLoopbackForTest() {

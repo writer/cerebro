@@ -1,0 +1,9 @@
+flowchart LR
+  Agent["Coding agent"] --> Hook["Native hook adapter"]
+  Hook --> Collector["Managed per-user collector"]
+  Collector --> Ledger["Signed local ledger"]
+  Collector --> Checkpoint["Signed heartbeat and chain head"]
+  Checkpoint --> ControlPlane["Organization control plane"]
+  ControlPlane --> Incident["Freshness, rollback, and drift incidents"]
+  User["Local user"] -. "bypass remains detectable later" .-> Collector
+  User --> Provider["Provider credentials remain direct"]

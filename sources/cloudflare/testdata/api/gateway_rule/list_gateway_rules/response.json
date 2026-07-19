@@ -1,0 +1,79 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "action": "block",
+      "created_at": "2024-11-27T23:02:23Z",
+      "deleted_at": null,
+      "description": "desc",
+      "device_posture": "",
+      "enabled": false,
+      "filters": [
+        "dns"
+      ],
+      "id": "example-246abb73",
+      "identity": "",
+      "name": "rytdytpfmz",
+      "precedence": 12302,
+      "rule_settings": {
+        "add_headers": null,
+        "biso_admin_controls": null,
+        "block_page_enabled": true,
+        "block_reason": "cuz",
+        "check_session": null,
+        "egress": {
+          "ipv4": "203.0.113.1",
+          "ipv6": "2001:db8::/32"
+        },
+        "insecure_disable_dnssec_validation": false,
+        "ip_categories": false,
+        "ip_indicator_feeds": false,
+        "l4override": null,
+        "override_host": "",
+        "override_ips": null,
+        "payload_log": {
+          "enabled": true
+        },
+        "untrusted_cert": {
+          "action": "error"
+        }
+      },
+      "traffic": "any(dns.domains[*] == \"example.com\")",
+      "updated_at": "2024-11-27T23:02:23Z",
+      "version": 1
+    },
+    {
+      "action": "block",
+      "created_at": "2025-03-03T17:17:34Z",
+      "deleted_at": null,
+      "description": "test description ",
+      "device_posture": "",
+      "enabled": true,
+      "filters": [
+        "http"
+      ],
+      "id": "example-1240392e",
+      "identity": "",
+      "name": "test-http",
+      "precedence": 13302,
+      "rule_settings": {
+        "add_headers": null,
+        "biso_admin_controls": null,
+        "block_page_enabled": false,
+        "block_reason": "",
+        "check_session": null,
+        "insecure_disable_dnssec_validation": false,
+        "ip_categories": false,
+        "ip_indicator_feeds": false,
+        "l4override": null,
+        "override_host": "",
+        "override_ips": null
+      },
+      "traffic": "http.request.uri.path == \"/foo\"",
+      "updated_at": "2025-03-03T17:17:34Z",
+      "version": 1
+    }
+  ],
+  "success": true
+}
