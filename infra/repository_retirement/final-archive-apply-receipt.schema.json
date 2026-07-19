@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cerebro final repository archive apply receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_repository_id",
+    "state",
+    "apply_contract_sha256",
+    "pre_apply_observation_sha256",
+    "applied_at_epoch",
+    "postcondition"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "cerebro-repository-final-archive-apply-receipt/v1"
+    },
+    "source_repository_id": {
+      "enum": ["slack_companion", "web_public", "web_private"]
+    },
+    "state": {"const": "archived"},
+    "apply_contract_sha256": {"$ref": "#/$defs/digest"},
+    "pre_apply_observation_sha256": {"$ref": "#/$defs/digest"},
+    "applied_at_epoch": {"type": "integer", "minimum": 1},
+    "postcondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checked",
+        "archived",
+        "observation_sha256",
+        "source_main_commit_sha",
+        "source_tree_sha",
+        "observed_at_epoch"
+      ],
+      "properties": {
+        "checked": {"const": true},
+        "archived": {"const": true},
+        "observation_sha256": {"$ref": "#/$defs/digest"},
+        "source_main_commit_sha": {"$ref": "#/$defs/commit"},
+        "source_tree_sha": {"$ref": "#/$defs/commit"},
+        "observed_at_epoch": {"type": "integer", "minimum": 1}
+      }
+    }
+  },
+  "$defs": {
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cerebro final repository archive apply contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_repository_id",
+    "state",
+    "validity",
+    "artifacts",
+    "snapshot",
+    "requirements"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "cerebro-repository-final-archive-apply-contract/v1"
+    },
+    "source_repository_id": {
+      "enum": ["slack_companion", "web_public", "web_private"]
+    },
+    "state": {"const": "sealed"},
+    "validity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sealed_at_epoch", "expires_at_epoch"],
+      "properties": {
+        "sealed_at_epoch": {"type": "integer", "minimum": 1},
+        "expires_at_epoch": {"type": "integer", "minimum": 1}
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "final_lock_sha256",
+        "readiness_receipt_sha256",
+        "ledger_sha256",
+        "source_authority_sha256",
+        "inventory_receipt_sha256",
+        "cutover_receipt_sha256",
+        "rollback_receipt_sha256",
+        "pre_apply_observation_sha256"
+      ],
+      "properties": {
+        "final_lock_sha256": {"$ref": "#/$defs/digest"},
+        "readiness_receipt_sha256": {"$ref": "#/$defs/digest"},
+        "ledger_sha256": {"$ref": "#/$defs/digest"},
+        "source_authority_sha256": {"$ref": "#/$defs/digest"},
+        "inventory_receipt_sha256": {
+          "oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]
+        },
+        "cutover_receipt_sha256": {"$ref": "#/$defs/digest"},
+        "rollback_receipt_sha256": {"$ref": "#/$defs/digest"},
+        "pre_apply_observation_sha256": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "snapshot": {"$ref": "#/$defs/snapshot"},
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_head_revalidation_required",
+        "max_pre_apply_observation_age_seconds",
+        "postcondition_receipt_required",
+        "max_postcondition_observation_age_seconds"
+      ],
+      "properties": {
+        "source_head_revalidation_required": {"const": true},
+        "max_pre_apply_observation_age_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "postcondition_receipt_required": {"const": true},
+        "max_postcondition_observation_age_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"source_repository_id": {"const": "slack_companion"}}
+      },
+      "then": {
+        "properties": {
+          "artifacts": {
+            "properties": {"inventory_receipt_sha256": {"type": "null"}}
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_repository_id": {"enum": ["web_public", "web_private"]}
+        }
+      },
+      "then": {
+        "properties": {
+          "artifacts": {
+            "properties": {
+              "inventory_receipt_sha256": {"$ref": "#/$defs/digest"}
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_main_commit_sha",
+        "source_tree_sha",
+        "public_target_commit_sha",
+        "private_target_commit_sha"
+      ],
+      "properties": {
+        "source_main_commit_sha": {"$ref": "#/$defs/commit"},
+        "source_tree_sha": {"$ref": "#/$defs/commit"},
+        "public_target_commit_sha": {"$ref": "#/$defs/commit"},
+        "private_target_commit_sha": {"$ref": "#/$defs/commit"}
+      }
+    }
+  }
+}

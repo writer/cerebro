@@ -127,3 +127,53 @@ bash infra/scripts/produce_web_final_archive_dry_run.sh \
 
 The output files contain logical repository IDs and contract evidence only. Command output is limited
 to a bounded success result or failure reason.
+
+## Apply boundary
+
+There is no repository archive mutation executor in this codebase. The current apply boundary is a
+non-mutating validator and three strict contracts:
+
+- `final-archive-apply-contract.schema.json` seals the exact final lock, verified dry-run receipt,
+  source evidence, cutover receipt, rollback receipt, and a fresh pre-apply live observation by byte
+  digest. It also binds the exact source and target snapshot.
+- `repository-archive-live-observation.schema.json` records a logical source ID, exact source and
+  target revisions, repository archived state, zero open work, bounded observation time, and digests
+  of the live repository metadata and default-branch observation.
+- `final-archive-apply-receipt.schema.json` binds an archived postcondition to the sealed apply
+  contract and to distinct, content-addressed pre-apply and postcondition observations.
+
+The default `pre-apply` phase verifies the sealed artifacts, invokes the final archive validator on
+copied immutable bytes, requires the live source and target snapshot to match, and accepts a source
+observation no more than 30 seconds old. It has no apply flag, no repository API client, and no
+mutation path. Its `preconditions-verified` result is evidence validation, not archive authority.
+
+```bash
+python3 infra/scripts/validate_repository_archive_apply.py \
+  --apply-contract final-apply-contract.json \
+  --lock final-lock.json \
+  --readiness-receipt final-dry-run-receipt.json \
+  --ledger source-disposition.tsv \
+  --source-authority source-authority.json \
+  --inventory-receipt source-inventory.json \
+  --cutover-receipt cutover.receipt \
+  --rollback-receipt rollback.receipt \
+  --pre-apply-observation pre-apply-observation.json
+```
+
+The `postcondition` phase additionally requires a real archived observation and its apply receipt. It
+rejects a moved source commit or tree, an unchanged repository-metadata observation, a stale
+postcondition, or a receipt that is not bound to the exact sealed contract and live observation.
+
+The following live inputs remain required before an archive executor can be added:
+
+- a reviewed change-control path that seals the final apply contract;
+- a private adapter that maps each logical source ID to its fixed allowlist and captures repository
+  metadata and the default-branch revision immediately before an apply;
+- a same-process executor that revalidates the exact source commit and tree after precondition
+  validation, performs only the single allowlisted archive mutation, and does not accept raw
+  repository arguments;
+- a postcondition read that proves the repository is archived while the source commit and tree are
+  unchanged, followed by durable storage of the apply receipt.
+
+Until those inputs exist and are reviewed together, no archive receipt should be created and no
+repository should be mutated.

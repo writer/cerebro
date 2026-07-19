@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cerebro repository archive live observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_repository_id",
+    "phase",
+    "observed_at_epoch",
+    "snapshot",
+    "repository",
+    "evidence"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "cerebro-repository-archive-live-observation/v1"
+    },
+    "source_repository_id": {
+      "enum": ["slack_companion", "web_public", "web_private"]
+    },
+    "phase": {"enum": ["pre-apply", "postcondition"]},
+    "observed_at_epoch": {"type": "integer", "minimum": 1},
+    "snapshot": {"$ref": "#/$defs/snapshot"},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["archived", "open_pull_request_count", "open_issue_count"],
+      "properties": {
+        "archived": {"type": "boolean"},
+        "open_pull_request_count": {"const": 0},
+        "open_issue_count": {"const": 0}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository_metadata_sha256", "default_branch_ref_sha256"],
+      "properties": {
+        "repository_metadata_sha256": {"$ref": "#/$defs/digest"},
+        "default_branch_ref_sha256": {"$ref": "#/$defs/digest"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"phase": {"const": "pre-apply"}}},
+      "then": {
+        "properties": {
+          "repository": {"properties": {"archived": {"const": false}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"phase": {"const": "postcondition"}}},
+      "then": {
+        "properties": {
+          "repository": {"properties": {"archived": {"const": true}}}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_main_commit_sha",
+        "source_tree_sha",
+        "public_target_commit_sha",
+        "private_target_commit_sha"
+      ],
+      "properties": {
+        "source_main_commit_sha": {"$ref": "#/$defs/commit"},
+        "source_tree_sha": {"$ref": "#/$defs/commit"},
+        "public_target_commit_sha": {"$ref": "#/$defs/commit"},
+        "private_target_commit_sha": {"$ref": "#/$defs/commit"}
+      }
+    }
+  }
+}

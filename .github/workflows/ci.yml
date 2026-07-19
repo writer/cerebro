@@ -100,6 +100,11 @@ jobs:
         shell: bash
         run: bash infra/tests/test_validate_final_archive_contract.sh
 
+      - name: Test repository archive apply contract
+        shell: bash
+        working-directory: infra
+        run: python3 -m unittest tests.test_validate_repository_archive_apply
+
       - name: Test web final archive dry-run producer
         shell: bash
         run: bash infra/tests/test_produce_web_final_archive_dry_run.sh

@@ -306,6 +306,26 @@ refresh_receipt_lock "${case_directory}"
 run_validator "${case_directory}" web-authority.json web-inventory.json
 assert_failure "opaque web cutover evidence is rejected" "invalid-cutover-receipt"
 
+case_directory="$(new_case stale-web-runtime-receipt)"
+rewrite_json "${case_directory}/final-lock.json" \
+  '.source_repository_id = "web_public" | .ledger.adapter = "web_representation_v1"
+    | .ledger.terminal_dispositions = [
+      "covered_by_new_public_slice", "obsolete_or_generated", "obsolete_or_replaced",
+      "private_host_ops", "represented_public"
+    ]'
+prepare_web_runtime_receipts "${case_directory}" web_public
+rewrite_json "${case_directory}/cutover.receipt" '.deployment.observed_at_epoch = 600'
+cutover_digest="$(sha256sum "${case_directory}/cutover.receipt" | awk '{print $1}')"
+rewrite_json "${case_directory}/rollback.receipt" \
+  ".cutover_receipt_sha256 = \"${cutover_digest}\""
+rollback_digest="$(sha256sum "${case_directory}/rollback.receipt" | awk '{print $1}')"
+rewrite_json "${case_directory}/final-lock.json" \
+  ".receipts.cutover = {ref: \"receipt:sha256:${cutover_digest}\", sha256: \"${cutover_digest}\"}
+    | .receipts.rollback = {ref: \"receipt:sha256:${rollback_digest}\", sha256: \"${rollback_digest}\"}"
+refresh_receipt_lock "${case_directory}"
+run_validator "${case_directory}" web-authority.json web-inventory.json
+assert_failure "stale web runtime receipts are rejected" "stale-runtime-receipt"
+
 case_directory="$(new_case receipt-digest-mismatch)"
 refresh_receipt_lock "${case_directory}"
 printf '%s\n' 'changed cutover receipt' >"${case_directory}/cutover.receipt"
