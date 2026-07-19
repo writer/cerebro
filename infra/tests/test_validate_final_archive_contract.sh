@@ -55,6 +55,38 @@ refresh_receipt_lock() {
   mv "${temporary_file}" "${case_directory}/final-receipt.json"
 }
 
+prepare_web_runtime_receipts() {
+  local case_directory="$1"
+  local source_id="$2"
+  jq -cnS \
+    --arg source_id "${source_id}" \
+    --arg public_sha "${public_target}" \
+    --arg private_sha "${private_target}" \
+    '{schema_version:"cerebro.web-monorepo-cutover-receipt/v1",
+      source_repository_id:$source_id,
+      release:{public_commit_sha:$public_sha,web_digest:("sha256:" + ("4" * 64))},
+      deployment:{private_commit_sha:$private_sha,runtime_state:"ready",traffic_state:"serving",probe_state:"passed",observed_at_epoch:995},
+      evidence:{product_release_sha256:("1" * 64),target_receipt_sha256:("2" * 64),runtime_observation_sha256:("3" * 64)}}' \
+    >"${case_directory}/cutover.receipt"
+  local cutover_digest
+  cutover_digest="$(sha256sum "${case_directory}/cutover.receipt" | awk '{print $1}')"
+  jq -cnS \
+    --arg source_id "${source_id}" \
+    --arg private_sha "${private_target}" \
+    --arg cutover_digest "${cutover_digest}" \
+    '{schema_version:"cerebro.web-monorepo-rollback-readiness-receipt/v1",
+      source_repository_id:$source_id,cutover_receipt_sha256:$cutover_digest,
+      rollback_target:{public_commit_sha:("9" * 40),private_commit_sha:$private_sha,web_digest:("sha256:" + ("8" * 64))},
+      readiness:{artifact_state:"available",render_state:"verified",workflow_state:"verified",rehearsal_state:"verified",observed_at_epoch:996},
+      evidence:{product_release_sha256:("5" * 64),target_receipt_sha256:("6" * 64),rehearsal_observation_sha256:("7" * 64)}}' \
+    >"${case_directory}/rollback.receipt"
+  local rollback_digest
+  rollback_digest="$(sha256sum "${case_directory}/rollback.receipt" | awk '{print $1}')"
+  rewrite_json "${case_directory}/final-lock.json" \
+    ".receipts.cutover = {ref: \"receipt:sha256:${cutover_digest}\", sha256: \"${cutover_digest}\"}
+      | .receipts.rollback = {ref: \"receipt:sha256:${rollback_digest}\", sha256: \"${rollback_digest}\"}"
+}
+
 run_validator() {
   local case_directory="$1"
   local source_authority="${2:-slack-authority.json}"
@@ -122,15 +154,21 @@ assert_failure() {
 
 jq -e . "${repository_root}/infra/repository_retirement/final-archive-lock.schema.json" >/dev/null
 jq -e . "${repository_root}/infra/repository_retirement/final-archive-receipt.schema.json" >/dev/null
+jq -e . "${repository_root}/infra/repository_retirement/web-cutover-receipt.schema.json" >/dev/null
+jq -e . "${repository_root}/infra/repository_retirement/web-rollback-readiness-receipt.schema.json" >/dev/null
 if rg -q 'WriterInternal|writer/' \
   "${repository_root}/infra/repository_retirement/final-archive-lock.schema.json" \
-  "${repository_root}/infra/repository_retirement/final-archive-receipt.schema.json"; then
+  "${repository_root}/infra/repository_retirement/final-archive-receipt.schema.json" \
+  "${repository_root}/infra/repository_retirement/web-cutover-receipt.schema.json" \
+  "${repository_root}/infra/repository_retirement/web-rollback-readiness-receipt.schema.json"; then
   echo "not ok: schemas contain an account or endpoint value" >&2
   exit 1
 fi
 if jq -se 'any(.[]; has("$id"))' \
   "${repository_root}/infra/repository_retirement/final-archive-lock.schema.json" \
-  "${repository_root}/infra/repository_retirement/final-archive-receipt.schema.json" >/dev/null; then
+  "${repository_root}/infra/repository_retirement/final-archive-receipt.schema.json" \
+  "${repository_root}/infra/repository_retirement/web-cutover-receipt.schema.json" \
+  "${repository_root}/infra/repository_retirement/web-rollback-readiness-receipt.schema.json" >/dev/null; then
   echo "not ok: schemas contain a deployable schema endpoint" >&2
   exit 1
 fi
@@ -148,6 +186,7 @@ rewrite_json "${case_directory}/final-lock.json" \
       "covered_by_new_public_slice", "obsolete_or_generated", "obsolete_or_replaced",
       "private_host_ops", "represented_public"
     ]'
+prepare_web_runtime_receipts "${case_directory}" web_public
 refresh_receipt_lock "${case_directory}"
 run_validator "${case_directory}" web-authority.json web-inventory.json
 assert_pass "public web adapter accepts a terminal dry run"
@@ -159,6 +198,7 @@ rewrite_json "${case_directory}/final-lock.json" \
       "covered_by_new_public_slice", "obsolete_or_generated", "obsolete_or_replaced",
       "private_host_ops", "represented_public"
     ]'
+prepare_web_runtime_receipts "${case_directory}" web_private
 refresh_receipt_lock "${case_directory}"
 run_validator "${case_directory}" web-authority.json web-inventory.json
 assert_pass "private web adapter accepts a terminal dry run"
@@ -244,10 +284,27 @@ rewrite_json "${case_directory}/final-lock.json" \
       "covered_by_new_public_slice", "obsolete_or_generated", "obsolete_or_replaced",
       "private_host_ops", "represented_public"
     ]'
+prepare_web_runtime_receipts "${case_directory}" web_public
 refresh_receipt_lock "${case_directory}"
 rewrite_json "${case_directory}/web-authority.json" '.archive_ready = false'
 run_validator "${case_directory}" web-authority.json web-inventory.json
 assert_failure "missing web authority is rejected" "web-adapter-mismatch"
+
+case_directory="$(new_case opaque-web-cutover-receipt)"
+rewrite_json "${case_directory}/final-lock.json" \
+  '.source_repository_id = "web_public" | .ledger.adapter = "web_representation_v1"
+    | .ledger.terminal_dispositions = [
+      "covered_by_new_public_slice", "obsolete_or_generated", "obsolete_or_replaced",
+      "private_host_ops", "represented_public"
+    ]'
+prepare_web_runtime_receipts "${case_directory}" web_public
+printf '%s\n' opaque >"${case_directory}/cutover.receipt"
+cutover_digest="$(sha256sum "${case_directory}/cutover.receipt" | awk '{print $1}')"
+rewrite_json "${case_directory}/final-lock.json" \
+  ".receipts.cutover = {ref: \"receipt:sha256:${cutover_digest}\", sha256: \"${cutover_digest}\"}"
+refresh_receipt_lock "${case_directory}"
+run_validator "${case_directory}" web-authority.json web-inventory.json
+assert_failure "opaque web cutover evidence is rejected" "invalid-cutover-receipt"
 
 case_directory="$(new_case receipt-digest-mismatch)"
 refresh_receipt_lock "${case_directory}"

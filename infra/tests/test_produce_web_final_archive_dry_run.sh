@@ -48,6 +48,22 @@ run_producer() {
     --output-directory "${case_directory}/output"
     "$@"
   )
+  local now_epoch
+  now_epoch="$(date -u +%s)"
+  if [[ -s "${case_directory}/fixture/cutover.receipt" ]] \
+    && jq -e . "${case_directory}/fixture/cutover.receipt" >/dev/null 2>&1; then
+    rewrite_json "${case_directory}/fixture/cutover.receipt" \
+      ".source_repository_id = \"${source_id}\" | .deployment.observed_at_epoch = ${now_epoch}"
+  fi
+  if [[ -s "${case_directory}/fixture/rollback.receipt" ]] \
+    && jq -e . "${case_directory}/fixture/rollback.receipt" >/dev/null 2>&1; then
+    local bound_cutover_digest=""
+    if [[ -s "${case_directory}/fixture/cutover.receipt" ]]; then
+      bound_cutover_digest="$(sha256sum "${case_directory}/fixture/cutover.receipt" | awk '{print $1}')"
+    fi
+    rewrite_json "${case_directory}/fixture/rollback.receipt" \
+      ".source_repository_id = \"${source_id}\" | .readiness.observed_at_epoch = ${now_epoch} | .cutover_receipt_sha256 = \"${bound_cutover_digest}\""
+  fi
   last_case="${case_directory}"
   last_stdout="${case_directory}/stdout.log"
   last_stderr="${case_directory}/stderr.log"

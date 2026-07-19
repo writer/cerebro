@@ -104,6 +104,11 @@ jobs:
         shell: bash
         run: bash infra/tests/test_produce_web_final_archive_dry_run.sh
 
+      - name: Test web runtime archive receipts
+        shell: bash
+        working-directory: infra
+        run: python3 -m unittest tests.test_produce_web_runtime_receipts
+
   # Pull from GHCR and push to sec-dev ECR for PR previews and main deploys.
   publish-sec-dev:
     name: Publish to sec-dev ECR

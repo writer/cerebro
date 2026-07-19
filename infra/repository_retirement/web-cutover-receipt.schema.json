@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cerebro web monorepo cutover receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_repository_id", "release", "deployment", "evidence"],
+  "properties": {
+    "schema_version": {"const": "cerebro.web-monorepo-cutover-receipt/v1"},
+    "source_repository_id": {"enum": ["web_public", "web_private"]},
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["public_commit_sha", "web_digest"],
+      "properties": {
+        "public_commit_sha": {"$ref": "#/$defs/commit"},
+        "web_digest": {"$ref": "#/$defs/imageDigest"}
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["private_commit_sha", "runtime_state", "traffic_state", "probe_state", "observed_at_epoch"],
+      "properties": {
+        "private_commit_sha": {"$ref": "#/$defs/commit"},
+        "runtime_state": {"const": "ready"},
+        "traffic_state": {"const": "serving"},
+        "probe_state": {"const": "passed"},
+        "observed_at_epoch": {"type": "integer", "minimum": 1}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product_release_sha256", "target_receipt_sha256", "runtime_observation_sha256"],
+      "properties": {
+        "product_release_sha256": {"$ref": "#/$defs/digest"},
+        "target_receipt_sha256": {"$ref": "#/$defs/digest"},
+        "runtime_observation_sha256": {"$ref": "#/$defs/digest"}
+      }
+    }
+  },
+  "$defs": {
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "imageDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cerebro web monorepo rollback readiness receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_repository_id", "cutover_receipt_sha256", "rollback_target", "readiness", "evidence"],
+  "properties": {
+    "schema_version": {"const": "cerebro.web-monorepo-rollback-readiness-receipt/v1"},
+    "source_repository_id": {"enum": ["web_public", "web_private"]},
+    "cutover_receipt_sha256": {"$ref": "#/$defs/digest"},
+    "rollback_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["public_commit_sha", "private_commit_sha", "web_digest"],
+      "properties": {
+        "public_commit_sha": {"$ref": "#/$defs/commit"},
+        "private_commit_sha": {"$ref": "#/$defs/commit"},
+        "web_digest": {"$ref": "#/$defs/imageDigest"}
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_state", "render_state", "workflow_state", "rehearsal_state", "observed_at_epoch"],
+      "properties": {
+        "artifact_state": {"const": "available"},
+        "render_state": {"const": "verified"},
+        "workflow_state": {"const": "verified"},
+        "rehearsal_state": {"const": "verified"},
+        "observed_at_epoch": {"type": "integer", "minimum": 1}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product_release_sha256", "target_receipt_sha256", "rehearsal_observation_sha256"],
+      "properties": {
+        "product_release_sha256": {"$ref": "#/$defs/digest"},
+        "target_receipt_sha256": {"$ref": "#/$defs/digest"},
+        "rehearsal_observation_sha256": {"$ref": "#/$defs/digest"}
+      }
+    }
+  },
+  "$defs": {
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "imageDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

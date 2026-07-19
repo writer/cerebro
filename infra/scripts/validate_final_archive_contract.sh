@@ -210,6 +210,59 @@ rollback_digest="$(sha256sum "${rollback_receipt_file}" | awk '{print $1}')"
 [[ "${rollback_digest}" == "$(jq -r '.receipts.rollback.sha256' "${lock_file}")" ]] \
   || fail "rollback-receipt-mismatch"
 
+if [[ "${source_repository_id}" == "web_public" || "${source_repository_id}" == "web_private" ]]; then
+  jq -e . "${cutover_receipt_file}" >/dev/null 2>&1 || fail "invalid-cutover-receipt"
+  jq -e . "${rollback_receipt_file}" >/dev/null 2>&1 || fail "invalid-rollback-receipt"
+  jq -e \
+    --arg source_id "${source_repository_id}" \
+    --arg public_sha "${locked_public_target}" \
+    --arg private_sha "${locked_private_target}" \
+    --arg sha_pattern "${full_sha_pattern}" \
+    --arg digest_pattern "${digest_pattern}" \
+    '(. | keys | sort) == (["deployment", "evidence", "release", "schema_version", "source_repository_id"] | sort)
+      and .schema_version == "cerebro.web-monorepo-cutover-receipt/v1"
+      and .source_repository_id == $source_id
+      and (.release | keys | sort) == (["public_commit_sha", "web_digest"] | sort)
+      and .release.public_commit_sha == $public_sha
+      and (.release.web_digest | type == "string" and test("^sha256:[0-9a-f]{64}$"))
+      and (.deployment | keys | sort) == (["observed_at_epoch", "private_commit_sha", "probe_state", "runtime_state", "traffic_state"] | sort)
+      and .deployment.private_commit_sha == $private_sha
+      and .deployment.runtime_state == "ready"
+      and .deployment.traffic_state == "serving"
+      and .deployment.probe_state == "passed"
+      and (.deployment.observed_at_epoch | type == "number" and floor == . and . > 0)
+      and (.evidence | keys | sort) == (["product_release_sha256", "runtime_observation_sha256", "target_receipt_sha256"] | sort)
+      and all(.evidence[]; type == "string" and test($digest_pattern))' \
+    "${cutover_receipt_file}" >/dev/null 2>&1 || fail "invalid-cutover-receipt"
+  jq -e \
+    --arg source_id "${source_repository_id}" \
+    --arg private_sha "${locked_private_target}" \
+    --arg cutover_digest "${cutover_digest}" \
+    --arg current_public_sha "${locked_public_target}" \
+    --arg current_web_digest "$(jq -r '.release.web_digest' "${cutover_receipt_file}")" \
+    --arg sha_pattern "${full_sha_pattern}" \
+    --arg digest_pattern "${digest_pattern}" \
+    '(. | keys | sort) == (["cutover_receipt_sha256", "evidence", "readiness", "rollback_target", "schema_version", "source_repository_id"] | sort)
+      and .schema_version == "cerebro.web-monorepo-rollback-readiness-receipt/v1"
+      and .source_repository_id == $source_id
+      and .cutover_receipt_sha256 == $cutover_digest
+      and (.rollback_target | keys | sort) == (["private_commit_sha", "public_commit_sha", "web_digest"] | sort)
+      and .rollback_target.private_commit_sha == $private_sha
+      and (.rollback_target.public_commit_sha | type == "string" and test($sha_pattern))
+      and .rollback_target.public_commit_sha != $current_public_sha
+      and (.rollback_target.web_digest | type == "string" and test("^sha256:[0-9a-f]{64}$"))
+      and .rollback_target.web_digest != $current_web_digest
+      and (.readiness | keys | sort) == (["artifact_state", "observed_at_epoch", "rehearsal_state", "render_state", "workflow_state"] | sort)
+      and .readiness.artifact_state == "available"
+      and .readiness.render_state == "verified"
+      and .readiness.workflow_state == "verified"
+      and .readiness.rehearsal_state == "verified"
+      and (.readiness.observed_at_epoch | type == "number" and floor == . and . > 0)
+      and (.evidence | keys | sort) == (["product_release_sha256", "rehearsal_observation_sha256", "target_receipt_sha256"] | sort)
+      and all(.evidence[]; type == "string" and test($digest_pattern))' \
+    "${rollback_receipt_file}" >/dev/null 2>&1 || fail "invalid-rollback-receipt"
+fi
+
 if [[ "${source_repository_id}" == "slack_companion" ]]; then
   [[ -z "${inventory_receipt_file}" ]] || fail "unexpected-inventory-receipt"
   jq -e \
@@ -355,6 +408,15 @@ for observation_path in \
   ((observed_epoch <= authority_now_epoch)) || fail "future-observation"
   ((authority_now_epoch - observed_epoch <= max_age)) || fail "stale-observation"
 done
+if [[ "${source_repository_id}" == "web_public" || "${source_repository_id}" == "web_private" ]]; then
+  for runtime_epoch in \
+    "$(jq -r '.deployment.observed_at_epoch' "${cutover_receipt_file}")" \
+    "$(jq -r '.readiness.observed_at_epoch' "${rollback_receipt_file}")"; do
+    [[ "${runtime_epoch}" =~ ^[1-9][0-9]*$ ]] || fail "invalid-runtime-receipt-time"
+    ((runtime_epoch <= authority_now_epoch)) || fail "future-runtime-receipt"
+    ((authority_now_epoch - runtime_epoch <= max_age)) || fail "stale-runtime-receipt"
+  done
+fi
 if [[ "$(jq -r '.intent' "${receipt_file}")" == "apply" ]]; then
   postcondition_epoch="$(jq -r '.postcondition.observed_at_epoch' "${receipt_file}")"
   ((postcondition_epoch <= authority_now_epoch)) || fail "future-postcondition"
