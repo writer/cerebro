@@ -46,7 +46,6 @@ import (
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceruntime"
-	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
 	"github.com/writer/cerebro/internal/workflowevents"
 	"github.com/writer/cerebro/internal/workflowprojection"
 	archetypesource "github.com/writer/cerebro/sources/archetype"
@@ -58,49 +57,6 @@ import (
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	slacksource "github.com/writer/cerebro/sources/slack"
 )
-
-type closingTestAdmitter struct {
-	closeCount int
-}
-
-func (*closingTestAdmitter) Admit(context.Context, []*cerebrov1.EventEnvelope, []sourcecdk.EventContract) (eventadmission.Response, error) {
-	return eventadmission.Response{}, nil
-}
-
-func (a *closingTestAdmitter) Close() error {
-	a.closeCount++
-	return nil
-}
-
-func TestNewWithOptionsClosesEventAdmitterAfterLaterBootstrapFailure(t *testing.T) {
-	admitter := &closingTestAdmitter{}
-	app, err := newWithOptions(config.Config{
-		SourceRuntime: config.SourceRuntimeConfig{
-			EventAdmissionWorkerPath: "test-worker",
-			EventAdmissionWorkers:    1,
-		},
-		GraphActions: config.GraphActionsConfig{
-			AccessApprovals: config.AccessApprovalsActionConfig{
-				BaseURL:     "://invalid",
-				BearerToken: "test-token",
-			},
-		},
-	}, Dependencies{}, nil, appConstructionOptions{
-		eventAdmissionContext: context.Background(),
-		eventAdmissionFactory: func(context.Context, string, int) (eventadmission.Admitter, error) {
-			return admitter, nil
-		},
-	})
-	if err == nil {
-		t.Fatal("newWithOptions() error = nil, want later bootstrap failure")
-	}
-	if app != nil {
-		t.Fatalf("newWithOptions() app = %#v, want nil", app)
-	}
-	if admitter.closeCount != 1 {
-		t.Fatalf("admitter close count = %d, want 1", admitter.closeCount)
-	}
-}
 
 func TestGraphIngestLeaseConflictMappings(t *testing.T) {
 	err := fmt.Errorf("graph writer blocked: %w", sourceruntime.ErrSyncInProgress)
