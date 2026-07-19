@@ -95,7 +95,7 @@ type vcrBody struct {
 func (body *vcrBody) UnmarshalYAML(node *yaml.Node) error {
 	switch node.Kind {
 	case yaml.ScalarNode:
-		if node.Tag == "!!binary" {
+		if node.Tag == "!!binary" || node.Tag == "!binary" {
 			decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(node.Value))
 			if err != nil {
 				return fmt.Errorf("decode VCR binary response body: %w", err)

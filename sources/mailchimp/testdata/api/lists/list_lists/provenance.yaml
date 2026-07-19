@@ -10,7 +10,7 @@ response:
     status: 200
     content_type: application/json; charset=utf-8
     captured_at: "2020-03-04T21:52:41Z"
-    sha256: c19383245fd5381b1b00681b11fe3c9acb3c167122c25dd75a90f852dc5305df
+    sha256: e87d12ccb5f3942f99773743bf41cc561fbaa807304fa8e410949a07506c578a
     headers:
         Link: <https://us19.api.mailchimp.com/schema/3.0/Lists/Collection.json>; rel="describedBy"
 sanitization:

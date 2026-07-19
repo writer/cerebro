@@ -25,7 +25,7 @@ func TestSourceCheckAndRead(t *testing.T) {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]string{{"id": "record-1", "resource_urn": "urn:cerebro:tenant:runtime_asset:record-1", "resource_type": "asset", "resource_id": "record-1", "name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"ID": 123, "Name": "Record One", "updated_at": "2026-06-01T00:00:00Z"}}})
 	}))
 	defer server.Close()
 	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": defaultFamily, "api_token": "test-token"}
@@ -46,5 +46,8 @@ func TestSourceCheckAndRead(t *testing.T) {
 	}
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("event id is empty: %#v", event)
+	}
+	if event.Attributes["resource_id"] != "123" || event.Attributes["resource_name"] != "Record One" || event.Attributes["source_event_id"] != "123" {
+		t.Fatalf("uppercase Postmark attributes = %#v", event.Attributes)
 	}
 }

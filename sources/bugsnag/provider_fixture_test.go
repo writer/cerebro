@@ -70,6 +70,18 @@ func TestSourceReplaysCapturedBugsnagFamilies(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Discover() error = %v", err)
 			}
+			for index, event := range pull.Events {
+				resourceURN := event.Attributes["resource_urn"]
+				if test.family == familyProjects && (index >= len(urns) || resourceURN != urns[index].String()) {
+					t.Fatalf("project resource_urn = %q, discover URN = %#v", resourceURN, urns)
+				}
+				if test.family == familyErrors && !strings.HasPrefix(resourceURN, "urn:cerebro:tenant:bugsnag_projects:") {
+					t.Fatalf("error resource_urn = %q, want affected project URN", resourceURN)
+				}
+				if test.family == familyErrors && (event.Attributes["resource_type"] != "bugsnag_project" || event.Attributes["resource_name"] != event.Attributes["resource_id"]) {
+					t.Fatalf("error affected resource = %#v, want Bugsnag project", event.Attributes)
+				}
+			}
 			if err := sourcefixture.StabilizeEvents(bundle, pull.Events, false); err != nil {
 				t.Fatal(err)
 			}

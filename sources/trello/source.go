@@ -75,7 +75,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"dateLastActivity", "dateLastView"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "dateLastActivity|dateLastView", "resource_id": "id", "resource_name": "name", "resource_urn": "resource_urn|urn", "source_event_id": "id", "tenant_id": "tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "trello_board", "schema": "workspaces", "source_system": "trello"},
-				Config:           trelloRequestConfig("trello_board"),
+				Config:           trelloRequestConfig("trello_workspaces"),
 			},
 			{
 				Name:             familyDocuments,
@@ -86,7 +86,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"dateLastActivity", "due"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "id", "name": "name", "observed_at": "dateLastActivity|due", "resource_id": "id", "resource_name": "name", "resource_urn": "resource_urn|urn", "source_event_id": "id", "tenant_id": "tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "trello_card", "schema": "documents", "source_system": "trello"},
-				Config:           trelloRequestConfig("trello_card"),
+				Config:           trelloRequestConfig("trello_documents"),
 			},
 			{
 				Name:             familyAuditEvents,

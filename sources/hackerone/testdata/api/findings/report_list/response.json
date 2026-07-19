@@ -64,7 +64,7 @@
               "rating": "critical",
               "scope": "unchanged",
               "score": 9.1,
-              "user_id": 123,
+              "user_id": 544066717,
               "user_interaction": "none"
             },
             "id": "example-5a02928c",
@@ -143,7 +143,7 @@
               "author_type": "User",
               "created_at": "2017-02-17T21:51:01.093Z",
               "rating": "low",
-              "user_id": 144214
+              "user_id": 209792592
             },
             "id": "example-1b20262e",
             "type": "severity"

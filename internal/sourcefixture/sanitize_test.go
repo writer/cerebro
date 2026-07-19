@@ -138,7 +138,7 @@ func TestSanitizeImportedJSONPreservesPaginationTokens(t *testing.T) {
 }
 
 func TestSanitizeImportedJSONRewritesEmbeddedURLHosts(t *testing.T) {
-	payload, changed, err := SanitizeImportedJSON([]byte(`{"links":{"next":"https://api.fastly.com/events?page[number]=2&page[size]=1"}}`))
+	payload, changed, err := SanitizeImportedJSON([]byte(`{"links":{"next":"https://api.fastly.com/events?page[number]=2&page[size]=1&page_token=page-2&api_token=remove-me"}}`))
 	if err != nil {
 		t.Fatalf("SanitizeImportedJSON() error = %v", err)
 	}
@@ -155,8 +155,11 @@ func TestSanitizeImportedJSONRewritesEmbeddedURLHosts(t *testing.T) {
 	if parsed.Scheme != "https" || !strings.HasSuffix(parsed.Hostname(), ".example.test") || parsed.Hostname() == "api.fastly.com" {
 		t.Fatalf("sanitized link = %q", decoded.Links["next"])
 	}
-	if parsed.EscapedPath() != "/events" || parsed.Query().Get("page[number]") != "2" || parsed.Query().Get("page[size]") != "1" {
+	if parsed.EscapedPath() != "/events" || parsed.Query().Get("page[number]") != "2" || parsed.Query().Get("page[size]") != "1" || parsed.Query().Get("page_token") != "page-2" {
 		t.Fatalf("sanitized link changed provider path or query: %q", decoded.Links["next"])
+	}
+	if parsed.Query().Has("api_token") {
+		t.Fatalf("sanitized link retained credential query: %q", decoded.Links["next"])
 	}
 	if len(changed) != 1 || changed[0] != "$.links.next" {
 		t.Fatalf("changed fields = %#v", changed)

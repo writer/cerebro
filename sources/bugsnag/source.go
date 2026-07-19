@@ -52,7 +52,7 @@ func New() (*Source, error) {
 				DisablePageSize:  true,
 				TimestampKeys:    []string{"observed_at", "updated_at", "last_seen_at", "created_at"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "observed_at": "observed_at|updated_at|last_seen_at", "resource_id": "id", "resource_name": "name|display_name|hostname|metadata.resource_name", "resource_type": "resource_type|type|kind", "resource_urn": "resource_urn|urn|metadata.resource_urn", "source_event_id": "event_id|id|metadata.event_id", "tenant_id": "tenant_id|metadata.tenant_id"},
-				Config:           bugsnagRequestConfig("bugsnag_project"),
+				Config:           bugsnagRequestConfig("bugsnag_projects"),
 				StaticAttributes: map[string]string{"record_class": "asset", "schema": "projects", "source_system": "bugsnag"},
 			},
 			{
@@ -62,9 +62,9 @@ func New() (*Source, error) {
 				IDKeys:           []string{"id", "finding_id", "resource_urn"},
 				DisablePageSize:  true,
 				TimestampKeys:    []string{"last_seen", "first_seen", "updated_at", "created_at"},
-				Attributes:       map[string]string{"description": "context|message|description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "last_seen|first_seen|updated_at|created_at", "resource_id": "project_id|resource_id|id|metadata.resource_id", "resource_name": "message|error_class|name|metadata.resource_name", "resource_type": "error_class|resource_type|type|metadata.resource_type", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|risk|priority", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "error_class|message|title|name|summary"},
-				Config:           bugsnagRequestConfig("bugsnag_error"),
-				StaticAttributes: map[string]string{"record_class": "finding", "schema": "errors", "source_system": "bugsnag"},
+				Attributes:       map[string]string{"description": "context|message|description|summary", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "last_seen|first_seen|updated_at|created_at", "resource_id": "project_id|resource_id|id|metadata.resource_id", "resource_name": "project_id|resource_id|id|metadata.resource_name", "resource_urn": "resource_urn|urn|metadata.resource_urn", "severity": "severity|risk|priority", "source_event_id": "event_id|id|metadata.event_id", "status": "status|state", "tenant_id": "tenant_id|metadata.tenant_id", "title": "error_class|message|title|name|summary"},
+				Config:           bugsnagRequestConfig("bugsnag_projects"),
+				StaticAttributes: map[string]string{"record_class": "finding", "resource_type": "bugsnag_project", "schema": "errors", "source_system": "bugsnag"},
 			},
 			{
 				Name:             familyAuditEvents,

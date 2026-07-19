@@ -48,6 +48,11 @@ func TestSourceReplaysCapturedContentfulDocuments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
+	for index, event := range pull.Events {
+		if index >= len(urns) || event.Attributes["resource_urn"] != urns[index].String() {
+			t.Fatalf("document resource_urn = %q, discover URN = %#v", event.Attributes["resource_urn"], urns)
+		}
+	}
 	if err := sourcefixture.StabilizeEvents(bundle, pull.Events, false); err != nil {
 		t.Fatal(err)
 	}

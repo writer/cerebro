@@ -98,7 +98,7 @@ func New() (*Source, error) {
 				TimestampKeys:    []string{"sys.updatedAt", "sys.createdAt"},
 				Attributes:       map[string]string{"evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "id": "sys.id|id", "name": "fields.name|fields.title|sys.id", "observed_at": "sys.updatedAt|sys.createdAt", "resource_id": "sys.id|id", "resource_name": "fields.name|fields.title|sys.id", "resource_urn": "resource_urn|urn", "source_event_id": "sys.id|id", "tenant_id": "tenant_id"},
 				StaticAttributes: map[string]string{"record_class": "asset", "resource_type": "contentful_entry", "schema": "documents", "source_system": "contentful"},
-				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, LimitKeys: []string{"limit"}, OffsetCursor: true, OffsetKeys: []string{"skip"}, ResourceURNKind: "contentful_entry", TotalKeys: []string{"total"}},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, LimitKeys: []string{"limit"}, OffsetCursor: true, OffsetKeys: []string{"skip"}, ResourceURNKind: "contentful_documents", TotalKeys: []string{"total"}},
 			},
 			{
 				Name:             familyAuditEvents,

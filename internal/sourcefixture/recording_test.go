@@ -111,6 +111,26 @@ recorded_with: VCR
 			wantBasis:  "response_header",
 			wantRecord: "custom-binary-1",
 		},
+		{
+			name: "ruby vcr yaml custom binary scalar body",
+			artifact: `http_interactions:
+- request:
+    method: GET
+    uri: https://api.example.test/v1/custom-binary-scalar-items
+  response:
+    status:
+      code: 200
+    headers:
+      Content-Type: [application/json]
+      Date: ['Sat, 18 Jul 2026 18:00:00 GMT']
+    body: !binary eyJpdGVtcyI6W3siaWQiOiJjdXN0b20tYmluYXJ5LXNjYWxhci0xIn1dfQ==
+recorded_with: VCR
+`,
+			wantURL:    "https://api.example.test/v1/custom-binary-scalar-items",
+			wantTime:   "2026-07-18T18:00:00Z",
+			wantBasis:  "response_header",
+			wantRecord: "custom-binary-scalar-1",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

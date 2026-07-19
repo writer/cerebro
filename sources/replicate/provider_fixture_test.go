@@ -52,6 +52,14 @@ func TestSourceReplaysCapturedReplicateFamilies(t *testing.T) {
 			if len(urns) != len(pull.Events) {
 				t.Fatalf("Discover() URNs = %d, want %d", len(urns), len(pull.Events))
 			}
+			for index, event := range pull.Events {
+				if event.Attributes["resource_urn"] != urns[index].String() {
+					t.Fatalf("%s resource_urn = %q, discover URN = %q", test.family, event.Attributes["resource_urn"], urns[index].String())
+				}
+				if test.family == familyModels && (event.Attributes["owner"] == "" || !strings.Contains(event.Attributes["resource_id"], "/")) {
+					t.Fatalf("model identity = %#v, want owner/name", event.Attributes)
+				}
+			}
 			if err := sourcefixture.StabilizeEvents(bundle, pull.Events, true); err != nil {
 				t.Fatal(err)
 			}

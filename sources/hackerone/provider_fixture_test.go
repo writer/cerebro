@@ -48,6 +48,9 @@ func TestSourceReplaysCapturedHackerOneFindings(t *testing.T) {
 		if event.Kind != "hackerone.findings" || strings.TrimSpace(event.Attributes["severity"]) == "" || strings.TrimSpace(event.Attributes["status"]) == "" {
 			t.Fatalf("captured event = %#v", event)
 		}
+		if !strings.HasPrefix(event.Attributes["resource_urn"], "urn:cerebro:tenant:hackerone_programs:") {
+			t.Fatalf("finding resource_urn = %q, want affected program URN", event.Attributes["resource_urn"])
+		}
 	}
 	urns, err := source.Discover(context.Background(), cfg)
 	if err != nil {

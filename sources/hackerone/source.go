@@ -70,7 +70,7 @@ func New() (*Source, error) {
 				ListKeys:         []string{"data"},
 				TimestampKeys:    []string{"attributes.last_activity_at", "attributes.created_at"},
 				Attributes:       map[string]string{"description": "attributes.vulnerability_information", "evidence_cas_commit_id": "evidence_cas.commit_id|evidence_cas_commit_id|commit_id", "evidence_cas_digest": "evidence_cas.digest|evidence_cas_digest|digest", "evidence_cas_merkle_root": "evidence_cas.merkle_root|evidence_cas_merkle_root|merkle_root", "evidence_cas_ref_type": "evidence_cas.ref_type|evidence_cas_ref_type|ref_type", "evidence_cas_uri": "evidence_cas.uri|evidence_cas_uri|uri", "finding_id": "id", "observed_at": "attributes.last_activity_at|attributes.created_at", "resource_id": "relationships.program.data.id", "resource_name": "relationships.program.data.attributes.handle", "resource_type": "relationships.program.data.type", "resource_urn": "resource_urn|urn", "severity": "relationships.severity.data.attributes.rating", "source_event_id": "id", "status": "attributes.state", "tenant_id": "tenant_id", "title": "attributes.title"},
-				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, ResourceURNKind: "hackerone_report"},
+				Config:           jsonapi.FamilyConfig{ConfigAttributes: map[string]string{"tenant_id": "tenant_id"}, ResourceURNKind: "hackerone_programs"},
 				StaticAttributes: map[string]string{"record_class": "finding", "schema": "findings", "source_system": "hackerone"},
 			},
 			{

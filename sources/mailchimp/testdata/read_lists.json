@@ -1,6 +1,6 @@
 [
   {
-    "id": "mailchimp-tenant-lists-6bebcff68f065383",
+    "id": "mailchimp-tenant-lists-c22d877b599afa11",
     "tenant_id": "tenant",
     "source_id": "mailchimp",
     "kind": "mailchimp.lists",
@@ -167,7 +167,7 @@
       "subscribe_url_short": "example-da71cfe2",
       "use_archive_bar": true,
       "visibility": "pub",
-      "web_id": 969602615
+      "web_id": 683972092
     },
     "attributes": {
       "external_id": "example-2e767a40",

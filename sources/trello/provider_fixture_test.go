@@ -77,6 +77,13 @@ func TestSourceReplaysCapturedTrelloFamilies(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Discover() error = %v", err)
 			}
+			if test.family == familyWorkspaces || test.family == familyDocuments {
+				for index, event := range pull.Events {
+					if index >= len(urns) || event.Attributes["resource_urn"] != urns[index].String() {
+						t.Fatalf("%s resource_urn = %q, discover URN = %#v", test.family, event.Attributes["resource_urn"], urns)
+					}
+				}
+			}
 			if err := sourcefixture.StabilizeEvents(bundle, pull.Events, test.captureTime); err != nil {
 				t.Fatal(err)
 			}

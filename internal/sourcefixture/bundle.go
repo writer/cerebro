@@ -522,6 +522,8 @@ func isCredentialFieldKey(key string) bool {
 func isCredentialQueryKey(key string) bool {
 	normalized := strings.NewReplacer("-", "_", ".", "_").Replace(strings.ToLower(strings.TrimSpace(key)))
 	switch normalized {
+	case "continuation_token", "cursor_token", "delta_token", "next_page_token", "next_token", "page_token", "pagination_token", "sync_token":
+		return false
 	case "auth", "authorization", "token", "secret", "key", "sig", "signature", "pat", "password",
 		"access_token", "accesstoken", "refresh_token", "refreshtoken", "api_key", "apikey",
 		"client_secret", "clientsecret", "private_key", "privatekey", "private_token", "privatetoken":
