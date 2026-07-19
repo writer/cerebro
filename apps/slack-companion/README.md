@@ -90,6 +90,18 @@ The host owns source queries, channel admission, prompts, persistence, and
 delivery adapters. Those adapters persist the versioned records and transition
 events without changing the portable decision policy.
 
+## Proactive follow-ups
+
+`src/followup` decides whether, and what, to proactively offer after a delivered
+assistant turn so the companion stays engaged without nagging. `planProactiveFollowup`
+only offers on an answered or partial turn, drops candidates whose kind is not
+allowed or that carry no grounding reference, and dedupes any action already
+offered or accepted in the thread. A cooldown and a per-window engagement budget
+bound how often the companion re-engages. The result is bounded, deterministically
+ordered by priority, and carries stable idempotent identities so a retry never
+double-offers. The host owns candidate derivation, durable engagement history,
+and Slack transport.
+
 ## History learning admission
 
 `slackLearningCandidateRejection` classifies a host-supplied message projection
