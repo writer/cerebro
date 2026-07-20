@@ -24,7 +24,7 @@ const (
 // and plan revision, creates the assessment job, and advances the monitor only
 // after the job exists.
 func (s *Service) RunDue(ctx context.Context, now time.Time) (int, error) {
-	if s == nil || s.store == nil || s.jobs == nil || s.appendLog == nil {
+	if s == nil || s.store == nil || s.assessments == nil || s.appendLog == nil {
 		return 0, ErrServiceUnavailable
 	}
 	now = now.UTC()
@@ -48,20 +48,11 @@ func (s *Service) RunDue(ctx context.Context, now time.Time) (int, error) {
 			}
 			continue
 		}
-		job, _, createErr := s.jobs.Create(ctx, ports.CreateJobRequest{
-			Kind:           platformjobs.KindComplianceAssessment,
-			TenantID:       monitor.TenantID,
-			SubjectType:    subjectType,
-			SubjectID:      monitor.ID,
-			IdempotencyKey: occurrence,
-			Payload: map[string]any{
-				"program_id":            monitor.ProgramID,
-				"plan_revision_id":      monitor.PlanRevisionID,
-				"monitor_id":            monitor.ID,
-				"scheduled_for":         monitor.NextRunAt.UTC().Format(time.RFC3339Nano),
-				"plan_lease_owner":      leaseOwner,
-				"plan_lease_occurrence": occurrence,
-			},
+		assessment, createErr := s.assessments.RequestScheduledAssessment(ctx, ScheduledAssessmentRequest{
+			TenantID: monitor.TenantID, ProgramID: monitor.ProgramID, PlanRevisionID: monitor.PlanRevisionID,
+			PeriodStart: monitor.NextRunAt.Add(-time.Duration(monitor.IntervalSeconds) * time.Second), PeriodEnd: monitor.NextRunAt,
+			IdempotencyKey: occurrence, RequestedBy: subjectType + ":" + monitor.ID,
+			MonitorRun: ports.ComplianceMonitorRun{TenantID: monitor.TenantID, MonitorID: monitor.ID, PlanRevisionID: monitor.PlanRevisionID, OccurrenceKey: occurrence, LeaseOwner: leaseOwner},
 		})
 		if createErr != nil {
 			_ = s.store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), monitor.TenantID, monitor.PlanRevisionID, leaseOwner)
@@ -69,23 +60,29 @@ func (s *Service) RunDue(ctx context.Context, now time.Time) (int, error) {
 			errs = append(errs, fmt.Errorf("compliance monitor %q enqueue: %w", monitor.ID, createErr))
 			continue
 		}
-		triggerEvent, eventErr := monitorTimeTriggeredEvent(monitor, occurrence, job)
+		triggerEvent, eventErr := monitorTimeTriggeredEvent(monitor, occurrence, assessment.JobID)
 		if eventErr != nil {
+			_ = s.store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), monitor.TenantID, monitor.PlanRevisionID, leaseOwner)
 			_ = s.store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
 			errs = append(errs, fmt.Errorf("compliance monitor %q trigger event: %w", monitor.ID, eventErr))
 			continue
 		}
 		if appendErr := s.appendLog.Append(ctx, triggerEvent); appendErr != nil {
+			_ = s.store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), monitor.TenantID, monitor.PlanRevisionID, leaseOwner)
 			_ = s.store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
 			errs = append(errs, fmt.Errorf("compliance monitor %q trigger append: %w", monitor.ID, appendErr))
 			continue
 		}
 		if err := s.store.CompleteComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner, monitor.NextRunAt, now); err != nil {
+			_ = s.store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), monitor.TenantID, monitor.PlanRevisionID, leaseOwner)
 			_ = s.store.ReleaseComplianceMonitorClaim(context.WithoutCancel(ctx), monitor.TenantID, monitor.ID, owner)
 			errs = append(errs, fmt.Errorf("compliance monitor %q completion: %w", monitor.ID, err))
 			continue
 		}
-		s.jobs.StartAsync(ctx, job)
+		if err := s.assessments.StartScheduledAssessment(ctx, assessment); err != nil {
+			errs = append(errs, fmt.Errorf("compliance monitor %q start assessment: %w", monitor.ID, err))
+			continue
+		}
 		enqueued++
 	}
 	return enqueued, errors.Join(errs...)
@@ -95,7 +92,7 @@ func (s *Service) RunDue(ctx context.Context, now time.Time) (int, error) {
 // overlap lease used by time monitors, creates one assessment job, and only
 // then acknowledges the exact claimed window version.
 func (s *Service) RunDueChanges(ctx context.Context, now time.Time) (int, error) {
-	if s == nil || s.store == nil || s.jobs == nil || s.appendLog == nil {
+	if s == nil || s.store == nil || s.assessments == nil || s.appendLog == nil {
 		return 0, ErrServiceUnavailable
 	}
 	store, ok := s.store.(ports.ComplianceChangeMonitorStore)
@@ -123,23 +120,12 @@ func (s *Service) RunDueChanges(ctx context.Context, now time.Time) (int, error)
 			}
 			continue
 		}
-		job, _, createErr := s.jobs.Create(ctx, ports.CreateJobRequest{
-			Kind:           platformjobs.KindComplianceAssessment,
-			TenantID:       window.TenantID,
-			SubjectType:    subjectType,
-			SubjectID:      window.MonitorID,
-			IdempotencyKey: occurrence,
-			Payload: map[string]any{
-				"program_id":              window.ProgramID,
-				"plan_revision_id":        window.PlanRevisionID,
-				"monitor_id":              window.MonitorID,
-				"change_window_version":   window.Version,
-				"change_window_opened_at": window.OpenedAt.UTC().Format(time.RFC3339Nano),
-				"change_signal_count":     window.SignalCount,
-				"change_scope_digest":     window.ScopeDigest,
-				"plan_lease_owner":        leaseOwner,
-				"plan_lease_occurrence":   occurrence,
-			},
+		assessment, createErr := s.assessments.RequestScheduledAssessment(ctx, ScheduledAssessmentRequest{
+			TenantID: window.TenantID, ProgramID: window.ProgramID, PlanRevisionID: window.PlanRevisionID,
+			PeriodStart: window.OpenedAt, PeriodEnd: window.ReadyAt,
+			IdempotencyKey: occurrence, RequestedBy: subjectType + ":" + window.MonitorID,
+			MonitorRun:   ports.ComplianceMonitorRun{TenantID: window.TenantID, MonitorID: window.MonitorID, PlanRevisionID: window.PlanRevisionID, OccurrenceKey: occurrence, LeaseOwner: leaseOwner},
+			ChangeWindow: window,
 		})
 		if createErr != nil {
 			_ = store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), window.TenantID, window.PlanRevisionID, leaseOwner)
@@ -147,23 +133,29 @@ func (s *Service) RunDueChanges(ctx context.Context, now time.Time) (int, error)
 			errs = append(errs, fmt.Errorf("compliance change monitor %q enqueue: %w", window.MonitorID, createErr))
 			continue
 		}
-		triggerEvent, eventErr := monitorChangeTriggeredEvent(window, occurrence, job)
+		triggerEvent, eventErr := monitorChangeTriggeredEvent(window, occurrence, assessment.JobID)
 		if eventErr != nil {
+			_ = store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), window.TenantID, window.PlanRevisionID, leaseOwner)
 			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
 			errs = append(errs, fmt.Errorf("compliance change monitor %q trigger event: %w", window.MonitorID, eventErr))
 			continue
 		}
 		if appendErr := s.appendLog.Append(ctx, triggerEvent); appendErr != nil {
+			_ = store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), window.TenantID, window.PlanRevisionID, leaseOwner)
 			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
 			errs = append(errs, fmt.Errorf("compliance change monitor %q trigger append: %w", window.MonitorID, appendErr))
 			continue
 		}
 		if err := store.CompleteComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner, window.Version); err != nil {
+			_ = store.ReleaseCompliancePlanLease(context.WithoutCancel(ctx), window.TenantID, window.PlanRevisionID, leaseOwner)
 			_ = store.ReleaseComplianceChangeWindow(context.WithoutCancel(ctx), window.TenantID, window.MonitorID, owner)
 			errs = append(errs, fmt.Errorf("compliance change monitor %q completion: %w", window.MonitorID, err))
 			continue
 		}
-		s.jobs.StartAsync(ctx, job)
+		if err := s.assessments.StartScheduledAssessment(ctx, assessment); err != nil {
+			errs = append(errs, fmt.Errorf("compliance change monitor %q start assessment: %w", window.MonitorID, err))
+			continue
+		}
 		enqueued++
 	}
 	return enqueued, errors.Join(errs...)
@@ -224,4 +216,17 @@ func CompleteRun(ctx context.Context, store ports.ComplianceMonitorStore, job *p
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
+}
+
+// CompleteAssessmentRun records one terminal monitor occurrence and releases
+// its exact plan lease. The completion store makes retries idempotent.
+func (s *Service) CompleteAssessmentRun(ctx context.Context, run ports.ComplianceMonitorRun, succeeded bool, at time.Time) error {
+	if s == nil || s.store == nil {
+		return ErrServiceUnavailable
+	}
+	store, ok := s.store.(ports.ComplianceMonitorCompletionStore)
+	if !ok {
+		return ErrServiceUnavailable
+	}
+	return store.CompleteComplianceMonitorRun(ctx, ports.ComplianceMonitorRunCompletion{Run: run, Succeeded: succeeded, At: at})
 }

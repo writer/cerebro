@@ -37,6 +37,7 @@ const (
 	// One internal GRC caller fetches one boundary row to reject oversized
 	// runtime scopes instead of silently omitting the last runtimes.
 	maxListLimit                = 501
+	maxListRuntimeIDs           = 500
 	redactedValue               = "[redacted]"
 	syncEventLimitReachedReason = "sync_event_limit_reached"
 
@@ -1230,7 +1231,7 @@ func mergeCursorEnvelopeExtra(existing map[string]string, next map[string]string
 	if len(existing) == 0 && len(next) == 0 {
 		return nil
 	}
-	merged := make(map[string]string, len(existing)+len(next))
+	merged := map[string]string{}
 	for key, value := range existing {
 		merged[key] = value
 	}
@@ -1241,9 +1242,13 @@ func mergeCursorEnvelopeExtra(existing map[string]string, next map[string]string
 }
 
 func normalizeListFilter(filter ports.SourceRuntimeFilter) (ports.SourceRuntimeFilter, error) {
+	runtimeIDs, err := normalizedListFilterRuntimeIDs(filter)
+	if err != nil {
+		return ports.SourceRuntimeFilter{}, err
+	}
 	normalized := ports.SourceRuntimeFilter{
 		RuntimeID:  strings.TrimSpace(filter.RuntimeID),
-		RuntimeIDs: normalizedListFilterRuntimeIDs(filter),
+		RuntimeIDs: runtimeIDs,
 		TenantID:   strings.TrimSpace(filter.TenantID),
 		SourceID:   strings.TrimSpace(filter.SourceID),
 		Limit:      filter.Limit,
@@ -1257,7 +1262,10 @@ func normalizeListFilter(filter ports.SourceRuntimeFilter) (ports.SourceRuntimeF
 	return normalized, nil
 }
 
-func normalizedListFilterRuntimeIDs(filter ports.SourceRuntimeFilter) []string {
+func normalizedListFilterRuntimeIDs(filter ports.SourceRuntimeFilter) ([]string, error) {
+	if len(filter.RuntimeIDs) > maxListRuntimeIDs {
+		return nil, fmt.Errorf("%w: runtime_ids cannot include more than %d values", ErrInvalidRequest, maxListRuntimeIDs)
+	}
 	values := append([]string{}, filter.RuntimeIDs...)
 	if strings.TrimSpace(filter.RuntimeID) != "" {
 		values = append(values, filter.RuntimeID)
@@ -1275,7 +1283,7 @@ func normalizedListFilterRuntimeIDs(filter ports.SourceRuntimeFilter) []string {
 		seen[trimmed] = struct{}{}
 		normalized = append(normalized, trimmed)
 	}
-	return normalized
+	return normalized, nil
 }
 
 func restoreRedactedConfig(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceRuntime) {

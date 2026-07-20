@@ -15,6 +15,8 @@ func TestEvidenceLedgerSchemaKeepsTenantAndImmutableRevisionBoundaries(t *testin
 		"FOREIGN KEY (tenant_id, artifact_version_id)",
 		"payload_digest TEXT NOT NULL",
 		"content_digest TEXT NOT NULL",
+		"valid_until TIMESTAMPTZ",
+		"grc_evidence_claims_expiry_idx",
 	} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("evidence ledger schema missing %q", required)

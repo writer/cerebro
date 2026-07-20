@@ -167,6 +167,17 @@ func TestSnapshotIncludesPublicProtocolContracts(t *testing.T) {
 	if len(snapshot.EventSubscriptions.EventTypes) == 0 || snapshot.EventSubscriptions.Delivery.Transport != "https_webhook" {
 		t.Fatalf("event subscription contract incomplete: %+v", snapshot.EventSubscriptions)
 	}
+	complianceEvents := map[string]bool{}
+	for _, eventType := range snapshot.EventSubscriptions.EventTypes {
+		if eventType.Family == "compliance" {
+			complianceEvents[eventType.Name] = true
+		}
+	}
+	for _, name := range []string{"compliance.assurance_decision.recorded", "compliance.assessment_snapshot.recorded", "compliance.work_item.updated", "compliance.work_item.verified"} {
+		if !complianceEvents[name] {
+			t.Fatalf("event subscription contract missing %q", name)
+		}
+	}
 	if snapshot.Idempotency.Header != "Idempotency-Key" || snapshot.Idempotency.ConflictStatus != 409 {
 		t.Fatalf("idempotency contract incomplete: %+v", snapshot.Idempotency)
 	}

@@ -157,7 +157,7 @@ export const errorKind = (error: unknown) => {
   if (error instanceof Error) {
     return snakeCase(error.constructor.name || error.name || "error");
   }
-  return snakeCase(typeof error || "unknown");
+  return snakeCase(typeof error);
 };
 
 const errorFingerprint = (spanName: string, kind: string, attributes: Attributes) =>

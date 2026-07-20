@@ -114,6 +114,10 @@ func (service *Service) RecordScopeRevision(ctx context.Context, request RecordS
 		},
 		ChangeSummary: request.ChangeSummary, Specification: request.Specification,
 	}
+	if previous != nil {
+		value := revisionRefFromVersion(previous.Version)
+		revision.PredecessorRevision = &value
+	}
 	updated, err := service.store.AppendProgramScopeRevision(ctx, AppendProgramScopeRevisionRequest{
 		TenantID: request.TenantID, ProgramID: request.ProgramID,
 		ExpectedProgramVersion: request.ExpectedProgramVersion, Revision: revision,

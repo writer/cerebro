@@ -94,8 +94,8 @@ export const getCerebroPublicConfig = () => ({
 });
 
 export const buildCerebroUrl = (path: string, search = "") => {
-  const base = new URL(API_BASE.replace(/\/$/, "/"));
-  const basePath = base.pathname.replace(/\/$/, "");
+  const base = new URL(API_BASE.endsWith("/") ? API_BASE : `${API_BASE}/`);
+  const basePath = base.pathname.endsWith("/") ? base.pathname.slice(0, -1) : base.pathname;
   const pathSegments = normalizeProxyPath(path)
     .split("/")
     .filter(Boolean)

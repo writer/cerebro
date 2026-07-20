@@ -17,7 +17,7 @@ func TestArtifactVersionSupportsIndependentClaims(t *testing.T) {
 	store := newMemoryStore()
 	service := newTestService(store, &memoryLog{}, now)
 	version := registerTestVersion(t, service, now, true)
-	first := createTestClaim(t, service, version, "objective-1")
+	first := createTestClaim(t, service, version)
 	second, err := service.ReuseClaim(context.Background(), first.TenantID, first.ID, "owner-2", ports.EvidenceClaim{
 		Scope: ports.EvidenceClaimScope{ObjectiveID: "objective-2", ImplementationRevisionID: "implementation-revision-2",
 			RequirementID: "requirement-2", Subjects: first.Scope.Subjects, PeriodStart: first.Scope.PeriodStart,
@@ -79,7 +79,7 @@ func TestQuarantinedVersionCannotSatisfyClaim(t *testing.T) {
 	store := newMemoryStore()
 	service := newTestService(store, &memoryLog{}, now)
 	version := registerTestVersion(t, service, now, false)
-	claim := createTestClaim(t, service, version, "objective-1")
+	claim := createTestClaim(t, service, version)
 	claim, err := service.ReviewClaim(context.Background(), claim.TenantID, claim.ID, "reviewer-1", ports.EvidenceReviewApproved, "Metadata reviewed.", claim.Version)
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestInvalidationAndScopePeriodChecks(t *testing.T) {
 	store := newMemoryStore()
 	service := newTestService(store, &memoryLog{}, now)
 	version := registerTestVersion(t, service, now, true)
-	claim := createTestClaim(t, service, version, "objective-1")
+	claim := createTestClaim(t, service, version)
 	claim, err := service.ReviewClaim(context.Background(), claim.TenantID, claim.ID, "reviewer-1", ports.EvidenceReviewApproved, "Verified.", claim.Version)
 	if err != nil {
 		t.Fatal(err)
@@ -123,6 +123,102 @@ func TestInvalidationAndScopePeriodChecks(t *testing.T) {
 		if !contains(invalid.ReasonCodes, reason) {
 			t.Fatalf("validation reasons %v missing %q", invalid.ReasonCodes, reason)
 		}
+	}
+}
+
+func TestEvidenceClaimExpiresIndependentlyWithinVersionWindow(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newMemoryStore()
+	service := newTestService(store, &memoryLog{}, now)
+	version := registerTestVersion(t, service, now, true)
+	claim, err := service.CreateClaim(context.Background(), CreateClaimRequest{Claim: ports.EvidenceClaim{
+		TenantID: version.TenantID, ArtifactVersionID: version.ID,
+		Scope: ports.EvidenceClaimScope{ObjectiveID: "objective-1", ImplementationRevisionID: "implementation-revision-1", RequirementID: "requirement-1",
+			Subjects: version.Subjects, PeriodStart: version.Provenance.PeriodStart, PeriodEnd: version.Provenance.PeriodEnd},
+		Linkage: ports.EvidenceLinkDirect, Strength: "strong", MappingRationale: "Direct source record for the objective.",
+		ValidUntil: now.Add(2 * time.Hour),
+	}, ActorID: "owner-1"})
+	if err != nil {
+		t.Fatalf("CreateClaim() error = %v", err)
+	}
+	claim, err = service.ReviewClaim(context.Background(), claim.TenantID, claim.ID, "reviewer-1", ports.EvidenceReviewApproved, "Verified.", claim.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validation, err := service.ValidateClaim(context.Background(), ValidateClaimRequest{
+		TenantID: claim.TenantID, ClaimID: claim.ID, Subjects: claim.Scope.Subjects,
+		PeriodStart: claim.Scope.PeriodStart, PeriodEnd: claim.Scope.PeriodEnd, At: claim.ValidUntil,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if validation.Valid || !contains(validation.ReasonCodes, reasonClaimExpired) || contains(validation.ReasonCodes, reasonVersionExpired) {
+		t.Fatalf("claim-expiry validation = %#v", validation)
+	}
+
+	overlong := ports.EvidenceClaim{
+		TenantID: version.TenantID, ArtifactVersionID: version.ID,
+		Scope: ports.EvidenceClaimScope{ObjectiveID: "objective-2", ImplementationRevisionID: "implementation-revision-1", RequirementID: "requirement-2",
+			Subjects: version.Subjects, PeriodStart: version.Provenance.PeriodStart, PeriodEnd: version.Provenance.PeriodEnd},
+		Linkage: ports.EvidenceLinkDirect, Strength: "strong", MappingRationale: "Direct source record for the objective.",
+		ValidUntil: version.ValidUntil.Add(time.Second),
+	}
+	if _, err := service.CreateClaim(context.Background(), CreateClaimRequest{Claim: overlong, ActorID: "owner-1"}); !errors.Is(err, ErrInvalidEvidence) {
+		t.Fatalf("overlong CreateClaim() error = %v, want ErrInvalidEvidence", err)
+	}
+}
+
+func TestValidateClaimDetectsContradictoryApprovedClaim(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newMemoryStore()
+	service := newTestService(store, &memoryLog{}, now)
+	version := registerTestVersion(t, service, now, true)
+	first := createTestClaim(t, service, version)
+	first, err := service.ReviewClaim(context.Background(), first.TenantID, first.ID, "reviewer-1", ports.EvidenceReviewApproved, "Verified as strong evidence.", first.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.CreateClaim(context.Background(), CreateClaimRequest{Claim: ports.EvidenceClaim{
+		TenantID: version.TenantID, ArtifactVersionID: version.ID, Scope: first.Scope,
+		Linkage: ports.EvidenceLinkInferred, Strength: "limited", Limitation: "Supports only part of the population.",
+		MappingRationale: "A separate review reached a narrower conclusion.",
+	}, ActorID: "owner-2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err = service.ReviewClaim(context.Background(), second.TenantID, second.ID, "reviewer-2", ports.EvidenceReviewApproved, "Verified with a limitation.", second.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, claim := range []ports.EvidenceClaim{first, second} {
+		validation, err := service.ValidateClaim(context.Background(), ValidateClaimRequest{
+			TenantID: claim.TenantID, ClaimID: claim.ID, Subjects: claim.Scope.Subjects,
+			PeriodStart: claim.Scope.PeriodStart, PeriodEnd: claim.Scope.PeriodEnd, At: now,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if validation.Valid || !contains(validation.ReasonCodes, reasonClaimConflicting) || !contains(validation.NextActions, "resolve_conflict") {
+			t.Fatalf("conflicting claim validation = %#v", validation)
+		}
+	}
+
+	second, err = service.InvalidateClaim(context.Background(), second.TenantID, second.ID, "owner-2", "The narrower duplicate was withdrawn.", second.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validation, err := service.ValidateClaim(context.Background(), ValidateClaimRequest{
+		TenantID: first.TenantID, ClaimID: first.ID, Subjects: first.Scope.Subjects,
+		PeriodStart: first.Scope.PeriodStart, PeriodEnd: first.Scope.PeriodEnd, At: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validation.Valid || contains(validation.ReasonCodes, reasonClaimConflicting) {
+		t.Fatalf("resolved claim validation = %#v after invalidating %#v", validation, second.Decision)
 	}
 }
 
@@ -275,11 +371,11 @@ func testVersionRequest(now time.Time, trusted bool) RegisterVersionRequest {
 	}
 }
 
-func createTestClaim(t *testing.T, service *Service, version ports.EvidenceVersion, objectiveID string) ports.EvidenceClaim {
+func createTestClaim(t *testing.T, service *Service, version ports.EvidenceVersion) ports.EvidenceClaim {
 	t.Helper()
 	claim, err := service.CreateClaim(context.Background(), CreateClaimRequest{Claim: ports.EvidenceClaim{
 		TenantID: version.TenantID, ArtifactVersionID: version.ID,
-		Scope: ports.EvidenceClaimScope{ObjectiveID: objectiveID, ImplementationRevisionID: "implementation-revision-1", RequirementID: "requirement-1",
+		Scope: ports.EvidenceClaimScope{ObjectiveID: "objective-1", ImplementationRevisionID: "implementation-revision-1", RequirementID: "requirement-1",
 			Subjects: version.Subjects, PeriodStart: version.Provenance.PeriodStart, PeriodEnd: version.Provenance.PeriodEnd},
 		Linkage: ports.EvidenceLinkDirect, Strength: "strong", MappingRationale: "Direct source record for the objective.",
 	}, ActorID: "owner-1"})

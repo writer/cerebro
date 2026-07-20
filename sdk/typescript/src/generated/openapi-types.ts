@@ -748,6 +748,68 @@ export type AssessmentInputManifest = {
   [key: string]: unknown;
 };
 
+export type AssessmentLensAudience =
+  | "security"
+  | "audit"
+  | "platform"
+  | "leadership";
+
+export type AssessmentLensCatalogResponse = {
+  lenses: AssessmentLensDefinition[];
+};
+
+export type AssessmentLensDefinition = {
+  audience: AssessmentLensAudience;
+  first_question: string;
+  id: string;
+  included_fields: string[];
+  next_actions: string[];
+  promoted_signals: string[];
+  question_starters: string[];
+  suppressed_fields: string[];
+  version: "assessment-lens/v1";
+  work_queue: string;
+};
+
+export type AssessmentLensItem = {
+  assurance: string;
+  auditor_state: string;
+  automated_outcome: string;
+  control_ref: AssessmentControlRef;
+  decision_as_of?: string;
+  decision_id?: string;
+  decision_state: "missing" | "unqualified" | "qualified";
+  evidence_ids?: string[];
+  evidence_state: string;
+  finding_ids?: string[];
+  next_actions?: string[];
+  objective_id: string;
+  operating_effectiveness_state: string;
+  reason_codes?: string[];
+  result_id: string;
+  scope_state: string;
+  source_runtime_ids?: string[];
+};
+
+export type AssessmentLensSignal = {
+  key: string;
+  label: string;
+  state: "clear" | "attention";
+  value: number;
+};
+
+export type AssessmentLensSummary = {
+  evidence_gaps: number;
+  in_scope_results: number;
+  missing_decisions: number;
+  not_assessed: number;
+  not_satisfied: number;
+  pending_reviews: number;
+  qualified_decisions: number;
+  satisfied: number;
+  total_results: number;
+};
+
 export type AssessmentManifestRevision = {
   digest: string;
   id: string;
@@ -786,9 +848,11 @@ export type AssessmentPlan = {
   id: string;
   name: string;
   predecessor_id?: string;
+  predecessor_revision?: ComplianceRevisionRef;
   published_at?: string;
   published_by?: string;
   revision_id: string;
+  revision_modified_at?: string;
   scope: AssessmentPlanScope;
   status: "draft" | "published" | "retired";
   tenant_id?: string;
@@ -829,6 +893,8 @@ export type AssessmentPlanResponse = {
 };
 
 export type AssessmentPlanScope = {
+  exact_implementation_revisions?: ComplianceRevisionRef[];
+  exact_scope_revision?: ComplianceRevisionRef;
   excluded_subject_ids?: string[];
   implementation_revision_ids: string[];
   included_subject_ids?: string[];
@@ -903,6 +969,72 @@ export type AssessmentRunRequest = {
 export type AssessmentRunResponse = {
   created: boolean;
   run: AssessmentRun;
+};
+
+export type AssessmentSnapshot = {
+  created_at: string;
+  created_by: string;
+  decision_count: number;
+  decision_cutoff: string;
+  decision_set_digest: string;
+  evidence_count: number;
+  evidence_set_digest: string;
+  id: string;
+  idempotency_key: string;
+  input_hash: string;
+  input_manifest: AssessmentInputManifest;
+  missing_decision_count: number;
+  plan_revision_id: string;
+  program_id: string;
+  qualified_decision_count: number;
+  record_digest: string;
+  request_hash: string;
+  result_chunks: AssessmentSnapshotResultChunkRef[];
+  result_count: number;
+  result_set_hash: string;
+  run_completed_at: string;
+  run_id: string;
+  scope_revision_id: string;
+  tenant_id: string;
+  version: "assessment-snapshot/v1";
+};
+
+export type AssessmentSnapshotCreateRequest = {
+  run_id: string;
+  tenant_id: string;
+};
+
+export type AssessmentSnapshotCreateResponse = {
+  created: boolean;
+  snapshot: AssessmentSnapshot;
+};
+
+export type AssessmentSnapshotLens = {
+  has_more: boolean;
+  items: AssessmentLensItem[];
+  lens: AssessmentLensDefinition;
+  next_cursor?: string;
+  signals: AssessmentLensSignal[];
+  snapshot_digest: string;
+  snapshot_id: string;
+  summary: AssessmentLensSummary;
+};
+
+export type AssessmentSnapshotLensResponse = {
+  view: AssessmentSnapshotLens;
+};
+
+export type AssessmentSnapshotResponse = {
+  snapshot: AssessmentSnapshot;
+};
+
+export type AssessmentSnapshotResultChunkRef = {
+  count: number;
+  digest: string;
+  first_result_id: string;
+  last_result_id: string;
+  previous_digest?: string;
+  sequence: number;
 };
 
 export type AssuranceDecision = {
@@ -1093,6 +1225,63 @@ export type Claim = {
   subject_urn?: string;
   valid_from?: string;
   valid_to?: string;
+};
+
+export type ComplianceMonitor = {
+  consecutive_failures: number;
+  created_at: string;
+  debounce_seconds?: number;
+  enabled: boolean;
+  escalation_owner?: string;
+  expected_coverage?: string;
+  grace_period_seconds?: number;
+  id: string;
+  interval_seconds?: number;
+  last_success_at?: string;
+  maximum_evidence_age_seconds?: number;
+  next_run_at?: string;
+  plan_revision_id: string;
+  program_id: string;
+  tenant_id: string;
+  trigger_kind: "time" | "change";
+  updated_at: string;
+  version: number;
+};
+
+export type ComplianceMonitorInput = {
+  debounce_seconds?: number;
+  enabled: boolean;
+  escalation_owner?: string;
+  expected_coverage?: string;
+  grace_period_seconds?: number;
+  interval_seconds?: number;
+  maximum_evidence_age_seconds?: number;
+  next_run_at?: string;
+  plan_revision_id: string;
+  program_id: string;
+  tenant_id: string;
+  trigger_kind: "time" | "change";
+};
+
+export type ComplianceMonitorListResponse = {
+  monitors: ComplianceMonitor[];
+};
+
+export type ComplianceMonitorResponse = {
+  monitor: ComplianceMonitor;
+};
+
+export type ComplianceMonitorUpdateRequest = {
+  expected_version: number;
+  monitor: ComplianceMonitorInput;
+};
+
+export type ComplianceRevisionRef = {
+  content_digest: string;
+  id: string;
+  last_modified: string;
+  revision_id: string;
+  version: number;
 };
 
 export type ComplianceWorkActionRecord = {
@@ -1885,6 +2074,258 @@ export type EventSubscriptionContract = {
   signing: Record<string, unknown>;
   summary: string;
   version: string;
+};
+
+export type EvidenceArtifact = {
+  created_at: string;
+  created_by: string;
+  description?: string;
+  id: string;
+  tenant_id: string;
+  title: string;
+  type: string;
+};
+
+export type EvidenceArtifactInput = {
+  description?: string;
+  tenant_id: string;
+  title: string;
+  type: string;
+};
+
+export type EvidenceClaim = {
+  artifact_version_id: string;
+  created_at: string;
+  created_by: string;
+  decision: EvidenceClaimDecision;
+  id: string;
+  limitation?: string;
+  linkage: "direct" | "inherited" | "inferred";
+  mapping_rationale: string;
+  scope: EvidenceClaimScope;
+  strength: string;
+  tenant_id: string;
+  valid_until?: string;
+  version: number;
+};
+
+export type EvidenceClaimCompatibilityDecision = {
+  claim_validation: EvidenceClaimValidation;
+  reason_codes: string[];
+  reusable: boolean;
+  reuse: EvidenceReuseDecision;
+};
+
+export type EvidenceClaimCompatibilityRequest = {
+  at?: string;
+  claim_id: string;
+  source: EvidenceProofObligation;
+  target: EvidenceProofObligation;
+  tenant_id: string;
+};
+
+export type EvidenceClaimCompatibilityResponse = {
+  decision: EvidenceClaimCompatibilityDecision;
+};
+
+export type EvidenceClaimCreateRequest = {
+  claim: EvidenceClaimInput;
+};
+
+export type EvidenceClaimDecision = {
+  invalidated_at?: string;
+  invalidation_reason?: string;
+  review_reason?: string;
+  review_state: "pending" | "approved" | "rejected";
+  reviewed_at?: string;
+  reviewer_id?: string;
+};
+
+export type EvidenceClaimInput = {
+  artifact_version_id: string;
+  limitation?: string;
+  linkage: "direct" | "inherited" | "inferred";
+  mapping_rationale: string;
+  scope: EvidenceClaimScope;
+  strength: string;
+  tenant_id: string;
+  valid_until?: string;
+};
+
+export type EvidenceClaimInvalidateRequest = {
+  expected_version: number;
+  reason: string;
+  tenant_id: string;
+};
+
+export type EvidenceClaimResponse = {
+  claim: EvidenceClaim;
+};
+
+export type EvidenceClaimReuseInput = {
+  limitation?: string;
+  linkage: "direct" | "inherited" | "inferred";
+  mapping_rationale: string;
+  scope: EvidenceClaimScope;
+  strength: string;
+  valid_until?: string;
+};
+
+export type EvidenceClaimReuseRequest = {
+  claim: EvidenceClaimReuseInput;
+  tenant_id: string;
+};
+
+export type EvidenceClaimReviewRequest = {
+  expected_version: number;
+  reason: string;
+  state: "approved" | "rejected";
+  tenant_id: string;
+};
+
+export type EvidenceClaimScope = {
+  implementation_revision_id: string;
+  objective_id: string;
+  period_end: string;
+  period_start: string;
+  requirement_id: string;
+  subjects: EvidenceSubjectRef[];
+};
+
+export type EvidenceClaimValidateRequest = {
+  at?: string;
+  period_end: string;
+  period_start: string;
+  subjects: EvidenceSubjectRef[];
+  tenant_id: string;
+};
+
+export type EvidenceClaimValidation = {
+  next_actions: ("none" | "review" | "replace_claim" | "refresh_evidence" | "resolve_conflict" | "repair_source" | "collect_evidence")[];
+  reason_codes: ("evidence_claim_approved" | "evidence_claim_pending" | "evidence_claim_rejected" | "evidence_claim_invalidated" | "evidence_claim_expired" | "evidence_claim_conflicting" | "evidence_version_quarantined" | "evidence_version_revoked" | "evidence_version_expired" | "evidence_period_gap" | "evidence_subject_mismatch")[];
+  valid: boolean;
+};
+
+export type EvidenceClaimValidationResponse = {
+  claim_id: string;
+  validation: EvidenceClaimValidation;
+};
+
+export type EvidenceContentRef = {
+  content_digest: string;
+  media_type: string;
+  size_bytes: number;
+  uri: string;
+};
+
+export type EvidenceGovernance = {
+  access_policy: string;
+  legal_hold: boolean;
+  parser_quality?: string;
+  redaction_state?: string;
+  retention_until?: string;
+  sensitivity: EvidenceSensitivity;
+};
+
+export type EvidenceProofObligation = {
+  assurance_strength: "documented" | "observed" | "tested" | "independently_reviewed";
+  control_id: string;
+  digest?: string;
+  framework_id: string;
+  framework_version: string;
+  frequency: string;
+  implementation_revision: string;
+  method: "automated" | "manual" | "hybrid";
+  period_end: string;
+  period_start: string;
+  population_digest: string;
+  requirement_id: string;
+  reviewer_required: boolean;
+  scope_revision: string;
+  subject_kinds: string[];
+  tenant_id?: string;
+};
+
+export type EvidenceProvenance = {
+  collected_at: string;
+  derivation_ids?: string[];
+  period_end?: string;
+  period_start?: string;
+  producer: string;
+  producer_version?: string;
+  source_event_id?: string;
+  source_proof_revision_id: string;
+  source_runtime_id?: string;
+};
+
+export type EvidenceReuseDecision = {
+  decision_digest: string;
+  failed_predicates: ("tenant" | "control" | "implementation_revision" | "scope_revision" | "subject_kinds" | "population" | "period" | "method" | "assurance_strength" | "frequency" | "reviewer_requirement")[];
+  source_digest: string;
+  state: "exact" | "partial" | "incompatible";
+  target_digest: string;
+};
+
+export type EvidenceRevisionRef = {
+  content_digest: string;
+  id: string;
+  last_modified: string;
+  revision_id: string;
+  version: number;
+};
+
+export type EvidenceSensitivity =
+  | "public"
+  | "internal"
+  | "confidential"
+  | "restricted";
+
+export type EvidenceSubjectRef = {
+  id: string;
+  type: string;
+};
+
+export type EvidenceVersion = {
+  artifact_id: string;
+  content: EvidenceContentRef;
+  governance: EvidenceGovernance;
+  id: string;
+  predecessor_id?: string;
+  provenance: EvidenceProvenance;
+  quarantine_reason?: string;
+  recorded_at: string;
+  revision: EvidenceRevisionRef;
+  state: "collected" | "validation_failed" | "under_review" | "approved" | "stale" | "superseded" | "revoked";
+  subjects: EvidenceSubjectRef[];
+  tenant_id: string;
+  valid_from: string;
+  valid_until?: string;
+};
+
+export type EvidenceVersionInput = {
+  content: EvidenceContentRef;
+  governance: EvidenceGovernance;
+  id?: string;
+  predecessor_id?: string;
+  provenance: EvidenceProvenance;
+  revision?: { version?: number };
+  subjects: EvidenceSubjectRef[];
+  valid_from?: string;
+  valid_until?: string;
+};
+
+export type EvidenceVersionRegisterRequest = {
+  artifact: EvidenceArtifactInput;
+  version: EvidenceVersionInput;
+};
+
+export type EvidenceVersionRegisterResponse = {
+  artifact: EvidenceArtifact;
+  version: EvidenceVersion;
+};
+
+export type EvidenceVersionResponse = {
+  version: EvidenceVersion;
 };
 
 export type Finding = {

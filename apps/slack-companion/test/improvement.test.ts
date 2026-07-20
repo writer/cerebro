@@ -43,7 +43,6 @@ import type {
   ImprovementOutcomeEvaluationSetV1,
   ImprovementOutcomeEvidenceInput,
 } from "../src/improvement/contracts.js";
-import { IMPROVEMENT_EVIDENCE_KINDS } from "../src/improvement/contracts.js";
 import type {
   DurableImprovementCandidatePort,
   ImprovementAuthorPort,

@@ -399,6 +399,13 @@ func readComplianceProgramSnapshot(t *testing.T, ctx context.Context, store *Sto
 	if err != nil {
 		t.Fatalf("GetControlImplementationRevision() error = %v", err)
 	}
+	scopeRef, implementationRefs, err := store.ResolveAssessmentPlanLineage(ctx, tenantID, programID, scope.Version.RevisionID, []string{revision.Version.RevisionID})
+	if err != nil {
+		t.Fatalf("ResolveAssessmentPlanLineage() error = %v", err)
+	}
+	if scopeRef.RevisionID != scope.Version.RevisionID || len(implementationRefs) != 1 || implementationRefs[0].RevisionID != revision.Version.RevisionID {
+		t.Fatalf("resolved assessment plan lineage = %#v/%#v", scopeRef, implementationRefs)
+	}
 	return testComplianceSnapshot{
 		Version: program.AggregateVersion, Program: *program, Scope: *scope,
 		Implementation: grcprogram.ControlImplementationRecordedPayload{Implementation: *implementation, Revision: *revision},

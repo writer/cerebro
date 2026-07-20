@@ -27,6 +27,8 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/complianceassessment"
+	"github.com/writer/cerebro/internal/complianceimpact"
+	"github.com/writer/cerebro/internal/compliancemonitor"
 	"github.com/writer/cerebro/internal/complianceremediation"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
@@ -36,6 +38,7 @@ import (
 	"github.com/writer/cerebro/internal/decisionworkflow"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
+	"github.com/writer/cerebro/internal/evidenceledger"
 	"github.com/writer/cerebro/internal/findingapi"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphactionapi"
@@ -116,6 +119,11 @@ type appServices struct {
 	workflowReplay  *workflowprojection.Replayer
 	jobs            *platformjobs.Service
 	assessments     *complianceassessment.Service
+	evidence        *evidenceledger.Service
+	monitors        *compliancemonitor.Service
+	impactProjector *complianceimpact.GraphProjector
+	impactScheduler *complianceimpact.Scheduler
+	impactProcessor *complianceimpact.Processor
 	remediation     *complianceremediation.Service
 	decisionPackets *decisionpacket.Service
 }
@@ -296,6 +304,21 @@ func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Reg
 	if app.services.assessments != nil {
 		app.services.jobs.WithRunner(complianceassessment.JobKindComplianceAssessment, app.services.assessments.Runner())
 	}
+	app.services.monitors, app.services.impactProjector, app.services.impactScheduler = app.newComplianceImpactServices(app.services.jobs, app.services.assessments)
+	if app.services.impactProjector != nil && app.services.impactScheduler != nil {
+		app.services.impactProcessor, _ = complianceimpact.NewProcessor(app.services.impactProjector, app.services.impactScheduler)
+		if app.services.assessments != nil && app.services.impactProcessor != nil {
+			adapter, adapterErr := complianceimpact.NewAssessmentPlanAdapter(app.services.impactProcessor)
+			if adapterErr != nil {
+				return nil, fmt.Errorf("assessment plan impact bootstrap failed: %w", adapterErr)
+			}
+			app.services.assessments.WithPlanEventSink(adapter)
+		}
+	}
+	if app.services.assessments != nil && app.services.monitors != nil {
+		app.services.assessments.WithRunTerminalHook(app.services.monitors.CompleteAssessmentRun)
+	}
+	app.services.evidence = app.newEvidenceLedgerService()
 	app.services.remediation = app.newComplianceRemediationService()
 	app.services.decisionPackets = app.newDecisionPacketService()
 	mux := http.NewServeMux()

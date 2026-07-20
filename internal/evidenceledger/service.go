@@ -155,6 +155,10 @@ func (s *Service) CreateClaim(ctx context.Context, request CreateClaimRequest) (
 	if err != nil {
 		return ports.EvidenceClaim{}, err
 	}
+	if claim.ValidUntil.IsZero() && !version.ValidUntil.IsZero() {
+		claim.ValidUntil = version.ValidUntil
+	}
+	claim = normalizeClaim(claim)
 	if err := validateClaimRecord(claim, version, actorID); err != nil {
 		return ports.EvidenceClaim{}, err
 	}
@@ -286,9 +290,17 @@ func normalizeClaim(value ports.EvidenceClaim) ports.EvidenceClaim {
 	value.Limitation = strings.TrimSpace(value.Limitation)
 	value.MappingRationale = strings.TrimSpace(value.MappingRationale)
 	value.Decision.ReviewState = strings.TrimSpace(value.Decision.ReviewState)
+	value.Decision.ReviewerID = strings.TrimSpace(value.Decision.ReviewerID)
+	value.Decision.ReviewReason = strings.TrimSpace(value.Decision.ReviewReason)
+	value.Decision.InvalidationReason = strings.TrimSpace(value.Decision.InvalidationReason)
 	value.Scope.Subjects = normalizeSubjects(value.Scope.Subjects)
 	value.Scope.PeriodStart = value.Scope.PeriodStart.UTC().Truncate(time.Millisecond)
 	value.Scope.PeriodEnd = value.Scope.PeriodEnd.UTC().Truncate(time.Millisecond)
+	value.Decision.ReviewedAt = value.Decision.ReviewedAt.UTC().Truncate(time.Millisecond)
+	value.Decision.InvalidatedAt = value.Decision.InvalidatedAt.UTC().Truncate(time.Millisecond)
+	value.CreatedAt = value.CreatedAt.UTC().Truncate(time.Millisecond)
+	value.CreatedBy = strings.TrimSpace(value.CreatedBy)
+	value.ValidUntil = value.ValidUntil.UTC().Truncate(time.Millisecond)
 	return value
 }
 
@@ -394,6 +406,9 @@ func validateClaimRecord(claim ports.EvidenceClaim, version ports.EvidenceVersio
 	}
 	if claim.Strength == "" || claim.MappingRationale == "" || claim.Scope.PeriodStart.IsZero() || claim.Scope.PeriodEnd.IsZero() || claim.Scope.PeriodEnd.Before(claim.Scope.PeriodStart) || len(claim.Scope.Subjects) == 0 {
 		return fmt.Errorf("%w: claim basis is incomplete", ErrInvalidEvidence)
+	}
+	if !claim.ValidUntil.IsZero() && (!claim.ValidUntil.After(claim.CreatedAt) || (!version.ValidUntil.IsZero() && claim.ValidUntil.After(version.ValidUntil))) {
+		return fmt.Errorf("%w: claim validity must end after creation and no later than the evidence version", ErrInvalidEvidence)
 	}
 	return nil
 }

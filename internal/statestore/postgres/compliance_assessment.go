@@ -87,6 +87,23 @@ var ensureComplianceAssessmentStatements = []string{
   FOREIGN KEY (tenant_id, run_id) REFERENCES compliance_assessment_runs (tenant_id, id)
 )`,
 	`CREATE INDEX IF NOT EXISTS compliance_assurance_decisions_run_idx ON compliance_assurance_decisions (tenant_id, run_id, recorded_at, id)`,
+	`CREATE TABLE IF NOT EXISTS compliance_assessment_snapshots (
+  tenant_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  program_id TEXT NOT NULL,
+  scope_revision_id TEXT NOT NULL,
+  plan_revision_id TEXT NOT NULL,
+  record_digest TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  record_json JSONB NOT NULL,
+  PRIMARY KEY (tenant_id, id),
+  UNIQUE (tenant_id, idempotency_key),
+  FOREIGN KEY (tenant_id, run_id) REFERENCES compliance_assessment_runs (tenant_id, id)
+)`,
+	`CREATE INDEX IF NOT EXISTS compliance_assessment_snapshots_run_idx ON compliance_assessment_snapshots (tenant_id, run_id, created_at, id)`,
 	`CREATE TABLE IF NOT EXISTS compliance_assessment_event_receipts (
   event_id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -119,6 +136,19 @@ WHERE tenant_id=$1 AND (
   (run_id=$4 AND result_id=$5 AND decision_digest=$6)
 )
 ORDER BY CASE WHEN id=$2 THEN 0 WHEN idempotency_key=$3 THEN 1 ELSE 2 END
+LIMIT 1`
+
+const insertComplianceAssessmentSnapshot = `
+INSERT INTO compliance_assessment_snapshots
+  (tenant_id,id,run_id,program_id,scope_revision_id,plan_revision_id,record_digest,idempotency_key,request_hash,created_at,record_json)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+ON CONFLICT DO NOTHING`
+
+const selectConflictingAssessmentSnapshotDigest = `
+SELECT record_digest
+FROM compliance_assessment_snapshots
+WHERE tenant_id=$1 AND (id=$2 OR idempotency_key=$3)
+ORDER BY CASE WHEN id=$2 THEN 0 ELSE 1 END
 LIMIT 1`
 
 func (s *Store) ensureComplianceAssessmentTables(ctx context.Context) error {
@@ -194,6 +224,102 @@ func (s *Store) getAssuranceDecision(ctx context.Context, query string, args ...
 		return complianceassessment.AssuranceDecision{}, fmt.Errorf("decode assurance decision: %w", err)
 	}
 	return decision, nil
+}
+
+func (s *Store) ListAssuranceDecisionsByRun(ctx context.Context, tenantID, runID string) ([]complianceassessment.AssuranceDecision, error) {
+	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT record_json FROM compliance_assurance_decisions
+WHERE tenant_id=$1 AND run_id=$2
+ORDER BY result_id,recorded_at,id`, strings.TrimSpace(tenantID), strings.TrimSpace(runID))
+	if err != nil {
+		return nil, fmt.Errorf("list assurance decisions by run: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	decisions := []complianceassessment.AssuranceDecision{}
+	for rows.Next() {
+		var recordJSON []byte
+		if err := rows.Scan(&recordJSON); err != nil {
+			return nil, err
+		}
+		var decision complianceassessment.AssuranceDecision
+		if err := json.Unmarshal(recordJSON, &decision); err != nil {
+			return nil, fmt.Errorf("decode assurance decision: %w", err)
+		}
+		decisions = append(decisions, decision)
+	}
+	return decisions, rows.Err()
+}
+
+func (s *Store) ApplyAssessmentSnapshot(ctx context.Context, eventID string, snapshot complianceassessment.AssessmentSnapshot) error {
+	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
+		return err
+	}
+	recordJSON, err := json.Marshal(snapshot)
+	if err != nil {
+		return fmt.Errorf("marshal assessment snapshot: %w", err)
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return fmt.Errorf("begin assessment snapshot projection: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	applied, err := assessmentEventApplied(ctx, tx, eventID, snapshot.RecordDigest)
+	if err != nil || applied {
+		if applied {
+			return tx.Commit()
+		}
+		return err
+	}
+	result, err := tx.ExecContext(ctx, insertComplianceAssessmentSnapshot, snapshot.TenantID, snapshot.ID, snapshot.RunID, snapshot.ProgramID,
+		snapshot.ScopeRevisionID, snapshot.PlanRevisionID, snapshot.RecordDigest, snapshot.IdempotencyKey,
+		snapshot.RequestHash, snapshot.CreatedAt.UTC(), string(recordJSON))
+	if err != nil {
+		return fmt.Errorf("project assessment snapshot: %w", err)
+	}
+	if count, _ := result.RowsAffected(); count == 0 {
+		var existingDigest string
+		if err := tx.QueryRowContext(ctx, selectConflictingAssessmentSnapshotDigest, snapshot.TenantID, snapshot.ID, snapshot.IdempotencyKey).Scan(&existingDigest); errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: conflicting assessment snapshot is unavailable", complianceassessment.ErrAssessmentConflict)
+		} else if err != nil {
+			return fmt.Errorf("read existing assessment snapshot: %w", err)
+		}
+		if existingDigest != snapshot.RecordDigest {
+			return complianceassessment.ErrAssessmentConflict
+		}
+	}
+	if err := insertAssessmentReceipt(ctx, tx, eventID, snapshot.TenantID, "assessment_snapshot", snapshot.ID, 1, snapshot.RecordDigest); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) GetAssessmentSnapshot(ctx context.Context, tenantID, snapshotID string) (complianceassessment.AssessmentSnapshot, error) {
+	return s.getAssessmentSnapshot(ctx, `SELECT record_json FROM compliance_assessment_snapshots WHERE tenant_id=$1 AND id=$2`, strings.TrimSpace(tenantID), strings.TrimSpace(snapshotID))
+}
+
+func (s *Store) FindAssessmentSnapshotByIdempotency(ctx context.Context, tenantID, key string) (complianceassessment.AssessmentSnapshot, error) {
+	return s.getAssessmentSnapshot(ctx, `SELECT record_json FROM compliance_assessment_snapshots WHERE tenant_id=$1 AND idempotency_key=$2`, strings.TrimSpace(tenantID), strings.TrimSpace(key))
+}
+
+func (s *Store) getAssessmentSnapshot(ctx context.Context, query string, args ...any) (complianceassessment.AssessmentSnapshot, error) {
+	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
+		return complianceassessment.AssessmentSnapshot{}, err
+	}
+	var recordJSON []byte
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&recordJSON); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return complianceassessment.AssessmentSnapshot{}, complianceassessment.ErrAssessmentSnapshotNotFound
+		}
+		return complianceassessment.AssessmentSnapshot{}, fmt.Errorf("get assessment snapshot: %w", err)
+	}
+	var snapshot complianceassessment.AssessmentSnapshot
+	if err := json.Unmarshal(recordJSON, &snapshot); err != nil {
+		return complianceassessment.AssessmentSnapshot{}, fmt.Errorf("decode assessment snapshot: %w", err)
+	}
+	return snapshot, nil
 }
 
 func (s *Store) ApplyPlan(ctx context.Context, eventID string, plan complianceassessment.AssessmentPlanRevision, expectedVersion uint64) error {

@@ -1,11 +1,37 @@
 package bootstrap
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/ports"
 )
+
+func TestEvidenceMaximumSensitivityUsesPrincipalScopes(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name   string
+		scopes []string
+		want   string
+	}{
+		{name: "missing principal", want: ports.EvidenceSensitivityPublic},
+		{name: "unscoped administrator", scopes: []string{}, want: ports.EvidenceSensitivityRestricted},
+		{name: "security reader", scopes: []string{scopeCosmoSecurityRead}, want: ports.EvidenceSensitivityInternal},
+		{name: "GRC writer", scopes: []string{scopeCosmoSecurityRead, scopeGRCInventoryWrite}, want: ports.EvidenceSensitivityRestricted},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			if test.scopes != nil {
+				ctx = context.WithValue(ctx, authContextKey{}, authContext{principal: authPrincipal{Scopes: test.scopes}})
+			}
+			if got := evidenceMaximumSensitivity(ctx); got != test.want {
+				t.Fatalf("evidenceMaximumSensitivity() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
 
 func TestTenantAllowedFailsClosedForUnscopedPrincipal(t *testing.T) {
 	principal := authPrincipal{AuthMode: "api_key"}
