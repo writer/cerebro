@@ -303,6 +303,38 @@ describe("DeliveryCoordinator", () => {
     assert.equal(sender.callCount, 2);
   });
 
+  test("honors portable retry backoff before reclaiming a failed part", async () => {
+    const clock = new MutableClock(start);
+    const store = new ReferenceMemoryDeliveryStore(1);
+    const sender = new IdempotentSender(clock);
+    sender.rejectAll = true;
+    const coordinator = makeCoordinator(clock, store, sender);
+    const planned = await coordinator.plan(
+      planRequest({
+        max_attempts: 3,
+        parts: [part(1)],
+        retry_policy: {
+          initial_delay_seconds: 5,
+          max_delay_seconds: 30,
+          multiplier: 2,
+          schema_version: "delivery-retry-policy/v1",
+        },
+      }),
+    );
+
+    const first = await coordinator.deliverNext(planned.receipt.delivery_id, lease());
+    const waiting = await coordinator.deliverNext(planned.receipt.delivery_id, lease());
+    clock.set("2026-07-16T12:00:05.000Z");
+    const second = await coordinator.deliverNext(planned.receipt.delivery_id, lease());
+
+    assert.equal(first.status, "retry_scheduled");
+    assert.equal(waiting.status, "waiting_for_retry");
+    assert.equal(waiting.next_attempt_at, "2026-07-16T12:00:05.000Z");
+    assert.equal(second.status, "retry_scheduled");
+    assert.equal(second.receipt.state, "delivering");
+    assert.equal(sender.callCount, 2);
+  });
+
   test("pauses active work, fences stale resume, and resumes without duplicate send", async () => {
     const clock = new MutableClock(start);
     const store = new ReferenceMemoryDeliveryStore(1);

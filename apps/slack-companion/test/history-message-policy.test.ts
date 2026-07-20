@@ -42,6 +42,18 @@ describe("Slack learning candidate policy", () => {
         expected: "empty",
         message: { text: "\n\t", ts: acceptedMessage.ts, user: acceptedMessage.user },
       },
+      {
+        expected: "text_too_large",
+        message: { text: "a".repeat(4_001), ts: acceptedMessage.ts, user: acceptedMessage.user },
+      },
+      {
+        expected: "unsafe_text",
+        message: { text: "unsafe\u0000text", ts: acceptedMessage.ts, user: acceptedMessage.user },
+      },
+      {
+        expected: "secret_like",
+        message: { text: "token=synthetic-fixture", ts: acceptedMessage.ts, user: acceptedMessage.user },
+      },
     ];
 
     for (const value of cases) {

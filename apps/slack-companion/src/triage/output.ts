@@ -2,6 +2,7 @@ import type {
   AlertTriageClassificationV1,
   AlertTriageSeverityV1,
 } from "./contracts.js";
+import { redactSecurityTextWithReceipt } from "../security/redaction.js";
 
 const MAX_INPUT_CODE_UNITS = 65_536;
 const MAX_SUMMARY_CODE_POINTS = 900;
@@ -11,12 +12,6 @@ const MAX_RESEARCH_CODE_POINTS = 240;
 const MAX_ITEMS = 6;
 const MAX_RESEARCH_ITEMS = 8;
 
-const SLACK_TOKEN_PATTERN = /xox[baprs]-[A-Za-z0-9-]+/g;
-const CLOUD_ACCESS_KEY_PATTERN = /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g;
-const PRIVATE_KEY_PATTERN =
-  /-----BEGIN ([A-Z0-9 ]{1,32}) PRIVATE KEY-----[\s\S]*?-----END \1 PRIVATE KEY-----/g;
-const ASSIGNED_SECRET_PATTERN =
-  /\b(bearer|api[_-]?key|token|secret|password)\b["']?\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi;
 const UNSAFE_CONTROL_PATTERN = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
 
 export type TriageAgentTopicV1 =
@@ -319,16 +314,13 @@ function boundedList(values: readonly string[], maximum: number, textLimit: numb
 }
 
 function boundedText(value: string, maximumCodePoints: number): string {
-  const redacted = redactCredentialShapes(value)
+  const redacted = redactSecurityTextWithReceipt(value, {
+    labels: {
+      cloud_access_key: "[redacted_access_key]",
+      slack_token: "[redacted_token]",
+    },
+  }).redacted_text
     .replace(UNSAFE_CONTROL_PATTERN, " ")
     .trim();
   return [...redacted].slice(0, maximumCodePoints).join("");
-}
-
-function redactCredentialShapes(value: string): string {
-  return value
-    .replace(SLACK_TOKEN_PATTERN, "[redacted_token]")
-    .replace(CLOUD_ACCESS_KEY_PATTERN, "[redacted_access_key]")
-    .replace(PRIVATE_KEY_PATTERN, "[redacted_private_key]")
-    .replace(ASSIGNED_SECRET_PATTERN, "$1=[redacted_secret]");
 }

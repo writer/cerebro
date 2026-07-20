@@ -65,6 +65,7 @@ export class DeliveryCoordinator {
         state: "pending",
         updated_at: now,
       },
+      ...(request.retry_policy === undefined ? {} : { retry_policy: request.retry_policy }),
     });
   }
 
@@ -79,6 +80,9 @@ export class DeliveryCoordinator {
     });
     if (claimResult.status === "idle") {
       return {
+        ...(claimResult.next_attempt_at === undefined
+          ? {}
+          : { next_attempt_at: claimResult.next_attempt_at }),
         receipt: claimResult.receipt,
         status: claimResult.reason,
       };
@@ -188,12 +192,29 @@ function validatePlan(request: DeliveryPlanRequest): void {
   if (!Number.isInteger(request.max_attempts) || request.max_attempts < 1) {
     throw new DeliveryInputError("max_attempts must be a positive integer.");
   }
+  if (request.retry_policy !== undefined) {
+    validateRetryPolicy(request.retry_policy);
+  }
   for (const part of request.parts) {
     if (!part.payload_digest || !part.payload_ref) {
       throw new DeliveryInputError(
         "Each delivery part requires a payload reference and digest.",
       );
     }
+  }
+}
+
+function validateRetryPolicy(policy: DeliveryPlanRequest["retry_policy"]): void {
+  if (
+    policy?.schema_version !== "delivery-retry-policy/v1" ||
+    !Number.isFinite(policy.initial_delay_seconds) ||
+    !Number.isFinite(policy.max_delay_seconds) ||
+    !Number.isFinite(policy.multiplier) ||
+    policy.initial_delay_seconds < 0 ||
+    policy.max_delay_seconds < policy.initial_delay_seconds ||
+    policy.multiplier < 1
+  ) {
+    throw new DeliveryInputError("retry_policy is invalid.");
   }
 }
 
@@ -204,6 +225,7 @@ function payloadFingerprint(request: DeliveryPlanRequest): string {
       destination_ref: request.destination_ref,
       max_attempts: request.max_attempts,
       parts: request.parts.map((part) => [part.payload_digest, part.payload_ref]),
+      retry_policy: request.retry_policy ?? null,
       run_id: request.run_id,
     }),
   );

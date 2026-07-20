@@ -103,15 +103,15 @@ test("rejects empty explicit questions and command input outside fixed bounds", 
     SlackCommandParseError,
   );
   assert.throws(
-    () => parseSlackCommand(Array.from({ length: 33 }, () => "word").join(" ")),
+    () => parseSlackCommand(`triage ${Array.from({ length: 33 }, () => "word").join(" ")}`),
     /arguments exceed supported bounds/,
   );
   assert.throws(
-    () => parseSlackCommand(`ask ${"x".repeat(257)}`),
+    () => parseSlackCommand(`watch ${"x".repeat(257)}`),
     /arguments exceed supported bounds/,
   );
   assert.throws(
-    () => parseSlackCommand(`ask ${"é".repeat(129)}`),
+    () => parseSlackCommand(`recheck ${"é".repeat(129)}`),
     /arguments exceed supported bounds/,
   );
   assert.throws(
@@ -119,4 +119,21 @@ test("rejects empty explicit questions and command input outside fixed bounds", 
     /input is invalid/,
   );
   assert.throws(() => parseSlackCommand("ask unsafe\u0000text"), /input is invalid/);
+});
+
+test("allows long free-form ask and remember text within byte bounds", () => {
+  const question = Array.from({ length: 80 }, (_, index) => `word${index}`).join(" ");
+  assert.deepEqual(parseSlackCommand(`ask ${question}`), {
+    command_id: "ask",
+    invocation: "explicit",
+    name: "ask",
+    question,
+    schema_version: "slack-command-intent/v1",
+  });
+
+  const remembered = Array.from({ length: 60 }, (_, index) => `note${index}`).join(" ");
+  const parsed = parseSlackCommand(`remember ${remembered}`);
+  assert.equal(parsed.name, "remember");
+  if (parsed.name !== "remember") assert.fail("expected remember command");
+  assert.equal(parsed.remember.content, remembered);
 });

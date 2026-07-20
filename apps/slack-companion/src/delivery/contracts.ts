@@ -11,12 +11,20 @@ export interface DeliveryPayloadPart {
   payload_ref: string;
 }
 
+export interface DeliveryRetryPolicyV1 {
+  initial_delay_seconds: number;
+  max_delay_seconds: number;
+  multiplier: number;
+  schema_version: "delivery-retry-policy/v1";
+}
+
 /** One logical delivery. Reusing delivery_key with different content conflicts. */
 export interface DeliveryPlanRequest {
   delivery_key: string;
   destination_ref: string;
   max_attempts: number;
   parts: readonly DeliveryPayloadPart[];
+  retry_policy?: DeliveryRetryPolicyV1;
   run_id: string;
 }
 
@@ -24,6 +32,7 @@ export interface DurableDeliveryPlan {
   max_attempts: number;
   payload_fingerprint: string;
   receipt: DeliveryReceiptV1;
+  retry_policy?: DeliveryRetryPolicyV1;
 }
 
 export interface DeliveryPlanResult {
@@ -42,7 +51,8 @@ export interface DeliveryPartClaim {
 export type DeliveryClaimResult =
   | { claim: DeliveryPartClaim; status: "claimed" }
   | {
-      reason: "abandoned" | "busy" | "complete" | "paused" | "retry_exhausted";
+      next_attempt_at?: string;
+      reason: "abandoned" | "busy" | "complete" | "paused" | "retry_exhausted" | "waiting_for_retry";
       receipt: DeliveryReceiptV1;
       status: "idle";
     };
@@ -95,7 +105,8 @@ export type DeliveryStepResult =
     }
   | {
       receipt: DeliveryReceiptV1;
-      status: "abandoned" | "busy" | "complete" | "paused" | "retry_exhausted";
+      next_attempt_at?: string;
+      status: "abandoned" | "busy" | "complete" | "paused" | "retry_exhausted" | "waiting_for_retry";
     }
   | {
       receipt: DeliveryReceiptV1;
