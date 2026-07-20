@@ -14,6 +14,7 @@ export * from "./commands/contracts.js";
 export * from "./commands/catalog.js";
 export * from "./commands/registry.js";
 export * from "./commands/codec.js";
+export * from "./commands/operator-actions.js";
 export * from "./commands/remember.js";
 export * from "./canonical-work/contracts.js";
 export * from "./canonical-work/coordinator.js";
