@@ -109,6 +109,19 @@ ordered by priority, and carries stable idempotent identities so a retry never
 double-offers. The host owns candidate derivation, durable engagement history,
 and Slack transport.
 
+## Re-engagement on stale work
+
+`src/reengagement` decides whether, and on which quiet work items, to re-engage
+so the companion does not drop the ball on open watches or canonical-work cases.
+`planReengagement` treats an item as eligible only when it is still open, has
+been idle at least the policy's staleness window, and has not been nudged within
+its per-item cooldown. Eligible items are ordered by priority then staleness,
+capped by a per-run limit and a per-window engagement budget, and carry stable
+idempotent identities keyed to the observed state so a retry never double-nudges
+while a genuinely advanced item earns a fresh nudge. The host owns which items
+are open, their last-activity timestamps, durable nudge history, and Slack
+transport.
+
 ## History learning admission
 
 `slackLearningCandidateRejection` classifies a host-supplied message projection
