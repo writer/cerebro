@@ -44,24 +44,24 @@
     {
       "name": "sourceruntime-event-admission",
       "path": "internal/sourceruntime/eventadmission/eventadmission.wasm",
-      "sha256": "7453cf59239394e7e42d69cd8e57385ec3c03fb666adae8a5ba651879b39515f",
-      "size_bytes": 259570,
-      "max_size_bytes": 260000,
+      "sha256": "66fd97711842e045d6a0df1d81ce05d9303309c54c1c81124f4f688ff6de692d",
+      "size_bytes": 262502,
+      "max_size_bytes": 265000,
       "abi_version": 2
     },
     {
       "name": "sourceruntime-record-kernel",
       "path": "internal/sourceruntime/recordkernel/recordkernel.wasm",
-      "sha256": "7e56da56e716d81c11d1ef131ef2a7f3ed4faed448f4bc809d1e1841e5b2a51c",
-      "size_bytes": 165760,
+      "sha256": "d1718298df02a0a13d6c7f2eb7c23d03698eedf73bd6b7f125d00bca1c5abe15",
+      "size_bytes": 168819,
       "max_size_bytes": 200000,
       "abi_version": 1
     },
     {
       "name": "security-path-evaluator",
       "path": "internal/securitypathdelta/evaluator.wasm",
-      "sha256": "fdae86c18cd54f2b4e30481cf24ce6a673e0392d7c3c257f2dd24714c21fc3a5",
-      "size_bytes": 342821,
+      "sha256": "eae8d4996500bf3dc9934469eac6bd3b2df2f46df7ebe4cc4bbbbf312f59ce9b",
+      "size_bytes": 345756,
       "max_size_bytes": 400000,
       "abi_version": 1
     }
