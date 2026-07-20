@@ -14,8 +14,11 @@ import type {
   ImprovementEvidenceCompletion,
   ImprovementEvidenceInvalidationReceipt,
   ImprovementEvidenceInvalidationRequest,
-  ImprovementEvidenceRecord,
+  ImprovementEvidencePutCommit,
+  ImprovementEvidencePutReceiptV1,
   ImprovementEvidenceSnapshot,
+  ImprovementOutcomeEvaluationReceiptReferenceV1,
+  ImprovementOutcomeEvaluationSetV1,
 } from "./contracts.js";
 
 export interface ImprovementClockPort {
@@ -70,12 +73,18 @@ export interface ImprovementVerificationPort {
   ): Promise<ImprovementAuthorVerification>;
 }
 
+/** Resolves evaluator-owned receipts from a trusted portable adapter. */
+export interface ImprovementOutcomeEvaluatorPort {
+  resolve(
+    reference: ImprovementOutcomeEvaluationReceiptReferenceV1,
+  ): Promise<ImprovementOutcomeEvaluationSetV1 | undefined>;
+}
+
 /**
  * Evidence remains invalidated until every required exact-head receipt is fresh.
- * `recordFresh` uses the immutable `(candidate_id, author_generation, kind)` tuple
- * as its identity. An exact replay must return the stored snapshot. A replay that
- * changes the head, evidence digest, or evidence reference must reject as a
- * conflict instead of replacing the stored receipt.
+ * `putFreshIfAbsent` uses the immutable `(candidate_id, author_generation, kind)`
+ * tuple as its identity. Its durable receipt distinguishes a create, an exact
+ * replay, and a conflicting payload without replacing the stored evidence.
  */
 export interface ImprovementEvidencePort {
   invalidate(
@@ -86,5 +95,7 @@ export interface ImprovementEvidencePort {
     candidateId: string,
     authorGeneration: number,
   ): Promise<ImprovementEvidenceSnapshot | undefined>;
-  recordFresh(input: ImprovementEvidenceRecord): Promise<ImprovementEvidenceSnapshot>;
+  putFreshIfAbsent(
+    commit: ImprovementEvidencePutCommit,
+  ): Promise<ImprovementEvidencePutReceiptV1>;
 }

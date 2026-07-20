@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, test } from "node:test";
+import * as publicApi from "../src/index.js";
 import type { RunReceiptV1, WorkLeaseV1 } from "@writer/cerebro-sdk";
 import { ExecutionCoordinator } from "../src/execution/coordinator.js";
 import type { ExecutionSession } from "../src/execution/model.js";
@@ -31,19 +32,22 @@ import type {
   ImprovementDraftSnapshot,
   ImprovementEvidenceCompletion,
   ImprovementEvidenceInvalidationRequest,
+  ImprovementEvidencePutCommit,
+  ImprovementEvidencePutReceiptV1,
   ImprovementEvidenceRecord,
   ImprovementEvidenceSnapshot,
   ImprovementEvidenceStateV1,
   ImprovementFreshEvidenceInput,
+  ImprovementOutcomeEvaluationReceiptReferenceV1,
+  ImprovementOutcomeEvaluationSetReceiptV1,
+  ImprovementOutcomeEvaluationSetV1,
   ImprovementOutcomeEvidenceInput,
 } from "../src/improvement/contracts.js";
-import {
-  sealImprovementOutcomeEvaluationSet,
-} from "../src/improvement/evaluation-set-receipt.js";
 import type {
   DurableImprovementCandidatePort,
   ImprovementAuthorPort,
   ImprovementEvidencePort,
+  ImprovementOutcomeEvaluatorPort,
   ImprovementVerificationPort,
 } from "../src/improvement/ports.js";
 
@@ -233,7 +237,7 @@ describe("ImprovementCoordinator", () => {
     assert.equal(current.status, "awaiting_evidence");
 
     const outcome = await fixture.coordinator.recordOutcomeEvidence(
-      outcomeEvidence(current),
+      fixture.outcomeEvidence(current),
     );
     current = outcome.candidate;
     assert.equal(outcome.decision.promotion_ready, true);
@@ -255,7 +259,7 @@ describe("ImprovementCoordinator", () => {
     );
 
     const outcome = await fixture.coordinator.recordOutcomeEvidence(
-      outcomeEvidence(authored.candidate, {
+      fixture.outcomeEvidence(authored.candidate, {
         candidate_score: 0.71,
         candidate_blockers: ["outcome_unknown"],
       }),
@@ -280,7 +284,7 @@ describe("ImprovementCoordinator", () => {
 
     await assert.rejects(
       fixture.coordinator.recordOutcomeEvidence(
-        outcomeEvidence(authored.candidate, {
+        fixture.outcomeEvidence(authored.candidate, {
           baseline_head_digest: sha("wrong-baseline-head"),
         }),
       ),
@@ -288,26 +292,52 @@ describe("ImprovementCoordinator", () => {
     );
     await assert.rejects(
       fixture.coordinator.recordOutcomeEvidence(
-        outcomeEvidence(authored.candidate, {
+        fixture.outcomeEvidence(authored.candidate, {
           candidate_head_digest: sha("wrong-candidate-head"),
         }),
       ),
       /does not match the baseline and candidate heads/,
     );
 
-    const oversized = outcomeEvidence(authored.candidate);
-    oversized.candidate = {
-      ...oversized.candidate,
-      evaluations: Array.from(
-        { length: 513 },
-        (_, index) => oversized.candidate.evaluations[
-          index % oversized.candidate.evaluations.length
-        ]!,
-      ),
-    };
+    const oversized = fixture.outcomeEvidence(authored.candidate, {
+      candidate_evaluation_count: 513,
+    });
     await assert.rejects(
       fixture.coordinator.recordOutcomeEvidence(oversized),
-      /evaluations are required and bounded/,
+      /evaluation set is invalid or unbounded/,
+    );
+  });
+
+  test("resolves opaque evaluator receipts without exposing caller sealing authority", async () => {
+    const fixture = makeFixture();
+    const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
+    const session = await fixture.session(1);
+    const authored = await fixture.coordinator.authorCandidate(
+      authorRequest(candidate, session),
+    );
+    const valid = fixture.outcomeEvidence(authored.candidate);
+
+    assert.equal("sealImprovementOutcomeEvaluationSet" in publicApi, false);
+
+    await assert.rejects(
+      fixture.coordinator.recordOutcomeEvidence({
+        ...valid,
+        candidate_evaluation_receipt: {
+          receipt_digest: sha("caller-minted"),
+          receipt_ref: "evaluation-receipt://caller-minted",
+        },
+      }),
+      /trusted evaluator receipt is unavailable/,
+    );
+    await assert.rejects(
+      fixture.coordinator.recordOutcomeEvidence({
+        ...valid,
+        candidate_evaluation_receipt: {
+          ...valid.candidate_evaluation_receipt,
+          receipt_digest: sha("forged-digest"),
+        },
+      }),
+      /trusted evaluator receipt digest does not match/,
     );
   });
 
@@ -319,54 +349,78 @@ describe("ImprovementCoordinator", () => {
       authorRequest(candidate, session),
     );
 
-    const relabeled = outcomeEvidence(authored.candidate);
-    relabeled.candidate = {
-      ...relabeled.candidate,
-      receipt: {
-        ...relabeled.candidate.receipt,
-        evaluated_head_digest: sha("relabeled-head"),
-      },
-    };
+    const relabeled = fixture.outcomeEvidence(authored.candidate);
+    fixture.evaluator.corrupt(
+      relabeled.candidate_evaluation_receipt.receipt_ref,
+      "relabeled_head",
+    );
     await assert.rejects(
       fixture.coordinator.recordOutcomeEvidence(relabeled),
       /receipt integrity is invalid/,
     );
 
-    const reordered = outcomeEvidence(authored.candidate);
-    reordered.candidate = {
-      ...reordered.candidate,
-      evaluations: reordered.candidate.evaluations.slice().reverse(),
-    };
+    const reordered = fixture.outcomeEvidence(authored.candidate);
+    fixture.evaluator.corrupt(
+      reordered.candidate_evaluation_receipt.receipt_ref,
+      "reordered_rows",
+    );
     await assert.rejects(
       fixture.coordinator.recordOutcomeEvidence(reordered),
       /receipt rows changed/,
     );
 
-    const rowTampered = outcomeEvidence(authored.candidate);
-    rowTampered.candidate = {
-      ...rowTampered.candidate,
-      evaluations: rowTampered.candidate.evaluations.map((evaluation, index) =>
-        index === 0
-          ? { ...evaluation, observation_digest: sha("changed-observation") }
-          : evaluation),
-    };
+    const rowTampered = fixture.outcomeEvidence(authored.candidate);
+    fixture.evaluator.corrupt(
+      rowTampered.candidate_evaluation_receipt.receipt_ref,
+      "row_digest",
+    );
     await assert.rejects(
       fixture.coordinator.recordOutcomeEvidence(rowTampered),
       /receipt rows changed/,
     );
 
-    const evaluatorTampered = outcomeEvidence(authored.candidate);
-    evaluatorTampered.candidate = {
-      ...evaluatorTampered.candidate,
-      evaluations: evaluatorTampered.candidate.evaluations.map((evaluation, index) =>
-        index === 0
-          ? { ...evaluation, evaluator_ref: "evaluation://changed-evaluator" }
-          : evaluation),
-    };
+    const evaluatorTampered = fixture.outcomeEvidence(authored.candidate);
+    fixture.evaluator.corrupt(
+      evaluatorTampered.candidate_evaluation_receipt.receipt_ref,
+      "evaluator_ref",
+    );
     await assert.rejects(
       fixture.coordinator.recordOutcomeEvidence(evaluatorTampered),
       /receipt evaluator identity changed/,
     );
+  });
+
+  test("rejects non-canonical evaluator rows before receipt hashing", async () => {
+    const fixture = makeFixture();
+    const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
+    const session = await fixture.session(1);
+    const authored = await fixture.coordinator.authorCandidate(
+      authorRequest(candidate, session),
+    );
+    const corruptions = [
+      "sparse_blockers",
+      "sparse_rows",
+      "accessor",
+      "custom_prototype",
+      "unknown_key",
+      "excessive_depth",
+      "undefined_value",
+      "non_finite",
+      "cycle",
+    ] as const;
+
+    for (const corruption of corruptions) {
+      const input = fixture.outcomeEvidence(authored.candidate);
+      fixture.evaluator.corrupt(
+        input.candidate_evaluation_receipt.receipt_ref,
+        corruption,
+      );
+      await assert.rejects(
+        fixture.coordinator.recordOutcomeEvidence(input),
+        ImprovementInputError,
+        corruption,
+      );
+    }
   });
 
   test("recovers idempotently when outcome evidence persists before a response failure", async () => {
@@ -381,12 +435,12 @@ describe("ImprovementCoordinator", () => {
     fixture.evidence.failNextFreshResponse();
 
     await assert.rejects(
-      fixture.coordinator.recordOutcomeEvidence(outcomeEvidence(current)),
+      fixture.coordinator.recordOutcomeEvidence(fixture.outcomeEvidence(current)),
       /injected fresh evidence response failure/,
     );
 
     const recovered = await fixture.coordinator.recordOutcomeEvidence(
-      outcomeEvidence(current),
+      fixture.outcomeEvidence(current),
     );
     assert.equal(recovered.candidate.status, "ready");
     assert.equal(recovered.decision.promotion_ready, true);
@@ -402,7 +456,7 @@ describe("ImprovementCoordinator", () => {
     current = await fixture.coordinator.recordFreshEvidence(freshEvidence(current, "ci"));
     current = await fixture.coordinator.recordFreshEvidence(freshEvidence(current, "canary"));
     fixture.candidates.failNextReadyResponse = true;
-    const request = outcomeEvidence(current);
+    const request = fixture.outcomeEvidence(current);
 
     await assert.rejects(
       fixture.coordinator.recordOutcomeEvidence(request),
@@ -417,7 +471,7 @@ describe("ImprovementCoordinator", () => {
     assert.equal(fixture.candidates.markEvidenceReadyCalls, 1);
   });
 
-  test("replays one immutable evidence identity exactly and rejects conflicting content", async () => {
+  test("evidence port conformance creates, replays, and reports immutable conflicts", async () => {
     const fixture = makeFixture();
     const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
     const session = await fixture.session(1);
@@ -426,28 +480,51 @@ describe("ImprovementCoordinator", () => {
     )).candidate;
     const input = freshEvidence(authored, "ci");
 
-    const first = await fixture.evidence.recordFresh(input);
-    const replay = await fixture.evidence.recordFresh(input);
-    assert.deepEqual(replay, first);
+    const first = await fixture.evidence.putFreshIfAbsent(evidenceCommit(input));
+    const replay = await fixture.evidence.putFreshIfAbsent(evidenceCommit(input));
+    assert.equal(first.status, "created");
+    assert.equal(replay.status, "replayed");
+    assert.equal(replay.stored_payload_fingerprint, first.stored_payload_fingerprint);
+    assert.deepEqual(replay.snapshot, first.snapshot);
 
     for (const conflict of [
       { evidence_digest: sha("changed-evidence") },
       { evidence_ref: "evidence://changed-ref" },
       { head_digest: sha("changed-head") },
     ]) {
-      await assert.rejects(
-        async () => fixture.evidence.recordFresh({ ...input, ...conflict }),
-        /Fresh evidence changed/,
+      const changed = { ...input, ...conflict };
+      const result = await fixture.evidence.putFreshIfAbsent(
+        evidenceCommit(changed),
       );
+      assert.equal(result.status, "conflict");
+      assert.notEqual(
+        result.requested_payload_fingerprint,
+        result.stored_payload_fingerprint,
+      );
+      assert.deepEqual(result.snapshot, first.snapshot);
     }
     assert.deepEqual(
       await fixture.evidence.read(input.candidate_id, input.author_generation),
-      first,
+      first.snapshot,
+    );
+    await assert.rejects(
+      fixture.coordinator.recordFreshEvidence({
+        ...input,
+        evidence_digest: sha("coordinator-conflict"),
+      }),
+      /conflicts with the immutable stored receipt/,
     );
   });
 
-  test("rejects fresh evidence snapshots with changed identity or receipt content", async () => {
-    for (const corruption of ["candidate", "generation", "evidence"] as const) {
+  test("rejects evidence put receipts with changed identity or snapshot content", async () => {
+    for (const corruption of [
+      "candidate",
+      "generation",
+      "evidence",
+      "missing_kind",
+      "duplicate_kind",
+      "invalidated_kind",
+    ] as const) {
       const fixture = makeFixture();
       const candidate = (await fixture.coordinator.register(candidateInput())).candidate;
       const session = await fixture.session(1);
@@ -455,7 +532,7 @@ describe("ImprovementCoordinator", () => {
         authorRequest(candidate, session),
       )).candidate;
       const outcomes = await fixture.coordinator.recordOutcomeEvidence(
-        outcomeEvidence(current),
+        fixture.outcomeEvidence(current),
       );
       current = outcomes.candidate;
       current = await fixture.coordinator.recordFreshEvidence(
@@ -463,11 +540,13 @@ describe("ImprovementCoordinator", () => {
       );
 
       fixture.evidence.corruptNextFreshSnapshot(corruption);
-      const rejected = await fixture.coordinator.recordFreshEvidence(
-        freshEvidence(current, "canary"),
+      await assert.rejects(
+        fixture.coordinator.recordFreshEvidence(
+          freshEvidence(current, "canary"),
+        ),
+        ImprovementConflictError,
+        corruption,
       );
-      assert.equal(rejected.status, "awaiting_evidence", corruption);
-      assert.equal(rejected.fresh_evidence_ref, undefined, corruption);
     }
   });
 });
@@ -483,6 +562,7 @@ function makeFixture() {
   });
   const candidates = new MemoryCandidateStore();
   const evidence = new MemoryEvidencePort(clock, executionStore);
+  const evaluator = new MemoryOutcomeEvaluatorPort();
   const author = new MemoryAuthorPort(evidence);
   const verification = new MemoryVerificationPort(author, clock);
   const coordinator = new ImprovementCoordinator({
@@ -490,6 +570,7 @@ function makeFixture() {
     candidates,
     clock,
     evidence,
+    evaluator,
     execution,
     execution_store: executionStore,
     verification,
@@ -513,8 +594,13 @@ function makeFixture() {
     clock,
     coordinator,
     evidence,
+    evaluator,
     execution,
     executionStore,
+    outcomeEvidence: (
+      candidate: ImprovementCandidateV1,
+      overrides: OutcomeEvidenceOverrides = {},
+    ) => outcomeEvidence(candidate, evaluator, overrides),
     session,
     verification,
   };
@@ -692,12 +778,123 @@ class MemoryCandidateStore implements DurableImprovementCandidatePort {
   }
 }
 
+type EvaluationCorruption =
+  | "accessor"
+  | "custom_prototype"
+  | "cycle"
+  | "evaluator_ref"
+  | "excessive_depth"
+  | "non_finite"
+  | "relabeled_head"
+  | "reordered_rows"
+  | "row_digest"
+  | "sparse_blockers"
+  | "sparse_rows"
+  | "undefined_value"
+  | "unknown_key";
+
+class MemoryOutcomeEvaluatorPort implements ImprovementOutcomeEvaluatorPort {
+  private readonly receipts = new Map<string, ImprovementOutcomeEvaluationSetV1>();
+
+  publish(
+    evaluatedHeadDigest: string,
+    evaluations: readonly AssistantTurnEvaluationV1[],
+  ): ImprovementOutcomeEvaluationReceiptReferenceV1 {
+    const evaluationSet = trustedEvaluationSet(evaluatedHeadDigest, evaluations);
+    const receiptRef = `evaluation-receipt://${
+      evaluationSet.receipt.receipt_digest.slice("sha256:".length, 39)
+    }`;
+    this.receipts.set(receiptRef, evaluationSet);
+    return {
+      receipt_digest: evaluationSet.receipt.receipt_digest,
+      receipt_ref: receiptRef,
+    };
+  }
+
+  resolve(reference: ImprovementOutcomeEvaluationReceiptReferenceV1) {
+    return Promise.resolve(this.receipts.get(reference.receipt_ref));
+  }
+
+  corrupt(receiptRef: string, corruption: EvaluationCorruption): void {
+    const stored = this.receipts.get(receiptRef);
+    if (stored === undefined) assert.fail("expected evaluator receipt");
+    const mutable = stored as unknown as {
+      evaluations: AssistantTurnEvaluationV1[];
+      receipt: ImprovementOutcomeEvaluationSetReceiptV1;
+    };
+    const row = mutable.evaluations[0]!;
+    const rowRecord = row as unknown as Record<string, unknown>;
+    switch (corruption) {
+      case "accessor": {
+        const score = row.score;
+        Object.defineProperty(row, "score", {
+          configurable: true,
+          enumerable: true,
+          get: () => score,
+        });
+        break;
+      }
+      case "custom_prototype":
+        Object.setPrototypeOf(row.dimensions, { forged: true });
+        break;
+      case "cycle":
+        rowRecord.cycle = row;
+        break;
+      case "evaluator_ref":
+        rowRecord.evaluator_ref = "evaluation://changed-evaluator";
+        break;
+      case "excessive_depth": {
+        let nested: Record<string, unknown> = {};
+        rowRecord.unexpected = nested;
+        for (let depth = 0; depth < 12; depth += 1) {
+          const next: Record<string, unknown> = {};
+          nested.value = next;
+          nested = next;
+        }
+        break;
+      }
+      case "non_finite":
+        rowRecord.score = Number.NaN;
+        break;
+      case "relabeled_head":
+        (mutable.receipt as unknown as Record<string, unknown>).evaluated_head_digest =
+          sha("relabeled-head");
+        break;
+      case "reordered_rows":
+        mutable.evaluations.reverse();
+        break;
+      case "row_digest":
+        rowRecord.observation_digest = sha("changed-observation");
+        break;
+      case "sparse_blockers":
+        rowRecord.blockers = new Array(1);
+        break;
+      case "sparse_rows":
+        delete mutable.evaluations[0];
+        break;
+      case "undefined_value":
+        rowRecord.policy_ref = undefined;
+        break;
+      case "unknown_key":
+        rowRecord.unexpected = true;
+        break;
+    }
+  }
+}
+
 class MemoryEvidencePort implements ImprovementEvidencePort {
   readonly bundleRef = "evidence-bundle://opaque-improvement";
   observedIntentFirst = false;
-  private nextFreshCorruption?: "candidate" | "generation" | "evidence";
+  private nextFreshCorruption?:
+    | "candidate"
+    | "duplicate_kind"
+    | "evidence"
+    | "generation"
+    | "invalidated_kind"
+    | "missing_kind";
   private nextFreshResponseFailure = false;
   private nextInvalidationCorruption?: "duplicate" | "missing";
+  private readonly fingerprints = new Map<string, string>();
   private readonly records = new Map<string, ImprovementEvidenceSnapshot>();
 
   constructor(
@@ -709,7 +906,14 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
     return this.records.size;
   }
 
-  corruptNextFreshSnapshot(corruption: "candidate" | "generation" | "evidence"): void {
+  corruptNextFreshSnapshot(corruption:
+    | "candidate"
+    | "duplicate_kind"
+    | "evidence"
+    | "generation"
+    | "invalidated_kind"
+    | "missing_kind"
+  ): void {
     this.nextFreshCorruption = corruption;
   }
 
@@ -775,20 +979,29 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
     return Promise.resolve(snapshot === undefined ? undefined : clone(snapshot));
   }
 
-  recordFresh(input: ImprovementEvidenceRecord) {
+  putFreshIfAbsent(commit: ImprovementEvidencePutCommit) {
+    const input = commit.record;
     const key = evidenceKey(input.candidate_id, input.author_generation);
     const snapshot = this.records.get(key);
     if (snapshot === undefined) return Promise.reject(new ImprovementConflictError("Evidence was not invalidated."));
+    const identity = evidenceItemKey(input);
+    const priorFingerprint = this.fingerprints.get(identity);
+    if (priorFingerprint !== undefined) {
+      const status = priorFingerprint === commit.payload_fingerprint
+        ? "replayed" as const
+        : "conflict" as const;
+      return Promise.resolve(this.putReceipt(
+        commit,
+        status,
+        priorFingerprint,
+        snapshot,
+      ));
+    }
     const states = snapshot.states.map((state) => {
       if (state.kind !== input.kind) return state;
-      if (state.state === "fresh") {
-        if (
-          state.head_digest !== input.head_digest ||
-          state.evidence_digest !== input.evidence_digest ||
-          state.evidence_ref !== input.evidence_ref
-        ) throw new ImprovementConflictError("Fresh evidence changed.");
-        return state;
-      }
+      if (state.state === "fresh") throw new ImprovementConflictError(
+        "Fresh evidence is missing its immutable fingerprint.",
+      );
       return {
         ...state,
         evidence_digest: input.evidence_digest,
@@ -800,33 +1013,91 @@ class MemoryEvidencePort implements ImprovementEvidencePort {
     });
     const next = this.snapshot(input.candidate_id, input.author_generation, states);
     this.records.set(key, next);
+    this.fingerprints.set(identity, commit.payload_fingerprint);
     if (this.nextFreshResponseFailure) {
       this.nextFreshResponseFailure = false;
       return Promise.reject(new Error("injected fresh evidence response failure"));
     }
-    if (this.nextFreshCorruption === undefined) {
-      return Promise.resolve(clone(next));
-    }
-    const corrupted = clone(next);
+    const receipt = this.putReceipt(
+      commit,
+      "created",
+      commit.payload_fingerprint,
+      next,
+    );
+    if (this.nextFreshCorruption === undefined) return Promise.resolve(receipt);
+    const corrupted = clone(receipt);
     if (this.nextFreshCorruption === "candidate") {
-      corrupted.candidate_id = `improvement-${"f".repeat(32)}`;
-      corrupted.states = corrupted.states.map((state) => ({
+      corrupted.snapshot.candidate_id = `improvement-${"f".repeat(32)}`;
+      corrupted.snapshot.states = corrupted.snapshot.states.map((state) => ({
         ...state,
-        candidate_id: corrupted.candidate_id,
+        candidate_id: corrupted.snapshot.candidate_id,
       }));
     } else if (this.nextFreshCorruption === "generation") {
-      corrupted.author_generation += 1;
-      corrupted.states = corrupted.states.map((state) => ({
+      corrupted.snapshot.author_generation += 1;
+      corrupted.snapshot.states = corrupted.snapshot.states.map((state) => ({
         ...state,
-        author_generation: corrupted.author_generation,
+        author_generation: corrupted.snapshot.author_generation,
       }));
-    } else {
-      corrupted.states = corrupted.states.map((state) => state.kind === input.kind
+    } else if (this.nextFreshCorruption === "evidence") {
+      corrupted.snapshot.states = corrupted.snapshot.states.map((state) => state.kind === input.kind
         ? { ...state, evidence_digest: sha("corrupt-evidence") }
         : state);
+    } else if (this.nextFreshCorruption === "missing_kind") {
+      corrupted.snapshot.states = corrupted.snapshot.states.slice(0, -1);
+    } else if (this.nextFreshCorruption === "duplicate_kind") {
+      corrupted.snapshot.states = [
+        ...corrupted.snapshot.states.slice(0, -1),
+        clone(corrupted.snapshot.states[0]!),
+      ];
+    } else {
+      corrupted.snapshot.states = corrupted.snapshot.states.map((state) => (
+        state.kind === input.kind
+          ? {
+              author_generation: state.author_generation,
+              candidate_id: state.candidate_id,
+              kind: state.kind,
+              schema_version: state.schema_version,
+              state: "invalidated" as const,
+              updated_at: state.updated_at,
+            }
+          : state
+      ));
     }
     this.nextFreshCorruption = undefined;
     return Promise.resolve(corrupted);
+  }
+
+  private putReceipt(
+    commit: ImprovementEvidencePutCommit,
+    status: ImprovementEvidencePutReceiptV1["status"],
+    storedPayloadFingerprint: string,
+    snapshot: ImprovementEvidenceSnapshot,
+  ): ImprovementEvidencePutReceiptV1 {
+    const record = commit.record;
+    const receiptRef = `evidence-put-receipt://${sha(JSON.stringify([
+      record.candidate_id,
+      record.author_generation,
+      record.kind,
+      storedPayloadFingerprint,
+    ])).slice("sha256:".length, 39)}`;
+    return {
+      author_generation: record.author_generation,
+      candidate_id: record.candidate_id,
+      kind: record.kind,
+      receipt_digest: sha(JSON.stringify([
+        receiptRef,
+        commit.payload_fingerprint,
+        storedPayloadFingerprint,
+        status,
+        snapshot.bundle_digest,
+      ])),
+      receipt_ref: receiptRef,
+      requested_payload_fingerprint: commit.payload_fingerprint,
+      schema_version: "improvement-evidence-put-receipt/v1",
+      snapshot: clone(snapshot),
+      status,
+      stored_payload_fingerprint: storedPayloadFingerprint,
+    };
   }
 
   private snapshot(
@@ -1043,14 +1314,18 @@ function freshEvidence(
   };
 }
 
+interface OutcomeEvidenceOverrides {
+  baseline_head_digest?: string;
+  candidate_blockers?: AssistantTurnEvaluationBlockerV1[];
+  candidate_evaluation_count?: number;
+  candidate_head_digest?: string;
+  candidate_score?: number;
+}
+
 function outcomeEvidence(
   candidate: ImprovementCandidateV1,
-  overrides: {
-    baseline_head_digest?: string;
-    candidate_blockers?: AssistantTurnEvaluationBlockerV1[];
-    candidate_head_digest?: string;
-    candidate_score?: number;
-  } = {},
+  evaluator: MemoryOutcomeEvaluatorPort,
+  overrides: OutcomeEvidenceOverrides = {},
 ): ImprovementOutcomeEvidenceInput {
   const baselineHead = overrides.baseline_head_digest
     ?? candidate.authoring_prior_head_digest
@@ -1060,18 +1335,31 @@ function outcomeEvidence(
     0.72,
     ["outcome_unknown"],
   );
-  const candidateEvaluations = promotionEvaluations(
+  let candidateEvaluations = promotionEvaluations(
     "policy://candidate",
     overrides.candidate_score ?? 0.94,
     overrides.candidate_blockers ?? [],
   );
+  if (overrides.candidate_evaluation_count !== undefined) {
+    const templates = candidateEvaluations;
+    candidateEvaluations = Array.from(
+      { length: overrides.candidate_evaluation_count },
+      (_, index) => ({
+        ...clone(templates[index % templates.length]!),
+        case_digest: sha(`oversized-case-${index}`),
+        case_ref: `case://oversized-${index}`,
+        observation_digest: sha(`oversized-observation-${index}`),
+        observation_ref: `observation://oversized-${index}`,
+      }),
+    );
+  }
   return {
     author_generation: candidate.author_generation,
-    baseline: sealImprovementOutcomeEvaluationSet(
+    baseline_evaluation_receipt: evaluator.publish(
       baselineHead,
       baselineEvaluations,
     ),
-    candidate: sealImprovementOutcomeEvaluationSet(
+    candidate_evaluation_receipt: evaluator.publish(
       overrides.candidate_head_digest ?? candidate.head_digest,
       candidateEvaluations,
     ),
@@ -1082,6 +1370,44 @@ function outcomeEvidence(
     promotion_evidence_ref: "evidence://outcome-promotion",
     shadow_evidence_ref: "evidence://shadow-outcomes",
   };
+}
+
+function trustedEvaluationSet(
+  evaluatedHeadDigest: string,
+  evaluations: readonly AssistantTurnEvaluationV1[],
+): ImprovementOutcomeEvaluationSetV1 {
+  const rows = clone(evaluations);
+  const orderedRowDigests = rows.map((row) => sha(canonicalTestValue(row)));
+  const receiptContent = {
+    evaluated_head_digest: evaluatedHeadDigest,
+    evaluator_ref: rows[0]?.evaluator_ref ?? "evaluation://missing",
+    ordered_row_digests: orderedRowDigests,
+    schema_version: "improvement-outcome-evaluation-set-receipt/v1" as const,
+  };
+  return {
+    evaluations: rows,
+    receipt: {
+      ...receiptContent,
+      receipt_digest: sha(JSON.stringify([
+        receiptContent.schema_version,
+        receiptContent.evaluated_head_digest,
+        receiptContent.evaluator_ref,
+        receiptContent.ordered_row_digests,
+      ])),
+    },
+  };
+}
+
+function canonicalTestValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalTestValue).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => (
+      `${JSON.stringify(key)}:${canonicalTestValue((value as Record<string, unknown>)[key])}`
+    )).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? assert.fail("test receipt value must be serializable");
 }
 
 function promotionEvaluations(
@@ -1154,6 +1480,25 @@ function runReceipt(): RunReceiptV1 {
 
 function evidenceKey(candidateId: string, authorGeneration: number): string {
   return `${candidateId}:${authorGeneration}`;
+}
+
+function evidenceItemKey(input: ImprovementEvidenceRecord): string {
+  return `${input.candidate_id}:${input.author_generation}:${input.kind}`;
+}
+
+function evidenceCommit(input: ImprovementEvidenceRecord): ImprovementEvidencePutCommit {
+  return {
+    payload_fingerprint: sha(JSON.stringify([
+      "improvement-evidence-payload/v1",
+      input.candidate_id,
+      input.author_generation,
+      input.kind,
+      input.head_digest,
+      input.evidence_digest,
+      input.evidence_ref,
+    ])),
+    record: input,
+  };
 }
 
 function sha(value: string): string {
