@@ -195,6 +195,7 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
         part.part_id,
         part.state === "delivering" ? "pending" : part.state,
       );
+      delete part.next_attempt_at;
       part.state = "paused";
     }
     stored.claims.clear();
@@ -221,6 +222,12 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
         continue;
       }
       part.state = stored.pausedStates.get(part.part_id) ?? "pending";
+      if (part.state === "failed") {
+        const nextAttemptAt = stored.nextAttemptAt.get(part.part_id);
+        if (nextAttemptAt !== undefined) part.next_attempt_at = nextAttemptAt;
+      } else {
+        delete part.next_attempt_at;
+      }
     }
     stored.pausedStates.clear();
     stored.receipt.state = aggregate(stored);
@@ -240,6 +247,7 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
     this.acceptLease(request.lease, request.occurred_at);
     for (const part of stored.receipt.parts) {
       if (part.state !== "delivered") {
+        delete part.next_attempt_at;
         part.state = "abandoned";
       }
     }

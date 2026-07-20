@@ -15,6 +15,7 @@ import {
   DeliveryFenceError,
   ReferenceMemoryDeliveryStore,
 } from "../src/delivery/reference-store.js";
+import { projectSlackMultipartDelivery } from "../src/projections/multipart.js";
 
 const start = "2026-07-16T12:00:00.000Z";
 
@@ -337,6 +338,57 @@ describe("DeliveryCoordinator", () => {
     assert.equal(second.status, "retry_scheduled");
     assert.equal(second.receipt.state, "delivering");
     assert.equal(sender.callCount, 2);
+  });
+
+  test("clears retry timing when paused or abandoned and restores it on resume", async () => {
+    const clock = new MutableClock(start);
+    const store = new ReferenceMemoryDeliveryStore(1);
+    const sender = new IdempotentSender(clock);
+    sender.rejectAll = true;
+    const coordinator = makeCoordinator(clock, store, sender);
+    const planned = await coordinator.plan(
+      planRequest({
+        parts: [part(1)],
+        retry_policy: {
+          initial_delay_seconds: 5,
+          max_delay_seconds: 30,
+          multiplier: 2,
+          schema_version: "delivery-retry-policy/v1",
+        },
+      }),
+    );
+    const failed = await coordinator.deliverNext(planned.receipt.delivery_id, lease());
+    assert.equal(
+      (failed.receipt.parts[0] as { next_attempt_at?: string } | undefined)?.next_attempt_at,
+      "2026-07-16T12:00:05.000Z",
+    );
+
+    const paused = await coordinator.pause(planned.receipt.delivery_id, lease());
+    assert.equal(paused.parts[0]?.state, "paused");
+    assert.equal(
+      (paused.parts[0] as { next_attempt_at?: string } | undefined)?.next_attempt_at,
+      undefined,
+    );
+    assert.doesNotThrow(() => projectSlackMultipartDelivery(paused));
+
+    const resumed = await coordinator.resume(planned.receipt.delivery_id, lease());
+    assert.equal(resumed.parts[0]?.state, "failed");
+    assert.equal(
+      (resumed.parts[0] as { next_attempt_at?: string } | undefined)?.next_attempt_at,
+      "2026-07-16T12:00:05.000Z",
+    );
+    assert.equal(
+      projectSlackMultipartDelivery(resumed).parts[0]?.next_attempt_at,
+      "2026-07-16T12:00:05.000Z",
+    );
+
+    const abandoned = await coordinator.abandon(planned.receipt.delivery_id, lease());
+    assert.equal(abandoned.parts[0]?.state, "abandoned");
+    assert.equal(
+      (abandoned.parts[0] as { next_attempt_at?: string } | undefined)?.next_attempt_at,
+      undefined,
+    );
+    assert.doesNotThrow(() => projectSlackMultipartDelivery(abandoned));
   });
 
   test("pauses active work, fences stale resume, and resumes without duplicate send", async () => {
