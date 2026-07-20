@@ -61,7 +61,6 @@ export * from "./followup/policy.js";
 export * from "./installation.js";
 export * from "./improvement/contracts.js";
 export * from "./improvement/coordinator.js";
-export * from "./improvement/evaluation-set-receipt.js";
 export * from "./improvement/ports.js";
 export * from "./history/contracts.js";
 export * from "./history/message-policy.js";
