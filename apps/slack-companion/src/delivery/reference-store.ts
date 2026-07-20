@@ -7,6 +7,7 @@ import type {
   DeliveryPartClaim,
   DeliveryPlanResult,
   DeliveryReceiptV1,
+  DeliveryReceiptWithRetryV1,
   DeliveryRetryPolicyV1,
   DurableDeliveryPlan,
   WorkLeaseV1,
@@ -24,7 +25,7 @@ interface StoredDelivery {
   nextAttemptAt: Map<string, string>;
   pausedStates: Map<string, DeliveryReceiptV1["parts"][number]["state"]>;
   payloadFingerprint: string;
-  receipt: DeliveryReceiptV1;
+  receipt: DeliveryReceiptWithRetryV1;
   retryPolicy?: DeliveryRetryPolicyV1;
 }
 
@@ -168,6 +169,7 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
     stored.attempts.set(part.part_id, claim.attempt);
     stored.claims.set(part.part_id, copy(claim));
     stored.nextAttemptAt.delete(part.part_id);
+    delete part.next_attempt_at;
     part.state = "delivering";
     stored.receipt.state = "delivering";
     stored.receipt.updated_at = request.now;
@@ -193,6 +195,7 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
         part.part_id,
         part.state === "delivering" ? "pending" : part.state,
       );
+      delete part.next_attempt_at;
       part.state = "paused";
     }
     stored.claims.clear();
@@ -219,6 +222,12 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
         continue;
       }
       part.state = stored.pausedStates.get(part.part_id) ?? "pending";
+      if (part.state === "failed") {
+        const nextAttemptAt = stored.nextAttemptAt.get(part.part_id);
+        if (nextAttemptAt !== undefined) part.next_attempt_at = nextAttemptAt;
+      } else {
+        delete part.next_attempt_at;
+      }
     }
     stored.pausedStates.clear();
     stored.receipt.state = aggregate(stored);
@@ -238,6 +247,7 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
     this.acceptLease(request.lease, request.occurred_at);
     for (const part of stored.receipt.parts) {
       if (part.state !== "delivered") {
+        delete part.next_attempt_at;
         part.state = "abandoned";
       }
     }
@@ -273,6 +283,7 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
     this.requireClaim(stored, request.part_id, request.lease, request.accepted_at);
     part.delivered_at = request.accepted_at;
     part.destination_receipt = request.destination_receipt;
+    delete part.next_attempt_at;
     part.state = "delivered";
     stored.claims.delete(request.part_id);
     stored.receipt.updated_at = request.accepted_at;
@@ -290,7 +301,11 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
       const nextAttemptAt = nextDeliveryAttemptAt(stored, part.part_id, request.failed_at);
       if (nextAttemptAt !== undefined) {
         stored.nextAttemptAt.set(part.part_id, nextAttemptAt);
+        part.next_attempt_at = nextAttemptAt;
       }
+    } else {
+      stored.nextAttemptAt.delete(part.part_id);
+      delete part.next_attempt_at;
     }
     stored.receipt.updated_at = request.failed_at;
     stored.receipt.state = aggregate(stored);
@@ -425,9 +440,9 @@ function aggregate(stored: StoredDelivery): DeliveryReceiptV1["state"] {
 }
 
 function requirePart(
-  receipt: DeliveryReceiptV1,
+  receipt: DeliveryReceiptWithRetryV1,
   partId: string,
-): DeliveryReceiptV1["parts"][number] {
+): DeliveryReceiptWithRetryV1["parts"][number] {
   const part = receipt.parts.find((candidate) => candidate.part_id === partId);
   if (part === undefined) {
     throw new DeliveryNotFoundError("The delivery part does not exist.");

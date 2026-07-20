@@ -198,12 +198,30 @@ export function projectSlackAnswerFeedbackActions(
 export function projectSlackNextStepActions(
   input: SlackNextStepActionsInputV1,
 ): readonly SlackActionInputV1[] {
+  requireExactRecord(
+    input,
+    ["issued_at", "next_step_key", "steps"],
+    "Slack next-step actions input",
+  );
   const nextStepKey = requireSlackKey(input.next_step_key, "next-step key");
-  if (!Array.isArray(input.steps) || input.steps.length > 4) {
-    throw new SlackBlockProjectionError("Slack next-step actions are invalid.");
-  }
+  requirePlainArray(input.steps, 0, 4, "Slack next-step actions");
   const seen = new Set<SlackNextStepActionKindV1>();
-  return Object.freeze(input.steps.map((step) => {
+  return Object.freeze(input.steps.map((rawStep, index) => {
+    requireExactRecord(
+      rawStep,
+      ["kind", "subject_ref"],
+      `Slack next-step action ${index + 1}`,
+    );
+    const step = {
+      kind: rawStep.kind,
+      subject_ref: rawStep.subject_ref,
+    };
+    if (
+      !isNextStepActionKind(step.kind) ||
+      typeof step.subject_ref !== "string"
+    ) {
+      throw new SlackBlockProjectionError("Slack next-step actions are invalid.");
+    }
     const definition = NEXT_STEP_DEFINITIONS.find((candidate) =>
       candidate.kind === step.kind
     );
@@ -231,6 +249,10 @@ export function projectSlackNextStepActions(
   }));
 }
 
+function isNextStepActionKind(value: unknown): value is SlackNextStepActionKindV1 {
+  return NEXT_STEP_DEFINITIONS.some((definition) => definition.kind === value);
+}
+
 function feedbackIdempotencyKey(
   feedbackKey: string,
   subjectRef: string,
@@ -245,4 +267,62 @@ function nextStepIdempotencyKey(
   subjectRef: string,
 ): string {
   return `next:${sha256(JSON.stringify([nextStepKey, kind, subjectRef]))}`;
+}
+
+function requirePlainArray(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+  field: string,
+): asserts value is readonly Record<string, unknown>[] {
+  if (
+    !Array.isArray(value) ||
+    value.length < minimum ||
+    value.length > maximum ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    Object.prototype.hasOwnProperty.call(value, "toJSON")
+  ) {
+    throw new SlackBlockProjectionError(`${field} must be a bounded plain array.`);
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.prototype.hasOwnProperty.call(value, index)) {
+      throw new SlackBlockProjectionError(`${field} must not be sparse.`);
+    }
+  }
+}
+
+function requireExactRecord(
+  value: unknown,
+  requiredKeys: readonly string[],
+  field: string,
+): asserts value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new SlackBlockProjectionError(`${field} is invalid.`);
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (
+    (prototype !== Object.prototype && prototype !== null) ||
+    Object.prototype.hasOwnProperty.call(value, "toJSON")
+  ) {
+    throw new SlackBlockProjectionError(`${field} must be a plain record.`);
+  }
+  let ownKeyCount = 0;
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    ownKeyCount += 1;
+    if (ownKeyCount > requiredKeys.length || !requiredKeys.includes(key)) {
+      throw new SlackBlockProjectionError(`${field} contains unsupported fields.`);
+    }
+  }
+  if (
+    ownKeyCount !== requiredKeys.length ||
+    requiredKeys.some((key) => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      return descriptor === undefined ||
+        !("value" in descriptor) ||
+        descriptor.enumerable !== true;
+    })
+  ) {
+    throw new SlackBlockProjectionError(`${field} is incomplete.`);
+  }
 }

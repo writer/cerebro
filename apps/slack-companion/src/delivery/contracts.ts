@@ -6,6 +6,14 @@ import type {
 
 export type { DeliveryPartV1, DeliveryReceiptV1, WorkLeaseV1 };
 
+export type DeliveryPartWithRetryV1 = DeliveryPartV1 & {
+  next_attempt_at?: string;
+};
+
+export type DeliveryReceiptWithRetryV1 = Omit<DeliveryReceiptV1, "parts"> & {
+  readonly parts: DeliveryPartWithRetryV1[];
+};
+
 export interface DeliveryPayloadPart {
   payload_digest: string;
   payload_ref: string;

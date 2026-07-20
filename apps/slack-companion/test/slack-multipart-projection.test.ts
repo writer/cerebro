@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { DeliveryReceiptV1 } from "../src/delivery/contracts.js";
+import type {
+  DeliveryPartWithRetryV1,
+  DeliveryReceiptV1,
+} from "../src/delivery/contracts.js";
 import {
   MAX_SLACK_MULTIPART_PARTS,
   projectSlackMultipartDelivery,
@@ -57,6 +60,38 @@ test("multipart projections preserve retryable failed parts", () => {
   assert.equal(projection.state, "delivering");
   assert.equal(projection.parts[1]?.state, "failed");
   assert.equal(projection.undelivered_part_count, 1);
+});
+
+test("multipart projections expose retry timing for failed parts only", () => {
+  const receipt = deliveryReceipt();
+  const projection = projectSlackMultipartDelivery({
+    ...receipt,
+    parts: [
+      receipt.parts[0]!,
+      {
+        ...receipt.parts[1]!,
+        next_attempt_at: "2026-07-18T10:00:07.000Z",
+        state: "failed",
+      } as DeliveryPartWithRetryV1,
+    ],
+  });
+
+  assert.equal(projection.parts[1]?.state, "failed");
+  assert.equal(projection.parts[1]?.next_attempt_at, "2026-07-18T10:00:07.000Z");
+  assert.throws(
+    () =>
+      projectSlackMultipartDelivery({
+        ...receipt,
+        parts: [
+          receipt.parts[0]!,
+          {
+            ...receipt.parts[1]!,
+            next_attempt_at: "2026-07-18T10:00:07.000Z",
+          } as DeliveryPartWithRetryV1,
+        ],
+      }),
+    /Only failed Slack multipart parts can carry retry timing/,
+  );
 });
 
 test("multipart projection identities distinguish same-time state changes", () => {

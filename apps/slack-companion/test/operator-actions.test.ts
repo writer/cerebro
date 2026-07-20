@@ -8,6 +8,7 @@ import {
   projectSlackNextStepActions,
   SLACK_OPERATOR_ACTION_CATALOG_V1,
   SLACK_OPERATOR_ACTION_REGISTRY,
+  SlackBlockProjectionError,
 } from "../src/index.js";
 
 const issuedAt = "2026-07-20T10:00:00.000Z";
@@ -160,4 +161,48 @@ test("projects deterministic next-step actions for watch, recheck, triage, and s
     ],
   });
   assert.equal(admitted.disposition, "admit");
+});
+
+test("next-step actions reject sparse, accessor-backed, and extra-field input shapes", () => {
+  const sparse = new Array<{ kind: "watch_answer"; subject_ref: string }>(1);
+  assert.throws(
+    () => projectSlackNextStepActions({
+      issued_at: issuedAt,
+      next_step_key: "turn-two:next",
+      steps: sparse,
+    }),
+    /must not be sparse/,
+  );
+
+  assert.throws(
+    () => projectSlackNextStepActions({
+      issued_at: issuedAt,
+      next_step_key: "turn-two:extra",
+      steps: [{
+        kind: "watch_answer",
+        subject_ref: "answer://delivered/123",
+        unexpected: true,
+      } as never],
+    }),
+    /unsupported fields/,
+  );
+
+  let invoked = 0;
+  const accessorStep = { kind: "watch_answer" };
+  Object.defineProperty(accessorStep, "subject_ref", {
+    enumerable: true,
+    get() {
+      invoked += 1;
+      throw new Error("caller accessor was invoked");
+    },
+  });
+  assert.throws(
+    () => projectSlackNextStepActions({
+      issued_at: issuedAt,
+      next_step_key: "turn-two:accessor",
+      steps: [accessorStep as never],
+    }),
+    SlackBlockProjectionError,
+  );
+  assert.equal(invoked, 0);
 });
