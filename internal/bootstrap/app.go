@@ -23,6 +23,7 @@ import (
 
 	apicontract "github.com/writer/cerebro/api"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/agentauthoring"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/complianceassessment"
@@ -30,6 +31,9 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/connectorcredentials"
 	"github.com/writer/cerebro/internal/connectorsecretstores"
+	"github.com/writer/cerebro/internal/decisionops"
+	"github.com/writer/cerebro/internal/decisionpacket"
+	"github.com/writer/cerebro/internal/decisionworkflow"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/findingapi"
@@ -44,8 +48,10 @@ import (
 	"github.com/writer/cerebro/internal/grcfindings"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/knowledge"
+	knowledgetransport "github.com/writer/cerebro/internal/knowledge/transport"
 	"github.com/writer/cerebro/internal/mcpoauth"
 	"github.com/writer/cerebro/internal/observability"
+	"github.com/writer/cerebro/internal/policycandidate"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/querycache"
 	"github.com/writer/cerebro/internal/reports"
@@ -53,20 +59,25 @@ import (
 	"github.com/writer/cerebro/internal/resourcescope"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	httpcompression "github.com/writer/cerebro/internal/sourcehttp/compression"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
 	"github.com/writer/cerebro/internal/workflowprojection"
 )
 
 // Dependencies are the future store/log boundaries that will be wired into the rewrite.
 type Dependencies struct {
-	AppendLog     ports.AppendLog
-	StateStore    ports.StateStore
-	GraphStore    ports.GraphStore
-	GraphAgentLLM graphagent.LLMClient
-	QueryCache    querycache.Cache
-	FindingRules  *findings.Registry
+	AppendLog                   ports.AppendLog
+	StateStore                  ports.StateStore
+	GraphStore                  ports.GraphStore
+	GraphAgentLLM               graphagent.LLMClient
+	QueryCache                  querycache.Cache
+	FindingRules                *findings.Registry
+	PolicyAuthoring             *agentauthoring.Service
+	PolicyExperiments           PolicyExperimentJobHandler
+	PolicyExperimentCheckpoints policycandidate.ExperimentCheckpointStatusReader
 }
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
@@ -92,27 +103,30 @@ type App struct {
 }
 
 type appServices struct {
-	sourceOps      *sourceops.Service
-	reports        *reports.Service
-	runtimeOps     *sourceruntime.Service
-	claims         *claims.Service
-	findings       *findings.Service
-	knowledgeOps   *knowledge.Service
-	graphQueries   *graphquery.Service
-	graphFacts     *graphfacts.Service
-	graphActions   *graphactions.Service
-	graphIngestOps *graphingest.Service
-	workflowReplay *workflowprojection.Replayer
-	jobs           *platformjobs.Service
-	assessments    *complianceassessment.Service
-	remediation    *complianceremediation.Service
+	sourceOps       *sourceops.Service
+	reports         *reports.Service
+	runtimeOps      *sourceruntime.Service
+	claims          *claims.Service
+	findings        *findings.Service
+	knowledgeOps    *knowledge.Service
+	graphQueries    *graphquery.Service
+	graphFacts      *graphfacts.Service
+	graphActions    *graphactions.Service
+	graphIngestOps  *graphingest.Service
+	workflowReplay  *workflowprojection.Replayer
+	jobs            *platformjobs.Service
+	assessments     *complianceassessment.Service
+	remediation     *complianceremediation.Service
+	decisionPackets *decisionpacket.Service
 }
 
 type bootstrapService struct {
-	cfg          config.Config
-	deps         Dependencies
-	sources      *sourcecdk.Registry
-	graphActions *graphactions.Service
+	cfg             config.Config
+	deps            Dependencies
+	sources         *sourcecdk.Registry
+	graphActions    *graphactions.Service
+	decisionPackets *decisionpacket.Service
+	runtimeOps      *sourceruntime.Service
 }
 
 const (
@@ -146,6 +160,22 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 // errors instead of panicking. Production startup should use this form so
 // security-sensitive surfaces fail closed when misconfigured.
 func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) (*App, error) {
+	return newWithOptions(cfg, deps, sources, appConstructionOptions{})
+}
+
+// NewWithContext constructs the bootstrap app with a caller-owned process lifetime.
+func NewWithContext(ctx context.Context, cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) (*App, error) {
+	if ctx == nil {
+		return nil, errors.New("bootstrap context is required")
+	}
+	return newWithOptions(cfg, deps, sources, appConstructionOptions{eventAdmissionContext: ctx})
+}
+
+type appConstructionOptions struct {
+	eventAdmissionContext context.Context
+}
+
+func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry, options appConstructionOptions) (_ *App, err error) {
 	app := &App{cfg: cfg, deps: deps, sources: sources}
 	if err := grcfindings.ValidateBuiltinFindingProfileIndex(); err != nil {
 		return nil, fmt.Errorf("GRC finding profile bootstrap failed: %w", err)
@@ -202,7 +232,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 			app.dpopVerifier = dpop
 			app.riskScorer = riskScorer
 			app.observationStore = obsStore
-			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth, cfg.Auth.RequestOrigin)
+			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth, cfg.Auth.RequestOrigin, deps.AppendLog, sourceProjector(deps.StateStore, deps.GraphStore))
 		}
 	}
 	if cfg.Auth.Enabled && len(cfg.Auth.APICredentials) > 0 && len(cfg.Auth.CapabilityTokenSecrets) > 0 {
@@ -236,6 +266,17 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app.services.sourceOps = newSourceService(app.sources)
 	app.services.reports = app.newReportService()
 	app.services.runtimeOps = newRuntimeService(app.cfg, app.deps, app.sources)
+	if cfg.SourceRuntime.EventAdmissionWorkerPath != "" {
+		if options.eventAdmissionContext == nil {
+			return nil, errors.New("source event admission requires a bootstrap context")
+		}
+		admitter, admissionErr := eventadmission.NewNativeAdmitter(options.eventAdmissionContext, cfg.SourceRuntime.EventAdmissionWorkerPath, cfg.SourceRuntime.EventAdmissionWorkers)
+		if admissionErr != nil {
+			return nil, fmt.Errorf("source event admission bootstrap failed: %w", admissionErr)
+		}
+		app.services.runtimeOps.WithEventAdmitter(admitter)
+		defer eventadmission.CloseOnError(admitter, &err)
+	}
 	app.services.claims = app.newClaimService()
 	app.services.findings = app.newFindingService()
 	app.services.knowledgeOps = app.newKnowledgeService()
@@ -256,15 +297,16 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 		app.services.jobs.WithRunner(complianceassessment.JobKindComplianceAssessment, app.services.assessments.Runner())
 	}
 	app.services.remediation = app.newComplianceRemediationService()
+	app.services.decisionPackets = app.newDecisionPacketService()
 	mux := http.NewServeMux()
 	app.mux = mux
 	app.registerRoutes(mux, cfg, deps, sources)
-	app.handler = observability.Middleware(rateLimitMiddleware(cfg.RateLimit, cfg.Auth.RequestOrigin)(authMiddleware(cfg.Auth, AuthDependencies{
+	app.handler = observability.Middleware(httpcompression.Middleware(rateLimitMiddleware(cfg.RateLimit, cfg.Auth.RequestOrigin)(authMiddleware(cfg.Auth, AuthDependencies{
 		DeviceVerifier: app.deviceVerifier,
 		DPoPVerifier:   app.dpopVerifier,
 		RiskScorer:     app.riskScorer,
 		Observations:   app.observationStore,
-	}, mux)))
+	}, mux))))
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           app.handler,
@@ -299,13 +341,21 @@ func (a *App) ListenAndServe() error {
 
 // Shutdown gracefully stops the bootstrap HTTP server.
 func (a *App) Shutdown(ctx context.Context) error {
+	var shutdownErrors []error
 	if err := a.server.Shutdown(ctx); err != nil {
-		return err
+		shutdownErrors = append(shutdownErrors, err)
 	}
 	if a.services.jobs != nil {
-		return a.services.jobs.Wait(ctx)
+		if err := a.services.jobs.Wait(ctx); err != nil {
+			shutdownErrors = append(shutdownErrors, err)
+		}
 	}
-	return nil
+	if a.services.runtimeOps != nil {
+		if err := a.services.runtimeOps.Close(); err != nil {
+			shutdownErrors = append(shutdownErrors, err)
+		}
+	}
+	return errors.Join(shutdownErrors...)
 }
 
 func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -677,7 +727,7 @@ func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Re
 	if err := authorizePutSourceRuntimeTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntime()); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
-	response, err := newRuntimeService(s.cfg, s.deps, s.sources).Put(ctx, req.Msg)
+	response, err := s.runtimeService().Put(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -689,7 +739,7 @@ func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Re
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, sourceRuntimeConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := newRuntimeService(s.cfg, s.deps, s.sources).Get(ctx, req.Msg)
+	response, err := s.runtimeService().Get(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -700,13 +750,20 @@ func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.R
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, sourceRuntimeConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := newRuntimeService(s.cfg, s.deps, s.sources).SyncWithLease(ctx, req.Msg, sourceruntime.SyncWithLeaseOptions{
+	response, err := s.runtimeService().SyncWithLease(ctx, req.Msg, sourceruntime.SyncWithLeaseOptions{
 		LeaseStore: sourceRuntimeLeaseStore(s.deps.StateStore),
 	})
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
 	return connect.NewResponse(response), nil
+}
+
+func (s *bootstrapService) runtimeService() *sourceruntime.Service {
+	if s.runtimeOps != nil {
+		return s.runtimeOps
+	}
+	return newRuntimeService(s.cfg, s.deps, s.sources)
 }
 
 func (s *bootstrapService) WriteClaims(ctx context.Context, req *connect.Request[cerebrov1.WriteClaimsRequest]) (*connect.Response[cerebrov1.WriteClaimsResponse], error) {
@@ -1059,7 +1116,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindingRules(ctx context.Context
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := s.findingCoreService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+	response, err := s.findingWorkflowService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
 		RuntimeID:  req.Msg.GetId(),
 		RuleIDs:    req.Msg.GetRuleIds(),
 		EventLimit: req.Msg.GetEventLimit(),
@@ -1077,7 +1134,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, re
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId()); err != nil {
 		return nil, findingConnectError(normalizeIDLookupError(err, ports.ErrSourceRuntimeNotFound))
 	}
-	response, err := s.findingCoreService().EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
+	response, err := s.findingWorkflowService().EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
 		RuntimeID:  req.Msg.GetId(),
 		RuleID:     req.Msg.GetRuleId(),
 		EventLimit: req.Msg.GetEventLimit(),
@@ -1094,36 +1151,29 @@ func (s *bootstrapService) WriteDecision(ctx context.Context, req *connect.Reque
 	if req.Msg.GetMetadata() != nil {
 		metadata = req.Msg.GetMetadata().AsMap()
 	}
+	if strings.TrimSpace(req.Msg.GetPacketId()) != "" {
+		tenant, actor, err := decisionPacketIdentity(ctx, tenantIDFromMetadata(metadata), req.Header().Get("X-Cerebro-Actor"))
+		if err != nil {
+			return nil, knowledgeConnectError(err)
+		}
+		result, err := newDecisionOutcomeService(s.deps).RecordDecision(ctx, decisionops.RecordDecisionRequest{
+			TenantID: tenant.ID, ActorID: actor.ID, PacketID: req.Msg.GetPacketId(),
+			Disposition: decisionworkflow.Disposition(req.Msg.GetDecisionDisposition()),
+			Reason:      decisionworkflow.DismissalReason(req.Msg.GetDispositionReason()),
+		})
+		if err != nil {
+			return nil, knowledgeConnectError(err)
+		}
+		return connect.NewResponse(knowledgetransport.DecisionResponse(&result.Write)), nil
+	}
 	if err := authorizeKnowledgeTenant(ctx, metadata, append(append([]string{}, req.Msg.GetTargetIds()...), append(req.Msg.GetEvidenceIds(), req.Msg.GetActionIds()...)...)...); err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	result, err := knowledge.New(
-		graphQueryStore(s.deps.GraphStore),
-		sourceProjectionGraphStore(s.deps.GraphStore),
-	).WithAppendLog(s.deps.AppendLog).WriteDecision(ctx, knowledge.DecisionWriteRequest{
-		ID:            req.Msg.GetId(),
-		DecisionType:  req.Msg.GetDecisionType(),
-		Status:        req.Msg.GetStatus(),
-		MadeBy:        req.Msg.GetMadeBy(),
-		Rationale:     req.Msg.GetRationale(),
-		TargetIDs:     req.Msg.GetTargetIds(),
-		EvidenceIDs:   req.Msg.GetEvidenceIds(),
-		ActionIDs:     req.Msg.GetActionIds(),
-		SourceSystem:  req.Msg.GetSourceSystem(),
-		SourceEventID: req.Msg.GetSourceEventId(),
-		ObservedAt:    timestampValue(req.Msg.GetObservedAt()),
-		ValidFrom:     timestampValue(req.Msg.GetValidFrom()),
-		ValidTo:       timestampValue(req.Msg.GetValidTo()),
-		Confidence:    req.Msg.GetConfidence(),
-		Metadata:      metadata,
-	})
+	result, err := newKnowledgeFeatureService(newKnowledgeFeatureDeps(s.deps)).WriteDecision(ctx, knowledgetransport.DecisionRequest(req.Msg, metadata))
 	if err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	return connect.NewResponse(&cerebrov1.WriteDecisionResponse{
-		DecisionId:  result.DecisionID,
-		TargetCount: result.TargetCount,
-	}), nil
+	return connect.NewResponse(knowledgetransport.DecisionResponse(result)), nil
 }
 
 func (s *bootstrapService) WriteAction(ctx context.Context, req *connect.Request[cerebrov1.WriteActionRequest]) (*connect.Response[cerebrov1.WriteActionResponse], error) {
@@ -1134,34 +1184,12 @@ func (s *bootstrapService) WriteAction(ctx context.Context, req *connect.Request
 	if err := authorizeKnowledgeTenant(ctx, metadata, append(append([]string{req.Msg.GetDecisionId()}, req.Msg.GetTargetIds()...), req.Msg.GetRecommendationId())...); err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	result, err := knowledge.New(
-		graphQueryStore(s.deps.GraphStore),
-		sourceProjectionGraphStore(s.deps.GraphStore),
-	).WithAppendLog(s.deps.AppendLog).WriteAction(ctx, knowledge.ActionWriteRequest{
-		ID:               req.Msg.GetId(),
-		RecommendationID: req.Msg.GetRecommendationId(),
-		InsightType:      req.Msg.GetInsightType(),
-		Title:            req.Msg.GetTitle(),
-		Summary:          req.Msg.GetSummary(),
-		DecisionID:       req.Msg.GetDecisionId(),
-		TargetIDs:        req.Msg.GetTargetIds(),
-		SourceSystem:     req.Msg.GetSourceSystem(),
-		SourceEventID:    req.Msg.GetSourceEventId(),
-		ObservedAt:       timestampValue(req.Msg.GetObservedAt()),
-		ValidFrom:        timestampValue(req.Msg.GetValidFrom()),
-		ValidTo:          timestampValue(req.Msg.GetValidTo()),
-		Confidence:       req.Msg.GetConfidence(),
-		AutoGenerated:    req.Msg.GetAutoGenerated(),
-		Metadata:         metadata,
-	})
+	result, err := newKnowledgeFeatureService(newKnowledgeFeatureDeps(s.deps)).WriteAction(ctx, knowledgetransport.ActionRequest(req.Msg, metadata))
 	if err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	return connect.NewResponse(&cerebrov1.WriteActionResponse{
-		ActionId:    result.ActionID,
-		DecisionId:  result.DecisionID,
-		TargetCount: result.TargetCount,
-	}), nil
+	knowledgetransport.RecordDecisionAction(ctx, req.Msg, metadata, result)
+	return connect.NewResponse(knowledgetransport.ActionResponse(result)), nil
 }
 
 func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Request[cerebrov1.WriteOutcomeRequest]) (*connect.Response[cerebrov1.WriteOutcomeResponse], error) {
@@ -1169,35 +1197,28 @@ func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Reques
 	if req.Msg.GetMetadata() != nil {
 		metadata = req.Msg.GetMetadata().AsMap()
 	}
-	if err := authorizeKnowledgeTenant(ctx, metadata, append([]string{req.Msg.GetDecisionId()}, req.Msg.GetTargetIds()...)...); err != nil {
+	tenant, actor, err := decisionPacketIdentity(ctx, tenantIDFromMetadata(metadata), req.Header().Get("X-Cerebro-Actor"))
+	if err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	result, err := knowledge.New(
-		graphQueryStore(s.deps.GraphStore),
-		sourceProjectionGraphStore(s.deps.GraphStore),
-	).WithAppendLog(s.deps.AppendLog).WriteOutcome(ctx, knowledge.OutcomeWriteRequest{
-		ID:            req.Msg.GetId(),
-		DecisionID:    req.Msg.GetDecisionId(),
-		OutcomeType:   req.Msg.GetOutcomeType(),
-		Verdict:       req.Msg.GetVerdict(),
-		ImpactScore:   req.Msg.GetImpactScore(),
-		TargetIDs:     req.Msg.GetTargetIds(),
-		SourceSystem:  req.Msg.GetSourceSystem(),
-		SourceEventID: req.Msg.GetSourceEventId(),
-		ObservedAt:    timestampValue(req.Msg.GetObservedAt()),
-		ValidFrom:     timestampValue(req.Msg.GetValidFrom()),
-		ValidTo:       timestampValue(req.Msg.GetValidTo()),
-		Confidence:    req.Msg.GetConfidence(),
-		Metadata:      metadata,
+	result, recorded, err := newDecisionOutcomeService(s.deps).RecordPacketOutcome(ctx, decisionops.RecordPacketOutcomeRequest{
+		TenantID: tenant.ID, ActorID: actor.ID, DecisionID: req.Msg.GetDecisionId(), OutcomeType: req.Msg.GetOutcomeType(),
+		AuditPacketExportReceiptID: req.Msg.GetAuditPacketExportReceiptId(),
 	})
 	if err != nil {
 		return nil, knowledgeConnectError(err)
 	}
-	return connect.NewResponse(&cerebrov1.WriteOutcomeResponse{
-		OutcomeId:   result.OutcomeID,
-		DecisionId:  result.DecisionID,
-		TargetCount: result.TargetCount,
-	}), nil
+	if recorded {
+		return connect.NewResponse(knowledgetransport.OutcomeResponse(&result.Write)), nil
+	}
+	if err := authorizeKnowledgeTenant(ctx, metadata, append([]string{req.Msg.GetDecisionId()}, req.Msg.GetTargetIds()...)...); err != nil {
+		return nil, knowledgeConnectError(err)
+	}
+	legacyResult, err := newKnowledgeFeatureService(newKnowledgeFeatureDeps(s.deps)).WriteOutcome(ctx, knowledgetransport.OutcomeRequest(req.Msg, metadata))
+	if err != nil {
+		return nil, knowledgeConnectError(err)
+	}
+	return connect.NewResponse(knowledgetransport.OutcomeResponse(legacyResult)), nil
 }
 
 func (s *bootstrapService) ReplayWorkflowEvents(ctx context.Context, req *connect.Request[cerebrov1.ReplayWorkflowEventsRequest]) (*connect.Response[cerebrov1.ReplayWorkflowEventsResponse], error) {
@@ -1264,7 +1285,7 @@ func (s *bootstrapService) GetGraphIngestRun(ctx context.Context, req *connect.R
 		return nil, graphIngestConnectError(normalizeIDLookupError(err, graphingest.ErrRunNotFound))
 	}
 	return connect.NewResponse(&cerebrov1.GetGraphIngestRunResponse{
-		Run: graphIngestRunMessage(run),
+		Run: graphingest.RunMessage(run),
 	}), nil
 }
 
@@ -1784,9 +1805,9 @@ var findingErrorMappings = []bootstrapErrorMapping{
 }
 
 var knowledgeErrorMappings = []bootstrapErrorMapping{
-	{match: matchesAnyError(ports.ErrGraphEntityNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
-	{match: matchesAnyError(knowledge.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
-	{match: matchesAnyError(knowledge.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
+	{match: matchesAnyError(ports.ErrGraphEntityNotFound, ports.ErrDecisionPacketNotFound, decisionops.ErrDecisionNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
+	{match: matchesAnyError(knowledge.ErrRuntimeUnavailable, decisionops.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
+	{match: matchesAnyError(knowledge.ErrInvalidRequest, decisionops.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
 }
 
 var graphQueryErrorMappings = []bootstrapErrorMapping{
@@ -1794,8 +1815,8 @@ var graphQueryErrorMappings = []bootstrapErrorMapping{
 	{match: matchesAnyError(graphquery.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
 	{match: matchesAnyError(graphquery.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
 }
-
 var graphIngestErrorMappings = []bootstrapErrorMapping{
+	{match: matchesAnyError(sourceruntime.ErrSyncInProgress), httpStatus: http.StatusConflict, code: connect.CodeAborted},
 	{match: matchesAnyError(graphingest.ErrRunNotFound, ports.ErrSourceRuntimeNotFound, sourceops.ErrSourceNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
 	{match: matchesAnyError(graphingest.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
 	{match: matchesAnyError(graphingest.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
@@ -2738,7 +2759,7 @@ func graphIngestRunResultMessage(result *graphingest.RunResult) *cerebrov1.Graph
 		return &cerebrov1.GraphIngestRunResult{}
 	}
 	return &cerebrov1.GraphIngestRunResult{
-		Run:    graphIngestRunMessage(result.Run),
+		Run:    graphingest.RunMessage(result.Run),
 		Ingest: graphIngestResultMessage(result.Ingest),
 	}
 }
@@ -2748,7 +2769,7 @@ func graphIngestListResponse(result *graphingest.ListResult) *cerebrov1.ListGrap
 		return &cerebrov1.ListGraphIngestRunsResponse{}
 	}
 	return &cerebrov1.ListGraphIngestRunsResponse{
-		Runs:        graphIngestRunMessages(result.Runs),
+		Runs:        graphingest.RunMessages(result.Runs),
 		FailedCount: result.FailedCount,
 	}
 }
@@ -2762,38 +2783,7 @@ func graphIngestHealthResponse(result *graphingest.HealthResult) *cerebrov1.Chec
 		CheckedAt:    timestamppb.New(result.CheckedAt),
 		FailedCount:  result.FailedCount,
 		RunningCount: result.RunningCount,
-		FailedRuns:   graphIngestRunMessages(result.FailedRuns),
-	}
-}
-
-func graphIngestRunMessages(runs []graphstore.IngestRun) []*cerebrov1.GraphIngestRun {
-	messages := make([]*cerebrov1.GraphIngestRun, 0, len(runs))
-	for _, run := range runs {
-		messages = append(messages, graphIngestRunMessage(run))
-	}
-	return messages
-}
-
-func graphIngestRunMessage(run graphstore.IngestRun) *cerebrov1.GraphIngestRun {
-	return &cerebrov1.GraphIngestRun{
-		Id:                run.ID,
-		RuntimeId:         run.RuntimeID,
-		SourceId:          run.SourceID,
-		TenantId:          run.TenantID,
-		CheckpointId:      run.CheckpointID,
-		Status:            run.Status,
-		Trigger:           run.Trigger,
-		PagesRead:         run.PagesRead,
-		EventsRead:        run.EventsRead,
-		EntitiesProjected: run.EntitiesProjected,
-		LinksProjected:    run.LinksProjected,
-		GraphNodesBefore:  run.GraphNodesBefore,
-		GraphLinksBefore:  run.GraphLinksBefore,
-		GraphNodesAfter:   run.GraphNodesAfter,
-		GraphLinksAfter:   run.GraphLinksAfter,
-		StartedAt:         run.StartedAt,
-		FinishedAt:        run.FinishedAt,
-		Error:             run.Error,
+		FailedRuns:   graphingest.RunMessages(result.FailedRuns),
 	}
 }
 

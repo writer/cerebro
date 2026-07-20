@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -16,12 +17,26 @@ import (
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
+func postgresAdvisoryLockKey(parts ...string) string {
+	var key strings.Builder
+	for _, part := range parts {
+		key.WriteString(strconv.Itoa(len(part)))
+		key.WriteByte(':')
+		key.WriteString(part)
+	}
+	digest := sha256.Sum256([]byte(key.String()))
+	return hex.EncodeToString(digest[:])
+}
+
 // findingIntelReady tracks lazy schema creation for finding-domain auxiliary
 // tables (candidate staging, finding memory, and risk scoring config). Grouping
 // these flags keeps the Store field count within the structural budget while
 // still giving each table a persistent, process-lifetime readiness flag.
 type findingIntelReady struct {
 	candidate         bool
+	policyCandidate   bool
+	policyExperiment  bool
+	policyDataset     bool
 	memory            bool
 	riskScoringConfig bool
 	remediation       bool
@@ -41,19 +56,24 @@ type identityTablesReady struct {
 }
 
 type grcTablesReady struct {
-	inventoryScope       bool
-	inventoryAssetReport bool
-	findingDisposition   bool
-	customDashboards     bool
-	vendorDiscovery      bool
-	questionnaireRun     bool
-	complianceMonitor    bool
-	assessmentSampling   bool
-	complianceAssessment bool
-	complianceReview     bool
-	evidenceLedger       bool
-	auditState           bool
-	auditPackets         bool
+	inventoryScope        bool
+	inventoryAssetReport  bool
+	findingDisposition    bool
+	customDashboards      bool
+	vendorDiscovery       bool
+	questionnaireRun      bool
+	complianceProgram     bool
+	sourceTrust           bool
+	complianceExchange    bool
+	complianceMonitor     bool
+	assessmentSampling    bool
+	complianceAssessment  bool
+	complianceReview      bool
+	complianceImprovement bool
+	evidenceLedger        bool
+	auditState            bool
+	auditPackets          bool
+	decisionPackets       bool
 }
 
 type appendLogTablesReady struct {

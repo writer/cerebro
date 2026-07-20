@@ -672,6 +672,7 @@ jobs:
             echo "No changes to validate."
             exit 0
           fi
+          rustup toolchain install 1.93.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
           make lint-bootstrap
           make verify
 

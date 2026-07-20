@@ -1,0 +1,235 @@
+[
+  {
+    "closed_incidents_count": 0,
+    "default_branch": null,
+    "default_branch_head": null,
+    "deleted": false,
+    "external_id": "example-535fa30d",
+    "full_name": "example-e1bc9cb2",
+    "health": "unknown",
+    "id": 12259,
+    "last_scan": null,
+    "monitored": true,
+    "monitoring_status": "deleted_on_remote",
+    "open_incidents_count": 0,
+    "provider_metadata": {
+      "archived": false
+    },
+    "secret_incidents_breakdown": {
+      "closed_secret_incidents": {
+        "severity_breakdown": {
+          "critical": 0,
+          "high": 0,
+          "info": 0,
+          "low": 0,
+          "medium": 0,
+          "unknown": 0
+        },
+        "total": 0
+      },
+      "open_secret_incidents": {
+        "severity_breakdown": {
+          "critical": 0,
+          "high": 0,
+          "info": 0,
+          "low": 0,
+          "medium": 0,
+          "unknown": 0
+        },
+        "total": 0
+      }
+    },
+    "source_criticality": "unknown",
+    "type": "github",
+    "url": "example-d475e86b",
+    "visibility": "private"
+  },
+  {
+    "closed_incidents_count": 0,
+    "default_branch": null,
+    "default_branch_head": null,
+    "deleted": false,
+    "external_id": "example-785f3ec7",
+    "full_name": "example-e8a82b68",
+    "health": "unknown",
+    "id": 12260,
+    "last_scan": null,
+    "monitored": true,
+    "monitoring_status": "deleted_on_remote",
+    "open_incidents_count": 0,
+    "provider_metadata": {
+      "archived": false
+    },
+    "secret_incidents_breakdown": {
+      "closed_secret_incidents": {
+        "severity_breakdown": {
+          "critical": 0,
+          "high": 0,
+          "info": 0,
+          "low": 0,
+          "medium": 0,
+          "unknown": 0
+        },
+        "total": 0
+      },
+      "open_secret_incidents": {
+        "severity_breakdown": {
+          "critical": 0,
+          "high": 0,
+          "info": 0,
+          "low": 0,
+          "medium": 0,
+          "unknown": 0
+        },
+        "total": 0
+      }
+    },
+    "source_criticality": "unknown",
+    "type": "github",
+    "url": "example-acede9f3",
+    "visibility": "public"
+  },
+  {
+    "closed_incidents_count": 0,
+    "default_branch": null,
+    "default_branch_head": null,
+    "deleted": false,
+    "external_id": "example-b7a56873",
+    "full_name": "example-c5378648",
+    "health": "unknown",
+    "id": 12261,
+    "last_scan": null,
+    "monitored": true,
+    "monitoring_status": "deleted_on_remote",
+    "open_incidents_count": 0,
+    "provider_metadata": {
+      "archived": false
+    },
+    "secret_incidents_breakdown": {
+      "closed_secret_incidents": {
+        "severity_breakdown": {
+          "critical": 0,
+          "high": 0,
+          "info": 0,
+          "low": 0,
+          "medium": 0,
+          "unknown": 0
+        },
+        "total": 0
+      },
+      "open_secret_incidents": {
+        "severity_breakdown": {
+          "critical": 0,
+          "high": 0,
+          "info": 0,
+          "low": 0,
+          "medium": 0,
+          "unknown": 0
+        },
+        "total": 0
+      }
+    },
+    "source_criticality": "unknown",
+    "type": "github",
+    "url": "example-b30e21e6",
+    "visibility": "public"
+  },
+  {
+    "closed_incidents_count": 0,
+    "default_branch": null,
+    "default_branch_head": null,
+    "deleted": false,
+    "external_id": "example-c2356069",
+    "full_name": "example-47287026",
+    "health": "unknown",
+    "id": 12262,
+    "last_scan": null,
+    "monitored": true,
+    "monitoring_status": "deleted_on_remote",
+    "open_incidents_count": 0,
+    "provider_metadata": {
+      "archived": false
+    },
+    "secret_incidents_breakdown": {
+      "closed_secret_incidents": {
+        "severity_breakdown": {
+          "critical": 0,
+          "high": 0,
+          "info": 0,
+          "low": 0,
+          "medium": 0,
+          "unknown": 0
+        },
+        "total": 0
+      },
+      "open_secret_incidents": {
+        "severity_breakdown": {
+          "critical": 0,
+          "high": 0,
+          "info": 0,
+          "low": 0,
+          "medium": 0,
+          "unknown": 0
+        },
+        "total": 0
+      }
+    },
+    "source_criticality": "unknown",
+    "type": "github",
+    "url": "example-f34d6186",
+    "visibility": "public"
+  },
+  {
+    "closed_incidents_count": 0,
+    "default_branch": null,
+    "default_branch_head": null,
+    "deleted": false,
+    "external_id": "example-6b51d431",
+    "full_name": "example-197d9ce2",
+    "health": "safe",
+    "id": 12263,
+    "last_scan": {
+      "branches_scanned": 1,
+      "commits_scanned": 1,
+      "date": "2020-09-24T09:06:39.211442Z",
+      "duration": "1.218169",
+      "failing_reason": "",
+      "progress": 100,
+      "status": "finished"
+    },
+    "monitored": true,
+    "monitoring_status": "deleted_on_remote",
+    "open_incidents_count": 0,
+    "provider_metadata": {
+      "archived": false
+    },
+    "secret_incidents_breakdown": {
+      "closed_secret_incidents": {
+        "severity_breakdown": {
+          "critical": 0,
+          "high": 0,
+          "info": 0,
+          "low": 0,
+          "medium": 0,
+          "unknown": 0
+        },
+        "total": 0
+      },
+      "open_secret_incidents": {
+        "severity_breakdown": {
+          "critical": 0,
+          "high": 0,
+          "info": 0,
+          "low": 0,
+          "medium": 0,
+          "unknown": 0
+        },
+        "total": 0
+      }
+    },
+    "source_criticality": "unknown",
+    "type": "github",
+    "url": "example-8e1c83a6",
+    "visibility": "public"
+  }
+]

@@ -121,7 +121,6 @@ func cloudResourceMetadataProjections(event *cerebrov1.EventEnvelope, profile id
 	if resourceURN == "" {
 		return nil, nil, nil
 	}
-
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	resourceAttributes := compactAttributes(cloneStringMap(attributes))
@@ -143,8 +142,6 @@ func cloudResourceMetadataProjections(event *cerebrov1.EventEnvelope, profile id
 	addAzureResourceGroupLinks(entities, links, tenantID, event.GetSourceId(), event, identityProjectionProfile{Provider: provider}, attributes, resourceURN)
 	addCloudResourceOwnerLink(entities, links, tenantID, event, resourceURN, firstNonEmpty(attributes["owner"], attributes["team"]))
 	addCloudResourceClassificationLinks(entities, links, tenantID, event, resourceURN, attributes, options)
-	addMITREAttackContextLinks(entities, links, tenantID, event, resourceURN, attributes)
-	addMITREDefendContextLinks(entities, links, tenantID, event, resourceURN, attributes)
 	addCloudResourcePublicReachability(entities, links, tenantID, event, resourceURN, provider, attributes)
 	addCloudResourceRuntimeIdentityLinks(entities, links, tenantID, event, resourceURN, provider, attributes)
 	addCloudFindingCorrelation(entities, links, tenantID, event, resourceURN, provider, attributes)
@@ -169,8 +166,6 @@ func addCloudFindingCorrelation(entities map[string]*ports.ProjectedEntity, link
 		Label:      firstNonEmpty(attributes["title"], attributes["resource_name"], attributes["display_name"], attributes["category"], findingID),
 		Attributes: cloudFindingAttributes(event, provider, family, findingID, attributes),
 	})
-	addMITREAttackContextLinks(entities, links, tenantID, event, findingURN, attributes)
-	addMITREDefendContextLinks(entities, links, tenantID, event, findingURN, attributes)
 	if resourceURN != "" && resourceURN != findingURN {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, findingURN, relationRepresents, cloudFindingLinkAttributes(event, provider, family, "cloud_provider_finding")))
 	}

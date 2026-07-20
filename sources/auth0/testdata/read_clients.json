@@ -1,30 +1,29 @@
 [
   {
-    "id": "auth0-client-client-1",
+    "id": "auth0-tenant-clients-0b176b24d18d08a9",
     "tenant_id": "tenant",
     "source_id": "auth0",
     "kind": "auth0.clients",
-    "occurred_at": "2026-06-01T00:00:00Z",
+    "occurred_at": "2026-07-16T11:27:27Z",
     "schema_ref": "auth0/clients/v1",
     "payload": {
-      "client_id": "client-1",
-      "name": "Workforce Portal",
-      "app_type": "regular_web",
-      "callbacks": ["https://app.example.test/callback"],
-      "grant_types": ["authorization_code", "refresh_token"]
+      "client_id": "example-2f83121d",
+      "tenant": "auth0-example-tenant"
     },
     "attributes": {
-      "app_id": "client-1",
-      "app_name": "Workforce Portal",
-      "application_type": "regular_web",
-      "client_id": "client-1",
-      "grant_types": "authorization_code,refresh_token",
-      "redirect_uri_hosts": "https://app.example.test/callback",
-      "resource_id": "client-1",
-      "resource_name": "Workforce Portal",
+      "app_id": "example-2f83121d",
+      "client_id": "example-2f83121d",
+      "external_id": "example-2f83121d",
+      "family": "clients",
+      "provider": "auth0",
+      "record_class": "identity_application",
+      "resource_id": "example-2f83121d",
       "resource_type": "application",
-      "resource_urn": "urn:cerebro:tenant:runtime_applications:client-1",
-      "source_event_id": "client-1",
+      "resource_urn": "urn:cerebro:tenant:runtime_applications:example-2f83121d",
+      "schema": "clients",
+      "source_event_id": "example-2f83121d",
+      "source_provider": "auth0",
+      "source_system": "auth0",
       "tenant_id": "tenant"
     }
   }

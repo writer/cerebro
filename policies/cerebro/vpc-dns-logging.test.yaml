@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        dns_query_logging_enabled: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        dns_query_logging_enabled: true
+      wantFinding: false

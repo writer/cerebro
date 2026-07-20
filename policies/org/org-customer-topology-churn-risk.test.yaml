@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        churn_risk: 1.7
+        cohort_percentile: 39
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        churn_risk: 0.7
+        cohort_percentile: 39
+      wantFinding: false

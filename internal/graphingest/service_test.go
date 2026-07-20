@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphstore"
@@ -16,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
 type stubRunStore struct {
@@ -82,6 +84,15 @@ func (f recordProjectorFunc) Project(_ context.Context, event *cerebrov1.EventEn
 
 func (f recordProjectorFunc) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return f(event)
+}
+
+type contextRecordProjector struct {
+	recordProjectorFunc
+	projectContext func(context.Context, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
+}
+
+func (p contextRecordProjector) ProjectRecordsContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return p.projectContext(ctx, event)
 }
 
 type cleanupRecordProjector struct {
@@ -198,6 +209,29 @@ type graphingestRuntimeStore struct {
 	err      error
 }
 
+type graphingestLeaseRuntimeStore struct {
+	*graphingestRuntimeStore
+	available    bool
+	acquireCalls int
+	renewCalls   int
+	releaseCalls int
+}
+
+func (s *graphingestLeaseRuntimeStore) AcquireSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error) {
+	s.acquireCalls++
+	return s.available, nil
+}
+
+func (s *graphingestLeaseRuntimeStore) RenewSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error) {
+	s.renewCalls++
+	return s.available, nil
+}
+
+func (s *graphingestLeaseRuntimeStore) ReleaseSourceRuntimeLease(context.Context, string, string) error {
+	s.releaseCalls++
+	return nil
+}
+
 func (s *graphingestRuntimeStore) Ping(context.Context) error { return s.err }
 
 func (s *graphingestRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.SourceRuntime) error {
@@ -222,9 +256,63 @@ func (s *graphingestRuntimeStore) GetSourceRuntime(_ context.Context, id string)
 	return runtime, nil
 }
 
+func TestRunRuntimeStopsBeforeGraphWritesWhenRuntimeLeaseIsBusy(t *testing.T) {
+	runtimeStore := &graphingestLeaseRuntimeStore{
+		graphingestRuntimeStore: &graphingestRuntimeStore{},
+		available:               false,
+	}
+	runStore := &stubRunStore{}
+	projector := recordProjectorFunc(func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		t.Fatal("projector called without a runtime lease")
+		return nil, nil, nil
+	})
+
+	_, err := New(nil, runtimeStore, projector, runStore).RunRuntime(context.Background(), RuntimeRequest{RuntimeID: "runtime-a"})
+	if !errors.Is(err, sourceruntime.ErrSyncInProgress) {
+		t.Fatalf("RunRuntime() error = %v, want %v", err, sourceruntime.ErrSyncInProgress)
+	}
+	if runtimeStore.acquireCalls != 1 || runtimeStore.renewCalls != 0 || runtimeStore.releaseCalls != 0 {
+		t.Fatalf("lease calls = acquire:%d renew:%d release:%d, want 1/0/0", runtimeStore.acquireCalls, runtimeStore.renewCalls, runtimeStore.releaseCalls)
+	}
+	if len(runStore.putRuns) != 0 {
+		t.Fatalf("graph ingest runs = %#v, want no graph mutation without the runtime lease", runStore.putRuns)
+	}
+	if got := graphIngestTelemetryErrorKind(err); got != "sync_in_progress" {
+		t.Fatalf("graphIngestTelemetryErrorKind() = %q, want sync_in_progress", got)
+	}
+}
+
+func TestRunRuntimeUsesCallerHeldRuntimeLease(t *testing.T) {
+	runtimeStore := &graphingestLeaseRuntimeStore{
+		graphingestRuntimeStore: &graphingestRuntimeStore{},
+		available:               false,
+	}
+	runStore := &stubRunStore{}
+	service := New(nil, runtimeStore, recordProjectorFunc(func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return nil, nil, nil
+	}), runStore)
+
+	_, err := service.RunRuntime(context.Background(), RuntimeRequest{RuntimeID: "missing", RuntimeLeaseHeld: true})
+	if !errors.Is(err, ports.ErrSourceRuntimeNotFound) {
+		t.Fatalf("RunRuntime() error = %v, want runtime lookup failure after caller-held lease bypass", err)
+	}
+	if runtimeStore.acquireCalls != 0 || runtimeStore.releaseCalls != 0 {
+		t.Fatalf("lease calls = acquire:%d release:%d, want caller-held lease untouched", runtimeStore.acquireCalls, runtimeStore.releaseCalls)
+	}
+	if len(runStore.putRuns) != 2 {
+		t.Fatalf("graph ingest run updates = %d, want running and failed records", len(runStore.putRuns))
+	}
+}
+
 type singlePageSource struct {
 	id     string
 	events []*cerebrov1.EventEnvelope
+}
+
+type authoritativeSinglePageSource struct{ *singlePageSource }
+
+func (*authoritativeSinglePageSource) SupportsAuthoritativeProjectionReconciliation(sourcecdk.Config) bool {
+	return true
 }
 
 func (s *singlePageSource) Spec() *cerebrov1.SourceSpec {
@@ -323,6 +411,67 @@ func (s *recordingProjectionGraphStore) CleanupProjectedEntities(_ context.Conte
 		}
 	}
 	return result, nil
+}
+
+func (s *recordingProjectionGraphStore) CleanupProjectedRuntimeLinks(_ context.Context, request ports.ProjectionRuntimeLinkReconciliationRequest) (ports.ProjectionLinkCleanupResult, error) {
+	var result ports.ProjectionLinkCleanupResult
+	limit := request.Limit
+	if limit == 0 {
+		limit = defaultCleanupLimit
+	}
+	for key, link := range s.links {
+		if result.LinksDeleted >= limit || link == nil || link.TenantID != request.TenantID || link.SourceID != request.SourceID || link.RuntimeID != request.RuntimeID || !slices.Contains(request.Relations, link.Relation) {
+			continue
+		}
+		if link.Attributes[projectionReconciliationAttribute] == request.ReconciliationID {
+			continue
+		}
+		result.LinksMatched++
+		if !request.DryRun {
+			delete(s.links, key)
+			result.LinksDeleted++
+		}
+	}
+	return result, nil
+}
+
+func TestIngestSourceReconcilesStaleMaterialLinksAfterCompleteAuthoritativePass(t *testing.T) {
+	source := &authoritativeSinglePageSource{&singlePageSource{id: "authoritative", events: []*cerebrov1.EventEnvelope{{Id: "event-current", SourceId: "authoritative"}}}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	staleKey := "urn:resource|can_reach|urn:stale"
+	store := &checkpointProjectionGraphStore{recordingProjectionGraphStore: recordingProjectionGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:resource": {URN: "urn:resource"},
+			"urn:stale":    {URN: "urn:stale"},
+		},
+		links: map[string]*ports.ProjectedLink{
+			staleKey: {TenantID: "tenant", SourceID: "authoritative", RuntimeID: "runtime-a", FromURN: "urn:resource", Relation: "can_reach", ToURN: "urn:stale", Attributes: map[string]string{}},
+		},
+	}}
+	projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		current := &ports.ProjectedEntity{URN: "urn:current", TenantID: event.GetTenantId(), SourceID: event.GetSourceId(), RuntimeID: "runtime-a", EntityType: "resource", Label: "current"}
+		resource := &ports.ProjectedEntity{URN: "urn:resource", TenantID: event.GetTenantId(), SourceID: event.GetSourceId(), RuntimeID: "runtime-a", EntityType: "resource", Label: "resource"}
+		return []*ports.ProjectedEntity{resource, current}, []*ports.ProjectedLink{{TenantID: event.GetTenantId(), SourceID: event.GetSourceId(), RuntimeID: "runtime-a", FromURN: resource.URN, Relation: "can_reach", ToURN: current.URN, Attributes: map[string]string{}}}, nil
+	})
+	service := New(registry, nil, projector, store)
+	if !service.supportsAuthoritativeMaterialLinkReconciliation("authoritative", sourcecdk.Config{}) {
+		t.Fatal("authoritative source/store/projector did not enable reconciliation")
+	}
+	result, err := service.ingestSource(context.Background(), sourceRequest{
+		SourceID: "authoritative", RuntimeID: "runtime-a", TenantID: "tenant", PageLimit: 1,
+		CheckpointEnabled: true, CheckpointID: "checkpoint-a", ResetCheckpoint: true,
+		ReconcileMaterialLinks: true, ReconciliationSupported: true, ProjectionReconciliationID: "reconcile-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := store.links["urn:resource|can_reach|urn:current"]
+	if !result.MaterialLinkReconciliationCompleted || result.StaleMaterialLinksDeleted != 1 || store.links[staleKey] != nil || current == nil || current.Attributes[projectionReconciliationAttribute] != "reconcile-1" {
+		t.Fatalf("reconciliation result=%#v links=%#v", result, store.links)
+	}
 }
 
 func projectionCleanupTestMatches(request ports.ProjectionCleanupRequest, entity *ports.ProjectedEntity) bool {
@@ -548,6 +697,36 @@ func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
 	}
 	if got := link.Attributes["event_id"]; got != "event-2" {
 		t.Fatalf("coalesced link event_id = %q, want latest event-2", got)
+	}
+}
+
+func TestProjectResponseCoalescedPrefersContextAwareRecords(t *testing.T) {
+	type contextKey struct{}
+	ctx := context.WithValue(context.Background(), contextKey{}, "request-context")
+	legacyCalled := false
+	contextCalled := false
+	projector := contextRecordProjector{
+		recordProjectorFunc: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			legacyCalled = true
+			return nil, nil, nil
+		},
+		projectContext: func(callCtx context.Context, _ *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			contextCalled = true
+			if got := callCtx.Value(contextKey{}); got != "request-context" {
+				t.Fatalf("projection context value = %v, want request-context", got)
+			}
+			return nil, nil, nil
+		},
+	}
+	service := &Service{graphStore: &recordingProjectionGraphStore{}}
+	_, err := service.projectResponseCoalesced(ctx, sourceRequest{TenantID: "writer"}, &cerebrov1.ReadSourceResponse{
+		Events: []*cerebrov1.EventEnvelope{{Id: "event-1"}},
+	}, projector, nil)
+	if err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if !contextCalled || legacyCalled {
+		t.Fatalf("context projector called = %t, legacy projector called = %t", contextCalled, legacyCalled)
 	}
 }
 
@@ -1450,6 +1629,25 @@ func TestFinishRunClassifiesErrorsWithoutRawSecret(t *testing.T) {
 	}
 	if strings.Contains(finished.Error, "fake-sensitive-value") || strings.Contains(finished.Error, "credential=") {
 		t.Fatalf("finishRun leaked raw error: %q", finished.Error)
+	}
+}
+
+func TestFinishRunPreservesCheckpointTerminalState(t *testing.T) {
+	result := &IngestResult{
+		CheckpointID:        "checkpoint-1",
+		CheckpointCursor:    "page-2",
+		CheckpointPersisted: true,
+		CheckpointComplete:  false,
+	}
+	finished := finishRun(graphstore.IngestRun{ID: "run-1"}, result, graphstore.IngestRunStatusCompleted, nil)
+	if finished.CheckpointID != result.CheckpointID || finished.CheckpointCursor != result.CheckpointCursor || finished.CheckpointComplete {
+		t.Fatalf("finishRun checkpoint = %#v, want persisted partial checkpoint", finished)
+	}
+	result.CheckpointCursor = ""
+	result.CheckpointComplete = true
+	completed := finishRun(graphstore.IngestRun{ID: "run-2"}, result, graphstore.IngestRunStatusCompleted, nil)
+	if completed.CheckpointCursor != "" || !completed.CheckpointComplete {
+		t.Fatalf("finishRun checkpoint = %#v, want complete terminal checkpoint", completed)
 	}
 }
 

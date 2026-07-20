@@ -45,6 +45,9 @@ func (c *MemoryCache) Get(_ context.Context, key string) (Entry, error) {
 
 func (c *MemoryCache) Set(_ context.Context, key string, payload []byte, ttl time.Duration, staleTTL time.Duration) error {
 	if len(payload) == 0 || len(payload) > c.options.MaxPayloadBytes {
+		if len(payload) > c.options.MaxPayloadBytes {
+			return ErrPayloadTooLarge
+		}
 		return nil
 	}
 	now := time.Now().UTC()

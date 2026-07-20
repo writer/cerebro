@@ -104,6 +104,116 @@ func TestProjectTrustedEndpointGRCEvidenceNormalizesStatus(t *testing.T) {
 	}
 }
 
+func TestProjectTrustedEndpointAgentExecutionReceipt(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := trustedEndpointEvent("te-receipt", "trusted_endpoint.agent_execution_receipt", map[string]string{
+		"agent_id":                   "dev_123",
+		"device_id":                  "dev_123",
+		"receipt_id":                 "receipt-1",
+		"captured_at":                "2026-07-16T12:00:00Z",
+		"receipt_digest":             "sha256:receipt",
+		"previous_receipt_digest":    "sha256:previous",
+		"sequence":                   "7",
+		"agent_product":              "Codex",
+		"model":                      "gpt-test",
+		"session_id":                 "session-1",
+		"turn_id":                    "turn-1",
+		"tool_call_id":               "call-1",
+		"tool_name":                  "Bash",
+		"action":                     "aws ecs register-task-definition",
+		"permission_mode":            "never",
+		"phase":                      "completed",
+		"local_user_claim":           "jonathan",
+		"local_user_claim_source":    "process_user",
+		"evidence_integrity":         "authenticated_device_claim",
+		"claimed_evidence_integrity": "signature_valid",
+		"provider_binding":           "unverified",
+		"claimed_provider_binding":   "provider_bound",
+		"claimed_provider_event_id":  "cloudtrail-1",
+		"normalized_receipt_digest":  "server-digest",
+		"receipt_key":                "receipt-key",
+	})
+	result, err := service.Project(context.Background(), event)
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if result.EntitiesProjected != 4 || result.LinksProjected != 5 {
+		t.Fatalf("Project() counts = %d entities/%d links, want 4/5", result.EntitiesProjected, result.LinksProjected)
+	}
+	observation := findProjectedEntityByType(state, "trusted_endpoint.agent_execution_receipt_observation")
+	if observation == nil {
+		t.Fatalf("receipt observation missing; entities=%#v", state.entities)
+	}
+	for key, want := range map[string]string{
+		"receipt_id":                 "receipt-1",
+		"captured_at":                "2026-07-16T12:00:00Z",
+		"agent_product":              "Codex",
+		"session_id":                 "session-1",
+		"tool_name":                  "Bash",
+		"action":                     "aws ecs register-task-definition",
+		"local_user_claim":           "jonathan",
+		"local_user_claim_source":    "process_user",
+		"evidence_integrity":         "authenticated_device_claim",
+		"claimed_evidence_integrity": "signature_valid",
+		"provider_binding":           "unverified",
+		"claimed_provider_binding":   "provider_bound",
+	} {
+		if got := observation.Attributes[key]; got != want {
+			t.Fatalf("receipt attribute %q = %q, want %q", key, got, want)
+		}
+	}
+	agentURN := "urn:cerebro:writer:trusted_endpoint_agent:dev_123"
+	session := findProjectedEntityByType(state, "trusted_endpoint.agent_session")
+	if session == nil {
+		t.Fatalf("agent session entity missing; entities=%#v", state.entities)
+	}
+	assertProjectedLink(t, state, agentURN, relationHasContext, session.URN)
+	receipt := findProjectedEntityByType(state, "trusted_endpoint.agent_execution_receipt")
+	if receipt == nil {
+		t.Fatalf("canonical receipt entity missing; entities=%#v", state.entities)
+	}
+	assertProjectedLink(t, state, session.URN, relationHasEvidence, receipt.URN)
+	assertProjectedLink(t, state, receipt.URN, relationHasEvidence, observation.URN)
+	assertProjectedLink(t, state, agentURN, relationHasEvidence, observation.URN)
+	assertProjectedLink(t, state, observation.URN, relationObservedOn, agentURN)
+}
+
+func TestProjectTrustedEndpointReceiptScopesSessionsAndSurfacesVersions(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	for _, tc := range []struct {
+		id, agentID, digest string
+	}{
+		{id: "te-receipt-v1", agentID: "dev_123", digest: "digest-v1"},
+		{id: "te-receipt-v2", agentID: "dev_123", digest: "digest-v2"},
+		{id: "te-other-device", agentID: "dev_456", digest: "digest-other"},
+	} {
+		event := trustedEndpointEvent(tc.id, "trusted_endpoint.agent_execution_receipt", map[string]string{
+			"agent_id": tc.agentID, "device_id": tc.agentID, "receipt_id": "receipt-1",
+			"receipt_key": "key-" + tc.agentID, "normalized_receipt_digest": tc.digest,
+			"agent_product": "Codex", "session_id": "session-1", "action": "git push",
+		})
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", tc.id, err)
+		}
+	}
+	var sessions, receipts, observations int
+	for _, entity := range state.entities {
+		switch entity.EntityType {
+		case "trusted_endpoint.agent_session":
+			sessions++
+		case "trusted_endpoint.agent_execution_receipt":
+			receipts++
+		case "trusted_endpoint.agent_execution_receipt_observation":
+			observations++
+		}
+	}
+	if sessions != 2 || receipts != 2 || observations != 3 {
+		t.Fatalf("scoped graph sessions/receipts/observations = %d/%d/%d, want 2/2/3", sessions, receipts, observations)
+	}
+}
+
 func TestRegistryRoutesTrustedEndpointKinds(t *testing.T) {
 	kinds := []string{
 		"trusted_endpoint.agent_identity",
@@ -115,6 +225,7 @@ func TestRegistryRoutesTrustedEndpointKinds(t *testing.T) {
 		"trusted_endpoint.grc_evidence",
 		"trusted_endpoint.trust_gate_decision",
 		"trusted_endpoint.action_outcome",
+		"trusted_endpoint.agent_execution_receipt",
 	}
 	for _, kind := range kinds {
 		t.Run(kind, func(t *testing.T) {

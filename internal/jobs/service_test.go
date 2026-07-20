@@ -111,6 +111,29 @@ func TestRunRecoversRunnerPanicAndMarksJobFailed(t *testing.T) {
 	}
 }
 
+func TestRunPersistsPartialResultWhenRunnerFails(t *testing.T) {
+	store := newMemoryJobStore()
+	store.jobs["job-partial"] = &ports.Job{ID: "job-partial", Kind: KindReportRun, Status: ports.JobStatusQueued}
+	service := New(store)
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		return map[string]any{"security_path_delta": map[string]any{"state": "compared"}}, map[string]string{"security_path_delta_id": "delta-1"}, errors.New("later step failed")
+	})
+
+	if err := service.Run(context.Background(), "job-partial"); err == nil {
+		t.Fatal("Run() error = nil, want runner failure")
+	}
+	job, err := store.GetJob(context.Background(), "job-partial")
+	if err != nil {
+		t.Fatalf("GetJob() error = %v", err)
+	}
+	if job.Status != ports.JobStatusFailed || job.ResultRefs["security_path_delta_id"] != "delta-1" {
+		t.Fatalf("job = %#v, want failed job with durable partial result refs", job)
+	}
+	if delta, ok := job.Result["security_path_delta"].(map[string]any); !ok || delta["state"] != "compared" {
+		t.Fatalf("partial result = %#v, want persisted security path delta", job.Result)
+	}
+}
+
 func TestRunEmitsPlatformJobWideEventWithoutPayloadValues(t *testing.T) {
 	createdAt := time.Date(2026, 6, 18, 21, 0, 0, 0, time.UTC)
 	store := newMemoryJobStore()

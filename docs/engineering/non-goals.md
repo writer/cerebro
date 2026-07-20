@@ -67,10 +67,10 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ### The CDK is not a plugin marketplace yet.
 
-- Sources are in-process Go modules vendored in this repository. There is no first-party expectation that third parties drop binary plugins in at runtime, distribute sources via container images, or load them from a registry.
-- Why: an in-process CDK is the smallest thing that proves the contract. Out-of-process plugins are a separate operational surface (signing, sandboxing, auth, blast radius) and should land only when the in-process surface has stabilized and the operational case is concrete.
-- Enforced in: the in-process source registry in `internal/sourcecdk` and built-in source layout under `sources/`.
-- What would change this: a documented operational threshold (source count, deploy blast radius, third-party authoring need) that justifies the cost of an out-of-process plugin contract, with a separate design doc covering signing, sandboxing, and lifecycle.
+- Cerebro does not accept arbitrary third-party binaries, container images, native libraries, or runtime-downloaded source code. Source definitions and deep adapters remain first-party, repository-owned, versioned, and release-provenanced. The current Rust record helper is a vendored, first-party, zero-import Wasm module behind a fixed host ABI; it does not discover sources, perform provider I/O, receive credentials, or change source lifecycle.
+- Why: source execution receives credentials and controlled egress. An open plugin marketplace adds signing, sandboxing, revocation, compatibility, and incident-response obligations that a connector catalog does not need. A capability-free deterministic helper narrows one computation without creating a distribution surface.
+- Enforced in: the built-in source layout under `sources/`, connector-definition validation, release provenance, zero-import ABI validation in `internal/wasmjson`, and the absence of native dynamic-library or remote image loading. [`rust-source-runtime-adr.md`](rust-source-runtime-adr.md) proposes one first-party out-of-process worker for compiled declarative plans if it passes the documented parity and operational gates; it does not permit third-party code loading.
+- What would change this: a concrete third-party authoring and distribution requirement, followed by a separate design that covers artifact signing, capability-scoped host calls, sandboxing, resource limits, revocation, compatibility, and lifecycle. Source count and compile-time wiring may justify the gated first-party worker described in the ADR, not a marketplace.
 
 ### Agent push surface (device-keyed write) is bounded to first-party fleet agents.
 
@@ -146,21 +146,21 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 - `internal/actionengine` models `Signal`, `Trigger`, `Playbook`, `Step`, `Execution`, and `Event`. It is not a DAG runtime, not a long-running scheduler, and not a generic workflow product. Cerebro will not import Argo Workflows, Temporal, or Cadence-shaped semantics into the core just because remediation and runtime response can be expressed in those.
 - Why: every workflow engine pays for itself only when DAG-level orchestration is actually needed. Cerebro's substrate is "the minimum model needed to unify remediation and runtime response" and growing it past that without evidence imports complexity that the rest of the system has to live with.
 - Enforced in: the absence of a DAG/workflow runtime dependency and the current workflow event/projection packages.
-- What would change this: a documented execution shape that genuinely requires DAG-level fan-out, conditional branching beyond per-step failure policies, or sub-workflow composition, ratified before code lands.
+- What would change this: a documented execution shape that genuinely requires DAG-level fan-out, conditional branching beyond per-step failure policies, or sub-workflow composition, ratified before code lands. The native Rust control-kernel carve is that reviewed boundary for mandate and mission orchestration; it does not expand `internal/actionengine` into a generic workflow engine.
 
-### Workflow durability is event-and-projection. Not graph-direct, not transactional outbox today, not optimistic.
+### Workflow durability is event-and-projection. Not graph-direct.
 
-- Decisions, actions, outcomes, finding notes, ticket links, and lifecycle status changes write a `workflow.v1.*` event before any graph mutation. Append failure prevents graph writes; graph failure leaves a replayable event behind. Cerebro will not write workflow nodes directly to Neo4j, swallow projection errors, or skip the event when the append log is configured.
+- Decisions, actions, outcomes, finding notes, ticket links, and lifecycle status changes write a `workflow.v1.*` event before any graph mutation. Append failure prevents graph writes; graph failure leaves a replayable event behind and returns an explicit projection status. Cerebro will not write workflow nodes directly to Neo4j, hide projection state, or skip the event in hosted durable mode.
 - Why: the graph is a projection. Workflow writes that bypass the event are unreplayable and reintroduce the silent-drift class of bugs that workflow durability was designed to remove.
 - Enforced in: `internal/workflowevents`, `internal/workflowprojection`, and graph write arch tests.
-- What would change this: only a reviewed workflow durability proposal that preserves replay filters, finding workflow events, outbox behavior, and timeline reads. Skipping ahead is out of scope.
+- What would change this: only a reviewed workflow durability proposal that preserves replay filters, finding workflow events, outbox behavior, and timeline reads. [`rust-control-kernel-carve.md`](rust-control-kernel-carve.md) defines the reviewed path for optimistic mission revisions and transactional event publication without changing the graph projection boundary.
 
-### No autonomous remediation through agents.
+### No ungoverned remediation through agents.
 
 - The Agent primitive composes Events, Streams, Views, Rules, and Actions under a policy. It does not get a private path to mutate Postgres or Neo4j. It does not author Cypher writes. It does not call Actions without going through the typed Action contract, including approval gates and trusted actuation scope where required.
-- Why: autonomous remediation is the failure mode that justifies most of the safety surface in Cerebro. Letting an Agent route around any of it would erase the reason the safety surface exists.
+- Why: ungoverned remediation is the failure mode that justifies most of the safety surface in Cerebro. Letting an Agent route around any of it would erase the reason the safety surface exists.
 - Enforced in: `internal/graphagent/validator.go`; trusted runtime-response scope derivation in `internal/bootstrap/auth.go`; and mutation gating in `internal/runtimeresponse`.
-- What would change this: nothing structural. Agent capabilities grow by adding typed Actions and Rules, not by widening Agent's direct surface.
+- What would change this: nothing allows a direct mutation path. The native control kernel may continue pre-authorized work only through typed Actions, scoped capability grants, immutable receipts, and independent verification; it cannot widen an Agent's direct surface.
 
 ## Runtime Response
 
@@ -208,12 +208,12 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ## Operational And Distribution
 
-### Cerebro does not ship an end-user web UI from this repository.
+### The Go service does not embed or serve end-user clients.
 
-- The repo exposes JSON HTTP, Connect RPC, and CLI surfaces. It will not host an end-user web console, a dashboarding UI, an investigation workbench, or a chat surface.
-- Why: a console is a separate product with separate distribution, accessibility, and security constraints. Pulling it into the bootstrap repo would couple every release of either to the other.
-- Enforced in: cmd/cerebro entrypoints and the documented CLI, JSON HTTP, Connect RPC, SDK, and MCP surfaces in [`README.md`](../../README.md).
-- What would change this: nothing. Console-shaped products consume Cerebro through its typed APIs from a separate repository.
+- The repository may contain independently built clients under `apps/`, including a browser application and chat companion. The Go service will not import those clients, embed their assets, proxy their provider traffic, or require them to start.
+- Why: colocation lets contracts and consumers change atomically without coupling their build artifacts, release cadence, accessibility obligations, or security boundaries.
+- Enforced in: [`docs/engineering/monorepo.md`](monorepo.md), root npm workspace checks, `cmd/cerebro` entrypoints, and `tools/archtests/monorepo_layout_test.go`.
+- What would change this: nothing for embedding clients in the Go service. A new client belongs in a portable, independently built workspace that consumes typed public contracts.
 
 ### Cerebro does not host or proxy LLM providers.
 
@@ -229,6 +229,13 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 - Enforced in: absence of cloud-specific runtime dependencies in `internal/bootstrap`.
 - What would change this: a deployment shape that demonstrably cannot be served by Postgres, NATS, and Neo4j running in the operator's environment of choice.
 
+### The agent service lifecycle contract is not a deployment controller.
+
+- The public lifecycle contract names service states, generations, durable runs, leases, checkpoints, effects, deliveries, capabilities, and adapter ports. It does not provision infrastructure, select an orchestrator, store environment configuration, resolve private routes, or define concrete rollout and disaster-recovery thresholds.
+- Why: portable continuity semantics must survive a deployment-topology change. Combining those semantics with one operator's placement and rollout policy would make service identity and durable work depend on private infrastructure.
+- Enforced in: [`agent-service-lifecycle-contract.md`](../domains/agent-service-lifecycle-contract.md), generated bindings under `internal/agentplatform/lifecyclecontract`, and `tools/archtests/agent_service_lifecycle_test.go`.
+- What would change this: nothing inside the portable contract. Concrete deployment adapters and operational policy belong to the operator's deployment repository.
+
 ### Cerebro will not maintain undocumented compatibility aliases indefinitely.
 
 - Legacy `/graph/*` aliases for routes that have moved to `/platform/graph/*` exist only when there are real consumers. When no known consumer exists, the alias is removed quickly rather than preserved as silent drift.
@@ -242,7 +249,7 @@ These framings will not be adopted as Cerebro's product description:
 
 - "Security graph" as a product surface noun. Cerebro exposes a graph; one of its applications is security.
 - "AI security" as a positioning frame. Cerebro uses LLMs in narrow, validator-gated places. The substrate, not the LLM, is the product.
-- "Autonomous remediation" or "self-healing security". Cerebro performs constrained Actions with typed approval and trusted actuation scope. It does not self-direct.
+- "Autonomous remediation" or "self-healing security". Cerebro performs constrained Actions under mandates, scoped capability grants, and independent verification. It does not get an unmediated mutation path.
 - "Replacement for [vendor product]". Cerebro is the platform underneath what those products would otherwise be the only source of truth for. Replacement framing misdescribes the seam.
 
 Vocabulary creep in docs, code comments, marketing surfaces, and AI-generated artifacts is in scope for this document the same way capability creep is. Wording PRs that flatten Cerebro into a single category should cite this section and propose a more precise phrasing.

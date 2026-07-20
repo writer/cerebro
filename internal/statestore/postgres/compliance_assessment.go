@@ -68,6 +68,25 @@ var ensureComplianceAssessmentStatements = []string{
   PRIMARY KEY (tenant_id, run_id, sequence),
   FOREIGN KEY (tenant_id, run_id) REFERENCES compliance_assessment_runs (tenant_id, id)
 )`,
+	`CREATE TABLE IF NOT EXISTS compliance_assurance_decisions (
+  tenant_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  result_id TEXT NOT NULL,
+  objective_id TEXT NOT NULL,
+  decision_digest TEXT NOT NULL,
+  record_digest TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  qualified BOOLEAN NOT NULL,
+  as_of TIMESTAMPTZ NOT NULL,
+  recorded_at TIMESTAMPTZ NOT NULL,
+  record_json JSONB NOT NULL,
+  PRIMARY KEY (tenant_id, id),
+  UNIQUE (tenant_id, idempotency_key),
+  UNIQUE (tenant_id, run_id, result_id, decision_digest),
+  FOREIGN KEY (tenant_id, run_id) REFERENCES compliance_assessment_runs (tenant_id, id)
+)`,
+	`CREATE INDEX IF NOT EXISTS compliance_assurance_decisions_run_idx ON compliance_assurance_decisions (tenant_id, run_id, recorded_at, id)`,
 	`CREATE TABLE IF NOT EXISTS compliance_assessment_event_receipts (
   event_id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -85,8 +104,96 @@ INSERT INTO compliance_assessment_result_chunks (tenant_id,run_id,sequence,first
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
 ON CONFLICT (tenant_id,run_id,sequence) DO NOTHING`
 
+const insertComplianceAssuranceDecision = `
+INSERT INTO compliance_assurance_decisions
+  (tenant_id,id,run_id,result_id,objective_id,decision_digest,record_digest,idempotency_key,qualified,as_of,recorded_at,record_json)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
+ON CONFLICT DO NOTHING`
+
+const selectConflictingAssuranceDecisionDigest = `
+SELECT record_digest
+FROM compliance_assurance_decisions
+WHERE tenant_id=$1 AND (
+  id=$2 OR
+  idempotency_key=$3 OR
+  (run_id=$4 AND result_id=$5 AND decision_digest=$6)
+)
+ORDER BY CASE WHEN id=$2 THEN 0 WHEN idempotency_key=$3 THEN 1 ELSE 2 END
+LIMIT 1`
+
 func (s *Store) ensureComplianceAssessmentTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.grc.complianceAssessment, "compliance_assessment", ensureComplianceAssessmentStatements)
+}
+
+func (s *Store) ApplyAssuranceDecision(ctx context.Context, eventID string, decision complianceassessment.AssuranceDecision) error {
+	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
+		return err
+	}
+	recordJSON, err := json.Marshal(decision)
+	if err != nil {
+		return fmt.Errorf("marshal assurance decision: %w", err)
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return fmt.Errorf("begin assurance decision projection: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	applied, err := assessmentEventApplied(ctx, tx, eventID, decision.RecordDigest)
+	if err != nil || applied {
+		if applied {
+			return tx.Commit()
+		}
+		return err
+	}
+	result, err := tx.ExecContext(ctx, insertComplianceAssuranceDecision, decision.TenantID, decision.ID, decision.RunID, decision.ResultID,
+		decision.ObjectiveID, decision.Decision.DecisionDigest, decision.RecordDigest, decision.IdempotencyKey,
+		decision.Decision.Qualified, decision.Decision.AsOf.UTC(), decision.RecordedAt.UTC(), string(recordJSON))
+	if err != nil {
+		return fmt.Errorf("project assurance decision: %w", err)
+	}
+	if count, _ := result.RowsAffected(); count == 0 {
+		var existingDigest string
+		if err := tx.QueryRowContext(ctx, selectConflictingAssuranceDecisionDigest,
+			decision.TenantID, decision.ID, decision.IdempotencyKey, decision.RunID, decision.ResultID, decision.Decision.DecisionDigest,
+		).Scan(&existingDigest); errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: conflicting assurance decision is unavailable", complianceassessment.ErrAssessmentConflict)
+		} else if err != nil {
+			return fmt.Errorf("read existing assurance decision: %w", err)
+		}
+		if existingDigest != decision.RecordDigest {
+			return complianceassessment.ErrAssessmentConflict
+		}
+	}
+	if err := insertAssessmentReceipt(ctx, tx, eventID, decision.TenantID, "assurance_decision", decision.ID, 1, decision.RecordDigest); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) GetAssuranceDecision(ctx context.Context, tenantID, decisionID string) (complianceassessment.AssuranceDecision, error) {
+	return s.getAssuranceDecision(ctx, `SELECT record_json FROM compliance_assurance_decisions WHERE tenant_id=$1 AND id=$2`, strings.TrimSpace(tenantID), strings.TrimSpace(decisionID))
+}
+
+func (s *Store) FindAssuranceDecisionByIdempotency(ctx context.Context, tenantID, key string) (complianceassessment.AssuranceDecision, error) {
+	return s.getAssuranceDecision(ctx, `SELECT record_json FROM compliance_assurance_decisions WHERE tenant_id=$1 AND idempotency_key=$2`, strings.TrimSpace(tenantID), strings.TrimSpace(key))
+}
+
+func (s *Store) getAssuranceDecision(ctx context.Context, query string, args ...any) (complianceassessment.AssuranceDecision, error) {
+	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
+		return complianceassessment.AssuranceDecision{}, err
+	}
+	var recordJSON []byte
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&recordJSON); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return complianceassessment.AssuranceDecision{}, complianceassessment.ErrAssuranceDecisionNotFound
+		}
+		return complianceassessment.AssuranceDecision{}, fmt.Errorf("get assurance decision: %w", err)
+	}
+	var decision complianceassessment.AssuranceDecision
+	if err := json.Unmarshal(recordJSON, &decision); err != nil {
+		return complianceassessment.AssuranceDecision{}, fmt.Errorf("decode assurance decision: %w", err)
+	}
+	return decision, nil
 }
 
 func (s *Store) ApplyPlan(ctx context.Context, eventID string, plan complianceassessment.AssessmentPlanRevision, expectedVersion uint64) error {
@@ -369,6 +476,42 @@ func (s *Store) ListResultChunks(ctx context.Context, tenantID, runID string) ([
 		result = append(result, chunk)
 	}
 	return result, rows.Err()
+}
+
+func (s *Store) ListResultChunksPage(ctx context.Context, tenantID, runID string, afterSequence, limit uint32) (complianceassessment.ResultChunkPage, error) {
+	if err := s.ensureComplianceAssessmentConfigured(ctx); err != nil {
+		return complianceassessment.ResultChunkPage{}, err
+	}
+	if limit == 0 || limit > 100 {
+		return complianceassessment.ResultChunkPage{}, complianceassessment.ErrInvalidResult
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT record_json FROM compliance_assessment_result_chunks WHERE tenant_id=$1 AND run_id=$2 AND sequence>$3 ORDER BY sequence LIMIT $4`, strings.TrimSpace(tenantID), strings.TrimSpace(runID), afterSequence, limit+1)
+	if err != nil {
+		return complianceassessment.ResultChunkPage{}, err
+	}
+	defer func() { _ = rows.Close() }()
+	chunks := make([]complianceassessment.ResultChunk, 0, limit+1)
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return complianceassessment.ResultChunkPage{}, err
+		}
+		var chunk complianceassessment.ResultChunk
+		if err := json.Unmarshal(data, &chunk); err != nil {
+			return complianceassessment.ResultChunkPage{}, err
+		}
+		chunks = append(chunks, chunk)
+	}
+	if err := rows.Err(); err != nil {
+		return complianceassessment.ResultChunkPage{}, err
+	}
+	page := complianceassessment.ResultChunkPage{Chunks: chunks}
+	if len(chunks) > int(limit) {
+		page.HasMore = true
+		page.Chunks = chunks[:limit]
+		page.NextSequence = page.Chunks[len(page.Chunks)-1].Sequence
+	}
+	return page, nil
 }
 
 func (s *Store) ensureComplianceAssessmentConfigured(ctx context.Context) error {

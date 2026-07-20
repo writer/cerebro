@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        auto_minor_version_upgrade: false
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        auto_minor_version_upgrade: true
+      wantFinding: false

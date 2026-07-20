@@ -7,12 +7,14 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/findingdsl"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/projectionmeta"
 
@@ -72,6 +74,36 @@ func TestNeighborhoodRelationsOrdersByStoredRelationKey(t *testing.T) {
 	}
 }
 
+func TestScanIngestRunRecordIncludesCheckpointTerminalState(t *testing.T) {
+	record := &neo4jdriver.Record{Values: []any{
+		"run-1", "runtime-1", "github", "writer", "checkpoint-1", "page-2", false,
+		graphstore.IngestRunStatusCompleted, "api", int64(1), int64(10), int64(8), int64(4),
+		int64(2), int64(1), int64(10), int64(5), "2026-07-14T10:00:00Z", "2026-07-14T10:01:00Z", "",
+	}}
+	run, err := scanIngestRunRecord(record)
+	if err != nil {
+		t.Fatalf("scanIngestRunRecord() error = %v", err)
+	}
+	if run.CheckpointID != "checkpoint-1" || run.CheckpointCursor != "page-2" || run.CheckpointComplete || !run.CheckpointCompleteKnown {
+		t.Fatalf("scanIngestRunRecord() checkpoint = %#v", run)
+	}
+}
+
+func TestScanIngestRunRecordPreservesMissingLegacyCheckpointTerminalState(t *testing.T) {
+	record := &neo4jdriver.Record{Values: []any{
+		"run-legacy", "runtime-1", "github", "writer", "", "", nil,
+		graphstore.IngestRunStatusCompleted, "api", int64(1), int64(10), int64(8), int64(4),
+		int64(2), int64(1), int64(10), int64(5), "2026-07-14T10:00:00Z", "2026-07-14T10:01:00Z", "",
+	}}
+	run, err := scanIngestRunRecord(record)
+	if err != nil {
+		t.Fatalf("scanIngestRunRecord() error = %v", err)
+	}
+	if run.CheckpointComplete || run.CheckpointCompleteKnown {
+		t.Fatalf("scanIngestRunRecord() checkpoint = %#v, want legacy terminal state absent", run)
+	}
+}
+
 func TestUpsertProjectedEntityRejectsCrossTenantCerebroURNBeforeConnection(t *testing.T) {
 	store := &Store{}
 	err := store.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{
@@ -83,9 +115,7 @@ func TestUpsertProjectedEntityRejectsCrossTenantCerebroURNBeforeConnection(t *te
 	if err == nil {
 		t.Fatal("UpsertProjectedEntity() error = nil, want cross-tenant Cerebro URN error")
 	}
-	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:github_user:alice") || !strings.Contains(got, "not projection tenant") {
-		t.Fatalf("UpsertProjectedEntity() error = %q", got)
-	}
+	requireProjectedTenantScopeError(t, err, "projected entity urn", "urn:cerebro:victim:github_user:alice")
 }
 
 func TestUpsertProjectedLinkRejectsCrossTenantCerebroURNBeforeConnection(t *testing.T) {
@@ -100,9 +130,7 @@ func TestUpsertProjectedLinkRejectsCrossTenantCerebroURNBeforeConnection(t *test
 	if err == nil {
 		t.Fatal("UpsertProjectedLink() error = nil, want cross-tenant Cerebro URN error")
 	}
-	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:github_code_repository:writer/cerebro") || !strings.Contains(got, "not projection tenant") {
-		t.Fatalf("UpsertProjectedLink() error = %q", got)
-	}
+	requireProjectedTenantScopeError(t, err, "projected link to urn", "urn:cerebro:victim:github_code_repository:writer/cerebro")
 }
 
 func TestEndpointOwnerIDLinkCleanupQueryOrdersLimitedBatch(t *testing.T) {
@@ -115,7 +143,7 @@ func TestEndpointOwnerIDLinkCleanupQueryOrdersLimitedBatch(t *testing.T) {
 		t.Fatalf("endpointOwnerIDLinkCleanupParams() error = %v", err)
 	}
 	query := endpointOwnerIDLinkCleanupQuery(conditions, false)
-	orderIndex := strings.Index(query, "ORDER BY e.urn, stale.relation, target.urn, elementId(stale)")
+	orderIndex := strings.Index(query, "ORDER BY e.urn, relation, target.urn, elementId(stale)")
 	limitIndex := strings.Index(query, "LIMIT $limit")
 	if orderIndex == -1 {
 		t.Fatalf("endpointOwnerIDLinkCleanupQuery() missing deterministic ORDER BY:\n%s", query)
@@ -125,6 +153,19 @@ func TestEndpointOwnerIDLinkCleanupQueryOrdersLimitedBatch(t *testing.T) {
 	}
 	if orderIndex > limitIndex {
 		t.Fatalf("endpointOwnerIDLinkCleanupQuery() orders after limiting:\n%s", query)
+	}
+}
+
+func TestMigrateProjectedLinkAssertionsValidatesScopeBeforeConnection(t *testing.T) {
+	store := &Store{}
+	for _, request := range []ports.ProjectionAssertionMigrationRequest{
+		{Relations: []string{"can_reach"}},
+		{TenantID: "writer"},
+	} {
+		_, err := store.MigrateProjectedLinkAssertions(context.Background(), request)
+		if !errors.Is(err, errProjectionAssertionMigrationScopeRequired) {
+			t.Fatalf("MigrateProjectedLinkAssertions(%#v) error = %v, want scope validation", request, err)
+		}
 	}
 }
 
@@ -471,12 +512,12 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if err != nil || !ok || gotCheckpoint.ID != checkpoint.ID || !gotCheckpoint.Completed {
 		t.Fatalf("GetIngestCheckpoint() = %#v, %v, %v", gotCheckpoint, ok, err)
 	}
-	run := graphstore.IngestRun{ID: "run-1", RuntimeID: "runtime", Status: graphstore.IngestRunStatusCompleted, StartedAt: "2026-05-01T00:00:00Z"}
+	run := graphstore.IngestRun{ID: "run-1", RuntimeID: "runtime", CheckpointID: "checkpoint-1", CheckpointComplete: true, Status: graphstore.IngestRunStatusCompleted, StartedAt: "2026-05-01T00:00:00Z"}
 	if err := store.PutIngestRun(ctx, run); err != nil {
 		t.Fatalf("PutIngestRun() error = %v", err)
 	}
 	runs, err := store.ListIngestRuns(ctx, graphstore.IngestRunFilter{RuntimeID: "runtime", Status: graphstore.IngestRunStatusCompleted, Limit: 10})
-	if err != nil || len(runs) != 1 || runs[0].ID != run.ID {
+	if err != nil || len(runs) != 1 || runs[0].ID != run.ID || runs[0].CheckpointID != run.CheckpointID || !runs[0].CheckpointComplete || runs[0].CheckpointCursor != "" {
 		t.Fatalf("ListIngestRuns() = %#v, %v", runs, err)
 	}
 	if err := store.DeleteProjectedLink(ctx, issueLink); err != nil {
@@ -550,6 +591,8 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 			t.Fatalf("preserved link missing: %s %s %s", link.FromURN, link.Relation, link.ToURN)
 		}
 	}
+
+	runAuthoredPolicyGraphFixtures(t, ctx, store)
 }
 
 func TestNeo4jDockerBackfillEntityTypedProperties(t *testing.T) {
@@ -652,6 +695,32 @@ func TestNeo4jDockerBackfillEntityTypedProperties(t *testing.T) {
 	}
 	if after.EntitiesMatched != 0 {
 		t.Fatalf("dry-run after backfill matched %d entities, want 0", after.EntitiesMatched)
+	}
+
+}
+
+func runAuthoredPolicyGraphFixtures(t *testing.T, ctx context.Context, store *Store) {
+	t.Helper()
+	repoRoot := filepath.Clean(filepath.Join("..", "..", ".."))
+	paths, err := findingdsl.DiscoverPolicyTestSuites(repoRoot)
+	if err != nil {
+		t.Fatalf("discover authored policy graph fixtures: %v", err)
+	}
+	for _, path := range paths {
+		suite, issues, err := findingdsl.LoadPolicyRuleTestSuite(repoRoot, filepath.Join(repoRoot, filepath.FromSlash(path)))
+		if err != nil || len(issues) != 0 {
+			continue // The normal findingdsl lane reports malformed suites.
+		}
+		hasGraphFixture := false
+		for _, testCase := range suite.Cases {
+			hasGraphFixture = hasGraphFixture || testCase.GraphFixture != nil
+		}
+		if !hasGraphFixture {
+			continue
+		}
+		if issues := findingdsl.RunPolicyRuleTestSuiteWithGraphStore(ctx, repoRoot, filepath.Join(repoRoot, filepath.FromSlash(path)), store); len(issues) != 0 {
+			t.Fatalf("authored graph policy suite %s failed: %#v", path, issues)
+		}
 	}
 }
 
@@ -989,6 +1058,10 @@ func TestProjectedLinksBatchQueryRequiresBothEndpoints(t *testing.T) {
 		"MATCH (src:Entity {urn: row.from_urn}), (dst:Entity {urn: row.to_urn})",
 		"SET src.relation_lock = coalesce(src.relation_lock, 0) + 1",
 		"MERGE (src)-[r:RELATION {relation: row.relation}]->(dst)",
+		"MERGE (src)-[a:RELATION_ASSERTION {",
+		"source_id: row.source_id",
+		"runtime_id: row.runtime_id",
+		"a.projection_reconciliation_id = row.reconciliation_id",
 		"RETURN row.from_urn AS from_urn",
 	} {
 		if !strings.Contains(mergeProjectedLinksQuery, clause) {
@@ -999,10 +1072,21 @@ func TestProjectedLinksBatchQueryRequiresBothEndpoints(t *testing.T) {
 		"UNWIND $rows AS row",
 		"WHERE coalesce(r.attributes_version, 0) = row.attributes_version",
 		"r.attributes_version = row.next_attributes_version",
+		"r.assertion_managed = true",
 		"RETURN count(r)",
 	} {
 		if !strings.Contains(updateProjectedLinksQuery, clause) {
 			t.Fatalf("updateProjectedLinksQuery missing %q:\n%s", clause, updateProjectedLinksQuery)
+		}
+	}
+	for _, clause := range []string{
+		"MATCH (:Entity {urn: row.from_urn})-[a:RELATION_ASSERTION {",
+		"WHERE coalesce(a.attributes_version, 0) = row.attributes_version",
+		"a.projection_reconciliation_id = row.reconciliation_id",
+		"RETURN count(a)",
+	} {
+		if !strings.Contains(updateProjectedLinkAssertionsQuery, clause) {
+			t.Fatalf("updateProjectedLinkAssertionsQuery missing %q:\n%s", clause, updateProjectedLinkAssertionsQuery)
 		}
 	}
 }
@@ -1018,9 +1102,7 @@ func TestUpsertProjectedEntitiesRejectsCrossTenantCerebroURNBeforeConnection(t *
 	if err == nil {
 		t.Fatal("UpsertProjectedEntities() error = nil, want cross-tenant Cerebro URN error")
 	}
-	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:github_user:alice") || !strings.Contains(got, "not projection tenant") {
-		t.Fatalf("UpsertProjectedEntities() error = %q", got)
-	}
+	requireProjectedTenantScopeError(t, err, "projected entity urn", "urn:cerebro:victim:github_user:alice")
 }
 
 func TestUpsertProjectedLinksRejectsCrossTenantCerebroURNBeforeConnection(t *testing.T) {
@@ -1035,8 +1117,20 @@ func TestUpsertProjectedLinksRejectsCrossTenantCerebroURNBeforeConnection(t *tes
 	if err == nil {
 		t.Fatal("UpsertProjectedLinks() error = nil, want cross-tenant Cerebro URN error")
 	}
-	if got := err.Error(); !strings.Contains(got, "urn:cerebro:victim:github_code_repository:writer/cerebro") || !strings.Contains(got, "not projection tenant") {
-		t.Fatalf("UpsertProjectedLinks() error = %q", got)
+	requireProjectedTenantScopeError(t, err, "projected link to urn", "urn:cerebro:victim:github_code_repository:writer/cerebro")
+}
+
+func requireProjectedTenantScopeError(t *testing.T, err error, field, urn string) {
+	t.Helper()
+	if !errors.Is(err, ports.ErrProjectedTenantScope) {
+		t.Fatalf("error = %v, want %v", err, ports.ErrProjectedTenantScope)
+	}
+	var scopeErr *ports.ProjectedTenantScopeError
+	if !errors.As(err, &scopeErr) {
+		t.Fatalf("error = %T, want *ports.ProjectedTenantScopeError", err)
+	}
+	if scopeErr.Field != field || scopeErr.URN != urn || scopeErr.URNTenantID != "victim" || scopeErr.ProjectionTenantID != "writer" {
+		t.Fatalf("scope error = %#v", scopeErr)
 	}
 }
 
@@ -1127,22 +1221,28 @@ func TestPrepareProjectedLinksCoalescesValidatesAndSorts(t *testing.T) {
 			ToURN:      "urn:cerebro:writer:github_code_repository:writer/cerebro",
 			Attributes: map[string]string{"since": "2025"},
 		},
+		{
+			TenantID: "writer", SourceID: "github", RuntimeID: "writer-github",
+			FromURN:    "urn:cerebro:writer:github_user:alice",
+			Relation:   "maintains",
+			ToURN:      "urn:cerebro:writer:github_code_repository:writer/cerebro",
+			Attributes: map[string]string{"team": "security"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("prepareProjectedLinks() error = %v", err)
 	}
-	if len(prepared) != 2 {
-		t.Fatalf("prepared len = %d, want 2 (alice link coalesced)", len(prepared))
+	if len(prepared) != 3 {
+		t.Fatalf("prepared len = %d, want 3 (runtime assertions remain distinct)", len(prepared))
 	}
-	if prepared[0].fromURN != "urn:cerebro:writer:github_user:alice" || prepared[1].fromURN != "urn:cerebro:writer:github_user:zoe" {
-		t.Fatalf("prepared links not sorted by from urn: %q, %q", prepared[0].fromURN, prepared[1].fromURN)
+	if prepared[0].fromURN != "urn:cerebro:writer:github_user:alice" || prepared[1].fromURN != "urn:cerebro:writer:github_user:alice" || prepared[2].fromURN != "urn:cerebro:writer:github_user:zoe" {
+		t.Fatalf("prepared links not sorted by from urn: %q, %q, %q", prepared[0].fromURN, prepared[1].fromURN, prepared[2].fromURN)
 	}
-	alice := prepared[0]
-	if alice.attributes["role"] != "admin" || alice.attributes["since"] != "2025" {
-		t.Fatalf("coalesced alice link attributes = %#v, want merged role+since", alice.attributes)
+	if prepared[0].runtimeID != "" || prepared[0].attributes["role"] != "admin" {
+		t.Fatalf("default-runtime alice assertion = %#v, want role=admin", prepared[0])
 	}
-	if alice.runtimeID != "writer-github" {
-		t.Fatalf("coalesced alice link runtime = %q, want latest occurrence to win", alice.runtimeID)
+	if prepared[1].runtimeID != "writer-github" || prepared[1].attributes["since"] != "2025" || prepared[1].attributes["team"] != "security" {
+		t.Fatalf("writer-github alice assertion = %#v, want merged since+team", prepared[1])
 	}
 }
 

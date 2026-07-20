@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Dedicated execution role for the Cerebro agent-attribution canary.
+
+Parameters:
+  BrokerPrincipalArn:
+    Type: String
+    Description: ARN of the dedicated broker workload identity. Do not use an operator SSO role.
+  RoleName:
+    Type: String
+    Default: cerebro-agent-executor
+
+Resources:
+  AgentExecutorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: Executes only the bounded Cerebro SSM attribution canary.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref BrokerPrincipalArn
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+              - sts:SetSourceIdentity
+      Policies:
+        - PolicyName: CerebroCanaryParameter
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:PutParameter
+                  - ssm:GetParameter
+                  - ssm:DeleteParameter
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/cerebro/canary/*
+      Tags:
+        - Key: ManagedBy
+          Value: Cerebro
+        - Key: Purpose
+          Value: AgentAttributionCanary

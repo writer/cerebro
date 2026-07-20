@@ -1,0 +1,28 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: datadog
+family: roles
+case: list_roles
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedFamilies
+request:
+    method: GET
+    url: https://api.datadoghq.com/api/v2/roles?filter=Test-List_roles_returns_OK_response-1652349174
+response:
+    status: 200
+    content_type: application/json
+    captured_at: "2024-01-19T20:23:49Z"
+    sha256: 5ec4c135c8fcb9c9c5ba7e6f1a228523b2b1e02b91d415b59d43f0ae58079151
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/DataDog/datadog-api-client-go
+    commit: a8eed2d14825b8b9c6ecbc183b63d8e3c7201560
+    path: tests/scenarios/cassettes/TestScenarios/v2/Feature_Roles/Scenario_List_roles_returns_OK_response.yaml
+    artifact_sha256: b714c4040e6a8151dee4eb2f2b0efb400ea21daf86100aa5b973b086f490dcd0
+    license: Apache-2.0
+    recording_tool: go-vcr
+    harness_path: tests/test_utils.go
+    interaction_index: 1
+    freshness: historical
+    capture_time_basis: artifact_commit

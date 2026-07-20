@@ -34,6 +34,7 @@ type ClaimVerifierGate struct {
 type AgentWorkContract struct {
 	ID                string   `json:"id"`
 	Purpose           string   `json:"purpose"`
+	ProjectionOf      string   `json:"projection_of"`
 	RequiredFields    []string `json:"required_fields"`
 	StateModel        []string `json:"state_model"`
 	RequiredArtifacts []string `json:"required_artifacts"`
@@ -117,8 +118,9 @@ func claimVerificationContract() ClaimVerificationContract {
 
 func agentWorkContract() AgentWorkContract {
 	return AgentWorkContract{
-		ID:      "agent-work-ledger",
-		Purpose: "Represent an agent investigation as a durable work object so claims, evidence, verifier results, action proposals, approvals, and closure can survive context loss.",
+		ID:           "agent-work-ledger",
+		Purpose:      "Represent an agent investigation as a durable work object so claims, evidence, verifier results, action proposals, approvals, and closure can survive context loss.",
+		ProjectionOf: "native-mission-operating-contract",
 		RequiredFields: []string{
 			"work_id",
 			"tenant_id",

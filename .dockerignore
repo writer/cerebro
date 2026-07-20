@@ -3,6 +3,7 @@
 docs
 infra
 vendor
+target
 bin
 cerebro
 docker-compose.yml

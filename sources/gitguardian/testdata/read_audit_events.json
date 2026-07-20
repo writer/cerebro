@@ -1,42 +1,221 @@
 [
   {
+    "id": "gitguardian-tenant-audit_events-8338596239c53b4b",
+    "tenant_id": "tenant",
+    "source_id": "gitguardian",
+    "kind": "gitguardian.audit_events",
+    "occurred_at": "2026-06-23T12:23:58Z",
+    "schema_ref": "gitguardian/audit_events/v1",
+    "payload": {
+      "action_type": "UPDATE",
+      "api_token_id": null,
+      "data": null,
+      "date": "2026-06-23T12:23:58.297394Z",
+      "event_name": "custom_remediation_workflow.updated",
+      "id": 23983381,
+      "ip_address": "example-d199ed47",
+      "member_email": "user-8e645c6e@example.test",
+      "member_id": 480870,
+      "member_name": "example-f789f697",
+      "target_ids": [
+        "example-e7f6c011"
+      ]
+    },
     "attributes": {
-      "actor_email": "security@example.com",
-      "actor_id": "1243",
-      "actor_name": "Security Team",
-      "event_type": "user.logged_in",
-      "external_id": "91234",
+      "actor_email": "user-8e645c6e@example.test",
+      "actor_id": "480870",
+      "actor_name": "example-f789f697",
+      "event_type": "custom_remediation_workflow.updated",
+      "external_id": "23983381",
       "family": "audit_events",
-      "id": "91234",
-      "observed_at": "2026-06-25T08:00:00Z",
+      "id": "23983381",
+      "observed_at": "2026-06-23T12:23:58.297394Z",
       "provider": "gitguardian",
       "record_class": "audit_event",
-      "resource_id": "91234",
-      "resource_urn": "urn:cerebro:tenant:gitguardian_audit_events:91234",
+      "resource_id": "23983381",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_audit_events:23983381",
       "schema": "audit_events",
-      "source_event_id": "91234",
+      "source_event_id": "23983381",
       "source_provider": "gitguardian",
       "source_system": "gitguardian",
       "tenant_id": "tenant"
-    },
-    "id": "gitguardian-audit-events-91234",
+    }
+  },
+  {
+    "id": "gitguardian-tenant-audit_events-460c6e36fedfb7a9",
+    "tenant_id": "tenant",
+    "source_id": "gitguardian",
     "kind": "gitguardian.audit_events",
-    "occurred_at": "2026-06-25T08:00:00Z",
+    "occurred_at": "2026-06-23T12:20:54Z",
+    "schema_ref": "gitguardian/audit_events/v1",
     "payload": {
-      "action_type": "READ",
-      "data": "{type: login}",
-      "date": "2026-06-25T08:00:00Z",
+      "action_type": "OTHER",
+      "api_token_id": null,
+      "data": {
+        "type": "saml_sso"
+      },
+      "date": "2026-06-23T12:20:54.649674Z",
       "event_name": "user.logged_in",
-      "id": 91234,
-      "member_email": "security@example.com",
-      "member_id": 1243,
-      "member_name": "Security Team",
+      "id": 23983251,
+      "ip_address": "example-d199ed47",
+      "member_email": "user-8e645c6e@example.test",
+      "member_id": 480870,
+      "member_name": "example-f789f697",
       "target_ids": [
-        "1243"
+        "example-8d701566"
       ]
     },
-    "schema_ref": "gitguardian/audit_events/v1",
+    "attributes": {
+      "actor_email": "user-8e645c6e@example.test",
+      "actor_id": "480870",
+      "actor_name": "example-f789f697",
+      "event_type": "user.logged_in",
+      "external_id": "23983251",
+      "family": "audit_events",
+      "id": "23983251",
+      "observed_at": "2026-06-23T12:20:54.649674Z",
+      "provider": "gitguardian",
+      "record_class": "audit_event",
+      "resource_id": "23983251",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_audit_events:23983251",
+      "schema": "audit_events",
+      "source_event_id": "23983251",
+      "source_provider": "gitguardian",
+      "source_system": "gitguardian",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "gitguardian-tenant-audit_events-8acc1dc233f5adb1",
+    "tenant_id": "tenant",
     "source_id": "gitguardian",
-    "tenant_id": "tenant"
+    "kind": "gitguardian.audit_events",
+    "occurred_at": "2026-06-23T11:59:32Z",
+    "schema_ref": "gitguardian/audit_events/v1",
+    "payload": {
+      "action_type": "OTHER",
+      "api_token_id": null,
+      "data": {
+        "type": "saml_sso"
+      },
+      "date": "2026-06-23T11:59:32.903530Z",
+      "event_name": "user.logged_in",
+      "id": 23982412,
+      "ip_address": "example-88be1d99",
+      "member_email": "user-6d755f01@example.test",
+      "member_id": 1301278,
+      "member_name": "example-fbfc27b9",
+      "target_ids": [
+        "example-f969817e"
+      ]
+    },
+    "attributes": {
+      "actor_email": "user-6d755f01@example.test",
+      "actor_id": "1301278",
+      "actor_name": "example-fbfc27b9",
+      "event_type": "user.logged_in",
+      "external_id": "23982412",
+      "family": "audit_events",
+      "id": "23982412",
+      "observed_at": "2026-06-23T11:59:32.903530Z",
+      "provider": "gitguardian",
+      "record_class": "audit_event",
+      "resource_id": "23982412",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_audit_events:23982412",
+      "schema": "audit_events",
+      "source_event_id": "23982412",
+      "source_provider": "gitguardian",
+      "source_system": "gitguardian",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "gitguardian-tenant-audit_events-db43521d769c9872",
+    "tenant_id": "tenant",
+    "source_id": "gitguardian",
+    "kind": "gitguardian.audit_events",
+    "occurred_at": "2026-06-23T11:47:23Z",
+    "schema_ref": "gitguardian/audit_events/v1",
+    "payload": {
+      "action_type": "READ",
+      "api_token_id": null,
+      "data": {
+        "issue_token": 0
+      },
+      "date": "2026-06-23T11:47:23.624224Z",
+      "event_name": "secret_incident.shared_incident_viewed",
+      "id": 23982141,
+      "ip_address": "example-b6e36ecf",
+      "member_email": "user-1aafc941@example.test",
+      "member_id": 363444,
+      "member_name": "example-a09e4866",
+      "target_ids": [
+        "example-2b8f644c"
+      ]
+    },
+    "attributes": {
+      "actor_email": "user-1aafc941@example.test",
+      "actor_id": "363444",
+      "actor_name": "example-a09e4866",
+      "event_type": "secret_incident.shared_incident_viewed",
+      "external_id": "23982141",
+      "family": "audit_events",
+      "id": "23982141",
+      "observed_at": "2026-06-23T11:47:23.624224Z",
+      "provider": "gitguardian",
+      "record_class": "audit_event",
+      "resource_id": "23982141",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_audit_events:23982141",
+      "schema": "audit_events",
+      "source_event_id": "23982141",
+      "source_provider": "gitguardian",
+      "source_system": "gitguardian",
+      "tenant_id": "tenant"
+    }
+  },
+  {
+    "id": "gitguardian-tenant-audit_events-7e153ca81c058ee8",
+    "tenant_id": "tenant",
+    "source_id": "gitguardian",
+    "kind": "gitguardian.audit_events",
+    "occurred_at": "2026-06-23T11:47:02Z",
+    "schema_ref": "gitguardian/audit_events/v1",
+    "payload": {
+      "action_type": "CREATE",
+      "api_token_id": null,
+      "data": {
+        "expire_at": "2026-07-23T11:47:02.322847+00:00",
+        "issue_id": 34205503
+      },
+      "date": "2026-06-23T11:47:02.338330Z",
+      "event_name": "incident_token.created",
+      "id": 23982136,
+      "ip_address": "example-b6e36ecf",
+      "member_email": "user-1aafc941@example.test",
+      "member_id": 363444,
+      "member_name": "example-a09e4866",
+      "target_ids": [
+        "example-2c326e3a"
+      ]
+    },
+    "attributes": {
+      "actor_email": "user-1aafc941@example.test",
+      "actor_id": "363444",
+      "actor_name": "example-a09e4866",
+      "event_type": "incident_token.created",
+      "external_id": "23982136",
+      "family": "audit_events",
+      "id": "23982136",
+      "observed_at": "2026-06-23T11:47:02.338330Z",
+      "provider": "gitguardian",
+      "record_class": "audit_event",
+      "resource_id": "23982136",
+      "resource_urn": "urn:cerebro:tenant:gitguardian_audit_events:23982136",
+      "schema": "audit_events",
+      "source_event_id": "23982136",
+      "source_provider": "gitguardian",
+      "source_system": "gitguardian",
+      "tenant_id": "tenant"
+    }
   }
 ]

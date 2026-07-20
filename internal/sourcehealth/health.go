@@ -17,7 +17,9 @@ const (
 )
 
 type GraphRun struct {
-	Status string
+	Status             string
+	CheckpointCursor   string
+	CheckpointComplete *bool
 }
 
 type FindingEvaluation struct {
@@ -292,6 +294,9 @@ func GraphIngestState(record Record) string {
 	}
 	if strings.Contains(status, "running") || strings.Contains(status, "pending") {
 		return "running"
+	}
+	if strings.TrimSpace(record.LatestGraphRun.CheckpointCursor) != "" || (record.LatestGraphRun.CheckpointComplete != nil && !*record.LatestGraphRun.CheckpointComplete) {
+		return "behind"
 	}
 	if record.GraphLagSeconds != nil && record.StaleAfterSeconds != nil && *record.GraphLagSeconds > *record.StaleAfterSeconds {
 		return "behind"

@@ -1,5 +1,6 @@
 sourceId: hackerone
 secretKeys:
+  - HACKERONE_API_IDENTIFIER
   - HACKERONE_BASE_URL
   - HACKERONE_TOKEN
 runtimes:
@@ -12,4 +13,5 @@ runtimes:
       expected_cadence_seconds: "86400"
       stale_after_seconds: "86400"
       per_page: "100"
-      token: env:HACKERONE_TOKEN
+      username: env:HACKERONE_API_IDENTIFIER
+      password: env:HACKERONE_TOKEN

@@ -1,0 +1,25 @@
+{
+  "operation": "rank_candidate_cuts",
+  "paths": [
+    {
+      "id": "path-a",
+      "route_id": "route-a",
+      "proof_edges": [
+        {
+          "id": "edge-membership",
+          "from": {"urn": "node-a"},
+          "relation": "member_of",
+          "to": {"urn": "node-b"},
+          "direction": "forward"
+        },
+        {
+          "id": "edge-reach",
+          "from": {"urn": "node-c"},
+          "relation": "can_reach",
+          "to": {"urn": "node-d"},
+          "direction": "forward"
+        }
+      ]
+    }
+  ]
+}

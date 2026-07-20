@@ -73,7 +73,7 @@ func (s *Source) readOrgInventory(ctx context.Context, client *gogithub.Client, 
 
 	// Members
 	members, _, err := client.Organizations.ListMembers(ctx, settings.owner, &gogithub.ListMembersOptions{
-		ListOptions: gogithub.ListOptions{PerPage: 100},
+		ListOptions: gogithub.ListOptions{PerPage: settings.perPage},
 	})
 	if err != nil {
 		if settings.hasAuth() && githubapi.ProviderUnavailable(err) {
@@ -92,7 +92,7 @@ func (s *Source) readOrgInventory(ctx context.Context, client *gogithub.Client, 
 
 	// Outside collaborators
 	collabs, _, err := client.Organizations.ListOutsideCollaborators(ctx, settings.owner, &gogithub.ListOutsideCollaboratorsOptions{
-		ListOptions: gogithub.ListOptions{PerPage: 100},
+		ListOptions: gogithub.ListOptions{PerPage: settings.perPage},
 	})
 	if err == nil {
 		for _, collab := range collabs {
@@ -105,7 +105,7 @@ func (s *Source) readOrgInventory(ctx context.Context, client *gogithub.Client, 
 	}
 
 	// Installations
-	installs, _, err := client.Organizations.ListInstallations(ctx, settings.owner, &gogithub.ListOptions{PerPage: 100})
+	installs, _, err := client.Organizations.ListInstallations(ctx, settings.owner, &gogithub.ListOptions{PerPage: settings.perPage})
 	if err == nil && installs != nil {
 		for _, install := range installs.Installations {
 			event, err := orgInstallationEvent(settings, install, now)

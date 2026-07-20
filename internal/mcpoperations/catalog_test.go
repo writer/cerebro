@@ -11,7 +11,7 @@ func TestCatalogOperationsAreCompleteAndSorted(t *testing.T) {
 		if operation.Name == "" || operation.OwnerDomain == "" || operation.ResponseContract == "" {
 			t.Fatalf("operation %d is incomplete: %#v", i, operation)
 		}
-		if operation.Behavior != BehaviorRead && operation.Behavior != BehaviorPropose {
+		if operation.Behavior != BehaviorRead && operation.Behavior != BehaviorPropose && operation.Behavior != BehaviorExecute {
 			t.Fatalf("operation %q behavior = %q", operation.Name, operation.Behavior)
 		}
 		if operation.Classification != ClassificationTask && operation.Classification != ClassificationExpert {
@@ -26,17 +26,50 @@ func TestCatalogOperationsAreCompleteAndSorted(t *testing.T) {
 	}
 }
 
+func TestAssessmentExecutionToolsRequireReadAndWriteScopes(t *testing.T) {
+	for _, name := range []string{
+		"cerebro.assessments.plan.create",
+		"cerebro.assessments.plan.publish",
+		"cerebro.assessments.run.request",
+	} {
+		operation, ok := Lookup(name)
+		if !ok {
+			t.Fatalf("Lookup(%q) missing", name)
+		}
+		if operation.Behavior != BehaviorExecute {
+			t.Fatalf("Lookup(%q).Behavior = %q, want %q", name, operation.Behavior, BehaviorExecute)
+		}
+		if len(operation.RequiredScopes) != 2 || operation.RequiredScopes[0] != ScopeSecurityRead || operation.RequiredScopes[1] != ScopeGRCInventoryWrite {
+			t.Fatalf("Lookup(%q).RequiredScopes = %#v", name, operation.RequiredScopes)
+		}
+	}
+	if got := ToolsetForName("cerebro.assessments.run.get"); got != "assessments" {
+		t.Fatalf("ToolsetForName(assessment) = %q, want assessments", got)
+	}
+}
+
 func TestTaskProfileIsBoundedAndContainsNoExecution(t *testing.T) {
 	tasks := TaskTools()
-	if len(tasks) > 8 {
-		t.Fatalf("task tools = %d, want at most 8", len(tasks))
+	if len(tasks) != 10 {
+		t.Fatalf("task tools = %d, want 10", len(tasks))
 	}
 	for _, operation := range tasks {
 		if operation.Name == "cerebro.action.execute" || operation.Behavior == "execute" {
 			t.Fatalf("task profile exposes execution: %#v", operation)
 		}
 	}
-	for _, name := range []string{"cerebro.health", "cerebro.version", "cerebro.risk.explain", "cerebro.evidence.packet", "cerebro.sources.health", "cerebro.action.plan"} {
+	for _, name := range []string{
+		"cerebro.health",
+		"cerebro.version",
+		"cerebro.findings.search",
+		"cerebro.assets.search",
+		"cerebro.graph.reason",
+		"cerebro.investigation.context",
+		"cerebro.risk.explain",
+		"cerebro.evidence.packet",
+		"cerebro.sources.health",
+		"cerebro.action.plan",
+	} {
 		if !IsTaskTool(name) {
 			t.Fatalf("task profile missing %s", name)
 		}
@@ -53,8 +86,11 @@ func TestToolsetProfilesPreserveDomainAndFullSelection(t *testing.T) {
 	if !EnabledForToolsets("cerebro.risk.explain", toolsets) || !EnabledForToolsets("cerebro.graph.reason", toolsets) || !EnabledForToolsets("cerebro.sources.list", toolsets) {
 		t.Fatalf("profile selection rejected an enabled task, graph, or expert tool")
 	}
-	if len(ParseToolsets("full", nil)) != 0 || len(ParseToolsets("all", nil)) != 0 {
-		t.Fatalf("full and all must preserve the default unfiltered profile")
+	for _, profile := range []string{"full", "all"} {
+		parsed := ParseToolsets(profile, nil)
+		if !parsed["full"] || !EnabledForToolsets("cerebro.assessments.plan.create", parsed) {
+			t.Fatalf("%s must select the full compatibility profile: %#v", profile, parsed)
+		}
 	}
 }
 

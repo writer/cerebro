@@ -1,0 +1,91 @@
+{
+  "mappings": [
+    {
+      "tenant_id": "tenant-a",
+      "source": {
+        "tenant_id": "tenant-a",
+        "domain": "test.domain",
+        "kind": "policy",
+        "id": "policy-source",
+        "revision_id": "policy-source-r1",
+        "version": 1,
+        "content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "last_modified": "1970-01-01T00:00:01Z"
+      },
+      "target_kind": "policy",
+      "target_id": "policy-1",
+      "action_ids": ["review.complete", "review.complete"]
+    },
+    {
+      "tenant_id": "tenant-a",
+      "source": {
+        "tenant_id": "tenant-a",
+        "domain": "test.domain",
+        "kind": "policy",
+        "id": "policy-source",
+        "revision_id": "policy-source-r1",
+        "version": 1,
+        "content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "last_modified": "1970-01-01T00:00:01Z"
+      },
+      "target_kind": "access_review",
+      "target_id": "access-review-1",
+      "action_ids": ["identity.okta.suspend_user"]
+    },
+    {
+      "tenant_id": "tenant-a",
+      "source": {
+        "tenant_id": "tenant-a",
+        "domain": "test.domain",
+        "kind": "program",
+        "id": "program-source",
+        "revision_id": "program-source-r2",
+        "version": 2,
+        "content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "last_modified": "1970-01-01T00:00:02Z"
+      },
+      "target_kind": "vendor",
+      "target_id": "vendor-1",
+      "action_ids": ["complete_review"]
+    },
+    {
+      "tenant_id": "tenant-a",
+      "source": {
+        "tenant_id": "tenant-a",
+        "domain": "test.domain",
+        "kind": "program",
+        "id": "program-source",
+        "revision_id": "program-source-r2",
+        "version": 2,
+        "content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "last_modified": "1970-01-01T00:00:02Z"
+      },
+      "target_kind": "questionnaire",
+      "target_id": "questionnaire-run-1",
+      "action_ids": ["record_decision"]
+    },
+    {
+      "tenant_id": "tenant-a",
+      "source": {
+        "tenant_id": "tenant-a",
+        "domain": "test.domain",
+        "kind": "objective",
+        "id": "objective-source",
+        "revision_id": "objective-source-r3",
+        "version": 3,
+        "content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "last_modified": "1970-01-01T00:00:03Z"
+      },
+      "target_kind": "finding",
+      "target_id": "finding-1",
+      "action_ids": ["identity.okta.suspend_user"]
+    }
+  ],
+  "expected_targets": [
+    {"kind": "access_review", "id": "access-review-1", "action_ids": ["identity.okta.suspend_user"]},
+    {"kind": "finding", "id": "finding-1", "action_ids": ["identity.okta.suspend_user"]},
+    {"kind": "policy", "id": "policy-1", "action_ids": ["review.complete"]},
+    {"kind": "questionnaire", "id": "questionnaire-run-1", "action_ids": ["record_decision"]},
+    {"kind": "vendor", "id": "vendor-1", "action_ids": ["complete_review"]}
+  ]
+}

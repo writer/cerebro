@@ -73,7 +73,7 @@ func runFindingRuleGraphEvaluate(args []string) error {
 		findingEvaluationRunStore(deps.StateStore),
 		findingEvidenceStore(deps.StateStore),
 		claimStore(deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(deps.GraphStore)).WithGraphQueryStore(findingGraphQueryStore(deps.GraphStore)).WithAppendLog(deps.AppendLog)
+	).WithGraphStore(sourceProjectionGraphStore(deps.GraphStore)).WithGraphQueryStore(findingGraphQueryStore(deps.GraphStore)).WithTrustedSourceResolution().WithAppendLog(deps.AppendLog)
 	evaluation, err := service.EvaluateSourceRuntimeGraphRules(ctx, findings.EvaluateGraphRulesRequest{
 		RuntimeID: options.RuntimeID,
 		RuleIDs:   []string{options.RuleID},

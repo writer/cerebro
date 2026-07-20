@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 import scripts.changed_checks as changed
+from scripts.embedded_wasm import EMBEDDED_WASM_MODULES
 
 
 class ChangedChecksTests(unittest.TestCase):
@@ -39,6 +40,105 @@ class ChangedChecksTests(unittest.TestCase):
     def test_script_paths_select_python_tests(self):
         names = self.command_names(["scripts/droid_review_context.py"])
         self.assertIn("python-script-tests", names)
+
+    def test_rust_workspace_paths_select_graph_action_check(self):
+        for path in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "tools/graphactiongen/src/lib.rs"):
+            with self.subTest(path=path):
+                self.assertIn("graph-action-check", self.command_names([path]))
+
+    def test_rust_dependency_policy_paths_select_deny(self):
+        for path in ("Cargo.toml", "Cargo.lock", "deny.toml"):
+            with self.subTest(path=path):
+                self.assertIn("rust-deny", self.command_names([path]))
+
+    def test_workspace_manifests_and_policy_select_workspace_check(self):
+        for path in (
+            "Cargo.toml",
+            "crates/control-kernel/Cargo.toml",
+            "internal/wasmguest/Cargo.toml",
+            "scripts/rust_workspace_policy.py",
+            "scripts/tests/test_rust_workspace_policy.py",
+        ):
+            with self.subTest(path=path):
+                self.assertIn("rust-workspace-policy", self.command_names([path]))
+
+    def test_shared_embedded_wasm_paths_select_aggregate_check(self):
+        for path in (
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+            "scripts/embedded_wasm.py",
+            "internal/wasmguest/Cargo.toml",
+            "internal/wasmguest/src/lib.rs",
+        ):
+            with self.subTest(path=path):
+                names = self.command_names([path])
+                self.assertIn("rust-wasm-check", names)
+                for module in EMBEDDED_WASM_MODULES:
+                    self.assertNotIn(module.check_target, names)
+
+    def test_module_paths_select_registered_module_check(self):
+        for module in EMBEDDED_WASM_MODULES:
+            paths = [
+                *(f"{prefix}src/lib.rs" for prefix in module.changed_prefixes),
+                *module.changed_paths,
+            ]
+            for path in paths:
+                with self.subTest(module=module.name, path=path):
+                    self.assertIn(module.check_target, self.command_names([path]))
+
+    def test_wasm_json_corpora_select_owning_go_test(self):
+        cases = (
+            (
+                "internal/mitre/testdata/wasmjson/current_metadata.json",
+                "mitre-wasm-parity-corpus",
+                ["go", "test", "./internal/mitre", "-run", "^TestContextEvaluatorCorpus$", "-count=1"],
+            ),
+            (
+                "internal/sourcecoverage/testdata/wasmjson/mixed_states.json",
+                "sourcecoverage-wasm-parity-corpus",
+                ["go", "test", "./internal/sourcecoverage", "-run", "^TestCoverageEvaluatorCorpus$", "-count=1"],
+            ),
+            (
+                "internal/sourceprojection/testdata/panopticonresources/nested_aliases.json",
+                "panopticon-wasm-parity-corpus",
+                ["go", "test", "./internal/sourceprojection", "-run", "^TestPanopticonResourceObjectsWasmCorpus$", "-count=1"],
+            ),
+        )
+        for path, command, argv in cases:
+            with self.subTest(path=path):
+                selected = [plan for plan in changed.select_commands([path], Path(".")) if plan.name == command]
+                self.assertEqual(len(selected), 1)
+                self.assertEqual(selected[0].argv, argv)
+
+    def test_shared_wasm_json_helper_selects_all_parity_corpora(self):
+        selected = changed.select_commands(["internal/wasmjson/wasmjsontest/corpus.go"], Path("."))
+        command = [plan for plan in selected if plan.name == "wasm-json-parity-corpora"]
+        self.assertEqual(len(command), 1)
+        self.assertEqual(
+            command[0].argv,
+            [
+                "go",
+                "test",
+                "./internal/mitre",
+                "./internal/sourcecoverage",
+                "./internal/sourceprojection",
+                "-run",
+                "^(TestContextEvaluatorCorpus|TestCoverageEvaluatorCorpus|TestPanopticonResourceObjectsWasmCorpus)$",
+                "-count=1",
+            ],
+        )
+
+    def test_static_validator_property_and_fuzz_paths_select_deterministic_properties(self):
+        for path in (
+            "internal/graphagent/staticvalidator/tests/properties.rs",
+            "internal/graphagent/staticvalidator/fuzz/fuzz_targets/validate.rs",
+            "internal/graphagent/staticvalidator/fuzz/corpus/validate/scoped-read",
+        ):
+            with self.subTest(path=path):
+                names = self.command_names([path])
+                self.assertIn("graphagent-static-validator-check", names)
+                self.assertIn("rust-validator-properties", names)
 
     def test_readme_source_paths_select_readme_check(self):
         names = self.command_names(["tools/controlindex/main.go"])

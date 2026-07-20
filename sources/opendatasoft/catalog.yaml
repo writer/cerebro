@@ -191,7 +191,7 @@ event_contracts:
       - event_type
       - actor_id
     required_payload_fields:
-      - id
+      - "count(*)"
   - kind: opendatasoft.page
     schema_ref: opendatasoft/page/v1
     required_attributes:
@@ -258,7 +258,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - "count(*)"
   - kind: opendatasoft.attachment
     schema_ref: opendatasoft/attachment/v1
     required_attributes:

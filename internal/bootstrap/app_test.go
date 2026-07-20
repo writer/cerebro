@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -56,6 +57,18 @@ import (
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	slacksource "github.com/writer/cerebro/sources/slack"
 )
+
+func TestGraphIngestLeaseConflictMappings(t *testing.T) {
+	err := fmt.Errorf("graph writer blocked: %w", sourceruntime.ErrSyncInProgress)
+	if got := mappedHTTPStatusCode(err, graphIngestErrorMappings); got != http.StatusConflict {
+		t.Fatalf("mappedHTTPStatusCode() = %d, want %d", got, http.StatusConflict)
+	}
+	mapped := mappedConnectError(err, graphIngestErrorMappings)
+	var connectErr *connect.Error
+	if !errors.As(mapped, &connectErr) || connectErr.Code() != connect.CodeAborted {
+		t.Fatalf("mappedConnectError() = %#v, want connect Aborted", mapped)
+	}
+}
 
 func sourceGet(t *testing.T, server *httptest.Server, path string, config map[string]string) (*http.Response, error) {
 	t.Helper()
@@ -1552,6 +1565,18 @@ func (s *stubRuntimeStore) ListFindingEvaluationRuns(_ context.Context, request 
 			return left.GetStartedAt().AsTime().After(right.GetStartedAt().AsTime())
 		}
 	})
+	if request.LatestByRuntime {
+		latest := make([]*cerebrov1.FindingEvaluationRun, 0, len(runs))
+		seen := map[string]struct{}{}
+		for _, run := range runs {
+			if _, ok := seen[run.GetRuntimeId()]; ok {
+				continue
+			}
+			seen[run.GetRuntimeId()] = struct{}{}
+			latest = append(latest, run)
+		}
+		runs = latest
+	}
 	if request.Limit != 0 && len(runs) > int(request.Limit) {
 		runs = runs[:int(request.Limit)]
 	}
@@ -1629,6 +1654,13 @@ func (s *stubGraphStore) UpsertProjectedLink(_ context.Context, link *ports.Proj
 	}
 	s.links[projectedLinkKey(link)] = cloneProjectedLink(link)
 	return nil
+}
+
+func (s *stubGraphStore) CountProjectedLinksMissingAssertions(context.Context, string, []string) (uint32, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
+	return 0, nil
 }
 
 func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
@@ -1730,7 +1762,8 @@ func (s *stubGraphStore) ListIngestRuns(_ context.Context, filter graphstore.Ing
 	s.ingestRunListFilter = filter
 	runs := make([]graphstore.IngestRun, 0, len(s.ingestRuns))
 	for _, run := range s.ingestRuns {
-		if filter.RuntimeID != "" && run.RuntimeID != filter.RuntimeID {
+		runtimeIDs := normalizedTestStrings(append(filter.RuntimeIDs, filter.RuntimeID))
+		if len(runtimeIDs) != 0 && !containsTrimmed(runtimeIDs, run.RuntimeID) {
 			continue
 		}
 		if filter.Status != "" && run.Status != filter.Status {
@@ -1746,6 +1779,18 @@ func (s *stubGraphStore) ListIngestRuns(_ context.Context, filter graphstore.Ing
 		}
 		return left.StartedAt > right.StartedAt
 	})
+	if filter.LatestByRuntime {
+		latest := make([]graphstore.IngestRun, 0, len(runs))
+		seen := map[string]struct{}{}
+		for _, run := range runs {
+			if _, ok := seen[run.RuntimeID]; ok {
+				continue
+			}
+			seen[run.RuntimeID] = struct{}{}
+			latest = append(latest, run)
+		}
+		runs = latest
+	}
 	if filter.Limit > 0 && len(runs) > filter.Limit {
 		runs = runs[:filter.Limit]
 	}
@@ -1835,7 +1880,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(urns) != 1 {
 		t.Fatalf("discover urns = %#v, want one default GitHub repository URN", discoverPayload["urns"])
 	}
-	if got := urns[0]; got != "urn:cerebro:writer:repo:writer/cerebro" {
+	if got := urns[0]; got != "urn:cerebro:octocat:repo:octocat/Hello-World" {
 		t.Fatalf("discover urns[0] = %#v, want default GitHub repository URN", got)
 	}
 	readResp, err := sourceGet(t, server, "/sources/github/read", map[string]string{"token": "test"})
@@ -1867,21 +1912,18 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err := json.NewDecoder(repeatedCursorResp.Body).Decode(&repeatedCursorPayload); err != nil {
 		t.Fatalf("decode repeated cursor response: %v", err)
 	}
-	repeatedCursorEvents, ok := repeatedCursorPayload["events"].([]any)
-	if !ok || len(repeatedCursorEvents) != 1 {
-		t.Fatalf("repeated cursor events = %#v, want 1 entry", repeatedCursorPayload["events"])
-	}
-	repeatedCursorEvent, ok := repeatedCursorEvents[0].(map[string]any)
-	if !ok || repeatedCursorEvent["id"] != "github-pr-2" {
-		t.Fatalf("repeated cursor event = %#v, want github-pr-2", repeatedCursorEvents[0])
+	if repeatedCursorEvents, ok := repeatedCursorPayload["events"].([]any); ok && len(repeatedCursorEvents) != 0 {
+		t.Fatalf("repeated cursor events = %#v, want no entries after the captured page", repeatedCursorEvents)
+	} else if !ok && repeatedCursorPayload["events"] != nil {
+		t.Fatalf("repeated cursor events = %#v, want an empty list or null", repeatedCursorPayload["events"])
 	}
 	previewEvents, ok := readPayload["preview_events"].([]any)
 	if !ok || len(previewEvents) != 1 {
 		t.Fatalf("read preview_events = %#v, want 1 entry", readPayload["preview_events"])
 	}
 	previewEvent, ok := previewEvents[0].(map[string]any)
-	if !ok || previewEvent["event_id"] != "github-pr-1" {
-		t.Fatalf("read preview_event = %#v, want event_id github-pr-1", previewEvents[0])
+	if !ok || previewEvent["event_id"] != "github-octocat-pull_request-bbd1ead563f42f7f" {
+		t.Fatalf("read preview_event = %#v, want captured GitHub event id", previewEvents[0])
 	}
 	oktaCheckResp, err := sourceGet(t, server, "/sources/okta/check?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
@@ -1912,8 +1954,12 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err := json.NewDecoder(oktaDiscoverResp.Body).Decode(&oktaDiscoverPayload); err != nil {
 		t.Fatalf("decode /sources/okta/discover response: %v", err)
 	}
-	if urns, ok := oktaDiscoverPayload["urns"].([]any); !ok || len(urns) != 2 {
-		t.Fatalf("okta discover urns = %#v, want 2 entries", oktaDiscoverPayload["urns"])
+	oktaURNs, ok := oktaDiscoverPayload["urns"].([]any)
+	if !ok || len(oktaURNs) != 1 {
+		t.Fatalf("okta discover urns = %#v, want 1 captured entry", oktaDiscoverPayload["urns"])
+	}
+	if got, ok := oktaURNs[0].(string); !ok || !strings.HasPrefix(got, "urn:cerebro:writer.okta.com:user:") {
+		t.Fatalf("okta discover urns[0] = %#v, want Okta user URN", oktaURNs[0])
 	}
 	oktaReadResp, err := sourceGet(t, server, "/sources/okta/read?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
@@ -1969,7 +2015,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(datadogURNs) != 1 {
 		t.Fatalf("datadog discover urns = %#v, want 1 entry", datadogDiscoverPayload["urns"])
 	}
-	if got := datadogURNs[0]; got != "urn:cerebro:tenant:datadog_users:user-1" {
+	if got, ok := datadogURNs[0].(string); !ok || !strings.HasPrefix(got, "urn:cerebro:tenant:datadog_users:") {
 		t.Fatalf("datadog discover urns[0] = %#v, want Datadog users URN", got)
 	}
 	datadogReadResp, err := sourceGet(t, server, "/sources/datadog/read?family=users", datadogConfig)
@@ -2057,7 +2103,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if len(discoverSourceResp.Msg.Urns) != 1 {
 		t.Fatalf("len(DiscoverSource.Urns) = %d, want 1", len(discoverSourceResp.Msg.Urns))
 	}
-	if got := discoverSourceResp.Msg.Urns[0]; got != "urn:cerebro:writer:repo:writer/cerebro" {
+	if got := discoverSourceResp.Msg.Urns[0]; got != "urn:cerebro:octocat:repo:octocat/Hello-World" {
 		t.Fatalf("DiscoverSource.Urns[0] = %q, want default GitHub repository URN", got)
 	}
 	readSourceResp, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
@@ -2101,8 +2147,11 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverSource(okta) error = %v", err)
 	}
-	if len(oktaDiscoverSourceResp.Msg.Urns) != 2 {
-		t.Fatalf("len(DiscoverSource(okta).Urns) = %d, want 2", len(oktaDiscoverSourceResp.Msg.Urns))
+	if len(oktaDiscoverSourceResp.Msg.Urns) != 1 {
+		t.Fatalf("len(DiscoverSource(okta).Urns) = %d, want 1 captured entry", len(oktaDiscoverSourceResp.Msg.Urns))
+	}
+	if got := oktaDiscoverSourceResp.Msg.Urns[0]; !strings.HasPrefix(got, "urn:cerebro:writer.okta.com:user:") {
+		t.Fatalf("DiscoverSource(okta).Urns[0] = %q, want Okta user URN", got)
 	}
 	oktaReadSourceResp, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
 		SourceId: "okta",
@@ -4928,10 +4977,12 @@ func TestSourceRuntimeHealthEndpointIncludesRuntimeGraphAndFindingState(t *testi
 				EventsRead:        8,
 				EntitiesProjected: 12,
 				LinksProjected:    16,
-				GraphNodesBefore:  100,
-				GraphNodesAfter:   109,
-				GraphLinksBefore:  200,
-				GraphLinksAfter:   211,
+				IngestRunGraphCounts: graphstore.IngestRunGraphCounts{
+					GraphNodesBefore: 100,
+					GraphNodesAfter:  109,
+					GraphLinksBefore: 200,
+					GraphLinksAfter:  211,
+				},
 			},
 		},
 	}
@@ -5281,6 +5332,12 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	if got := runRecord["checkpoint_id"]; got != "graph-okta" {
 		t.Fatalf("graph ingest checkpoint_id = %#v, want graph-okta", got)
 	}
+	if got := runRecord["checkpoint_cursor"]; got != nil {
+		t.Fatalf("graph ingest checkpoint_cursor = %#v, want no cursor after captured page", got)
+	}
+	if got := runRecord["checkpoint_complete"]; got != true {
+		t.Fatalf("graph ingest checkpoint_complete = %#v, want true after captured page", got)
+	}
 	overrideReq, err := http.NewRequest(
 		http.MethodPost,
 		server.URL+"/source-runtimes/writer-okta-users/graph-ingest-runs?page_limit=1&reset_checkpoint=true",
@@ -5330,6 +5387,12 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	getRun, ok := getPayload["run"].(map[string]any)
 	if !ok || getRun["id"] != runID {
 		t.Fatalf("graph ingest get run = %#v, want id %q", getPayload["run"], runID)
+	}
+	if got := getRun["checkpoint_complete"]; got != true {
+		t.Fatalf("graph ingest get checkpoint_complete = %#v, want true", got)
+	}
+	if got := getRun["checkpoint_cursor"]; got != nil {
+		t.Fatalf("graph ingest get checkpoint_cursor = %#v, want no cursor after captured page", got)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
@@ -7169,6 +7232,9 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	if got := decisionPayload["target_count"]; got != float64(1) {
 		t.Fatalf("decision target_count = %#v, want 1", got)
 	}
+	if decisionPayload["event_id"] == "" || decisionPayload["durability_status"] != knowledge.DurabilityRecorded || decisionPayload["projection_status"] != knowledge.ProjectionProjected {
+		t.Fatalf("decision durability/projection = %#v", decisionPayload)
+	}
 	if _, ok := graphStore.entities["urn:cerebro:writer:evidence:finding-evidence-1"]; !ok {
 		t.Fatal("decision evidence entity missing")
 	}
@@ -7220,6 +7286,9 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	if got := actionPayload["target_count"]; got != float64(1) {
 		t.Fatalf("action target_count = %#v, want 1", got)
 	}
+	if actionPayload["event_id"] == "" || actionPayload["durability_status"] != knowledge.DurabilityRecorded || actionPayload["projection_status"] != knowledge.ProjectionProjected {
+		t.Fatalf("action durability/projection = %#v", actionPayload)
+	}
 	if _, ok := graphStore.entities[actionID]; !ok {
 		t.Fatalf("action entity %q missing", actionID)
 	}
@@ -7245,6 +7314,9 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	if got := outcomeResp.Msg.GetTargetCount(); got != 1 {
 		t.Fatalf("WriteOutcome().TargetCount = %d, want 1", got)
 	}
+	if outcomeResp.Msg.GetEventId() == "" || outcomeResp.Msg.GetDurabilityStatus() != knowledge.DurabilityRecorded || outcomeResp.Msg.GetProjectionStatus() != knowledge.ProjectionProjected {
+		t.Fatalf("WriteOutcome() durability/projection = %+v", outcomeResp.Msg)
+	}
 	outcomeID := outcomeResp.Msg.GetOutcomeId()
 	if outcomeID == "" {
 		t.Fatal("WriteOutcome().OutcomeId = empty, want non-empty")
@@ -7260,6 +7332,59 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	}
 	if len(appendLog.events) != 3 {
 		t.Fatalf("len(appendLog.events) = %d, want 3", len(appendLog.events))
+	}
+}
+
+func TestPlatformKnowledgeDecisionRequiresDurableAppendLog(t *testing.T) {
+	targetURN := "urn:cerebro:writer:resource:service-1"
+	graphStore := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{targetURN: {URN: targetURN}}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body, err := protojson.Marshal(&cerebrov1.WriteDecisionRequest{DecisionType: "finding-triage", TargetIds: []string{targetURN}})
+	if err != nil {
+		t.Fatalf("marshal decision: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/platform/knowledge/decisions", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST decision: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+}
+
+func TestPlatformKnowledgeDecisionReturnsDurableProjectionFailure(t *testing.T) {
+	targetURN := "urn:cerebro:writer:resource:service-1"
+	graphStore := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{targetURN: {URN: targetURN}}, err: errors.New("graph unavailable")}
+	appendLog := &recordingAppendLog{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: graphStore, AppendLog: appendLog}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body, err := protojson.Marshal(&cerebrov1.WriteDecisionRequest{DecisionType: "finding-triage", TargetIds: []string{targetURN}})
+	if err != nil {
+		t.Fatalf("marshal decision: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/platform/knowledge/decisions", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST decision: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	payload := map[string]any{}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["durability_status"] != knowledge.DurabilityRecorded || payload["projection_status"] != knowledge.ProjectionFailed || payload["projection_error_category"] != knowledge.ProjectionErrorGraph {
+		t.Fatalf("durability/projection = %#v", payload)
+	}
+	if len(appendLog.events) != 1 || payload["event_id"] != appendLog.events[0].GetId() {
+		t.Fatalf("event response/log = %#v/%+v", payload, appendLog.events)
 	}
 }
 
@@ -8493,7 +8618,8 @@ func findingEvaluationRunMatches(request ports.ListFindingEvaluationRunsRequest,
 	if run == nil {
 		return false
 	}
-	if strings.TrimSpace(run.GetRuntimeId()) != strings.TrimSpace(request.RuntimeID) {
+	runtimeIDs := normalizedTestStrings(append(request.RuntimeIDs, request.RuntimeID))
+	if len(runtimeIDs) == 0 || !containsTrimmed(runtimeIDs, run.GetRuntimeId()) {
 		return false
 	}
 	if request.RuleID != "" && strings.TrimSpace(run.GetRuleId()) != strings.TrimSpace(request.RuleID) {

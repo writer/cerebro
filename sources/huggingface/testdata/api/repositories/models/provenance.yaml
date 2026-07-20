@@ -1,0 +1,23 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: huggingface
+family: repositories
+case: models
+replay_test: source_test.go#TestSourceReplaysCapturedModels
+request:
+    method: GET
+    url: https://huggingface.co/api/models?author=google-bert&limit=1
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-07-18T08:06:27Z"
+    sha256: a5c2644925863c43f31f01be8ab047a3077aea4957e209ae672a3dd554d34177
+    headers:
+        Link: <https://huggingface.co/api/models?author=google-bert&limit=1&cursor=eyIkb3IiOlt7InRyZW5kaW5nU2NvcmUiOjIsIl9pZCI6eyIkZ3QiOiJleGFtcGxlLTBiM2E5MmE2In19LHsidHJlbmRpbmdTY29yZSI6eyIkbHQiOjJ9fSx7InRyZW5kaW5nU2NvcmUiOm51bGx9XSwic2VhcmNoU2VxdWVuY2VUb2tlbiI6IkNQV1BsUUlhQ1NFQUFBQUFBQUFBUUJvT1dneGlILzNBTmthTmNKOFhReklpRGxvTVloLzl3RFpHalhDZkYwTXkifQ>; rel="next"
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $[0]._id
+        - $response.headers.Link
+origin:
+    type: operator_request

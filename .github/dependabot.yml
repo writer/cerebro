@@ -1,5 +1,23 @@
 version: 2
 updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "rust"
+      - "tooling"
+    groups:
+      rust-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
@@ -36,7 +54,7 @@ updates:
           - "patch"
 
   - package-ecosystem: "npm"
-    directory: "/sdk/typescript"
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -44,9 +62,8 @@ updates:
     labels:
       - "dependencies"
       - "typescript"
-      - "sdk"
     groups:
-      typescript-sdk:
+      npm-workspaces:
         patterns:
           - "*"
 
@@ -93,6 +110,23 @@ updates:
         patterns:
           - "golang"
           - "alpine"
+
+  - package-ecosystem: "docker"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    ignore:
+      - dependency-name: "node"
+        update-types:
+          - "version-update:semver-major"
+    groups:
+      web-base-images:
+        patterns:
+          - "node"
 
   - package-ecosystem: "github-actions"
     directory: "/"

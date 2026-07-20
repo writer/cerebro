@@ -267,6 +267,9 @@ func TestEvaluateSourceRuntimeGraphRulesTruncatedSkipsStaleResolution(t *testing
 	if !evaluation.Truncated {
 		t.Fatalf("Truncated = false, want true (rows hit cap)")
 	}
+	if evaluation.Run.GraphTruncated == nil || !evaluation.Run.GetGraphTruncated() || evaluation.Run.GraphRowLimit == nil || evaluation.Run.GetGraphRowLimit() != uint32(rowLimit) {
+		t.Fatalf("persisted graph completeness = truncated:%v row_limit:%d, want true/%d", evaluation.Run.GetGraphTruncated(), evaluation.Run.GetGraphRowLimit(), rowLimit)
+	}
 	persisted, ok := store.findings[staleFinding.ID]
 	if !ok {
 		t.Fatalf("stale finding %q missing after evaluation", staleFinding.ID)
@@ -410,6 +413,9 @@ func TestEvaluateSourceRuntimeGraphRulesCapAwareStaleResolutionResolvesCompleteS
 	}
 	if !result.Evaluations[0].Truncated {
 		t.Fatalf("Truncated = false, want true (a capped row signals truncation)")
+	}
+	if run := result.Evaluations[0].Run; run.GraphTruncated == nil || !run.GetGraphTruncated() || run.GetGraphRowLimit() != 250 {
+		t.Fatalf("persisted graph completeness = truncated:%v row_limit:%d, want true/250", run.GetGraphTruncated(), run.GetGraphRowLimit())
 	}
 	wantStatus := map[string]string{
 		"stale-capped":   findingStatusOpen,     // capped scope: a still-matching row may have been dropped

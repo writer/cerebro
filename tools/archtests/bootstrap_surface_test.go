@@ -98,6 +98,9 @@ import (
 // auth discovery stays at the HTTP boundary. Agent task review hardening keeps
 // tenant-before-mutation checks and auth-challenge classification in bootstrap
 // because those depend on bootstrap auth sentinels and HTTP route policy.
+// Embedded source-coverage evaluation adds only explicit unavailable-error
+// propagation at HTTP, MCP, and A2A boundaries; classification remains in
+// internal/sourcecoverage and never falls back to empty coverage.
 // Assessment runtime composition adds capability-gated service and job-runner
 // wiring plus tenant and idempotency checks at the existing job HTTP boundary;
 // event replay, projection recovery, and run transitions stay in
@@ -108,7 +111,51 @@ import (
 // persistence, projection replay, and invalidation reopening stay behind
 // internal/complianceremediation, while Postgres adaptation stays in the
 // concrete state-store package.
-const bootstrapProductionGoLineBudget = 27684
+// Agent assessment MCP tools add only tool registration, argument decoding,
+// tenant and scope enforcement, safe evidence/finding response composition,
+// and transport metadata. Plan/run semantics, canonical result verification,
+// bounded baseline comparison, and remediation proposal shaping stay in
+// internal/complianceassessment; schemas and tool inventory stay in
+// internal/mcpoperations.
+// Decision packets add HTTP and Connect request mapping, auth-derived tenant
+// and actor identity, bounded request decoding, safe transport error mapping,
+// and composition of existing read ports. Resolution, decision derivation,
+// immutable receipts, and protobuf response conversion remain behind
+// internal/decisionpacket packages.
+// Native source event admission adds caller-lifetime worker-pool composition,
+// Connect service reuse, and shutdown wiring only. Admission policy, framing,
+// restart behavior, and receipt validation remain in
+// internal/sourceruntime/eventadmission; the boundary is recorded in
+// docs/engineering/rust-source-runtime-adr.md.
+// Agent service lifecycle discovery adds only authenticated route registration
+// and response mapping; the state machines, records, validation, and generated
+// bindings remain behind internal/agentplatform.
+// Policy discovery candidates add only HTTP request/response mapping,
+// tenant/scope enforcement, safe transport views, and configured model/store
+// composition, including the narrow findings-registry coverage adapter.
+// Candidate lifecycle, graph grounding, duplicate-coverage decisions,
+// proof/shadow orchestration, redaction boundaries, and optimistic revisions
+// stay behind internal/policycandidate; durable persistence stays in the
+// concrete Postgres state-store package.
+// Policy evaluation experiments add operator-scoped HTTP mapping, platform-job
+// normalization, and dependency wiring only. Immutable pins, transitions,
+// checkpoint verification, current-canary execution, and append-only receipts
+// stay behind internal/policycandidate.
+// Policy evaluation datasets add only route/auth registration, tenant/actor
+// resolution, and state-store capability wiring. Fixture validation, immutable
+// revisions, digest verification, and append semantics stay behind
+// internal/policycandidate; transport mapping stays in
+// internal/sourcehttp/policyevaluationdatasets.
+// Dedicated evaluation-dataset read, proposal, and approval scope constants
+// keep future agent credentials separate from candidate execution. Bootstrap
+// owns only their route-policy and OAuth discovery catalog entries.
+// Assurance decision routes add only service composition and route/auth
+// registration; decision validation and persistence remain in
+// internal/complianceassessment.
+// Canonical compliance work adds query composition and response mapping;
+// bounded queries and assurance verification remain in the domain and
+// state-store packages.
+const bootstrapProductionGoLineBudget = 29044
 
 type bootstrapFileLineCount struct {
 	path  string

@@ -1,0 +1,17 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "description": "Account-level WAF configuration",
+      "id": "example-82dfb3de",
+      "kind": "root",
+      "last_updated": "2024-01-15T10:30:00.123456Z",
+      "name": "Account WAF Ruleset",
+      "phase": "http_request_firewall_managed",
+      "source": "firewall_managed",
+      "version": "1"
+    }
+  ],
+  "success": true
+}

@@ -80,6 +80,25 @@ func TestCreateEvidencePacketTaskRejectsLongMessageIDFallbackKey(t *testing.T) {
 	}
 }
 
+func TestCreateEvidencePacketTaskFailsClosedWhenCoverageIsUnavailable(t *testing.T) {
+	store := newGatewayTestJobStore()
+	handler := Handler{
+		Store:   store,
+		Resolve: gatewayTestResolver,
+		CoverageContext: func(context.Context, string) (*agentplatform.AgentCoverageContext, error) {
+			return nil, errors.New("coverage unavailable")
+		},
+	}
+
+	response := handler.Respond(context.Background(), gatewayTestSendMessageRequest("message-1"))
+	if response.Error == nil || response.Error.Code != -32603 {
+		t.Fatalf("coverage failure response = %+v, want InternalError", response)
+	}
+	if len(store.jobs) != 0 {
+		t.Fatalf("jobs created = %d, want none", len(store.jobs))
+	}
+}
+
 func TestListTasksReportsTotalSizeBeyondReturnedPage(t *testing.T) {
 	store := newGatewayTestJobStore()
 	now := time.Now().UTC()

@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        spec:
+            external_ips: true
+            external_ips_count: 1
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        spec:
+            external_ips: null
+            external_ips_count: 1
+      wantFinding: false

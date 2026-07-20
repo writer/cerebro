@@ -22,3 +22,12 @@ type NonterminalRunStore interface {
 type Collector interface {
 	Collect(context.Context, AssessmentRun) (InputManifest, []ObjectiveResult, error)
 }
+
+// AssuranceDecisionStore is the durable read projection for immutable
+// evidence-backed decisions. It remains a separate capability so assessment
+// collection stores cannot silently claim decision persistence support.
+type AssuranceDecisionStore interface {
+	ApplyAssuranceDecision(context.Context, string, AssuranceDecision) error
+	GetAssuranceDecision(context.Context, string, string) (AssuranceDecision, error)
+	FindAssuranceDecisionByIdempotency(context.Context, string, string) (AssuranceDecision, error)
+}

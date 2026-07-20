@@ -89,7 +89,6 @@ var azureARMChildDefinitions = []azureARMChildDefinition{
 	{Name: "virtual_machine_scale_set_instance", Label: "azure virtual machine scale set instances", ParentProvider: "Microsoft.Compute/virtualMachineScaleSets", ParentAPIVersion: "2024-07-01", ChildPath: "virtualMachines", ChildAPIVersion: "2024-07-01", Kind: "azure.virtual_machine_scale_set_instance", SchemaRef: "azure/virtual_machine_scale_set_instance/v1"},
 }
 
-// Source reads Azure Entra ID inventory, Azure RBAC, and audit/activity logs.
 type Source struct {
 	spec                 *cerebrov1.SourceSpec
 	client               *http.Client
@@ -226,7 +225,6 @@ type azureFamilyOptions[T any] struct {
 	Discover           func(context.Context, *Source, settings) ([]sourcecdk.URN, error)
 }
 
-// New constructs the live Azure source.
 func New() (*Source, error) {
 	spec, err := loadSpec()
 	if err != nil {
@@ -259,9 +257,12 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	return s.families.Read(ctx, cfg, cursor)
 }
 
-// ReadWithCheckpoint lets Azure audit families apply provider-side watermark filters and stop once they reach the durable runtime watermark.
 func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) (sourcecdk.Pull, error) {
 	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
+}
+
+func (s *Source) SupportsAuthoritativeProjectionReconciliation(config sourcecdk.Config) bool {
+	return sourcecdk.IsAuthoritativeProjectionFamily(config, defaultFamily, familyActivityLog, familyDirectoryAudit)
 }
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {

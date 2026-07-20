@@ -112,7 +112,9 @@ Do not publish live runtime IDs, tenant IDs, provider credentials, or cadence va
 Deployment automation should consume:
 
 - the selected image tag,
-- the signed `cerebro-runtime-contract-<target>.json` when produced,
+- the signed product-release manifest and its recorded image digests,
+- the topology-neutral product-release event when configured,
+- a runtime deploy contract rendered and signed by the deployment system,
 - the deployment-owned config version,
 - the `cerebro deploy preflight` receipt,
 - post-deploy health check results.

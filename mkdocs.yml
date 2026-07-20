@@ -45,8 +45,10 @@ nav:
       - Policy Rule Extensions: domains/policy-rule-extensions.md
       - Policy Compliance Mapping: domains/policy-compliance-mapping.md
       - Findings Platform Architecture: domains/findings-platform-architecture.md
+      - Decision Workflows: domains/decision-workflows.md
       - Finding Candidate Operations: domains/finding-candidate-operations.md
       - Agent Platform Contract: domains/agent-platform-contract.md
+      - Self-Authoring Tests: domains/self-authoring-tests.md
       - Endpoint Security Platform Integration: domains/endpoint-security-platform-integration.md
       - MCP Native Droid Setup: domains/mcp-droid-setup.md
   - Engineering:

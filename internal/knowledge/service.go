@@ -11,24 +11,39 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/fabriccontract"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 	"github.com/writer/cerebro/internal/workflowevents"
 	"github.com/writer/cerebro/internal/workflowprojection"
 )
 
 const (
-	defaultSourceSystem     = "platform.knowledge"
-	defaultDecisionStatus   = "proposed"
-	defaultActionType       = "recommendation"
-	defaultActionStatus     = "recorded"
-	defaultGraphLookupLimit = 1
-	decisionEntityType      = "decision"
-	outcomeEntityType       = "outcome"
-	actionEntityType        = "action"
-	relationTargets         = fabriccontract.RelationTargets
-	relationBasedOn         = fabriccontract.RelationBasedOn
-	relationExecutedBy      = fabriccontract.RelationExecutedBy
-	relationEvaluates       = fabriccontract.RelationEvaluates
-	defaultPlatformTenant   = "platform"
+	defaultSourceSystem      = "platform.knowledge"
+	defaultDecisionStatus    = "proposed"
+	defaultActionType        = "recommendation"
+	defaultActionStatus      = "recorded"
+	decisionEntityType       = "decision"
+	packetDecisionEntityType = "packet_decision"
+	outcomeEntityType        = "outcome"
+	actionEntityType         = "action"
+	relationTargets          = fabriccontract.RelationTargets
+	relationBasedOn          = fabriccontract.RelationBasedOn
+	relationExecutedBy       = fabriccontract.RelationExecutedBy
+	relationEvaluates        = fabriccontract.RelationEvaluates
+	defaultPlatformTenant    = "platform"
+	DurabilityRecorded       = "recorded"
+	DurabilityNotRecorded    = "not_recorded"
+	ProjectionProjected      = "projected"
+	ProjectionPending        = "pending"
+	ProjectionNotConfigured  = "not_configured"
+	ProjectionFailed         = "failed"
+	ProjectionErrorGraph     = "graph_projection_failed"
+)
+
+type DurabilityMode string
+
+const (
+	DurabilityLegacyProjectionOnly DurabilityMode = "legacy_projection_only"
+	DurabilityRequired             DurabilityMode = "durable_required"
 )
 
 var (
@@ -40,9 +55,9 @@ var (
 
 // Service records workflow primitives onto the graph-backed platform layer.
 type Service struct {
-	query     ports.GraphQueryStore
-	graph     ports.ProjectionGraphStore
-	appendLog ports.AppendLog
+	graph          ports.ProjectionGraphStore
+	appendLog      ports.AppendLog
+	durabilityMode DurabilityMode
 }
 
 // DecisionWriteRequest scopes one platform decision write.
@@ -66,8 +81,12 @@ type DecisionWriteRequest struct {
 
 // DecisionWriteResult reports one recorded platform decision.
 type DecisionWriteResult struct {
-	DecisionID  string
-	TargetCount uint32
+	DecisionID              string
+	TargetCount             uint32
+	EventID                 string
+	DurabilityStatus        string
+	ProjectionStatus        string
+	ProjectionErrorCategory string
 }
 
 // ActionWriteRequest scopes one platform action write.
@@ -91,9 +110,13 @@ type ActionWriteRequest struct {
 
 // ActionWriteResult reports one recorded action.
 type ActionWriteResult struct {
-	ActionID    string
-	DecisionID  string
-	TargetCount uint32
+	ActionID                string
+	DecisionID              string
+	TargetCount             uint32
+	EventID                 string
+	DurabilityStatus        string
+	ProjectionStatus        string
+	ProjectionErrorCategory string
 }
 
 // OutcomeWriteRequest scopes one outcome write tied back to one decision.
@@ -115,14 +138,31 @@ type OutcomeWriteRequest struct {
 
 // OutcomeWriteResult reports one recorded outcome.
 type OutcomeWriteResult struct {
-	OutcomeID   string
-	DecisionID  string
-	TargetCount uint32
+	OutcomeID               string
+	DecisionID              string
+	TargetCount             uint32
+	EventID                 string
+	DurabilityStatus        string
+	ProjectionStatus        string
+	ProjectionErrorCategory string
 }
 
 // New constructs one platform knowledge write service.
 func New(query ports.GraphQueryStore, graph ports.ProjectionGraphStore) *Service {
-	return &Service{query: query, graph: graph}
+	_ = query // Retained in the constructor for compatibility; graph lookup is not a durability precondition.
+	return &Service{graph: graph, durabilityMode: DurabilityRequired}
+}
+
+func (s *Service) WithDurabilityMode(mode DurabilityMode) *Service {
+	if s == nil {
+		return nil
+	}
+	if mode == DurabilityLegacyProjectionOnly {
+		s.durabilityMode = mode
+	} else {
+		s.durabilityMode = DurabilityRequired
+	}
+	return s
 }
 
 // WithAppendLog wires an optional durable append log for workflow events.
@@ -136,7 +176,19 @@ func (s *Service) WithAppendLog(appendLog ports.AppendLog) *Service {
 
 // WriteDecision records one decision node plus its target, evidence, and action links.
 func (s *Service) WriteDecision(ctx context.Context, request DecisionWriteRequest) (*DecisionWriteResult, error) {
-	if s == nil || s.query == nil || s.graph == nil {
+	return s.writeDecision(ctx, request, false)
+}
+
+// WriteAuthenticatedPacketDecision records a decision reached through the authenticated
+// decision-packet workflow. This method is intentionally separate from the public knowledge
+// write path so replay consumers can distinguish server-routed packet decisions from
+// client-supplied metadata claims.
+func (s *Service) WriteAuthenticatedPacketDecision(ctx context.Context, request DecisionWriteRequest) (*DecisionWriteResult, error) {
+	return s.writeDecision(ctx, request, true)
+}
+
+func (s *Service) writeDecision(ctx context.Context, request DecisionWriteRequest, authenticatedPacket bool) (*DecisionWriteResult, error) {
+	if s == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	decisionType := strings.TrimSpace(request.DecisionType)
@@ -148,16 +200,20 @@ func (s *Service) WriteDecision(ctx context.Context, request DecisionWriteReques
 		return nil, fmt.Errorf("%w: decision target ids are required", ErrInvalidRequest)
 	}
 	tenantID := inferTenantID(request.Metadata, targetIDs...)
+	if err := validateTenantScopedIDs(tenantID, append(append(append([]string{request.ID}, targetIDs...), request.EvidenceIDs...), request.ActionIDs...)...); err != nil {
+		return nil, err
+	}
+	entityType := decisionEntityType
+	if authenticatedPacket {
+		entityType = packetDecisionEntityType
+	} else if strings.HasPrefix(strings.TrimSpace(request.ID), "urn:cerebro:"+tenantID+":"+packetDecisionEntityType+":") {
+		return nil, fmt.Errorf("%w: packet decision id namespace is server-owned", ErrInvalidRequest)
+	}
 	sourceSystem := firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem)
-	decisionID := workflowevents.CanonicalWorkflowID(tenantID, decisionEntityType, request.ID, decisionType, targetIDs, request.ObservedAt)
+	decisionID := workflowevents.CanonicalWorkflowID(tenantID, entityType, request.ID, decisionType, targetIDs, request.ObservedAt)
 	observedAt := normalizeObservedAt(request.ObservedAt)
 	validFrom := normalizeValidFrom(request.ValidFrom, observedAt)
 	status := firstNonEmpty(strings.TrimSpace(request.Status), defaultDecisionStatus)
-	for _, targetID := range targetIDs {
-		if err := s.requireEntity(ctx, targetID); err != nil {
-			return nil, err
-		}
-	}
 	validTo := ""
 	if !request.ValidTo.UTC().IsZero() {
 		validTo = request.ValidTo.UTC().Format(time.RFC3339Nano)
@@ -183,21 +239,26 @@ func (s *Service) WriteDecision(ctx context.Context, request DecisionWriteReques
 	if err != nil {
 		return nil, err
 	}
-	if err := s.recordWorkflowEvent(ctx, event); err != nil {
-		return nil, fmt.Errorf("append decision workflow event %q: %w", event.GetId(), err)
+	if authenticatedPacket {
+		event.Attributes[workflowevents.EventAttributeDecisionTrust] = workflowevents.DecisionTrustAuthenticatedPacket
 	}
-	if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
-		return nil, fmt.Errorf("project decision workflow event %q: %w", event.GetId(), err)
+	statuses, err := s.recordAndProject(ctx, event)
+	if err != nil {
+		return nil, fmt.Errorf("record decision workflow event %q: %w", event.GetId(), err)
 	}
 	return &DecisionWriteResult{
-		DecisionID:  decisionID,
-		TargetCount: boundedUint32(len(targetIDs)),
+		DecisionID:              decisionID,
+		TargetCount:             boundedUint32(len(targetIDs)),
+		EventID:                 event.GetId(),
+		DurabilityStatus:        statuses.DurabilityStatus,
+		ProjectionStatus:        statuses.ProjectionStatus,
+		ProjectionErrorCategory: statuses.ProjectionErrorCategory,
 	}, nil
 }
 
 // WriteAction records one action node plus its target links and optional decision context.
 func (s *Service) WriteAction(ctx context.Context, request ActionWriteRequest) (*ActionWriteResult, error) {
-	if s == nil || s.query == nil || s.graph == nil {
+	if s == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	title := strings.TrimSpace(request.Title)
@@ -209,23 +270,18 @@ func (s *Service) WriteAction(ctx context.Context, request ActionWriteRequest) (
 		return nil, fmt.Errorf("%w: action target ids are required", ErrInvalidRequest)
 	}
 	tenantID := inferTenantID(request.Metadata, append(targetIDs, request.DecisionID)...)
+	if err := validateTenantScopedIDs(tenantID, append(targetIDs, request.DecisionID)...); err != nil {
+		return nil, err
+	}
 	sourceSystem := firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem)
 	decisionID := ""
 	if strings.TrimSpace(request.DecisionID) != "" {
 		decisionID = workflowevents.CanonicalWorkflowID(tenantID, decisionEntityType, request.DecisionID, decisionEntityType, targetIDs, request.ValidFrom)
-		if err := s.requireEntity(ctx, decisionID); err != nil {
-			return nil, err
-		}
 	}
 	observedAt := normalizeObservedAt(request.ObservedAt)
 	validFrom := normalizeValidFrom(request.ValidFrom, observedAt)
 	actionType := firstNonEmpty(strings.TrimSpace(request.InsightType), defaultActionType)
 	actionID := workflowevents.CanonicalWorkflowID(tenantID, actionEntityType, request.ID, actionType, append([]string{decisionID}, targetIDs...), request.ObservedAt)
-	for _, targetID := range targetIDs {
-		if err := s.requireEntity(ctx, targetID); err != nil {
-			return nil, err
-		}
-	}
 	validTo := ""
 	if !request.ValidTo.UTC().IsZero() {
 		validTo = request.ValidTo.UTC().Format(time.RFC3339Nano)
@@ -253,22 +309,24 @@ func (s *Service) WriteAction(ctx context.Context, request ActionWriteRequest) (
 	if err != nil {
 		return nil, err
 	}
-	if err := s.recordWorkflowEvent(ctx, event); err != nil {
-		return nil, fmt.Errorf("append action workflow event %q: %w", event.GetId(), err)
-	}
-	if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
-		return nil, fmt.Errorf("project action workflow event %q: %w", event.GetId(), err)
+	statuses, err := s.recordAndProject(ctx, event)
+	if err != nil {
+		return nil, fmt.Errorf("record action workflow event %q: %w", event.GetId(), err)
 	}
 	return &ActionWriteResult{
-		ActionID:    actionID,
-		DecisionID:  decisionID,
-		TargetCount: boundedUint32(len(targetIDs)),
+		ActionID:                actionID,
+		DecisionID:              decisionID,
+		TargetCount:             boundedUint32(len(targetIDs)),
+		EventID:                 event.GetId(),
+		DurabilityStatus:        statuses.DurabilityStatus,
+		ProjectionStatus:        statuses.ProjectionStatus,
+		ProjectionErrorCategory: statuses.ProjectionErrorCategory,
 	}, nil
 }
 
 // WriteOutcome records one outcome node tied back to one decision.
 func (s *Service) WriteOutcome(ctx context.Context, request OutcomeWriteRequest) (*OutcomeWriteResult, error) {
-	if s == nil || s.query == nil || s.graph == nil {
+	if s == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	outcomeType := strings.TrimSpace(request.OutcomeType)
@@ -281,22 +339,17 @@ func (s *Service) WriteOutcome(ctx context.Context, request OutcomeWriteRequest)
 	}
 	targetIDs := normalizeIDs(request.TargetIDs)
 	tenantID := inferTenantID(request.Metadata, append(targetIDs, request.DecisionID)...)
+	if err := validateTenantScopedIDs(tenantID, append(targetIDs, request.DecisionID)...); err != nil {
+		return nil, err
+	}
 	sourceSystem := firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem)
 	decisionID := workflowevents.CanonicalWorkflowID(tenantID, decisionEntityType, request.DecisionID, decisionEntityType, targetIDs, request.ValidFrom)
 	if strings.TrimSpace(request.DecisionID) == "" {
 		return nil, fmt.Errorf("%w: outcome decision id is required", ErrInvalidRequest)
 	}
-	if err := s.requireEntity(ctx, decisionID); err != nil {
-		return nil, err
-	}
 	observedAt := normalizeObservedAt(request.ObservedAt)
 	validFrom := normalizeValidFrom(request.ValidFrom, observedAt)
 	outcomeID := workflowevents.CanonicalWorkflowID(tenantID, outcomeEntityType, request.ID, outcomeType, append([]string{decisionID}, targetIDs...), request.ObservedAt)
-	for _, targetID := range targetIDs {
-		if err := s.requireEntity(ctx, targetID); err != nil {
-			return nil, err
-		}
-	}
 	validTo := ""
 	if !request.ValidTo.UTC().IsZero() {
 		validTo = request.ValidTo.UTC().Format(time.RFC3339Nano)
@@ -320,16 +373,18 @@ func (s *Service) WriteOutcome(ctx context.Context, request OutcomeWriteRequest)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.recordWorkflowEvent(ctx, event); err != nil {
-		return nil, fmt.Errorf("append outcome workflow event %q: %w", event.GetId(), err)
-	}
-	if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
-		return nil, fmt.Errorf("project outcome workflow event %q: %w", event.GetId(), err)
+	statuses, err := s.recordAndProject(ctx, event)
+	if err != nil {
+		return nil, fmt.Errorf("record outcome workflow event %q: %w", event.GetId(), err)
 	}
 	return &OutcomeWriteResult{
-		OutcomeID:   outcomeID,
-		DecisionID:  decisionID,
-		TargetCount: boundedUint32(len(targetIDs)),
+		OutcomeID:               outcomeID,
+		DecisionID:              decisionID,
+		TargetCount:             boundedUint32(len(targetIDs)),
+		EventID:                 event.GetId(),
+		DurabilityStatus:        statuses.DurabilityStatus,
+		ProjectionStatus:        statuses.ProjectionStatus,
+		ProjectionErrorCategory: statuses.ProjectionErrorCategory,
 	}, nil
 }
 
@@ -343,28 +398,58 @@ func boundedUint32(value int) uint32 {
 	return uint32(value)
 }
 
-func (s *Service) requireEntity(ctx context.Context, id string) error {
-	if s == nil || s.query == nil {
-		return ErrRuntimeUnavailable
-	}
-	entityID := strings.TrimSpace(id)
-	if entityID == "" {
-		return fmt.Errorf("%w: graph entity id is required", ErrInvalidRequest)
-	}
-	if _, err := s.query.GetEntityNeighborhood(ctx, entityID, defaultGraphLookupLimit); err != nil {
-		if errors.Is(err, ports.ErrGraphEntityNotFound) {
-			return fmt.Errorf("%w: %s", ports.ErrGraphEntityNotFound, entityID)
-		}
-		return fmt.Errorf("load graph entity %q: %w", entityID, err)
-	}
-	return nil
+type writeStatuses struct {
+	DurabilityStatus        string
+	ProjectionStatus        string
+	ProjectionErrorCategory string
 }
 
-func (s *Service) recordWorkflowEvent(ctx context.Context, event *cerebrov1.EventEnvelope) error {
-	if s == nil || s.appendLog == nil {
-		return nil
+func (s *Service) recordAndProject(ctx context.Context, event *cerebrov1.EventEnvelope) (writeStatuses, error) {
+	statuses := writeStatuses{DurabilityStatus: DurabilityNotRecorded, ProjectionStatus: ProjectionNotConfigured}
+	if s == nil {
+		return statuses, ErrRuntimeUnavailable
 	}
-	return s.appendLog.Append(ctx, event)
+	if s.appendLog == nil {
+		if s.durabilityMode == DurabilityRequired {
+			recordKnowledgeWriteTelemetry(ctx, event, statuses, "append_log_not_configured")
+			return statuses, fmt.Errorf("%w: durable append log is required", ErrRuntimeUnavailable)
+		}
+	} else {
+		if err := s.appendLog.Append(ctx, event); err != nil {
+			recordKnowledgeWriteTelemetry(ctx, event, statuses, "append_failed")
+			return statuses, err
+		}
+		statuses.DurabilityStatus = DurabilityRecorded
+	}
+	if s.graph == nil {
+		recordKnowledgeWriteTelemetry(ctx, event, statuses, "")
+		return statuses, nil
+	}
+	if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
+		statuses.ProjectionStatus = ProjectionFailed
+		statuses.ProjectionErrorCategory = ProjectionErrorGraph
+		recordKnowledgeWriteTelemetry(ctx, event, statuses, ProjectionErrorGraph)
+		return statuses, nil //nolint:nilerr // The append succeeded; projection failure is an explicit replayable result state.
+	}
+	statuses.ProjectionStatus = ProjectionProjected
+	recordKnowledgeWriteTelemetry(ctx, event, statuses, "")
+	return statuses, nil
+}
+
+func recordKnowledgeWriteTelemetry(ctx context.Context, event *cerebrov1.EventEnvelope, statuses writeStatuses, errorCategory string) {
+	eventKind := ""
+	if event != nil {
+		eventKind = event.GetKind()
+	}
+	telemetry.Event(ctx, "knowledge.write", telemetry.Attrs(
+		telemetry.Field{Key: "knowledge.event_kind", Value: eventKind},
+		telemetry.Field{Key: "knowledge.durability_status", Value: statuses.DurabilityStatus},
+		telemetry.Field{Key: "knowledge.projection_status", Value: statuses.ProjectionStatus},
+		telemetry.Field{Key: "error_category", Value: errorCategory},
+	))
+	telemetry.IncrementMain(ctx, "knowledge.write.count", 1)
+	telemetry.IncrementMain(ctx, "knowledge.write."+statuses.DurabilityStatus+".count", 1)
+	telemetry.IncrementMain(ctx, "knowledge.write.projection."+statuses.ProjectionStatus+".count", 1)
 }
 
 func inferTenantID(metadata map[string]any, ids ...string) string {
@@ -382,6 +467,21 @@ func inferTenantID(metadata map[string]any, ids ...string) string {
 		}
 	}
 	return defaultPlatformTenant
+}
+
+func validateTenantScopedIDs(tenantID string, ids ...string) error {
+	tenantID = strings.TrimSpace(tenantID)
+	for _, id := range ids {
+		trimmed := strings.TrimSpace(id)
+		if !strings.HasPrefix(trimmed, "urn:cerebro:") {
+			continue
+		}
+		parts := strings.Split(trimmed, ":")
+		if len(parts) < 4 || strings.TrimSpace(parts[2]) != tenantID {
+			return fmt.Errorf("%w: cross-tenant knowledge reference", ErrInvalidRequest)
+		}
+	}
+	return nil
 }
 
 func normalizeIDs(values []string) []string {

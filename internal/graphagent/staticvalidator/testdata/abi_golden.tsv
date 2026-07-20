@@ -1,0 +1,12 @@
+# max_rows	decision	limit	detail	query
+100	1	0	0	<empty>
+100	2	0	0	MATCH (e:Entity {tenant_id:$tenant_id}) CREATE (x) RETURN e LIMIT 1
+100	3	0	0	MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.periodic.iterate('a','b',{}) RETURN e LIMIT 1
+100	4	0	0	MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.convert.fromJsonMap(e.x) LIMIT 1
+100	5	0	0	MATCH (e:Entity {tenant_id:$tenant_id}) CALL db.labels() RETURN e LIMIT 1
+100	6	0	0	MATCH (e:Entity {tenant_id:$tenant_id})-[r:R*]->(x:Entity {tenant_id:$tenant_id}) RETURN x LIMIT 1
+100	7	0	0	MATCH (e:Entity {tenant_id:$tenant_id}) UNWIND range(1,2) AS x RETURN e LIMIT 1
+100	8	0	0	MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e
+100	9	0	101	MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 101
+100	10	0	0	MATCH (e:Entity) RETURN e LIMIT 1
+100	0	25	0	MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT 25

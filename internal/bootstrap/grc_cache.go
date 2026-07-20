@@ -18,6 +18,8 @@ import (
 
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/querycache"
+	httpcompression "github.com/writer/cerebro/internal/sourcehttp/compression"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const (
@@ -72,11 +74,11 @@ func (a *App) cacheGRCJSON(policy grcCachePolicy, next http.HandlerFunc) http.Ha
 				return
 			case querycache.StateStale:
 				response, refreshErr := a.queryCacheGroup.Do(key, func() (*capturedHTTPResponse, error) {
-					return captureHTTPResponse(next, r), nil
+					return captureCacheResponse(next, r), nil
 				})
 				if refreshErr == nil && response.cacheableJSON() {
-					_ = cache.Set(r.Context(), key, response.body.Bytes(), policy.TTL, policy.StaleTTL)
-					response.writeTo(w, "miss", policy)
+					setErr := cache.Set(r.Context(), key, response.body.Bytes(), policy.TTL, policy.StaleTTL)
+					response.writeTo(w, queryCacheWriteState(r.Context(), setErr), policy)
 					return
 				}
 				if refreshErr != nil || response == nil || response.statusCode >= http.StatusInternalServerError {
@@ -93,7 +95,7 @@ func (a *App) cacheGRCJSON(policy grcCachePolicy, next http.HandlerFunc) http.Ha
 		}
 
 		response, err := a.queryCacheGroup.Do(key, func() (*capturedHTTPResponse, error) {
-			return captureHTTPResponse(next, r), nil
+			return captureCacheResponse(next, r), nil
 		})
 		if err != nil || response == nil {
 			w.Header().Set("X-Cerebro-Cache", "bypass")
@@ -101,12 +103,24 @@ func (a *App) cacheGRCJSON(policy grcCachePolicy, next http.HandlerFunc) http.Ha
 			return
 		}
 		if response.cacheableJSON() {
-			_ = cache.Set(r.Context(), key, response.body.Bytes(), policy.TTL, policy.StaleTTL)
-			response.writeTo(w, "miss", policy)
+			setErr := cache.Set(r.Context(), key, response.body.Bytes(), policy.TTL, policy.StaleTTL)
+			response.writeTo(w, queryCacheWriteState(r.Context(), setErr), policy)
 			return
 		}
 		response.writeTo(w, "bypass", policy)
 	}
+}
+
+func queryCacheWriteState(ctx context.Context, err error) string {
+	if err == nil {
+		return "miss"
+	}
+	if errors.Is(err, querycache.ErrPayloadTooLarge) {
+		telemetry.IncrementMain(ctx, "query_cache.payload_too_large.count", 1)
+		return "skip"
+	}
+	telemetry.IncrementMain(ctx, "query_cache.write_error.count", 1)
+	return "bypass"
 }
 
 func (a *App) grcCachePolicy(family string, ttl time.Duration, scopes ...string) grcCachePolicy {
@@ -134,13 +148,14 @@ func (a *App) grcCacheKey(r *http.Request, policy grcCachePolicy) string {
 	tenantID := grcCacheTenantID(r)
 	versions := a.grcCacheVersions(r, tenantID, policy.VersionScopes)
 	material := map[string]any{
-		"family":   policy.Family,
-		"method":   r.Method,
-		"path":     r.URL.EscapedPath(),
-		"query":    canonicalRawQuery(r),
-		"auth":     grcCacheAuthMaterial(r),
-		"tenant":   tenantID,
-		"versions": versions,
+		"family":            policy.Family,
+		"method":            r.Method,
+		"path":              r.URL.EscapedPath(),
+		"query":             canonicalRawQuery(r),
+		"auth":              grcCacheAuthMaterial(r),
+		"tenant":            tenantID,
+		"versions":          versions,
+		"response_encoding": grcCacheResponseEncoding(r),
 	}
 	raw, err := json.Marshal(material)
 	if err != nil {
@@ -267,6 +282,10 @@ func captureHTTPResponse(handler http.HandlerFunc, r *http.Request) *capturedHTT
 	return response
 }
 
+func captureCacheResponse(handler http.HandlerFunc, r *http.Request) *capturedHTTPResponse {
+	return captureHTTPResponse(httpcompression.Middleware(handler).ServeHTTP, r)
+}
+
 func (w *capturedHTTPResponse) Header() http.Header {
 	return w.header
 }
@@ -301,6 +320,11 @@ func (w *capturedHTTPResponse) writeTo(dst http.ResponseWriter, cacheState strin
 
 func writeCachedJSON(w http.ResponseWriter, statusCode int, payload []byte, cacheState string, policy grcCachePolicy) {
 	w.Header().Set("Content-Type", "application/json")
+	if cachedPayloadIsGzip(payload) {
+		w.Header().Set("Content-Encoding", "gzip")
+	} else {
+		w.Header().Del("Content-Encoding")
+	}
 	setGRCQueryCacheHeaders(w.Header(), cacheState, policy)
 	w.WriteHeader(statusCode)
 	_, _ = w.Write(payload)
@@ -317,8 +341,8 @@ func copyHeaders(dst http.Header, src http.Header) {
 
 func setGRCQueryCacheHeaders(header http.Header, cacheState string, policy grcCachePolicy) {
 	header.Set("X-Cerebro-Cache", cacheState)
-	header.Set("Vary", appendVary(header.Get("Vary"), "Authorization", "X-Cerebro-API-Key", "X-Cerebro-Tenant"))
-	if cacheState != "bypass" && policy.TTL > 0 {
+	header.Set("Vary", appendVary(header.Get("Vary"), "Accept-Encoding", "Authorization", "X-Cerebro-API-Key", "X-Cerebro-Tenant"))
+	if (cacheState == "hit" || cacheState == "miss" || cacheState == "stale") && policy.TTL > 0 {
 		maxAge := int(policy.TTL / time.Second)
 		if maxAge < 1 {
 			maxAge = 1
@@ -333,6 +357,17 @@ func setGRCQueryCacheHeaders(header http.Header, cacheState string, policy grcCa
 		}
 		header.Set("Cache-Control", value)
 	}
+}
+
+func grcCacheResponseEncoding(r *http.Request) string {
+	if r != nil && httpcompression.AcceptsGzip(r.Header.Get("Accept-Encoding")) {
+		return "gzip"
+	}
+	return "identity"
+}
+
+func cachedPayloadIsGzip(payload []byte) bool {
+	return len(payload) >= 2 && payload[0] == 0x1f && payload[1] == 0x8b
 }
 
 func appendVary(existing string, values ...string) string {

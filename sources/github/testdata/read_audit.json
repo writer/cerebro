@@ -1,22 +1,47 @@
 [
   {
-    "id": "github-audit-1",
-    "tenant_id": "writer",
+    "id": "github-api-playground-audit-80b1a5c33a4e8e7b",
+    "tenant_id": "api-playground",
     "source_id": "github",
     "kind": "github.audit",
-    "occurred_at": "2026-04-22T18:00:00Z",
+    "occurred_at": "2022-08-30T05:16:50Z",
     "schema_ref": "github/audit/v1",
     "payload": {
-      "action": "repo.create",
-      "actor": "octocat",
-      "org": "writer",
-      "repository": "writer/cerebro"
+      "action": "org.add_member",
+      "actor": "octokit",
+      "actor_type": "Unresolved",
+      "business": "codeforamerica",
+      "operation_type": "create",
+      "org": "codeforamerica",
+      "resource_id": "new-octokit",
+      "resource_type": "org",
+      "scope": "organization",
+      "user": "new-octokit",
+      "raw": {
+        "@timestamp": "2022-08-30T05:16:50.662Z",
+        "_document_id": "DKjUdviTAq5bSG1TGm8lcA",
+        "action": "org.add_member",
+        "actor": "octokit",
+        "business": "codeforamerica",
+        "created_at": "2022-08-30T05:16:50.662Z",
+        "operation_type": "create",
+        "org": "codeforamerica",
+        "permission": "read",
+        "user": "new-octokit"
+      }
     },
     "attributes": {
-      "action": "repo.create",
-      "actor": "octocat",
-      "org": "writer",
-      "repository": "writer/cerebro"
+      "action": "org.add_member",
+      "actor": "octokit",
+      "actor_type": "Unresolved",
+      "family": "audit",
+      "operation_type": "create",
+      "org": "codeforamerica",
+      "permission": "read",
+      "resource_id": "new-octokit",
+      "resource_type": "org",
+      "scope": "organization",
+      "user": "new-octokit"
     }
   }
 ]

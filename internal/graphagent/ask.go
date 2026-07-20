@@ -1281,7 +1281,7 @@ func unsupportedQuery(reason string, traceID string, code string) UnsupportedQue
 	return UnsupportedQuery{
 		Code:             firstNonEmpty(code, unsupportedQueryCode(reason)),
 		Reason:           reason,
-		SupportedIntents: []string{IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentFailingControls, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk, IntentQuestionnaireEvidence, IntentMITREAttackCoverage},
+		SupportedIntents: []string{IntentGraphRows, IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentFailingControls, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk, IntentQuestionnaireEvidence, IntentMITREAttackCoverage},
 		SuggestedRewrites: []string{
 			"Summarize open high-risk findings and cite the affected entities.",
 			"Show controls with open findings and cite the affected resources.",

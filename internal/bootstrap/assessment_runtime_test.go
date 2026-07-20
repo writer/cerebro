@@ -2,6 +2,10 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,6 +27,9 @@ func TestNewRegistersAssessmentRuntimeWhenDurableCapabilitiesExist(t *testing.T)
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0"}, Dependencies{StateStore: store, AppendLog: log}, nil)
 	if app.services.assessments == nil {
 		t.Fatal("assessment service = nil, want configured service")
+	}
+	if collector := assessmentCollector(store, store); collector == nil {
+		t.Fatal("assessment collector = nil, want finding evaluation collector")
 	}
 	job, created, err := app.jobService().Create(context.Background(), ports.CreateJobRequest{
 		Kind: complianceassessment.JobKindComplianceAssessment, TenantID: "tenant-1",
@@ -90,12 +97,125 @@ func TestStartPlatformJobRecoveryIncludesAssessmentLoop(t *testing.T) {
 	}
 }
 
+func TestStartPlatformJobRecoveryDoesNotBlockOnProjectionReplay(t *testing.T) {
+	started := make(chan struct{})
+	store := &assessmentRuntimeStore{a2ATestJobStore: newA2ATestJobStore()}
+	log := &blockingAssessmentRuntimeLog{started: started}
+	app := &App{}
+	app.services.jobs = platformjobs.New(store)
+	app.services.assessments = complianceassessment.NewAssessmentService(
+		store,
+		log,
+		app.services.jobs,
+		nil,
+	).WithEventReplayPager(log)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := app.StartPlatformJobRecovery(ctx, nil)
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("projection replay did not start asynchronously")
+	}
+	select {
+	case <-done:
+		cancel()
+		t.Fatal("platform recovery stopped while projection replay was active")
+	default:
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("platform recovery did not stop after projection replay cancellation")
+	}
+}
+
+func TestStartPlatformJobRecoveryRetriesProjectionReplayBeforeContinuousRecovery(t *testing.T) {
+	recovered := make(chan struct{})
+	log := &retryingAssessmentRuntimeLog{recovered: recovered}
+	store := &assessmentRuntimeStore{a2ATestJobStore: newA2ATestJobStore()}
+	app := &App{}
+	app.services.jobs = platformjobs.New(store)
+	app.services.assessments = complianceassessment.NewAssessmentService(store, log, app.services.jobs, nil).WithEventReplayPager(log)
+	ctx, cancel := context.WithCancel(context.Background())
+	logged := make(chan string, 1)
+	done := app.startPlatformJobRecovery(ctx, func(format string, args ...any) {
+		logged <- fmt.Sprintf(format, args...)
+	}, time.Millisecond)
+
+	select {
+	case <-recovered:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("projection replay was not retried")
+	}
+	select {
+	case message := <-logged:
+		if !strings.Contains(message, "temporary replay failure") {
+			cancel()
+			t.Fatalf("recovery log = %q, want replay failure", message)
+		}
+	default:
+		cancel()
+		t.Fatal("initial projection replay failure was not logged")
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("platform recovery did not stop after retry cancellation")
+	}
+}
+
 type assessmentRuntimeLog struct{}
 
 func (*assessmentRuntimeLog) Ping(context.Context) error                             { return nil }
 func (*assessmentRuntimeLog) Append(context.Context, *cerebrov1.EventEnvelope) error { return nil }
 func (*assessmentRuntimeLog) ReplayPage(context.Context, ports.ReplayRequest) (ports.ReplayPage, error) {
 	return ports.ReplayPage{Complete: true}, nil
+}
+
+type blockingAssessmentRuntimeLog struct {
+	started chan struct{}
+}
+
+type retryingAssessmentRuntimeLog struct {
+	calls     atomic.Uint32
+	recovered chan struct{}
+}
+
+func (*retryingAssessmentRuntimeLog) Ping(context.Context) error { return nil }
+func (*retryingAssessmentRuntimeLog) Append(context.Context, *cerebrov1.EventEnvelope) error {
+	return nil
+}
+func (l *retryingAssessmentRuntimeLog) ReplayPage(context.Context, ports.ReplayRequest) (ports.ReplayPage, error) {
+	if l.calls.Add(1) == 1 {
+		return ports.ReplayPage{}, errors.New("temporary replay failure")
+	}
+	select {
+	case <-l.recovered:
+	default:
+		close(l.recovered)
+	}
+	return ports.ReplayPage{Complete: true}, nil
+}
+
+func (*blockingAssessmentRuntimeLog) Ping(context.Context) error { return nil }
+func (*blockingAssessmentRuntimeLog) Append(context.Context, *cerebrov1.EventEnvelope) error {
+	return nil
+}
+func (l *blockingAssessmentRuntimeLog) ReplayPage(ctx context.Context, _ ports.ReplayRequest) (ports.ReplayPage, error) {
+	select {
+	case <-l.started:
+	default:
+		close(l.started)
+	}
+	<-ctx.Done()
+	return ports.ReplayPage{}, ctx.Err()
 }
 
 type assessmentRuntimeStore struct {
@@ -133,5 +253,11 @@ func (s *assessmentRuntimeStore) ApplyResultChunk(context.Context, string, strin
 	return nil
 }
 func (s *assessmentRuntimeStore) ListResultChunks(context.Context, string, string) ([]complianceassessment.ResultChunk, error) {
+	return nil, nil
+}
+func (s *assessmentRuntimeStore) ListSourceRuntimes(context.Context, ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	return nil, nil
+}
+func (s *assessmentRuntimeStore) ListFindingEvaluationRuns(context.Context, ports.ListFindingEvaluationRunsRequest) ([]*cerebrov1.FindingEvaluationRun, error) {
 	return nil, nil
 }

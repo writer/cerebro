@@ -1,0 +1,27 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: github
+family: dependabot_alert
+case: dependabot_alerts
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedRestrictedFamilies
+request:
+    method: GET
+    url: https://api.github.com/repos/coopernetes/PyGithub/dependabot/alerts
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2024-01-20T22:04:12Z"
+    sha256: 15107b9878d98010ccad33cab66601c7669349ee6ce47c0983a5109712daf596
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: upstream_recording
+    repository: https://github.com/PyGithub/PyGithub
+    commit: e36ffcbb02ed5584e0dc46307e9a98c3214d98a6
+    path: tests/ReplayData/DependabotAlert.testMultipleAlerts.txt
+    artifact_sha256: 3e10663fa21b5abcc7af5c8a6e7a6cc9fc4aaccba2e0facda046c22b7aff9552
+    license: LGPL-3.0-or-later
+    recording_tool: PyGithub-ReplayData
+    harness_path: tests/Framework.py
+    freshness: historical
+    capture_time_basis: response_header

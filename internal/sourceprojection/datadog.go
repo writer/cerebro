@@ -200,18 +200,6 @@ func entitiesAndLinksWithNilError(entityMap map[string]*ports.ProjectedEntity, l
 	return outEntities, outLinks, nil
 }
 
-func projectionMaps(entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) (map[string]*ports.ProjectedEntity, map[string]*ports.ProjectedLink) {
-	entityMap := map[string]*ports.ProjectedEntity{}
-	linkMap := map[string]*ports.ProjectedLink{}
-	for _, entity := range entities {
-		addEntity(entityMap, entity)
-	}
-	for _, link := range links {
-		addLink(linkMap, link)
-	}
-	return entityMap, linkMap
-}
-
 func datadogContextValues(attrs map[string]string, key string) []string {
 	seen := map[string]struct{}{}
 	values := []string{}

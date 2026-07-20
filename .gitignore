@@ -15,6 +15,7 @@ dist/
 *.dylib
 
 vendor/
+target/
 
 # Go
 *.test

@@ -39,7 +39,7 @@ config:
   cerebro:maxReplicas:
     type: integer
     default: 1
-    description: Maximum number of API replicas.
+    description: Maximum number of API replicas. Must remain 1 while device authentication uses process-local DPoP replay protection.
   cerebro:cpu:
     type: integer
     default: 1

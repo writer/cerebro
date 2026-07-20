@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -747,6 +749,116 @@ func TestServiceIngestTelemetryIdempotent(t *testing.T) {
 
 	if _, err := service.IngestTelemetry(ctx, IngestPayload{DeviceID: enroll.DeviceID, IdempotencyKey: "abc-123", Body: []byte(`{"events":[{"type":"different"}]}`)}); !errors.Is(err, ErrIdempotencyConflict) {
 		t.Fatalf("conflicting body err = %v, want ErrIdempotencyConflict", err)
+	}
+}
+
+func TestServiceIngestTelemetryDoesNotCacheFailedPersistence(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	deviceJWK := newEnrollDeviceJWK(t)
+	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1", DeviceJWK: deviceJWK})
+
+	body := []byte(`{"events":[{"type":"agent_execution_receipt"}]}`)
+	persistErr := errors.New("append unavailable")
+	_, err := service.IngestTelemetry(ctx, IngestPayload{
+		DeviceID:       enroll.DeviceID,
+		IdempotencyKey: "receipt-1",
+		Body:           body,
+		Persist: func(context.Context) error {
+			return persistErr
+		},
+	})
+	if !errors.Is(err, persistErr) {
+		t.Fatalf("failed persistence error = %v, want %v", err, persistErr)
+	}
+	persisted := 0
+	result, err := service.IngestTelemetry(ctx, IngestPayload{
+		DeviceID:       enroll.DeviceID,
+		IdempotencyKey: "receipt-1",
+		Body:           body,
+		Persist: func(context.Context) error {
+			persisted++
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("retry IngestTelemetry: %v", err)
+	}
+	if result.Cached || persisted != 1 {
+		t.Fatalf("retry result cached/persisted = %v/%d, want false/1", result.Cached, persisted)
+	}
+	result, err = service.IngestTelemetry(ctx, IngestPayload{
+		DeviceID:       enroll.DeviceID,
+		IdempotencyKey: "receipt-1",
+		Body:           body,
+		Persist: func(context.Context) error {
+			persisted++
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("cached IngestTelemetry: %v", err)
+	}
+	if !result.Cached || persisted != 1 {
+		t.Fatalf("cached result cached/persisted = %v/%d, want true/1", result.Cached, persisted)
+	}
+}
+
+func TestServiceIngestTelemetrySerializesConflictingConcurrentRequests(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	deviceJWK := newEnrollDeviceJWK(t)
+	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1", DeviceJWK: deviceJWK})
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var persisted atomic.Int32
+	results := make(chan error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, err := service.IngestTelemetry(ctx, IngestPayload{
+			DeviceID: enroll.DeviceID, IdempotencyKey: "same-key", Body: []byte(`{"events":[1]}`),
+			Persist: func(context.Context) error {
+				persisted.Add(1)
+				close(started)
+				<-release
+				return nil
+			},
+		})
+		results <- err
+	}()
+	<-started
+	go func() {
+		defer wg.Done()
+		_, err := service.IngestTelemetry(ctx, IngestPayload{
+			DeviceID: enroll.DeviceID, IdempotencyKey: "same-key", Body: []byte(`{"events":[2]}`),
+			Persist: func(context.Context) error {
+				persisted.Add(1)
+				return nil
+			},
+		})
+		results <- err
+	}()
+	close(release)
+	wg.Wait()
+	close(results)
+	var succeeded, conflicted int
+	for err := range results {
+		switch {
+		case err == nil:
+			succeeded++
+		case errors.Is(err, ErrIdempotencyConflict):
+			conflicted++
+		default:
+			t.Fatalf("concurrent ingest error = %v", err)
+		}
+	}
+	if succeeded != 1 || conflicted != 1 || persisted.Load() != 1 {
+		t.Fatalf("concurrent outcomes success/conflict/persist = %d/%d/%d, want 1/1/1", succeeded, conflicted, persisted.Load())
 	}
 }
 

@@ -2,7 +2,9 @@ package bootstrap
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,9 +12,26 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/mcpoperations"
 	"github.com/writer/cerebro/internal/ports"
 )
+
+type failingMCPTaskPacketContext struct{ err error }
+
+func (context failingMCPTaskPacketContext) agentCoverageContext(context.Context, string) (*agentplatform.AgentCoverageContext, error) {
+	return nil, context.err
+}
+
+func TestMCPTaskEvidencePacketPropagatesCoverageContextFailure(t *testing.T) {
+	wantErr := errors.New("coverage context unavailable")
+	builder := currentAgentEvidencePacketBuilder{context: failingMCPTaskPacketContext{err: wantErr}}
+
+	_, _, err := builder.Build(context.Background(), agentplatform.EvidencePacketRequest{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Build() error = %v, want %v", err, wantErr)
+	}
+}
 
 func TestMCPInventoryCoversEveryToolDefinition(t *testing.T) {
 	definitions := map[string]struct{}{}
@@ -52,7 +71,7 @@ func TestMCPBoolArgParsesJSONNumbers(t *testing.T) {
 	}
 }
 
-func TestMCPTaskProfileIsBoundedAndPreservesDefaultTools(t *testing.T) {
+func TestMCPDefaultAndTaskProfilesExposeTenTools(t *testing.T) {
 	server := newMCPTestServer(t, &stubRuntimeStore{})
 	defer server.Close()
 
@@ -63,12 +82,16 @@ func TestMCPTaskProfileIsBoundedAndPreservesDefaultTools(t *testing.T) {
 	})
 	tools := taskResponse["result"].(map[string]any)["tools"].([]any)
 	want := map[string]bool{
-		"cerebro.health":          true,
-		"cerebro.version":         true,
-		"cerebro.risk.explain":    true,
-		"cerebro.evidence.packet": true,
-		"cerebro.sources.health":  true,
-		"cerebro.action.plan":     true,
+		"cerebro.health":                true,
+		"cerebro.version":               true,
+		"cerebro.findings.search":       true,
+		"cerebro.assets.search":         true,
+		"cerebro.graph.reason":          true,
+		"cerebro.investigation.context": true,
+		"cerebro.risk.explain":          true,
+		"cerebro.evidence.packet":       true,
+		"cerebro.sources.health":        true,
+		"cerebro.action.plan":           true,
 	}
 	if len(tools) != len(want) {
 		t.Fatalf("task profile tool count = %d, want %d: %#v", len(tools), len(want), tools)
@@ -85,7 +108,7 @@ func TestMCPTaskProfileIsBoundedAndPreservesDefaultTools(t *testing.T) {
 		"id":      2,
 		"method":  "tools/call",
 		"params": map[string]any{
-			"name":      "cerebro.graph.reason",
+			"name":      "cerebro.graph.paths",
 			"arguments": map[string]any{"question": "show paths"},
 		},
 	})
@@ -93,14 +116,42 @@ func TestMCPTaskProfileIsBoundedAndPreservesDefaultTools(t *testing.T) {
 		t.Fatalf("task profile expert call = %#v, want tool error", expertCall)
 	}
 
-	defaultResponse, _ := postMCP(t, server, "", map[string]any{
+	defaultResponse := postMCPWithToolset(t, server, "", map[string]any{
 		"jsonrpc": "2.0",
 		"id":      3,
 		"method":  "tools/list",
 	})
 	defaultTools := defaultResponse["result"].(map[string]any)["tools"].([]any)
-	if !mcpToolListContains(defaultTools, "cerebro.graph.reason") {
-		t.Fatalf("default MCP profile no longer exposes expert tools")
+	if len(defaultTools) != len(want) {
+		t.Fatalf("default tool count = %d, want %d: %#v", len(defaultTools), len(want), defaultTools)
+	}
+	for _, raw := range defaultTools {
+		name := raw.(map[string]any)["name"].(string)
+		if !want[name] {
+			t.Fatalf("default profile exposed unexpected tool %q", name)
+		}
+	}
+	defaultExpertCall := postMCPWithToolset(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.graph.paths",
+			"arguments": map[string]any{},
+		},
+	})
+	if defaultExpertCall["result"].(map[string]any)["isError"] != true {
+		t.Fatalf("default profile expert call = %#v, want tool error", defaultExpertCall)
+	}
+
+	fullResponse := postMCPWithToolset(t, server, "full", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      5,
+		"method":  "tools/list",
+	})
+	fullTools := fullResponse["result"].(map[string]any)["tools"].([]any)
+	if len(fullTools) != len(mcpTools()) || !mcpToolListContains(fullTools, "cerebro.graph.paths") || !mcpToolListContains(fullTools, "cerebro.assessments.plan.create") {
+		t.Fatalf("full compatibility profile = %#v", fullTools)
 	}
 }
 
@@ -211,6 +262,7 @@ func TestMCPTaskTelemetryRecordsOperationStateWithoutPrompt(t *testing.T) {
 		"mcp.tool_behavior":       "read",
 		"mcp.tool_owner":          "agent-platform",
 		"mcp.task":                true,
+		"mcp.task_state":          "partial",
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
@@ -219,6 +271,11 @@ func TestMCPTaskTelemetryRecordsOperationStateWithoutPrompt(t *testing.T) {
 }
 
 func postMCPWithTaskProfile(t *testing.T, server *httptest.Server, payload map[string]any) map[string]any {
+	t.Helper()
+	return postMCPWithToolset(t, server, "task", payload)
+}
+
+func postMCPWithToolset(t *testing.T, server *httptest.Server, toolset string, payload map[string]any) map[string]any {
 	t.Helper()
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -232,7 +289,9 @@ func postMCPWithTaskProfile(t *testing.T, server *httptest.Server, payload map[s
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
-	req.Header.Set("X-Cerebro-MCP-Toolsets", "task")
+	if toolset != "" {
+		req.Header.Set("X-Cerebro-MCP-Toolsets", toolset)
+	}
 	response, err := server.Client().Do(req)
 	if err != nil {
 		t.Fatalf("POST MCP request: %v", err)

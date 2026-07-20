@@ -97,6 +97,12 @@ the long-running reasoning pipeline. That deadline is owned by `net/http` and
 the response writer, so the hook belongs in bootstrap instead of the graphagent
 domain package.
 
+The budget also includes explicit source-coverage evaluator error propagation at
+HTTP, MCP, and A2A boundaries. Coverage classification remains in
+`internal/sourcecoverage`; bootstrap only maps an unavailable embedded evaluator
+to the existing runtime-unavailable transport responses instead of treating a
+failed evaluation as an empty coverage result.
+
 The budget includes request-boundary wide-event annotations for auth, OAuth,
 MCP, GRC dashboard, and GRC ask handlers. These annotations stay in bootstrap
 because they combine HTTP status, response-writer timing, route shape, and
@@ -109,6 +115,25 @@ The budget also includes the A2A gateway adapter that maps authenticated tenant
 context, the platform job store, coverage context, and evidence authorizers into
 `internal/a2agateway`. Durable task lifecycle behavior stays in that domain
 package; bootstrap only wires the HTTP boundary into it.
+
+Policy evaluation experiments add operator-scoped request mapping, generic
+platform-job normalization, and evaluator dependency wiring in bootstrap.
+Immutable candidate and checkpoint pins, lifecycle transitions, checkpoint
+verification, current-graph canary execution, and append-only observation
+receipts remain behind `internal/policycandidate`; Postgres remains the only
+current-state persistence adapter. The experiment runner cannot write findings
+or activate policy.
+
+Policy evaluation datasets add route registration, auth policy, tenant and
+actor resolution, and state-store capability wiring in bootstrap. Bounded
+synthetic-fixture validation, immutable revision digests, optimistic append
+semantics, and read-time integrity verification remain behind
+`internal/policycandidate`; HTTP mapping lives in
+`internal/sourcehttp/policyevaluationdatasets`, and Postgres remains the durable
+persistence adapter. Dataset routes cannot execute fixtures, write findings, or
+activate policy. Dataset reads use a dedicated least-privilege scope, while
+proposal and approval scopes are reserved separately from candidate execution;
+direct dataset revision writes remain operator-only.
 
 The GRC domain packages (grccatalog, grccontrol, grcfindings, grcinventory,
 grcpolicylifecycle, grcprogram, grctrends, grcvendor, and compliance) are documented in
@@ -227,6 +252,17 @@ Agent claim verification and agent work ledger semantics also live in
 and MCP request/response mapping for the control-plane snapshot, claim
 verification request shape, tenant/URN authorization boundary, and durable work
 contract response.
+
+Agent assessment operations reuse `internal/complianceassessment` as the
+domain owner. That package owns plan and run semantics, canonical result-chunk
+verification, bounded complete-run collection, baseline comparison, and
+remediation proposal shaping. `internal/mcpoperations` owns the checked-in tool
+inventory and JSON schemas. The bootstrap budget includes only assessment MCP
+registration, argument decoding, tenant and per-tool scope enforcement,
+evidence/finding response composition through existing safe MCP adapters, and
+transport metadata. Assessment writes use the same append-first service,
+Postgres projection, optimistic version, and idempotency contracts as the HTTP
+routes; no MCP-specific state or graph write path exists.
 
 The append-log runtime replay index is populated by a global maintenance job
 whose scan-and-persist loop lives in `internal/appendlogindex`. The bootstrap

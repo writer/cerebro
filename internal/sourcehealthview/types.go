@@ -37,22 +37,24 @@ type Sync struct {
 }
 
 type GraphRun struct {
-	ID                string `json:"id"`
-	Status            string `json:"status"`
-	StartedAt         string `json:"started_at,omitempty"`
-	FinishedAt        string `json:"finished_at,omitempty"`
-	Error             string `json:"error,omitempty"`
-	PagesRead         int64  `json:"pages_read"`
-	EventsRead        int64  `json:"events_read"`
-	EntitiesProjected int64  `json:"entities_projected"`
-	LinksProjected    int64  `json:"links_projected"`
-	GraphNodesBefore  int64  `json:"graph_nodes_before"`
-	GraphLinksBefore  int64  `json:"graph_links_before"`
-	GraphNodesAfter   int64  `json:"graph_nodes_after"`
-	GraphLinksAfter   int64  `json:"graph_links_after"`
-	GraphNodeDelta    int64  `json:"graph_node_delta"`
-	GraphLinkDelta    int64  `json:"graph_link_delta"`
-	DurationSeconds   *int64 `json:"duration_seconds,omitempty"`
+	ID                 string `json:"id"`
+	Status             string `json:"status"`
+	CheckpointCursor   string `json:"checkpoint_cursor,omitempty"`
+	CheckpointComplete *bool  `json:"checkpoint_complete,omitempty"`
+	StartedAt          string `json:"started_at,omitempty"`
+	FinishedAt         string `json:"finished_at,omitempty"`
+	Error              string `json:"error,omitempty"`
+	PagesRead          int64  `json:"pages_read"`
+	EventsRead         int64  `json:"events_read"`
+	EntitiesProjected  int64  `json:"entities_projected"`
+	LinksProjected     int64  `json:"links_projected"`
+	GraphNodesBefore   int64  `json:"graph_nodes_before"`
+	GraphLinksBefore   int64  `json:"graph_links_before"`
+	GraphNodesAfter    int64  `json:"graph_nodes_after"`
+	GraphLinksAfter    int64  `json:"graph_links_after"`
+	GraphNodeDelta     int64  `json:"graph_node_delta"`
+	GraphLinkDelta     int64  `json:"graph_link_delta"`
+	DurationSeconds    *int64 `json:"duration_seconds,omitempty"`
 }
 
 type FindingEvaluation struct {

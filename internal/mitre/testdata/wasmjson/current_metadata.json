@@ -1,0 +1,26 @@
+{
+  "attack_tactic_values": [
+    "Defense Evasion",
+    "mitre-ta0011",
+    "attack.initial-access",
+    "Collection:T1530"
+  ],
+  "attack_technique_values": [
+    "T1190",
+    "Native API"
+  ],
+  "attack_technique_id_values": [
+    "github,attack.t1562.001",
+    "https://attack.example.test/techniques/T1098/003/"
+  ],
+  "defend_tactic_values": [
+    "d3f:Model"
+  ],
+  "defend_technique_values": [
+    "https://d3fend.example.test/technique/ProcessScreenshot/",
+    "d3f:ProcessTermination"
+  ],
+  "defend_artifact_values": [
+    "d3f:Credential"
+  ]
+}

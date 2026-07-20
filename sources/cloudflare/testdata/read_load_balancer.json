@@ -1,43 +1,199 @@
 [
   {
+    "id": "cloudflare-tenant-load_balancer-5843eb9d5a099486",
+    "tenant_id": "tenant",
+    "source_id": "cloudflare",
+    "kind": "cloudflare.load_balancer",
+    "occurred_at": "2025-02-27T22:31:48Z",
+    "schema_ref": "cloudflare/load_balancer/v1",
+    "payload": {
+      "adaptive_routing": {
+        "failover_across_pools": false
+      },
+      "created_on": "2025-02-27T22:31:48.033418Z",
+      "default_pools": [
+        "example-a20b7572"
+      ],
+      "description": "",
+      "enabled": true,
+      "fallback_pool": "example-a20b7572",
+      "id": "example-552a8807",
+      "location_strategy": {
+        "mode": "pop",
+        "prefer_ecs": "proximity"
+      },
+      "modified_on": "2025-02-27T22:31:48.033418Z",
+      "name": "tf-testacc-lb-fwwjdnedoi.terraform.cfapi.net",
+      "networks": [
+        "cloudflare"
+      ],
+      "pop_pools": {},
+      "proxied": false,
+      "random_steering": {
+        "default_weight": 1
+      },
+      "region_pools": {},
+      "session_affinity": "none",
+      "session_affinity_attributes": {
+        "drain_duration": 0,
+        "samesite": "Auto",
+        "secure": "Auto",
+        "zero_downtime_failover": "none"
+      },
+      "steering_policy": "off",
+      "ttl": 30,
+      "zone_id": "example-26a2e403",
+      "zone_name": "terraform.cfapi.net"
+    },
     "attributes": {
-      "default_pools": "pool-1",
+      "default_pools": "example-a20b7572",
       "enabled": "true",
-      "external_id": "lb-1",
-      "fallback_pool": "pool-1",
+      "external_id": "example-552a8807",
+      "fallback_pool": "example-a20b7572",
       "family": "load_balancer",
-      "load_balancer_id": "lb-1",
-      "name": "www-lb",
-      "proxied": "true",
-      "resource_id": "lb-1",
-      "resource_name": "www-lb",
-      "resource_type": "load_balancer",
-      "resource_urn": "urn:cerebro:tenant:cloudflare_load_balancer:lb-1",
-      "source_event_id": "lb-1",
-      "source_product": "cloudflare",
+      "load_balancer_id": "example-552a8807",
+      "name": "tf-testacc-lb-fwwjdnedoi.terraform.cfapi.net",
+      "observed_at": "2025-02-27T22:31:48.033418Z",
       "provider": "cloudflare",
+      "proxied": "false",
+      "resource_id": "example-552a8807",
+      "resource_name": "tf-testacc-lb-fwwjdnedoi.terraform.cfapi.net",
+      "resource_type": "load_balancer",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_load_balancer:example-552a8807",
+      "source_event_id": "example-552a8807",
+      "source_product": "cloudflare",
       "source_provider": "cloudflare",
       "source_system": "cloudflare",
-      "steering_policy": "dynamic_latency",
+      "steering_policy": "off",
       "tenant_id": "tenant",
-      "zone_id": "zone-1"
-    },
-    "id": "cloudflare-load_balancer-event-1",
-    "kind": "cloudflare.load_balancer",
-    "occurred_at": "2026-06-01T00:00:00Z",
-    "payload": {
-      "id": "lb-1",
-      "name": "www-lb",
-      "fallback_pool": "pool-1",
-      "default_pools": [
-        "pool-1"
-      ],
-      "enabled": true,
-      "proxied": true,
-      "steering_policy": "dynamic_latency"
-    },
-    "schema_ref": "cloudflare/load_balancer/v1",
+      "zone_id": "example-26a2e403"
+    }
+  },
+  {
+    "id": "cloudflare-tenant-load_balancer-d521362b034ac3a5",
+    "tenant_id": "tenant",
     "source_id": "cloudflare",
-    "tenant_id": "tenant"
+    "kind": "cloudflare.load_balancer",
+    "occurred_at": "2025-02-27T22:34:45Z",
+    "schema_ref": "cloudflare/load_balancer/v1",
+    "payload": {
+      "adaptive_routing": {
+        "failover_across_pools": false
+      },
+      "created_on": "2025-02-27T22:34:45.092566Z",
+      "default_pools": [
+        "example-a3f92878"
+      ],
+      "description": "rules lb",
+      "enabled": true,
+      "fallback_pool": "example-a3f92878",
+      "id": "example-429be03b",
+      "location_strategy": {
+        "mode": "pop",
+        "prefer_ecs": "proximity"
+      },
+      "modified_on": "2025-02-27T22:34:45.092566Z",
+      "name": "tf-testacc-lb-sidcrfxrak.terraform.cfapi.net",
+      "networks": [
+        "cloudflare"
+      ],
+      "pop_pools": {},
+      "proxied": false,
+      "random_steering": {
+        "default_weight": 1
+      },
+      "region_pools": {},
+      "rules": [
+        {
+          "condition": "dns.qry.type == 28",
+          "disabled": false,
+          "name": "test rule 1",
+          "overrides": {
+            "adaptive_routing": {
+              "failover_across_pools": true
+            },
+            "location_strategy": {
+              "mode": "resolver_ip",
+              "prefer_ecs": "always"
+            },
+            "random_steering": {
+              "default_weight": 0.2,
+              "pool_weights": {
+                "c29c1dc121903fbea9f0c92e83a1b1e2": 0.4
+              }
+            },
+            "session_affinity_attributes": {
+              "require_all_headers": false,
+              "samesite": "Auto",
+              "secure": "Auto",
+              "zero_downtime_failover": "sticky"
+            },
+            "steering_policy": "geo"
+          },
+          "priority": 0
+        },
+        {
+          "condition": "dns.qry.type == 28",
+          "disabled": false,
+          "fixed_response": {
+            "content_type": "html",
+            "location": "www.example.com",
+            "message_body": "hello",
+            "status_code": 200
+          },
+          "name": "test rule 2",
+          "overrides": {},
+          "priority": 10,
+          "terminates": true
+        },
+        {
+          "condition": "dns.qry.type == 28",
+          "disabled": false,
+          "name": "test rule 3",
+          "overrides": {
+            "region_pools": {
+              "ENAM": [
+                "example-a3f92878"
+              ]
+            }
+          },
+          "priority": 20
+        }
+      ],
+      "session_affinity": "none",
+      "session_affinity_attributes": {
+        "drain_duration": 0,
+        "samesite": "Auto",
+        "secure": "Auto",
+        "zero_downtime_failover": "none"
+      },
+      "steering_policy": "off",
+      "ttl": 30,
+      "zone_id": "example-26a2e403",
+      "zone_name": "terraform.cfapi.net"
+    },
+    "attributes": {
+      "default_pools": "example-a3f92878",
+      "enabled": "true",
+      "external_id": "example-429be03b",
+      "fallback_pool": "example-a3f92878",
+      "family": "load_balancer",
+      "load_balancer_id": "example-429be03b",
+      "name": "tf-testacc-lb-sidcrfxrak.terraform.cfapi.net",
+      "observed_at": "2025-02-27T22:34:45.092566Z",
+      "provider": "cloudflare",
+      "proxied": "false",
+      "resource_id": "example-429be03b",
+      "resource_name": "tf-testacc-lb-sidcrfxrak.terraform.cfapi.net",
+      "resource_type": "load_balancer",
+      "resource_urn": "urn:cerebro:tenant:cloudflare_load_balancer:example-429be03b",
+      "source_event_id": "example-429be03b",
+      "source_product": "cloudflare",
+      "source_provider": "cloudflare",
+      "source_system": "cloudflare",
+      "steering_policy": "off",
+      "tenant_id": "tenant",
+      "zone_id": "example-26a2e403"
+    }
   }
 ]

@@ -15,22 +15,25 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/graphpaths"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const (
-	DefaultPageLimit         = 1
-	MaxPageLimit             = 100
-	DefaultStatusLimit       = 25
-	MaxStatusLimit           = 500
-	progressRunUpdateTimeout = 15 * time.Second
-	terminalRunUpdateTimeout = 15 * time.Second
-	defaultCleanupLimit      = 1000
+	DefaultPageLimit                  = 1
+	MaxPageLimit                      = 100
+	DefaultStatusLimit                = 25
+	MaxStatusLimit                    = 500
+	progressRunUpdateTimeout          = 15 * time.Second
+	terminalRunUpdateTimeout          = 15 * time.Second
+	defaultCleanupLimit               = 1000
+	projectionReconciliationAttribute = "projection_reconciliation_id"
 )
 
 var (
@@ -57,6 +60,7 @@ type RunStore interface {
 type ConfigPreparer func(context.Context, string, map[string]string) (map[string]string, error)
 
 type Service struct {
+	registry      *sourcecdk.Registry
 	sourceService *sourceops.Service
 	runtimeStore  ports.SourceRuntimeStore
 	projector     ports.SourceProjector
@@ -66,6 +70,10 @@ type Service struct {
 
 type projectionRecordProjector interface {
 	ProjectRecords(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
+}
+
+type contextProjectionRecordProjector interface {
+	ProjectRecordsContext(context.Context, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
 }
 
 type projectionRecordCleanupProjector interface {
@@ -95,26 +103,33 @@ type RuntimeRequest struct {
 	ResetCheckpoint          bool
 	ResetCompletedCheckpoint bool
 	Trigger                  string
+	RuntimeLeaseHeld         bool
+	ReconcileMaterialLinks   bool
 }
 
 type IngestResult struct {
-	SourceID               string `json:"source_id"`
-	TenantID               string `json:"tenant_id,omitempty"`
-	PagesRead              uint32 `json:"pages_read"`
-	EventsRead             uint32 `json:"events_read"`
-	EntitiesProjected      uint32 `json:"entities_projected"`
-	LinksProjected         uint32 `json:"links_projected"`
-	GraphNodesBefore       int64  `json:"graph_nodes_before,omitempty"`
-	GraphLinksBefore       int64  `json:"graph_links_before,omitempty"`
-	GraphNodesAfter        int64  `json:"graph_nodes_after,omitempty"`
-	GraphLinksAfter        int64  `json:"graph_links_after,omitempty"`
-	NextCursor             string `json:"next_cursor,omitempty"`
-	CheckpointID           string `json:"checkpoint_id,omitempty"`
-	CheckpointCursor       string `json:"checkpoint_cursor,omitempty"`
-	CheckpointResumed      bool   `json:"checkpoint_resumed,omitempty"`
-	CheckpointPersisted    bool   `json:"checkpoint_persisted,omitempty"`
-	CheckpointComplete     bool   `json:"checkpoint_complete,omitempty"`
-	CheckpointAlreadyFresh bool   `json:"checkpoint_already_fresh,omitempty"`
+	SourceID                            string `json:"source_id"`
+	TenantID                            string `json:"tenant_id,omitempty"`
+	PagesRead                           uint32 `json:"pages_read"`
+	EventsRead                          uint32 `json:"events_read"`
+	EntitiesProjected                   uint32 `json:"entities_projected"`
+	LinksProjected                      uint32 `json:"links_projected"`
+	GraphNodesBefore                    int64  `json:"graph_nodes_before,omitempty"`
+	GraphLinksBefore                    int64  `json:"graph_links_before,omitempty"`
+	GraphNodesAfter                     int64  `json:"graph_nodes_after,omitempty"`
+	GraphLinksAfter                     int64  `json:"graph_links_after,omitempty"`
+	NextCursor                          string `json:"next_cursor,omitempty"`
+	CheckpointID                        string `json:"checkpoint_id,omitempty"`
+	CheckpointCursor                    string `json:"checkpoint_cursor,omitempty"`
+	CheckpointResumed                   bool   `json:"checkpoint_resumed,omitempty"`
+	CheckpointPersisted                 bool   `json:"checkpoint_persisted,omitempty"`
+	CheckpointComplete                  bool   `json:"checkpoint_complete,omitempty"`
+	CheckpointAlreadyFresh              bool   `json:"checkpoint_already_fresh,omitempty"`
+	MaterialLinkReconciliationRequested bool   `json:"material_link_reconciliation_requested,omitempty"`
+	MaterialLinkReconciliationSupported bool   `json:"material_link_reconciliation_supported,omitempty"`
+	MaterialLinkReconciliationCompleted bool   `json:"material_link_reconciliation_completed,omitempty"`
+	ProjectionReconciliationID          string `json:"projection_reconciliation_id,omitempty"`
+	StaleMaterialLinksDeleted           uint32 `json:"stale_material_links_deleted,omitempty"`
 }
 
 type RunResult struct {
@@ -148,6 +163,7 @@ type HealthResult struct {
 
 func New(registry *sourcecdk.Registry, runtimeStore ports.SourceRuntimeStore, projector ports.SourceProjector, graphStore ports.GraphStore) *Service {
 	return &Service{
+		registry:      registry,
 		sourceService: sourceops.New(registry).WithInternalConfigAllowed(),
 		runtimeStore:  runtimeStore,
 		projector:     projector,
@@ -243,17 +259,28 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: runtime_id is required", ErrInvalidRequest)
 	}
+	leaseCtx, releaseLease, err := s.acquireRuntimeLease(ctx, runtimeID, request.RuntimeLeaseHeld)
+	if err != nil {
+		return nil, err
+	}
+	ctx = leaseCtx
+	defer func() {
+		if releaseErr := releaseLease(); releaseErr != nil {
+			err = errors.Join(err, fmt.Errorf("release graph ingest runtime %q lease: %w", runtimeID, releaseErr))
+		}
+	}()
 	pageLimit, err := normalizePageLimit(request.PageLimit)
 	if err != nil {
 		return nil, err
 	}
 	startedAt := time.Now().UTC()
 	run := graphstore.IngestRun{
-		ID:        ingestRunID(runtimeID, startedAt),
-		RuntimeID: runtimeID,
-		Status:    graphstore.IngestRunStatusRunning,
-		Trigger:   ingestTrigger(request.Trigger),
-		StartedAt: startedAt.Format(time.RFC3339Nano),
+		ID:                      ingestRunID(runtimeID, startedAt),
+		RuntimeID:               runtimeID,
+		CheckpointCompleteKnown: true,
+		Status:                  graphstore.IngestRunStatusRunning,
+		Trigger:                 ingestTrigger(request.Trigger),
+		StartedAt:               startedAt.Format(time.RFC3339Nano),
 	}
 	result = &RunResult{Run: run}
 	if err := runStore.PutIngestRun(ctx, run); err != nil {
@@ -279,6 +306,13 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 		CheckpointID:             runtimeCheckpointID(request, runtime, runtimeConfig),
 		ResetCheckpoint:          request.ResetCheckpoint,
 		ResetCompletedCheckpoint: request.ResetCompletedCheckpoint,
+		ReconcileMaterialLinks:   request.ReconcileMaterialLinks,
+	}
+	if request.ReconcileMaterialLinks {
+		ingestRequest.ReconciliationSupported = s.supportsAuthoritativeMaterialLinkReconciliation(ingestRequest.SourceID, sourcecdk.NewConfig(ingestRequest.SourceConfig))
+		if ingestRequest.ReconciliationSupported {
+			ingestRequest.ProjectionReconciliationID = run.ID
+		}
 	}
 	run.SourceID = ingestRequest.SourceID
 	run.TenantID = ingestRequest.TenantID
@@ -307,6 +341,26 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 	return result, nil
 }
 
+func (s *Service) acquireRuntimeLease(ctx context.Context, runtimeID string, alreadyHeld bool) (context.Context, func() error, error) {
+	noop := func() error { return nil }
+	if alreadyHeld {
+		return ctx, noop, nil
+	}
+	leaser, ok := s.runtimeStore.(ports.SourceRuntimeLeaseStore)
+	if !ok || leaser == nil {
+		return ctx, noop, nil
+	}
+	owner := "graph-ingest:" + runtimeID + ":" + fmt.Sprintf("%d", time.Now().UnixNano())
+	leaseCtx, release, acquired, err := sourceruntime.AcquireRenewableLease(ctx, leaser, runtimeID, owner, sourceruntime.DefaultLeaseTTL)
+	if err != nil {
+		return ctx, noop, fmt.Errorf("acquire graph ingest runtime %q lease: %w", runtimeID, err)
+	}
+	if !acquired {
+		return ctx, noop, fmt.Errorf("%w: %s", sourceruntime.ErrSyncInProgress, runtimeID)
+	}
+	return leaseCtx, release, nil
+}
+
 func graphIngestTelemetryAttributes(attributes telemetry.Attributes, result *RunResult) telemetry.Attributes {
 	if result == nil {
 		return attributes
@@ -325,6 +379,10 @@ func graphIngestTelemetryAttributes(attributes telemetry.Attributes, result *Run
 		{Key: "checkpoint_persisted", Value: result.Ingest != nil && result.Ingest.CheckpointPersisted},
 		{Key: "checkpoint_complete", Value: result.Ingest != nil && result.Ingest.CheckpointComplete},
 		{Key: "checkpoint_already_fresh", Value: result.Ingest != nil && result.Ingest.CheckpointAlreadyFresh},
+		{Key: "material_link_reconciliation_requested", Value: result.Ingest != nil && result.Ingest.MaterialLinkReconciliationRequested},
+		{Key: "material_link_reconciliation_supported", Value: result.Ingest != nil && result.Ingest.MaterialLinkReconciliationSupported},
+		{Key: "material_link_reconciliation_completed", Value: result.Ingest != nil && result.Ingest.MaterialLinkReconciliationCompleted},
+		{Key: "stale_material_links_deleted", Value: run.StaleMaterialLinksDeleted},
 	} {
 		attributes = attributes.WithField(field)
 	}
@@ -333,6 +391,8 @@ func graphIngestTelemetryAttributes(attributes telemetry.Attributes, result *Run
 
 func graphIngestTelemetryErrorKind(err error) string {
 	switch {
+	case errors.Is(err, sourceruntime.ErrSyncInProgress):
+		return "sync_in_progress"
 	case errors.Is(err, ErrInvalidRequest):
 		return "invalid_request"
 	case errors.Is(err, ErrRuntimeUnavailable):
@@ -577,23 +637,109 @@ func (s *Service) preparedConfig(ctx context.Context, runtime *cerebrov1.SourceR
 	return s.prepareConfig(ctx, runtime.GetSourceId(), config)
 }
 
+func (s *Service) supportsAuthoritativeMaterialLinkReconciliation(sourceID string, config sourcecdk.Config) bool {
+	if s == nil || s.registry == nil {
+		return false
+	}
+	source, ok := s.registry.Get(strings.TrimSpace(sourceID))
+	if !ok {
+		return false
+	}
+	provider, ok := source.(sourcecdk.ProjectionReconciliationProvider)
+	if !ok || !provider.SupportsAuthoritativeProjectionReconciliation(config) {
+		return false
+	}
+	_, projectsRecords := s.projector.(projectionRecordProjector)
+	_, reconcilesLinks := s.graphStore.(ports.ProjectionRuntimeLinkReconciler)
+	return projectsRecords && reconcilesLinks
+}
+
+func (s *Service) reconcileMaterialLinks(ctx context.Context, request sourceRequest) (uint32, error) {
+	reconciler, ok := s.graphStore.(ports.ProjectionRuntimeLinkReconciler)
+	if !ok {
+		return 0, ErrRuntimeUnavailable
+	}
+	var deleted uint32
+	for {
+		result, err := reconciler.CleanupProjectedRuntimeLinks(ctx, ports.ProjectionRuntimeLinkReconciliationRequest{
+			TenantID:         strings.TrimSpace(request.TenantID),
+			SourceID:         strings.TrimSpace(request.SourceID),
+			RuntimeID:        strings.TrimSpace(request.RuntimeID),
+			ReconciliationID: strings.TrimSpace(request.ProjectionReconciliationID),
+			Relations:        materialSecurityPathRelations(),
+			Limit:            defaultCleanupLimit,
+		})
+		if err != nil {
+			return deleted, fmt.Errorf("reconcile stale material graph links: %w", err)
+		}
+		deleted += result.LinksDeleted
+		if result.LinksDeleted < defaultCleanupLimit {
+			return deleted, nil
+		}
+	}
+}
+
+func materialSecurityPathRelations() []string {
+	values := append([]string{
+		"belongs_to",
+		"can_admin",
+		"can_perform",
+		"can_reach",
+		"owned_by",
+	}, graphpaths.CloudExposurePrivilegeTraversalRelations()...)
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			set[value] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(set))
+	for value := range set {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func stampProjectionReconciliation(links []*ports.ProjectedLink, reconciliationID string) {
+	reconciliationID = strings.TrimSpace(reconciliationID)
+	if reconciliationID == "" {
+		return
+	}
+	for _, link := range links {
+		if link == nil {
+			continue
+		}
+		if link.Attributes == nil {
+			link.Attributes = map[string]string{}
+		}
+		link.Attributes[projectionReconciliationAttribute] = reconciliationID
+	}
+}
+
 type sourceRequest struct {
-	SourceID                 string
-	RuntimeID                string
-	SourceConfig             map[string]string
-	TenantID                 string
-	PageLimit                uint32
-	Cursor                   *cerebrov1.SourceCursor
-	CheckpointEnabled        bool
-	CheckpointID             string
-	ResetCheckpoint          bool
-	ResetCompletedCheckpoint bool
+	SourceID                   string
+	RuntimeID                  string
+	SourceConfig               map[string]string
+	TenantID                   string
+	PageLimit                  uint32
+	Cursor                     *cerebrov1.SourceCursor
+	CheckpointEnabled          bool
+	CheckpointID               string
+	ResetCheckpoint            bool
+	ResetCompletedCheckpoint   bool
+	ReconcileMaterialLinks     bool
+	ReconciliationSupported    bool
+	ProjectionReconciliationID string
 }
 
 func (s *Service) ingestSource(ctx context.Context, request sourceRequest, reporters ...progressReporter) (*IngestResult, error) {
 	result := &IngestResult{
-		SourceID: strings.TrimSpace(request.SourceID),
-		TenantID: strings.TrimSpace(request.TenantID),
+		SourceID:                            strings.TrimSpace(request.SourceID),
+		TenantID:                            strings.TrimSpace(request.TenantID),
+		MaterialLinkReconciliationRequested: request.ReconcileMaterialLinks,
+		MaterialLinkReconciliationSupported: request.ReconciliationSupported,
+		ProjectionReconciliationID:          strings.TrimSpace(request.ProjectionReconciliationID),
 	}
 	var report progressReporter
 	if len(reporters) != 0 {
@@ -662,6 +808,14 @@ func (s *Service) ingestSource(ctx context.Context, request sourceRequest, repor
 	if cursor != nil {
 		result.NextCursor = strings.TrimSpace(cursor.GetOpaque())
 	}
+	if request.ReconcileMaterialLinks && request.ReconciliationSupported && result.CheckpointComplete {
+		deleted, err := s.reconcileMaterialLinks(ctx, request)
+		if err != nil {
+			return result, err
+		}
+		result.StaleMaterialLinksDeleted = deleted
+		result.MaterialLinkReconciliationCompleted = true
+	}
 	if hasCounts {
 		counts, err := countsStore.Counts(ctx)
 		if err != nil {
@@ -687,10 +841,18 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 	result := pageProjectionResult{}
 	for _, event := range response.GetEvents() {
 		ingested := ingestEvent(event, request.TenantID, request.RuntimeID)
-		projectedEntities, projectedLinks, err := projector.ProjectRecords(ingested)
+		var projectedEntities []*ports.ProjectedEntity
+		var projectedLinks []*ports.ProjectedLink
+		var err error
+		if contextProjector, ok := projector.(contextProjectionRecordProjector); ok {
+			projectedEntities, projectedLinks, err = contextProjector.ProjectRecordsContext(ctx, ingested)
+		} else {
+			projectedEntities, projectedLinks, err = projector.ProjectRecords(ingested)
+		}
 		if err != nil {
 			return result, fmt.Errorf("project source event %q: %w", event.GetId(), err)
 		}
+		stampProjectionReconciliation(projectedLinks, request.ProjectionReconciliationID)
 		if canProjectRetractions {
 			linksToRetract, err := retractionProjector.ProjectRetractions(ingested)
 			if err != nil {
@@ -1211,10 +1373,17 @@ func finishRun(run graphstore.IngestRun, result *IngestResult, status string, ru
 	finished.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	if result != nil {
 		finished.CheckpointID = result.CheckpointID
+		finished.CheckpointCursor = result.CheckpointCursor
+		finished.CheckpointComplete = result.CheckpointComplete
 		finished.PagesRead = int64(result.PagesRead)
 		finished.EventsRead = int64(result.EventsRead)
 		finished.EntitiesProjected = int64(result.EntitiesProjected)
 		finished.LinksProjected = int64(result.LinksProjected)
+		finished.MaterialLinkReconciliationRequested = result.MaterialLinkReconciliationRequested
+		finished.MaterialLinkReconciliationSupported = result.MaterialLinkReconciliationSupported
+		finished.MaterialLinkReconciliationCompleted = result.MaterialLinkReconciliationCompleted
+		finished.ProjectionReconciliationID = result.ProjectionReconciliationID
+		finished.StaleMaterialLinksDeleted = int64(result.StaleMaterialLinksDeleted)
 		finished.GraphNodesBefore = result.GraphNodesBefore
 		finished.GraphLinksBefore = result.GraphLinksBefore
 		finished.GraphNodesAfter = result.GraphNodesAfter
@@ -1233,10 +1402,17 @@ func runningRunProgress(run graphstore.IngestRun, result *IngestResult) graphsto
 	progress.Error = ""
 	if result != nil {
 		progress.CheckpointID = result.CheckpointID
+		progress.CheckpointCursor = result.CheckpointCursor
+		progress.CheckpointComplete = result.CheckpointComplete
 		progress.PagesRead = int64(result.PagesRead)
 		progress.EventsRead = int64(result.EventsRead)
 		progress.EntitiesProjected = int64(result.EntitiesProjected)
 		progress.LinksProjected = int64(result.LinksProjected)
+		progress.MaterialLinkReconciliationRequested = result.MaterialLinkReconciliationRequested
+		progress.MaterialLinkReconciliationSupported = result.MaterialLinkReconciliationSupported
+		progress.MaterialLinkReconciliationCompleted = result.MaterialLinkReconciliationCompleted
+		progress.ProjectionReconciliationID = result.ProjectionReconciliationID
+		progress.StaleMaterialLinksDeleted = int64(result.StaleMaterialLinksDeleted)
 		progress.GraphNodesBefore = result.GraphNodesBefore
 		progress.GraphLinksBefore = result.GraphLinksBefore
 		progress.GraphNodesAfter = result.GraphNodesAfter

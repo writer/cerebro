@@ -460,7 +460,7 @@ export type AgentPlatformGraphReasonProvenance = {
 };
 
 export type AgentPlatformGraphReasonRequest = {
-  history?: { content?: string; role?: "user" | "assistant" }[];
+  history?: ({ content?: string; role?: "user" | "assistant" })[];
   model?: string;
   question: string;
   scope_urn?: string;
@@ -510,6 +510,19 @@ export type AgentPlatformInvariant = {
   domain_id: string;
   id: string;
   statement: string;
+};
+
+export type AgentPlatformMissionOperatingContract = {
+  close_conditions: string[];
+  durable_records: { id?: string; purpose?: string; required?: string[] }[];
+  execution_depths: string[];
+  first_mandate: string;
+  id: string;
+  interruption_triggers: string[];
+  purpose: string;
+  schema_version: string;
+  supervisor_directives: string[];
+  wake_conditions: string[];
 };
 
 export type AgentPlatformPolicyCheck = {
@@ -589,10 +602,13 @@ export type AgentPlatformRuntimeEvent = {
 export type AgentPlatformSecurityControlPlane = {
   action_ladder: Record<string, unknown>[];
   agent_profiles: Record<string, unknown>[];
+  agent_work: Record<string, unknown>;
+  claim_verification: Record<string, unknown>;
   connector_tool_gates: Record<string, unknown>[];
   eval_suite: Record<string, unknown>;
   evidence_packet: Record<string, unknown>;
   integration_strategies: Record<string, unknown>[];
+  mission_operating: AgentPlatformMissionOperatingContract;
   security_memory: Record<string, unknown>;
   simulation_harness: Record<string, unknown>;
   verifier_layer: Record<string, unknown>[];
@@ -678,6 +694,321 @@ export type AgentWorkflow = {
   state_check: AgentNextAction;
 };
 
+export type AppendPolicyEvaluationDatasetRevisionRequest = {
+  cases: PolicyEvaluationDatasetCaseInput[];
+  change_summary: string;
+  expected_version: number;
+  [key: string]: unknown;
+};
+
+export type AssessmentCollectionReceipt = {
+  completeness: "complete" | "partial" | "truncated" | "changed_during_scan" | "unknown";
+  cursor?: string;
+  cutoff: string;
+  deduplicated_count: number;
+  excluded_count: number;
+  expected_total?: number;
+  first_key?: string;
+  included_count: number;
+  kind: string;
+  last_key?: string;
+  next_cursor?: string;
+  page_digest: string;
+  page_index: number;
+  query_digest: string;
+  raw_count: number;
+  runtime_id?: string;
+  watermark: string;
+};
+
+export type AssessmentControlRef = {
+  control_id: string;
+  framework?: string;
+  framework_id?: string;
+  framework_name?: string;
+};
+
+/** Immutable revisions, receipts, cutoff, and digests used by one assessment run. */
+export type AssessmentInputManifest = {
+  adapter_version?: string;
+  collection_cutoff?: string;
+  evaluation_run_ids?: string[];
+  mapping_set_digest?: string;
+  model_version?: string;
+  period_end?: string;
+  period_start?: string;
+  plan_revision_id?: string;
+  program_id?: string;
+  reason_registry?: string;
+  receipts?: AssessmentCollectionReceipt[];
+  requested_scope_digest?: string;
+  resolved_objective_set_digest?: string;
+  revisions?: AssessmentManifestRevision[];
+  scope_revision_id?: string;
+  [key: string]: unknown;
+};
+
+export type AssessmentManifestRevision = {
+  digest: string;
+  id: string;
+  kind: string;
+  revision_id: string;
+  version: number;
+};
+
+export type AssessmentObjectiveResult = {
+  assurance: "high" | "medium" | "low" | "none";
+  auditor_state: "not_reviewed" | "accepted" | "changes_requested" | "rejected";
+  automated_outcome: "satisfied" | "not_satisfied" | "indeterminate" | "not_assessed";
+  control_ref: AssessmentControlRef;
+  design_state: "effective" | "ineffective" | "unknown" | "not_assessed";
+  disposition_state: "none" | "accepted_exception" | "accepted_risk" | "review_override";
+  evaluated_at: string;
+  evaluator_revision: string;
+  evidence_ids?: string[];
+  evidence_state: "sufficient" | "missing" | "stale" | "conflicting" | "untrusted" | "incomplete" | "manual_review";
+  finding_ids?: string[];
+  id: string;
+  next_actions: ("none" | "review" | "collect_evidence" | "refresh_evidence" | "restore_source" | "resolve_scope" | "remediate" | "retest")[];
+  objective_id: string;
+  operating_effectiveness_state: "effective" | "ineffective" | "unknown" | "not_tested";
+  reason_codes: string[];
+  scope_state: "in_scope" | "not_applicable" | "unresolved";
+  source_runtime_ids?: string[];
+};
+
+export type AssessmentPlan = {
+  content_digest: string;
+  created_at: string;
+  created_by: string;
+  execution: AssessmentPlanExecution;
+  governance: AssessmentPlanGovernance;
+  id: string;
+  name: string;
+  predecessor_id?: string;
+  published_at?: string;
+  published_by?: string;
+  revision_id: string;
+  scope: AssessmentPlanScope;
+  status: "draft" | "published" | "retired";
+  tenant_id?: string;
+  version: number;
+};
+
+export type AssessmentPlanCreateRequest = {
+  execution: AssessmentPlanExecution;
+  governance: AssessmentPlanGovernance;
+  name: string;
+  scope: AssessmentPlanScope;
+  tenant_id?: string;
+};
+
+export type AssessmentPlanExecution = {
+  assurance_target: string;
+  cancellation_rule: string;
+  coverage_target: string;
+  depth?: string;
+  methods: string[];
+  ordered_task_ids: string[];
+  sampling_rule?: string;
+  tasks: AssessmentPlanTask[];
+  tool_revision_ids?: string[];
+};
+
+export type AssessmentPlanGovernance = {
+  approver_ids: string[];
+  assessor_ids?: string[];
+  independence_rule?: string;
+  limitations?: string[];
+  owner_id: string;
+  rules_of_engagement: string;
+};
+
+export type AssessmentPlanResponse = {
+  plan: AssessmentPlan;
+};
+
+export type AssessmentPlanScope = {
+  excluded_subject_ids?: string[];
+  implementation_revision_ids: string[];
+  included_subject_ids?: string[];
+  objective_ids: string[];
+  program_id: string;
+  scope_revision_id: string;
+};
+
+export type AssessmentPlanTask = {
+  control_ref: AssessmentControlRef;
+  evaluation_mode?: "point_in_time";
+  id: string;
+  kind: "finding_evaluation";
+  max_age?: string;
+  objective_id: string;
+  rule_id?: string;
+  runtime_ids?: string[];
+};
+
+export type AssessmentResultChunk = {
+  count: number;
+  digest: string;
+  first_result_id: string;
+  last_result_id: string;
+  previous_digest?: string;
+  results: (AssessmentObjectiveResult | Record<string, unknown>)[];
+  run_id: string;
+  sequence: number;
+};
+
+export type AssessmentResultPageResponse = {
+  automated_result_hash: string;
+  chunks: AssessmentResultChunk[];
+  has_more: boolean;
+  next_sequence?: number;
+  result_count: number;
+  run_id: string;
+  state: "complete";
+};
+
+export type AssessmentRun = {
+  automated_result_hash?: string;
+  baseline_run_id?: string;
+  collection_barrier_at?: string;
+  completed_at?: string;
+  failure_code?: string;
+  id: string;
+  input_hash?: string;
+  input_manifest?: AssessmentInputManifest;
+  job_id?: string;
+  period_end: string;
+  period_start: string;
+  plan_revision_id: string;
+  program_id: string;
+  requested_at: string;
+  requested_by: string;
+  result_count?: number;
+  scope_revision_id: string;
+  state: "queued" | "collecting" | "evaluating" | "review_required" | "complete" | "failed" | "cancelled" | "superseded";
+  tenant_id: string;
+  version: number;
+};
+
+export type AssessmentRunRequest = {
+  baseline_run_id?: string;
+  period_end: string;
+  period_start: string;
+  plan_revision_id: string;
+  tenant_id: string;
+};
+
+export type AssessmentRunResponse = {
+  created: boolean;
+  run: AssessmentRun;
+};
+
+export type AssuranceDecision = {
+  decision: QualifiedAssuranceDecision;
+  id: string;
+  idempotency_key: string;
+  input_snapshot: AssuranceQualificationInput;
+  objective_id: string;
+  plan_revision_id: string;
+  program_id: string;
+  record_digest: string;
+  recorded_at: string;
+  recorded_by: string;
+  request_hash: string;
+  result_id: string;
+  run_id: string;
+  scope_revision_id: string;
+  tenant_id: string;
+  version: "assurance-decision/v1";
+};
+
+export type AssuranceDecisionRecordRequest = {
+  as_of: string;
+  evidence_proofs: AssuranceEvidenceProof[];
+  exceptions?: AssuranceExceptionProof[];
+  limitations: AssuranceLimitation[];
+  required_reviews: AssuranceReviewRequirement[];
+  result_id: string;
+  run_id: string;
+  source_proofs: AssuranceSourceProof[];
+  tenant_id: string;
+  verification: AssuranceVerificationProof;
+};
+
+export type AssuranceDecisionRecordResponse = {
+  created: boolean;
+  decision: AssuranceDecision;
+};
+
+export type AssuranceDecisionResponse = {
+  decision: AssuranceDecision;
+};
+
+export type AssuranceEvidenceProof = {
+  collected_at: string;
+  evidence_id: string;
+  state: "sufficient" | "missing" | "stale" | "conflicting" | "untrusted" | "incomplete" | "manual_review";
+  valid_until: string;
+};
+
+export type AssuranceExceptionProof = {
+  active: boolean;
+  exception_id: string;
+  valid_until: string;
+};
+
+export type AssuranceLimitation = {
+  blocking: boolean;
+  code: string;
+  detail: string;
+};
+
+export type AssuranceProofInput = {
+  as_of: string;
+  evidence_proofs: AssuranceEvidenceProof[];
+  exceptions?: AssuranceExceptionProof[];
+  limitations: AssuranceLimitation[];
+  required_reviews: AssuranceReviewRequirement[];
+  source_proofs: AssuranceSourceProof[];
+  verification: AssuranceVerificationProof;
+};
+
+export type AssuranceQualificationInput = {
+  as_of: string;
+  evidence_proofs: AssuranceEvidenceProof[];
+  exceptions?: AssuranceExceptionProof[];
+  input_manifest: AssessmentInputManifest;
+  limitations: AssuranceLimitation[];
+  required_reviews: AssuranceReviewRequirement[];
+  result: AssessmentObjectiveResult;
+  source_proofs: AssuranceSourceProof[];
+  verification: AssuranceVerificationProof;
+};
+
+export type AssuranceReviewRequirement = {
+  completed_at?: string;
+  kind: string;
+  required: boolean;
+  status: "pending" | "approved" | "rejected";
+  valid_until?: string;
+};
+
+export type AssuranceSourceProof = {
+  fresh_until: string;
+  observed_at: string;
+  runtime_id: string;
+  state: "supported" | "partial" | "stale" | "failed" | "unconfigured" | "unsupported" | "unverified" | "conflicting" | "unknown";
+};
+
+export type AssuranceVerificationProof = {
+  required: boolean;
+  state: "not_required" | "pending" | "passed" | "failed";
+  valid_until?: string;
+  verified_at?: string;
+};
+
 export type AuthErrorResponse = {
   auth: AgentAuthDiscovery;
   error: string;
@@ -688,6 +1019,19 @@ export type AuthErrorResponse = {
   required_scope?: string;
   retryable?: boolean;
   status: number;
+};
+
+export type BuildDecisionPacketRequest = {
+  audit_packet_ids?: string[];
+  budgets?: DecisionPacketBudgets;
+  claim_ids?: string[];
+  evidence_urns?: string[];
+  finding_ids?: string[];
+  question: string;
+  requested_action?: string;
+  required_sources?: string[];
+  scope_urn?: string;
+  workflow: string;
 };
 
 export type Claim = {
@@ -705,6 +1049,145 @@ export type Claim = {
   subject_urn?: string;
   valid_from?: string;
   valid_to?: string;
+};
+
+export type ComplianceWorkActionRecord = {
+  action: "assign" | "request_evidence" | "block" | "snooze" | "accept" | "remediate" | "verify" | "verify_assurance" | "close" | "supersede";
+  action_hash: string;
+  actor_id: string;
+  created_at: string;
+  from: ComplianceWorkItemState;
+  id: string;
+  owner_id: string;
+  rationale: string;
+  to: ComplianceWorkItemState;
+  verification?: ComplianceWorkVerification;
+  work_item_id: string;
+};
+
+export type ComplianceWorkCommand = {
+  action?: "assign" | "request_evidence" | "block" | "snooze" | "accept" | "remediate" | "verify" | "verify_assurance" | "close" | "supersede";
+  assurance_decision_id?: string;
+  blocker_reason?: string;
+  due_at?: string;
+  evidence_ids?: string[];
+  expected_version: number;
+  operation: "action" | "invalidate";
+  owner_id?: string;
+  rationale?: string;
+  snooze_until?: string;
+  source_ref?: string;
+  trigger?: "exception_expired" | "evidence_stale" | "evidence_revoked" | "finding_reopened" | "source_coverage_lost" | "scope_subject_added";
+};
+
+export type ComplianceWorkFingerprint = {
+  control_id: string;
+  kind: ComplianceWorkItemKind;
+  objective_id: string;
+  program_id: string;
+  reason: string;
+  scope_revision_id: string;
+  source_id: string;
+  subject_id: string;
+  tenant_id: string;
+};
+
+export type ComplianceWorkItem = {
+  basis: ComplianceWorkFingerprint;
+  blocker_reason?: string;
+  due_at: string;
+  exception_id?: string;
+  fingerprint: string;
+  fingerprint_version: "compliance-work-fingerprint/v1";
+  id: string;
+  last_remediated_at?: string;
+  last_remediated_by?: string;
+  last_reopen_trigger?: "exception_expired" | "evidence_stale" | "evidence_revoked" | "finding_reopened" | "source_coverage_lost" | "scope_subject_added";
+  occurrences: ComplianceWorkOccurrence[];
+  owner_id: string;
+  priority: string;
+  risk_id?: string;
+  snooze_until?: string;
+  state: ComplianceWorkItemState;
+  updated_at: string;
+  verification?: ComplianceWorkVerification;
+  verification_evidence_ids?: string[];
+  verification_required: boolean;
+  verified_by?: string;
+  version: number;
+};
+
+export type ComplianceWorkItemKind =
+  | "remediate_finding"
+  | "collect_evidence"
+  | "refresh_evidence"
+  | "resolve_conflict"
+  | "review_manual_evidence"
+  | "repair_source"
+  | "assign_owner"
+  | "map_control"
+  | "renew_exception"
+  | "resolve_policy_gap"
+  | "complete_access_change"
+  | "answer_audit_request"
+  | "review_vendor";
+
+export type ComplianceWorkItemPage = {
+  items: ComplianceWorkItem[];
+  next_cursor?: string;
+};
+
+export type ComplianceWorkItemRecord = {
+  actions: ComplianceWorkActionRecord[];
+  item: ComplianceWorkItem;
+  occurrences: ComplianceWorkOccurrence[];
+};
+
+export type ComplianceWorkItemState =
+  | "open"
+  | "in_progress"
+  | "blocked"
+  | "resolved"
+  | "accepted"
+  | "snoozed"
+  | "superseded";
+
+export type ComplianceWorkOccurrence = {
+  assessment_run_id: string;
+  automated_result_hash: string;
+  evidence_ids?: string[];
+  finding_ids?: string[];
+  id: string;
+  objective_result_id: string;
+  occurred_at: string;
+  occurrence_hash: string;
+  work_item_id: string;
+};
+
+export type ComplianceWorkVerification = {
+  assessment_run_id: string;
+  assurance_decision_id: string;
+  decision_as_of: string;
+  decision_digest: string;
+  evaluated_at: string;
+  evidence_ids?: string[];
+  objective_result_id: string;
+  record_digest: string;
+};
+
+export type ConnectorCoveragePageResponse = {
+  blind_spot_summaries?: SourceCoverageSummary[];
+  blind_spots?: SourceCoverageRecord[];
+  gate?: SourceCoverageGate;
+  generated_at?: string;
+  nhi_coverage?: NHICoverageReport;
+  page: { next_cursor?: string; page_size?: number; returned?: number; total?: number };
+  records?: SourceCoverageRecord[];
+  source_id?: string;
+  summaries?: SourceCoverageSummary[];
+  tenant_id?: string;
+  totals?: SourceCoverageTotals;
+  version?: string;
 };
 
 export type ConnectorCoverageResponse = {
@@ -885,7 +1368,7 @@ export type ConnectorDefinitionScopeOption = {
 };
 
 export type ConnectorDefinitionSupportReport = {
-  checks?: { category?: string; detail?: string; id?: string; status?: "ready" | "missing" }[];
+  checks?: ({ category?: string; detail?: string; id?: string; status?: "ready" | "missing" })[];
   definition_id?: string;
   grammar_version?: string;
   missing_features?: string[];
@@ -913,7 +1396,7 @@ export type ConnectorDefinitionVersionsResponse = {
   definition_id: string;
   generated_at?: string;
   tenant_id?: string;
-  versions: { created_at?: string; definition?: ConnectorDefinition; stage?: "draft" | "sandbox" | "pilot" | "approved" | "certified"; version?: number }[];
+  versions: ({ created_at?: string; definition?: ConnectorDefinition; stage?: "draft" | "sandbox" | "pilot" | "approved" | "certified"; version?: number })[];
 };
 
 export type ConnectorDepositRecordError = {
@@ -955,11 +1438,32 @@ export type CoverageControlRef = {
 
 export type CreatePlatformJobRequest = {
   idempotency_key?: string;
-  kind: "source_runtime_sync" | "source_runtime_orchestrate" | "graph_ingest_runtime" | "finding_rules_evaluate" | "findings_evaluate" | "report_run";
+  kind: "source_runtime_sync" | "source_runtime_orchestrate" | "graph_ingest_runtime" | "finding_rules_evaluate" | "findings_evaluate" | "policy_candidate_experiment" | "report_run";
   payload?: Record<string, unknown>;
   subject_id?: string;
   subject_type?: string;
   tenant_id?: string;
+};
+
+export type CreatePolicyCandidateRequest = {
+  domain: string;
+  graph_evidence: PolicyCandidateGraphEvidenceInput;
+  grounding: PolicyCandidateGroundingInput;
+  hypothesis: string;
+  origin: PolicyCandidateOriginInput;
+  tenant_id: string;
+  [key: string]: unknown;
+};
+
+export type CreatePolicyEvaluationDatasetRequest = {
+  change_summary: string;
+  name: string;
+  [key: string]: unknown;
+};
+
+export type CreatePolicyExperimentRequest = {
+  runtime_id: string;
+  [key: string]: unknown;
 };
 
 export type CredentialStoreBinding = {
@@ -1055,6 +1559,172 @@ export type CredentialStoreUsage = {
   field_references: number;
   issues: number;
   last_updated_at?: string;
+};
+
+export type DecisionPacket = {
+  actions: DecisionPacketActionProposal[];
+  affected: DecisionPacketSubjectReference[];
+  audit_packets: DecisionPacketAuditPacketReference[];
+  claim: Record<string, unknown>;
+  confidence: DecisionPacketConfidence;
+  contradictions: DecisionPacketContradiction[];
+  controls: DecisionPacketControlReference[];
+  coverage_gaps: DecisionPacketCoverageGap[];
+  decision: DecisionPacketDecision;
+  evidence: DecisionPacketEvidenceReference[];
+  freshness: DecisionPacketFreshness;
+  generated_at: string;
+  guardrails: Record<string, unknown>;
+  id: string;
+  inputs: DecisionPacketInputs;
+  limits: DecisionPacketResultLimits;
+  provenance: DecisionPacketProvenance;
+  schema_version: string;
+  scope: DecisionPacketScope;
+  workflow: DecisionPacketWorkflow;
+};
+
+export type DecisionPacketActionProposal = {
+  action_id: string;
+  approval_requirements?: string[];
+  catalog_version?: string;
+  id: string;
+  proposal_digest?: string;
+  rationale: string;
+  state: "informational" | "proposal" | "approval_required";
+  target_urns: string[];
+};
+
+export type DecisionPacketAuditPacketReference = {
+  digest: string;
+  freshness: string;
+  generated_at: string;
+  id: string;
+  scope_urn?: string;
+};
+
+export type DecisionPacketBudgets = {
+  actions?: number;
+  affected?: number;
+  audit_packets?: number;
+  contradictions?: number;
+  controls?: number;
+  coverage_gaps?: number;
+  evidence?: number;
+  graph_depth?: number;
+  graph_rows?: number;
+};
+
+export type DecisionPacketConfidence = {
+  basis: string[];
+  level: "high" | "medium" | "low" | "unknown";
+};
+
+export type DecisionPacketContradiction = {
+  id: string;
+  left: DecisionPacketEvidenceReference;
+  predicate: string;
+  primary_claim: boolean;
+  resolution_state: "unresolved" | "resolved";
+  right: DecisionPacketEvidenceReference;
+  subject_urn: string;
+};
+
+export type DecisionPacketControlReference = {
+  applicability: string;
+  framework?: string;
+  id: string;
+};
+
+export type DecisionPacketCoverageGap = {
+  could_change_conclusion: boolean;
+  dimension?: string;
+  id: string;
+  reason: string;
+  required: boolean;
+  source_id?: string;
+  state: "complete" | "partial" | "stale" | "failed" | "unconfigured" | "unsupported" | "unverified";
+};
+
+export type DecisionPacketDecision = {
+  rationale?: string;
+  reasons: string[];
+  state: "supported" | "supported_with_gaps" | "blocked" | "insufficient_evidence" | "not_applicable";
+};
+
+export type DecisionPacketEvidenceReference = {
+  digest?: string;
+  id: string;
+  kind: string;
+  observed_at?: string;
+  predicate?: string;
+  source_id?: string;
+  subject_urn?: string;
+  urn?: string;
+  valid_from?: string;
+  valid_to?: string;
+  value?: string;
+};
+
+export type DecisionPacketFreshness = {
+  newest_observed_at?: string;
+  oldest_observed_at?: string;
+  required_stale: boolean;
+  state: "fresh" | "stale" | "unknown";
+};
+
+export type DecisionPacketInputs = {
+  audit_packet_ids: string[];
+  claim_ids: string[];
+  evidence_urns: string[];
+  finding_ids: string[];
+  requested_action?: string;
+  required_sources: string[];
+};
+
+export type DecisionPacketProvenance = {
+  coverage_digest: string;
+  evidence_digest: string;
+  resolver_ids: string[];
+  source_ids: string[];
+  trace_id?: string;
+};
+
+export type DecisionPacketResultLimit = {
+  applied: number;
+  requested: number;
+  returned: number;
+  total_known?: number;
+  truncated: boolean;
+};
+
+export type DecisionPacketResultLimits = {
+  actions?: DecisionPacketResultLimit;
+  affected?: DecisionPacketResultLimit;
+  audit_packets?: DecisionPacketResultLimit;
+  contradictions?: DecisionPacketResultLimit;
+  controls?: DecisionPacketResultLimit;
+  coverage_gaps?: DecisionPacketResultLimit;
+  evidence?: DecisionPacketResultLimit;
+  graph_depth?: DecisionPacketResultLimit;
+  graph_rows?: DecisionPacketResultLimit;
+};
+
+export type DecisionPacketScope = {
+  actor_id: string;
+  tenant_id: string;
+  urn?: string;
+};
+
+export type DecisionPacketSubjectReference = {
+  kind: string;
+  name?: string;
+  urn: string;
+};
+
+export type DecisionPacketWorkflow = {
+  id: string;
+  question: string;
 };
 
 export type DeviceEnrollRequest = {
@@ -1269,11 +1939,38 @@ export type FindingEvaluationRun = {
   findings_emitted?: number;
   findings_upserted?: number;
   finished_at?: string;
+  graph_row_limit?: number;
+  graph_rows_read?: number;
+  graph_rule?: boolean;
+  graph_truncated?: boolean;
   id?: string;
+  rule_applicable?: boolean;
   rule_id?: string;
   runtime_id?: string;
+  source_dependency_complete?: boolean;
+  source_snapshots?: FindingEvaluationSourceSnapshot[];
   started_at?: string;
   status?: string;
+};
+
+export type FindingEvaluationSourceSnapshot = {
+  checkpoint_watermark?: string;
+  complete?: boolean;
+  contract_probe_state?: string;
+  family?: string;
+  graph_checkpoint_id?: string;
+  graph_ingest_run_id?: string;
+  graph_ingest_status?: string;
+  graph_ingested_at?: string;
+  graph_snapshot_complete?: boolean;
+  last_synced_at?: string;
+  progress_config_hash?: string;
+  records_accepted?: number;
+  records_rejected?: number;
+  records_scanned?: number;
+  runtime_id?: string;
+  source_id?: string;
+  sync_status?: string;
 };
 
 export type FindingEvidence = {
@@ -1419,7 +2116,7 @@ export type GRCAccessSourceFreshness = {
 };
 
 export type GRCAskRequest = {
-  history?: { content?: string; role?: "user" | "assistant" }[];
+  history?: ({ content?: string; role?: "user" | "assistant" })[];
   model?: string;
   question: string;
   scope_urn?: string;
@@ -3068,6 +3765,10 @@ export type GetEntityNeighborhoodResponse = {
   root?: GraphEntity;
 };
 
+export type GetGraphIngestRunResponse = {
+  run?: GraphIngestRun;
+};
+
 export type GetSourceRuntimeResponse = {
   runtime?: SourceRuntime;
 };
@@ -3136,6 +3837,54 @@ export type GraphEvidenceRow = {
   attributes?: Record<string, string>;
   label?: string;
   paths?: GraphEvidencePath[];
+};
+
+export type GraphIngestResult = {
+  checkpoint_already_fresh?: boolean;
+  checkpoint_complete?: boolean;
+  checkpoint_cursor?: string;
+  checkpoint_id?: string;
+  checkpoint_persisted?: boolean;
+  checkpoint_resumed?: boolean;
+  entities_projected?: number;
+  events_read?: number;
+  graph_links_after?: number;
+  graph_links_before?: number;
+  graph_nodes_after?: number;
+  graph_nodes_before?: number;
+  links_projected?: number;
+  next_cursor?: string;
+  pages_read?: number;
+  source_id?: string;
+  tenant_id?: string;
+};
+
+export type GraphIngestRun = {
+  checkpoint_complete?: boolean;
+  checkpoint_cursor?: string;
+  checkpoint_id?: string;
+  entities_projected?: number;
+  error?: string;
+  events_read?: number;
+  finished_at?: string;
+  graph_links_after?: number;
+  graph_links_before?: number;
+  graph_nodes_after?: number;
+  graph_nodes_before?: number;
+  id?: string;
+  links_projected?: number;
+  pages_read?: number;
+  runtime_id?: string;
+  source_id?: string;
+  started_at?: string;
+  status?: string;
+  tenant_id?: string;
+  trigger?: string;
+};
+
+export type GraphIngestRunResult = {
+  ingest?: GraphIngestResult;
+  run?: GraphIngestRun;
 };
 
 export type GraphRelation = {
@@ -3221,8 +3970,24 @@ export type IssueBootstrapTokenResponse = {
   token_id: string;
 };
 
+export type KnowledgeWriteResult = {
+  action_id?: string;
+  decision_id?: string;
+  durability_status: "recorded" | "not_recorded";
+  event_id: string;
+  outcome_id?: string;
+  projection_error_category?: "graph_projection_failed";
+  projection_status: "projected" | "pending" | "not_configured" | "failed";
+  target_count: number;
+};
+
 export type ListClaimsResponse = {
   claims?: Claim[];
+};
+
+export type ListGraphIngestRunsResponse = {
+  failed_count?: number;
+  runs?: GraphIngestRun[];
 };
 
 export type NHICoverageLaneSummary = {
@@ -3348,6 +4113,215 @@ export type PlatformJobResponse = {
   job: PlatformJob;
 };
 
+export type PolicyCandidate = {
+  artifacts?: PolicyCandidateArtifacts;
+  coverage_gap: PolicyCandidateCoverageGapReceipt;
+  created_at: string;
+  domain: string;
+  graph: { edge_count?: number; entity_types?: string[]; node_count?: number; relations?: string[] };
+  grounding: PolicyCandidateGroundingReceipt;
+  hypothesis: string;
+  id: string;
+  origin_kind: string;
+  pr_ready: boolean;
+  proof?: PolicyCandidateProof;
+  revision: number;
+  shadow?: PolicyCandidateShadowReceipt;
+  status: "grounded" | "proved" | "ready_for_review" | "blocked";
+  tenant_id: string;
+  updated_at: string;
+};
+
+export type PolicyCandidateArtifacts = {
+  policy_digest: string;
+  policy_path: string;
+  policy_yaml: string;
+  rule: Record<string, unknown>;
+  suite: Record<string, unknown>;
+  test_digest: string;
+  test_path: string;
+  test_yaml: string;
+};
+
+export type PolicyCandidateCoverageGapReceipt = {
+  candidate_signature: string;
+  catalog_digest: string;
+  compared_rule_count: number;
+  execution: "finding_rule_catalog";
+  observed_at: string;
+};
+
+export type PolicyCandidateGraphEvidenceInput = {
+  critical_edge: Record<string, unknown>;
+  edges: Record<string, unknown>[];
+  evidence_node_ids: string[];
+  nodes: Record<string, unknown>[];
+  [key: string]: unknown;
+};
+
+export type PolicyCandidateGroundingInput = {
+  bindings: Record<string, unknown>[];
+  [key: string]: unknown;
+};
+
+export type PolicyCandidateGroundingReceipt = {
+  edge_count: number;
+  execution: "graph_store";
+  node_count: number;
+  observed_at: string;
+  receipt_id: string;
+};
+
+export type PolicyCandidateOriginInput = {
+  external_ref: string;
+  kind: string;
+  [key: string]: unknown;
+};
+
+export type PolicyCandidateProof = {
+  policy_digest?: string;
+  policy_id?: string;
+  policy_path?: string;
+  receipts?: { detail?: string; execution?: string; gate?: string; passed?: boolean }[];
+  test_digest?: string;
+  test_path?: string;
+};
+
+export type PolicyCandidateShadowReceipt = {
+  execution: "graph_store";
+  match_count: number;
+  observed_at: string;
+  receipt_id: string;
+  truncated: boolean;
+};
+
+export type PolicyEvaluationDataset = {
+  aggregate_version: number;
+  candidate_id: string;
+  created_at: string;
+  current_revision_id: string;
+  id: string;
+  name: string;
+  updated_at: string;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetCase = {
+  content_digest: string;
+  dataset_id: string;
+  id: string;
+  ordinal: number;
+  revision_id: string;
+  test: PolicyEvaluationDatasetTestCase;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetCaseInput = {
+  id: string;
+  test: PolicyEvaluationDatasetTestCase;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetGraphEdge = {
+  attributes?: Record<string, string>;
+  fromUrn: string;
+  relation: string;
+  runtimeId?: string;
+  sourceId: string;
+  toUrn: string;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetGraphFixture = {
+  edges: PolicyEvaluationDatasetGraphEdge[];
+  nodes: PolicyEvaluationDatasetGraphNode[];
+  tenantId: "fixture" | "test";
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetGraphNode = {
+  attributes?: Record<string, string>;
+  entityType: string;
+  label?: string;
+  runtimeId?: string;
+  sourceId: string;
+  urn: string;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetResult = {
+  dataset: PolicyEvaluationDataset;
+  revision: PolicyEvaluationDatasetRevision;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetRevision = {
+  case_count: number;
+  change_summary: string;
+  content_digest: string;
+  created_at: string;
+  dataset_id: string;
+  id: string;
+  policy_digest: string;
+  predecessor_id?: string;
+  source_test_digest: string;
+  version: number;
+  [key: string]: unknown;
+};
+
+export type PolicyEvaluationDatasetTestCase = {
+  graphFixture: PolicyEvaluationDatasetGraphFixture;
+  name: string;
+  wantEvidenceUrns?: string[];
+  wantFinding: boolean;
+  [key: string]: unknown;
+};
+
+export type PolicyExperiment = {
+  candidate_id: string;
+  created_at: string;
+  finished_at?: string;
+  id: string;
+  observation_count: number;
+  pins: PolicyExperimentPins;
+  revision: number;
+  started_at?: string;
+  status: "queued" | "running" | "completed" | "failed" | "blocked";
+  status_reason?: string;
+  tenant_id: string;
+  updated_at: string;
+};
+
+export type PolicyExperimentCheckpoint = {
+  complete: boolean;
+  current: boolean;
+  digest: string;
+  id: string;
+  runtime_id: string;
+  [key: string]: unknown;
+};
+
+export type PolicyExperimentObservation = {
+  checkpoint_id?: string;
+  created_at: string;
+  experiment_id: string;
+  id: string;
+  kind: string;
+  metrics?: Record<string, number>;
+  observed_at: string;
+  receipt_digest: string;
+  sequence: number;
+};
+
+export type PolicyExperimentPins = {
+  candidate_revision: number;
+  catalog_digest: string;
+  checkpoints: PolicyExperimentCheckpoint[];
+  dataset_digest: string;
+  policy_digest: string;
+  test_digest: string;
+};
+
 export type PromoteFindingCandidateRequest = {
   change_ticket: string;
   false_positive_reviewed: boolean;
@@ -3362,6 +4336,19 @@ export type PutSourceRuntimeRequest = {
 
 export type PutSourceRuntimeResponse = {
   runtime?: SourceRuntime;
+};
+
+export type QualifiedAssuranceDecision = {
+  as_of: string;
+  decision_digest: string;
+  limitations: AssuranceLimitation[];
+  manifest_hash?: string;
+  proof_digest?: string;
+  qualified: boolean;
+  reasons?: ("manifest_invalid" | "scope_unpinned" | "population_incomplete" | "result_invalid" | "source_proof_missing" | "source_unhealthy" | "source_stale" | "evidence_proof_missing" | "evidence_not_current" | "evidence_conflicting" | "limitations_not_declared" | "blocking_limitation" | "review_requirements_not_declared" | "review_incomplete" | "exception_expired" | "verification_failed")[];
+  required_reviews: AssuranceReviewRequirement[];
+  result_hash?: string;
+  version: "qualified-decision/v1";
 };
 
 export type ReconcileGraphActionRequest = {
@@ -3437,6 +4424,10 @@ export type RiskScoringSignalThresholds = {
   epss_elevated?: number;
   epss_high?: number;
   private_network_likelihood_cap?: number;
+};
+
+export type RunGraphIngestRuntimeResponse = {
+  result?: GraphIngestRunResult;
 };
 
 export type RuntimeBlocklistEntry = {
@@ -3691,6 +4682,8 @@ export type SourceRuntimeHealthFindingEvaluation = {
 };
 
 export type SourceRuntimeHealthGraphRun = {
+  checkpoint_complete?: boolean;
+  checkpoint_cursor?: string;
   duration_seconds?: number;
   entities_projected?: number;
   error?: string;

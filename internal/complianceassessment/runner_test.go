@@ -116,6 +116,59 @@ func TestAssessmentRunBindsJobAndPersistsCompleteChunkChain(t *testing.T) {
 	}
 }
 
+func TestAssessmentRunCompletesFromTrustedFindingEvaluation(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	evaluation := eventEvaluationRun("evaluation-trusted", now.Add(-30*time.Minute), 100, 12)
+	store := newRunStore()
+	collector := NewFindingEvaluationCollector(
+		store,
+		&collectorRuntimeLister{values: []*cerebrov1.SourceRuntime{collectorTestRuntimeForEvaluation(evaluation, now)}},
+		&collectorEvaluationLister{values: []*cerebrov1.FindingEvaluationRun{evaluation}},
+	)
+	collector.now = func() time.Time { return now }
+	jobs := platformjobs.New(newRunJobStore(now))
+	service := NewAssessmentService(store, &runLog{}, jobs, collector)
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+
+	planInput := validPlan(now)
+	planInput.Execution.Tasks[0] = PlanTask{
+		ID: "task-1", ObjectiveID: "objective-1", ControlRef: planInput.Execution.Tasks[0].ControlRef,
+		Kind: PlanTaskKindFindingEvaluation, RuleID: "rule-1", RuntimeIDs: []string{"runtime-1"}, MaxAge: "2h", EvaluationMode: EvaluationModePointInTime,
+	}
+	draft, err := service.RecordPlan(context.Background(), planInput, "owner-1", 0)
+	if err != nil {
+		t.Fatalf("RecordPlan() error = %v", err)
+	}
+	plan, err := service.PublishPlan(context.Background(), draft.TenantID, draft.ID, "approver-1", draft.Version)
+	if err != nil {
+		t.Fatalf("PublishPlan() error = %v", err)
+	}
+	run, created, err := service.RequestRun(context.Background(), RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID, PeriodStart: now.Add(-24 * time.Hour), PeriodEnd: now,
+		IdempotencyKey: "trusted-loop-1", RequestedBy: "assessor-1",
+	})
+	if err != nil || !created || run.JobID == "" {
+		t.Fatalf("RequestRun() = (%#v, %v, %v)", run, created, err)
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	completed, err := store.GetRun(context.Background(), run.TenantID, run.ID)
+	if err != nil || completed.State != RunComplete || completed.ResultCount != 1 || completed.InputHash == "" || completed.AutomatedResultHash == "" {
+		t.Fatalf("completed run = (%#v, %v), want one digest-bound result", completed, err)
+	}
+	chunks, err := store.ListResultChunks(context.Background(), run.TenantID, run.ID)
+	if err != nil || len(chunks) != 1 || len(chunks[0].Results) != 1 {
+		t.Fatalf("result chunks = (%#v, %v), want one result", chunks, err)
+	}
+	result := chunks[0].Results[0]
+	if result.AutomatedOutcome != OutcomeSatisfied || result.EvidenceState != EvidenceSufficient || len(result.EvidenceIDs) != 1 || result.EvidenceIDs[0] != evaluation.GetId() {
+		t.Fatalf("assessment result = %#v, want satisfied result bound to %q", result, evaluation.GetId())
+	}
+}
+
 func TestAssessmentRunIdempotencyBindsRequestBody(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
@@ -204,6 +257,11 @@ func TestAssessmentRejectsPartialObjectiveSet(t *testing.T) {
 	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
 	planInput := validPlan(now)
 	planInput.Scope.ObjectiveIDs = []string{"objective-0000", "objective-0001"}
+	planInput.Execution.Tasks = []PlanTask{
+		{ID: "task-0000", ObjectiveID: "objective-0000", ControlRef: compliance.ControlRef{FrameworkID: "framework-1", ControlID: "control-1"}, Kind: PlanTaskKindProcedure},
+		{ID: "task-0001", ObjectiveID: "objective-0001", ControlRef: compliance.ControlRef{FrameworkID: "framework-1", ControlID: "control-1"}, Kind: PlanTaskKindProcedure},
+	}
+	planInput.Execution.OrderedTaskIDs = []string{"task-0000", "task-0001"}
 	plan, err := service.RecordPlan(context.Background(), planInput, "owner-1", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -614,22 +672,71 @@ func TestReconcileUnboundRunStartsExistingQueuedJob(t *testing.T) {
 	}
 }
 
+func TestAssessmentRunIdempotentRetryBindsExistingQueuedRun(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 11, 8, 0, 0, 0, time.UTC)
+	store := newRunStore()
+	jobStore := newRunJobStore(now)
+	jobs := platformjobs.New(jobStore)
+	service := NewAssessmentService(store, &runLog{}, jobs, &testCollector{manifest: completeManifest(now), results: validResults(now, 1)})
+	service.now = func() time.Time { return now }
+	jobs.WithRunner(JobKindComplianceAssessment, service.Runner())
+	plan := recordPublishedPlan(t, service, now)
+	request := RunRequest{
+		TenantID: plan.TenantID, PlanRevisionID: plan.RevisionID,
+		PeriodStart: now.Add(-time.Hour), PeriodEnd: now,
+		IdempotencyKey: "retry-binds-existing-run", RequestedBy: "assessor-1",
+	}
+
+	store.applyRunVersion = 2
+	store.applyRunErr = errors.New("run projection unavailable")
+	first, _, err := service.RequestRun(context.Background(), request)
+	if err == nil || first.ID == "" || first.JobID == "" {
+		t.Fatalf("first RequestRun() = (%#v, %v), want run and binding projection error", first, err)
+	}
+	store.applyRunErr = nil
+
+	retried, created, err := service.RequestRun(context.Background(), request)
+	if err != nil || created || retried.ID != first.ID || retried.JobID != first.JobID {
+		t.Fatalf("retry RequestRun() = (%#v, %v, %v), want existing run bound to %q", retried, created, err, first.JobID)
+	}
+	if err := jobs.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	completed, err := store.GetRun(context.Background(), retried.TenantID, retried.ID)
+	if err != nil || completed.State != RunComplete {
+		t.Fatalf("completed run = (%#v, %v), want complete", completed, err)
+	}
+}
+
 func recordPublishedPlan(t *testing.T, service *Service, now time.Time) AssessmentPlanRevision {
 	t.Helper()
 	planInput := validPlan(now)
 	if collector, ok := service.collector.(*testCollector); ok && len(collector.results) != 0 {
 		planInput.Scope.ObjectiveIDs = make([]string, 0, len(collector.results))
-		for _, result := range collector.results {
+		planInput.Execution.Tasks = make([]PlanTask, 0, len(collector.results))
+		planInput.Execution.OrderedTaskIDs = make([]string, 0, len(collector.results))
+		for index, result := range collector.results {
+			taskID := fmt.Sprintf("task-%04d", index)
 			planInput.Scope.ObjectiveIDs = append(planInput.Scope.ObjectiveIDs, result.ObjectiveID)
+			planInput.Execution.Tasks = append(planInput.Execution.Tasks, PlanTask{
+				ID: taskID, ObjectiveID: result.ObjectiveID, ControlRef: result.ControlRef, Kind: PlanTaskKindProcedure,
+			})
+			planInput.Execution.OrderedTaskIDs = append(planInput.Execution.OrderedTaskIDs, taskID)
 		}
 	}
 	plan, err := service.RecordPlan(context.Background(), planInput, "owner-1", 0)
 	if err != nil {
 		t.Fatalf("RecordPlan() error = %v", err)
 	}
+	draftRevisionID := plan.RevisionID
+	draftDigest := plan.ContentDigest
 	plan, err = service.PublishPlan(context.Background(), plan.TenantID, plan.ID, "approver-1", plan.Version)
 	if err != nil {
 		t.Fatalf("PublishPlan() error = %v", err)
+	}
+	if plan.RevisionID == draftRevisionID || plan.PredecessorID != draftRevisionID || plan.ContentDigest == draftDigest {
+		t.Fatalf("published plan revision = %#v, want a new digest-bound revision after %q", plan, draftRevisionID)
 	}
 	if collector, ok := service.collector.(*testCollector); ok {
 		collector.plan = plan
@@ -640,8 +747,14 @@ func recordPublishedPlan(t *testing.T, service *Service, now time.Time) Assessme
 func validPlan(now time.Time) AssessmentPlanRevision {
 	return AssessmentPlanRevision{
 		TenantID: "tenant-1", Name: "Annual access assessment", Status: PlanDraft,
-		Scope:      PlanScope{ProgramID: "program-1", ScopeRevisionID: "scope-revision-1", ImplementationRevisions: []string{"implementation-revision-1"}, ObjectiveIDs: []string{"objective-1"}},
-		Execution:  PlanExecution{Methods: []string{"test"}, Depth: "moderate", CoverageTarget: "complete", AssuranceTarget: "high", OrderedTaskIDs: []string{"task-1"}, CancellationRule: "stop_after_checkpoint"},
+		Scope: PlanScope{ProgramID: "program-1", ScopeRevisionID: "scope-revision-1", ImplementationRevisions: []string{"implementation-revision-1"}, ObjectiveIDs: []string{"objective-1"}},
+		Execution: PlanExecution{
+			Methods: []string{"test"}, Depth: "moderate", CoverageTarget: "complete", AssuranceTarget: "high",
+			Tasks: []PlanTask{{
+				ID: "task-1", ObjectiveID: "objective-1", ControlRef: compliance.ControlRef{FrameworkID: "framework-1", ControlID: "control-1"}, Kind: PlanTaskKindProcedure,
+			}},
+			OrderedTaskIDs: []string{"task-1"}, CancellationRule: "stop_after_checkpoint",
+		},
 		Governance: PlanGovernance{OwnerID: "owner-1", AssessorIDs: []string{"assessor-1"}, ApproverIDs: []string{"approver-1"}, IndependenceRule: "approver_not_assessor", RulesOfEngagement: "Read-only source access."},
 		CreatedAt:  now, CreatedBy: "owner-1",
 	}

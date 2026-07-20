@@ -86,25 +86,28 @@ var mitreDefendArtifactAttributeKeys = []string{
 	"mitre_defend_artifact_ids",
 }
 
-func addMITREAttackContextLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, fromURN string, attrs map[string]string) {
-	fromURN = strings.TrimSpace(fromURN)
-	if fromURN == "" {
-		return
-	}
-	addMITREAttackTacticLinks(entities, links, tenantID, event, fromURN, relationHasContext, mitre.ExtractAttackTactics(append(mitreAttributeValues(attrs, mitreAttackTacticAttributeKeys...), mitreAttributeValues(attrs, mitreAttackTagAttributeKeys...)...)...), nil)
-	techniques := mitre.ExtractAttackTechniques(mitreAttributeValues(attrs, mitreAttackTechniqueAttributeKeys...)...)
-	techniques = append(techniques, mitre.ExtractAttackTechniqueIDs(mitreAttributeValues(attrs, mitreAttackTagAttributeKeys...)...)...)
-	addMITREAttackTechniqueLinks(entities, links, tenantID, event, fromURN, relationHasContext, techniques, nil)
+func addMITREContextLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, fromURN string, mitreContext mitre.Context) {
+	addMITREAttackContextLinks(entities, links, tenantID, event, fromURN, mitreContext)
+	addMITREDefendContextLinks(entities, links, tenantID, event, fromURN, mitreContext)
 }
 
-func addMITREDefendContextLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, fromURN string, attrs map[string]string) {
+func addMITREAttackContextLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, fromURN string, mitreContext mitre.Context) {
 	fromURN = strings.TrimSpace(fromURN)
 	if fromURN == "" {
 		return
 	}
-	addMITREDefendTacticLinks(entities, links, tenantID, event, fromURN, relationHasContext, mitre.ExtractDefendTactics(mitreAttributeValues(attrs, mitreDefendTacticAttributeKeys...)...), nil)
-	addMITREDefendTechniqueLinks(entities, links, tenantID, event, fromURN, relationHasContext, mitre.ExtractDefendTechniques(mitreAttributeValues(attrs, mitreDefendTechniqueAttributeKeys...)...), nil)
-	addMITREDefendArtifactLinks(entities, links, tenantID, event, fromURN, relationHasContext, mitre.ExtractDefendArtifacts(mitreAttributeValues(attrs, mitreDefendArtifactAttributeKeys...)...), nil)
+	addMITREAttackTacticLinks(entities, links, tenantID, event, fromURN, relationHasContext, mitreContext.AttackTactics, nil)
+	addMITREAttackTechniqueLinks(entities, links, tenantID, event, fromURN, relationHasContext, mitreContext.AttackTechniques, nil)
+}
+
+func addMITREDefendContextLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, fromURN string, mitreContext mitre.Context) {
+	fromURN = strings.TrimSpace(fromURN)
+	if fromURN == "" {
+		return
+	}
+	addMITREDefendTacticLinks(entities, links, tenantID, event, fromURN, relationHasContext, mitreContext.DefendTactics, nil)
+	addMITREDefendTechniqueLinks(entities, links, tenantID, event, fromURN, relationHasContext, mitreContext.DefendTechniques, nil)
+	addMITREDefendArtifactLinks(entities, links, tenantID, event, fromURN, relationHasContext, mitreContext.DefendArtifacts, nil)
 }
 
 func addMITREAttackTechniqueLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, fromURN string, relation string, techniques []mitre.AttackTechnique, extraAttrs map[string]string) []string {

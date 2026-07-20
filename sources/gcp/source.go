@@ -175,6 +175,10 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 	return s.families.ReadWithCheckpoint(ctx, cfg, cursor, checkpoint)
 }
 
+func (s *Source) SupportsAuthoritativeProjectionReconciliation(config sourcecdk.Config) bool {
+	return sourcecdk.IsAuthoritativeProjectionFamily(config, defaultFamily, familyAudit)
+}
+
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	return sourcecdk.NewFamilyEngineWithSourceID("gcp", parseSettings, func(settings settings) string { return settings.family },
 		gcpFamily(s, gcpFamilyOptions[assetMetadataRecord]{
@@ -911,10 +915,6 @@ func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, 
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
-}
-
-func firewallPublicIngress(record firewallRecord) bool {
-	return strings.EqualFold(record.Direction, "INGRESS") && !record.Disabled && sourcecdk.FirstOpenCIDR(record.SourceRanges) != "" && len(record.Allowed) != 0
 }
 
 func firewallPrimaryAllowed(record firewallRecord) gcpcloud.ComputeFirewallAllowed {

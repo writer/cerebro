@@ -143,7 +143,7 @@ func TestNewFixtureReturnsFixtureURNs(t *testing.T) {
 	if len(urns) != 1 {
 		t.Fatalf("len(Discover()) = %d, want 1", len(urns))
 	}
-	if got := urns[0].String(); got != "urn:cerebro:writer:repo:writer/cerebro" {
+	if got := urns[0].String(); got != "urn:cerebro:octocat:repo:octocat/Hello-World" {
 		t.Fatalf("Discover()[0] = %q, want pull request repository URN", got)
 	}
 }
@@ -194,22 +194,11 @@ func TestNewFixtureReplaysFixturePages(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
 	}
-	if first.NextCursor == nil {
-		t.Fatal("first.NextCursor = nil, want non-nil")
+	if first.NextCursor != nil {
+		t.Fatal("first.NextCursor != nil, want nil")
 	}
 
-	second, err := source.Read(context.Background(), cfg, first.NextCursor)
-	if err != nil {
-		t.Fatalf("Read(second) error = %v", err)
-	}
-	if len(second.Events) != 1 {
-		t.Fatalf("len(second.Events) = %d, want 1", len(second.Events))
-	}
-	if second.NextCursor != nil {
-		t.Fatal("second.NextCursor != nil, want nil")
-	}
-
-	final, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: "2"})
+	final, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: "1"})
 	if err != nil {
 		t.Fatalf("Read(final) error = %v", err)
 	}
@@ -238,8 +227,8 @@ func TestNewFixtureReplaysRepositoryFamily(t *testing.T) {
 	if len(pull.Events) != 1 || pull.Events[0].Kind != "github.code.repository" {
 		t.Fatalf("repository fixture events = %#v, want one github.code.repository event", pull.Events)
 	}
-	if got := pull.Events[0].Attributes["owner_login"]; got != "writer" {
-		t.Fatalf("owner_login = %q, want writer", got)
+	if got := pull.Events[0].Attributes["owner_login"]; got != "octocat" {
+		t.Fatalf("owner_login = %q, want octocat", got)
 	}
 }
 
@@ -255,8 +244,8 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 	}{
 		{family: familyAudit, kinds: []string{"github.audit"}},
 		{family: familyDependabot, kinds: []string{"github.dependabot_alert"}},
-		{family: familyOrgInventory, kinds: []string{"github.org_member", "github.org_installation"}},
-		{family: familyPullRequest, kinds: []string{"github.pull_request", "github.pull_request"}},
+		{family: familyOrgInventory, kinds: []string{"github.org_member"}},
+		{family: familyPullRequest, kinds: []string{"github.pull_request"}},
 		{family: familyRepository, kinds: []string{"github.code.repository"}},
 		{family: familySecretScanning, kinds: []string{"github.secret_scanning_alert"}},
 	} {

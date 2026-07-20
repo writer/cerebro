@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/writer/cerebro/internal/grcprogram"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecoverage"
+	"github.com/writer/cerebro/internal/sourcehttp/responseview"
 )
 
 type grcProgramReadinessResponse struct {
@@ -18,6 +20,16 @@ type grcProgramReadinessResponse struct {
 }
 
 func (a *App) handleGRCProgramReadiness(w http.ResponseWriter, r *http.Request) {
+	view, err := responseview.FromRequest(r)
+	if err != nil {
+		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
+		return
+	}
+	coverageScope, err := responseview.CoverageScopeFromRequest(r, view)
+	if err != nil {
+		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
+		return
+	}
 	scope, err := grcScopeFromRequest(r)
 	if err != nil {
 		writeGRCError(w, err)
@@ -39,13 +51,17 @@ func (a *App) handleGRCProgramReadiness(w http.ResponseWriter, r *http.Request) 
 		writeGRCError(w, err)
 		return
 	}
-	coverage := a.sourceCoverageRecords(runtimes, ports.SourceRuntimeFilter{
+	coverage, err := a.sourceCoverageRecordsScoped(r.Context(), runtimes, ports.SourceRuntimeFilter{
 		RuntimeID:  scope.RuntimeID,
 		RuntimeIDs: scope.RuntimeIDs,
 		TenantID:   scope.TenantID,
 		SourceID:   scope.SourceID,
 		Limit:      scope.Limit,
-	}, generatedAt)
+	}, generatedAt, coverageScope)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
 	coverageBlindSpots := sourcecoverage.BlindSpots(coverage)
 	readiness := grcprogram.Build(grcprogram.BuildInput{
 		Result:             result,
@@ -56,10 +72,15 @@ func (a *App) handleGRCProgramReadiness(w http.ResponseWriter, r *http.Request) 
 		CoverageRecords:    coverage,
 		GeneratedAt:        generatedAt,
 	})
+	serializedCoverageBlindSpots := coverageBlindSpots
+	if view == responseview.Summary {
+		serializedCoverageBlindSpots = nil
+		readiness.ProductAreas = responseview.CompactProductAreas(readiness.ProductAreas)
+	}
 	writeJSON(w, http.StatusOK, grcProgramReadinessResponse{
 		Readiness:          readiness,
 		SourceSummaries:    sourceSummaries,
-		CoverageBlindSpots: coverageBlindSpots,
+		CoverageBlindSpots: serializedCoverageBlindSpots,
 		CoverageSummaries:  sourcecoverage.Summaries(coverage),
 	})
 }

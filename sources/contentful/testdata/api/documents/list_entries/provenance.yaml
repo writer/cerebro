@@ -1,0 +1,109 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: contentful
+family: documents
+case: list_entries
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedContentfulDocuments
+request:
+    method: GET
+    url: https://cdn.contentful.com/spaces/example-1b1d338f/entries
+response:
+    status: 200
+    content_type: application/vnd.contentful.delivery.v1+json
+    captured_at: "2020-01-02T18:10:57Z"
+    sha256: dc6e62d436bf6baf47b7c07932fc00818d28d49655e9c91eab5df93ef946d783
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.includes.Asset[0].fields.description
+        - $.includes.Asset[0].fields.file.url
+        - $.includes.Asset[0].fields.title
+        - $.includes.Asset[0].sys.environment.sys.id
+        - $.includes.Asset[0].sys.id
+        - $.includes.Asset[0].sys.space.sys.id
+        - $.includes.Asset[1].fields.file.url
+        - $.includes.Asset[1].fields.title
+        - $.includes.Asset[1].sys.environment.sys.id
+        - $.includes.Asset[1].sys.id
+        - $.includes.Asset[1].sys.space.sys.id
+        - $.includes.Asset[2].fields.file.url
+        - $.includes.Asset[2].fields.title
+        - $.includes.Asset[2].sys.environment.sys.id
+        - $.includes.Asset[2].sys.id
+        - $.includes.Asset[2].sys.space.sys.id
+        - $.includes.Asset[3].fields.file.url
+        - $.includes.Asset[3].fields.title
+        - $.includes.Asset[3].sys.environment.sys.id
+        - $.includes.Asset[3].sys.id
+        - $.includes.Asset[3].sys.space.sys.id
+        - $.items[0].fields.description
+        - $.items[0].fields.name
+        - $.items[0].sys.contentType.sys.id
+        - $.items[0].sys.environment.sys.id
+        - $.items[0].sys.id
+        - $.items[0].sys.space.sys.id
+        - $.items[1].fields.bestFriend.sys.id
+        - $.items[1].fields.image.sys.id
+        - $.items[1].fields.name
+        - $.items[1].sys.contentType.sys.id
+        - $.items[1].sys.environment.sys.id
+        - $.items[1].sys.id
+        - $.items[1].sys.space.sys.id
+        - $.items[2].fields.description
+        - $.items[2].fields.image.sys.id
+        - $.items[2].fields.name
+        - $.items[2].sys.contentType.sys.id
+        - $.items[2].sys.environment.sys.id
+        - $.items[2].sys.id
+        - $.items[2].sys.space.sys.id
+        - $.items[3].fields.name
+        - $.items[3].sys.contentType.sys.id
+        - $.items[3].sys.environment.sys.id
+        - $.items[3].sys.id
+        - $.items[3].sys.space.sys.id
+        - $.items[4].fields.name
+        - $.items[4].sys.contentType.sys.id
+        - $.items[4].sys.environment.sys.id
+        - $.items[4].sys.id
+        - $.items[4].sys.space.sys.id
+        - $.items[5].fields.name
+        - $.items[5].sys.contentType.sys.id
+        - $.items[5].sys.environment.sys.id
+        - $.items[5].sys.id
+        - $.items[5].sys.space.sys.id
+        - $.items[6].fields.name
+        - $.items[6].sys.contentType.sys.id
+        - $.items[6].sys.environment.sys.id
+        - $.items[6].sys.id
+        - $.items[6].sys.space.sys.id
+        - $.items[7].fields.bestFriend.sys.id
+        - $.items[7].fields.image.sys.id
+        - $.items[7].fields.name
+        - $.items[7].sys.contentType.sys.id
+        - $.items[7].sys.environment.sys.id
+        - $.items[7].sys.id
+        - $.items[7].sys.space.sys.id
+        - $.items[8].fields.description
+        - $.items[8].fields.image.sys.id
+        - $.items[8].fields.name
+        - $.items[8].sys.contentType.sys.id
+        - $.items[8].sys.environment.sys.id
+        - $.items[8].sys.id
+        - $.items[8].sys.space.sys.id
+        - $.items[9].fields.name
+        - $.items[9].sys.contentType.sys.id
+        - $.items[9].sys.environment.sys.id
+        - $.items[9].sys.id
+        - $.items[9].sys.space.sys.id
+        - $request.url
+origin:
+    type: upstream_recording
+    repository: https://github.com/JuulLabs-OSS/contentful_lite
+    commit: 9e1210adbe01d3c3537fd040228ea339db24f091
+    path: fixtures/vcr_cassettes/client/entries.yml
+    artifact_sha256: 90894b5b861b1dfe1fe5a6bb74b4e84d1bc6b4a8198377c85ce2eba383a10530
+    license: MIT
+    recording_tool: VCR
+    harness_path: spec/spec_helper.rb
+    freshness: historical
+    capture_time_basis: recorded_at

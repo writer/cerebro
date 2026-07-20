@@ -1,6 +1,7 @@
 package graphagent
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -229,6 +230,28 @@ func TestInferIntentRecognizesMITREAttackCoverage(t *testing.T) {
 	}
 }
 
+func TestInferIntentRecognizesGenericGraphRows(t *testing.T) {
+	for _, question := range []string{
+		"show graph rows",
+		"list entity rows",
+		"show entities",
+		"list graph nodes",
+	} {
+		if got := inferIntent(question, ""); got != IntentGraphRows {
+			t.Fatalf("inferIntent(%q) = %q, want %q", question, got, IntentGraphRows)
+		}
+	}
+	for _, question := range []string{
+		"Which entities are risky?",
+		"show finding rows",
+		"show source health rows",
+	} {
+		if got := inferIntent(question, ""); got == IntentGraphRows {
+			t.Fatalf("inferIntent(%q) = %q, want a more specific or raw intent", question, got)
+		}
+	}
+}
+
 func TestInferIntentDoesNotStealGenericAttackQuestions(t *testing.T) {
 	for _, tc := range []struct {
 		question string
@@ -241,6 +264,34 @@ func TestInferIntentDoesNotStealGenericAttackQuestions(t *testing.T) {
 		if got := inferIntent(tc.question, ""); got != tc.want {
 			t.Fatalf("inferIntent(%q) = %q, want %q", tc.question, got, tc.want)
 		}
+	}
+}
+
+func TestConvertDraftToQueryCanonicalizesGenericRowsBeforeValidation(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "show graph rows"}, &DraftResponse{
+		Cypher: `MATCH (n) RETURN n LIMIT 25`,
+	})
+
+	if result.Plan.Intent != IntentGraphRows || !result.Deterministic || !result.Corrected {
+		t.Fatalf("conversion result = %#v, want corrected deterministic graph rows", result)
+	}
+	for _, want := range []string{
+		"MATCH (entity:Entity {tenant_id: $tenant_id})",
+		"WHERE $scope_urn = '' OR entity.urn = $scope_urn",
+		"entity.urn AS entity_urn",
+		"entity_attributes_json_internal",
+		"LIMIT 25",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("graph rows cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+	if strings.Contains(result.Cypher, "MATCH (n)") || strings.Contains(result.Cypher, "RETURN n") {
+		t.Fatalf("graph rows cypher preserved unscoped draft:\n%s", result.Cypher)
+	}
+	validation, limit, err := NewValidator(nil, ValidatorOptions{DisableExplain: true, MaxRows: 100}).validate(context.Background(), result.Cypher, nil)
+	if err != nil || !validation.OK || limit != 25 {
+		t.Fatalf("validate(converted cypher) = (%#v, %d, %v), want allowed LIMIT 25", validation, limit, err)
 	}
 }
 
@@ -763,6 +814,204 @@ func TestConvertDraftToQueryUsesQuestionnaireEvidenceTemplate(t *testing.T) {
 	}
 }
 
+func TestEnforceCypherLimitIgnoresQuotedAndCommentedText(t *testing.T) {
+	tests := []struct {
+		name           string
+		query          string
+		wantQuery      string
+		wantDiagnostic string
+		wantChanged    bool
+	}{
+		{
+			name:           "quoted limit is not a clause",
+			query:          `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN 'LIMIT 500' AS label`,
+			wantQuery:      "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN 'LIMIT 500' AS label\nLIMIT 100",
+			wantDiagnostic: "limit_injected",
+			wantChanged:    true,
+		},
+		{
+			name:           "real limit after quoted projection is capped",
+			query:          `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN 'bounded' AS label LIMIT 500`,
+			wantQuery:      `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN 'bounded' AS label LIMIT 100`,
+			wantDiagnostic: "limit_capped",
+			wantChanged:    true,
+		},
+		{
+			name:           "line commented limit is not a clause",
+			query:          "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e // LIMIT 500",
+			wantQuery:      "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e // LIMIT 500\nLIMIT 100",
+			wantDiagnostic: "limit_injected",
+			wantChanged:    true,
+		},
+		{
+			name:      "commented limit does not override bounded clause",
+			query:     "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 25 // LIMIT 500",
+			wantQuery: "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 25 // LIMIT 500",
+		},
+		{
+			name:           "caps real clause before trailing comment",
+			query:          "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 500 // LIMIT 900",
+			wantQuery:      "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 100 // LIMIT 900",
+			wantDiagnostic: "limit_capped",
+			wantChanged:    true,
+		},
+		{
+			name:           "block commented limit is not a clause",
+			query:          `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e /* LIMIT 500 */`,
+			wantQuery:      "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e /* LIMIT 500 */\nLIMIT 100",
+			wantDiagnostic: "limit_injected",
+			wantChanged:    true,
+		},
+		{
+			name:           "limit variable is not a clause",
+			query:          `MATCH (limit:Entity {tenant_id: $tenant_id}) RETURN limit`,
+			wantQuery:      "MATCH (limit:Entity {tenant_id: $tenant_id}) RETURN limit\nLIMIT 100",
+			wantDiagnostic: "limit_injected",
+			wantChanged:    true,
+		},
+		{
+			name:      "parameterized limit remains for validator refusal",
+			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT $max`,
+			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT $max`,
+		},
+		{
+			name:      "arithmetic limit remains for validator refusal",
+			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 2 * 1000`,
+			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 2 * 1000`,
+		},
+		{
+			name:      "additive limit remains for validator refusal",
+			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 2 + 1000`,
+			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 2 + 1000`,
+		},
+		{
+			name:      "signed limit remains for validator refusal",
+			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT +1000`,
+			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT +1000`,
+		},
+		{
+			name:      "parenthesized numeric limit remains for validator refusal",
+			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT (5)`,
+			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT (5)`,
+		},
+		{
+			name:      "parenthesized limit expression remains for validator refusal",
+			query:     `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT (1 + 2)`,
+			wantQuery: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT (1 + 2)`,
+		},
+		{
+			name:           "limit named function is not a clause",
+			query:          `MATCH (e:Entity {tenant_id:$tenant_id}) RETURN limit(5) AS value, e`,
+			wantQuery:      "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN limit(5) AS value, e\nLIMIT 100",
+			wantDiagnostic: "limit_injected",
+			wantChanged:    true,
+		},
+		{
+			name:           "limit variable arithmetic is not a clause",
+			query:          `MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit + 1`,
+			wantQuery:      "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit + 1\nLIMIT 100",
+			wantDiagnostic: "limit_injected",
+			wantChanged:    true,
+		},
+		{
+			name:           "limit variable subtraction is not a clause",
+			query:          `MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit - 1`,
+			wantQuery:      "MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit - 1\nLIMIT 100",
+			wantDiagnostic: "limit_injected",
+			wantChanged:    true,
+		},
+		{
+			name:           "limit variable arithmetic does not hide later clause",
+			query:          `MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit + 1 LIMIT 1000`,
+			wantQuery:      `MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit + 1 LIMIT 100`,
+			wantDiagnostic: "limit_capped",
+			wantChanged:    true,
+		},
+		{
+			name:           "limit variable does not hide later clause",
+			query:          `MATCH (limit:Entity {tenant_id: $tenant_id}) RETURN limit LIMIT 1000`,
+			wantQuery:      `MATCH (limit:Entity {tenant_id: $tenant_id}) RETURN limit LIMIT 100`,
+			wantDiagnostic: "limit_capped",
+			wantChanged:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			query, diagnostic, changed := enforceCypherLimit(tt.query, 100)
+			if query != tt.wantQuery || changed != tt.wantChanged {
+				t.Fatalf("enforceCypherLimit() = (%q, %#v, %t), want query %q and changed %t", query, diagnostic, changed, tt.wantQuery, tt.wantChanged)
+			}
+			if diagnostic.Code != tt.wantDiagnostic {
+				t.Fatalf("diagnostic = %#v, want code %q", diagnostic, tt.wantDiagnostic)
+			}
+		})
+	}
+}
+
+func TestEnforceCypherLimitTreatsKeywordsAsExpressionBoundaries(t *testing.T) {
+	queries := []string{
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit AND true RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit OR false RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit IS NOT NULL RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit IN [true] RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit WHERE limit XOR false RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, true AS limit RETURN e, CASE WHEN limit THEN 1 ELSE 0 END AS value`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, CASE limit WHEN 1 THEN 1 ELSE 0 END AS value`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, CASE WHEN true THEN 1 ELSE limit END AS value`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, CASE WHEN true THEN limit ELSE 0 END AS value`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e ORDER BY limit ASC`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e ORDER BY limit DESC`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN DISTINCT limit + 1 AS value, e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 'abc' AS limit WHERE limit CONTAINS 'a' RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 'abc' AS limit WHERE limit STARTS WITH 'a' RETURN e`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 'abc' AS limit WHERE limit ENDS WITH 'c' RETURN e`,
+	}
+	for _, query := range queries {
+		limited, diagnostic, changed := enforceCypherLimit(query, 100)
+		if limited != query+"\nLIMIT 100" || !changed || diagnostic.Code != "limit_injected" {
+			t.Fatalf("enforceCypherLimit(%q) = (%q, %#v, %t), want injected LIMIT 100", query, limited, diagnostic, changed)
+		}
+		validation, limit, err := NewValidator(nil, ValidatorOptions{DisableExplain: true, MaxRows: 100}).validate(context.Background(), limited, nil)
+		if err != nil || !validation.OK || limit != 100 {
+			t.Fatalf("validate(%q) = (%#v, %d, %v), want allowed LIMIT 100", limited, validation, limit, err)
+		}
+	}
+
+	for _, keyword := range []string{"AND", "ASC", "BY", "CASE", "CONTAINS", "DESC", "DISTINCT", "ELSE", "END", "ENDS", "IN", "IS", "NOT", "OR", "STARTS", "THEN", "UNWIND", "WHEN", "XOR", "YIELD"} {
+		if !cypherLimitExpressionBoundary(strings.ToLower(keyword)) {
+			t.Fatalf("cypherLimitExpressionBoundary(%q) = false, want true", keyword)
+		}
+	}
+
+	query := `RETURN DISTINCT limit + 1`
+	tokens := lexCypherLimitTokens(query)
+	foundLimit := false
+	for index, token := range tokens {
+		if token.kind != 'i' || !strings.EqualFold(query[token.start:token.end], "LIMIT") {
+			continue
+		}
+		foundLimit = true
+		if cypherLimitClausePosition(query, tokens, index) {
+			t.Fatal("cypherLimitClausePosition() = true after DISTINCT, want expression context")
+		}
+	}
+	if !foundLimit {
+		t.Fatal("lexCypherLimitTokens() did not return limit identifier")
+	}
+}
+
+func TestLastNumericCypherLimitRejectsExpressions(t *testing.T) {
+	for _, query := range []string{
+		`MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 2 * 1000`,
+		`MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 2 + 1000`,
+	} {
+		if value, _, _, ok := lastNumericCypherLimit(query); ok {
+			t.Fatalf("lastNumericCypherLimit(%q) = (%d, true), want false", query, value)
+		}
+	}
+}
+
 func TestInferIntentRoutesQuestionnairePromptsToGraphEvidence(t *testing.T) {
 	for _, question := range []string{
 		"Does Okta enforce MFA for access?",
@@ -989,6 +1238,7 @@ func TestDeterministicTemplatesUseProjectedGraphContract(t *testing.T) {
 		scope   string
 		filters map[string]string
 	}{
+		{name: "graph rows", intent: IntentGraphRows, scope: "urn:cerebro:writer:asset:alpha"},
 		{name: "source aggregation", intent: IntentAggregateFindingsBySource, scope: "urn:cerebro:writer:asset:alpha"},
 		{name: "top risk", intent: IntentTopRiskFindings, scope: "urn:cerebro:writer:asset:alpha"},
 		{name: "failing controls", intent: IntentFailingControls, scope: "urn:cerebro:writer:asset:alpha"},
@@ -1107,7 +1357,7 @@ func containsDiagnosticCode(diagnostics []ConversionDiagnostic, code string) boo
 }
 
 func TestConvertDraftToQueryInjectsFallbackLimit(t *testing.T) {
-	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "show entities"}, &DraftResponse{
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "run this custom read query"}, &DraftResponse{
 		Cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn`,
 	})
 
@@ -1119,8 +1369,43 @@ func TestConvertDraftToQueryInjectsFallbackLimit(t *testing.T) {
 	}
 }
 
+func TestConvertDraftToQueryInjectsLimitAfterLimitNamedArithmetic(t *testing.T) {
+	cypher := `MATCH (e:Entity {tenant_id:$tenant_id}) WITH e, 1 AS limit RETURN e, limit + 1`
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "run this custom read query"}, &DraftResponse{
+		Cypher: cypher,
+	})
+
+	if result.Plan.Intent != IntentRawCypher || !result.Corrected {
+		t.Fatalf("conversion result = %#v, want corrected raw cypher", result)
+	}
+	if result.Cypher != cypher+"\nLIMIT 100" || !containsDiagnosticCode(result.Diagnostics, "limit_injected") {
+		t.Fatalf("conversion result = %#v, want a real LIMIT injected after limit-named arithmetic", result)
+	}
+	validation, limit, err := NewValidator(nil, ValidatorOptions{DisableExplain: true, MaxRows: 100}).validate(context.Background(), result.Cypher, nil)
+	if err != nil || !validation.OK || limit != 100 {
+		t.Fatalf("validate(converted cypher) = (%#v, %d, %v), want allowed LIMIT 100", validation, limit, err)
+	}
+}
+
+func TestConvertDraftToQueryPreservesParenthesizedLimitForValidatorRefusal(t *testing.T) {
+	queries := []string{
+		`MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT (5)`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) RETURN e LIMIT (1 + 2)`,
+	}
+	for _, cypher := range queries {
+		result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "run this custom read query"}, &DraftResponse{Cypher: cypher})
+		if result.Cypher != cypher || result.Corrected || containsDiagnosticCode(result.Diagnostics, "limit_injected") {
+			t.Fatalf("conversion result = %#v, want parenthesized LIMIT preserved for validation", result)
+		}
+		validation, _, err := NewValidator(nil, ValidatorOptions{DisableExplain: true, MaxRows: 100}).validate(context.Background(), result.Cypher, nil)
+		if err != nil || validation.OK || validation.Code != "limit_required" {
+			t.Fatalf("validate(converted cypher) = (%#v, %v), want limit_required refusal", validation, err)
+		}
+	}
+}
+
 func TestConvertDraftToQueryCapsFallbackLimit(t *testing.T) {
-	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "show entities"}, &DraftResponse{
+	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "run this custom read query"}, &DraftResponse{
 		Cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn LIMIT 500`,
 	})
 

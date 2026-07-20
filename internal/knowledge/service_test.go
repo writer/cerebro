@@ -115,7 +115,7 @@ func TestWriteDecisionRecordsDecisionTargetsEvidenceAndActions(t *testing.T) {
 			},
 		},
 	}
-	service := New(store, store)
+	service := New(store, store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
 
 	result, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		DecisionType:  "finding-triage",
@@ -168,7 +168,7 @@ func TestWriteOutcomeRecordsOutcomeAgainstDecision(t *testing.T) {
 			},
 		},
 	}
-	service := New(store, store)
+	service := New(store, store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
 	decision, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		ID:           "decision-1",
 		DecisionType: "finding-triage",
@@ -210,7 +210,7 @@ func TestWriteActionRecordsTargetsAndDecisionLink(t *testing.T) {
 			},
 		},
 	}
-	service := New(store, store)
+	service := New(store, store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
 	decision, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		ID:           "decision-1",
 		DecisionType: "finding-triage",
@@ -320,7 +320,7 @@ func TestWriteDecisionAppendFailurePreventsGraphProjection(t *testing.T) {
 	}
 }
 
-func TestWriteActionProjectionFailureLeavesAppendedWorkflowEvent(t *testing.T) {
+func TestWriteActionProjectionFailureReturnsDurableResult(t *testing.T) {
 	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
 	store := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
@@ -333,7 +333,7 @@ func TestWriteActionProjectionFailureLeavesAppendedWorkflowEvent(t *testing.T) {
 			},
 		},
 	}
-	service := New(store, store)
+	service := New(store, store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
 	decision, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		ID:           "decision-1",
 		DecisionType: "finding-triage",
@@ -345,14 +345,15 @@ func TestWriteActionProjectionFailureLeavesAppendedWorkflowEvent(t *testing.T) {
 	upsertErr := errors.New("graph failed")
 	store.upsertErr = upsertErr
 	appendLog := &recordingAppendLog{}
-	if _, err := service.WithAppendLog(appendLog).WriteAction(context.Background(), ActionWriteRequest{
+	result, err := service.WithAppendLog(appendLog).WithDurabilityMode(DurabilityRequired).WriteAction(context.Background(), ActionWriteRequest{
 		ID:          "action-1",
 		InsightType: "remediation",
 		Title:       "Open remediation ticket",
 		DecisionID:  decision.DecisionID,
 		TargetIDs:   []string{targetURN},
-	}); !errors.Is(err, upsertErr) {
-		t.Fatalf("WriteAction() error = %v, want %v", err, upsertErr)
+	})
+	if err != nil {
+		t.Fatalf("WriteAction() error = %v", err)
 	}
 	if len(appendLog.events) != 1 {
 		t.Fatalf("len(appendLog.events) = %d, want 1", len(appendLog.events))
@@ -360,15 +361,130 @@ func TestWriteActionProjectionFailureLeavesAppendedWorkflowEvent(t *testing.T) {
 	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindKnowledgeActionRecorded {
 		t.Fatalf("appended event kind = %q, want %q", got, workflowevents.EventKindKnowledgeActionRecorded)
 	}
+	if result.DurabilityStatus != DurabilityRecorded || result.ProjectionStatus != ProjectionFailed || result.ProjectionErrorCategory != ProjectionErrorGraph {
+		t.Fatalf("WriteAction() statuses = %+v", result)
+	}
 }
 
-func TestWriteDecisionRequiresAvailableGraph(t *testing.T) {
-	service := New(nil, nil)
+func TestWriteDecisionRequiresAppendLogInDurableMode(t *testing.T) {
+	service := New(nil, nil).WithDurabilityMode(DurabilityRequired)
 	if _, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		DecisionType: "finding-triage",
 		TargetIDs:    []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
 	}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("WriteDecision() error = %v, want %v", err, ErrRuntimeUnavailable)
+	}
+}
+
+func TestWriteDecisionRecordsWithoutGraphWhenAppendLogIsAvailable(t *testing.T) {
+	appendLog := &recordingAppendLog{}
+	result, err := New(nil, nil).
+		WithAppendLog(appendLog).
+		WithDurabilityMode(DurabilityRequired).
+		WriteDecision(context.Background(), DecisionWriteRequest{
+			DecisionType: "finding-triage",
+			TargetIDs:    []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+		})
+	if err != nil {
+		t.Fatalf("WriteDecision() error = %v", err)
+	}
+	if len(appendLog.events) != 1 || result.EventID != appendLog.events[0].GetId() {
+		t.Fatalf("durable event = result %+v events %+v", result, appendLog.events)
+	}
+	if result.DurabilityStatus != DurabilityRecorded || result.ProjectionStatus != ProjectionNotConfigured || result.ProjectionErrorCategory != "" {
+		t.Fatalf("WriteDecision() statuses = %+v", result)
+	}
+}
+
+func TestLegacyProjectionOnlyReportsMissingDurability(t *testing.T) {
+	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	store := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{targetURN: {URN: targetURN}}}
+	result, err := New(store, store).WithDurabilityMode(DurabilityLegacyProjectionOnly).WriteDecision(context.Background(), DecisionWriteRequest{
+		DecisionType: "finding-triage",
+		TargetIDs:    []string{targetURN},
+	})
+	if err != nil {
+		t.Fatalf("WriteDecision() error = %v", err)
+	}
+	if result.DurabilityStatus != DurabilityNotRecorded || result.ProjectionStatus != ProjectionProjected {
+		t.Fatalf("WriteDecision() statuses = %+v", result)
+	}
+}
+
+func TestCrossTenantReferenceNeverEntersAppendLog(t *testing.T) {
+	appendLog := &recordingAppendLog{}
+	_, err := New(nil, nil).
+		WithAppendLog(appendLog).
+		WithDurabilityMode(DurabilityRequired).
+		WriteDecision(context.Background(), DecisionWriteRequest{
+			DecisionType: "finding-triage",
+			TargetIDs:    []string{"urn:cerebro:writer:resource:service-1"},
+			EvidenceIDs:  []string{"urn:cerebro:other:evidence:evidence-1"},
+			Metadata:     map[string]any{"tenant_id": "writer"},
+		})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("WriteDecision() error = %v, want invalid request", err)
+	}
+	if len(appendLog.events) != 0 {
+		t.Fatalf("cross-tenant events = %+v, want none", appendLog.events)
+	}
+}
+
+func TestDecisionRetryKeepsLogicalEventIdentity(t *testing.T) {
+	appendLog := &recordingAppendLog{}
+	service := New(nil, nil).WithAppendLog(appendLog)
+	request := DecisionWriteRequest{
+		ID:           "decision-1",
+		DecisionType: "finding-triage",
+		TargetIDs:    []string{"urn:cerebro:writer:resource:service-1"},
+		ObservedAt:   time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC),
+	}
+	first, err := service.WriteDecision(context.Background(), request)
+	if err != nil {
+		t.Fatalf("first WriteDecision() error = %v", err)
+	}
+	second, err := service.WriteDecision(context.Background(), request)
+	if err != nil {
+		t.Fatalf("second WriteDecision() error = %v", err)
+	}
+	if first.DecisionID != second.DecisionID || first.EventID != second.EventID {
+		t.Fatalf("retry identities = first %+v second %+v", first, second)
+	}
+}
+
+func TestPacketDecisionIdentityNamespaceIsServerOwned(t *testing.T) {
+	appendLog := &recordingAppendLog{}
+	targetURN := "urn:cerebro:writer:resource:service-1"
+	store := &stubGraphStore{entities: map[string]*ports.ProjectedEntity{
+		targetURN: {URN: targetURN, TenantID: "writer", SourceID: "test", EntityType: "resource", Label: "Service 1"},
+	}}
+	service := New(store, store).WithAppendLog(appendLog)
+	request := DecisionWriteRequest{
+		ID:           "urn:cerebro:writer:packet_decision:dpr-1-accepted",
+		DecisionType: "finding-triage",
+		TargetIDs:    []string{targetURN},
+		Metadata:     map[string]any{"tenant_id": "writer"},
+	}
+	if _, err := service.WriteDecision(context.Background(), request); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("WriteDecision(reserved id) error = %v, want %v", err, ErrInvalidRequest)
+	}
+	result, err := service.WriteAuthenticatedPacketDecision(context.Background(), DecisionWriteRequest{
+		ID:           "dpr_1:accepted",
+		DecisionType: "finding-triage",
+		TargetIDs:    request.TargetIDs,
+		Metadata:     request.Metadata,
+	})
+	if err != nil {
+		t.Fatalf("WriteAuthenticatedPacketDecision() error = %v", err)
+	}
+	if got, want := result.DecisionID, "urn:cerebro:writer:packet_decision:dpr-1-accepted"; got != want {
+		t.Fatalf("packet decision id = %q, want %q", got, want)
+	}
+	if entity := store.entities[result.DecisionID]; entity == nil || entity.EntityType != decisionEntityType {
+		t.Fatalf("projected packet decision = %+v, want decision entity", entity)
+	}
+	if _, ok := store.links[result.DecisionID+"|"+relationTargets+"|"+targetURN]; !ok {
+		t.Fatal("projected packet decision target link missing")
 	}
 }
 
@@ -385,7 +501,7 @@ func TestKnowledgeValidationErrorsAreInvalidRequests(t *testing.T) {
 			},
 		},
 	}
-	service := New(store, store)
+	service := New(store, store).WithDurabilityMode(DurabilityLegacyProjectionOnly)
 	for _, tt := range []struct {
 		name string
 		run  func() error

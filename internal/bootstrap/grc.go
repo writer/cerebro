@@ -25,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	questionnairehttp "github.com/writer/cerebro/internal/sourcehttp/questionnaire"
+	"github.com/writer/cerebro/internal/sourcehttp/responseview"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
 	"golang.org/x/sync/errgroup"
@@ -104,6 +105,20 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		telemetry.AnnotateMainPhase(dashboardCtx, "grc.dashboard", status, endAttrs)
 		telemetry.End(span, status, endAttrs)
 	}()
+	view, err := responseview.FromRequest(r)
+	if err != nil {
+		statusCode = http.StatusBadRequest
+		status, endAttrs = grcTelemetryError(endAttrs, err)
+		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
+		return
+	}
+	coverageScope, err := responseview.CoverageScopeFromRequest(r, view)
+	if err != nil {
+		statusCode = http.StatusBadRequest
+		status, endAttrs = grcTelemetryError(endAttrs, err)
+		writeGRCError(w, errors.Join(errInvalidHTTPRequest, err))
+		return
+	}
 	scope, err := grcScopeFromRequest(r)
 	if err != nil {
 		statusCode = grcHTTPStatusCode(err)
@@ -212,8 +227,20 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	coverage := a.sourceCoverageRecords(runtimes, ports.SourceRuntimeFilter{RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID, SourceID: scope.SourceID, Limit: scope.Limit}, generatedAt)
+	coverage, err := a.sourceCoverageRecordsScoped(r.Context(), runtimes, ports.SourceRuntimeFilter{RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID, SourceID: scope.SourceID, Limit: scope.Limit}, generatedAt, coverageScope)
+	if err != nil {
+		statusCode = grcHTTPStatusCode(err)
+		status, endAttrs = grcTelemetryError(endAttrs, err)
+		writeGRCError(w, err)
+		return
+	}
 	coverageBlindSpots := sourcecoverage.BlindSpots(coverage)
+	serializedCoverageBlindSpots := coverageBlindSpots
+	productAreas := grcproductareas.BuildCoverageViews(coverage)
+	if view == responseview.Summary {
+		serializedCoverageBlindSpots = nil
+		productAreas = responseview.CompactProductAreas(productAreas)
+	}
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "runtime_count", Value: len(runtimes)})
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "finding_count", Value: len(findingItems)})
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "evidence_count", Value: len(evidenceItems)})
@@ -224,9 +251,9 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		Evidence:           grcLimitEvidence(evidenceItems, 25),
 		Connectors:         grcfindings.ConnectorItems(runtimes),
 		SourceSummaries:    sourceSummaries,
-		CoverageBlindSpots: coverageBlindSpots,
+		CoverageBlindSpots: serializedCoverageBlindSpots,
 		CoverageSummaries:  sourcecoverage.Summaries(coverage),
-		ProductAreas:       grcproductareas.BuildCoverageViews(coverage),
+		ProductAreas:       productAreas,
 		GeneratedAt:        generatedAt,
 	})
 }
@@ -785,6 +812,7 @@ func grcTelemetryErrorKind(err error) string {
 	case errors.Is(err, grcupload.ErrRemote):
 		return "parser_remote_error"
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
+		errors.Is(err, sourcecoverage.ErrEvaluatorUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
 		errors.Is(err, graphquery.ErrRuntimeUnavailable), errors.Is(err, grcpolicylifecycle.ErrRuntimeUnavailable),
@@ -1395,6 +1423,7 @@ func grcHTTPStatusCode(err error) int {
 		errors.Is(err, ports.ErrQuestionnaireRunNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
+		errors.Is(err, sourcecoverage.ErrEvaluatorUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
 		errors.Is(err, graphagent.ErrLLMAuthenticationFailed),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),

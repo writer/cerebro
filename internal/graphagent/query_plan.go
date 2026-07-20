@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -12,6 +13,7 @@ import (
 
 const (
 	IntentRawCypher                 = "raw_cypher"
+	IntentGraphRows                 = "graph_rows"
 	IntentAggregateFindingsBySource = "aggregate_findings_by_source"
 	IntentTopRiskFindings           = "top_risk_findings"
 	IntentFailingControls           = "failing_controls"
@@ -106,7 +108,6 @@ var (
 	upperRelationPattern  = regexp.MustCompile(`:\s*([A-Z][A-Z0-9_]+)\b`)
 	nonEntityLabelPattern = regexp.MustCompile(`\([^){}]*:\s*(Finding|FINDING|finding|repo|repository|identity|connector)\b`)
 	apocUsagePattern      = regexp.MustCompile(`(?i)\bapoc\.[A-Za-z0-9_.]+\s*\(`)
-	cypherLimitPattern    = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\b`)
 )
 
 func convertDraftToQuery(request AskRequest, draft *DraftResponse) conversionResult {
@@ -215,7 +216,7 @@ func deterministicFastPathPlan(request AskRequest) (AskQueryPlan, bool) {
 	switch intent {
 	case IntentTopRiskFindings:
 		plan.Filters = fastPathTopRiskFilters(question)
-	case IntentFailingControls, IntentAggregateFindingsBySource, IntentConnectorHealth, IntentIdentityBridge, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk:
+	case IntentGraphRows, IntentFailingControls, IntentAggregateFindingsBySource, IntentConnectorHealth, IntentIdentityBridge, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk:
 		plan.Filters = map[string]string{}
 	case IntentMITREAttackCoverage:
 		plan.Filters = fastPathMITREAttackCoverageFilters(question)
@@ -527,6 +528,8 @@ func canonicalIntent(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", "raw", "cypher", "raw_cypher":
 		return IntentRawCypher
+	case "graph_rows", "entity_rows", "query_rows", "rows", "entities", "nodes", "graph_entities", "graph_nodes":
+		return IntentGraphRows
 	case "aggregate_findings_by_source", "finding_source_counts", "findings_by_source", "source_breakdown":
 		return IntentAggregateFindingsBySource
 	case "top_risk_findings", "high_risk_findings", "findings":
@@ -581,9 +584,21 @@ func inferIntent(question string, cypher string) string {
 		return IntentQuestionnaireEvidence
 	case looksLikeMITREAttackCoverageQuestion(haystack):
 		return IntentMITREAttackCoverage
+	case looksLikeGraphRowsQuestion(haystack):
+		return IntentGraphRows
 	default:
 		return IntentRawCypher
 	}
+}
+
+func looksLikeGraphRowsQuestion(haystack string) bool {
+	if !containsAny(haystack, "graph row", "graph rows", "entity row", "entity rows", "query row", "query rows", "list entities", "show entities", "list nodes", "show nodes", "list graph nodes", "show graph nodes", "list graph entities", "show graph entities") {
+		return false
+	}
+	return !containsAny(haystack,
+		"risk", "risky", "finding", "findings", "control", "controls", "evidence", "questionnaire",
+		"connector", "source health", "runtime health", "okta", "mitre", "attack", "bridge", "explain",
+	)
 }
 
 func looksLikeMITREAttackCoverageQuestion(haystack string) bool {
@@ -599,6 +614,17 @@ func renderDeterministicPlan(plan AskQueryPlan, defaultMaxRows int) (string, boo
 	}
 	limit := boundedLimit(plan.Limit, defaultMaxRows)
 	switch plan.Intent {
+	case IntentGraphRows:
+		return fmt.Sprintf(`MATCH (entity:Entity {tenant_id: $tenant_id})
+WHERE $scope_urn = '' OR entity.urn = $scope_urn
+RETURN entity.urn AS entity_urn,
+       coalesce(entity.label, entity.urn) AS entity_label,
+       entity.entity_type AS entity_type,
+       entity.source_id AS source_id,
+       entity.runtime_id AS runtime_id,
+       coalesce(entity.attributes_json, '') AS entity_attributes_json_internal
+ORDER BY entity_type, entity_label, entity_urn
+LIMIT %d`, limit), true
 	case IntentAggregateFindingsBySource:
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(f:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE $scope_urn = '' OR resource.urn = $scope_urn OR f.urn = $scope_urn
@@ -1238,6 +1264,8 @@ func hasUnsupportedDeterministicModifiers(plan AskQueryPlan) bool {
 	for key := range plan.Filters {
 		normalized := strings.ToLower(strings.TrimSpace(key))
 		switch plan.Intent {
+		case IntentGraphRows:
+			return true
 		case IntentTopRiskFindings:
 			if normalized != "severity" && normalized != "status" && normalized != "resource_type" && normalized != "entity_type" {
 				return true
@@ -1299,16 +1327,15 @@ func enforceCypherLimit(cypher string, defaultMaxRows int) (string, ConversionDi
 	if trimmed == "" {
 		return cypher, ConversionDiagnostic{}, false
 	}
-	matches := cypherLimitPattern.FindAllStringSubmatchIndex(trimmed, -1)
-	if len(matches) == 0 {
+	tokens := lexCypherLimitTokens(trimmed)
+	if !hasCypherLimitClause(trimmed, tokens) {
 		return trimmed + fmt.Sprintf("\nLIMIT %d", limit), ConversionDiagnostic{
 			Level:   "info",
 			Code:    "limit_injected",
 			Message: fmt.Sprintf("Added LIMIT %d to LLM fallback Cypher.", limit),
 		}, true
 	}
-	valueStart, valueEnd := matches[len(matches)-1][2], matches[len(matches)-1][3]
-	current, ok := queryLimit(lexCypher(trimmed))
+	current, valueStart, valueEnd, ok := lastNumericCypherLimitTokens(trimmed, tokens)
 	if !ok || current <= limit {
 		return cypher, ConversionDiagnostic{}, false
 	}
@@ -1317,6 +1344,201 @@ func enforceCypherLimit(cypher string, defaultMaxRows int) (string, ConversionDi
 		Code:    "limit_capped",
 		Message: fmt.Sprintf("Capped LLM fallback Cypher LIMIT from %d to %d.", current, limit),
 	}, true
+}
+
+type cypherLimitToken struct {
+	kind       byte
+	start, end int
+}
+
+func lastNumericCypherLimit(query string) (int, int, int, bool) {
+	return lastNumericCypherLimitTokens(query, lexCypherLimitTokens(query))
+}
+
+func lastNumericCypherLimitTokens(query string, tokens []cypherLimitToken) (int, int, int, bool) {
+	value, valueStart, valueEnd, found := 0, 0, 0, false
+	for index, token := range tokens {
+		if token.kind != 'i' || !strings.EqualFold(query[token.start:token.end], "LIMIT") {
+			continue
+		}
+		if index+1 >= len(tokens) || tokens[index+1].kind != 'n' {
+			continue
+		}
+		number := tokens[index+1]
+		parsed, err := strconv.Atoi(query[number.start:number.end])
+		if err != nil || !cypherLimitValueTerminated(query, tokens, index+2) {
+			continue
+		}
+		value, valueStart, valueEnd, found = parsed, number.start, number.end, true
+	}
+	return value, valueStart, valueEnd, found
+}
+
+func hasCypherLimitClause(query string, tokens []cypherLimitToken) bool {
+	for index, token := range tokens {
+		if token.kind != 'i' || !strings.EqualFold(query[token.start:token.end], "LIMIT") || index+1 >= len(tokens) {
+			continue
+		}
+		next := tokens[index+1]
+		value := query[next.start:next.end]
+		switch next.kind {
+		case 'n':
+			return true
+		case 'o':
+			if strings.HasPrefix(value, "$") || (value == "+" || value == "-" || value == "(") && cypherLimitClausePosition(query, tokens, index) {
+				return true
+			}
+		case 'i':
+			if !cypherLimitExpressionBoundary(value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func cypherLimitClausePosition(query string, tokens []cypherLimitToken, index int) bool {
+	if index == 0 {
+		return true
+	}
+	previous := tokens[index-1]
+	value := query[previous.start:previous.end]
+	if previous.kind == 'o' {
+		return value == ")" || value == "]" || value == "}"
+	}
+	if previous.kind != 'i' {
+		return true
+	}
+	switch strings.ToUpper(value) {
+	case "AND", "AS", "BY", "CALL", "CASE", "DISTINCT", "ELSE", "IN", "IS", "MATCH", "NOT", "OPTIONAL", "OR", "ORDER", "RETURN", "SKIP", "THEN", "UNION", "UNWIND", "WHEN", "WHERE", "WITH", "XOR", "YIELD":
+		return false
+	default:
+		return true
+	}
+}
+
+func cypherLimitExpressionBoundary(value string) bool {
+	switch strings.ToUpper(value) {
+	case "AND", "AS", "ASC", "BY", "CALL", "CASE", "CONTAINS", "DESC", "DISTINCT", "ELSE", "END", "ENDS", "IN", "IS", "LIMIT", "MATCH", "NOT", "OPTIONAL", "OR", "ORDER", "RETURN", "SKIP", "STARTS", "THEN", "UNION", "UNWIND", "WHEN", "WHERE", "WITH", "XOR", "YIELD":
+		return true
+	default:
+		return false
+	}
+}
+
+func cypherLimitValueTerminated(query string, tokens []cypherLimitToken, index int) bool {
+	if index >= len(tokens) {
+		return true
+	}
+	token := tokens[index]
+	value := query[token.start:token.end]
+	if token.kind == 'o' {
+		return value == "}" || value == ";"
+	}
+	if token.kind != 'i' {
+		return false
+	}
+	switch strings.ToUpper(value) {
+	case "UNION", "MATCH", "OPTIONAL", "WITH", "RETURN", "CALL", "ORDER", "SKIP":
+		return true
+	default:
+		return false
+	}
+}
+
+func lexCypherLimitTokens(query string) []cypherLimitToken {
+	tokens := make([]cypherLimitToken, 0, len(query)/8)
+	for index := 0; index < len(query); {
+		value := query[index]
+		switch {
+		case isCypherSpace(value):
+			index++
+		case value == '\'' || value == '"':
+			index = skipCypherQuotedText(query, index, value)
+		case value == '`':
+			index = skipCypherEscapedIdentifier(query, index)
+		case value == '/' && index+1 < len(query) && query[index+1] == '/':
+			index += 2
+			for index < len(query) && query[index] != '\n' && query[index] != '\r' {
+				index++
+			}
+		case value == '/' && index+1 < len(query) && query[index+1] == '*':
+			index += 2
+			for index+1 < len(query) && (query[index] != '*' || query[index+1] != '/') {
+				index++
+			}
+			if index+1 < len(query) {
+				index += 2
+			}
+		case isCypherIdentifierStart(value):
+			start := index
+			for index < len(query) && (isCypherIdentifierByte(query[index]) || query[index] == '.') {
+				index++
+			}
+			tokens = append(tokens, cypherLimitToken{kind: 'i', start: start, end: index})
+		case value >= '0' && value <= '9':
+			start := index
+			for index < len(query) && (query[index] >= '0' && query[index] <= '9' || query[index] == '.') {
+				index++
+			}
+			tokens = append(tokens, cypherLimitToken{kind: 'n', start: start, end: index})
+		case value == '$':
+			start := index
+			index++
+			for index < len(query) && isCypherIdentifierByte(query[index]) {
+				index++
+			}
+			tokens = append(tokens, cypherLimitToken{kind: 'o', start: start, end: index})
+		default:
+			tokens = append(tokens, cypherLimitToken{kind: 'o', start: index, end: index + 1})
+			index++
+		}
+	}
+	return tokens
+}
+
+func skipCypherQuotedText(query string, start int, quote byte) int {
+	for index := start + 1; index < len(query); index++ {
+		if query[index] == '\\' && index+1 < len(query) {
+			index++
+			continue
+		}
+		if query[index] != quote {
+			continue
+		}
+		if index+1 < len(query) && query[index+1] == quote {
+			index++
+			continue
+		}
+		return index + 1
+	}
+	return len(query)
+}
+
+func skipCypherEscapedIdentifier(query string, start int) int {
+	for index := start + 1; index < len(query); index++ {
+		if query[index] != '`' {
+			continue
+		}
+		if index+1 < len(query) && query[index+1] == '`' {
+			index++
+			continue
+		}
+		return index + 1
+	}
+	return len(query)
+}
+
+func isCypherSpace(value byte) bool {
+	return value == ' ' || value == '\t' || value == '\n' || value == '\r'
+}
+
+func isCypherIdentifierByte(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9' || value == '_'
+}
+
+func isCypherIdentifierStart(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value == '_'
 }
 
 func boundedLimit(limit int, maxRows int) int {

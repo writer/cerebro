@@ -1,0 +1,54 @@
+name: Rust validator fuzz
+
+on:
+  schedule:
+    - cron: '17 9 * * 0'
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Number of validator fuzz inputs
+        required: false
+        default: '250000'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-validator-fuzz
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install pinned Rust fuzz toolchain
+        run: rustup toolchain install nightly-2026-06-09 --profile minimal
+
+      - name: Install pinned cargo-fuzz
+        run: cargo +nightly-2026-06-09 install cargo-fuzz --version 0.13.1 --locked
+
+      - name: Validate validator fuzz input count
+        env:
+          RUST_FUZZ_RUNS: ${{ inputs.runs || '250000' }}
+        run: |
+          if [[ ! "$RUST_FUZZ_RUNS" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::runs must be a positive integer"
+            exit 1
+          fi
+
+      - name: Run validator fuzz inputs
+        env:
+          RUST_FUZZ_RUNS: ${{ inputs.runs || '250000' }}
+        run: make rust-validator-fuzz-smoke
+
+      - name: Upload validator crash inputs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-validator-fuzz-crashes
+          path: internal/graphagent/staticvalidator/fuzz/artifacts/validate/
+          if-no-files-found: ignore
+          retention-days: 14

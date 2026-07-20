@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -19,8 +20,11 @@ import (
 	"github.com/writer/cerebro/internal/graphingest"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/runtimeorchestration"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
+
+const platformJobRecoveryRetryInterval = 15 * time.Second
 
 type createJobHTTPRequest struct {
 	Kind           string         `json:"kind"`
@@ -58,6 +62,7 @@ func (a *App) newJobService() *platformjobs.Service {
 	service.WithRunner(platformjobs.KindFindingRulesEvaluate, a.runFindingRulesEvaluateJob)
 	service.WithRunner(platformjobs.KindFindingsEvaluate, a.runFindingsEvaluateJob)
 	service.WithRunner(platformjobs.KindReportRun, a.runReportJob)
+	service.WithRunner(platformjobs.KindPolicyCandidateExperiment, a.runPolicyCandidateExperimentJob)
 	if a.cfg.AppendLog.JetStreamRuntimeIndexEnabled {
 		service.WithRunner(platformjobs.KindAppendLogRuntimeIndex, a.runAppendLogRuntimeIndexJob)
 	}
@@ -95,17 +100,46 @@ func (a *App) RecoverPlatformJobs(ctx context.Context) (int, error) {
 	return recovered + jobs, err
 }
 
-// StartPlatformJobRecovery continuously makes expired leases runnable. The
-// returned channel closes after cancellation and is included in shutdown waits.
+// StartPlatformJobRecovery restores durable projections and continuously makes
+// expired leases runnable. Recovery starts asynchronously so a large append log
+// cannot prevent the HTTP server from becoming healthy. The returned channel
+// closes after cancellation and is included in shutdown waits.
 func (a *App) StartPlatformJobRecovery(ctx context.Context, logf func(string, ...any)) <-chan struct{} {
-	jobsDone := a.jobService().StartRecovery(ctx, logf)
-	if a == nil || a.services.assessments == nil {
-		return jobsDone
-	}
-	assessmentsDone := a.services.assessments.StartInterruptedRunRecovery(ctx, 0, logf)
+	return a.startPlatformJobRecovery(ctx, logf, platformJobRecoveryRetryInterval)
+}
+
+func (a *App) startPlatformJobRecovery(ctx context.Context, logf func(string, ...any), retryInterval time.Duration) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		for {
+			_, err := a.RecoverPlatformJobs(ctx)
+			if err == nil {
+				break
+			}
+			if ctx.Err() != nil {
+				return
+			}
+			if logf != nil {
+				logf("recover platform jobs: %v", err)
+			}
+			timer := time.NewTimer(retryInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		jobsDone := a.jobService().StartRecovery(ctx, logf)
+		if a == nil || a.services.assessments == nil {
+			<-jobsDone
+			return
+		}
+		assessmentsDone := a.services.assessments.StartInterruptedRunRecovery(ctx, 0, logf)
 		<-jobsDone
 		<-assessmentsDone
 	}()
@@ -131,6 +165,10 @@ func (a *App) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	}
 	request.TenantID = tenantID
 	if err := normalizeAssessmentJobRequest(&request); err != nil {
+		writeJobError(w, err)
+		return
+	}
+	if err := normalizePolicyExperimentJobRequest(&request); err != nil {
 		writeJobError(w, err)
 		return
 	}
@@ -184,6 +222,32 @@ func normalizeAssessmentJobRequest(request *createJobHTTPRequest) error {
 	request.SubjectID = runID
 	request.IdempotencyKey = expectedKey
 	request.Payload["run_id"] = runID
+	request.Payload["tenant_id"] = request.TenantID
+	return nil
+}
+
+func normalizePolicyExperimentJobRequest(request *createJobHTTPRequest) error {
+	if request == nil || strings.TrimSpace(request.Kind) != platformjobs.KindPolicyCandidateExperiment {
+		return nil
+	}
+	experimentID := stringPayload(request.Payload, "experiment_id", request.SubjectID)
+	if experimentID == "" {
+		return fmt.Errorf("%w: policy experiment experiment_id is required", platformjobs.ErrInvalidRequest)
+	}
+	if subjectType := strings.TrimSpace(request.SubjectType); subjectType != "" && subjectType != "policy_experiment" {
+		return fmt.Errorf("%w: policy experiment subject_type must be policy_experiment", platformjobs.ErrInvalidRequest)
+	}
+	if subjectID := strings.TrimSpace(request.SubjectID); subjectID != "" && subjectID != experimentID {
+		return fmt.Errorf("%w: policy experiment subject_id must match experiment_id", platformjobs.ErrInvalidRequest)
+	}
+	expectedKey := "policy-experiment:" + experimentID
+	if request.IdempotencyKey != "" && request.IdempotencyKey != expectedKey {
+		return fmt.Errorf("%w: policy experiment idempotency_key must match experiment_id", platformjobs.ErrInvalidRequest)
+	}
+	request.SubjectType = "policy_experiment"
+	request.SubjectID = experimentID
+	request.IdempotencyKey = expectedKey
+	request.Payload["experiment_id"] = experimentID
 	request.Payload["tenant_id"] = request.TenantID
 	return nil
 }
@@ -283,60 +347,44 @@ func (a *App) runSourceRuntimeSyncJob(ctx context.Context, job *ports.Job, _ *pl
 	return protoToMap(response), nil, nil
 }
 
-func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
+func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (result map[string]any, refs map[string]string, runErr error) {
 	runtimeID := stringPayload(job.Payload, "runtime_id", job.SubjectID)
 	if runtimeID == "" {
 		return nil, nil, fmt.Errorf("%w: runtime_id is required", platformjobs.ErrInvalidRequest)
 	}
-	syncResponse, err := a.runtimeService().SyncWithLease(ctx, &cerebrov1.SyncSourceRuntimeRequest{
-		Id:        runtimeID,
-		PageLimit: uint32Payload(job.Payload, "page_limit"),
-	}, sourceruntime.SyncWithLeaseOptions{LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore)})
+	service, err := a.runtimeOrchestrationService()
 	if err != nil {
 		return nil, nil, err
 	}
-	graphResult, err := a.graphIngestService().RunRuntime(ctx, graphingest.RuntimeRequest{
-		RuntimeID: runtimeID,
-		PageLimit: uint32Payload(job.Payload, "graph_page_limit"),
-		Trigger:   "platform_orchestration_job",
+	orchestration, runErr := service.Orchestrate(ctx, a.findingService(), runtimeorchestration.OrchestrationRequest{
+		RuntimeID: runtimeID, SourcePageLimit: uint32Payload(job.Payload, "page_limit"), GraphPageLimit: uint32Payload(job.Payload, "graph_page_limit"),
+		RuleIDs: stringSlicePayload(job.Payload, "rule_ids"), EventLimit: uint32Payload(job.Payload, "event_limit"),
+		CaptureSecurityPathDelta: boolPayload(job.Payload, "capture_security_path_delta"), SecurityPathAccountID: stringPayload(job.Payload, "security_path_account_id", ""),
+		SecurityPathRustShadow: boolPayload(job.Payload, "security_path_rust_shadow"),
+		ObservationID:          strings.TrimSpace(job.ID), LeaseOwner: "security-path-delta:" + strings.TrimSpace(job.ID),
 	})
-	if err != nil {
-		return nil, nil, err
+	payload, refs, mapErr := orchestration.JobPayload()
+	if mapErr != nil {
+		return nil, nil, mapErr
 	}
-	ruleResult, ruleErr := a.findingService().EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
-		RuntimeID:  runtimeID,
-		RuleIDs:    stringSlicePayload(job.Payload, "rule_ids"),
-		EventLimit: uint32Payload(job.Payload, "event_limit"),
-	})
-	graphPayload, err := json.Marshal(graphResult)
-	if err != nil {
-		return nil, nil, err
-	}
-	graphOut := map[string]any{}
-	_ = json.Unmarshal(graphPayload, &graphOut)
-	rulePayload, err := json.Marshal(ruleResult)
-	if err != nil {
-		return nil, nil, err
-	}
-	ruleOut := map[string]any{}
-	_ = json.Unmarshal(rulePayload, &ruleOut)
-	result := map[string]any{
-		"sync":          protoToMap(syncResponse),
-		"graph_ingest":  graphOut,
-		"finding_rules": ruleOut,
-	}
-	refs := map[string]string{}
-	if graphResult.Run.ID != "" {
-		refs["graph_ingest_run_id"] = graphResult.Run.ID
-	}
+	result = map[string]any(payload.Result())
 	bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeInventory)
-	if ruleResult != nil {
+	if orchestration.FindingRules != nil {
 		bumpGRCCacheForRuntime(ctx, a.deps, runtimeID, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeInventory)
 	}
-	if ruleErr != nil {
-		return result, refs, ruleErr
+	return result, refs, runErr
+}
+
+func (a *App) runtimeOrchestrationService() (*runtimeorchestration.SecurityPathService, error) {
+	runtimeStore, runtimeOK := a.deps.StateStore.(ports.SourceRuntimeStore)
+	checkpoints, checkpointOK := a.deps.GraphStore.(runtimeorchestration.CheckpointStore)
+	if !runtimeOK || isNilInterface(runtimeStore) || !checkpointOK || isNilInterface(checkpoints) {
+		return nil, fmt.Errorf("%w: runtime orchestration storage is unavailable", platformjobs.ErrRuntimeUnavailable)
 	}
-	return result, refs, nil
+	return runtimeorchestration.NewSecurityPathService(runtimeorchestration.SecurityPathDependencies{
+		GraphQueries: graphQueryStore(a.deps.GraphStore), GraphIngest: a.graphIngestService(), Checkpoints: checkpoints,
+		RuntimeStore: runtimeStore, LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore), RuntimeSync: a.runtimeService(),
+	}), nil
 }
 
 func (a *App) runGraphIngestRuntimeJob(ctx context.Context, job *ports.Job, _ *platformjobs.Service) (map[string]any, map[string]string, error) {
@@ -497,6 +545,17 @@ func authorizeJobCreate(ctx context.Context, store ports.StateStore, request cre
 			return "", err
 		}
 		return firstNonEmpty(request.TenantID, run.TenantID), nil
+	case platformjobs.KindPolicyCandidateExperiment:
+		experimentID := stringPayload(request.Payload, "experiment_id", request.SubjectID)
+		service := policyCandidateServiceForStore(store)
+		experiment, err := service.GetExperiment(ctx, experimentID)
+		if err != nil {
+			return "", err
+		}
+		if err := requireMatchingJobTenant(request.TenantID, experiment.TenantID); err != nil {
+			return "", err
+		}
+		return firstNonEmpty(request.TenantID, experiment.TenantID), nil
 	case platformjobs.KindAppendLogRuntimeIndex:
 		if err := authorizeJobAdmin(ctx); err != nil {
 			return "", err
@@ -573,6 +632,22 @@ func uint32Payload(payload map[string]any, key string) uint32 {
 		return uint32(parsed)
 	}
 	return 0
+}
+
+func boolPayload(payload map[string]any, key string) bool {
+	value, ok := payload[key]
+	if !ok {
+		return false
+	}
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(typed))
+		return err == nil && parsed
+	default:
+		return false
+	}
 }
 
 func stringSlicePayload(payload map[string]any, key string) []string {

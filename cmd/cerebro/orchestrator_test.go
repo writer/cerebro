@@ -878,6 +878,66 @@ func TestRunOrchestratorIterationAlignsGraphIngestWithSyncPageBudget(t *testing.
 	}
 }
 
+func TestRunOrchestratorIterationHonorsSyncEventLimit(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorPagedSource{pages: 3})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	ruleRegistry, err := findings.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() finding rule error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:       "runtime-1",
+			SourceId: "github",
+			TenantId: "writer",
+		},
+		acquired: true,
+	}
+	eventLog := &orchestratorEventLog{}
+	findingStore := &orchestratorFindingStore{}
+	graphStore := newGraphTestStore()
+
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(registry, store, eventLog, nil),
+		findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry),
+		graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore),
+		orchestratorOptions{PageLimit: 3, SyncEventLimit: 1, GraphPageLimit: 1},
+		1,
+	)
+	if err != nil {
+		t.Fatalf("runOrchestratorIteration() error = %v, want nil", err)
+	}
+	if got := len(result.Runtimes); got != 1 {
+		t.Fatalf("runtime result count = %d, want 1", got)
+	}
+	runtimeResult := result.Runtimes[0]
+	if runtimeResult.PagesRead != 1 || runtimeResult.EventsAppended != 1 || !runtimeResult.SyncEventLimitReached {
+		t.Fatalf("sync pages/events/limit = %d/%d/%v, want 1/1/true", runtimeResult.PagesRead, runtimeResult.EventsAppended, runtimeResult.SyncEventLimitReached)
+	}
+	if runtimeResult.ShortCircuitReason != "sync_event_limit_reached" {
+		t.Fatalf("sync short-circuit reason = %q, want sync_event_limit_reached", runtimeResult.ShortCircuitReason)
+	}
+	if runtimeResult.GraphIngest != "completed" {
+		t.Fatalf("graph ingest status = %q, want completed", runtimeResult.GraphIngest)
+	}
+	runs, err := graphStore.ListIngestRuns(context.Background(), graphstore.IngestRunFilter{RuntimeID: "runtime-1", Status: graphstore.IngestRunStatusCompleted})
+	if err != nil {
+		t.Fatalf("ListIngestRuns() error = %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("completed graph ingest runs = %d, want 1", len(runs))
+	}
+	if runs[0].PagesRead != 1 {
+		t.Fatalf("completed graph ingest pages = %d, want 1", runs[0].PagesRead)
+	}
+}
+
 func TestRunOrchestratorIterationRunsGraphRulesWhenOnlyRunRecordWriteFails(t *testing.T) {
 	// The projection updates the graph BEFORE the trailing PutIngestRun(completed) write, so a
 	// transient run-record write failure leaves the graph fresh and graph rules MUST still run.
@@ -940,7 +1000,7 @@ func TestRunOrchestratorIterationRunsGraphRulesWhenOnlyRunRecordWriteFails(t *te
 	}
 }
 
-func TestRunOrchestratorIterationSkipsDownstreamWhenSourceAndGraphAreCurrent(t *testing.T) {
+func TestRunOrchestratorIterationRecordsGraphIngestWhenSourceAndGraphAreCurrent(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(orchestratorUnchangedSource{})
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
@@ -1001,14 +1061,18 @@ func TestRunOrchestratorIterationSkipsDownstreamWhenSourceAndGraphAreCurrent(t *
 	if runtimeResult.DownstreamSkipReason != "source_unchanged" {
 		t.Fatalf("downstream skip reason = %q, want source_unchanged", runtimeResult.DownstreamSkipReason)
 	}
-	if runtimeResult.GraphIngest != "skipped" || runtimeResult.FindingRules != "skipped" || runtimeResult.GraphRules != "skipped" {
-		t.Fatalf("downstream statuses = %q/%q/%q, want skipped/skipped/skipped", runtimeResult.GraphIngest, runtimeResult.FindingRules, runtimeResult.GraphRules)
+	if runtimeResult.GraphIngest != "completed" || runtimeResult.FindingRules != "skipped" || runtimeResult.GraphRules != "skipped" {
+		t.Fatalf("downstream statuses = %q/%q/%q, want completed/skipped/skipped", runtimeResult.GraphIngest, runtimeResult.FindingRules, runtimeResult.GraphRules)
 	}
 	if graphRule.calls != 0 {
 		t.Fatalf("graph rule calls = %d, want 0 when graph checkpoint is already current", graphRule.calls)
 	}
-	if len(graphStore.runs) != 0 {
-		t.Fatalf("graph ingest runs = %d, want 0 when downstream work is skipped", len(graphStore.runs))
+	runs, err := graphStore.ListIngestRuns(context.Background(), graphstore.IngestRunFilter{RuntimeID: "runtime-1", Status: graphstore.IngestRunStatusCompleted})
+	if err != nil {
+		t.Fatalf("ListIngestRuns() error = %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("completed graph ingest runs = %d, want 1 when the checkpoint is already current", len(runs))
 	}
 }
 

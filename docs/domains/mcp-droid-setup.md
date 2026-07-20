@@ -20,15 +20,19 @@ The endpoint is a stateless Streamable HTTP MCP endpoint:
 
 Do not advertise or emulate a stateful SSE session on this route. Native Droid uses the MCP SDK Streamable HTTP client for `type: "http"` servers, and it treats stateful session/SSE signals as part of the transport contract.
 
-## Task profile
+## Default tool surface
 
-Set `X-Cerebro-MCP-Toolsets: task` when the client should start with a bounded,
-task-level tool list. The profile exposes six tools:
+Requests start with ten task-level tools. Clients can also request the same
+surface explicitly with `X-Cerebro-MCP-Toolsets: task`:
 
 | Tool | Result |
 | --- | --- |
 | `cerebro.health` | Service readiness |
 | `cerebro.version` | Running build identity |
+| `cerebro.findings.search` | Findings that match the requested risk or scope |
+| `cerebro.assets.search` | Assets that match the requested identity, type, runtime, or tenant |
+| `cerebro.graph.reason` | Answer grounded in tenant-scoped graph evidence |
+| `cerebro.investigation.context` | Finding, evidence, graph, and runtime context for triage |
 | `cerebro.risk.explain` | Finding, evidence, asset, and optional graph context |
 | `cerebro.evidence.packet` | Evidence packet for the requested question and authorized scope |
 | `cerebro.sources.health` | Configured source coverage and current blind spots |
@@ -45,10 +49,65 @@ Task tools do not mutate resources. `cerebro.action.plan` stops at
 The evidence-packet task accepts only `observe`, `explain`, `recommend`, and
 `dry_run` action stages.
 
-Requests without a toolset keep the full tool list for compatibility. Existing
-domain tools remain available as expert tools. Use
-`X-Cerebro-MCP-Toolsets: expert` for that profile, or the existing domain
-toolsets such as `graph`, `risk`, and `findings` for narrower access.
+Low-level domain tools remain available through explicit profiles. Use
+`X-Cerebro-MCP-Toolsets: expert` for expert tools, a domain toolset such as
+`graph`, `risk`, `findings`, or `assessments` for narrower access, or
+`X-Cerebro-MCP-Toolsets: full` for the previous complete tool list. New clients
+should use the default surface instead of `full`.
+
+## Hillclimb the task tools
+
+Run the task-selection regression gate before changing a task tool name,
+title, description, or input schema:
+
+```bash
+make mcp-tool-eval
+```
+
+The gate scores the metadata returned by the default `tools/list` response
+against the checked-in request corpus in
+`internal/mcpoperations/testdata/task_tools/selection_cases.json`. The baseline
+requires every task tool to remain represented, every case to select the
+intended tool, no tied selections, and a minimum winning margin. Add a case for
+each observed selection failure before changing the tool metadata, then keep
+the change only when it preserves or improves the checked-in baseline in
+`internal/mcpoperations/testdata/task_tools/baseline.json`.
+
+This gate is a deterministic metadata check, not a substitute for model and
+runtime evaluation. Validate promoted changes with representative MCP clients,
+then compare task request counts, errors, latency, partial states, and blocked
+states by tool. Cerebro telemetry records the bounded task result state as
+`mcp.task_state`, alongside tool classification, behavior, and owner domain.
+It does not record the user request.
+
+## Assessment operations
+
+Set `X-Cerebro-MCP-Toolsets: assessments` to expose the assessment lifecycle:
+
+| Tool | Required scope | Result |
+| --- | --- | --- |
+| `cerebro.assessments.plan.create` | security read + GRC inventory write | Persisted plan draft with server-owned identity and digest |
+| `cerebro.assessments.plan.publish` | security read + GRC inventory write | Published immutable plan revision using `expected_version` |
+| `cerebro.assessments.plan.get` | security read | One tenant-scoped plan revision |
+| `cerebro.assessments.run.request` | security read + GRC inventory write | Recoverable run; repeated key and body return the existing run |
+| `cerebro.assessments.run.get` | security read | Current state, pinned input manifest, result availability, and hashes |
+| `cerebro.assessments.results.list` | security read | Bounded result page with recomputed payload and predecessor-digest verification |
+| `cerebro.assessments.run.diff` | security read | Complete bounded comparison with the explicit or pinned baseline |
+| `cerebro.assessments.result.explain` | security read | Verified result, manifest, evidence, findings, and exact provenance follow-up calls |
+| `cerebro.assessments.remediation.propose` | security read | Non-mutating work request for the existing approval-gated GRC work endpoint |
+
+Start result paging with `after_sequence: 0` and no predecessor digest. For each
+following page, pass the preceding response's
+`verification.next_previous_digest` as `expected_previous_digest`. A page fails
+if its run ID, sequence, result boundaries, canonical payload digest, or
+predecessor link does not match.
+
+Plan creation, plan publication, and run requests are the only mutating tools in
+this profile. They call the existing assessment domain service, preserve its
+append-first records and Postgres projections, and require the same GRC write
+scope as the HTTP routes. Run requests are idempotent. The other assessment
+tools are read-only. Remediation remains a proposal and requires a separate
+call to `POST /grc/work-items` with `cerebro.findings.write`.
 
 ## Tool/domain parity
 
@@ -58,9 +117,12 @@ or explicitly named composite of those surfaces. Agent-oriented tools such as
 investigation context and risk action planning may bundle multiple reads, but
 their source domain surfaces must stay listed in the MCP parity test.
 
-Mutating workflows are exposed only as proposal tools with `dry_run=true`,
-`readOnlyHint=true`, and a response that describes the required write scope
-without applying the action.
+Action and remediation workflows are exposed only as proposal tools with
+`dry_run=true`, `readOnlyHint=true`, and a response that describes the required
+write scope without applying the action. Domain-owned assessment plan and run
+writes may execute only through the existing assessment service, with the same
+tenant, write-scope, optimistic-concurrency, idempotency, append-log, and
+projection contracts as their HTTP routes.
 
 Agent control-loop tools expose the security-agent control plane without adding
 write access. `cerebro.agent.control_plane` returns the evidence packet, claim
@@ -71,6 +133,9 @@ counterevidence, missing evidence, freshness state, coverage caveats, a verdict,
 and the highest allowed next action stage. `cerebro.agent.work.contract` returns
 the `agent-work-ledger` state model and closure contract for resumable
 investigations.
+`cerebro.agent.missions.contract` returns the mandate, mission, belief, plan
+revision, commitment, wake condition, interruption, and verified-closure
+contract that agent work projects from.
 
 ## Native Droid client configuration
 

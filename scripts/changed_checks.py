@@ -10,6 +10,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+if __package__:
+    from .embedded_wasm import EMBEDDED_WASM_MODULES
+else:
+    from embedded_wasm import EMBEDDED_WASM_MODULES
+
 
 class CommandPlan:
     def __init__(self, name: str, argv: list[str], reason: str) -> None:
@@ -90,8 +95,100 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
     if any(path_matches(path, prefixes=("internal/connectorcatalog/catalog/", "internal/connectordefinitions/", "internal/sourcegen/"), exact=("cmd/cerebro/source_runtime_sdk.go",)) for path in files):
         add_command(commands, seen, "sourcegen-check", ["make", "sourcegen-check"], "Connector definition or sourcegen contract changed.")
 
-    if any(path_matches(path, prefixes=("internal/graphactions/", "tools/graphactiongen/")) for path in files):
+    if any(path_matches(path, exact=("Cargo.toml", "Cargo.lock", "deny.toml")) for path in files):
+        add_command(commands, seen, "rust-deny", ["make", "rust-deny"], "Rust dependency manifest, lockfile, or policy changed.")
+
+    if any(
+        path_matches(
+            path,
+            exact=("Cargo.toml", "scripts/rust_workspace_policy.py", "scripts/tests/test_rust_workspace_policy.py"),
+            suffixes=("/Cargo.toml",),
+        )
+        for path in files
+    ):
+        add_command(
+            commands,
+            seen,
+            "rust-workspace-policy",
+            ["make", "rust-workspace-policy"],
+            "Rust workspace dependency or lint policy changed.",
+        )
+
+    if any(path_matches(path, prefixes=("internal/graphactions/", "tools/graphactiongen/"), exact=("Cargo.toml", "Cargo.lock", "rust-toolchain.toml")) for path in files):
         add_command(commands, seen, "graph-action-check", ["make", "graph-action-check"], "Graph action catalog, generated registry, or generator changed.")
+
+    changed_wasm_modules = [
+        module
+        for module in EMBEDDED_WASM_MODULES
+        if any(module.matches_changed_path(path) for path in files)
+    ]
+    if len(changed_wasm_modules) == len(EMBEDDED_WASM_MODULES):
+        add_command(
+            commands,
+            seen,
+            "rust-wasm-check",
+            ["make", "rust-wasm-check"],
+            "Changes affect every embedded Rust Wasm module.",
+        )
+    else:
+        for module in changed_wasm_modules:
+            add_command(
+                commands,
+                seen,
+                module.check_target,
+                ["make", module.check_target],
+                module.changed_reason,
+            )
+
+    wasm_json_corpora = (
+        (
+            "internal/mitre/testdata/wasmjson/",
+            "./internal/mitre",
+            "mitre-wasm-parity-corpus",
+            ["go", "test", "./internal/mitre", "-run", "^TestContextEvaluatorCorpus$", "-count=1"],
+            "MITRE Wasm parity corpus changed.",
+        ),
+        (
+            "internal/sourcecoverage/testdata/wasmjson/",
+            "./internal/sourcecoverage",
+            "sourcecoverage-wasm-parity-corpus",
+            ["go", "test", "./internal/sourcecoverage", "-run", "^TestCoverageEvaluatorCorpus$", "-count=1"],
+            "Source coverage Wasm parity corpus changed.",
+        ),
+        (
+            "internal/sourceprojection/testdata/panopticonresources/",
+            "./internal/sourceprojection",
+            "panopticon-wasm-parity-corpus",
+            ["go", "test", "./internal/sourceprojection", "-run", "^TestPanopticonResourceObjectsWasmCorpus$", "-count=1"],
+            "Panopticon resource Wasm parity corpus changed.",
+        ),
+    )
+    for prefix, package, name, argv, reason in wasm_json_corpora:
+        if package not in packages and any(path.startswith(prefix) and path.endswith(".json") for path in files):
+            add_command(commands, seen, name, argv, reason)
+    parity_packages = {"./internal/mitre", "./internal/sourcecoverage", "./internal/sourceprojection"}
+    if not parity_packages.issubset(packages) and any(
+        path.startswith("internal/wasmjson/wasmjsontest/") for path in files
+    ):
+        add_command(
+            commands,
+            seen,
+            "wasm-json-parity-corpora",
+            [
+                "go",
+                "test",
+                "./internal/mitre",
+                "./internal/sourcecoverage",
+                "./internal/sourceprojection",
+                "-run",
+                "^(TestContextEvaluatorCorpus|TestCoverageEvaluatorCorpus|TestPanopticonResourceObjectsWasmCorpus)$",
+                "-count=1",
+            ],
+            "Shared Wasm JSON parity helpers changed.",
+        )
+
+    if any(path_matches(path, prefixes=("internal/graphagent/staticvalidator/fuzz/", "internal/graphagent/staticvalidator/tests/")) for path in files):
+        add_command(commands, seen, "rust-validator-properties", ["make", "rust-validator-properties"], "Static validator properties, fuzz harness, or regression corpus changed.")
 
     if any(path_matches(path, prefixes=("sources/", "policies/", "internal/compliance/", "internal/findings/", "tools/catalogcheck/", "internal/connectorcatalog/catalog/")) for path in files):
         add_command(commands, seen, "catalog-check", ["make", "catalog-check"], "Source, policy, finding, connector, or compliance catalog changed.")

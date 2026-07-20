@@ -53,6 +53,21 @@ func TestEvaluateClassifiesRuntimeFreshness(t *testing.T) {
 			wantRecommended:  "source-runtime-backfill",
 		},
 		{
+			name: "partial graph checkpoint",
+			record: Record{
+				EnabledState:   "enabled",
+				Status:         "healthy",
+				LatestGraphRun: &GraphRun{Status: "completed", CheckpointCursor: "page-2", CheckpointComplete: boolPtr(false)},
+			},
+			wantFreshness:    "graph_behind",
+			wantFailureClass: "graph_ingest_behind",
+			wantGraphState:   "behind",
+			wantSourceState:  "current",
+			wantBackfill:     true,
+			wantNextAction:   "plan_backfill",
+			wantRecommended:  "source-runtime-backfill",
+		},
+		{
 			name: "source failed",
 			record: Record{
 				EnabledState:        "enabled",
@@ -195,5 +210,9 @@ func TestValidationFieldClass(t *testing.T) {
 }
 
 func int64Ptr(value int64) *int64 {
+	return &value
+}
+
+func boolPtr(value bool) *bool {
 	return &value
 }

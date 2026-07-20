@@ -1,0 +1,59 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: mailchimp
+family: lists
+case: list_lists
+replay_test: provider_fixture_test.go#TestSourceReplaysCapturedMailchimpFamilies
+request:
+    method: GET
+    url: https://us19.api.mailchimp.com/3.0/lists
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2020-03-04T21:52:41Z"
+    sha256: e87d12ccb5f3942f99773743bf41cc561fbaa807304fa8e410949a07506c578a
+    headers:
+        Link: <https://us19.api.mailchimp.com/schema/3.0/Lists/Collection.json>; rel="describedBy"
+sanitization:
+    tool: sourcefixture
+    version: 1
+    changed_fields:
+        - $.lists[0]._links[0].href
+        - $.lists[0]._links[10].href
+        - $.lists[0]._links[11].href
+        - $.lists[0]._links[12].href
+        - $.lists[0]._links[13].href
+        - $.lists[0]._links[14].href
+        - $.lists[0]._links[15].href
+        - $.lists[0]._links[2].href
+        - $.lists[0]._links[3].href
+        - $.lists[0]._links[4].href
+        - $.lists[0]._links[5].href
+        - $.lists[0]._links[6].href
+        - $.lists[0]._links[7].href
+        - $.lists[0]._links[8].href
+        - $.lists[0]._links[9].href
+        - $.lists[0].beamer_address
+        - $.lists[0].campaign_defaults.from_email
+        - $.lists[0].campaign_defaults.from_name
+        - $.lists[0].contact.address1
+        - $.lists[0].contact.city
+        - $.lists[0].contact.company
+        - $.lists[0].contact.state
+        - $.lists[0].contact.zip
+        - $.lists[0].id
+        - $.lists[0].name
+        - $.lists[0].permission_reminder
+        - $.lists[0].subscribe_url_long
+        - $.lists[0].subscribe_url_short
+        - $.lists[0].web_id
+origin:
+    type: upstream_recording
+    repository: https://github.com/duartejc/mailchimp
+    commit: a11991323c81cafeccd529cbf5e44fe914bfa57b
+    path: fixture/vcr_cassettes/account.lists.json
+    artifact_sha256: 5aa4278f1d4b3bb0d76c298491c51cb2d6edc3416982c49048c780a794c96561
+    license: MIT
+    recording_tool: ExVCR
+    harness_path: test/mailchimp/account_test.exs
+    freshness: historical
+    capture_time_basis: response_header

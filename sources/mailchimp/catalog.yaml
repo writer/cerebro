@@ -72,7 +72,7 @@ event_contracts:
       - source_event_id
       - user_id
     required_payload_fields:
-      - id
+      - email_address
   - kind: mailchimp.audit_events
     schema_ref: mailchimp/audit_events/v1
     required_attributes:

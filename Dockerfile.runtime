@@ -1,11 +1,30 @@
+# syntax=docker/dockerfile:1.7
+
+ARG RUST_VERSION=1.93.1
 ARG RUNTIME_BASE_IMAGE=alpine:3.24
+FROM --platform=$TARGETPLATFORM rust:${RUST_VERSION}-alpine AS rust-builder
+
+WORKDIR /app
+
+RUN apk add --no-cache build-base musl-dev
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY internal ./internal
+COPY tools ./tools
+
+RUN --mount=type=cache,id=cerebro-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cerebro-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    cargo build --locked --release -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker
+
 FROM ${RUNTIME_BASE_IMAGE}
 
 RUN apk upgrade --no-cache && \
     addgroup -S cerebro && \
     adduser -S -G cerebro -u 10001 cerebro
 
-COPY .dist/cerebro /usr/local/bin/cerebro
+COPY --chmod=0755 .dist/cerebro /usr/local/bin/cerebro
+COPY --from=rust-builder --chmod=0755 /app/target/release/cerebro-event-admission-worker /usr/local/bin/cerebro-event-admission-worker
 COPY policies /app/policies
 
 WORKDIR /app

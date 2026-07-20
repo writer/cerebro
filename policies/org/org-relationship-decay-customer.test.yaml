@@ -1,0 +1,15 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        previous_strength: 1.7
+        relationship_strength: -0.7
+        renewal_days: 89
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        previous_strength: 1.7
+        relationship_strength: 0.3
+        renewal_days: 89
+      wantFinding: false

@@ -1,0 +1,20 @@
+schema_version: cerebro.source-api-fixture.v1
+source_id: opendatasoft
+family: dataset
+case: catalog_datasets
+replay_test: source_test.go#TestSourceReplaysCapturedOpenDataSoftFamilies
+request:
+    method: GET
+    url: https://public.opendatasoft.com/api/v2/catalog/datasets?limit=1
+response:
+    status: 200
+    content_type: application/json; charset=utf-8
+    captured_at: "2026-07-19T17:19:22Z"
+    sha256: ffab3dc47865088518a7bf1b57654f9713641d3baaeec9e89e10cb18cf23e5e9
+    headers:
+        Link: <https://help.huwise.com/apis/ods-explore-v2/explore_v2.1.html#section/Introduction/v2.1-Changelog>;rel="deprecation"; type="text/html"
+sanitization:
+    tool: sourcefixture
+    version: 1
+origin:
+    type: operator_request

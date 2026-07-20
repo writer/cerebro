@@ -174,6 +174,7 @@ type graphHealthIngestResult struct {
 	MissingRuntimeIDs          []string               `json:"missing_runtime_ids,omitempty"`
 	FailedRuns                 []graphstore.IngestRun `json:"failed_runs,omitempty"`
 	StaleRunningRuns           []graphstore.IngestRun `json:"stale_running_runs,omitempty"`
+	IncompleteRuns             []graphstore.IngestRun `json:"incomplete_runs,omitempty"`
 	ZeroProjectionRuns         []graphstore.IngestRun `json:"zero_projection_runs,omitempty"`
 	IgnoredTransientFailedRuns []graphstore.IngestRun `json:"ignored_transient_failed_runs,omitempty"`
 }
@@ -767,6 +768,9 @@ func checkGraphHealth(ctx context.Context, store ports.GraphStore, options graph
 						result.Ingest.StaleRunningRuns = append(result.Ingest.StaleRunningRuns, run)
 					}
 				case graphstore.IngestRunStatusCompleted:
+					if graphHealthRunCheckpointIncomplete(run) {
+						result.Ingest.IncompleteRuns = append(result.Ingest.IncompleteRuns, run)
+					}
 					if run.EventsRead > 0 && run.EntitiesProjected == 0 && run.LinksProjected == 0 {
 						result.Ingest.ZeroProjectionRuns = append(result.Ingest.ZeroProjectionRuns, run)
 					}
@@ -785,6 +789,9 @@ func checkGraphHealth(ctx context.Context, store ports.GraphStore, options graph
 			}
 			if len(result.Ingest.StaleRunningRuns) != 0 {
 				addFailure("latest graph ingest run is stale-running for %d runtime(s): %s", len(result.Ingest.StaleRunningRuns), graphHealthRunSummaries(result.Ingest.StaleRunningRuns))
+			}
+			if len(result.Ingest.IncompleteRuns) != 0 {
+				addFailure("latest graph ingest run has pages remaining for %d runtime(s): %s", len(result.Ingest.IncompleteRuns), graphHealthRunSummaries(result.Ingest.IncompleteRuns))
 			}
 			if len(result.Ingest.ZeroProjectionRuns) != 0 {
 				addFailure("latest graph ingest projected no graph records for %d runtime(s): %s", len(result.Ingest.ZeroProjectionRuns), graphHealthRunSummaries(result.Ingest.ZeroProjectionRuns))
@@ -1712,7 +1719,7 @@ func latestGraphHealthRunsByRuntime(runs []graphstore.IngestRun) map[string]grap
 func successfulGraphHealthRuntimeIDs(runs []graphstore.IngestRun) map[string]struct{} {
 	successful := map[string]struct{}{}
 	for _, run := range runs {
-		if strings.TrimSpace(run.Status) != graphstore.IngestRunStatusCompleted {
+		if strings.TrimSpace(run.Status) != graphstore.IngestRunStatusCompleted || graphHealthRunCheckpointIncomplete(run) {
 			continue
 		}
 		if runtimeID := graphHealthRunRuntimeID(run); runtimeID != "" {
@@ -1720,6 +1727,10 @@ func successfulGraphHealthRuntimeIDs(runs []graphstore.IngestRun) map[string]str
 		}
 	}
 	return successful
+}
+
+func graphHealthRunCheckpointIncomplete(run graphstore.IngestRun) bool {
+	return strings.TrimSpace(run.CheckpointCursor) != "" || (run.CheckpointCompleteKnown && !run.CheckpointComplete)
 }
 
 func graphHealthRunRuntimeID(run graphstore.IngestRun) string {

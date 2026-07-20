@@ -152,6 +152,24 @@ func (s *Service) ProjectEvent(ctx context.Context, event *cerebrov1.EventEnvelo
 			return false, errors.New("assessment result chunk digest does not match envelope")
 		}
 		return true, s.store.ApplyResultChunk(ctx, event.GetId(), record.TenantID, chunk)
+	case workflowevents.EventKindComplianceAssuranceDecisionRecorded:
+		store, ok := s.store.(AssuranceDecisionStore)
+		if !ok {
+			return false, ErrAssuranceDecisionUnavailable
+		}
+		var decision AssuranceDecision
+		if err := json.Unmarshal([]byte(record.PayloadJSON), &decision); err != nil {
+			return false, fmt.Errorf("decode assurance decision event: %w", err)
+		}
+		if strings.TrimSpace(record.AggregateType) != "assurance_decision" ||
+			strings.TrimSpace(record.TenantID) != decision.TenantID || strings.TrimSpace(record.AggregateID) != decision.ID ||
+			record.AggregateVersion != 1 || strings.TrimSpace(record.ContentDigest) != decision.RecordDigest {
+			return false, errors.New("assurance decision envelope does not match payload")
+		}
+		if err := validateAssuranceDecision(decision); err != nil {
+			return false, err
+		}
+		return true, store.ApplyAssuranceDecision(ctx, event.GetId(), decision)
 	default:
 		return false, nil
 	}

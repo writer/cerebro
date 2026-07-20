@@ -18,6 +18,9 @@ func TestComplianceAssessmentSchemaPinsTenantRevisionAndChunkBoundaries(t *testi
 		"UNIQUE (tenant_id, plan_id, revision_version)",
 		"UNIQUE (tenant_id, idempotency_key)",
 		"PRIMARY KEY (tenant_id, run_id, sequence)",
+		"PRIMARY KEY (tenant_id, id)",
+		"UNIQUE (tenant_id, idempotency_key)",
+		"UNIQUE (tenant_id, run_id, result_id, decision_digest)",
 		"FOREIGN KEY (tenant_id, plan_revision_id)",
 		"payload_digest TEXT NOT NULL",
 	} {
@@ -32,6 +35,20 @@ func TestComplianceAssessmentChunkProjectionDoesNotRewriteExistingPayload(t *tes
 	query := strings.ToUpper(insertComplianceAssessmentResultChunk)
 	if strings.Contains(query, "DO UPDATE") || !strings.Contains(query, "DO NOTHING") {
 		t.Fatalf("chunk insert must preserve the first durable payload: %s", insertComplianceAssessmentResultChunk)
+	}
+}
+
+func TestComplianceAssuranceDecisionProjectionHandlesEveryUniqueIdentity(t *testing.T) {
+	t.Parallel()
+	insert := strings.ToUpper(insertComplianceAssuranceDecision)
+	if strings.Contains(insert, "ON CONFLICT (") || !strings.Contains(insert, "ON CONFLICT DO NOTHING") {
+		t.Fatalf("assurance decision insert must handle every unique constraint: %s", insertComplianceAssuranceDecision)
+	}
+	lookup := strings.ToLower(selectConflictingAssuranceDecisionDigest)
+	for _, identity := range []string{"id=$2", "idempotency_key=$3", "run_id=$4", "result_id=$5", "decision_digest=$6"} {
+		if !strings.Contains(lookup, identity) {
+			t.Fatalf("assurance decision conflict lookup missing %q: %s", identity, selectConflictingAssuranceDecisionDigest)
+		}
 	}
 }
 

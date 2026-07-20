@@ -1,0 +1,13 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        versioning:
+            status: Enabled-passing
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        versioning:
+            status: Enabled
+      wantFinding: false

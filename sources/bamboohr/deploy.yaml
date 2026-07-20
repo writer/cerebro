@@ -1,6 +1,7 @@
 sourceId: bamboohr
 secretKeys:
   - BAMBOOHR_API_TOKEN
+  - BAMBOOHR_COMPANY
 runtimes:
   - localId: users
     config:
@@ -11,3 +12,4 @@ runtimes:
       stale_after_seconds: "86400"
       per_page: "100"
       api_token: env:BAMBOOHR_API_TOKEN
+      company: env:BAMBOOHR_COMPANY

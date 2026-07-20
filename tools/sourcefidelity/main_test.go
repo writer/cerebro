@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/connectordefinitions"
+	"github.com/writer/cerebro/internal/sourcefixture"
 	"github.com/writer/cerebro/internal/sourcegen"
 )
 
@@ -190,6 +191,17 @@ func TestProviderUnavailable() {}
 		},
 		DiscoverFixtures: []string{"audit", "repositories"},
 	})
+	if _, err := sourcefixture.WriteBundle(root, sourcefixture.Manifest{
+		SourceID:   "provider",
+		Family:     "audit",
+		Case:       "events",
+		ReplayTest: "source_test.go#TestLiveHTTP",
+		Request:    sourcefixture.Request{Method: "GET", URL: "https://api.provider.example/v1/audit"},
+		Response:   sourcefixture.Response{Status: 200, ContentType: "application/json", CapturedAt: "2026-07-18T00:00:00Z"},
+		Origin:     sourcefixture.Origin{Type: "operator_request"},
+	}, []byte(`{"items":[{"action":"repo.create","actor":"octocat"}]}`)); err != nil {
+		t.Fatalf("WriteBundle() error = %v", err)
+	}
 	writeSource(t, root, "generated", sourceFiles{
 		Catalog: `
 id: generated
@@ -249,6 +261,12 @@ func TestSourceCheckAndRead() { _ = "Record One"; _ = "httptest.NewServer" }
 	}
 	if provider.Level != "reference" {
 		t.Fatalf("provider level = %q, want reference", provider.Level)
+	}
+	if provider.GenuineAPIBundles != 1 || provider.GenuineAPIFamilies != 1 {
+		t.Fatalf("provider genuine fixtures = %d bundles across %d families", provider.GenuineAPIBundles, provider.GenuineAPIFamilies)
+	}
+	if result.Summary.GenuineAPIBundles != 1 || result.Summary.GenuineAPISources != 1 || result.Summary.GenuineAPIFamilies != 1 {
+		t.Fatalf("genuine fixture summary = %#v", result.Summary)
 	}
 	if generated.SyntheticReadFixtures != 1 || generated.ProviderLikeReadFixtures != 0 {
 		t.Fatalf("generated fixture counts = synthetic %d provider-like %d", generated.SyntheticReadFixtures, generated.ProviderLikeReadFixtures)

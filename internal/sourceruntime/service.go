@@ -26,6 +26,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcehealth"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceregistry"
+	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -35,8 +36,9 @@ const (
 	defaultListLimit = 100
 	// One internal GRC caller fetches one boundary row to reject oversized
 	// runtime scopes instead of silently omitting the last runtimes.
-	maxListLimit  = 501
-	redactedValue = "[redacted]"
+	maxListLimit                = 501
+	redactedValue               = "[redacted]"
+	syncEventLimitReachedReason = "sync_event_limit_reached"
 
 	runtimeProgressConfigHashKey = "__cerebro_resolved_progress_config_hash"
 
@@ -75,6 +77,7 @@ type Service struct {
 	appendLog       ports.AppendLog
 	projector       ports.SourceProjector
 	resolver        sourceconfig.Resolver
+	eventAdmitter   eventadmission.Admitter
 }
 
 type connectorDefinitionProjectorRegistrar interface {
@@ -93,7 +96,36 @@ type PutRuntimesResponse struct {
 
 // New constructs a source runtime service.
 func New(registry *sourcecdk.Registry, store ports.SourceRuntimeStore, appendLog ports.AppendLog, projector ports.SourceProjector) *Service {
-	return &Service{registry: registry, store: store, appendLog: appendLog, projector: projector}
+	return &Service{
+		registry:      registry,
+		store:         store,
+		appendLog:     appendLog,
+		projector:     projector,
+		eventAdmitter: eventadmission.NewWasmAdmitter(),
+	}
+}
+
+// WithEventAdmitter configures the isolated event admission engine.
+func (s *Service) WithEventAdmitter(admitter eventadmission.Admitter) *Service {
+	if s == nil {
+		return nil
+	}
+	if admitter != nil {
+		s.eventAdmitter = admitter
+	}
+	return s
+}
+
+// Close releases an owned event admission engine when it has process resources.
+func (s *Service) Close() error {
+	if s == nil {
+		return nil
+	}
+	closer, ok := s.eventAdmitter.(interface{ Close() error })
+	if !ok {
+		return nil
+	}
+	return closer.Close()
 }
 
 // WithConfigResolver configures runtime source config secret resolution.
@@ -261,6 +293,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	ctx, span := telemetry.Start(ctx, "source_runtime.sync", telemetry.Attrs(
 		telemetry.Field{Key: "runtime_id", Value: runtimeID},
 		telemetry.Field{Key: "page_limit", Value: req.GetPageLimit()},
+		telemetry.Field{Key: "event_limit", Value: req.GetEventLimit()},
 		telemetry.Field{Key: "operation.type", Value: "source_runtime_sync"},
 	))
 	started := time.Now()
@@ -279,6 +312,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		linksProjected         uint32
 		lastQuarantineCategory string
 		checkpointAdvanced     bool
+		eventLimitReached      bool
 		shortCircuitReason     string
 		reconciliationReason   string
 	)
@@ -392,6 +426,47 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			reconciliationReason = pageReconciliationReason
 		}
 		eventsRead := boundedUint32(len(pull.Events))
+		materializedEvents := make([]*cerebrov1.EventEnvelope, 0, len(pull.Events))
+		for _, event := range pull.Events {
+			syncedEvent := materializeEvent(runtime, event)
+			if syncedEvent == nil {
+				continue
+			}
+			materializedEvents = append(materializedEvents, syncedEvent)
+		}
+		admission, admissionErr := s.eventAdmitter.Admit(ctx, materializedEvents, eventContracts)
+		if admissionErr != nil {
+			if errors.Is(admissionErr, eventadmission.ErrBatchRejected) {
+				return nil, fmt.Errorf("validate source event batch: %w: %w", sourcecdk.ErrInvalidEventEnvelope, admissionErr)
+			}
+			return nil, fmt.Errorf("admit source event batch: %w", admissionErr)
+		}
+		acceptedEvents := admission.Events
+		eventLimit := req.GetEventLimit()
+		if eventLimit > 0 && uint64(eventsAppended)+uint64(len(acceptedEvents)) > uint64(eventLimit) {
+			eventLimitReached = true
+			shortCircuitReason = syncEventLimitReachedReason
+			deferredAttrs := telemetry.Attrs(
+				telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+				telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+				telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+				telemetry.Field{Key: "page", Value: pageNumber},
+				telemetry.Field{Key: "events_read", Value: eventsRead},
+				telemetry.Field{Key: "events_appended", Value: eventsAppended},
+				telemetry.Field{Key: "event_limit", Value: eventLimit},
+				telemetry.Field{Key: "reason", Value: syncEventLimitReachedReason},
+			)
+			telemetry.Event(ctx, "source_runtime.page_deferred", deferredAttrs)
+			telemetry.IncrementMain(ctx, "source_runtime.page.deferred.count", 1)
+			telemetry.AnnotateMain(ctx, deferredAttrs.With(telemetry.Attrs(
+				telemetry.Field{Key: "source_runtime.sync.event_limit_reached", Value: true},
+			)))
+			break
+		}
+		if eventLimit > 0 && uint64(eventsAppended)+uint64(len(acceptedEvents)) == uint64(eventLimit) && pull.NextCursor != nil {
+			eventLimitReached = true
+			shortCircuitReason = syncEventLimitReachedReason
+		}
 		recordsScanned += eventsRead
 		pageReadAttrs := withFamilyFreshnessTelemetry(telemetry.Attrs(
 			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
@@ -410,46 +485,50 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			telemetry.Field{Key: "source_runtime.page.last_events_read", Value: eventsRead},
 			telemetry.Field{Key: "source_runtime.page.last_has_next_cursor", Value: pull.NextCursor != nil},
 		)))
+		for _, rejection := range admission.Quarantined {
+			if rejection.InputIndex == nil {
+				return nil, fmt.Errorf("validate source event batch: %w: quarantine is missing its input index", sourcecdk.ErrInvalidEventEnvelope)
+			}
+			recordsRejected++
+			category := rejection.Code
+			lastQuarantineCategory = category
+			syncedEvent := materializedEvents[*rejection.InputIndex]
+			recordRuntimeInvalidEventField(runtime, syncedEvent, category, rejection.Field, time.Now().UTC(), len(eventContracts) > 0)
+			telemetry.Event(ctx, "source_runtime.invalid_event", telemetry.Attrs(
+				telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+				telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+				telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+				telemetry.Field{Key: "failure_category", Value: category},
+				telemetry.Field{Key: "retryable", Value: false},
+			))
+			telemetry.IncrementMain(ctx, "source_runtime.invalid_event.count", 1)
+			telemetry.AnnotateMain(ctx, telemetry.Attrs(
+				telemetry.Field{Key: "source_runtime.invalid_event.last_failure_category", Value: category},
+				telemetry.Field{Key: "source_runtime.invalid_event.last_retryable", Value: false},
+			))
+			emitSourceRuntimeValidation(ctx, runtime, category)
+		}
+		admissionAttrs := telemetry.Attrs(
+			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+			telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+			telemetry.Field{Key: "page", Value: pageNumber},
+			telemetry.Field{Key: "scanned", Value: admission.Receipt.Scanned},
+			telemetry.Field{Key: "accepted", Value: admission.Receipt.Accepted},
+			telemetry.Field{Key: "quarantined", Value: admission.Receipt.Quarantined},
+			telemetry.Field{Key: "duplicates", Value: admission.Receipt.Duplicates},
+			telemetry.Field{Key: "scanned_sha256", Value: admission.Receipt.ScannedSHA256},
+			telemetry.Field{Key: "accepted_sha256", Value: admission.Receipt.AcceptedSHA256},
+			telemetry.Field{Key: "result_sha256", Value: admission.Receipt.ResultSHA256},
+		)
+		telemetry.Event(ctx, "source_runtime.event_admission", admissionAttrs)
+		telemetry.IncrementMain(ctx, "source_runtime.event_admission.count", 1)
+		telemetry.AnnotateMain(ctx, admissionAttrs)
 		if pull.Checkpoint != nil {
 			advanceRuntimeCheckpoint(runtime, pull.Checkpoint)
 		}
 		runtime.NextCursor = cloneCursor(pull.NextCursor)
 		pagesRead++
-		acceptedEvents := make([]*cerebrov1.EventEnvelope, 0, len(pull.Events))
-		for _, event := range pull.Events {
-			syncedEvent := materializeEvent(runtime, event)
-			if syncedEvent == nil {
-				continue
-			}
-			if err := sourcecdk.ValidateEventEnvelope(syncedEvent); err != nil {
-				return nil, fmt.Errorf("validate source event %q: %w", syncedEvent.GetId(), err)
-			}
-			if err := sourcecdk.ValidateEventEnvelopeWithContracts(syncedEvent, eventContracts); err != nil {
-				if quarantinableContractError(err) {
-					recordsRejected++
-					category := invalidEventFailureCategory(err)
-					lastQuarantineCategory = category
-					recordRuntimeInvalidEvent(runtime, syncedEvent, category, err, time.Now().UTC(), len(eventContracts) > 0)
-					telemetry.Event(ctx, "source_runtime.invalid_event", telemetry.Attrs(
-						telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
-						telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
-						telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
-						telemetry.Field{Key: "failure_category", Value: category},
-						telemetry.Field{Key: "retryable", Value: false},
-					))
-					telemetry.IncrementMain(ctx, "source_runtime.invalid_event.count", 1)
-					telemetry.AnnotateMain(ctx, telemetry.Attrs(
-						telemetry.Field{Key: "source_runtime.invalid_event.last_failure_category", Value: category},
-						telemetry.Field{Key: "source_runtime.invalid_event.last_retryable", Value: false},
-					))
-					emitSourceRuntimeValidation(ctx, runtime, category)
-					continue
-				}
-				return nil, fmt.Errorf("validate source event %q: %w", syncedEvent.GetId(), err)
-			}
-			acceptedEvents = append(acceptedEvents, syncedEvent)
-		}
-		acceptedEvents = dedupeAcceptedEvents(acceptedEvents)
 		ledger, ledgerEnabled := s.store.(ports.SourceRuntimePageLedgerStore)
 		attemptID := sourceRuntimePageAttemptID(runtime.GetId(), pageNumber, started)
 		if ledgerEnabled {
@@ -459,8 +538,19 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				SourceID:       runtime.GetSourceId(),
 				TenantID:       runtime.GetTenantId(),
 				PageNumber:     pageNumber,
-				RecordsScanned: recordsScanned,
+				RecordsScanned: boundedUint32(admission.Receipt.Scanned),
 				Events:         acceptedEvents,
+				Admission: ports.SourceRuntimePageAdmission{
+					Kernel:         "sourceruntime-event-admission",
+					ABIVersion:     eventadmission.ABIVersion,
+					Scanned:        boundedUint32(admission.Receipt.Scanned),
+					Accepted:       boundedUint32(admission.Receipt.Accepted),
+					Quarantined:    boundedUint32(admission.Receipt.Quarantined),
+					Duplicates:     boundedUint32(admission.Receipt.Duplicates),
+					ScannedSHA256:  admission.Receipt.ScannedSHA256,
+					AcceptedSHA256: admission.Receipt.AcceptedSHA256,
+					ResultSHA256:   admission.Receipt.ResultSHA256,
+				},
 			}); err != nil {
 				return nil, err
 			}
@@ -556,6 +646,9 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		if pull.NextCursor == nil {
 			break
 		}
+		if eventLimitReached {
+			break
+		}
 		cursor = cloneCursor(pull.NextCursor)
 	}
 	status = "completed"
@@ -565,6 +658,8 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_rejected", Value: recordsRejected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_quarantined", Value: recordsRejected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "events_appended", Value: eventsAppended})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "event_limit", Value: req.GetEventLimit()})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "event_limit_reached", Value: eventLimitReached})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "entities_projected", Value: entitiesProjected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "links_projected", Value: linksProjected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "has_next_cursor", Value: runtime.GetNextCursor() != nil})
@@ -585,6 +680,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		LinksProjected:       linksProjected,
 		ShortCircuitReason:   shortCircuitReason,
 		ReconciliationReason: reconciliationReason,
+		EventLimitReached:    eventLimitReached,
 	}, nil
 }
 
@@ -596,6 +692,8 @@ func sourceRuntimeTelemetryErrorKind(err error) string {
 	case errors.Is(err, ErrInvalidRequest):
 		return "invalid_request"
 	case errors.Is(err, ErrRuntimeUnavailable):
+		return "runtime_unavailable"
+	case errors.Is(err, eventadmission.ErrKernelUnavailable):
 		return "runtime_unavailable"
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		return "runtime_not_found"
@@ -630,6 +728,8 @@ func sourceRuntimeFailureCategory(err error) string {
 	case errors.Is(err, sourcecdk.ErrInvalidEventEnvelope):
 		return "invalid_event"
 	case errors.Is(err, ErrRuntimeUnavailable):
+		return "dependency_error"
+	case errors.Is(err, eventadmission.ErrKernelUnavailable):
 		return "dependency_error"
 	}
 	message := strings.ToLower(err.Error())
@@ -772,23 +872,6 @@ func clearRuntimeInvalidEvent(config map[string]string) {
 	}
 }
 
-func quarantinableContractError(err error) bool {
-	message := err.Error()
-	return strings.Contains(message, "missing required attribute") || strings.Contains(message, "missing required payload field")
-}
-
-func invalidEventFailureCategory(err error) string {
-	message := err.Error()
-	switch {
-	case strings.Contains(message, "missing required attribute"):
-		return "missing_required_attribute"
-	case strings.Contains(message, "missing required payload field"):
-		return "missing_required_payload_field"
-	default:
-		return "invalid_event"
-	}
-}
-
 func emitSourceRuntimeValidation(ctx context.Context, runtime *cerebrov1.SourceRuntime, category string) {
 	if runtime == nil {
 		return
@@ -838,14 +921,13 @@ func emitSourceRuntimeContractProbe(ctx context.Context, runtime *cerebrov1.Sour
 	)))
 }
 
-func recordRuntimeInvalidEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, category string, cause error, observedAt time.Time, contractConfigured bool) {
+func recordRuntimeInvalidEventField(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, category string, field string, observedAt time.Time, contractConfigured bool) {
 	if runtime == nil || event == nil {
 		return
 	}
 	if runtime.Config == nil {
 		runtime.Config = map[string]string{}
 	}
-	field := invalidEventFieldName(cause)
 	setRuntimeConfig(runtime.Config, runtimeLastFailureCategoryConfigKey, category)
 	setRuntimeConfig(runtime.Config, runtimeLastInvalidEventIDConfigKey, firstNonEmptyString(event.GetAttributes()["source_event_id"], event.GetId()))
 	setRuntimeConfig(runtime.Config, runtimeLastInvalidFieldConfigKey, field)
@@ -861,23 +943,6 @@ func recordRuntimeInvalidEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov
 		setRuntimeConfig(runtime.Config, runtimeLastInvalidDiagnosticConfigKey, "invalid source event")
 	}
 	setRuntimeConfig(runtime.Config, runtimeContractProbeStateConfigKey, contractProbeStateForRuntime(runtime, category, contractConfigured))
-}
-
-func invalidEventFieldName(err error) string {
-	message := err.Error()
-	for _, marker := range []string{"missing required attribute ", "missing required payload field "} {
-		index := strings.Index(message, marker)
-		if index < 0 {
-			continue
-		}
-		value := strings.TrimSpace(message[index+len(marker):])
-		value = strings.TrimLeft(value, "\"' :")
-		if end := strings.IndexAny(value, " :"); end > 0 {
-			value = value[:end]
-		}
-		return strings.Trim(value, "\"'")
-	}
-	return ""
 }
 
 func contractProbeStateForRuntime(runtime *cerebrov1.SourceRuntime, failureCategory string, contractConfigured bool) string {
@@ -1061,25 +1126,6 @@ func readSourcePull(ctx context.Context, source sourcecdk.Source, cfg sourcecdk.
 	return source.Read(ctx, cfg, cursor)
 }
 
-func dedupeAcceptedEvents(events []*cerebrov1.EventEnvelope) []*cerebrov1.EventEnvelope {
-	if len(events) < 2 {
-		return events
-	}
-	seen := make(map[string]struct{}, len(events))
-	deduped := events[:0]
-	for _, event := range events {
-		eventID := strings.TrimSpace(event.GetId())
-		if eventID != "" {
-			if _, ok := seen[eventID]; ok {
-				continue
-			}
-			seen[eventID] = struct{}{}
-		}
-		deduped = append(deduped, event)
-	}
-	return deduped
-}
-
 func pullShortCircuitReason(pull sourcecdk.Pull) sourcecdk.PullShortCircuitReason {
 	if pull.ShortCircuitReason != "" {
 		return pull.ShortCircuitReason
@@ -1119,8 +1165,11 @@ func checkpointWithoutContinuationToken(checkpoint *cerebrov1.SourceCheckpoint) 
 	if opaque == "" {
 		return terminal
 	}
-	envelope, ok := sourcecdk.DecodeCursorEnvelope(opaque)
+	envelope, ok := decodeStandardCursorEnvelope(opaque)
 	if !ok {
+		if sourcecdk.ResumableCursorOpaque(opaque) {
+			return terminal
+		}
 		terminal.CursorOpaque = ""
 		return terminal
 	}
@@ -1138,8 +1187,8 @@ func checkpointWithoutContinuationToken(checkpoint *cerebrov1.SourceCheckpoint) 
 }
 
 func mergeEqualWatermarkCheckpoint(existing *cerebrov1.SourceCheckpoint, next *cerebrov1.SourceCheckpoint) *cerebrov1.SourceCheckpoint {
-	existingEnvelope, existingOK := sourcecdk.DecodeCursorEnvelope(existing.GetCursorOpaque())
-	nextEnvelope, nextOK := sourcecdk.DecodeCursorEnvelope(next.GetCursorOpaque())
+	existingEnvelope, existingOK := decodeStandardCursorEnvelope(existing.GetCursorOpaque())
+	nextEnvelope, nextOK := decodeStandardCursorEnvelope(next.GetCursorOpaque())
 	if !existingOK || !nextOK {
 		return next
 	}
@@ -1157,6 +1206,21 @@ func mergeEqualWatermarkCheckpoint(existing *cerebrov1.SourceCheckpoint, next *c
 	merged := cloneCheckpoint(next)
 	merged.CursorOpaque = opaque
 	return merged
+}
+
+func decodeStandardCursorEnvelope(opaque string) (sourcecdk.CursorEnvelope, bool) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(strings.TrimSpace(opaque)), &fields); err != nil {
+		return sourcecdk.CursorEnvelope{}, false
+	}
+	for field := range fields {
+		switch field {
+		case "version", "source", "family", "mode", "resumable_checkpoint", "token", "watermark", "boundary_ids", "extra":
+		default:
+			return sourcecdk.CursorEnvelope{}, false
+		}
+	}
+	return sourcecdk.DecodeCursorEnvelope(opaque)
 }
 
 func mergeCursorEnvelopeExtra(existing map[string]string, next map[string]string) map[string]string {

@@ -98,7 +98,8 @@ func (s *Store) UpsertQuestionnaireRun(ctx context.Context, record ports.Questio
 		return nil, fmt.Errorf("begin questionnaire run upsert: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, questionnaireRunAdvisoryLockSQL(), record.TenantID+"\x00"+record.RunID); err != nil {
+	lockKey := postgresAdvisoryLockKey(record.TenantID, record.RunID)
+	if _, err := tx.ExecContext(ctx, questionnaireRunAdvisoryLockSQL(), lockKey); err != nil {
 		return nil, fmt.Errorf("lock questionnaire run: %w", err)
 	}
 	var previousVersion int

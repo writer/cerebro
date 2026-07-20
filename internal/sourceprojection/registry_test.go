@@ -1,7 +1,11 @@
 package sourceprojection
 
 import (
+	"context"
 	"testing"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 type stubHandler struct {
@@ -130,5 +134,96 @@ func TestRegistry_LookupOnNilRegistry(t *testing.T) {
 	_, ok := r.Lookup("aws.s3_bucket")
 	if ok {
 		t.Fatal("expected no handler on nil registry")
+	}
+}
+
+func TestRegistryProjectContextPreservesConnectorDefinitionPrecedence(t *testing.T) {
+	contextProjectorCalled := false
+	connectorProjectorCalled := false
+	r := &Registry{
+		projectors: map[string]ProjectFunc{},
+		contextProjectors: map[string]ContextProjectFunc{
+			"shared.kind": func(context.Context, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+				contextProjectorCalled = true
+				return nil, nil, nil
+			},
+		},
+		connectorDefinitionProjectors: map[string]map[string]ProjectFunc{
+			"shared.kind": {
+				"connector-source": func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+					connectorProjectorCalled = true
+					return nil, nil, nil
+				},
+			},
+		},
+	}
+
+	_, _, err := r.ProjectContext(context.Background(), &cerebrov1.EventEnvelope{
+		SourceId: "connector-source",
+		Kind:     "shared.kind",
+	})
+	if err != nil {
+		t.Fatalf("ProjectContext() error = %v", err)
+	}
+	if !connectorProjectorCalled {
+		t.Fatal("ProjectContext() did not use connector definition projector")
+	}
+	if contextProjectorCalled {
+		t.Fatal("ProjectContext() used context projector instead of connector definition projector")
+	}
+}
+
+func TestRegistryProjectPreservesConnectorDefinitionPrecedenceForContextKind(t *testing.T) {
+	contextProjectorCalled := false
+	connectorProjectorCalled := false
+	r := &Registry{
+		contextProjectors: map[string]ContextProjectFunc{
+			"shared.kind": func(context.Context, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+				contextProjectorCalled = true
+				return nil, nil, nil
+			},
+		},
+		connectorDefinitionProjectors: map[string]map[string]ProjectFunc{
+			"shared.kind": {
+				"connector-source": func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+					connectorProjectorCalled = true
+					return nil, nil, nil
+				},
+			},
+		},
+	}
+
+	_, _, err := r.Project(&cerebrov1.EventEnvelope{
+		SourceId: "connector-source",
+		Kind:     "shared.kind",
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if !connectorProjectorCalled {
+		t.Fatal("Project() did not use connector definition projector")
+	}
+	if contextProjectorCalled {
+		t.Fatal("Project() used context projector instead of connector definition projector")
+	}
+}
+
+func TestRegistryKindsDeduplicatesBaseAndContextProjectors(t *testing.T) {
+	r := &Registry{
+		projectors: map[string]ProjectFunc{
+			"shared.kind": func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+				return nil, nil, nil
+			},
+		},
+		contextProjectors: map[string]ContextProjectFunc{
+			"shared.kind": func(context.Context, *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+				return nil, nil, nil
+			},
+		},
+	}
+
+	kinds := r.Kinds()
+	if len(kinds) != 1 || kinds[0] != "shared.kind" {
+		t.Fatalf("Kinds() = %v, want [shared.kind]", kinds)
 	}
 }

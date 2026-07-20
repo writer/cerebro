@@ -1,0 +1,11 @@
+apiVersion: cerebro.writer.com/v1alpha1
+kind: PolicyFindingRuleTest
+cases:
+    - name: matching resource produces a finding
+      resource:
+        retention_in_days: null
+      wantFinding: true
+    - name: non-matching resource passes
+      resource:
+        retention_in_days: true
+      wantFinding: false

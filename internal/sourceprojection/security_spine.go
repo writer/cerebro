@@ -6,7 +6,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/internal/mitre"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/securitytooling"
 )
@@ -214,40 +213,6 @@ func securityToolingMapControlMappingProjections(event *cerebrov1.EventEnvelope)
 		"coverage_status":  coverageStatus,
 		"evidence_surface": attrs["evidence_surface"],
 	})))
-	coverageAttrs := compactAttributes(map[string]string{
-		"event_id":         event.GetId(),
-		"coverage":         attrs["coverage"],
-		"coverage_status":  coverageStatus,
-		"evidence_surface": attrs["evidence_surface"],
-		"framework":        attrs["framework"],
-		"control_id":       controlID,
-		"mapping_id":       attrs["mapping_id"],
-		"relationship":     "security_tooling_coverage",
-	})
-	addMITREAttackContextLinks(entities, links, tenantID, event, controlURN, attrs)
-	addMITREDefendContextLinks(entities, links, tenantID, event, controlURN, attrs)
-	attackTechniqueURNs := addMITREAttackTechniqueLinks(entities, links, tenantID, event, toolURN, relationSupports, append(
-		mitre.ExtractAttackTechniques(mitreAttributeValues(attrs, mitreAttackTechniqueAttributeKeys...)...),
-		mitre.ExtractAttackTechniqueIDs(mitreAttributeValues(attrs, mitreAttackTagAttributeKeys...)...)...,
-	), coverageAttrs)
-	addMITREAttackTacticLinks(entities, links, tenantID, event, toolURN, relationSupports, mitre.ExtractAttackTactics(append(mitreAttributeValues(attrs, mitreAttackTacticAttributeKeys...), mitreAttributeValues(attrs, mitreAttackTagAttributeKeys...)...)...), coverageAttrs)
-	defendTechniqueURNs := addMITREDefendTechniqueLinks(entities, links, tenantID, event, toolURN, relationSupports, mitre.ExtractDefendTechniques(mitreAttributeValues(attrs, mitreDefendTechniqueAttributeKeys...)...), coverageAttrs)
-	addMITREDefendTacticLinks(entities, links, tenantID, event, toolURN, relationSupports, mitre.ExtractDefendTactics(mitreAttributeValues(attrs, mitreDefendTacticAttributeKeys...)...), coverageAttrs)
-	addMITREDefendArtifactLinks(entities, links, tenantID, event, toolURN, relationSupports, mitre.ExtractDefendArtifacts(mitreAttributeValues(attrs, mitreDefendArtifactAttributeKeys...)...), coverageAttrs)
-	for _, defendTechniqueURN := range defendTechniqueURNs {
-		for _, attackTechniqueURN := range attackTechniqueURNs {
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), defendTechniqueURN, attackTechniqueURN, relationSupports, compactAttributes(map[string]string{
-				"event_id":         event.GetId(),
-				"coverage":         attrs["coverage"],
-				"coverage_status":  coverageStatus,
-				"evidence_surface": attrs["evidence_surface"],
-				"framework":        attrs["framework"],
-				"control_id":       controlID,
-				"mapping_id":       attrs["mapping_id"],
-				"relationship":     "defends_against",
-			})))
-		}
-	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }

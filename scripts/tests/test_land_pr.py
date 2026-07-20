@@ -74,6 +74,19 @@ class LandPRTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(reason, "")
 
+    def test_check_droid_finished_accepts_progress_boilerplate_in_finished_review(self):
+        ok, reason = land_pr.check_droid_finished(
+            [
+                {
+                    "user": {"login": "factory-droid[bot]", "type": "Bot"},
+                    "body": "**Droid finished @alice's task**\n\nDroid is reviewing code and running a security check...\n\nReview approved.",
+                    "url": "https://comment",
+                }
+            ]
+        )
+        self.assertTrue(ok)
+        self.assertEqual(reason, "")
+
     def test_check_droid_finished_accepts_review_complete_comment(self):
         ok, reason = land_pr.check_droid_finished(
             [

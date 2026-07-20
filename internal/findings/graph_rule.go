@@ -4,8 +4,15 @@ import (
 	"context"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 )
+
+// GraphIngestRunStore supplies the projection checkpoint actually read by a
+// graph-rule evaluation.
+type GraphIngestRunStore interface {
+	ListIngestRuns(context.Context, graphstore.IngestRunFilter) ([]graphstore.IngestRun, error)
+}
 
 // GraphRule evaluates the projected graph by issuing one bounded read-only Cypher query per
 // runtime invocation. Unlike event rules, graph rules do not see the append log directly;
@@ -18,6 +25,30 @@ type GraphRule interface {
 	Rule
 	QueryFor(*cerebrov1.SourceRuntime) ports.CypherQueryRequest
 	EvaluateRows(context.Context, *cerebrov1.SourceRuntime, []ports.CypherRow) ([]*ports.FindingRecord, error)
+}
+
+type GraphRuleCoverageEdge struct {
+	FromEntityType string
+	Relation       string
+	ToEntityType   string
+}
+
+type GraphRuleCoveragePredicate struct {
+	EntityType string
+	Key        string
+	Value      string
+}
+
+type GraphRuleCoverageSignature struct {
+	RequiredEntityTypes []string
+	RequiredEdges       []GraphRuleCoverageEdge
+	RequiredPredicates  []GraphRuleCoveragePredicate
+}
+
+// GraphRuleCoverageSemantics exposes EvaluateRows predicates that cannot be
+// reconstructed from Cypher alone. Multiple signatures represent OR branches.
+type GraphRuleCoverageSemantics interface {
+	GraphRuleCoverageSignatures() []GraphRuleCoverageSignature
 }
 
 // asGraphRule narrows a registered Rule into a GraphRule when supported.

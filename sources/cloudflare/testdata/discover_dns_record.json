@@ -1,3 +1,6 @@
 [
-  "urn:cerebro:tenant:cloudflare_dns_record:dns-1"
+  "urn:cerebro:tenant:cloudflare_dns_record:example-304c138a",
+  "urn:cerebro:tenant:cloudflare_dns_record:example-c3d74863",
+  "urn:cerebro:tenant:cloudflare_dns_record:example-d389e734",
+  "urn:cerebro:tenant:cloudflare_dns_record:example-95a48683"
 ]

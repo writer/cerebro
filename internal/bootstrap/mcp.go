@@ -26,6 +26,7 @@ import (
 	"github.com/writer/cerebro/internal/graphfacts"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/mcpoperations"
+	"github.com/writer/cerebro/internal/mcptransport"
 	"github.com/writer/cerebro/internal/ports"
 	linktransport "github.com/writer/cerebro/internal/resourcelinks/transport"
 	"github.com/writer/cerebro/internal/riskplan"
@@ -81,17 +82,8 @@ type mcpJSONRPCRequest struct {
 	Error   *mcpError       `json:"error,omitempty"`
 }
 
-type mcpJSONRPCResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Result  any             `json:"result,omitempty"`
-	Error   *mcpError       `json:"error,omitempty"`
-}
-
-type mcpError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
+type mcpJSONRPCResponse = mcptransport.Response
+type mcpError = mcptransport.Error
 
 type mcpGraphStoreNeighborhoodResult struct {
 	urn          string
@@ -322,6 +314,7 @@ type mcpTelemetryDetails struct {
 	JSONRPCIDPresent bool
 	ParamsPresent    bool
 	Response         *mcpJSONRPCResponse
+	ResponseBytes    int
 }
 
 func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
@@ -342,11 +335,11 @@ func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 	decoder.UseNumber()
 	var request mcpJSONRPCRequest
 	if err := decoder.Decode(&request); err != nil {
-		mcpWriteJSONRPC(w, mcpJSONRPCResponse{
+		responseBytes := mcpWriteJSONRPC(w, mcpJSONRPCResponse{
 			JSONRPC: "2.0",
 			Error:   &mcpError{Code: -32700, Message: "parse error"},
 		})
-		mcpTelemetryEvent(r, "", "", http.StatusOK, -32700, "parse_error", "", time.Since(started), mcpTelemetryDetails{RequestKind: "parse_error"})
+		mcpTelemetryEvent(r, "", "", http.StatusOK, -32700, "parse_error", "", time.Since(started), mcpTelemetryDetails{RequestKind: "parse_error", ResponseBytes: responseBytes})
 		return
 	}
 	if request.Method == "" && (len(request.Result) != 0 || request.Error != nil) {
@@ -376,12 +369,13 @@ func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 		clearLongRunningWriteDeadline(w)
 	}
 	response := app.handleMCPRequest(r, request)
-	mcpWriteJSONRPC(w, response)
+	responseBytes := mcpWriteJSONRPC(w, response)
 	mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusOK, mcpResponseErrorCode(response), mcpResponseOutcome(response), mcpResponseToolErrorKind(response), time.Since(started), mcpTelemetryDetails{
 		RequestKind:      "request",
 		ParamsPresent:    len(request.Params) != 0,
 		JSONRPCIDPresent: len(request.ID) != 0,
 		Response:         &response,
+		ResponseBytes:    responseBytes,
 	})
 }
 
@@ -489,8 +483,21 @@ func authorizeMCPMethodScope(ctx context.Context, method string) error {
 	}
 }
 
-func authorizeMCPToolScope(ctx context.Context, _ string) error {
-	return authorizeMCPReadScope(ctx)
+func authorizeMCPToolScope(ctx context.Context, name string) error {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	if !ok || !principalScopeRestricted(auth.principal) {
+		return nil
+	}
+	operation, known := mcpoperations.Lookup(name)
+	if !known {
+		return authorizePrincipalScope(auth.principal, scopeCosmoSecurityRead)
+	}
+	for _, required := range operation.RequiredScopes {
+		if err := authorizePrincipalScope(auth.principal, required); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func authorizeMCPResourceScope(ctx context.Context, _ string) error {
@@ -625,10 +632,30 @@ func (app *App) mcpToolStructuredContent(r *http.Request, name string, args map[
 		return app.mcpAgentClaimVerify(r, args)
 	case "cerebro.agent.work.contract":
 		return app.mcpAgentWorkContract(r, args)
+	case "cerebro.agent.missions.contract":
+		return app.mcpAgentMissionContract(r, args)
 	case "cerebro.graph.reason":
 		return app.mcpGraphReason(r, args)
 	case "cerebro.investigation.context":
 		return app.mcpInvestigationContext(r, args)
+	case "cerebro.assessments.plan.create":
+		return app.mcpAssessmentPlanCreate(r, args)
+	case "cerebro.assessments.plan.publish":
+		return app.mcpAssessmentPlanPublish(r, args)
+	case "cerebro.assessments.plan.get":
+		return app.mcpAssessmentPlanGet(r, args)
+	case "cerebro.assessments.run.request":
+		return app.mcpAssessmentRunRequest(r, args)
+	case "cerebro.assessments.run.get":
+		return app.mcpAssessmentRunGet(r, args)
+	case "cerebro.assessments.results.list":
+		return app.mcpAssessmentResultsList(r, args)
+	case "cerebro.assessments.run.diff":
+		return app.mcpAssessmentRunDiff(r, args)
+	case "cerebro.assessments.result.explain":
+		return app.mcpAssessmentResultExplain(r, args)
+	case "cerebro.assessments.remediation.propose":
+		return app.mcpAssessmentRemediationPropose(r, args)
 	case "cerebro.findings.action.propose":
 		return app.mcpProposeFindingAction(r, args)
 	case "cerebro.source_runtimes.refresh.propose":
@@ -1878,7 +1905,10 @@ func (app *App) mcpAgentClaimVerify(r *http.Request, args map[string]any) (any, 
 	}
 	request.TenantID = resolved.TenantID
 	request.ActorID = resolved.ActorID
-	request.CoverageContext = app.agentCoverageContext(r.Context(), request.TenantID)
+	request.CoverageContext, err = app.agentCoverageContext(r.Context(), request.TenantID)
+	if err != nil {
+		return nil, err
+	}
 	if err := authorizeMCPClaimVerificationURNs(r.Context(), request); err != nil {
 		return nil, err
 	}
@@ -1900,6 +1930,18 @@ func (app *App) mcpAgentWorkContract(_ *http.Request, _ map[string]any) (any, er
 	}
 	if typed, ok := value.(map[string]any); ok {
 		return mcpAddResponseMetadata(typed, mcpResponseMetadata(0, len(workContract.RequiredArtifacts), nil)), nil
+	}
+	return value, nil
+}
+
+func (app *App) mcpAgentMissionContract(_ *http.Request, _ map[string]any) (any, error) {
+	contract := agentplatform.SecurityControlPlaneSnapshot().MissionOperating
+	value, err := jsonValue(contract)
+	if err != nil {
+		return nil, err
+	}
+	if typed, ok := value.(map[string]any); ok {
+		return mcpAddResponseMetadata(typed, mcpResponseMetadata(0, len(contract.DurableRecords), nil)), nil
 	}
 	return value, nil
 }
@@ -2174,15 +2216,15 @@ func mcpTools() []mcpTool {
 		{
 			Name:         "cerebro.health",
 			Title:        "Cerebro Health",
-			Description:  "Return Cerebro service health and dependency status.",
+			Description:  "Check Cerebro service readiness and whether it is healthy, ready, and acceptable for use, including failed or unavailable backend dependencies.",
 			InputSchema:  mcpObjectSchema(nil, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Cerebro Health"),
 		},
 		{
 			Name:         "cerebro.version",
-			Title:        "Cerebro Version",
-			Description:  "Return Cerebro service build and API version metadata.",
+			Title:        "Running Cerebro Build",
+			Description:  "Identify which Cerebro revision is deployed and running on this server, including release, service version, commit, build date, and API version.",
 			InputSchema:  mcpObjectSchema(nil, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Cerebro Version"),
@@ -2329,7 +2371,7 @@ func mcpTools() []mcpTool {
 		{
 			Name:        "cerebro.findings.search",
 			Title:       "Search Findings",
-			Description: "Search visible findings across a runtime or tenant by query, severity, status, rule, resource, event, or policy.",
+			Description: "Find visible security findings across a runtime or tenant. Filter open, resolved, or suppressed findings by query, severity, rule, resource, event, or policy.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"tenant_id":    map[string]any{"type": "string"},
 				"runtime_id":   map[string]any{"type": "string"},
@@ -2386,7 +2428,7 @@ func mcpTools() []mcpTool {
 		{
 			Name:        "cerebro.assets.search",
 			Title:       "Search Assets",
-			Description: "Search graph assets/entities visible to the authenticated caller by query, URN, entity type, tenant, or runtime.",
+			Description: "Find visible inventory and graph assets, including hosts, by query, URN, entity type, tenant, or runtime.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"query":       map[string]any{"type": "string"},
 				"urn":         map[string]any{"type": "string"},
@@ -2681,9 +2723,17 @@ func mcpTools() []mcpTool {
 			Annotations:  mcpReadOnlyAnnotations("Agent Work Contract"),
 		},
 		{
+			Name:         "cerebro.agent.missions.contract",
+			Title:        "Mission Operating Contract",
+			Description:  "Return the durable mandate, mission, belief, plan, commitment, wake, interruption, and verified-closure contract used across agent runs.",
+			InputSchema:  mcpObjectSchema(nil, nil),
+			OutputSchema: mcpOutputSchema(map[string]any{"id": map[string]any{"type": "string"}, "schema_version": map[string]any{"type": "string"}, "durable_records": map[string]any{"type": "array"}, "execution_depths": map[string]any{"type": "array"}, "supervisor_directives": map[string]any{"type": "array"}, "wake_conditions": map[string]any{"type": "array"}, "interruption_triggers": map[string]any{"type": "array"}, "close_conditions": map[string]any{"type": "array"}}),
+			Annotations:  mcpReadOnlyAnnotations("Mission Operating Contract"),
+		},
+		{
 			Name:        "cerebro.graph.reason",
-			Title:       "Graph Reasoning",
-			Description: "Answer a tenant-scoped graph question with query plan, guarded Cypher, rows, graph evidence, citations, and provenance.",
+			Title:       "Explain Connecting Resources",
+			Description: "Explain the relationship between an endpoint and a finding, how a public resource is connected to a privileged identity, or which attack path reaches an asset. Return tenant-scoped graph evidence, citations, and provenance.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"question":  map[string]any{"type": "string"},
 				"scope_urn": map[string]any{"type": "string"},
@@ -2705,8 +2755,8 @@ func mcpTools() []mcpTool {
 		},
 		{
 			Name:        "cerebro.investigation.context",
-			Title:       "Investigation Context",
-			Description: "Bundle finding, evidence, assets, and graph context for one finding so an agent can investigate without many round trips.",
+			Title:       "Investigate and Triage Finding",
+			Description: "Assemble triage and investigation context for one finding, including evidence, affected assets, runtime details, and graph context.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"finding_id":  map[string]any{"type": "string"},
 				"limit":       mcpLimitSchema(maxMCPEvidenceLimit, "evidence records"),
@@ -2744,6 +2794,7 @@ func mcpTools() []mcpTool {
 			Annotations: mcpReadOnlyAnnotations("Propose Runtime Refresh"),
 		},
 	}
+	tools = append(tools, mcpAssessmentTools()...)
 	for _, definition := range mcpoperations.TaskToolDefinitions(mcpoperations.TaskToolLimits{Evidence: maxMCPEvidenceLimit, Assets: maxMCPAssetLimit, Actions: riskplan.MaxCandidateLimit, Findings: maxMCPRiskLimit, ResourceRoots: maxMCPRiskActionRoots, Graph: maxMCPRiskActionGraph}) {
 		tools = append(tools, mcpTool{Name: definition.Name, Title: definition.Title, Description: definition.Description, InputSchema: definition.InputSchema, OutputSchema: mcpoperations.TaskOutputSchema(), Annotations: mcpReadOnlyAnnotations(definition.Title)})
 	}
@@ -2847,6 +2898,16 @@ func mcpReadOnlyAnnotations(title string) map[string]any {
 	}
 }
 
+func mcpWriteAnnotations(title string, idempotent bool) map[string]any {
+	return map[string]any{
+		"title":           title,
+		"readOnlyHint":    false,
+		"destructiveHint": false,
+		"idempotentHint":  idempotent,
+		"openWorldHint":   false,
+	}
+}
+
 func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode int, jsonRPCErrorCode int, outcome string, toolErrorKind string, duration time.Duration, details ...mcpTelemetryDetails) {
 	if r == nil {
 		return
@@ -2878,6 +2939,7 @@ func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode i
 		telemetry.Field{Key: "mcp.session_header_present", Value: strings.TrimSpace(r.Header.Get("Mcp-Session-Id")) != ""},
 		telemetry.Field{Key: "mcp.jsonrpc_id_present", Value: detail.JSONRPCIDPresent},
 		telemetry.Field{Key: "mcp.params_present", Value: detail.ParamsPresent},
+		telemetry.Field{Key: "mcp.response_bytes", Value: detail.ResponseBytes},
 		telemetry.Field{Key: "duration_ms", Value: duration.Milliseconds()},
 	)
 	if contentType := mcpMediaType(r.Header.Get("Content-Type")); contentType != "" {
@@ -2949,6 +3011,7 @@ func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode i
 		telemetry.Field{Key: "mcp.session_header_present", Value: strings.TrimSpace(r.Header.Get("Mcp-Session-Id")) != ""},
 		telemetry.Field{Key: "mcp.jsonrpc_id_present", Value: detail.JSONRPCIDPresent},
 		telemetry.Field{Key: "mcp.params_present", Value: detail.ParamsPresent},
+		telemetry.Field{Key: "mcp.response_bytes", Value: detail.ResponseBytes},
 		telemetry.Field{Key: "mcp.duration_ms", Value: duration.Milliseconds()},
 	)
 	if contentType := mcpMediaType(r.Header.Get("Content-Type")); contentType != "" {
@@ -3047,12 +3110,12 @@ func mcpResponseTelemetryFields(response *mcpJSONRPCResponse) []telemetry.Field 
 	}
 	switch result := response.Result.(type) {
 	case mcpToolResult:
-		return []telemetry.Field{
-			{Key: "mcp.response_shape", Value: "tool_result"},
-			{Key: "mcp.tool_result_error", Value: result.IsError},
-			{Key: "mcp.tool_result_content_count", Value: len(result.Content)},
-			{Key: "mcp.structured_content_present", Value: result.StructuredContent != nil},
+		fields := []telemetry.Field{{Key: "mcp.response_shape", Value: "tool_result"}, {Key: "mcp.tool_result_error", Value: result.IsError}, {Key: "mcp.tool_result_content_count", Value: len(result.Content)}, {Key: "mcp.structured_content_present", Value: result.StructuredContent != nil}}
+		taskResponse, isTaskResponse := result.StructuredContent.(mcpoperations.TaskResponse)
+		if taskState := mcpoperations.TaskResponseState(taskResponse); !result.IsError && isTaskResponse && taskState != "" {
+			fields = append(fields, telemetry.Field{Key: "mcp.task_state", Value: taskState})
 		}
+		return fields
 	case map[string]any:
 		fields := []telemetry.Field{{Key: "mcp.response_shape", Value: mcpMapResponseShape(result)}}
 		if version := mcpAnyString(result["protocolVersion"]); version != "" {
@@ -3195,9 +3258,6 @@ func mcpToolNameFromParams(method string, rawParams json.RawMessage) string {
 func mcpToolsForRequest(r *http.Request, rawParams json.RawMessage) []mcpTool {
 	tools := mcpTools()
 	enabled := mcpRequestedToolsets(r, rawParams)
-	if len(enabled) == 0 {
-		return tools
-	}
 	filtered := make([]mcpTool, 0, len(tools))
 	for _, tool := range tools {
 		if mcpoperations.EnabledForToolsets(tool.Name, enabled) {
@@ -3209,9 +3269,6 @@ func mcpToolsForRequest(r *http.Request, rawParams json.RawMessage) []mcpTool {
 
 func mcpToolAllowedForRequest(r *http.Request, name string) bool {
 	enabled := mcpRequestedToolsets(r, nil)
-	if len(enabled) == 0 {
-		return true
-	}
 	return mcpoperations.EnabledForToolsets(name, enabled)
 }
 
@@ -3220,7 +3277,11 @@ func mcpRequestedToolsets(r *http.Request, rawParams json.RawMessage) mcpoperati
 	if r != nil {
 		header = r.Header.Get("X-Cerebro-MCP-Toolsets")
 	}
-	return mcpoperations.ParseToolsets(header, rawParams)
+	toolsets := mcpoperations.ParseToolsets(header, rawParams)
+	if len(toolsets) == 0 {
+		toolsets["task"] = true
+	}
+	return toolsets
 }
 
 func mcpToolFamily(name string) string {
@@ -4359,12 +4420,12 @@ func mcpUint32Arg(args map[string]any, key string) (uint32, error) {
 	return uint32(parsed), nil
 }
 
-func mcpWriteJSONRPC(w http.ResponseWriter, response mcpJSONRPCResponse) {
+func mcpWriteJSONRPC(w http.ResponseWriter, response mcpJSONRPCResponse) int {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("MCP-Protocol-Version", mcpProtocolVersion)
 	w.Header().Set("X-Cerebro-MCP-Stateless", "true")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(response)
+	return mcptransport.WriteJSON(w, response)
 }
 
 func mcpNegotiatedProtocolVersion(r *http.Request, rawParams json.RawMessage) string {

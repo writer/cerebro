@@ -15,7 +15,7 @@ func (a *App) newAssessmentService(jobs *platformjobs.Service) *complianceassess
 	if store == nil || replayer == nil {
 		return nil
 	}
-	return complianceassessment.NewAssessmentService(store, a.deps.AppendLog, jobs, assessmentCollector(a.deps.StateStore)).
+	return complianceassessment.NewAssessmentService(store, a.deps.AppendLog, jobs, assessmentCollector(a.deps.StateStore, store)).
 		WithEventReplayPager(replayer)
 }
 
@@ -27,12 +27,13 @@ func assessmentStore(store ports.StateStore) complianceassessment.Store {
 	return value
 }
 
-func assessmentCollector(store ports.StateStore) complianceassessment.Collector {
-	value, ok := store.(complianceassessment.Collector)
-	if !ok || isNilInterface(value) {
+func assessmentCollector(store ports.StateStore, plans complianceassessment.AssessmentPlanReader) complianceassessment.Collector {
+	runtimes, runtimesOK := store.(complianceassessment.SourceRuntimeLister)
+	evaluations, evaluationsOK := store.(complianceassessment.FindingEvaluationRunLister)
+	if !runtimesOK || !evaluationsOK || isNilInterface(runtimes) || isNilInterface(evaluations) || isNilInterface(plans) {
 		return nil
 	}
-	return value
+	return complianceassessment.NewFindingEvaluationCollector(plans, runtimes, evaluations)
 }
 
 func eventReplayPager(appendLog ports.AppendLog) ports.EventReplayPager {
