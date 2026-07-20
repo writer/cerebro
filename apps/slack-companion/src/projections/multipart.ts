@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import type { DeliveryPartV1, DeliveryReceiptV1 } from "../delivery/contracts.js";
+import type {
+  DeliveryPartV1,
+  DeliveryPartWithRetryV1,
+  DeliveryReceiptV1,
+} from "../delivery/contracts.js";
 
 export const MAX_SLACK_MULTIPART_PARTS = 40;
 
@@ -11,6 +15,7 @@ export interface SlackMultipartAcceptanceV1 {
 export interface SlackMultipartPartProjectionV1 {
   readonly acceptance?: SlackMultipartAcceptanceV1;
   readonly client_message_id: string;
+  readonly next_attempt_at?: string;
   readonly part_id: string;
   readonly payload_digest: string;
   readonly payload_ref: string;
@@ -146,10 +151,12 @@ function projectPart(
       "Undelivered Slack multipart parts cannot carry an acceptance receipt.",
     );
   }
+  const nextAttemptAt = retryTimestamp(part);
 
   return Object.freeze({
     ...(acceptance === undefined ? {} : { acceptance }),
     client_message_id: clientMessageId,
+    ...(nextAttemptAt === undefined ? {} : { next_attempt_at: nextAttemptAt }),
     part_id: partId,
     payload_digest: payloadDigest,
     payload_ref: payloadRef,
@@ -157,6 +164,17 @@ function projectPart(
     sequence: part.sequence,
     state: part.state,
   });
+}
+
+function retryTimestamp(part: DeliveryPartV1): string | undefined {
+  const nextAttemptAt = (part as DeliveryPartWithRetryV1).next_attempt_at;
+  if (nextAttemptAt === undefined) return undefined;
+  if (part.state !== "failed") {
+    throw new SlackMultipartProjectionError(
+      "Only failed Slack multipart parts can carry retry timing.",
+    );
+  }
+  return requiredTimestamp(nextAttemptAt, "next_attempt_at");
 }
 
 function validateAggregateState(

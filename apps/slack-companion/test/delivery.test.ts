@@ -328,6 +328,10 @@ describe("DeliveryCoordinator", () => {
     const second = await coordinator.deliverNext(planned.receipt.delivery_id, lease());
 
     assert.equal(first.status, "retry_scheduled");
+    assert.equal(
+      (first.receipt.parts[0] as { next_attempt_at?: string } | undefined)?.next_attempt_at,
+      "2026-07-16T12:00:05.000Z",
+    );
     assert.equal(waiting.status, "waiting_for_retry");
     assert.equal(waiting.next_attempt_at, "2026-07-16T12:00:05.000Z");
     assert.equal(second.status, "retry_scheduled");

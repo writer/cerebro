@@ -101,18 +101,124 @@ export function planSlackRichMessage(
   messageKey: string,
   input: SlackRichMessageInputV1,
 ): SlackMessagePlanV1 {
-  if (
-    input.schema_version !== "slack-rich-message-input/v1" ||
-    !Array.isArray(input.segments) ||
-    input.segments.length === 0 ||
-    input.segments.length > 32
-  ) {
-    throw new SlackMessageProjectionError("Slack rich message input is invalid.");
-  }
-  const rendered = input.segments.map((segment, index) =>
+  const snapshot = snapshotRichMessageInput(input);
+  const rendered = snapshot.segments.map((segment, index) =>
     renderRichSegment(segment, index + 1)
   ).join("\n\n");
   return planSlackMessage(messageKey, rendered);
+}
+
+function snapshotRichMessageInput(
+  input: SlackRichMessageInputV1,
+): SlackRichMessageInputV1 {
+  requireExactRecord(
+    input,
+    ["schema_version", "segments"],
+    "rich message input",
+  );
+  if (input.schema_version !== "slack-rich-message-input/v1") {
+    throw new SlackMessageProjectionError("Slack rich message input is invalid.");
+  }
+  requireJsonArray(input.segments, 1, 32, "rich message segments");
+  return Object.freeze({
+    schema_version: "slack-rich-message-input/v1",
+    segments: Object.freeze(input.segments.map((segment, index) =>
+      snapshotRichSegment(segment, index + 1)
+    )),
+  });
+}
+
+function snapshotRichSegment(
+  segment: unknown,
+  sequence: number,
+): SlackRichMessageSegmentV1 {
+  const type = richSegmentType(segment, sequence);
+  switch (type) {
+    case "text":
+      requireExactRecord(segment, ["text", "type"], `rich segment ${sequence}`);
+      if (typeof segment.text !== "string") {
+        throw new SlackMessageProjectionError("Slack rich text segment is invalid.");
+      }
+      return Object.freeze({ text: segment.text, type });
+    case "code": {
+      const keys = Object.prototype.hasOwnProperty.call(segment, "label")
+        ? ["code", "label", "type"]
+        : ["code", "type"];
+      requireExactRecord(segment, keys, `rich segment ${sequence}`);
+      if (
+        typeof segment.code !== "string" ||
+        (segment.label !== undefined && typeof segment.label !== "string")
+      ) {
+        throw new SlackMessageProjectionError("Slack rich code segment is invalid.");
+      }
+      return Object.freeze({
+        code: segment.code,
+        ...(segment.label === undefined ? {} : { label: segment.label }),
+        type,
+      });
+    }
+    case "citation":
+      requireExactRecord(
+        segment,
+        ["evidence_ref", "label", "type"],
+        `rich segment ${sequence}`,
+      );
+      if (
+        typeof segment.evidence_ref !== "string" ||
+        typeof segment.label !== "string"
+      ) {
+        throw new SlackMessageProjectionError("Slack rich citation segment is invalid.");
+      }
+      return Object.freeze({
+        evidence_ref: segment.evidence_ref,
+        label: segment.label,
+        type,
+      });
+    case "list": {
+      const keys = Object.prototype.hasOwnProperty.call(segment, "title")
+        ? ["items", "title", "type"]
+        : ["items", "type"];
+      requireExactRecord(segment, keys, `rich segment ${sequence}`);
+      requireJsonArray(segment.items, 1, 12, `rich segment ${sequence} items`);
+      if (
+        segment.items.some((item) => typeof item !== "string") ||
+        (segment.title !== undefined && typeof segment.title !== "string")
+      ) {
+        throw new SlackMessageProjectionError("Slack rich list segment is invalid.");
+      }
+      return Object.freeze({
+        items: Object.freeze([...segment.items] as string[]),
+        ...(segment.title === undefined ? {} : { title: segment.title }),
+        type,
+      });
+    }
+  }
+}
+
+function richSegmentType(
+  segment: unknown,
+  sequence: number,
+): SlackRichMessageSegmentV1["type"] {
+  if (segment === null || typeof segment !== "object" || Array.isArray(segment)) {
+    throw new SlackMessageProjectionError(`Slack rich segment ${sequence} is invalid.`);
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(segment, "type");
+  if (
+    descriptor === undefined ||
+    !("value" in descriptor) ||
+    descriptor.enumerable !== true
+  ) {
+    throw new SlackMessageProjectionError(`Slack rich segment ${sequence} is incomplete.`);
+  }
+  switch (descriptor.value) {
+    case "text":
+    case "code":
+    case "citation":
+    case "list":
+      return descriptor.value;
+    default:
+      throw new SlackMessageProjectionError("Slack rich message segment type is unsupported.");
+  }
 }
 
 /** Builds the payload bytes that must be stored before a durable delivery plan. */

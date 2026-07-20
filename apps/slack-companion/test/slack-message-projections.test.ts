@@ -101,7 +101,52 @@ test("rich message planning rejects unsupported citation and list shapes", () =>
       schema_version: "slack-rich-message-input/v1",
       segments: [{ items: [], type: "list" }],
     }),
-    /rich list segment is invalid/,
+    /rich segment 1 items must be a bounded plain JSON array/,
+  );
+});
+
+test("rich message planning rejects caller-owned executable records before reading fields", () => {
+  let invoked = 0;
+  const executablePrototype = {
+    toJSON() {
+      invoked += 1;
+      throw new Error("caller prototype was invoked");
+    },
+  };
+  const inherited = {
+    schema_version: "slack-rich-message-input/v1" as const,
+    segments: [{ text: "hello", type: "text" as const }],
+  };
+  Object.setPrototypeOf(inherited.segments[0]!, executablePrototype);
+  assert.throws(
+    () => planSlackRichMessage("run-one:inherited-rich", inherited),
+    SlackMessageProjectionError,
+  );
+  assert.equal(invoked, 0);
+
+  const accessor = {
+    schema_version: "slack-rich-message-input/v1" as const,
+    segments: [{}],
+  };
+  Object.defineProperty(accessor.segments[0]!, "type", {
+    enumerable: true,
+    get() {
+      invoked += 1;
+      throw new Error("caller accessor was invoked");
+    },
+  });
+  assert.throws(
+    () => planSlackRichMessage("run-one:accessor-rich", accessor as never),
+    SlackMessageProjectionError,
+  );
+  assert.equal(invoked, 0);
+
+  assert.throws(
+    () => planSlackRichMessage("run-one:extra-rich", {
+      schema_version: "slack-rich-message-input/v1",
+      segments: [{ text: "hello", type: "text", unexpected: true }],
+    } as never),
+    /unsupported fields/,
   );
 });
 
