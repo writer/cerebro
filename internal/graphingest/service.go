@@ -30,6 +30,7 @@ const (
 	MaxPageLimit                      = 100
 	DefaultStatusLimit                = 25
 	MaxStatusLimit                    = 500
+	defaultOrchestratorPageLimit      = 5
 	progressRunUpdateTimeout          = 15 * time.Second
 	terminalRunUpdateTimeout          = 15 * time.Second
 	defaultCleanupLimit               = 1000
@@ -273,6 +274,8 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 	if err != nil {
 		return nil, err
 	}
+	pageLimit = applyRuntimeBackpressureLimit(request, pageLimit)
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "effective_page_limit", Value: pageLimit})
 	startedAt := time.Now().UTC()
 	run := graphstore.IngestRun{
 		ID:                      ingestRunID(runtimeID, startedAt),
@@ -359,6 +362,13 @@ func (s *Service) acquireRuntimeLease(ctx context.Context, runtimeID string, alr
 		return ctx, noop, fmt.Errorf("%w: %s", sourceruntime.ErrSyncInProgress, runtimeID)
 	}
 	return leaseCtx, release, nil
+}
+
+func applyRuntimeBackpressureLimit(request RuntimeRequest, pageLimit uint32) uint32 {
+	if strings.TrimSpace(request.Trigger) == "orchestrator" && pageLimit > defaultOrchestratorPageLimit {
+		return defaultOrchestratorPageLimit
+	}
+	return pageLimit
 }
 
 func graphIngestTelemetryAttributes(attributes telemetry.Attributes, result *RunResult) telemetry.Attributes {

@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -135,6 +137,15 @@ type recordingProjectionGraphStore struct {
 	deletedEntities map[string]struct{}
 	deletedLinks    map[string]*ports.ProjectedLink
 	cleanupRequests []ports.ProjectionCleanupRequest
+}
+
+type checkpointProjectionRunStore struct {
+	stubRunStore
+	checkpointProjectionGraphStore
+}
+
+func (s *checkpointProjectionRunStore) Ping(ctx context.Context) error {
+	return s.stubRunStore.Ping(ctx)
 }
 
 func (s *recordingProjectionGraphStore) Ping(context.Context) error { return nil }
@@ -304,6 +315,75 @@ func TestRunRuntimeUsesCallerHeldRuntimeLease(t *testing.T) {
 	}
 }
 
+func TestRunRuntimeAppliesOrchestratorBackpressurePageLimit(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(&multiCursorPagedSource{
+		id:    "paged",
+		pages: graphIngestTestPages(8, "paged"),
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	runtimeStore := &graphingestRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"runtime-paged": {
+				Id:       "runtime-paged",
+				SourceId: "paged",
+				TenantId: "writer",
+			},
+		},
+	}
+	store := &checkpointProjectionRunStore{}
+	service := New(registry, runtimeStore, recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return []*ports.ProjectedEntity{{
+			URN:        "urn:cerebro:writer:paged:" + event.GetId(),
+			TenantID:   event.GetTenantId(),
+			SourceID:   event.GetSourceId(),
+			RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+			EntityType: "paged.event",
+			Label:      event.GetId(),
+		}}, nil, nil
+	}), store)
+
+	orchestratorResult, err := service.RunRuntime(context.Background(), RuntimeRequest{
+		RuntimeID:        "runtime-paged",
+		PageLimit:        MaxPageLimit,
+		Trigger:          "orchestrator",
+		RuntimeLeaseHeld: true,
+	})
+	if err != nil {
+		t.Fatalf("RunRuntime(orchestrator) error = %v", err)
+	}
+	if orchestratorResult.Ingest == nil {
+		t.Fatal("RunRuntime(orchestrator) ingest = nil")
+	}
+	if orchestratorResult.Ingest.PagesRead != defaultOrchestratorPageLimit || orchestratorResult.Ingest.EventsRead != defaultOrchestratorPageLimit {
+		t.Fatalf("orchestrator pages/events = %d/%d, want %d/%d", orchestratorResult.Ingest.PagesRead, orchestratorResult.Ingest.EventsRead, defaultOrchestratorPageLimit, defaultOrchestratorPageLimit)
+	}
+	if orchestratorResult.Ingest.NextCursor != "page-5" {
+		t.Fatalf("orchestrator next cursor = %q, want page-5", orchestratorResult.Ingest.NextCursor)
+	}
+
+	manualResult, err := service.RunRuntime(context.Background(), RuntimeRequest{
+		RuntimeID:        "runtime-paged",
+		PageLimit:        6,
+		ResetCheckpoint:  true,
+		Trigger:          "manual",
+		RuntimeLeaseHeld: true,
+	})
+	if err != nil {
+		t.Fatalf("RunRuntime(manual) error = %v", err)
+	}
+	if manualResult.Ingest == nil {
+		t.Fatal("RunRuntime(manual) ingest = nil")
+	}
+	if manualResult.Ingest.PagesRead != 6 || manualResult.Ingest.EventsRead != 6 {
+		t.Fatalf("manual pages/events = %d/%d, want 6/6", manualResult.Ingest.PagesRead, manualResult.Ingest.EventsRead)
+	}
+	if manualResult.Ingest.NextCursor != "page-6" {
+		t.Fatalf("manual next cursor = %q, want page-6", manualResult.Ingest.NextCursor)
+	}
+}
+
 type singlePageSource struct {
 	id     string
 	events []*cerebrov1.EventEnvelope
@@ -334,6 +414,11 @@ type cursorPagedSource struct {
 	pages [][]*cerebrov1.EventEnvelope
 }
 
+type multiCursorPagedSource struct {
+	id    string
+	pages [][]*cerebrov1.EventEnvelope
+}
+
 func (s *cursorPagedSource) Spec() *cerebrov1.SourceSpec {
 	return &cerebrov1.SourceSpec{Id: s.id, Name: "Cursor Paged"}
 }
@@ -354,6 +439,46 @@ func (s *cursorPagedSource) Read(_ context.Context, _ sourcecdk.Config, cursor *
 		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: "page-1"}
 	}
 	return pull, nil
+}
+
+func (s *multiCursorPagedSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: s.id, Name: "Multi Cursor Paged"}
+}
+
+func (s *multiCursorPagedSource) Check(context.Context, sourcecdk.Config) error { return nil }
+
+func (s *multiCursorPagedSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *multiCursorPagedSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	page := 0
+	if cursor != nil {
+		index, err := strconv.Atoi(strings.TrimPrefix(cursor.GetOpaque(), "page-"))
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		page = index
+	}
+	if page < 0 || page >= len(s.pages) {
+		return sourcecdk.Pull{}, fmt.Errorf("page %d out of range", page)
+	}
+	pull := sourcecdk.Pull{Events: s.pages[page]}
+	if page+1 < len(s.pages) {
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: fmt.Sprintf("page-%d", page+1)}
+	}
+	return pull, nil
+}
+
+func graphIngestTestPages(count int, sourceID string) [][]*cerebrov1.EventEnvelope {
+	pages := make([][]*cerebrov1.EventEnvelope, 0, count)
+	for index := 0; index < count; index++ {
+		pages = append(pages, []*cerebrov1.EventEnvelope{{
+			Id:       fmt.Sprintf("event-%d", index+1),
+			SourceId: sourceID,
+		}})
+	}
+	return pages
 }
 
 func (s *recordingProjectionGraphStore) DeleteProjectedEntity(_ context.Context, urn string) error {
