@@ -2032,6 +2032,106 @@ paths:
       responses:
         '200':
           description: Updated finding.
+  /platform/audit-events:
+    get:
+      operationId: listAuditEvents
+      summary: List normalized audit events
+      description: Returns one tenant-scoped, descending keyset page from a bounded time window. The contract exposes only normalized allowlisted fields and never returns raw payloads or provider attributes. Text maxLength values are enforced as Unicode code-point counts after UTF-8 validation.
+      tags:
+        - Platform
+      parameters:
+        - name: tenant_id
+          in: query
+          required: false
+          description: Optional tenant override constrained by the authenticated principal.
+          schema:
+            type: string
+            maxLength: 200
+        - name: minutes
+          in: query
+          required: false
+          description: Size of the immutable lookback window. Continuation cursors preserve the first page window.
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 1440
+            default: 60
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Client-controlled base64url-encoded resume state. Its unkeyed checksum detects accidental corruption but is not an integrity or authentication token. The server reauthorizes the tenant and validates the filters, time window, and keyset boundary on every request; no authorization or evidence decision relies on cursor contents.
+          schema:
+            type: string
+            maxLength: 2048
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: actor
+          in: query
+          required: false
+          description: Exact case-insensitive actor ID or label.
+          schema:
+            type: string
+            maxLength: 200
+        - name: outcome
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [success, failure, denied, unknown]
+        - name: q
+          in: query
+          required: false
+          description: Bounded text match over action, approved actor and resource labels, and summary.
+          schema:
+            type: string
+            maxLength: 200
+        - name: resource_type
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: service
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+      responses:
+        '200':
+          description: A complete or explicitly partial page of normalized audit events.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventPageV1'
+        '400':
+          description: A time, limit, cursor, or filter bound is invalid.
+        '403':
+          description: The authenticated principal cannot read the selected tenant.
+        '503':
+          description: A conforming audit-event reader is not configured or returned an invalid page.
   /platform/graph/actions:
     post:
       summary: Execute graph action
@@ -3729,6 +3829,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: profile_id
+          in: query
+          description: Return findings associated with this built-in compliance profile. The profile predicate is applied before ordering and pagination.
+          schema:
+            type: string
         - name: opened_after
           in: query
           schema:
@@ -3766,6 +3871,12 @@ paths:
       responses:
         '200':
           description: GRC-friendly finding list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCFindingsResponse'
+        '400':
+          description: Invalid query parameter or unknown compliance profile.
   /grc/work-items:
     get:
       summary: List canonical compliance and security work
@@ -4109,9 +4220,24 @@ paths:
           in: query
           schema:
             type: string
+        - name: profile_id
+          in: query
+          description: Export findings associated with this built-in compliance profile.
+          schema:
+            type: string
       responses:
         '200':
-          description: Auditor-friendly CSV of the full findings dataset.
+          description: Auditor-friendly CSV containing up to 500 matching findings. Boundary and profile headers state whether more matches exist and which profile was applied.
+          headers:
+            X-Cerebro-Result-Limit:
+              schema:
+                type: integer
+            X-Cerebro-Result-Truncated:
+              schema:
+                type: boolean
+            X-Cerebro-Profile-ID:
+              schema:
+                type: string
           content:
             text/csv:
               schema:
@@ -5192,11 +5318,14 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              description: Stateless custom control-pack build request.
+              $ref: '#/components/schemas/GRCControlPackBuildRequest'
       responses:
         '200':
           description: Generated YAML preview plus live evidence packet for the generated profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCCustomControlPacketResponse'
   /grc/evidence-packets:
     get:
       summary: Packaged evidence workflow records for a compliance profile
@@ -5314,11 +5443,17 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              description: Stateless custom control-pack build request.
+              $ref: '#/components/schemas/GRCControlPackBuildRequest'
       responses:
         '200':
           description: Markdown or JSON export for the generated control evidence packet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GRCCustomControlPacketResponse'
+            text/markdown:
+              schema:
+                type: string
   /grc/findings/{findingID}/audit-preview:
     get:
       operationId: previewGRCAuditPacket
@@ -7338,6 +7473,106 @@ components:
       schema:
         type: string
   schemas:
+    AuditEventActorV1:
+      type: object
+      additionalProperties: false
+      required: [id, kind, label]
+      properties:
+        id:
+          type: string
+          maxLength: 200
+        kind:
+          type: string
+          maxLength: 200
+        label:
+          type: string
+          maxLength: 200
+    AuditEventResourceV1:
+      type: object
+      additionalProperties: false
+      required: [id, type, label]
+      properties:
+        id:
+          type: string
+          maxLength: 200
+        type:
+          type: string
+          maxLength: 200
+        label:
+          type: string
+          maxLength: 200
+    AuditEventV1:
+      type: object
+      additionalProperties: false
+      required: [id, action, category, occurred_at, outcome, request_id, service, summary, trace_id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 200
+        action:
+          type: string
+          minLength: 1
+          maxLength: 200
+        actor:
+          $ref: '#/components/schemas/AuditEventActorV1'
+        category:
+          type: string
+          maxLength: 200
+        duration_ms:
+          type: integer
+          format: int64
+          minimum: 0
+        occurred_at:
+          type: string
+          format: date-time
+        outcome:
+          type: string
+          enum: [success, failure, denied, unknown]
+        request_id:
+          type: string
+          maxLength: 200
+        resource:
+          $ref: '#/components/schemas/AuditEventResourceV1'
+        service:
+          type: string
+          maxLength: 200
+        summary:
+          type: string
+          maxLength: 500
+        trace_id:
+          type: string
+          maxLength: 200
+    AuditEventWindowV1:
+      type: object
+      additionalProperties: false
+      required: [start_time, end_time]
+      properties:
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+    AuditEventPageV1:
+      type: object
+      additionalProperties: false
+      required: [events, next_cursor, status, window]
+      properties:
+        events:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/AuditEventV1'
+        next_cursor:
+          type: string
+          maxLength: 2048
+          description: Client-controlled encoded resume state for the next page. It carries no authority; the server validates and reauthorizes every request.
+        status:
+          type: string
+          enum: [complete, partial]
+        window:
+          $ref: '#/components/schemas/AuditEventWindowV1'
     ComplianceMonitorInput:
       type: object
       required: [tenant_id, program_id, plan_revision_id, trigger_kind, enabled]
@@ -9135,6 +9370,431 @@ components:
           enum: [exception_expired, evidence_stale, evidence_revoked, finding_reopened, source_coverage_lost, scope_subject_added]
         source_ref:
           type: string
+    GRCControlPackBuildRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        extension_id:
+          type: string
+        extension_name:
+          type: string
+        description:
+          type: string
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        framework_version:
+          type: string
+        profile_id:
+          type: string
+        profile_name:
+          type: string
+        archetype_ids:
+          type: array
+          items:
+            type: string
+        include_profiles:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+    GRCCustomControlPacketResponse:
+      type: object
+      required: [profile, packet, controls, profile_finding_matches, profile_match_evaluation, preview, metadata, generated_at]
+      properties:
+        profile:
+          type: object
+          additionalProperties: true
+        packet:
+          type: object
+          additionalProperties: true
+        controls:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        profile_finding_matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCProfileFindingMatch'
+        profile_match_evaluation:
+          $ref: '#/components/schemas/GRCProfileMatchEvaluation'
+        preview:
+          type: object
+          additionalProperties: true
+        metadata:
+          $ref: '#/components/schemas/GRCReportMetadata'
+        generated_at:
+          type: string
+          format: date-time
+    GRCProfileMatchEvaluation:
+      type: object
+      required: [evaluated_findings, matched_findings, evaluation_limit, scan_truncated]
+      properties:
+        evaluated_findings:
+          type: integer
+          minimum: 0
+        matched_findings:
+          type: integer
+          minimum: 0
+        evaluation_limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+        scan_truncated:
+          type: boolean
+    GRCProfileFindingMatch:
+      type: object
+      required: [finding_id, profile_id, coverage_index_version, coverage_index_revision, mapping_basis]
+      properties:
+        finding_id:
+          type: string
+        finding_title:
+          type: string
+        rule_id:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+        profile_id:
+          type: string
+        profile_name:
+          type: string
+        coverage_index_version:
+          type: string
+        coverage_index_revision:
+          type: string
+        mapping_basis:
+          type: string
+          enum: [direct, catalog_mapping, direct_and_catalog_mapping]
+        matched_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        direct_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        catalog_mapped_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        mapping_paths:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    GRCFindingsResponse:
+      type: object
+      required: [findings, meta, generated_at]
+      properties:
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCRiskInboxFinding'
+        meta:
+          $ref: '#/components/schemas/GRCListMetadata'
+        profile_summary:
+          $ref: '#/components/schemas/GRCFindingProfileSummary'
+        generated_at:
+          type: string
+          format: date-time
+    GRCListMetadata:
+      type: object
+      required: [limit, returned, truncated]
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+        returned:
+          type: integer
+          minimum: 0
+        truncated:
+          type: boolean
+    GRCFindingProfileSummary:
+      type: object
+      required: [profile_id, profile_name, coverage_index_version, coverage_index_revision, matched_findings, open_findings, critical_findings, high_findings, unassigned_findings, evidence_items, evaluated_findings, evaluation_limit, evaluation_truncated, has_more_matches, scan_truncated]
+      properties:
+        profile_id:
+          type: string
+        profile_name:
+          type: string
+        coverage_index_version:
+          type: string
+        coverage_index_revision:
+          type: string
+          description: Immutable content revision for the serving index used to resolve this page.
+        matched_findings:
+          type: integer
+          minimum: 0
+        open_findings:
+          type: integer
+          minimum: 0
+        critical_findings:
+          type: integer
+          minimum: 0
+        high_findings:
+          type: integer
+          minimum: 0
+        unassigned_findings:
+          type: integer
+          minimum: 0
+        evidence_items:
+          type: integer
+          minimum: 0
+        evaluated_findings:
+          type: integer
+          minimum: 0
+        evaluation_limit:
+          type: integer
+          minimum: 1
+          maximum: 501
+        evaluation_truncated:
+          type: boolean
+          deprecated: true
+          description: Retained for compatibility. Profile predicates are applied before pagination; use has_more_matches and scan_truncated.
+        has_more_matches:
+          type: boolean
+          description: True when another profile-matching finding exists beyond the returned page.
+        scan_truncated:
+          type: boolean
+          description: True only when association evaluation stopped before the persisted profile predicate was complete.
+    GRCRiskInboxFinding:
+      type: object
+      required: [id, title, severity, status, evidence_count, owner, sla_status]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+        tenant_id:
+          type: string
+        runtime_id:
+          type: string
+        source_id:
+          type: string
+        entity:
+          type: string
+        resource_urns:
+          type: array
+          items:
+            type: string
+        rule_id:
+          type: string
+        policy_id:
+          type: string
+        policy_name:
+          type: string
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        compliance_profiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingProfileRef'
+        disposition:
+          type: string
+        status_reason:
+          type: string
+        assignee:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+        status_updated_at:
+          type: string
+          format: date-time
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingNote'
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingTicket'
+        external_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingExternalRef'
+        risk_score:
+          type: integer
+        likelihood_score:
+          type: integer
+        impact_score:
+          type: integer
+        confidence_score:
+          type: integer
+        likelihood_level:
+          type: string
+        impact_level:
+          type: string
+        risk_reasons:
+          type: array
+          items:
+            type: string
+        risk_model_version:
+          type: string
+        evidence_count:
+          type: integer
+          minimum: 0
+        owner:
+          type: string
+        sla_status:
+          type: string
+        first_observed_at:
+          type: string
+          format: date-time
+        last_observed_at:
+          type: string
+          format: date-time
+    GRCFindingControlRef:
+      type: object
+      required: [framework_name, control_id]
+      properties:
+        framework_name:
+          type: string
+        control_id:
+          type: string
+    GRCFindingProfileRef:
+      type: object
+      required: [id, name, coverage_index_version, coverage_index_revision]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        coverage_index_version:
+          type: string
+        coverage_index_revision:
+          type: string
+        mapping_basis:
+          type: string
+          enum: [direct, catalog_mapping, direct_and_catalog_mapping]
+        matched_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        matched_finding_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        direct_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        catalog_mapped_controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingControlRef'
+        mapping_paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/GRCFindingProfileMappingPath'
+    GRCFindingProfileMappingPath:
+      type: object
+      required: [source, target, match_direction, declared_source, declared_target, coverage_credit]
+      properties:
+        source:
+          $ref: '#/components/schemas/GRCFindingControlRef'
+        target:
+          $ref: '#/components/schemas/GRCFindingControlRef'
+        match_direction:
+          type: string
+          enum: [finding_control_to_profile_control]
+          description: Direction used to associate a finding with the selected profile control.
+        declared_source:
+          $ref: '#/components/schemas/GRCFindingControlRef'
+        declared_target:
+          $ref: '#/components/schemas/GRCFindingControlRef'
+        coverage_credit:
+          type: string
+          enum: [legacy_catalog_mapping, reviewed_catalog_mapping]
+          description: Governance basis for granting full profile coverage through this path.
+        relationship:
+          type: string
+          enum: [equal-to, equivalent-to, subset-of, superset-of, intersects-with, no-relationship]
+        matching_rationale:
+          type: string
+          enum: [syntactic, semantic, functional]
+        mapping_description:
+          type: string
+        mapping_authority:
+          type: string
+        mapping_source:
+          type: string
+          format: uri
+        review_status:
+          type: string
+          enum: [complete, not-complete, draft, deprecated, superseded]
+        reviewed_at:
+          description: Review date or timestamp recorded by the mapping authority.
+          oneOf:
+            - type: string
+              format: date
+            - type: string
+              format: date-time
+        mapping_version:
+          type: string
+    GRCFindingNote:
+      type: object
+      required: [id, body, created_at]
+      properties:
+        id:
+          type: string
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    GRCFindingTicket:
+      type: object
+      required: [url, name, external_id, linked_at]
+      properties:
+        url:
+          type: string
+          format: uri
+        name:
+          type: string
+        external_id:
+          type: string
+        linked_at:
+          type: string
+          format: date-time
+    GRCFindingExternalRef:
+      type: object
+      required: [system, kind, external_id, url, external_status, external_status_reason, lifecycle_owner, observed_at]
+      properties:
+        system:
+          type: string
+        kind:
+          type: string
+        external_id:
+          type: string
+        url:
+          type: string
+          format: uri
+        external_status:
+          type: string
+        external_status_reason:
+          type: string
+        lifecycle_owner:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
     GRCEvidencePacketsResponse:
       type: object
       additionalProperties: true

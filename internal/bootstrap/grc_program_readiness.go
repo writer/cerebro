@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/writer/cerebro/internal/grcfindings"
 	"github.com/writer/cerebro/internal/grcprogram"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecoverage"
@@ -66,7 +67,7 @@ func (a *App) handleGRCProgramReadiness(w http.ResponseWriter, r *http.Request) 
 		Result:             result,
 		Query:              r.URL.Query(),
 		TenantID:           scope.TenantID,
-		Connectors:         grcProgramConnectors(grcConnectorItems(runtimes)),
+		Connectors:         grcProgramConnectors(grcfindings.ConnectorItems(runtimes)),
 		CoverageBlindSpots: len(coverageBlindSpots),
 		CoverageRecords:    coverage,
 		GeneratedAt:        generatedAt,

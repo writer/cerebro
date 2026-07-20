@@ -56,6 +56,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerSourceRoutes(mux)
 	app.registerConnectorRoutes(mux)
 	app.registerKnowledgeRoutes(mux)
+	app.registerAuditEventRoutes(mux)
 	app.registerGraphRoutes(mux)
 	app.registerJobRoutes(mux)
 	registerHTTPRoute(mux, "POST /platform/append-log/dead-letters/{deadLetterID}/force-purge", routeSurfacePlatformHTTP, deadletteradmin.NewHandler(app.deps.StateStore, hasAuthContext, authorizeJobAdmin, authorizeTenantID, customDashboardActorID).ForcePurge)
@@ -345,6 +346,11 @@ func (app *App) registerKnowledgeRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /platform/knowledge/outcomes", routeSurfacePlatformHTTP, app.handleWriteOutcome)
 	registerHTTPRoute(mux, "POST /platform/workflow/replay", routeSurfacePlatformHTTP, app.handleReplayWorkflowEvents)
 }
+
+func (app *App) registerAuditEventRoutes(mux *http.ServeMux) {
+	registerHTTPRoute(mux, "GET /platform/audit-events", routeSurfacePlatformHTTP, app.handleListAuditEvents)
+}
+
 func (app *App) registerGraphRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/runtime-freshness", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("runtime.freshness", 30*time.Second, grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeFindings), app.handleListRuntimeFreshness))
 	registerHTTPRoute(mux, "GET /platform/graph/neighborhood", routeSurfacePlatformHTTP, app.handleGetEntityNeighborhood)

@@ -160,7 +160,10 @@ import (
 // docs/engineering/assurance-platform-contracts.md. Domain behavior remains in
 // complianceassessment, complianceimpact, compliancemonitor, evidenceledger,
 // and complianceremediation.
-const bootstrapProductionGoLineBudget = 29485
+// Portable audit-event reads add only authenticated route registration,
+// tenant resolution, safe error mapping, and state-store capability wiring.
+// Query bounds, cursors, and response allowlisting stay in auditevents.
+const bootstrapProductionGoLineBudget = 29557
 
 type bootstrapFileLineCount struct {
 	path  string

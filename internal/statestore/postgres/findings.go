@@ -195,7 +195,9 @@ const findingStatusReasonBackfillCollision findingStatusReason = "backfill_colli
 const (
 	tenantScopedFingerprintBackfillActor = "tenant_scoped_fingerprint_backfill"
 	tenantScopedFingerprintBackfillRunID = "tenant_scoped_fingerprint_backfill"
-	maxFindingListLimit                  = uint32(500)
+	// Profile-filtered GRC reads request one row beyond the public 500-row
+	// boundary so has-more state is exact without a second row query.
+	maxFindingListLimit = uint32(501)
 )
 
 var errTenantScopedFingerprintBackfillRetry = errors.New("retry tenant-scoped fingerprint backfill")
@@ -1416,6 +1418,9 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
 	addFindingFilter(&clauses, &args, "id", request.FindingID)
 	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
+	if err := addFindingProfilePredicate(&clauses, &args, request.ProfilePredicate.RuleIDs, request.ProfilePredicate.ControlRefs); err != nil {
+		return nil, nil, err
+	}
 	addFindingSeverityFilter(&clauses, &args, request.Severity)
 	addFindingFilter(&clauses, &args, "status", request.Status)
 	addFindingFilter(&clauses, &args, "policy_id", request.PolicyID)
@@ -1437,6 +1442,49 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 		return nil, nil, err
 	}
 	return clauses, args, nil
+}
+
+func addFindingProfilePredicate(clauses *[]string, args *[]any, ruleIDs []string, controlRefs []ports.FindingControlRef) error {
+	ruleIDs = normalizedNonEmptyStrings(ruleIDs)
+	sort.Strings(ruleIDs)
+	controls := make([]ports.FindingControlRef, 0, len(controlRefs))
+	seenControls := map[string]struct{}{}
+	for _, ref := range controlRefs {
+		frameworkName := strings.TrimSpace(ref.FrameworkName)
+		controlID := strings.TrimSpace(ref.ControlID)
+		if frameworkName == "" || controlID == "" {
+			continue
+		}
+		key := strings.ToLower(frameworkName) + "\x00" + strings.ToLower(controlID)
+		if _, ok := seenControls[key]; ok {
+			continue
+		}
+		seenControls[key] = struct{}{}
+		controls = append(controls, ports.FindingControlRef{FrameworkName: frameworkName, ControlID: controlID})
+	}
+	if len(ruleIDs) == 0 && len(controls) == 0 {
+		return nil
+	}
+	predicateJSON, err := json.Marshal(struct {
+		RuleIDs     []string                  `json:"rule_ids"`
+		ControlRefs []ports.FindingControlRef `json:"control_refs"`
+	}{RuleIDs: ruleIDs, ControlRefs: controls})
+	if err != nil {
+		return fmt.Errorf("marshal finding profile predicate: %w", err)
+	}
+	*args = append(*args, string(predicateJSON))
+	argument := len(*args)
+	*clauses = append(*clauses, fmt.Sprintf(`(
+  rule_id IN (SELECT jsonb_array_elements_text($%d::jsonb->'rule_ids'))
+  OR EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements(COALESCE(control_refs_json, '[]'::jsonb)) AS actual
+    JOIN jsonb_array_elements($%d::jsonb->'control_refs') AS wanted
+      ON LOWER(TRIM(COALESCE(actual->>'framework_name', actual->>'framework_id', ''))) = LOWER(TRIM(wanted->>'framework_name'))
+     AND LOWER(TRIM(COALESCE(actual->>'control_id', ''))) = LOWER(TRIM(wanted->>'control_id'))
+  )
+)`, argument, argument))
+	return nil
 }
 
 func findingListLimit(limit uint32) uint32 {

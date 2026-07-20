@@ -69,8 +69,8 @@ func TestEmbeddedWasmGuestMemoryProtocol(t *testing.T) {
 		{
 			name: "source event admission", artifact: "internal/sourceruntime/eventadmission/eventadmission.wasm",
 			exports:    wasmGuestExports{abi: "cerebro_event_admission_abi_version", allocate: "cerebro_event_admission_alloc", operation: "cerebro_event_admission_evaluate"},
-			abiVersion: 1, resultBytes: 16, maxInputBytes: 32 << 20, invalidRangeStatus: 3, tooLargeStatus: 3, zeroInputStatus: 3, invalidUTF8Status: 1, malformedStatus: 1, unknownFieldStatus: 1,
-			validInput: `{"schema_version":"source-event-admission.v1","contracts":[],"events":[]}`,
+			abiVersion: 2, resultBytes: 16, maxInputBytes: 32 << 20, invalidRangeStatus: 3, tooLargeStatus: 3, zeroInputStatus: 3, invalidUTF8Status: 1, malformedStatus: 1, unknownFieldStatus: 1,
+			validInput: `{"schema_version":"source-event-admission.v2","contracts":[],"events":[]}`,
 		},
 		{
 			name: "security path evaluator", artifact: "internal/securitypathdelta/evaluator.wasm",
