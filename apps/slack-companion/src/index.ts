@@ -20,6 +20,8 @@ export * from "./canonical-work/contracts.js";
 export * from "./canonical-work/coordinator.js";
 export * from "./canonical-work/ports.js";
 export * from "./canonical-work/reference-store.js";
+export * from "./clarification/contracts.js";
+export * from "./clarification/policy.js";
 export * from "./delivery/contracts.js";
 export * from "./delivery/coordinator.js";
 export * from "./delivery/ports.js";
