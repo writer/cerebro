@@ -133,31 +133,14 @@ export function projectSlackEphemeralResponse(
 export function projectSlackBlocks(
   input: SlackBlocksInputV1,
 ): SlackBlocksProjectionV1 {
+  const snapshot = snapshotBlocksInput(input);
   const projectionKey = requireSlackKey(
-    input.projection_key,
+    snapshot.projection_key,
     "block projection key",
   );
-  if (!Array.isArray(input.sections)) {
-    throw new SlackBlockProjectionError(
-      "Slack block sections must be an array.",
-    );
-  }
-  if (input.actions !== undefined && !Array.isArray(input.actions)) {
-    throw new SlackBlockProjectionError(
-      "Slack block actions must be an array.",
-    );
-  }
-  if (
-    input.actions !== undefined
-    && input.actions.length > MAX_SLACK_ACTIONS
-  ) {
-    throw new SlackBlockProjectionError(
-      `Slack block actions cannot exceed ${MAX_SLACK_ACTIONS}.`,
-    );
-  }
-  const actions = input.actions === undefined ? [] : [...input.actions];
-  const blockCount = input.sections.length
-    + (input.title === undefined ? 0 : 1)
+  const actions = snapshot.actions ?? [];
+  const blockCount = snapshot.sections.length
+    + (snapshot.title === undefined ? 0 : 1)
     + (actions.length === 0 ? 0 : 1);
   if (blockCount === 0 || blockCount > MAX_SLACK_BLOCKS) {
     throw new SlackBlockProjectionError(
@@ -166,8 +149,8 @@ export function projectSlackBlocks(
   }
 
   const blocks: SlackBlockV1[] = [];
-  if (input.title !== undefined) {
-    const text = slackPlainText(input.title, "block title", 150);
+  if (snapshot.title !== undefined) {
+    const text = slackPlainText(snapshot.title, "block title", 150);
     blocks.push(
       Object.freeze({
         block_id: stableSlackIdentifier("header", [
@@ -179,7 +162,7 @@ export function projectSlackBlocks(
       }),
     );
   }
-  for (const [index, section] of input.sections.entries()) {
+  for (const [index, section] of snapshot.sections.entries()) {
     const text = slackPlainText(
       section,
       `block section ${index + 1}`,
@@ -249,6 +232,88 @@ export function projectSlackBlocks(
       projectionKey,
       truth,
     ),
+  });
+}
+
+function snapshotBlocksInput(input: SlackBlocksInputV1): SlackBlocksInputV1 {
+  requireExactInputRecord(
+    input,
+    ["actions", "projection_key", "sections", "title"],
+    "Slack blocks input",
+  );
+  if (typeof input.projection_key !== "string") {
+    throw new SlackBlockProjectionError("Slack block projection key is invalid.");
+  }
+  if (!Array.isArray(input.sections)) {
+    throw new SlackBlockProjectionError(
+      "Slack block sections must be an array.",
+    );
+  }
+  requirePlainInputArray(
+    input.sections,
+    MAX_SLACK_BLOCKS + 1,
+    "Slack block sections",
+  );
+  if (input.sections.some((section) => typeof section !== "string")) {
+    throw new SlackBlockProjectionError("Slack block sections are invalid.");
+  }
+  if (input.title !== undefined && typeof input.title !== "string") {
+    throw new SlackBlockProjectionError("Slack block title is invalid.");
+  }
+
+  let actions: readonly SlackActionInputV1[] | undefined;
+  if (input.actions !== undefined) {
+    if (!Array.isArray(input.actions)) {
+      throw new SlackBlockProjectionError(
+        "Slack block actions must be an array.",
+      );
+    }
+    if (input.actions.length > MAX_SLACK_ACTIONS) {
+      throw new SlackBlockProjectionError(
+        `Slack block actions cannot exceed ${MAX_SLACK_ACTIONS}.`,
+      );
+    }
+    requirePlainInputArray(
+      input.actions,
+      MAX_SLACK_ACTIONS,
+      "Slack block actions",
+    );
+    actions = Object.freeze(
+      input.actions.map((action, index) =>
+        snapshotActionInput(action, index + 1),
+      ),
+    );
+  }
+
+  return Object.freeze({
+    ...(actions === undefined ? {} : { actions }),
+    projection_key: input.projection_key,
+    sections: Object.freeze([...input.sections]),
+    ...(input.title === undefined ? {} : { title: input.title }),
+  });
+}
+
+function snapshotActionInput(
+  action: SlackActionInputV1,
+  sequence: number,
+): SlackActionInputV1 {
+  const keys = Object.prototype.hasOwnProperty.call(action, "style")
+    ? ["action_key", "label", "style", "value"]
+    : ["action_key", "label", "value"];
+  requireExactInputRecord(action, keys, `Slack block action ${sequence}`);
+  if (
+    typeof action.action_key !== "string" ||
+    typeof action.label !== "string" ||
+    typeof action.value !== "string" ||
+    (action.style !== undefined && typeof action.style !== "string")
+  ) {
+    throw new SlackBlockProjectionError("Slack block action is invalid.");
+  }
+  return Object.freeze({
+    action_key: action.action_key,
+    label: action.label,
+    ...(action.style === undefined ? {} : { style: action.style }),
+    value: action.value,
   });
 }
 
@@ -361,6 +426,40 @@ function requireExactInputRecord(
       || descriptor.set !== undefined
     ) {
       throw new SlackBlockProjectionError(`${field} must contain data fields.`);
+    }
+  }
+}
+
+function requirePlainInputArray(
+  value: readonly unknown[],
+  maximum: number,
+  field: string,
+): void {
+  if (
+    value.length > maximum ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    Object.prototype.hasOwnProperty.call(value, "toJSON")
+  ) {
+    throw new SlackBlockProjectionError(`${field} must be a bounded plain array.`);
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (
+      descriptor === undefined ||
+      !("value" in descriptor) ||
+      descriptor.enumerable !== true
+    ) {
+      throw new SlackBlockProjectionError(`${field} must be dense data.`);
+    }
+  }
+  for (const key of Reflect.ownKeys(value)) {
+    if (key === "length") continue;
+    if (typeof key !== "string" || !/^(0|[1-9][0-9]*)$/.test(key)) {
+      throw new SlackBlockProjectionError(`${field} contains unsupported fields.`);
+    }
+    const index = Number(key);
+    if (!Number.isSafeInteger(index) || index >= value.length) {
+      throw new SlackBlockProjectionError(`${field} contains unsupported fields.`);
     }
   }
 }

@@ -123,6 +123,70 @@ test("block projections reject malformed, duplicate, and oversized input", () =>
   );
 });
 
+test("block projections reject sparse and executable caller-owned input", () => {
+  const sparseSections = new Array<string>(1);
+  assert.throws(
+    () => projectSlackBlocks({
+      projection_key: "run-one:sparse",
+      sections: sparseSections,
+    }),
+    /sections must be dense data/,
+  );
+
+  const extraAction = {
+    action_key: "open_result",
+    label: "Open result",
+    unexpected: true,
+    value: "result://run/one",
+  };
+  assert.throws(
+    () => projectSlackBlocks({
+      actions: [extraAction as never],
+      projection_key: "run-one:extra-action",
+      sections: ["Choose an action."],
+    }),
+    /unsupported fields/,
+  );
+
+  let invoked = 0;
+  const accessorAction = {
+    action_key: "open_result",
+    label: "Open result",
+  };
+  Object.defineProperty(accessorAction, "value", {
+    enumerable: true,
+    get() {
+      invoked += 1;
+      throw new Error("caller accessor was invoked");
+    },
+  });
+  assert.throws(
+    () => projectSlackBlocks({
+      actions: [accessorAction as never],
+      projection_key: "run-one:accessor-action",
+      sections: ["Choose an action."],
+    }),
+    SlackBlockProjectionError,
+  );
+  assert.equal(invoked, 0);
+
+  const accessorInput = {
+    sections: ["Status"],
+  };
+  Object.defineProperty(accessorInput, "projection_key", {
+    enumerable: true,
+    get() {
+      invoked += 1;
+      throw new Error("caller accessor was invoked");
+    },
+  });
+  assert.throws(
+    () => projectSlackBlocks(accessorInput as never),
+    SlackBlockProjectionError,
+  );
+  assert.equal(invoked, 0);
+});
+
 test("ephemeral command responses are deterministic bounded projections", () => {
   const input = {
     actions: [{
