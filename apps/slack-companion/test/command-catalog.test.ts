@@ -7,10 +7,10 @@ import {
   SlackCommandParseError,
 } from "../src/index.js";
 
-test("exposes stable immutable help, ask, and remember command identities", () => {
+test("exposes stable immutable operator command identities", () => {
   assert.deepEqual(
     SLACK_COMMAND_CATALOG_V1.commands.map((command) => command.command_id),
-    ["help", "ask", "remember"],
+    ["help", "ask", "remember", "status", "triage", "watch", "recheck"],
   );
   assert.equal(SLACK_COMMAND_CATALOG_V1.schema_version, "slack-command-catalog/v1");
   assert.equal(Object.isFrozen(SLACK_COMMAND_CATALOG_V1), true);
@@ -53,6 +53,46 @@ test("parses remember through the shared registry and portable remember behavior
   assert.equal(parsed.remember.working_memory_target, "team");
   assert.equal(Object.isFrozen(parsed), true);
   assert.equal(Object.isFrozen(parsed.remember), true);
+});
+
+test("parses deterministic operator commands with host-resolved targets", () => {
+  assert.deepEqual(parseSlackCommand("status"), {
+    command_id: "status",
+    name: "status",
+    schema_version: "slack-command-intent/v1",
+    status_scope: "workspace",
+  });
+  assert.deepEqual(parseSlackCommand("status incident://case/123"), {
+    command_id: "status",
+    name: "status",
+    schema_version: "slack-command-intent/v1",
+    status_scope: "target",
+    target_hint: "incident://case/123",
+  });
+  assert.deepEqual(parseSlackCommand("triage <https://example.invalid/alert/123>"), {
+    command_id: "triage",
+    name: "triage",
+    schema_version: "slack-command-intent/v1",
+    target_hint: "<https://example.invalid/alert/123>",
+  });
+  assert.deepEqual(parseSlackCommand("watch the delivered answer above"), {
+    command_id: "watch",
+    name: "watch",
+    schema_version: "slack-command-intent/v1",
+    target_hint: "the delivered answer above",
+  });
+  assert.deepEqual(parseSlackCommand("recheck evidence://binding/abc"), {
+    command_id: "recheck",
+    name: "recheck",
+    schema_version: "slack-command-intent/v1",
+    target_hint: "evidence://binding/abc",
+  });
+});
+
+test("requires targets for target-bound operator commands", () => {
+  assert.throws(() => parseSlackCommand("triage"), /Add a target/);
+  assert.throws(() => parseSlackCommand("watch"), /Add a target/);
+  assert.throws(() => parseSlackCommand("recheck"), /Add a target/);
 });
 
 test("rejects empty explicit questions and command input outside fixed bounds", () => {

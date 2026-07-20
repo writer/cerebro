@@ -33,6 +33,31 @@ export type ParsedSlackCommandV1 =
       readonly name: "remember";
       readonly remember: SlackRememberCommandV1;
       readonly schema_version: "slack-command-intent/v1";
+    }
+  | {
+      readonly command_id: "status";
+      readonly name: "status";
+      readonly schema_version: "slack-command-intent/v1";
+      readonly status_scope: "workspace" | "target";
+      readonly target_hint?: string;
+    }
+  | {
+      readonly command_id: "triage";
+      readonly name: "triage";
+      readonly schema_version: "slack-command-intent/v1";
+      readonly target_hint: string;
+    }
+  | {
+      readonly command_id: "watch";
+      readonly name: "watch";
+      readonly schema_version: "slack-command-intent/v1";
+      readonly target_hint: string;
+    }
+  | {
+      readonly command_id: "recheck";
+      readonly name: "recheck";
+      readonly schema_version: "slack-command-intent/v1";
+      readonly target_hint: string;
     };
 
 export interface SlackCommandCatalogEntryV1 {
@@ -68,6 +93,30 @@ const definitions: readonly SlackCommandDefinition<ParsedSlackCommandV1>[] = [
     usage: "/cerebro remember <note>",
     summary: "Record an explicit note after the host accepts it.",
     parse: ({ rawRest }) => rememberCommand(rawRest),
+  },
+  {
+    command: "status",
+    usage: "/cerebro status [target]",
+    summary: "Show companion and work status.",
+    parse: ({ rawRest }) => statusCommand(rawRest),
+  },
+  {
+    command: "triage",
+    usage: "/cerebro triage <alert-or-thread>",
+    summary: "Start portable alert triage for a host-resolved target.",
+    parse: ({ rawRest }) => targetCommand("triage", rawRest),
+  },
+  {
+    command: "watch",
+    usage: "/cerebro watch <answer-or-evidence>",
+    summary: "Watch a delivered answer or evidence binding for changes.",
+    parse: ({ rawRest }) => targetCommand("watch", rawRest),
+  },
+  {
+    command: "recheck",
+    usage: "/cerebro recheck <answer-or-evidence>",
+    summary: "Request a fresh check of a delivered evidence binding.",
+    parse: ({ rawRest }) => targetCommand("recheck", rawRest),
   },
 ];
 
@@ -144,6 +193,56 @@ function rememberCommand(content: string): ParsedSlackCommandV1 {
     remember,
     schema_version: "slack-command-intent/v1",
   });
+}
+
+function statusCommand(targetHint: string): ParsedSlackCommandV1 {
+  if (!targetHint) {
+    return Object.freeze({
+      command_id: "status",
+      name: "status",
+      schema_version: "slack-command-intent/v1",
+      status_scope: "workspace",
+    });
+  }
+  return Object.freeze({
+    command_id: "status",
+    name: "status",
+    schema_version: "slack-command-intent/v1",
+    status_scope: "target",
+    target_hint: targetHint,
+  });
+}
+
+function targetCommand(
+  name: "triage" | "watch" | "recheck",
+  targetHint: string,
+): ParsedSlackCommandV1 {
+  if (!targetHint) {
+    throw new SlackCommandParseError(`Add a target after /cerebro ${name}.`);
+  }
+  switch (name) {
+    case "triage":
+      return Object.freeze({
+        command_id: "triage",
+        name: "triage",
+        schema_version: "slack-command-intent/v1",
+        target_hint: targetHint,
+      });
+    case "watch":
+      return Object.freeze({
+        command_id: "watch",
+        name: "watch",
+        schema_version: "slack-command-intent/v1",
+        target_hint: targetHint,
+      });
+    case "recheck":
+      return Object.freeze({
+        command_id: "recheck",
+        name: "recheck",
+        schema_version: "slack-command-intent/v1",
+        target_hint: targetHint,
+      });
+  }
 }
 
 function normalizeCommandText(text: string): string {
