@@ -107,13 +107,19 @@ func TestSourceRuntimeSyncCommitOrderingStaysAppendProjectProgress(t *testing.T)
 	syncBody = syncBody[start : start+end]
 	appendIndex := strings.Index(syncBody, "s.appendLog.Append(ctx, syncedEvent)")
 	projectIndex := strings.Index(syncBody, "s.projector.Project(ctx, syncedEvent)")
-	progressIndex := strings.Index(syncBody, "CommitSourceRuntimePage(ctx, attemptID, runtime)")
-	fallbackProgressIndex := strings.Index(syncBody, "s.store.PutSourceRuntime(ctx, runtime)")
+	progressIndex := strings.Index(syncBody, "CommitSourceRuntimePage(ctx, attemptID, candidateRuntime)")
+	fallbackProgressIndex := strings.Index(syncBody, "s.store.PutSourceRuntime(ctx, candidateRuntime)")
+	activateProgressIndex := strings.Index(syncBody, "runtime = candidateRuntime")
 	committedTelemetryIndex := strings.Index(syncBody, "source_runtime.page_committed")
-	if appendIndex < 0 || projectIndex < 0 || progressIndex < 0 || fallbackProgressIndex < 0 || committedTelemetryIndex < 0 {
+	if appendIndex < 0 || projectIndex < 0 || progressIndex < 0 || fallbackProgressIndex < 0 || activateProgressIndex < 0 || committedTelemetryIndex < 0 {
 		t.Fatalf("source runtime Sync missing append/project/progress/page_committed markers")
 	}
-	if !(appendIndex < projectIndex && projectIndex < progressIndex && progressIndex < committedTelemetryIndex) {
-		t.Fatalf("source runtime Sync commit order changed; want append before project before progress before page_committed telemetry")
+	if !(appendIndex < projectIndex &&
+		projectIndex < progressIndex &&
+		projectIndex < fallbackProgressIndex &&
+		progressIndex < activateProgressIndex &&
+		fallbackProgressIndex < activateProgressIndex &&
+		activateProgressIndex < committedTelemetryIndex) {
+		t.Fatalf("source runtime Sync commit order changed; want append before project before durable candidate progress before activation and page_committed telemetry")
 	}
 }

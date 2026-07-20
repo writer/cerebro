@@ -117,6 +117,15 @@ subtypes, incomplete records, empty text, and direct mentions of the companion
 are rejected with stable reason codes. Slack history fetching, authorization,
 storage, and learning execution remain host-owned.
 
+## Security text redaction
+
+`redactSecurityText` replaces common credential-shaped values in one bounded
+text field before a host persists or displays it. Oversized and non-string
+runtime values fail closed; the helper never returns a partially checked value.
+Hosts still own structured-field allowlists, log and telemetry policy, storage,
+and incident handling. The redactor is a final text boundary, not a credential
+scanner or authorization decision.
+
 ## Source health
 
 `src/execution/source-health-policy.ts` applies failure cooldown, successful recovery, slow-source degradation, and stable ranking to caller-owned state. It reuses the portable consecutive-failure and capacity-cooldown records so the host can commit one coherent aggregate.

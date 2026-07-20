@@ -53,8 +53,14 @@ const safeDecode = (value: string) => {
   }
 };
 
-const normalizePath = (path: string) =>
-  path.trim().replace(/^\/+/, "").replace(/\/+$/, "");
+const normalizePath = (path: string) => {
+  const trimmed = path.trim();
+  let start = 0;
+  let end = trimmed.length;
+  while (start < end && trimmed[start] === "/") start += 1;
+  while (end > start && trimmed[end - 1] === "/") end -= 1;
+  return trimmed.slice(start, end);
+};
 
 export const isCerebroFixtureMode = () =>
   truthy(process.env.CEREBRO_WEB_FIXTURE_MODE) ||
@@ -100,8 +106,23 @@ const stringField = (value: unknown) =>
 const stringListField = (value: unknown) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean) : undefined;
 
-const slugField = (value: string) =>
-  value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+const slugField = (value: string) => {
+  let slug = "";
+  let pendingSeparator = false;
+  for (const char of value.toLowerCase()) {
+    const code = char.charCodeAt(0);
+    const isSlugChar = (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+    if (isSlugChar) {
+      if (pendingSeparator && slug) slug += "-";
+      slug += char;
+      pendingSeparator = false;
+      if (slug.length >= 64) break;
+    } else if (slug) {
+      pendingSeparator = true;
+    }
+  }
+  return slug.slice(0, 64);
+};
 
 const stringAttributes = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -3633,15 +3654,55 @@ const questionnairePromptRowsFromText = (text: string): Array<Record<string, unk
   text.split(/\r?\n/).map(normalizeFixturePortalLine).filter(fixtureLooksLikeQuestionnairePrompt).map((line) => ({ question: line }));
 
 const normalizeFixturePortalLine = (value: string) => {
-  let line = value.trim().replace(/^- /, "").replace(/^\* /, "").replace(/^\d+[.)]\s*/, "");
-  line = line.replace(/^question\s+\d+\s*:\s*/i, "");
+  let line = stripFixturePortalLinePrefix(value.trim());
+  line = stripFixturePortalQuestionPrefix(line);
   for (const prefix of ["question:", "field:", "prompt:"]) {
     if (line.toLowerCase().startsWith(prefix)) {
       line = line.slice(prefix.length).trim();
       break;
     }
   }
-  return ["", "next", "previous", "submit", "save", "cancel", "continue", "back", "login", "log in", "sign in", "upload", "upload file"].includes(line.toLowerCase().replace(/[ .:]+$/g, "")) ? "" : line;
+  return ["", "next", "previous", "submit", "save", "cancel", "continue", "back", "login", "log in", "sign in", "upload", "upload file"].includes(trimFixturePortalActionLabel(line).toLowerCase()) ? "" : line;
+};
+
+const stripFixturePortalLinePrefix = (value: string) => {
+  let line = value;
+  if (line.startsWith("- ") || line.startsWith("* ")) {
+    line = line.slice(2).trimStart();
+  }
+  let index = 0;
+  while (index < line.length && line.charCodeAt(index) >= 48 && line.charCodeAt(index) <= 57) {
+    index += 1;
+  }
+  if (index > 0 && (line[index] === "." || line[index] === ")")) {
+    line = line.slice(index + 1).trimStart();
+  }
+  return line;
+};
+
+const stripFixturePortalQuestionPrefix = (value: string) => {
+  const lower = value.toLowerCase();
+  if (!lower.startsWith("question")) return value;
+  let index = "question".length;
+  if (value[index] !== " ") return value;
+  while (value[index] === " ") index += 1;
+  const digitStart = index;
+  while (index < value.length && value.charCodeAt(index) >= 48 && value.charCodeAt(index) <= 57) {
+    index += 1;
+  }
+  if (index === digitStart) return value;
+  while (value[index] === " ") index += 1;
+  return value[index] === ":" ? value.slice(index + 1).trimStart() : value;
+};
+
+const trimFixturePortalActionLabel = (value: string) => {
+  let end = value.length;
+  while (end > 0) {
+    const char = value[end - 1];
+    if (char !== " " && char !== "." && char !== ":") break;
+    end -= 1;
+  }
+  return value.slice(0, end);
 };
 
 const fixtureLooksLikeQuestionnairePrompt = (value: string) => {

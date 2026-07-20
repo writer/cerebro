@@ -122,7 +122,7 @@ fn conflict_workload(count: usize) -> Workload {
 
 fn workload(name: String, events: Vec<EventEnvelope>) -> Workload {
     let request = AdmissionRequest {
-        schema_version: "source-event-admission.v1".to_owned(),
+        schema_version: "source-event-admission.v2".to_owned(),
         contracts: vec![EventContract {
             kind: "directory.identity".to_owned(),
             schema_ref: "directory/identity/v1".to_owned(),

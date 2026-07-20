@@ -50,6 +50,17 @@ var ensureComplianceMonitorStatements = []string{
   PRIMARY KEY (tenant_id, plan_revision_id)
 )`,
 	`CREATE INDEX IF NOT EXISTS compliance_plan_run_leases_expiry_idx ON compliance_plan_run_leases (lease_expires_at)`,
+	`CREATE TABLE IF NOT EXISTS compliance_monitor_run_outcomes (
+  tenant_id TEXT NOT NULL,
+  monitor_id TEXT NOT NULL,
+  occurrence_key TEXT NOT NULL,
+  plan_revision_id TEXT NOT NULL,
+  succeeded BOOLEAN NOT NULL,
+  completed_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, monitor_id, occurrence_key),
+  FOREIGN KEY (tenant_id, monitor_id) REFERENCES compliance_monitors(tenant_id, id) ON DELETE CASCADE
+)`,
 	`CREATE TABLE IF NOT EXISTS compliance_monitor_change_signals (
   tenant_id TEXT NOT NULL,
   event_id TEXT NOT NULL,
@@ -328,6 +339,68 @@ WHERE tenant_id = $1 AND id = $2`, strings.TrimSpace(tenantID), strings.TrimSpac
 	}
 	if count, _ := result.RowsAffected(); count == 0 {
 		return ports.ErrComplianceMonitorNotFound
+	}
+	return nil
+}
+
+func (s *Store) CompleteComplianceMonitorRun(ctx context.Context, completion ports.ComplianceMonitorRunCompletion) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	run := completion.Run
+	run.TenantID = strings.TrimSpace(run.TenantID)
+	run.MonitorID = strings.TrimSpace(run.MonitorID)
+	run.PlanRevisionID = strings.TrimSpace(run.PlanRevisionID)
+	run.OccurrenceKey = strings.TrimSpace(run.OccurrenceKey)
+	run.LeaseOwner = strings.TrimSpace(run.LeaseOwner)
+	if run.TenantID == "" || run.MonitorID == "" || run.PlanRevisionID == "" || run.OccurrenceKey == "" || run.LeaseOwner == "" || completion.At.IsZero() {
+		return errors.New("compliance monitor run completion is incomplete")
+	}
+	if err := s.ensureComplianceMonitorTables(ctx); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return fmt.Errorf("begin compliance monitor completion: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `
+INSERT INTO compliance_monitor_run_outcomes (tenant_id,monitor_id,occurrence_key,plan_revision_id,succeeded,completed_at)
+VALUES ($1,$2,$3,$4,$5,$6)
+ON CONFLICT (tenant_id,monitor_id,occurrence_key) DO NOTHING`, run.TenantID, run.MonitorID, run.OccurrenceKey, run.PlanRevisionID, completion.Succeeded, completion.At.UTC())
+	if err != nil {
+		return fmt.Errorf("record compliance monitor run outcome: %w", err)
+	}
+	inserted, _ := result.RowsAffected()
+	if inserted != 0 {
+		result, err = tx.ExecContext(ctx, `
+UPDATE compliance_monitors
+SET last_success_at = CASE WHEN $3 THEN $4::timestamptz ELSE last_success_at END,
+    consecutive_failures = CASE WHEN $3 THEN 0 ELSE consecutive_failures + 1 END,
+    updated_at = NOW()
+WHERE tenant_id = $1 AND id = $2`, run.TenantID, run.MonitorID, completion.Succeeded, completion.At.UTC())
+		if err != nil {
+			return fmt.Errorf("update compliance monitor run outcome: %w", err)
+		}
+		if count, _ := result.RowsAffected(); count == 0 {
+			return ports.ErrComplianceMonitorNotFound
+		}
+	} else {
+		var existingPlan string
+		var existingSucceeded bool
+		var existingAt time.Time
+		if err := tx.QueryRowContext(ctx, `SELECT plan_revision_id,succeeded,completed_at FROM compliance_monitor_run_outcomes WHERE tenant_id=$1 AND monitor_id=$2 AND occurrence_key=$3`, run.TenantID, run.MonitorID, run.OccurrenceKey).Scan(&existingPlan, &existingSucceeded, &existingAt); err != nil {
+			return fmt.Errorf("read compliance monitor run outcome: %w", err)
+		}
+		if existingPlan != run.PlanRevisionID || existingSucceeded != completion.Succeeded || !existingAt.UTC().Equal(completion.At.UTC()) {
+			return ports.ErrComplianceMonitorConflict
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM compliance_plan_run_leases WHERE tenant_id = $1 AND plan_revision_id = $2 AND lease_owner = $3`, run.TenantID, run.PlanRevisionID, run.LeaseOwner); err != nil {
+		return fmt.Errorf("release compliance monitor plan lease: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit compliance monitor completion: %w", err)
 	}
 	return nil
 }

@@ -16,9 +16,11 @@ import (
 	"github.com/writer/cerebro/internal/grcupload"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	complianceassessmenthttp "github.com/writer/cerebro/internal/sourcehttp/complianceassessment"
+	compliancemonitorhttp "github.com/writer/cerebro/internal/sourcehttp/compliancemonitor"
 	credentialstoreshttp "github.com/writer/cerebro/internal/sourcehttp/credentialstores"
 	"github.com/writer/cerebro/internal/sourcehttp/customdashboards"
 	"github.com/writer/cerebro/internal/sourcehttp/deadletteradmin"
+	evidenceledgerhttp "github.com/writer/cerebro/internal/sourcehttp/evidenceledger"
 	grcauditpackethttp "github.com/writer/cerebro/internal/sourcehttp/grcauditpacket"
 	"github.com/writer/cerebro/internal/sourcehttp/identitydirectory"
 	"github.com/writer/cerebro/internal/sourcehttp/policyevaluationdatasets"
@@ -54,6 +56,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerSourceRoutes(mux)
 	app.registerConnectorRoutes(mux)
 	app.registerKnowledgeRoutes(mux)
+	app.registerAuditEventRoutes(mux)
 	app.registerGraphRoutes(mux)
 	app.registerJobRoutes(mux)
 	registerHTTPRoute(mux, "POST /platform/append-log/dead-letters/{deadLetterID}/force-purge", routeSurfacePlatformHTTP, deadletteradmin.NewHandler(app.deps.StateStore, hasAuthContext, authorizeJobAdmin, authorizeTenantID, customDashboardActorID).ForcePurge)
@@ -152,6 +155,12 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	assessments := complianceassessmenthttp.NewHandler(app.services.assessments, effectiveTenantFilter, customDashboardActorID, func(err error) bool {
 		return errors.Is(err, errTenantForbidden) || errors.Is(err, errScopeForbidden)
 	}, maxProtoJSONBodyBytes)
+	evidence := evidenceledgerhttp.NewHandler(app.services.evidence, effectiveTenantFilter, customDashboardActorID, func(err error) bool {
+		return errors.Is(err, errTenantForbidden) || errors.Is(err, errScopeForbidden)
+	}, maxProtoJSONBodyBytes).WithMaximumSensitivity(evidenceMaximumSensitivity)
+	monitors := compliancemonitorhttp.NewHandler(app.services.monitors, effectiveTenantFilter, customDashboardActorID, func(err error) bool {
+		return errors.Is(err, errTenantForbidden) || errors.Is(err, errScopeForbidden)
+	}, maxProtoJSONBodyBytes)
 	registerHTTPRoute(mux, "GET /grc/dashboards", routeSurfacePlatformHTTP, dashboards.List)
 	registerHTTPRoute(mux, "POST /grc/dashboards", routeSurfacePlatformHTTP, dashboards.Create)
 	registerHTTPRoute(mux, "GET /grc/dashboards/{dashboardID}", routeSurfacePlatformHTTP, dashboards.Get)
@@ -167,6 +176,23 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/assessment-runs/{runID}/results", routeSurfacePlatformHTTP, assessments.ListResults)
 	registerHTTPRoute(mux, "POST /grc/assurance-decisions", routeSurfacePlatformHTTP, assessments.RecordAssuranceDecision)
 	registerHTTPRoute(mux, "GET /grc/assurance-decisions/{decisionID}", routeSurfacePlatformHTTP, assessments.GetAssuranceDecision)
+	registerHTTPRoute(mux, "POST /grc/assessment-snapshots", routeSurfacePlatformHTTP, assessments.CreateAssessmentSnapshot)
+	registerHTTPRoute(mux, "GET /grc/assessment-snapshots/{snapshotID}", routeSurfacePlatformHTTP, assessments.GetAssessmentSnapshot)
+	registerHTTPRoute(mux, "GET /grc/assessment-lenses", routeSurfacePlatformHTTP, assessments.ListAssessmentLenses)
+	registerHTTPRoute(mux, "GET /grc/assessment-snapshots/{snapshotID}/lenses/{audience}", routeSurfacePlatformHTTP, assessments.GetAssessmentSnapshotLens)
+	registerHTTPRoute(mux, "POST /grc/evidence-artifacts/{artifactID}/versions", routeSurfacePlatformHTTP, evidence.RegisterVersion)
+	registerHTTPRoute(mux, "GET /grc/evidence-versions/{versionID}", routeSurfacePlatformHTTP, evidence.GetVersion)
+	registerHTTPRoute(mux, "POST /grc/evidence-claims", routeSurfacePlatformHTTP, evidence.CreateClaim)
+	registerHTTPRoute(mux, "POST /grc/evidence-claims/compatibility", routeSurfacePlatformHTTP, evidence.EvaluateCompatibility)
+	registerHTTPRoute(mux, "GET /grc/evidence-claims/{claimID}", routeSurfacePlatformHTTP, evidence.GetClaim)
+	registerHTTPRoute(mux, "POST /grc/evidence-claims/{claimID}/reviews", routeSurfacePlatformHTTP, evidence.ReviewClaim)
+	registerHTTPRoute(mux, "POST /grc/evidence-claims/{claimID}/invalidate", routeSurfacePlatformHTTP, evidence.InvalidateClaim)
+	registerHTTPRoute(mux, "POST /grc/evidence-claims/{claimID}/validate", routeSurfacePlatformHTTP, evidence.ValidateClaim)
+	registerHTTPRoute(mux, "POST /grc/evidence-claims/{claimID}/reuse", routeSurfacePlatformHTTP, evidence.ReuseClaim)
+	registerHTTPRoute(mux, "POST /grc/compliance-monitors", routeSurfacePlatformHTTP, monitors.Create)
+	registerHTTPRoute(mux, "GET /grc/compliance-monitors", routeSurfacePlatformHTTP, monitors.List)
+	registerHTTPRoute(mux, "GET /grc/compliance-monitors/{monitorID}", routeSurfacePlatformHTTP, monitors.Get)
+	registerHTTPRoute(mux, "PUT /grc/compliance-monitors/{monitorID}", routeSurfacePlatformHTTP, monitors.Update)
 	registerHTTPRoute(mux, "GET /grc/report-catalog", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("report.catalog", 5*time.Minute), app.handleGRCReportCatalog))
 	registerHTTPRoute(mux, "POST /grc/query", routeSurfacePlatformHTTP, app.handleGRCQuery)
 	registerHTTPRoute(mux, "GET /grc/dashboard", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("dashboard", 30*time.Second, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime, grcCacheScopeGraph), app.handleGRCDashboard))
@@ -320,6 +346,11 @@ func (app *App) registerKnowledgeRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /platform/knowledge/outcomes", routeSurfacePlatformHTTP, app.handleWriteOutcome)
 	registerHTTPRoute(mux, "POST /platform/workflow/replay", routeSurfacePlatformHTTP, app.handleReplayWorkflowEvents)
 }
+
+func (app *App) registerAuditEventRoutes(mux *http.ServeMux) {
+	registerHTTPRoute(mux, "GET /platform/audit-events", routeSurfacePlatformHTTP, app.handleListAuditEvents)
+}
+
 func (app *App) registerGraphRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/runtime-freshness", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("runtime.freshness", 30*time.Second, grcCacheScopeRuntime, grcCacheScopeGraph, grcCacheScopeFindings), app.handleListRuntimeFreshness))
 	registerHTTPRoute(mux, "GET /platform/graph/neighborhood", routeSurfacePlatformHTTP, app.handleGetEntityNeighborhood)

@@ -3,6 +3,7 @@ package complianceassessment
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -40,12 +41,14 @@ const (
 )
 
 type PlanScope struct {
-	ProgramID               string   `json:"program_id"`
-	ScopeRevisionID         string   `json:"scope_revision_id"`
-	ImplementationRevisions []string `json:"implementation_revision_ids"`
-	ObjectiveIDs            []string `json:"objective_ids"`
-	IncludedSubjectIDs      []string `json:"included_subject_ids,omitempty"`
-	ExcludedSubjectIDs      []string `json:"excluded_subject_ids,omitempty"`
+	ProgramID                    string                   `json:"program_id"`
+	ScopeRevisionID              string                   `json:"scope_revision_id"`
+	ImplementationRevisions      []string                 `json:"implementation_revision_ids"`
+	ExactScopeRevision           *compliance.RevisionRef  `json:"exact_scope_revision,omitempty"`
+	ExactImplementationRevisions []compliance.RevisionRef `json:"exact_implementation_revisions,omitempty"`
+	ObjectiveIDs                 []string                 `json:"objective_ids"`
+	IncludedSubjectIDs           []string                 `json:"included_subject_ids,omitempty"`
+	ExcludedSubjectIDs           []string                 `json:"excluded_subject_ids,omitempty"`
 }
 
 type PlanExecution struct {
@@ -84,21 +87,23 @@ type PlanGovernance struct {
 }
 
 type AssessmentPlanRevision struct {
-	ID            string         `json:"id"`
-	TenantID      string         `json:"tenant_id"`
-	RevisionID    string         `json:"revision_id"`
-	Version       uint64         `json:"version"`
-	PredecessorID string         `json:"predecessor_id,omitempty"`
-	Status        string         `json:"status"`
-	Name          string         `json:"name"`
-	Scope         PlanScope      `json:"scope"`
-	Execution     PlanExecution  `json:"execution"`
-	Governance    PlanGovernance `json:"governance"`
-	ContentDigest string         `json:"content_digest"`
-	CreatedAt     time.Time      `json:"created_at"`
-	CreatedBy     string         `json:"created_by"`
-	PublishedAt   time.Time      `json:"published_at,omitempty"`
-	PublishedBy   string         `json:"published_by,omitempty"`
+	ID                  string                  `json:"id"`
+	TenantID            string                  `json:"tenant_id"`
+	RevisionID          string                  `json:"revision_id"`
+	Version             uint64                  `json:"version"`
+	PredecessorID       string                  `json:"predecessor_id,omitempty"`
+	PredecessorRevision *compliance.RevisionRef `json:"predecessor_revision,omitempty"`
+	RevisionModifiedAt  time.Time               `json:"revision_modified_at,omitempty"`
+	Status              string                  `json:"status"`
+	Name                string                  `json:"name"`
+	Scope               PlanScope               `json:"scope"`
+	Execution           PlanExecution           `json:"execution"`
+	Governance          PlanGovernance          `json:"governance"`
+	ContentDigest       string                  `json:"content_digest"`
+	CreatedAt           time.Time               `json:"created_at"`
+	CreatedBy           string                  `json:"created_by"`
+	PublishedAt         time.Time               `json:"published_at,omitempty"`
+	PublishedBy         string                  `json:"published_by,omitempty"`
 }
 
 func normalizePlan(plan AssessmentPlanRevision) AssessmentPlanRevision {
@@ -106,6 +111,10 @@ func normalizePlan(plan AssessmentPlanRevision) AssessmentPlanRevision {
 	plan.TenantID = strings.TrimSpace(plan.TenantID)
 	plan.RevisionID = strings.TrimSpace(plan.RevisionID)
 	plan.PredecessorID = strings.TrimSpace(plan.PredecessorID)
+	if plan.PredecessorRevision != nil {
+		value := compliance.NormalizeRevisionRef(*plan.PredecessorRevision)
+		plan.PredecessorRevision = &value
+	}
 	plan.Status = strings.TrimSpace(plan.Status)
 	plan.Name = strings.TrimSpace(plan.Name)
 	plan.CreatedBy = strings.TrimSpace(plan.CreatedBy)
@@ -113,6 +122,11 @@ func normalizePlan(plan AssessmentPlanRevision) AssessmentPlanRevision {
 	plan.Scope.ProgramID = strings.TrimSpace(plan.Scope.ProgramID)
 	plan.Scope.ScopeRevisionID = strings.TrimSpace(plan.Scope.ScopeRevisionID)
 	plan.Scope.ImplementationRevisions = normalizedStrings(plan.Scope.ImplementationRevisions)
+	if plan.Scope.ExactScopeRevision != nil {
+		value := compliance.NormalizeRevisionRef(*plan.Scope.ExactScopeRevision)
+		plan.Scope.ExactScopeRevision = &value
+	}
+	plan.Scope.ExactImplementationRevisions = normalizedRevisionRefs(plan.Scope.ExactImplementationRevisions)
 	plan.Scope.ObjectiveIDs = normalizedStrings(plan.Scope.ObjectiveIDs)
 	plan.Scope.IncludedSubjectIDs = normalizedStrings(plan.Scope.IncludedSubjectIDs)
 	plan.Scope.ExcludedSubjectIDs = normalizedStrings(plan.Scope.ExcludedSubjectIDs)
@@ -140,8 +154,27 @@ func normalizePlan(plan AssessmentPlanRevision) AssessmentPlanRevision {
 	plan.Governance.ApproverIDs = normalizedStrings(plan.Governance.ApproverIDs)
 	plan.Governance.Limitations = normalizedStrings(plan.Governance.Limitations)
 	plan.CreatedAt = CanonicalTime(plan.CreatedAt)
+	plan.RevisionModifiedAt = CanonicalTime(plan.RevisionModifiedAt)
 	plan.PublishedAt = CanonicalTime(plan.PublishedAt)
 	return plan
+}
+
+func normalizedRevisionRefs(values []compliance.RevisionRef) []compliance.RevisionRef {
+	result := make([]compliance.RevisionRef, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = compliance.NormalizeRevisionRef(value)
+		key := value.ID + "\x00" + value.RevisionID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID+"\x00"+result[i].RevisionID < result[j].ID+"\x00"+result[j].RevisionID
+	})
+	return result
 }
 
 func validatePlan(plan AssessmentPlanRevision) error {
@@ -150,6 +183,9 @@ func validatePlan(plan AssessmentPlanRevision) error {
 	}
 	if plan.Scope.ProgramID == "" || plan.Scope.ScopeRevisionID == "" || len(plan.Scope.ImplementationRevisions) == 0 || len(plan.Scope.ObjectiveIDs) == 0 {
 		return fmt.Errorf("%w: plan scope is incomplete", ErrInvalidResult)
+	}
+	if err := validateExactPlanScope(plan.Scope); err != nil {
+		return err
 	}
 	if len(plan.Execution.Methods) == 0 || len(plan.Execution.Tasks) == 0 || len(plan.Execution.OrderedTaskIDs) == 0 || plan.Execution.CoverageTarget == "" || plan.Execution.AssuranceTarget == "" {
 		return fmt.Errorf("%w: plan execution contract is incomplete", ErrInvalidResult)
@@ -164,6 +200,37 @@ func validatePlan(plan AssessmentPlanRevision) error {
 	case PlanDraft, PlanPublished, PlanRetired:
 	default:
 		return fmt.Errorf("%w: plan status %q", ErrInvalidResult, plan.Status)
+	}
+	return nil
+}
+
+func validateExactPlanScope(scope PlanScope) error {
+	if scope.ExactScopeRevision != nil {
+		if err := scope.ExactScopeRevision.Validate(); err != nil || scope.ExactScopeRevision.RevisionID != scope.ScopeRevisionID {
+			return fmt.Errorf("%w: exact scope revision does not match scope_revision_id", ErrInvalidResult)
+		}
+	}
+	if len(scope.ExactImplementationRevisions) == 0 {
+		return nil
+	}
+	if len(scope.ExactImplementationRevisions) != len(scope.ImplementationRevisions) {
+		return fmt.Errorf("%w: exact implementation revisions do not cover implementation_revision_ids", ErrInvalidResult)
+	}
+	want := make(map[string]struct{}, len(scope.ImplementationRevisions))
+	for _, revisionID := range scope.ImplementationRevisions {
+		want[revisionID] = struct{}{}
+	}
+	for _, ref := range scope.ExactImplementationRevisions {
+		if err := ref.Validate(); err != nil {
+			return fmt.Errorf("%w: exact implementation revision is invalid", ErrInvalidResult)
+		}
+		if _, ok := want[ref.RevisionID]; !ok {
+			return fmt.Errorf("%w: exact implementation revision is not in implementation_revision_ids", ErrInvalidResult)
+		}
+		delete(want, ref.RevisionID)
+	}
+	if len(want) != 0 {
+		return fmt.Errorf("%w: exact implementation revisions are incomplete", ErrInvalidResult)
 	}
 	return nil
 }

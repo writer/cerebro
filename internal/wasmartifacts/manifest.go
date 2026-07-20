@@ -119,8 +119,8 @@ var moduleSpecs = []ModuleSpec{
 		Name:         "sourceruntime-event-admission",
 		ArtifactPath: "internal/sourceruntime/eventadmission/eventadmission.wasm",
 		SourcePath:   "internal/sourceruntime/eventadmission/src/lib.rs",
-		ABIVersion:   1,
-		MaxSizeBytes: 260_000,
+		ABIVersion:   2,
+		MaxSizeBytes: 265_000,
 	},
 	{
 		Name:         "sourceruntime-record-kernel",

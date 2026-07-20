@@ -27,6 +27,7 @@ var ensureSourceRuntimePageLedgerStatements = []string{`CREATE TABLE IF NOT EXIS
   duplicate_events INTEGER NOT NULL DEFAULT 0,
   admission_kernel TEXT NOT NULL DEFAULT '',
   admission_abi_version INTEGER NOT NULL DEFAULT 0,
+  admission_contracts_sha256 TEXT NOT NULL DEFAULT '',
   admission_scanned_sha256 TEXT NOT NULL DEFAULT '',
   admission_accepted_sha256 TEXT NOT NULL DEFAULT '',
   admission_result_sha256 TEXT NOT NULL DEFAULT '',
@@ -44,6 +45,7 @@ var ensureSourceRuntimePageLedgerStatements = []string{`CREATE TABLE IF NOT EXIS
   ADD COLUMN IF NOT EXISTS duplicate_events INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS admission_kernel TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS admission_abi_version INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS admission_contracts_sha256 TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS admission_scanned_sha256 TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS admission_accepted_sha256 TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS admission_result_sha256 TEXT NOT NULL DEFAULT ''`,
@@ -81,10 +83,10 @@ func (s *Store) BeginSourceRuntimePage(ctx context.Context, attempt ports.Source
 INSERT INTO source_runtime_page_ledger (
   attempt_id, runtime_id, source_id, tenant_id, page_number, status,
   records_scanned, records_accepted, records_quarantined, duplicate_events,
-  admission_kernel, admission_abi_version, admission_scanned_sha256,
-  admission_accepted_sha256, admission_result_sha256
+  admission_kernel, admission_abi_version, admission_contracts_sha256,
+  admission_scanned_sha256, admission_accepted_sha256, admission_result_sha256
 )
-VALUES ($1, $2, $3, $4, $5, 'started', $6, $7, $8, $9, $10, $11, $12, $13, $14)
+VALUES ($1, $2, $3, $4, $5, 'started', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 ON CONFLICT (attempt_id)
 DO UPDATE SET status = 'started',
               records_scanned = EXCLUDED.records_scanned,
@@ -93,6 +95,7 @@ DO UPDATE SET status = 'started',
               duplicate_events = EXCLUDED.duplicate_events,
               admission_kernel = EXCLUDED.admission_kernel,
               admission_abi_version = EXCLUDED.admission_abi_version,
+              admission_contracts_sha256 = EXCLUDED.admission_contracts_sha256,
               admission_scanned_sha256 = EXCLUDED.admission_scanned_sha256,
               admission_accepted_sha256 = EXCLUDED.admission_accepted_sha256,
               admission_result_sha256 = EXCLUDED.admission_result_sha256,
@@ -108,6 +111,7 @@ DO UPDATE SET status = 'started',
 		attempt.Admission.Duplicates,
 		strings.TrimSpace(attempt.Admission.Kernel),
 		attempt.Admission.ABIVersion,
+		strings.TrimSpace(attempt.Admission.ContractsSHA256),
 		strings.TrimSpace(attempt.Admission.ScannedSHA256),
 		strings.TrimSpace(attempt.Admission.AcceptedSHA256),
 		strings.TrimSpace(attempt.Admission.ResultSHA256),

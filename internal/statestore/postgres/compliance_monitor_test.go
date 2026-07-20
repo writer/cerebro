@@ -16,6 +16,8 @@ func TestComplianceMonitorSchemaIsTenantScopedAndLeaseBacked(t *testing.T) {
 		"compliance_monitor_change_signals",
 		"PRIMARY KEY (tenant_id, monitor_id, event_id)",
 		"compliance_monitor_change_windows",
+		"compliance_monitor_run_outcomes",
+		"PRIMARY KEY (tenant_id, monitor_id, occurrence_key)",
 		"window_version",
 		"FOREIGN KEY (tenant_id, monitor_id)",
 	} {

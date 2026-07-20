@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	SchemaVersion  = "source-event-admission.v1"
-	ABIVersion     = 1
+	SchemaVersion  = "source-event-admission.v2"
+	ABIVersion     = 2
 	MaxEvents      = 5_000
 	MaxInputBytes  = 32 << 20
 	MaxOutputBytes = 8 << 20
@@ -100,7 +100,7 @@ type admissionOutcome struct {
 type Response struct {
 	SchemaVersion string                     `json:"schema_version" cbor:"schema_version"`
 	Accepted      []Accepted                 `json:"accepted" cbor:"accepted"`
-	Quarantined   []Rejection                `json:"quarantined" cbor:"quarantined"`
+	Quarantined   []Quarantined              `json:"quarantined" cbor:"quarantined"`
 	Duplicates    []Duplicate                `json:"duplicates" cbor:"duplicates"`
 	Receipt       Receipt                    `json:"receipt" cbor:"receipt"`
 	Events        []*cerebrov1.EventEnvelope `json:"-"`
@@ -121,6 +121,15 @@ type Rejection struct {
 	Message    string `json:"message" cbor:"message"`
 }
 
+// Quarantined binds one repairable event decision to the exact input identity.
+type Quarantined struct {
+	InputIndex  *int   `json:"input_index" cbor:"input_index"`
+	EventID     string `json:"event_id" cbor:"event_id"`
+	EventSHA256 string `json:"event_sha256" cbor:"event_sha256"`
+	Code        string `json:"code" cbor:"code"`
+	Field       string `json:"field,omitempty" cbor:"field,omitempty"`
+}
+
 // Duplicate identifies one input collapsed into an identical earlier event.
 type Duplicate struct {
 	InputIndex      int    `json:"input_index" cbor:"input_index"`
@@ -131,13 +140,14 @@ type Duplicate struct {
 
 // Receipt binds the input counts to deterministic admission digests.
 type Receipt struct {
-	Scanned        int    `json:"scanned" cbor:"scanned"`
-	Accepted       int    `json:"accepted" cbor:"accepted"`
-	Quarantined    int    `json:"quarantined" cbor:"quarantined"`
-	Duplicates     int    `json:"duplicates" cbor:"duplicates"`
-	ScannedSHA256  string `json:"scanned_sha256" cbor:"scanned_sha256"`
-	AcceptedSHA256 string `json:"accepted_sha256" cbor:"accepted_sha256"`
-	ResultSHA256   string `json:"result_sha256" cbor:"result_sha256"`
+	Scanned         int    `json:"scanned" cbor:"scanned"`
+	Accepted        int    `json:"accepted" cbor:"accepted"`
+	Quarantined     int    `json:"quarantined" cbor:"quarantined"`
+	Duplicates      int    `json:"duplicates" cbor:"duplicates"`
+	ContractsSHA256 string `json:"contracts_sha256" cbor:"contracts_sha256"`
+	ScannedSHA256   string `json:"scanned_sha256" cbor:"scanned_sha256"`
+	AcceptedSHA256  string `json:"accepted_sha256" cbor:"accepted_sha256"`
+	ResultSHA256    string `json:"result_sha256" cbor:"result_sha256"`
 }
 
 // RejectedError carries the kernel's typed page rejection.
@@ -263,7 +273,7 @@ func validateResponse(response Response, events []*cerebrov1.EventEnvelope) erro
 		len(response.Accepted)+len(response.Quarantined)+len(response.Duplicates) != len(events) {
 		return invalidOutput("receipt counts do not partition the input")
 	}
-	if !validDigest(response.Receipt.ScannedSHA256) || !validDigest(response.Receipt.AcceptedSHA256) || !validDigest(response.Receipt.ResultSHA256) {
+	if !validDigest(response.Receipt.ContractsSHA256) || !validDigest(response.Receipt.ScannedSHA256) || !validDigest(response.Receipt.AcceptedSHA256) || !validDigest(response.Receipt.ResultSHA256) {
 		return invalidOutput("receipt digest is invalid")
 	}
 	seen := make(map[int]struct{}, len(events))
@@ -283,6 +293,9 @@ func validateResponse(response Response, events []*cerebrov1.EventEnvelope) erro
 		}
 		if err := validateDecisionIndex(*rejection.InputIndex, events, seen); err != nil {
 			return err
+		}
+		if events[*rejection.InputIndex] == nil || rejection.EventID != events[*rejection.InputIndex].GetId() || !validDigest(rejection.EventSHA256) {
+			return invalidOutput("quarantined input %d identity is invalid", *rejection.InputIndex)
 		}
 	}
 	for _, duplicate := range response.Duplicates {

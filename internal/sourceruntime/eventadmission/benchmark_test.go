@@ -559,6 +559,7 @@ func benchmarkGoEquivalentJSON(payload []byte) ([]byte, error) {
 
 func benchmarkGoAdmission(request admissionRequest) (admissionOutcome, error) {
 	contracts := make(map[string]sourcecdk.EventContract, len(request.Contracts))
+	normalizedContracts := make([]sourcecdk.EventContract, 0, len(request.Contracts))
 	for _, contract := range request.Contracts {
 		normalized, err := sourcecdk.NormalizeEventContract(contract)
 		if err != nil {
@@ -567,9 +568,15 @@ func benchmarkGoAdmission(request admissionRequest) (admissionOutcome, error) {
 		sort.Strings(normalized.RequiredAttributes)
 		sort.Strings(normalized.RequiredPayloadFields)
 		contracts[normalized.Kind] = normalized
+		normalizedContracts = append(normalizedContracts, normalized)
+	}
+	sort.Slice(normalizedContracts, func(left, right int) bool { return normalizedContracts[left].Kind < normalizedContracts[right].Kind })
+	contractsSHA, err := benchmarkDigest(normalizedContracts)
+	if err != nil {
+		return admissionOutcome{}, err
 	}
 	accepted := make([]Accepted, 0, len(request.Events))
-	quarantined := make([]Rejection, 0)
+	quarantined := make([]Quarantined, 0)
 	duplicates := make([]Duplicate, 0)
 	scannedDigests := make([]string, 0, len(request.Events))
 	type seenEvent struct {
@@ -595,7 +602,10 @@ func benchmarkGoAdmission(request admissionRequest) (admissionOutcome, error) {
 			return admissionOutcome{Outcome: "rejected", Rejection: rejection}, nil
 		}
 		if decision == "quarantined" {
-			quarantined = append(quarantined, *rejection)
+			quarantined = append(quarantined, Quarantined{
+				InputIndex: rejection.InputIndex, EventID: event.ID, EventSHA256: eventDigest,
+				Code: rejection.Code, Field: rejection.Field,
+			})
 			continue
 		}
 		if first, ok := seen[event.ID]; ok {
@@ -621,7 +631,14 @@ func benchmarkGoAdmission(request admissionRequest) (admissionOutcome, error) {
 	if err != nil {
 		return admissionOutcome{}, err
 	}
-	resultSHA, err := benchmarkDigest([]any{scannedSHA, accepted, quarantined, duplicates})
+	resultSHA, err := benchmarkDigest(struct {
+		SchemaVersion   string        `json:"schema_version"`
+		ContractsSHA256 string        `json:"contracts_sha256"`
+		ScannedSHA256   string        `json:"scanned_sha256"`
+		Accepted        []Accepted    `json:"accepted"`
+		Quarantined     []Quarantined `json:"quarantined"`
+		Duplicates      []Duplicate   `json:"duplicates"`
+	}{SchemaVersion, contractsSHA, scannedSHA, accepted, quarantined, duplicates})
 	if err != nil {
 		return admissionOutcome{}, err
 	}
@@ -632,7 +649,7 @@ func benchmarkGoAdmission(request admissionRequest) (admissionOutcome, error) {
 		Duplicates:    duplicates,
 		Receipt: Receipt{
 			Scanned: len(request.Events), Accepted: len(accepted), Quarantined: len(quarantined), Duplicates: len(duplicates),
-			ScannedSHA256: scannedSHA, AcceptedSHA256: acceptedSHA, ResultSHA256: resultSHA,
+			ContractsSHA256: contractsSHA, ScannedSHA256: scannedSHA, AcceptedSHA256: acceptedSHA, ResultSHA256: resultSHA,
 		},
 	}}, nil
 }

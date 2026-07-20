@@ -459,6 +459,10 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
@@ -467,6 +471,9 @@ jobs:
         run: |
           set -euo pipefail
           npm ci
+          make openapi-check openapi-ts-check agent-service-lifecycle-check
+          npm run check --workspace @writer/cerebro-sdk
+          npm run check --workspace @writer/cerebro-slack-companion
           npm run build --workspace @writer/cerebro-slack-companion
           mkdir -p .dist/product
           npm pack --workspace @writer/cerebro-slack-companion --pack-destination .dist/product
@@ -475,6 +482,14 @@ jobs:
           cp schemas/agent-service-lifecycle.schema.json .dist/product/agent-service-lifecycle.schema.json
           cp schemas/product-release.schema.json .dist/product/product-release.schema.json
           cp schemas/product-release-published.schema.json .dist/product/product-release-published.schema.json
+          slack_archive="$(find .dist/product -maxdepth 1 -type f -name 'writer-cerebro-slack-companion-*.tgz' -print -quit)"
+          sdk_archive="$(find .dist/product -maxdepth 1 -type f -name 'writer-cerebro-sdk-*.tgz' -print -quit)"
+          test -n "${slack_archive}"
+          test -n "${sdk_archive}"
+          python3 scripts/release/verify_portable_artifacts.py \
+            --bundle-root .dist/product \
+            --slack-archive "${slack_archive}" \
+            --sdk-archive "${sdk_archive}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: product-input-${{ needs.resolve.outputs.sha }}

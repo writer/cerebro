@@ -95,12 +95,15 @@ func (service *Service) RecordImplementationRevision(ctx context.Context, reques
 	if program.AggregateVersion != request.ExpectedProgramVersion {
 		return nil, ports.ErrComplianceProgramVersionConflict
 	}
-	if _, err := service.store.GetProgramScopeRevision(ctx, request.TenantID, request.ProgramID, request.Specification.ScopeRevisionID); err != nil {
+	scopeRevision, err := service.store.GetProgramScopeRevision(ctx, request.TenantID, request.ProgramID, request.Specification.ScopeRevisionID)
+	if err != nil {
 		if errors.Is(err, ports.ErrComplianceProgramNotFound) || errors.Is(err, ports.ErrProgramRevisionConflict) {
 			return nil, ports.ErrProgramRevisionConflict
 		}
 		return nil, err
 	}
+	exactScope := revisionRefFromVersion(scopeRevision.Version)
+	request.Specification.ExactScopeRevision = &exactScope
 
 	implementation, previous, err := service.loadImplementationRevision(ctx, request)
 	if err != nil {
@@ -155,6 +158,10 @@ func (service *Service) RecordImplementationRevision(ctx context.Context, reques
 			ContentDigest: digest, CreatedBy: request.CreatedBy, PredecessorID: predecessorID,
 		},
 		ChangeSummary: request.ChangeSummary, Specification: request.Specification,
+	}
+	if previous != nil {
+		value := revisionRefFromVersion(previous.Version)
+		revision.PredecessorRevision = &value
 	}
 	aggregate := ControlImplementationRecord{
 		TenantID: request.TenantID, ProgramID: request.ProgramID, ID: implementationID,
@@ -224,6 +231,10 @@ func validateImplementationRequest(request RecordImplementationRevisionRequest) 
 
 func normalizeImplementationSpecification(value ControlImplementationSpecification) ControlImplementationSpecification {
 	value.ScopeRevisionID = strings.TrimSpace(value.ScopeRevisionID)
+	if value.ExactScopeRevision != nil {
+		exact := compliance.NormalizeRevisionRef(*value.ExactScopeRevision)
+		value.ExactScopeRevision = &exact
+	}
 	value.ControlRef = compliance.NormalizeControlRef(value.ControlRef)
 	value.StatementID = strings.TrimSpace(value.StatementID)
 	value.ObjectiveIDs = normalizedStrings(value.ObjectiveIDs)
@@ -257,6 +268,11 @@ func normalizeImplementationSpecification(value ControlImplementationSpecificati
 func validateImplementationSpecification(value ControlImplementationSpecification) error {
 	if value.ScopeRevisionID == "" || value.ControlRef.ControlID == "" || (value.ControlRef.FrameworkID == "" && value.ControlRef.FrameworkName == "") {
 		return fmt.Errorf("%w: scope revision and exact control reference are required", ErrInvalidProgramRequest)
+	}
+	if value.ExactScopeRevision != nil {
+		if err := value.ExactScopeRevision.Validate(); err != nil || value.ExactScopeRevision.RevisionID != value.ScopeRevisionID {
+			return fmt.Errorf("%w: exact scope revision does not match scope_revision_id", ErrInvalidProgramRequest)
+		}
 	}
 	if value.Narrative == "" || value.OwnerTeam == "" || len(value.ResponsibleRoles) == 0 || len(value.AccountableRoles) == 0 {
 		return fmt.Errorf("%w: narrative, owner, responsible roles, and accountable roles are required", ErrInvalidProgramRequest)

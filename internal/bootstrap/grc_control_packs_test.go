@@ -373,10 +373,11 @@ func TestGRCCustomControlEvidencePacketEndpointBuildsGeneratedProfilePacket(t *t
 		t.Fatalf("POST /grc/control-packets status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 	var payload struct {
-		Profile  grccontrol.Profile               `json:"profile"`
-		Packet   compliance.ControlEvidencePacket `json:"packet"`
-		Controls []grccontrol.ControlItem         `json:"controls"`
-		Preview  compliance.ControlPackPreview    `json:"preview"`
+		Profile               grccontrol.Profile               `json:"profile"`
+		Packet                compliance.ControlEvidencePacket `json:"packet"`
+		Controls              []grccontrol.ControlItem         `json:"controls"`
+		ProfileFindingMatches []grccontrol.ProfileFindingMatch `json:"profile_finding_matches"`
+		Preview               compliance.ControlPackPreview    `json:"preview"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode custom control packet: %v", err)
@@ -389,6 +390,12 @@ func TestGRCCustomControlEvidencePacketEndpointBuildsGeneratedProfilePacket(t *t
 	}
 	if len(payload.Controls) != 1 || payload.Controls[0].EvidenceQuality == "" {
 		t.Fatalf("custom controls = %#v, want summarized audit quality", payload.Controls)
+	}
+	if len(payload.ProfileFindingMatches) == 0 {
+		t.Fatal("profile_finding_matches is empty, want request-scoped custom profile associations")
+	}
+	if got := payload.ProfileFindingMatches[0]; got.ProfileID != "customer-security-audit" || got.CoverageIndexVersion == "" || got.MappingBasis == "" {
+		t.Fatalf("profile finding match = %#v, want versioned custom profile association", got)
 	}
 }
 

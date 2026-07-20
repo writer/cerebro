@@ -12,12 +12,14 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/compliance"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 var ErrServiceUnavailable = errors.New("compliance monitor service unavailable")
+var ErrInvalidMonitor = errors.New("invalid compliance monitor")
 
 const (
 	monitorAggregateType = "compliance_monitor"
@@ -32,9 +34,32 @@ const (
 // changes and trigger acknowledgements cannot reach the Postgres projection
 // without first passing through the durable workflow event log.
 type Service struct {
-	store     ports.ComplianceMonitorStore
-	appendLog ports.AppendLog
-	jobs      *platformjobs.Service
+	store       ports.ComplianceMonitorStore
+	appendLog   ports.AppendLog
+	assessments AssessmentRequester
+}
+
+type ScheduledAssessmentRequest struct {
+	TenantID       string
+	ProgramID      string
+	PlanRevisionID string
+	PeriodStart    time.Time
+	PeriodEnd      time.Time
+	IdempotencyKey string
+	RequestedBy    string
+	MonitorRun     ports.ComplianceMonitorRun
+	ChangeWindow   *ports.ComplianceChangeWindow
+}
+
+type ScheduledAssessment struct {
+	TenantID string
+	RunID    string
+	JobID    string
+}
+
+type AssessmentRequester interface {
+	RequestScheduledAssessment(context.Context, ScheduledAssessmentRequest) (ScheduledAssessment, error)
+	StartScheduledAssessment(context.Context, ScheduledAssessment) error
 }
 
 // New requires both the projection store and append log. A nil append log is
@@ -50,9 +75,69 @@ func New(store ports.ComplianceMonitorStore, appendLog ports.AppendLog) (*Servic
 // boundary. Monitor definition updates do not require the job runtime.
 func (s *Service) WithJobs(jobs *platformjobs.Service) *Service {
 	if s != nil {
-		s.jobs = jobs
+		if jobs == nil {
+			s.assessments = nil
+		} else {
+			s.assessments = jobAssessmentRequester{jobs: jobs}
+		}
 	}
 	return s
+}
+
+func (s *Service) WithAssessmentRequester(requester AssessmentRequester) *Service {
+	if s != nil {
+		s.assessments = requester
+	}
+	return s
+}
+
+type jobAssessmentRequester struct {
+	jobs *platformjobs.Service
+}
+
+func (r jobAssessmentRequester) RequestScheduledAssessment(ctx context.Context, request ScheduledAssessmentRequest) (ScheduledAssessment, error) {
+	if r.jobs == nil {
+		return ScheduledAssessment{}, ErrServiceUnavailable
+	}
+	payload := map[string]any{
+		"program_id":            request.ProgramID,
+		"plan_revision_id":      request.PlanRevisionID,
+		"monitor_id":            request.MonitorRun.MonitorID,
+		"plan_lease_owner":      request.MonitorRun.LeaseOwner,
+		"plan_lease_occurrence": request.MonitorRun.OccurrenceKey,
+	}
+	if request.ChangeWindow == nil {
+		payload["scheduled_for"] = request.PeriodEnd.UTC().Format(time.RFC3339Nano)
+	} else {
+		payload["change_window_version"] = request.ChangeWindow.Version
+		payload["change_window_opened_at"] = request.ChangeWindow.OpenedAt.UTC().Format(time.RFC3339Nano)
+		payload["change_signal_count"] = request.ChangeWindow.SignalCount
+		payload["change_scope_digest"] = request.ChangeWindow.ScopeDigest
+	}
+	job, _, err := r.jobs.Create(ctx, ports.CreateJobRequest{
+		Kind:           platformjobs.KindComplianceAssessment,
+		TenantID:       request.TenantID,
+		SubjectType:    subjectType,
+		SubjectID:      request.MonitorRun.MonitorID,
+		IdempotencyKey: request.IdempotencyKey,
+		Payload:        payload,
+	})
+	if err != nil {
+		return ScheduledAssessment{}, err
+	}
+	return ScheduledAssessment{TenantID: request.TenantID, JobID: job.ID}, nil
+}
+
+func (r jobAssessmentRequester) StartScheduledAssessment(ctx context.Context, assessment ScheduledAssessment) error {
+	if r.jobs == nil {
+		return ErrServiceUnavailable
+	}
+	job, err := r.jobs.Get(ctx, assessment.JobID)
+	if err != nil {
+		return err
+	}
+	r.jobs.StartAsync(ctx, job)
+	return nil
 }
 
 // UpdateMonitor appends a deterministic monitor revision before projecting it
@@ -61,6 +146,15 @@ func (s *Service) WithJobs(jobs *platformjobs.Service) *Service {
 func (s *Service) UpdateMonitor(ctx context.Context, monitor *ports.ComplianceMonitor, expectedVersion uint64, actorID string, recordedAt time.Time) (*ports.ComplianceMonitor, error) {
 	if s == nil || s.store == nil || s.appendLog == nil {
 		return nil, ErrServiceUnavailable
+	}
+	if monitor != nil && strings.TrimSpace(monitor.ID) == "" {
+		id, err := compliance.NewIdentifier(compliance.IdentifierMonitor)
+		if err != nil {
+			return nil, err
+		}
+		copy := *monitor
+		copy.ID = id
+		monitor = &copy
 	}
 	normalized, targetVersion, operation, err := normalizeMonitorUpdate(monitor, expectedVersion, actorID, recordedAt)
 	if err != nil {
@@ -146,16 +240,16 @@ type monitorTriggerEvent struct {
 
 func normalizeMonitorUpdate(monitor *ports.ComplianceMonitor, expectedVersion uint64, actorID string, recordedAt time.Time) (*ports.ComplianceMonitor, uint64, string, error) {
 	if monitor == nil {
-		return nil, 0, "", errors.New("compliance monitor is required")
+		return nil, 0, "", fmt.Errorf("%w: monitor is required", ErrInvalidMonitor)
 	}
 	if expectedVersion >= math.MaxInt64 {
-		return nil, 0, "", errors.New("compliance monitor expected version exceeds its limit")
+		return nil, 0, "", fmt.Errorf("%w: expected version exceeds its limit", ErrInvalidMonitor)
 	}
 	if recordedAt.IsZero() {
-		return nil, 0, "", errors.New("compliance monitor recorded time is required")
+		return nil, 0, "", fmt.Errorf("%w: recorded time is required", ErrInvalidMonitor)
 	}
 	if !bounded(actorID, 512, true) {
-		return nil, 0, "", errors.New("compliance monitor actor exceeds its limit")
+		return nil, 0, "", fmt.Errorf("%w: actor exceeds its limit", ErrInvalidMonitor)
 	}
 	result := *monitor
 	result.ID = strings.TrimSpace(result.ID)
@@ -167,27 +261,27 @@ func normalizeMonitorUpdate(monitor *ports.ComplianceMonitor, expectedVersion ui
 	result.EscalationOwner = strings.TrimSpace(result.EscalationOwner)
 	result.NextRunAt = canonicalTime(result.NextRunAt)
 	if !bounded(result.ID, 512, false) || !bounded(result.TenantID, 255, false) || !bounded(result.ProgramID, 512, false) || !bounded(result.PlanRevisionID, 512, false) {
-		return nil, 0, "", errors.New("compliance monitor id, tenant, program, and plan revision are required and must be bounded")
+		return nil, 0, "", fmt.Errorf("%w: id, tenant, program, and plan revision are required and must be bounded", ErrInvalidMonitor)
 	}
 	if !bounded(result.ExpectedCoverage, 256, true) || !bounded(result.EscalationOwner, 512, true) {
-		return nil, 0, "", errors.New("compliance monitor coverage or escalation owner exceeds its limit")
+		return nil, 0, "", fmt.Errorf("%w: coverage or escalation owner exceeds its limit", ErrInvalidMonitor)
 	}
 	if result.TriggerKind != ports.ComplianceTriggerTime && result.TriggerKind != ports.ComplianceTriggerChange {
-		return nil, 0, "", errors.New("compliance monitor trigger kind is invalid")
+		return nil, 0, "", fmt.Errorf("%w: trigger kind is invalid", ErrInvalidMonitor)
 	}
 	if result.MaximumEvidenceAge < 0 || result.GracePeriod < 0 || result.DebounceWindow < 0 ||
 		result.MaximumEvidenceAge%time.Second != 0 || result.GracePeriod%time.Second != 0 || result.DebounceWindow%time.Second != 0 {
-		return nil, 0, "", errors.New("compliance monitor durations must be non-negative whole seconds")
+		return nil, 0, "", fmt.Errorf("%w: durations must be non-negative whole seconds", ErrInvalidMonitor)
 	}
 	if result.TriggerKind == ports.ComplianceTriggerTime && (result.IntervalSeconds <= 0 || result.NextRunAt.IsZero()) {
-		return nil, 0, "", errors.New("time-triggered compliance monitor interval and next run time are required")
+		return nil, 0, "", fmt.Errorf("%w: time-triggered interval and next run time are required", ErrInvalidMonitor)
 	}
 	if result.TriggerKind == ports.ComplianceTriggerChange && result.DebounceWindow <= 0 {
-		return nil, 0, "", errors.New("change-triggered compliance monitor debounce window must be positive")
+		return nil, 0, "", fmt.Errorf("%w: change-triggered debounce window must be positive", ErrInvalidMonitor)
 	}
 	targetVersion := expectedVersion + 1
 	if result.Version != 0 && result.Version != targetVersion {
-		return nil, 0, "", fmt.Errorf("compliance monitor version %d does not match target version %d", result.Version, targetVersion)
+		return nil, 0, "", fmt.Errorf("%w: version %d does not match target version %d", ErrInvalidMonitor, result.Version, targetVersion)
 	}
 	result.Version = targetVersion
 	operation := operationUpdated
@@ -220,24 +314,24 @@ func monitorUpdatedEvent(monitor *ports.ComplianceMonitor, version uint64, opera
 	return event, nil
 }
 
-func monitorTimeTriggeredEvent(monitor *ports.ComplianceMonitor, occurrence string, job *ports.Job) (*cerebrov1.EventEnvelope, error) {
+func monitorTimeTriggeredEvent(monitor *ports.ComplianceMonitor, occurrence, jobID string) (*cerebrov1.EventEnvelope, error) {
 	payload := monitorTriggerEvent{
 		MonitorID: monitor.ID, ProgramID: monitor.ProgramID, PlanRevisionID: monitor.PlanRevisionID,
-		TriggerKind: ports.ComplianceTriggerTime, OccurrenceKey: occurrence, JobID: job.ID,
+		TriggerKind: ports.ComplianceTriggerTime, OccurrenceKey: occurrence, JobID: strings.TrimSpace(jobID),
 		ScheduledFor: canonicalTime(monitor.NextRunAt).Format(time.RFC3339Nano),
 	}
-	return monitorTriggeredEvent(monitor.TenantID, occurrence, job.ID, operationTimeTrigger, monitor.NextRunAt, payload)
+	return monitorTriggeredEvent(monitor.TenantID, occurrence, jobID, operationTimeTrigger, monitor.NextRunAt, payload)
 }
 
-func monitorChangeTriggeredEvent(window *ports.ComplianceChangeWindow, occurrence string, job *ports.Job) (*cerebrov1.EventEnvelope, error) {
+func monitorChangeTriggeredEvent(window *ports.ComplianceChangeWindow, occurrence, jobID string) (*cerebrov1.EventEnvelope, error) {
 	payload := monitorTriggerEvent{
 		MonitorID: window.MonitorID, ProgramID: window.ProgramID, PlanRevisionID: window.PlanRevisionID,
-		TriggerKind: ports.ComplianceTriggerChange, OccurrenceKey: occurrence, JobID: job.ID,
+		TriggerKind: ports.ComplianceTriggerChange, OccurrenceKey: occurrence, JobID: strings.TrimSpace(jobID),
 		WindowVersion: window.Version, WindowOpenedAt: canonicalTime(window.OpenedAt).Format(time.RFC3339Nano),
 		WindowReadyAt: canonicalTime(window.ReadyAt).Format(time.RFC3339Nano), SignalCount: window.SignalCount,
 		ScopeDigest: strings.TrimSpace(window.ScopeDigest),
 	}
-	return monitorTriggeredEvent(window.TenantID, occurrence, job.ID, operationChange, window.ReadyAt, payload)
+	return monitorTriggeredEvent(window.TenantID, occurrence, jobID, operationChange, window.ReadyAt, payload)
 }
 
 func monitorTriggeredEvent(tenantID, occurrence, jobID, operation string, recordedAt time.Time, payload monitorTriggerEvent) (*cerebrov1.EventEnvelope, error) {

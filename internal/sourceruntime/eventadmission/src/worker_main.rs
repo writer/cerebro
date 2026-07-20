@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn serves_multiple_frames_and_stops_at_clean_eof() {
         let request =
-            br#"{"schema_version":"source-event-admission.v1","contracts":[],"events":[]}"#;
+            br#"{"schema_version":"source-event-admission.v2","contracts":[],"events":[]}"#;
         let mut input = Vec::new();
         write_frame(&mut input, ENCODING_JSON, request).expect("first frame");
         write_frame(&mut input, ENCODING_JSON, request).expect("second frame");

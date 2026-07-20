@@ -175,36 +175,41 @@ func (s *Service) assuranceDecisionStore() (AssuranceDecisionStore, bool) {
 }
 
 func (s *Service) findRunResult(ctx context.Context, tenantID, runID, resultID, resultSetHash string, resultCount uint64) (ObjectiveResult, error) {
-	chunks, err := s.store.ListResultChunks(ctx, tenantID, runID)
+	_, allResults, err := s.loadVerifiedRunResults(ctx, tenantID, runID, resultSetHash, resultCount)
 	if err != nil {
 		return ObjectiveResult{}, err
 	}
+	for _, result := range allResults {
+		if result.ID == resultID {
+			return result, nil
+		}
+	}
+	return ObjectiveResult{}, fmt.Errorf("%w: assessment result %q was not found", ErrInvalidResult, resultID)
+}
+
+func (s *Service) loadVerifiedRunResults(ctx context.Context, tenantID, runID, resultSetHash string, resultCount uint64) ([]ResultChunk, []ObjectiveResult, error) {
+	chunks, err := s.store.ListResultChunks(ctx, tenantID, runID)
+	if err != nil {
+		return nil, nil, err
+	}
 	var (
 		allResults []ObjectiveResult
-		found      *ObjectiveResult
 		previous   string
 	)
 	for index, chunk := range chunks {
 		if err := validateRecoveredResultChunk(chunk); err != nil || chunk.Sequence != uint32(index+1) || chunk.PreviousDigest != previous {
-			return ObjectiveResult{}, fmt.Errorf("%w: assessment result chunk chain is invalid", ErrAssessmentConflict)
+			return nil, nil, fmt.Errorf("%w: assessment result chunk chain is invalid", ErrAssessmentConflict)
 		}
 		previous = chunk.Digest
-		allResults = append(allResults, chunk.Results...)
 		for _, result := range chunk.Results {
-			if result.ID == resultID {
-				normalized := NormalizeResult(result)
-				found = &normalized
-			}
+			allResults = append(allResults, NormalizeResult(result))
 		}
 	}
 	setDigest, err := CanonicalResultSetDigest(allResults)
 	if err != nil || setDigest != resultSetHash || uint64(len(allResults)) != resultCount {
-		return ObjectiveResult{}, fmt.Errorf("%w: assessment results do not match completed run", ErrAssessmentConflict)
+		return nil, nil, fmt.Errorf("%w: assessment results do not match completed run", ErrAssessmentConflict)
 	}
-	if found == nil {
-		return ObjectiveResult{}, fmt.Errorf("%w: assessment result %q was not found", ErrInvalidResult, resultID)
-	}
-	return *found, nil
+	return chunks, allResults, nil
 }
 
 func normalizeAssuranceDecisionRequest(request AssuranceDecisionRequest) AssuranceDecisionRequest {

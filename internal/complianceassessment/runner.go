@@ -35,14 +35,23 @@ func (s *Service) Runner() platformjobs.Runner {
 		refs := map[string]string{"assessment_run": run.ID}
 		switch run.State {
 		case RunComplete:
+			if err := s.completeMonitorRun(ctx, run, true); err != nil {
+				return nil, nil, err
+			}
 			return result, refs, nil
 		case RunFailed:
+			if err := s.completeMonitorRun(ctx, run, false); err != nil {
+				return nil, nil, err
+			}
 			failureCode := strings.TrimSpace(run.FailureCode)
 			if failureCode == "" {
 				failureCode = "unspecified"
 			}
 			return result, refs, fmt.Errorf("assessment run %q is failed: %s", run.ID, failureCode)
 		case RunCancelled, RunSuperseded:
+			if err := s.completeMonitorRun(ctx, run, false); err != nil {
+				return nil, nil, err
+			}
 			if jobs == nil {
 				return result, refs, errors.New("assessment job runtime is unavailable for terminal reconciliation")
 			}
@@ -125,6 +134,9 @@ func (s *Service) Runner() platformjobs.Runner {
 		run.ResultCount = uint64(len(results))
 		run.CompletedAt = CanonicalTime(s.now())
 		if err := s.appendRunDurably(ctx, workflowevents.EventKindComplianceAssessmentCompleted, "assessment_completed", run, expectedVersion); err != nil {
+			return nil, nil, err
+		}
+		if err := s.completeMonitorRun(ctx, run, true); err != nil {
 			return nil, nil, err
 		}
 		return map[string]any{"run_id": run.ID, "state": run.State, "result_count": run.ResultCount}, map[string]string{"assessment_run": run.ID}, nil
@@ -285,7 +297,7 @@ func (s *Service) recordFailedRun(ctx context.Context, run AssessmentRun, code s
 	if err := s.appendRunDurably(ctx, workflowevents.EventKindComplianceAssessmentCompleted, "assessment_failed", run, expectedVersion); err != nil {
 		return err
 	}
-	return nil
+	return s.completeMonitorRun(ctx, run, false)
 }
 
 func (s *Service) cancelRun(ctx context.Context, run AssessmentRun) error {
@@ -304,7 +316,7 @@ func (s *Service) recordCancelledRun(ctx context.Context, run AssessmentRun) err
 	if err := s.appendRunDurably(ctx, workflowevents.EventKindComplianceAssessmentCancelled, "assessment_cancelled", run, expectedVersion); err != nil {
 		return err
 	}
-	return nil
+	return s.completeMonitorRun(ctx, run, false)
 }
 
 func manifestComplete(manifest InputManifest) bool {

@@ -428,7 +428,7 @@ LIMIT $2`, id, limit)
 }
 
 func (s *Store) ensureConnectorCredentialTable(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.connectorCredentialReady, "connector credential", ensureConnectorCredentialStatements)
+	return s.ensureStatements(ctx, &s.connector.credentials, "connector credential", ensureConnectorCredentialStatements)
 }
 
 type connectorCredentialScanner interface {
