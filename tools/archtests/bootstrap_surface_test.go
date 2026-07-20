@@ -155,7 +155,10 @@ import (
 // Canonical compliance work adds query composition and response mapping;
 // bounded queries and assurance verification remain in the domain and
 // state-store packages.
-const bootstrapProductionGoLineBudget = 29044
+// Portable audit-event reads add only authenticated route registration,
+// tenant resolution, safe error mapping, and state-store capability wiring.
+// Query bounds, cursors, and response allowlisting stay in auditevents.
+const bootstrapProductionGoLineBudget = 29114
 
 type bootstrapFileLineCount struct {
 	path  string

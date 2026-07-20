@@ -1009,6 +1009,50 @@ export type AssuranceVerificationProof = {
   verified_at?: string;
 };
 
+export type AuditEventActorV1 = {
+  id: string;
+  kind: string;
+  label: string;
+  [key: string]: unknown;
+};
+
+export type AuditEventPageV1 = {
+  events: AuditEventV1[];
+  next_cursor: string;
+  status: "complete" | "partial";
+  window: AuditEventWindowV1;
+  [key: string]: unknown;
+};
+
+export type AuditEventResourceV1 = {
+  id: string;
+  label: string;
+  type: string;
+  [key: string]: unknown;
+};
+
+export type AuditEventV1 = {
+  action: string;
+  actor?: AuditEventActorV1;
+  category: string;
+  duration_ms?: number;
+  id: string;
+  occurred_at: string;
+  outcome: "success" | "failure" | "denied" | "unknown";
+  request_id: string;
+  resource?: AuditEventResourceV1;
+  service: string;
+  summary: string;
+  trace_id: string;
+  [key: string]: unknown;
+};
+
+export type AuditEventWindowV1 = {
+  end_time: string;
+  start_time: string;
+  [key: string]: unknown;
+};
+
 export type AuthErrorResponse = {
   auth: AgentAuthDiscovery;
   error: string;

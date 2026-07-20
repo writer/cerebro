@@ -2032,6 +2032,106 @@ paths:
       responses:
         '200':
           description: Updated finding.
+  /platform/audit-events:
+    get:
+      operationId: listAuditEvents
+      summary: List normalized audit events
+      description: Returns one tenant-scoped, descending keyset page from a bounded time window. The contract exposes only normalized allowlisted fields and never returns raw payloads or provider attributes. Text maxLength values are enforced as Unicode code-point counts after UTF-8 validation.
+      tags:
+        - Platform
+      parameters:
+        - name: tenant_id
+          in: query
+          required: false
+          description: Optional tenant override constrained by the authenticated principal.
+          schema:
+            type: string
+            maxLength: 200
+        - name: minutes
+          in: query
+          required: false
+          description: Size of the immutable lookback window. Continuation cursors preserve the first page window.
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 1440
+            default: 60
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Client-controlled base64url-encoded resume state. Its unkeyed checksum detects accidental corruption but is not an integrity or authentication token. The server reauthorizes the tenant and validates the filters, time window, and keyset boundary on every request; no authorization or evidence decision relies on cursor contents.
+          schema:
+            type: string
+            maxLength: 2048
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: actor
+          in: query
+          required: false
+          description: Exact case-insensitive actor ID or label.
+          schema:
+            type: string
+            maxLength: 200
+        - name: outcome
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [success, failure, denied, unknown]
+        - name: q
+          in: query
+          required: false
+          description: Bounded text match over action, approved actor and resource labels, and summary.
+          schema:
+            type: string
+            maxLength: 200
+        - name: resource_type
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: service
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: trace_id
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+      responses:
+        '200':
+          description: A complete or explicitly partial page of normalized audit events.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventPageV1'
+        '400':
+          description: A time, limit, cursor, or filter bound is invalid.
+        '403':
+          description: The authenticated principal cannot read the selected tenant.
+        '503':
+          description: A conforming audit-event reader is not configured or returned an invalid page.
   /platform/graph/actions:
     post:
       summary: Execute graph action
@@ -6819,6 +6919,106 @@ components:
       schema:
         type: string
   schemas:
+    AuditEventActorV1:
+      type: object
+      additionalProperties: false
+      required: [id, kind, label]
+      properties:
+        id:
+          type: string
+          maxLength: 200
+        kind:
+          type: string
+          maxLength: 200
+        label:
+          type: string
+          maxLength: 200
+    AuditEventResourceV1:
+      type: object
+      additionalProperties: false
+      required: [id, type, label]
+      properties:
+        id:
+          type: string
+          maxLength: 200
+        type:
+          type: string
+          maxLength: 200
+        label:
+          type: string
+          maxLength: 200
+    AuditEventV1:
+      type: object
+      additionalProperties: false
+      required: [id, action, category, occurred_at, outcome, request_id, service, summary, trace_id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 200
+        action:
+          type: string
+          minLength: 1
+          maxLength: 200
+        actor:
+          $ref: '#/components/schemas/AuditEventActorV1'
+        category:
+          type: string
+          maxLength: 200
+        duration_ms:
+          type: integer
+          format: int64
+          minimum: 0
+        occurred_at:
+          type: string
+          format: date-time
+        outcome:
+          type: string
+          enum: [success, failure, denied, unknown]
+        request_id:
+          type: string
+          maxLength: 200
+        resource:
+          $ref: '#/components/schemas/AuditEventResourceV1'
+        service:
+          type: string
+          maxLength: 200
+        summary:
+          type: string
+          maxLength: 500
+        trace_id:
+          type: string
+          maxLength: 200
+    AuditEventWindowV1:
+      type: object
+      additionalProperties: false
+      required: [start_time, end_time]
+      properties:
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+    AuditEventPageV1:
+      type: object
+      additionalProperties: false
+      required: [events, next_cursor, status, window]
+      properties:
+        events:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/AuditEventV1'
+        next_cursor:
+          type: string
+          maxLength: 2048
+          description: Client-controlled encoded resume state for the next page. It carries no authority; the server validates and reauthorizes every request.
+        status:
+          type: string
+          enum: [complete, partial]
+        window:
+          $ref: '#/components/schemas/AuditEventWindowV1'
     AssessmentControlRef:
       type: object
       required: [control_id]
