@@ -465,6 +465,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			eventLimitReached = true
 			shortCircuitReason = syncEventLimitReachedReason
 		}
+		candidateRuntime := cloneRuntime(runtime)
 		recordsScanned += eventsRead
 		pageReadAttrs := withFamilyFreshnessTelemetry(telemetry.Attrs(
 			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
@@ -491,7 +492,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			category := rejection.Code
 			lastQuarantineCategory = category
 			syncedEvent := materializedEvents[*rejection.InputIndex]
-			recordRuntimeInvalidEventField(runtime, syncedEvent, category, rejection.Field, time.Now().UTC(), len(eventContracts) > 0)
+			recordRuntimeInvalidEventField(candidateRuntime, syncedEvent, category, rejection.Field, time.Now().UTC(), len(eventContracts) > 0)
 			telemetry.Event(ctx, "source_runtime.invalid_event", telemetry.Attrs(
 				telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
 				telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
@@ -504,7 +505,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				telemetry.Field{Key: "source_runtime.invalid_event.last_failure_category", Value: category},
 				telemetry.Field{Key: "source_runtime.invalid_event.last_retryable", Value: false},
 			))
-			emitSourceRuntimeValidation(ctx, runtime, category)
+			emitSourceRuntimeValidation(ctx, candidateRuntime, category)
 		}
 		admissionAttrs := telemetry.Attrs(
 			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
@@ -523,31 +524,32 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		telemetry.IncrementMain(ctx, "source_runtime.event_admission.count", 1)
 		telemetry.AnnotateMain(ctx, admissionAttrs)
 		if pull.Checkpoint != nil {
-			advanceRuntimeCheckpoint(runtime, pull.Checkpoint)
+			advanceRuntimeCheckpoint(candidateRuntime, pull.Checkpoint)
 		}
-		runtime.NextCursor = cloneCursor(pull.NextCursor)
+		candidateRuntime.NextCursor = cloneCursor(pull.NextCursor)
 		pagesRead++
 		ledger, ledgerEnabled := s.store.(ports.SourceRuntimePageLedgerStore)
 		attemptID := sourceRuntimePageAttemptID(runtime.GetId(), pageNumber, started)
 		if ledgerEnabled {
 			if err := ledger.BeginSourceRuntimePage(ctx, ports.SourceRuntimePageAttempt{
 				AttemptID:      attemptID,
-				RuntimeID:      runtime.GetId(),
-				SourceID:       runtime.GetSourceId(),
-				TenantID:       runtime.GetTenantId(),
+				RuntimeID:      candidateRuntime.GetId(),
+				SourceID:       candidateRuntime.GetSourceId(),
+				TenantID:       candidateRuntime.GetTenantId(),
 				PageNumber:     pageNumber,
 				RecordsScanned: boundedUint32(admission.Receipt.Scanned),
 				Events:         acceptedEvents,
 				Admission: ports.SourceRuntimePageAdmission{
-					Kernel:         "sourceruntime-event-admission",
-					ABIVersion:     eventadmission.ABIVersion,
-					Scanned:        boundedUint32(admission.Receipt.Scanned),
-					Accepted:       boundedUint32(admission.Receipt.Accepted),
-					Quarantined:    boundedUint32(admission.Receipt.Quarantined),
-					Duplicates:     boundedUint32(admission.Receipt.Duplicates),
-					ScannedSHA256:  admission.Receipt.ScannedSHA256,
-					AcceptedSHA256: admission.Receipt.AcceptedSHA256,
-					ResultSHA256:   admission.Receipt.ResultSHA256,
+					Kernel:          "sourceruntime-event-admission",
+					ABIVersion:      eventadmission.ABIVersion,
+					Scanned:         boundedUint32(admission.Receipt.Scanned),
+					Accepted:        boundedUint32(admission.Receipt.Accepted),
+					Quarantined:     boundedUint32(admission.Receipt.Quarantined),
+					Duplicates:      boundedUint32(admission.Receipt.Duplicates),
+					ContractsSHA256: admission.Receipt.ContractsSHA256,
+					ScannedSHA256:   admission.Receipt.ScannedSHA256,
+					AcceptedSHA256:  admission.Receipt.AcceptedSHA256,
+					ResultSHA256:    admission.Receipt.ResultSHA256,
 				},
 			}); err != nil {
 				return nil, err
@@ -593,28 +595,29 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				return nil, err
 			}
 		}
-		runtime.LastSyncedAt = timestamppb.Now()
-		updateRuntimeSyncStatus(runtime, runtimeSyncStatus{
+		candidateRuntime.LastSyncedAt = timestamppb.Now()
+		updateRuntimeSyncStatus(candidateRuntime, runtimeSyncStatus{
 			Status:               "completed",
 			RecordsScanned:       recordsScanned,
 			RecordsAccepted:      eventsAppended,
 			RecordsRejected:      recordsRejected,
 			EntitiesProjected:    entitiesProjected,
 			LinksProjected:       linksProjected,
-			CompletedAt:          runtime.GetLastSyncedAt().AsTime().UTC(),
+			CompletedAt:          candidateRuntime.GetLastSyncedAt().AsTime().UTC(),
 			ContractConfigured:   len(eventContracts) > 0,
 			ShortCircuitReason:   shortCircuitReason,
 			ReconciliationReason: reconciliationReason,
 		})
 		if ledgerEnabled {
-			if err := ledger.CommitSourceRuntimePage(ctx, attemptID, runtime); err != nil {
+			if err := ledger.CommitSourceRuntimePage(ctx, attemptID, candidateRuntime); err != nil {
 				return nil, err
 			}
 		} else {
-			if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
+			if err := s.store.PutSourceRuntime(ctx, candidateRuntime); err != nil {
 				return nil, err
 			}
 		}
+		runtime = candidateRuntime
 		checkpointAdvanced = runtimeCheckpointAdvanced(originalCheckpoint, runtime.GetCheckpoint())
 		pageCommittedAttrs := withFamilyFreshnessTelemetry(telemetry.Attrs(
 			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},

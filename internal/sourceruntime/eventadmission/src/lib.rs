@@ -23,11 +23,11 @@ use sha2::{Digest, Sha256};
 #[cfg(target_arch = "wasm32")]
 mod wasm_abi;
 
-pub const ABI_VERSION: u32 = 1;
+pub const ABI_VERSION: u32 = 2;
 pub const MAX_INPUT_BYTES: usize = 32 << 20;
 pub const MAX_OUTPUT_BYTES: usize = 8 << 20;
 
-const SCHEMA_VERSION: &str = "source-event-admission.v1";
+const SCHEMA_VERSION: &str = "source-event-admission.v2";
 const MAX_EVENTS: usize = 5_000;
 const MAX_CONTRACTS: usize = 4_096;
 const MAX_ATTRIBUTES: usize = 512;
@@ -89,7 +89,7 @@ pub enum AdmissionOutcome {
 pub struct AdmissionResponse {
     pub schema_version: String,
     pub accepted: Vec<AcceptedEvent>,
-    pub quarantined: Vec<EventRejection>,
+    pub quarantined: Vec<QuarantinedEvent>,
     pub duplicates: Vec<DuplicateEvent>,
     pub receipt: AdmissionReceipt,
 }
@@ -111,6 +111,16 @@ pub struct EventRejection {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct QuarantinedEvent {
+    pub input_index: usize,
+    pub event_id: String,
+    pub event_sha256: String,
+    pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DuplicateEvent {
     pub input_index: usize,
     pub first_input_index: usize,
@@ -124,9 +134,20 @@ pub struct AdmissionReceipt {
     pub accepted: usize,
     pub quarantined: usize,
     pub duplicates: usize,
+    pub contracts_sha256: String,
     pub scanned_sha256: String,
     pub accepted_sha256: String,
     pub result_sha256: String,
+}
+
+#[derive(Serialize)]
+struct AdmissionReceiptBody<'a> {
+    schema_version: &'a str,
+    contracts_sha256: &'a str,
+    scanned_sha256: &'a str,
+    accepted: &'a [AcceptedEvent],
+    quarantined: &'a [QuarantinedEvent],
+    duplicates: &'a [DuplicateEvent],
 }
 
 impl EventRejection {
@@ -189,6 +210,11 @@ pub fn admit(request: AdmissionRequest) -> AdmissionOutcome {
         Ok(contracts) => contracts,
         Err(rejection) => return rejected(rejection),
     };
+    let normalized_contracts = contracts.values().collect::<Vec<_>>();
+    let contracts_sha256 = match canonical_digest(&normalized_contracts) {
+        Ok(digest) => digest,
+        Err(rejection) => return rejected(rejection),
+    };
 
     let mut accepted = Vec::with_capacity(request.events.len());
     let mut quarantined = Vec::new();
@@ -209,7 +235,13 @@ pub fn admit(request: AdmissionRequest) -> AdmissionOutcome {
         match validate_event(input_index, event, &payload, &contracts) {
             EventDecision::Accept => {}
             EventDecision::Quarantine(rejection) => {
-                quarantined.push(rejection);
+                quarantined.push(QuarantinedEvent {
+                    input_index,
+                    event_id: event.id.clone(),
+                    event_sha256,
+                    code: rejection.code,
+                    field: rejection.field,
+                });
                 continue;
             }
             EventDecision::Reject(rejection) => return rejected(rejection),
@@ -244,9 +276,15 @@ pub fn admit(request: AdmissionRequest) -> AdmissionOutcome {
 
     let scanned_sha256 = digest_serializable(&scanned_digests).unwrap_or_default();
     let accepted_sha256 = digest_serializable(&accepted).unwrap_or_default();
-    let result_sha256 =
-        digest_serializable(&(&scanned_sha256, &accepted, &quarantined, &duplicates))
-            .unwrap_or_default();
+    let result_sha256 = digest_serializable(&AdmissionReceiptBody {
+        schema_version: SCHEMA_VERSION,
+        contracts_sha256: &contracts_sha256,
+        scanned_sha256: &scanned_sha256,
+        accepted: &accepted,
+        quarantined: &quarantined,
+        duplicates: &duplicates,
+    })
+    .unwrap_or_default();
     AdmissionOutcome::Admitted {
         response: AdmissionResponse {
             schema_version: SCHEMA_VERSION.to_owned(),
@@ -255,6 +293,7 @@ pub fn admit(request: AdmissionRequest) -> AdmissionOutcome {
                 accepted: accepted.len(),
                 quarantined: quarantined.len(),
                 duplicates: duplicates.len(),
+                contracts_sha256,
                 scanned_sha256,
                 accepted_sha256,
                 result_sha256,
@@ -699,11 +738,19 @@ mod tests {
 
     #[test]
     fn quarantines_missing_contract_fields_without_admitting_them() {
-        let outcome = admit(request(vec![event("event-1", json!({"name":"A"}))]));
+        let quarantined_event = event("event-1", json!({"name":"A"}));
+        let expected_digest = canonical_digest(&EventReceiptInput::new(
+            &quarantined_event,
+            &json!({"name":"A"}),
+        ))
+        .expect("event receipt serializes");
+        let outcome = admit(request(vec![quarantined_event]));
         let AdmissionOutcome::Admitted { response } = outcome else {
             panic!("missing field is a bounded quarantine");
         };
         assert!(response.accepted.is_empty());
+        assert_eq!(response.quarantined[0].event_id, "event-1");
+        assert_eq!(response.quarantined[0].event_sha256, expected_digest);
         assert_eq!(
             response.quarantined[0].code,
             "missing_required_payload_field"
@@ -727,6 +774,57 @@ mod tests {
         };
         assert_ne!(first.receipt.scanned_sha256, second.receipt.scanned_sha256);
         assert_ne!(first.receipt.result_sha256, second.receipt.result_sha256);
+    }
+
+    #[test]
+    fn receipt_binds_normalized_contract_semantics() {
+        let source_event = event("event-1", json!({"identity":{"id":"user-1"}}));
+        let mut reordered = contract();
+        reordered.required_attributes = vec!["resource_id".to_owned(), "resource_id".to_owned()];
+        reordered.required_payload_fields = vec![
+            "user.id".to_owned(),
+            "identity.id|user.id".to_owned(),
+            "user.id".to_owned(),
+        ];
+        let mut equivalent = reordered.clone();
+        equivalent.required_payload_fields.reverse();
+        let left = admit(AdmissionRequest {
+            schema_version: SCHEMA_VERSION.to_owned(),
+            contracts: vec![reordered],
+            events: vec![source_event.clone()],
+        });
+        let right = admit(AdmissionRequest {
+            schema_version: SCHEMA_VERSION.to_owned(),
+            contracts: vec![equivalent],
+            events: vec![source_event.clone()],
+        });
+        let mut changed = contract();
+        changed
+            .required_payload_fields
+            .push("identity.name".to_owned());
+        let changed = admit(AdmissionRequest {
+            schema_version: SCHEMA_VERSION.to_owned(),
+            contracts: vec![changed],
+            events: vec![source_event],
+        });
+        let (
+            AdmissionOutcome::Admitted { response: left },
+            AdmissionOutcome::Admitted { response: right },
+            AdmissionOutcome::Admitted { response: changed },
+        ) = (left, right, changed)
+        else {
+            panic!("bounded contract decisions must be admitted outcomes");
+        };
+        assert_eq!(
+            left.receipt.contracts_sha256,
+            right.receipt.contracts_sha256
+        );
+        assert_eq!(left.receipt.result_sha256, right.receipt.result_sha256);
+        assert_ne!(
+            left.receipt.contracts_sha256,
+            changed.receipt.contracts_sha256
+        );
+        assert_ne!(left.receipt.result_sha256, changed.receipt.result_sha256);
     }
 
     #[test]
@@ -799,8 +897,40 @@ mod tests {
     }
 
     #[test]
+    fn largest_quarantine_page_fits_the_declared_output_budget() {
+        let kind = format!("a.{}", "b".repeat(MAX_TEXT_BYTES - 2));
+        let field = "x".repeat(MAX_TEXT_BYTES);
+        let contract = EventContract {
+            kind: kind.clone(),
+            schema_ref: String::new(),
+            required_attributes: vec![field],
+            required_payload_fields: vec![],
+        };
+        let events = (0..MAX_EVENTS)
+            .map(|index| {
+                let mut source_event = event(
+                    &format!("{index:04}-{}", "e".repeat(MAX_TEXT_BYTES - 5)),
+                    json!({}),
+                );
+                source_event.kind = kind.clone();
+                source_event.attributes.clear();
+                source_event
+            })
+            .collect();
+        let request = AdmissionRequest {
+            schema_version: SCHEMA_VERSION.to_owned(),
+            contracts: vec![contract],
+            events,
+        };
+        let input = serde_json::to_vec(&request).expect("largest bounded request serializes");
+        assert!(input.len() <= MAX_INPUT_BYTES);
+        let output = evaluate_json(&input).expect("largest bounded quarantine output fits");
+        assert!(output.len() <= MAX_OUTPUT_BYTES);
+    }
+
+    #[test]
     fn json_boundary_rejects_unknown_fields() {
-        assert!(evaluate_json(br#"{"schema_version":"source-event-admission.v1","events":[],"contracts":[],"unknown":true}"#).is_err());
+        assert!(evaluate_json(br#"{"schema_version":"source-event-admission.v2","events":[],"contracts":[],"unknown":true}"#).is_err());
     }
 
     #[test]
