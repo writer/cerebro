@@ -1,5 +1,5 @@
 export function hasSecuritySignal(value: string): boolean {
-  return /\b(admin|anomaly|attack|credential|critical|cve|exfil|exposure|high|malware|mfa|okta|phishing|privilege|root|secret|suspicious|token|vulnerability)\b/i.test(value);
+  return /\b(admin|anomaly|attack|breach|compromis(?:e|ed)|credential|critical|cve|detect(?:ion|ed)|exfil|exploit(?:ed)?|exposure|high|iam|leak(?:ed)?|malware|mfa|okta|phishing|privilege|public|ransomware|root|secret|suspicious|token|unauthori[sz]ed|vulnerabilit(?:y|ies))\b/i.test(value);
 }
 
 export function hasSpecificText(items: readonly string[]): boolean {

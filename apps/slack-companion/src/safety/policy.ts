@@ -1,5 +1,8 @@
 export type SafetyCategory =
   | "destructive_infrastructure"
+  | "mass_dismissal"
+  | "privilege_escalation"
+  | "security_control_weakening"
   | "self_modification"
   | "secret_exfiltration"
   | "prompt_injection";
@@ -43,6 +46,30 @@ export function assessDangerousIntent(text: string | undefined): SafetyDecision 
       "prompt_injection",
       "The request attempts to override Cerebro's operating instructions.",
       "I cannot follow instructions that override my safety rules or system behavior. I can still help with a concrete security question or a reviewed operational change.",
+    );
+  }
+
+  if (privilegeEscalationPattern(normalized)) {
+    return blocked(
+      "privilege_escalation",
+      "The request asks Cerebro to grant or expand privileged access.",
+      "I cannot grant admin, root, owner, or broad privileged access from Slack. I can help identify the current owner, required approval path, and least-privilege access needed for a reviewed change.",
+    );
+  }
+
+  if (securityControlWeakeningPattern(normalized)) {
+    return blocked(
+      "security_control_weakening",
+      "The request asks Cerebro to disable or weaken a security control.",
+      "I cannot disable or weaken MFA, SSO, endpoint protection, scanning, branch protection, detections, or alerting from Slack. I can help draft a reviewed exception with scope, expiry, evidence, and rollback criteria.",
+    );
+  }
+
+  if (massDismissalPattern(normalized)) {
+    return blocked(
+      "mass_dismissal",
+      "The request asks Cerebro to dismiss many security records without individual review.",
+      "I cannot bulk-close, suppress, snooze, or ignore findings, alerts, incidents, or vulnerabilities without reviewed evidence. I can help group candidates and prepare a bounded review plan.",
     );
   }
 
@@ -99,6 +126,28 @@ function promptInjectionPattern(value: string): boolean {
   return /\b(ignore (all )?((previous|system|developer)( (system|developer))?) instructions|reveal (the )?(system|developer) prompt|show (the )?(system|developer) prompt|do not follow (the )?(system|developer|safety) rules|bypass (safety|guardrails)|jailbreak)\b/.test(value);
 }
 
+function privilegeEscalationPattern(value: string): boolean {
+  return (
+    /\b(grant|give|make|promote|add|assign|set)\b.{0,80}\b(admin|administrator|root|owner|superuser|all permissions?|full access|privileged access)\b/.test(value)
+    || /\b(admin|administrator|root|owner|superuser)\b.{0,80}\b(access|role|permission|privilege)\b/.test(value)
+  ) && operatorIntent(value);
+}
+
+function securityControlWeakeningPattern(value: string): boolean {
+  return /\b(disable|turn off|bypass|weaken|remove|shut off|stop|skip)\b.{0,80}\b(mfa|2fa|sso|edr|endpoint protection|security scanning|scanner|security ci|branch protection|detections?|alerts?|alerting|audit log|logging)\b/.test(value)
+    && operatorIntent(value);
+}
+
+function massDismissalPattern(value: string): boolean {
+  return /\b(close|resolve|dismiss|snooze|suppress|ignore|mark)\b.{0,40}\b(all|every|bulk|everything)\b.{0,80}\b(findings?|alerts?|incidents?|vulnerabilit(?:y|ies)|violations?)\b/.test(value)
+    || /\b(all|every|bulk|everything)\b.{0,40}\b(findings?|alerts?|incidents?|vulnerabilit(?:y|ies)|violations?)\b.{0,80}\b(close|resolved|dismissed|snoozed|suppressed|ignored)\b/.test(value);
+}
+
 function startsWithDestructiveVerb(value: string): boolean {
   return /^(delete|drop|truncate|wipe|destroy|purge|erase|nuke|reset|remove|decommission|tear down|shred)\b/.test(value);
+}
+
+function operatorIntent(value: string): boolean {
+  return /\b(can you|please|do it|go ahead|run|execute|perform|start|make|force|just|now|for me)\b/.test(value)
+    || /^(grant|give|make|promote|add|assign|set|disable|turn off|bypass|weaken|remove|shut off|stop|skip)\b/.test(value);
 }

@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 
 import {
   redactSecurityText,
+  redactSecurityTextWithReceipt,
   SecurityRedactionInputError,
 } from "../src/security/redaction.js";
 
@@ -41,6 +42,30 @@ describe("security text redaction", () => {
       redactSecurityText(input),
       "token=[redacted_secret]; PASSWORD=[redacted_secret]; bearer=[redacted_secret]",
     );
+  });
+
+  test("returns deterministic redaction metadata and caller-selected labels", () => {
+    const input = [
+      ["xoxb", "synthetic", "fixture"].join("-"),
+      ["AK", "IA", "A".repeat(16)].join(""),
+      ["token", "=", "synthetic-fixture"].join(""),
+    ].join("\n");
+
+    assert.deepEqual(redactSecurityTextWithReceipt(input, {
+      labels: {
+        cloud_access_key: "[redacted_access_key]",
+        slack_token: "[redacted_token]",
+      },
+    }), {
+      redacted_text: [
+        "[redacted_token]",
+        "[redacted_access_key]",
+        "token=[redacted_secret]",
+      ].join("\n"),
+      redaction_classes: ["assigned_secret", "cloud_access_key", "slack_token"],
+      redaction_count: 3,
+      schema_version: "security-redaction-receipt/v1",
+    });
   });
 
   test("preserves ordinary security text and identifier names", () => {

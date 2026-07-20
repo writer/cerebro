@@ -4,6 +4,7 @@ import type { DeliveryReceiptV1 } from "../src/delivery/contracts.js";
 import {
   MAX_SLACK_MESSAGE_PART_LENGTH,
   MAX_SLACK_MESSAGE_SOURCE_LENGTH,
+  planSlackRichMessage,
   planSlackMessage,
   projectSlackMessages,
   projectSlackMultipartDelivery,
@@ -53,6 +54,55 @@ test("message plans keep raw URLs inert in canonical payloads", () => {
   assert.equal(plan.parts[0]?.payload.link_names, false);
   assert.equal(plan.parts[0]?.payload.unfurl_links, false);
   assert.equal(plan.parts[0]?.payload.unfurl_media, false);
+});
+
+test("rich message plans render citations, lists, and code into inert payloads", () => {
+  const plan = planSlackRichMessage("run-one:rich", {
+    schema_version: "slack-rich-message-input/v1",
+    segments: [
+      { text: "Evidence-backed answer for <@U123>.", type: "text" },
+      {
+        items: ["Owner is missing.", "MFA is enabled."],
+        title: "Checks",
+        type: "list",
+      },
+      {
+        evidence_ref: "evidence://receipt/abc",
+        label: "Current owner receipt",
+        type: "citation",
+      },
+      {
+        code: "MATCH (n) RETURN n LIMIT 5",
+        label: "Read-only query",
+        type: "code",
+      },
+    ],
+  });
+
+  const text = plan.parts.map((part) => part.payload.text).join("");
+  assert.match(text, /Source: Current owner receipt \(evidence:\/\/receipt\/abc\)/);
+  assert.match(text, /- Owner is missing\./);
+  assert.match(text, /```\nMATCH \(n\) RETURN n LIMIT 5\n```/);
+  assert.equal(plan.parts[0]?.payload.mrkdwn, false);
+  assert.equal(plan.parts[0]?.payload.link_names, false);
+  assert.equal(JSON.stringify(plan).includes('"type":"mrkdwn"'), false);
+});
+
+test("rich message planning rejects unsupported citation and list shapes", () => {
+  assert.throws(
+    () => planSlackRichMessage("run-one:bad-ref", {
+      schema_version: "slack-rich-message-input/v1",
+      segments: [{ evidence_ref: "not a ref", label: "Bad ref", type: "citation" }],
+    }),
+    /opaque reference/,
+  );
+  assert.throws(
+    () => planSlackRichMessage("run-one:bad-list", {
+      schema_version: "slack-rich-message-input/v1",
+      segments: [{ items: [], type: "list" }],
+    }),
+    /rich list segment is invalid/,
+  );
 });
 
 test("message projections preserve multipart retry and resume identities", () => {

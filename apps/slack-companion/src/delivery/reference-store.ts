@@ -7,6 +7,7 @@ import type {
   DeliveryPartClaim,
   DeliveryPlanResult,
   DeliveryReceiptV1,
+  DeliveryRetryPolicyV1,
   DurableDeliveryPlan,
   WorkLeaseV1,
 } from "./contracts.js";
@@ -20,9 +21,11 @@ interface StoredDelivery {
   attempts: Map<string, number>;
   claims: Map<string, DeliveryPartClaim>;
   maxAttempts: number;
+  nextAttemptAt: Map<string, string>;
   pausedStates: Map<string, DeliveryReceiptV1["parts"][number]["state"]>;
   payloadFingerprint: string;
   receipt: DeliveryReceiptV1;
+  retryPolicy?: DeliveryRetryPolicyV1;
 }
 
 /** Conformance fixture only. Production adapters must use durable storage. */
@@ -57,9 +60,11 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
       attempts: new Map(),
       claims: new Map(),
       maxAttempts: delivery.max_attempts,
+      nextAttemptAt: new Map(),
       pausedStates: new Map(),
       payloadFingerprint: delivery.payload_fingerprint,
       receipt: copy(delivery.receipt),
+      ...(delivery.retry_policy === undefined ? {} : { retryPolicy: copy(delivery.retry_policy) }),
     });
     return Promise.resolve({ created: true, receipt: copy(delivery.receipt) });
   }
@@ -122,6 +127,18 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
         status: "idle",
       };
     }
+    const nextAttemptAt = stored.nextAttemptAt.get(part.part_id);
+    if (
+      nextAttemptAt !== undefined
+      && Date.parse(nextAttemptAt) > Date.parse(request.now)
+    ) {
+      return {
+        next_attempt_at: nextAttemptAt,
+        reason: "waiting_for_retry",
+        receipt: copy(stored.receipt),
+        status: "idle",
+      };
+    }
     const priorClaim = stored.claims.get(part.part_id);
     if (priorClaim !== undefined) {
       if (sameLease(priorClaim.lease, request.lease)) {
@@ -150,6 +167,7 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
     };
     stored.attempts.set(part.part_id, claim.attempt);
     stored.claims.set(part.part_id, copy(claim));
+    stored.nextAttemptAt.delete(part.part_id);
     part.state = "delivering";
     stored.receipt.state = "delivering";
     stored.receipt.updated_at = request.now;
@@ -268,6 +286,12 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
     this.requireClaim(stored, request.part_id, request.lease, request.failed_at);
     part.state = "failed";
     stored.claims.delete(request.part_id);
+    if ((stored.attempts.get(part.part_id) ?? 0) < stored.maxAttempts) {
+      const nextAttemptAt = nextDeliveryAttemptAt(stored, part.part_id, request.failed_at);
+      if (nextAttemptAt !== undefined) {
+        stored.nextAttemptAt.set(part.part_id, nextAttemptAt);
+      }
+    }
     stored.receipt.updated_at = request.failed_at;
     stored.receipt.state = aggregate(stored);
     return Promise.resolve(copy(stored.receipt));
@@ -354,6 +378,21 @@ export class ReferenceMemoryDeliveryStore implements DurableDeliveryPort {
     }
     return delivery;
   }
+}
+
+function nextDeliveryAttemptAt(
+  stored: StoredDelivery,
+  partId: string,
+  failedAt: string,
+): string | undefined {
+  const policy = stored.retryPolicy;
+  if (policy === undefined) return undefined;
+  const attempts = stored.attempts.get(partId) ?? 0;
+  const delaySeconds = Math.min(
+    policy.max_delay_seconds,
+    policy.initial_delay_seconds * Math.pow(policy.multiplier, Math.max(0, attempts - 1)),
+  );
+  return new Date(Date.parse(failedAt) + delaySeconds * 1_000).toISOString();
 }
 
 function aggregate(stored: StoredDelivery): DeliveryReceiptV1["state"] {

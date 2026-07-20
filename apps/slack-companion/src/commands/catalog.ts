@@ -146,8 +146,8 @@ export function parseSlackCommand(
   options: SlackRememberCommandOptions = {},
 ): ParsedSlackCommandV1 {
   const normalized = normalizeCommandText(text);
-  validateWords(normalized);
   const parsed = commandRegistry.parse(normalized);
+  validateParsedCommand(parsed);
   if (parsed.name !== "remember" || options.author_name === undefined) return parsed;
   const remember = parseSlackRememberCommand(
     `remember ${parsed.remember.content}`,
@@ -263,5 +263,22 @@ function validateWords(text: string): void {
     || words.some((word) => Buffer.byteLength(word, "utf8") > MAX_COMMAND_WORD_LENGTH)
   ) {
     throw new SlackCommandParseError("The Slack command arguments exceed supported bounds.");
+  }
+}
+
+function validateParsedCommand(command: ParsedSlackCommandV1): void {
+  switch (command.name) {
+    case "status":
+      if (command.status_scope === "target") validateWords(command.target_hint ?? "");
+      return;
+    case "triage":
+    case "watch":
+    case "recheck":
+      validateWords(command.target_hint);
+      return;
+    case "ask":
+    case "help":
+    case "remember":
+      return;
   }
 }

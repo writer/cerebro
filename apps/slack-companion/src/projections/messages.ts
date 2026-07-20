@@ -10,6 +10,7 @@ import {
   normalizeSlackText,
   projectSlackBlocks,
   requireSlackKey,
+  requireSlackOpaqueRef,
   sha256,
   type SlackBlockV1,
 } from "./blocks.js";
@@ -44,6 +45,32 @@ export interface SlackMessagePlanV1 {
   readonly source_digest: `sha256:${string}`;
 }
 
+export type SlackRichMessageSegmentV1 =
+  | {
+      readonly text: string;
+      readonly type: "text";
+    }
+  | {
+      readonly code: string;
+      readonly label?: string;
+      readonly type: "code";
+    }
+  | {
+      readonly evidence_ref: string;
+      readonly label: string;
+      readonly type: "citation";
+    }
+  | {
+      readonly items: readonly string[];
+      readonly title?: string;
+      readonly type: "list";
+    };
+
+export interface SlackRichMessageInputV1 {
+  readonly segments: readonly SlackRichMessageSegmentV1[];
+  readonly schema_version: "slack-rich-message-input/v1";
+}
+
 export interface SlackMessagePartProjectionV1 {
   readonly acceptance?: SlackMultipartAcceptanceV1;
   readonly client_message_id: string;
@@ -68,6 +95,25 @@ export interface SlackMessageProjectionV1 {
 }
 
 export class SlackMessageProjectionError extends Error {}
+
+/** Renders a bounded rich answer shape into the same inert Slack payload plan. */
+export function planSlackRichMessage(
+  messageKey: string,
+  input: SlackRichMessageInputV1,
+): SlackMessagePlanV1 {
+  if (
+    input.schema_version !== "slack-rich-message-input/v1" ||
+    !Array.isArray(input.segments) ||
+    input.segments.length === 0 ||
+    input.segments.length > 32
+  ) {
+    throw new SlackMessageProjectionError("Slack rich message input is invalid.");
+  }
+  const rendered = input.segments.map((segment, index) =>
+    renderRichSegment(segment, index + 1)
+  ).join("\n\n");
+  return planSlackMessage(messageKey, rendered);
+}
 
 /** Builds the payload bytes that must be stored before a durable delivery plan. */
 export function planSlackMessage(
@@ -102,6 +148,47 @@ export function planSlackMessage(
     schema_version: "slack-message-plan/v1",
     source_digest: `sha256:${sha256(normalized)}`,
   });
+}
+
+function renderRichSegment(
+  segment: SlackRichMessageSegmentV1,
+  sequence: number,
+): string {
+  switch (segment.type) {
+    case "text":
+      return normalizeSlackText(segment.text, `rich text segment ${sequence}`, 1_200);
+    case "code": {
+      const code = normalizeSlackText(segment.code, `rich code segment ${sequence}`, 1_600);
+      const label = segment.label === undefined
+        ? "Code"
+        : normalizeSlackText(segment.label, `rich code label ${sequence}`, 80);
+      return `${label}:\n\`\`\`\n${code}\n\`\`\``;
+    }
+    case "citation": {
+      const label = normalizeSlackText(
+        segment.label,
+        `rich citation label ${sequence}`,
+        160,
+      );
+      const evidenceRef = requireSlackOpaqueRef(
+        segment.evidence_ref,
+        `rich citation ref ${sequence}`,
+      );
+      return `Source: ${label} (${evidenceRef})`;
+    }
+    case "list": {
+      if (!Array.isArray(segment.items) || segment.items.length === 0 || segment.items.length > 12) {
+        throw new SlackMessageProjectionError("Slack rich list segment is invalid.");
+      }
+      const title = segment.title === undefined
+        ? ""
+        : `${normalizeSlackText(segment.title, `rich list title ${sequence}`, 120)}\n`;
+      const items = segment.items.map((item, index) =>
+        `- ${normalizeSlackText(item, `rich list item ${sequence}.${index + 1}`, 240)}`
+      );
+      return `${title}${items.join("\n")}`;
+    }
+  }
 }
 
 /** Joins stored payload truth to durable receipt identities and resume state. */
