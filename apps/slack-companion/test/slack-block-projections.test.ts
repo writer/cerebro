@@ -147,6 +147,16 @@ test("block projections reject sparse and executable caller-owned input", () => 
     }),
     /unsupported fields/,
   );
+  for (const action of [null, undefined]) {
+    assert.throws(
+      () => projectSlackBlocks({
+        actions: [action as never],
+        projection_key: "run-one:nullish-action",
+        sections: ["Choose an action."],
+      }),
+      SlackBlockProjectionError,
+    );
+  }
 
   let invoked = 0;
   const accessorAction = {

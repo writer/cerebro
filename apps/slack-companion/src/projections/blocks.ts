@@ -297,6 +297,11 @@ function snapshotActionInput(
   action: SlackActionInputV1,
   sequence: number,
 ): SlackActionInputV1 {
+  if (typeof action !== "object" || action === null) {
+    throw new SlackBlockProjectionError(
+      `Slack block action ${sequence} must be a plain record.`,
+    );
+  }
   const keys = Object.prototype.hasOwnProperty.call(action, "style")
     ? ["action_key", "label", "style", "value"]
     : ["action_key", "label", "value"];
