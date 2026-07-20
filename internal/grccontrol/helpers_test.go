@@ -563,9 +563,22 @@ func TestRenderCustomMarkdownDelegates(t *testing.T) {
 				ByStatus: map[compliance.ControlPostureStatus]int{},
 			},
 		},
+		ProfileFindingMatches: []ProfileFindingMatch{{
+			FindingID:             "finding-1",
+			FindingTitle:          "Privileged access review",
+			RuleID:                "privileged-access",
+			Status:                "open",
+			MappingBasis:          compliance.FindingProfileMappingDirect,
+			CoverageIndexVersion:  "2026-07-14",
+			CoverageIndexRevision: "sha256:content-revision-1",
+			MatchedControls:       []compliance.ControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
+		}},
+		ProfileMatchEvaluation: ProfileMatchEvaluation{EvaluatedFindings: 5, MatchedFindings: 1, EvaluationLimit: 500, ScanTruncated: true},
 	}
 	md := RenderCustomMarkdown(result)
-	if !strings.Contains(md, "Test Profile") {
-		t.Fatal("RenderCustomMarkdown should delegate to RenderMarkdown")
+	for _, want := range []string{"Test Profile", "## Profile Findings", "Privileged access review", "direct", "| Privileged access review | privileged-access | open | direct | SOC 2 CC6.1 | sha256:content-revision-1 |", "Scan truncated: true"} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("RenderCustomMarkdown() missing %q:\n%s", want, md)
+		}
 	}
 }

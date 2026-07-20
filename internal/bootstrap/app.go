@@ -45,6 +45,7 @@ import (
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/grcfindings"
 	platformjobs "github.com/writer/cerebro/internal/jobs"
 	"github.com/writer/cerebro/internal/knowledge"
 	knowledgetransport "github.com/writer/cerebro/internal/knowledge/transport"
@@ -176,6 +177,9 @@ type appConstructionOptions struct {
 
 func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry, options appConstructionOptions) (_ *App, err error) {
 	app := &App{cfg: cfg, deps: deps, sources: sources}
+	if err := grcfindings.ValidateBuiltinFindingProfileIndex(); err != nil {
+		return nil, fmt.Errorf("GRC finding profile bootstrap failed: %w", err)
+	}
 	transitKey, err := connectorTransitKeyFromConfig(cfg.ConnectorCredentials)
 	if err != nil {
 		return nil, err

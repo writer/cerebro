@@ -15,14 +15,19 @@ import (
 const grcExportLimit = grcMaxLimit
 
 func (a *App) handleGRCFindingsExport(w http.ResponseWriter, r *http.Request) {
-	items, _, err := a.grcFindingItemsFromRequest(r, grcExportLimit)
+	page, err := a.grcFindingItemsFromRequest(r, grcExportLimit)
 	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
-	rows := make([][]string, 0, len(items))
-	for _, item := range items {
+	rows := make([][]string, 0, len(page.Items))
+	for _, item := range page.Items {
 		rows = append(rows, grcFindingExportRow(item))
+	}
+	w.Header().Set("X-Cerebro-Result-Limit", strconv.FormatUint(uint64(page.Limit), 10))
+	w.Header().Set("X-Cerebro-Result-Truncated", strconv.FormatBool(page.Truncated))
+	if page.ProfileSummary != nil {
+		w.Header().Set("X-Cerebro-Profile-ID", page.ProfileSummary.ProfileID)
 	}
 	writeGRCCSV(w, grcExportFilename("findings"), grcFindingExportHeader(), rows)
 }
@@ -47,6 +52,8 @@ func grcFindingExportHeader() []string {
 		"owner", "assignee", "sla_status", "due_at",
 		"tenant_id", "runtime_id", "source_id", "entity",
 		"resource_urns", "rule_id", "policy_id", "policy_name", "controls",
+		"compliance_profile_ids", "compliance_profile_names", "coverage_index_versions", "coverage_index_revisions", "mapping_bases",
+		"matched_profile_controls", "matched_finding_controls", "mapping_paths",
 		"evidence_count", "first_observed_at", "last_observed_at",
 	}
 }
@@ -56,12 +63,15 @@ func grcFindingExportRow(item grcFindingItem) []string {
 	for _, control := range item.Controls {
 		controls = append(controls, strings.TrimSpace(control.FrameworkName+" "+control.ControlID))
 	}
+	profileFields := item.ProfileExportFields()
 	return []string{
 		item.ID, item.Title, item.Severity, item.Status, item.Disposition,
 		strconv.Itoa(item.RiskScore), item.LikelihoodLevel, item.ImpactLevel,
 		item.Owner, item.Assignee, item.SLAStatus, grcExportTime(item.DueAt),
 		item.TenantID, item.RuntimeID, item.SourceID, item.Entity,
 		strings.Join(item.ResourceURNs, "; "), item.RuleID, item.PolicyID, item.PolicyName, strings.Join(controls, "; "),
+		strings.Join(profileFields.IDs, "; "), strings.Join(profileFields.Names, "; "), strings.Join(profileFields.CoverageVersions, "; "), strings.Join(profileFields.CoverageRevisions, "; "), strings.Join(profileFields.MappingBases, "; "),
+		strings.Join(profileFields.MatchedProfileControls, "; "), strings.Join(profileFields.MatchedFindingControls, "; "), strings.Join(profileFields.MappingPaths, "; "),
 		strconv.Itoa(item.EvidenceCount), grcExportTime(item.FirstObservedAt), grcExportTime(item.LastObservedAt),
 	}
 }
