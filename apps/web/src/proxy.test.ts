@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 
 import { GRC_UPLOAD_MAX_BYTES } from "./lib/grc-upload-limits";
+import { ASK_AGENT_REQUEST_MAX_BYTES } from "./lib/ask-images";
 import { config, proxy } from "./proxy";
 
 const request = (method: string, path: string, headers?: Record<string, string>) =>
@@ -37,6 +38,22 @@ describe("proxy", () => {
   it("rejects oversized POST requests to API routes", () => {
     const response = proxy(request("POST", "/api/cerebro/grc/ask", {
       "content-length": String(10 * 1024 * 1024),
+    }));
+    expect(response.status).toBe(413);
+  });
+
+  it("allows image-bearing agent requests up to the image request limit", () => {
+    const response = proxy(request("POST", "/api/agent/ask", {
+      "content-length": String(ASK_AGENT_REQUEST_MAX_BYTES - 1024),
+      "content-type": "application/json",
+    }));
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects agent requests above the image request limit", () => {
+    const response = proxy(request("POST", "/api/agent/ask", {
+      "content-length": String(ASK_AGENT_REQUEST_MAX_BYTES + 1),
+      "content-type": "application/json",
     }));
     expect(response.status).toBe(413);
   });

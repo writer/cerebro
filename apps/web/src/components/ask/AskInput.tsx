@@ -1,13 +1,23 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
-import { type KeyboardEvent, useEffect } from "react";
+import { type KeyboardEvent, useEffect, useState } from "react";
 
+import ImageAttachments from "@/components/ask/ImageAttachments";
 import type { AskAgentReadiness } from "@/lib/ask-agent-status";
 import { askModelOptions, defaultAskModel } from "@/lib/ask";
+import type { AskImageAttachment } from "@/lib/ask-images";
+
+export type AskInputSubmission = {
+  question: string;
+  model: string;
+  tenantId: string;
+  scopeUrn: string;
+  images: AskImageAttachment[];
+};
 
 type Props = {
-  onSubmit: (input: { question: string; model: string; tenantId: string; scopeUrn: string }) => void;
+  onSubmit: (input: AskInputSubmission) => void;
   disabled?: boolean;
   initialScopeUrn?: string;
   onSaveQuestion?: (input: { question: string; model: string; tenantId: string; scopeUrn: string }) => void;
@@ -37,6 +47,7 @@ export default function AskInput({
   readiness,
   readinessLoading = false,
 }: Props) {
+  const [images, setImages] = useState<AskImageAttachment[]>([]);
   const form = useForm({
     defaultValues: {
       model: defaultAskModel,
@@ -47,8 +58,9 @@ export default function AskInput({
     onSubmit: ({ value }) => {
       const input = normalizeAskInput(value);
       if (!input.question || disabled) return;
-      onSubmit(input);
+      onSubmit({ ...input, images });
       form.setFieldValue("question", "");
+      setImages([]);
     },
   });
 
@@ -110,6 +122,7 @@ export default function AskInput({
           />
         )}
       </form.Field>
+      <ImageAttachments images={images} onChange={setImages} disabled={disabled} />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <form.Field name="tenantId">

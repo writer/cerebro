@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { GRC_UPLOAD_MAX_BYTES, GRC_UPLOAD_MAX_LABEL } from "./lib/grc-upload-limits";
+import { ASK_AGENT_REQUEST_MAX_BYTES } from "./lib/ask-images";
 
 const MAX_API_BODY_BYTES = 2 * 1024 * 1024; // 2 MB
 
@@ -47,6 +48,13 @@ export function proxy(request: NextRequest) {
 function maxBodyBytesForRequest(request: NextRequest) {
   if (
     request.method === "POST" &&
+    request.nextUrl.pathname === "/api/agent/ask" &&
+    (request.headers.get("content-type") ?? "").toLowerCase().includes("application/json")
+  ) {
+    return ASK_AGENT_REQUEST_MAX_BYTES;
+  }
+  if (
+    request.method === "POST" &&
     GRC_UPLOAD_PATHS.has(request.nextUrl.pathname) &&
     (request.headers.get("content-type") ?? "").toLowerCase().includes("multipart/form-data")
   ) {
@@ -56,6 +64,9 @@ function maxBodyBytesForRequest(request: NextRequest) {
 }
 
 function bodyTooLargeMessage(maxBytes: number) {
+  if (maxBytes === ASK_AGENT_REQUEST_MAX_BYTES) {
+    return "Ask request is larger than 12 MB.";
+  }
   if (maxBytes === GRC_UPLOAD_MAX_BYTES) {
     return `Upload is larger than ${GRC_UPLOAD_MAX_LABEL}.`;
   }

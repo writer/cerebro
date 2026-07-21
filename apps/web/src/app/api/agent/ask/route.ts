@@ -2,6 +2,7 @@ import {
   Agent,
   MCPServerStreamableHttp,
   Runner,
+  type AgentInputItem,
   type RunStreamEvent,
 } from "@openai/agents";
 import { NextRequest, NextResponse } from "next/server";
@@ -20,6 +21,7 @@ import {
 } from "@/lib/ask";
 import { mcpUrlFromApiBase } from "@/lib/ask-agent-config";
 import { ASK_AGENT_FALLBACK_STATUS } from "@/lib/ask-agent-status";
+import { normalizeAskImages } from "@/lib/ask-images";
 import {
   resolveSecurityProducerGuidance,
   securityProducerResponseCandidateHint,
@@ -76,11 +78,23 @@ const instructionMetadata = (value: unknown, fallback = "unknown", maxLength = 5
 const quotedInstructionMetadata = (value: unknown, fallback = "unknown", maxLength = 512) =>
   JSON.stringify(instructionMetadata(value, fallback, maxLength));
 
+export const agentPayloadError = (payload: unknown) => {
+  if (!payload || typeof payload !== "object") return "Ask requires a non-empty question.";
+  const source = payload as Record<string, unknown>;
+  if (!trimString(source.question)) return "Ask requires a non-empty question.";
+  if (!normalizeAskImages(source.images)) {
+    return "Attach up to 4 PNG, JPEG, WebP, or GIF images, 4 MB each and 8 MB total.";
+  }
+  return null;
+};
+
 const normalizePayload = (payload: unknown): NormalizedAgentRequest | null => {
   if (!payload || typeof payload !== "object") return null;
   const source = payload as Record<string, unknown>;
   const question = trimString(source.question);
   if (!question) return null;
+  const images = normalizeAskImages(source.images);
+  if (!images) return null;
   return {
     ...source,
     question,
@@ -91,6 +105,7 @@ const normalizePayload = (payload: unknown): NormalizedAgentRequest | null => {
     context: normalizeContext(source.context),
     surface: trimString(source.surface) || "agent",
     conversation_id: trimString(source.conversation_id) || undefined,
+    images,
   };
 };
 
@@ -136,14 +151,15 @@ export async function POST(request: NextRequest) {
     return tracedAuthorizationError(decision, span);
   }
 
-  const payload = normalizePayload(rawPayload);
+  const payloadError = agentPayloadError(rawPayload);
+  const payload = payloadError ? null : normalizePayload(rawPayload);
   if (!payload) {
     span.end("completed", {
       payload_valid: false,
       "http.response.status_code": 400,
     });
     const response = NextResponse.json(
-      { error: "Ask requires a non-empty question." },
+      { error: payloadError ?? "Ask requires a non-empty question." },
       { status: 400 },
     );
     response.headers.set("x-cerebro-web-trace-id", span.traceId);
@@ -165,6 +181,12 @@ export async function POST(request: NextRequest) {
       try {
         if (canRunAgent) {
           await streamAgentRun(controller, request, payload, span);
+        } else if (payload.images?.length) {
+          controller.enqueue(sse("error", normalizeAskError(
+            "image_input_unavailable",
+            "Image analysis is unavailable because the agent runtime is not configured.",
+            true,
+          )));
         } else {
           await streamLegacyAsk(controller, request, payload, span);
         }
@@ -178,7 +200,7 @@ export async function POST(request: NextRequest) {
           component: "agent-ask-route",
           operation: canRunAgent ? "agent_stream" : "legacy_stream",
         });
-        if (canRunAgent && isAgentStartupConfigurationError(error)) {
+        if (canRunAgent && !payload.images?.length && isAgentStartupConfigurationError(error)) {
           span.annotate({
             agent_startup_configuration_fallback: true,
           });
@@ -585,18 +607,29 @@ const contextStringList = (context: AskAgentContext | undefined, key: string) =>
   return [];
 };
 
-const buildAgentInput = (payload: NormalizedAgentRequest) => {
+export const buildAgentInput = (payload: NormalizedAgentRequest): AgentInputItem[] => {
   const context = payload.context
     ? JSON.stringify(payload.context, null, 2)
     : "{}";
   const history = payload.history?.length
     ? payload.history.slice(-8).map((entry) => `${entry.role}: ${entry.content}`).join("\n")
     : "none";
-  return [
+  const text = [
     `Question: ${payload.question}`,
     `Context JSON:\n${context}`,
     `Recent conversation:\n${history}`,
   ].join("\n\n");
+  return [{
+    role: "user",
+    content: [
+      { type: "input_text", text },
+      ...(payload.images ?? []).map((image) => ({
+        type: "input_image" as const,
+        image: image.data_url,
+        detail: "auto",
+      })),
+    ],
+  }];
 };
 
 const contextLabel = (payload: NormalizedAgentRequest) => {
@@ -776,6 +809,7 @@ function agentPayloadSpanAttributes(payload: NormalizedAgentRequest) {
     context_has_scope_urn: Boolean(payload.context?.scopeUrn || payload.scope_urn),
     context_route_family: routeFamily(payload.context?.route),
     conversation_present: Boolean(payload.conversation_id),
+    image_count: payload.images?.length ?? 0,
     history_count: payload.history?.length ?? 0,
     payload_valid: true,
     question_chars: payload.question.length,
