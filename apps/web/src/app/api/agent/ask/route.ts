@@ -78,6 +78,16 @@ const instructionMetadata = (value: unknown, fallback = "unknown", maxLength = 5
 const quotedInstructionMetadata = (value: unknown, fallback = "unknown", maxLength = 512) =>
   JSON.stringify(instructionMetadata(value, fallback, maxLength));
 
+export const agentPayloadError = (payload: unknown) => {
+  if (!payload || typeof payload !== "object") return "Ask requires a non-empty question.";
+  const source = payload as Record<string, unknown>;
+  if (!trimString(source.question)) return "Ask requires a non-empty question.";
+  if (!normalizeAskImages(source.images)) {
+    return "Attach up to 4 PNG, JPEG, WebP, or GIF images, 4 MB each and 8 MB total.";
+  }
+  return null;
+};
+
 const normalizePayload = (payload: unknown): NormalizedAgentRequest | null => {
   if (!payload || typeof payload !== "object") return null;
   const source = payload as Record<string, unknown>;
@@ -141,14 +151,15 @@ export async function POST(request: NextRequest) {
     return tracedAuthorizationError(decision, span);
   }
 
-  const payload = normalizePayload(rawPayload);
+  const payloadError = agentPayloadError(rawPayload);
+  const payload = payloadError ? null : normalizePayload(rawPayload);
   if (!payload) {
     span.end("completed", {
       payload_valid: false,
       "http.response.status_code": 400,
     });
     const response = NextResponse.json(
-      { error: "Ask requires a non-empty question." },
+      { error: payloadError ?? "Ask requires a non-empty question." },
       { status: 400 },
     );
     response.headers.set("x-cerebro-web-trace-id", span.traceId);

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildAgentInput, buildAgentInstructions, buildRuntimeAgentInstructions, forwardLegacyAskBody } from "./route";
+import { agentPayloadError, buildAgentInput, buildAgentInstructions, buildRuntimeAgentInstructions, forwardLegacyAskBody } from "./route";
 
 const originalProducerCatalog = process.env.CEREBRO_SECURITY_PRODUCERS_JSON;
 
@@ -10,6 +10,20 @@ afterEach(() => {
 });
 
 describe("agent instructions", () => {
+  it("reports invalid image bounds separately from an empty question", () => {
+    expect(agentPayloadError({
+      question: "What is risky in these screenshots?",
+      images: Array.from({ length: 5 }, (_, index) => ({
+        id: `image-${index + 1}`,
+        name: `risk-${index + 1}.png`,
+        media_type: "image/png",
+        data_url: "data:image/png;base64,iVBORw==",
+      })),
+    })).toBe("Attach up to 4 PNG, JPEG, WebP, or GIF images, 4 MB each and 8 MB total.");
+    expect(agentPayloadError({ question: "  ", images: [] }))
+      .toBe("Ask requires a non-empty question.");
+  });
+
   it("passes attached images to the model as image content", () => {
     const input = buildAgentInput({
       question: "What is risky in this screenshot?",
