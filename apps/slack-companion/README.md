@@ -121,6 +121,19 @@ defers the rest with a reason; when nothing is askable or the per-thread questio
 budget is spent, it proceeds instead of nagging. The host owns candidate
 derivation, durable clarification history, and Slack transport.
 
+## Progress narration
+
+`src/progress` decides whether an in-flight progress event is worth narrating to
+Slack, so long-running turns feel alive without noisy edits. `planProgressNarration`
+always publishes a terminal phase (past the throttle and budget) so the final
+state is never dropped; otherwise it publishes only when the phase advances, the
+status text changes, or the heartbeat interval has elapsed, subject to a minimum
+interval between updates and a per-turn update budget. Out-of-order or
+already-narrated sequences are suppressed, the first update posts and later ones
+edit, and identities are stable per `(turn_ref, sequence)` so a retry never
+double-posts. The host owns progress emission, the durable narration state, and
+Slack transport.
+
 ## History learning admission
 
 `slackLearningCandidateRejection` classifies a host-supplied message projection
