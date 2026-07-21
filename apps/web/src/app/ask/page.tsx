@@ -5,7 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 
 import { useApiKey } from "@/components/providers";
 import { PageHeader } from "@/components/grc/Primitives";
-import AskInput from "@/components/ask/AskInput";
+import AskInput, { type AskInputSubmission } from "@/components/ask/AskInput";
 import AskThread from "@/components/ask/AskThread";
 import SavedQuestions, { type SavedQuestionDraft } from "@/components/ask/SavedQuestions";
 import type { AskAgentReadiness } from "@/lib/ask-agent-status";
@@ -74,7 +74,7 @@ function AskPageInner() {
   }, [activeTurnId]);
 
   const runAsk = useCallback(
-    async (input: { question: string; model: string; tenantId: string; scopeUrn: string }) => {
+    async (input: AskInputSubmission) => {
       const controller = new AbortController();
       abortRef.current?.abort();
       abortRef.current = controller;
@@ -89,6 +89,7 @@ function AskPageInner() {
         model,
         tenantId,
         scopeUrn: input.scopeUrn || undefined,
+        images: input.images,
       });
       setTurns((prev) => [...prev, initial]);
       setActiveTurnId(turnId);
@@ -108,6 +109,7 @@ function AskPageInner() {
           ],
         },
         surface: "ask_page",
+        images: input.images,
       };
       try {
         for await (const event of streamAgentAsk(request, apiKey, controller.signal)) {
@@ -152,6 +154,7 @@ function AskPageInner() {
         model: normalizeAskModel(turn.model),
         tenantId: turn.tenantId ?? "writer",
         scopeUrn: turn.scopeUrn ?? "",
+        images: turn.images ?? [],
       });
     },
     [runAsk],
@@ -222,6 +225,7 @@ function AskPageInner() {
         model: normalizeAskModel(query.model ?? ""),
         tenantId: query.tenant_id || "",
         scopeUrn: query.scope_urn ?? "",
+        images: [],
       });
     },
     [runAsk],
@@ -264,6 +268,7 @@ function AskPageInner() {
         model: seededModel || defaultAskModel,
         tenantId: seededTenant,
         scopeUrn: seededScope,
+        images: [],
       });
     }, 0);
     return () => window.clearTimeout(timer);
@@ -334,7 +339,7 @@ function AskPageInner() {
                 key={sample}
                 type="button"
                 onClick={() =>
-                  void runAsk({ question: sample, model: defaultAskModel, tenantId: "", scopeUrn: "" })
+                  void runAsk({ question: sample, model: defaultAskModel, tenantId: "", scopeUrn: "", images: [] })
                 }
                 className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[13px] text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700"
               >

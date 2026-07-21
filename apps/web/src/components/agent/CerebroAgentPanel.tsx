@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { type KeyboardEvent, useMemo } from "react";
 import {
   Activity,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 
 import MarkdownSummary from "@/components/ask/MarkdownSummary";
+import ImageAttachments from "@/components/ask/ImageAttachments";
 import { useCerebroAgent } from "@/components/agent/CerebroAgentProvider";
 import { type AskAgentTimelineEvent, type AskTurnState, shortUrn } from "@/lib/ask";
 
@@ -127,10 +129,12 @@ export default function CerebroAgentPanel() {
     clearThread,
     draft,
     isOpen,
+    images,
     openAgent,
     pageContext,
     retryTurn,
     setDraft,
+    setImages,
     setOpen,
     stopActiveTurn,
     submitDraft,
@@ -301,6 +305,7 @@ export default function CerebroAgentPanel() {
 
         <footer className="border-t border-slate-200 bg-white p-3">
           <div className="rounded-lg border border-slate-200 bg-white shadow-sm focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100">
+            <ImageAttachments images={images} onChange={setImages} disabled={Boolean(activeTurnId)} />
             <textarea
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
@@ -314,7 +319,7 @@ export default function CerebroAgentPanel() {
                 <button
                   type="button"
                   onClick={clearThread}
-                  disabled={!turns.length && !draft}
+                  disabled={!turns.length && !draft && !images.length}
                   className="rounded-md p-2 text-slate-400 transition hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
                   title="Clear"
                 >
@@ -378,6 +383,13 @@ function AgentTurnCard({
           </div>
           <p className="min-w-0 flex-1 text-[13px] font-medium leading-5 text-slate-900">{turn.question}</p>
         </div>
+        {turn.images?.length ? (
+          <div className="mt-3 flex flex-wrap gap-2 pl-10">
+            {turn.images.map((image) => (
+              <Image key={image.id} src={image.data_url} alt={image.name} width={56} height={56} unoptimized className="h-14 w-14 rounded-md border border-slate-200 object-cover" />
+            ))}
+          </div>
+        ) : null}
       </header>
 
       <div className="space-y-3 px-4 py-3">

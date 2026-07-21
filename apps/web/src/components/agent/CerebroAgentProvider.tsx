@@ -24,6 +24,7 @@ import {
   streamAgentAsk,
 } from "@/lib/ask";
 import { routeLabelForPath } from "@/lib/route-labels";
+import type { AskImageAttachment } from "@/lib/ask-images";
 
 type RunAgentInput = {
   question: string;
@@ -32,6 +33,7 @@ type RunAgentInput = {
   model?: string;
   context?: AskAgentContext;
   surface?: string;
+  images?: AskImageAttachment[];
 };
 
 type OpenAgentOptions = {
@@ -46,6 +48,8 @@ type CerebroAgentContextValue = {
   setOpen: (value: boolean) => void;
   draft: string;
   setDraft: (value: string) => void;
+  images: AskImageAttachment[];
+  setImages: (value: AskImageAttachment[]) => void;
   turns: AskTurnState[];
   activeTurnId: string | null;
   pageContext: AskAgentContext;
@@ -139,6 +143,7 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
   const { apiKey } = useApiKey();
   const [isOpen, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [images, setImages] = useState<AskImageAttachment[]>([]);
   const [turns, setTurns] = useState<AskTurnState[]>([]);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   const [pageContext, setPageContext] = useState<AskAgentContext>(() => ({
@@ -204,6 +209,7 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
       setPageContext(context);
       setOpen(true);
       setDraft("");
+      setImages([]);
 
       const controller = new AbortController();
       abortRef.current?.abort();
@@ -218,6 +224,7 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
         model,
         tenantId,
         scopeUrn: scopeUrn || undefined,
+        images: input.images,
       });
       setTurns((prev) => [...prev, initial]);
       setActiveTurnId(turnId);
@@ -231,6 +238,7 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
         context,
         surface: input.surface ?? "agent_panel",
         conversation_id: getConversationId(),
+        images: input.images,
       };
 
       try {
@@ -298,6 +306,7 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
         scopeUrn: turn.scopeUrn,
         context: pageContext,
         surface: "agent_panel_retry",
+        images: turn.images,
       });
     },
     [pageContext, runAgent],
@@ -309,6 +318,7 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
     setTurns([]);
     setActiveTurnId(null);
     setDraft("");
+    setImages([]);
     conversationIdRef.current = null;
   }, []);
 
@@ -318,8 +328,9 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
       question: draft,
       context: pageContext,
       surface: "agent_panel",
+      images,
     });
-  }, [activeTurnId, draft, pageContext, runAgent]);
+  }, [activeTurnId, draft, images, pageContext, runAgent]);
 
   const value = useMemo<CerebroAgentContextValue>(
     () => ({
@@ -327,6 +338,8 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
       setOpen,
       draft,
       setDraft,
+      images,
+      setImages,
       turns,
       activeTurnId,
       pageContext,
@@ -342,6 +355,7 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
       clearThread,
       draft,
       isOpen,
+      images,
       openAgent,
       pageContext,
       retryTurn,
