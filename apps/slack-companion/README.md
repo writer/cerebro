@@ -45,6 +45,12 @@ The same shape applies to longer-running work. Slack-visible status can show que
 
 Hosts should record the message parts Slack accepted, not an internal draft. Evaluation and conversation continuity then describe what the person actually received, including partial and failed deliveries.
 
+### Image questions
+
+`planSlackQuestionImageInput` accepts host-projected Slack file references and produces a durable, byte-free image manifest. Image-only mentions receive a concrete inspection question. Captioned images preserve the person's question. The plan requires both `slack.files.read` and `agent.input.image` capabilities.
+
+`resolveQuestionImageInput` asks a host-owned resolver for authenticated private file bytes and returns model-ready image content. The host owns Slack authorization, trusted download hosts, redirect policy, and network access. Portable policy accepts PNG, JPEG, WebP, and GIF, with at most four images, 4 MB per image, and 8 MB total. Resolved bytes must match the declared media type and are never part of durable question work.
+
 `evaluateAssistantTurn` scores one text-free observation derived from durable delivery, claim, source, feedback, and outcome records. An unwanted response, missed response, incomplete delivery, omitted required action, ungrounded or subject-misbound claim, unused available source, missing coverage boundary, hidden source failure, exposed internal machinery, redundant tool call, unnecessary clarification, user correction, or negative feedback is explicit in the receipt. `decideAssistantTurnPromotion` compares one candidate with its exact baseline on at least eight sealed static cases and eight independently generated shadow cases. Duplicate case content cannot count in both partitions. Promotion requires a strict score gain, no blocker increase, fewer blockers when the baseline has any, no material case regression, and no new per-case blocker.
 
 `ImprovementCoordinator.recordOutcomeEvidence` is the only path that can make evaluation, shadow, and promotion evidence fresh. It binds the baseline rows to the pre-authoring head, binds candidate rows to the authored head, runs the promotion decision, and records those three evidence classes only when the decision passes. Generic CI and canary receipts cannot bypass the outcome gate. A candidate becomes ready only when all five exact-head evidence classes are fresh.

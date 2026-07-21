@@ -1,4 +1,5 @@
 import type { GRCGraph } from "@/lib/grc";
+import type { AskImageAttachment } from "@/lib/ask-images";
 
 export type AskRole = "user" | "assistant";
 export type AskTurnStatus = "streaming" | "completed" | "error" | "aborted";
@@ -17,6 +18,7 @@ export type AskRequest = {
   context?: AskAgentContext;
   surface?: string;
   conversation_id?: string;
+  images?: AskImageAttachment[];
 };
 
 export type AskAgentContextChip = {
@@ -155,6 +157,7 @@ export type AskTurnState = {
   model?: string;
   tenantId?: string;
   scopeUrn?: string;
+  images?: AskImageAttachment[];
   rationale?: string;
   queryPlan?: AskQueryPlanEvent;
   cypher?: AskCypherEvent;

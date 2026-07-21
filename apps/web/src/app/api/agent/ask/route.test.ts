@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildAgentInstructions, buildRuntimeAgentInstructions, forwardLegacyAskBody } from "./route";
+import { buildAgentInput, buildAgentInstructions, buildRuntimeAgentInstructions, forwardLegacyAskBody } from "./route";
 
 const originalProducerCatalog = process.env.CEREBRO_SECURITY_PRODUCERS_JSON;
 
@@ -10,6 +10,29 @@ afterEach(() => {
 });
 
 describe("agent instructions", () => {
+  it("passes attached images to the model as image content", () => {
+    const input = buildAgentInput({
+      question: "What is risky in this screenshot?",
+      tenant_id: "portable-tenant",
+      images: [{
+        id: "image-1",
+        name: "risk.png",
+        media_type: "image/png",
+        data_url: "data:image/png;base64,iVBORw==",
+        size_bytes: 4,
+      }],
+    });
+
+    expect(input).toHaveLength(1);
+    expect(input[0]).toMatchObject({
+      role: "user",
+      content: [
+        { type: "input_text", text: expect.stringContaining("What is risky in this screenshot?") },
+        { type: "input_image", image: "data:image/png;base64,iVBORw==", detail: "auto" },
+      ],
+    });
+  });
+
   it("keeps request metadata on quoted single lines", () => {
     const instructions = buildAgentInstructions({
       question: "What changed?",

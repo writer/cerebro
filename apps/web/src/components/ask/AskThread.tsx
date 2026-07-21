@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 import { type AskTurnState } from "@/lib/ask";
@@ -44,6 +45,7 @@ const guidanceForError = (turn: AskTurnState) => {
   const code = turn.error?.code ?? "";
   if (code === "aborted") return "Stopped locally. Retry when you are ready to continue.";
   if (code === "stream_incomplete") return "The stream ended early. Retry usually fixes transient upstream disconnects.";
+  if (code === "image_input_unavailable") return "Configure the agent runtime before asking Cerebro to analyze images.";
   if (code === "http_401" || code === "http_403") return "Check your API key and tenant scope.";
   if (code === "http_408" || code === "http_429" || code.startsWith("http_5")) return "This looks retryable. Try again or narrow the scope.";
   return "Review the trace and retry with a narrower question if needed.";
@@ -113,6 +115,21 @@ export default function AskThread({ turns, activeTurnId, onRetry, onStop }: Prop
                   Question
                 </div>
                 <p className="mt-1 text-base font-semibold text-slate-900">{turn.question}</p>
+                {turn.images?.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {turn.images.map((image) => (
+                      <Image
+                        key={image.id}
+                        src={image.data_url}
+                        alt={image.name}
+                        width={72}
+                        height={72}
+                        unoptimized
+                        className="h-[72px] w-[72px] rounded-md border border-slate-200 object-cover"
+                      />
+                    ))}
+                  </div>
+                ) : null}
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                   <span>Model {turn.model ?? "default"}</span>
                   <span>Tenant {turn.tenantId ?? "writer"}</span>
