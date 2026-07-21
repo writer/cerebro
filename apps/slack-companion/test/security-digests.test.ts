@@ -31,6 +31,8 @@ function input(
       title: "Blocked work",
     }],
     sources: [{
+      coverage: "complete",
+      fresh_until: "2030-01-02T04:00:00.000Z",
       observed_at: "2030-01-02T03:00:00.000Z",
       required: true,
       result_digest: sourceDigest,
@@ -49,6 +51,8 @@ describe("security digest policy", () => {
     if (plan.disposition !== "publish") assert.fail("expected publish");
     assert.equal(plan.completeness, "complete");
     assert.deepEqual(plan.source_refs, ["result:tickets-2030-01-02"]);
+    assert.equal(plan.artifact_specs.length, 2);
+    assert.equal(plan.source_receipts[0]?.coverage, "complete");
     assert.match(plan.content_digest, /^sha256:[0-9a-f]{64}$/);
     assert.equal(Object.isFrozen(plan.sections), true);
   });
@@ -61,6 +65,11 @@ describe("security digest policy", () => {
       generated_at: "2030-01-03T03:04:05.000Z",
       previous_content_digest: first.content_digest,
       run_key: "weekday-2030-01-03",
+      sources: [{
+        ...input().sources[0]!,
+        fresh_until: "2030-01-03T04:00:00.000Z",
+        observed_at: "2030-01-03T03:00:00.000Z",
+      }],
     }));
     assert.equal(repeated.disposition, "suppress");
     if (repeated.disposition !== "suppress") assert.fail("expected suppression");
@@ -108,6 +117,28 @@ describe("security digest policy", () => {
     assert.equal(plan.disposition, "unavailable");
     if (plan.disposition !== "unavailable") assert.fail("expected unavailable");
     assert.equal(plan.reason_code, "item_source_unavailable");
+  });
+
+  test("stops instead of presenting stale or incomplete required data as current", () => {
+    const stale = planSecurityDigest(input({
+      sources: [{
+        ...input().sources[0]!,
+        fresh_until: "2030-01-02T03:01:00.000Z",
+      }],
+    }));
+    assert.equal(stale.disposition, "unavailable");
+    if (stale.disposition !== "unavailable") assert.fail("expected unavailable");
+    assert.equal(stale.reason_code, "required_source_stale");
+
+    const partial = planSecurityDigest(input({
+      sources: [{
+        ...input().sources[0]!,
+        coverage: "partial",
+      }],
+    }));
+    assert.equal(partial.disposition, "unavailable");
+    if (partial.disposition !== "unavailable") assert.fail("expected unavailable");
+    assert.equal(partial.reason_code, "required_source_incomplete");
   });
 
   test("rejects uncited digest items", () => {

@@ -6,7 +6,45 @@ const REF = /^[a-z][a-z0-9_.-]*:[^\s\u0000-\u001f]{1,500}$/;
 export type SecurityDigestKindV1 = "repository_hygiene" | "security_board";
 export type SecurityDigestSourceStateV1 = "succeeded" | "unavailable";
 
+export interface SecurityDigestArtifactSpecV1 {
+  readonly artifact_id: string;
+  readonly format: "csv" | "png";
+  readonly purpose: "operator_queue" | "status_chart";
+  readonly title: string;
+}
+
+export interface SecurityOperationWorkflowV1 {
+  readonly artifact_specs: readonly SecurityDigestArtifactSpecV1[];
+  readonly kind: SecurityDigestKindV1;
+  readonly schema_version: "security-operation-workflow/v1";
+  readonly workflow_id: "security.board-daily/v1" | "security.repo-hygiene-weekly/v1";
+}
+
+/** Portable product behavior. Hosts bind destinations, providers, and schedules. */
+export const SECURITY_OPERATION_WORKFLOWS_V1: readonly SecurityOperationWorkflowV1[] = Object.freeze([
+  Object.freeze({
+    artifact_specs: Object.freeze([
+      Object.freeze({ artifact_id: "security_work_by_priority", format: "png", purpose: "status_chart", title: "Security work by priority" }),
+      Object.freeze({ artifact_id: "security_operator_queue", format: "csv", purpose: "operator_queue", title: "Security operator queue" }),
+    ]),
+    kind: "security_board",
+    schema_version: "security-operation-workflow/v1",
+    workflow_id: "security.board-daily/v1",
+  }),
+  Object.freeze({
+    artifact_specs: Object.freeze([
+      Object.freeze({ artifact_id: "repository_risk_by_age", format: "png", purpose: "status_chart", title: "Repository risk by age" }),
+      Object.freeze({ artifact_id: "repository_hygiene_queue", format: "csv", purpose: "operator_queue", title: "Repository hygiene queue" }),
+    ]),
+    kind: "repository_hygiene",
+    schema_version: "security-operation-workflow/v1",
+    workflow_id: "security.repo-hygiene-weekly/v1",
+  }),
+]);
+
 export interface SecurityDigestSourceReceiptV1 {
+  readonly coverage?: "complete" | "partial";
+  readonly fresh_until?: string;
   readonly observed_at: string;
   readonly required: boolean;
   readonly result_digest?: string;
@@ -44,6 +82,7 @@ export interface SecurityDigestPolicyInputV1 {
 export type SecurityDigestPlanV1 =
   | {
       readonly completeness: "complete" | "partial";
+      readonly artifact_specs: readonly SecurityDigestArtifactSpecV1[];
       readonly content_digest: string;
       readonly disposition: "publish";
       readonly generated_at: string;
@@ -52,6 +91,7 @@ export type SecurityDigestPlanV1 =
       readonly schema_version: "security-digest-plan/v1";
       readonly sections: readonly SecurityDigestSectionV1[];
       readonly source_refs: readonly string[];
+      readonly source_receipts: readonly SecurityDigestSourceReceiptV1[];
     }
   | {
       readonly content_digest: string;
@@ -65,7 +105,9 @@ export type SecurityDigestPlanV1 =
       readonly plan_id: string;
       readonly reason_code:
         | "item_source_unavailable"
+        | "required_source_incomplete"
         | "required_source_unavailable"
+        | "required_source_stale"
         | "no_successful_sources";
       readonly schema_version: "security-digest-plan/v1";
     };
@@ -87,17 +129,31 @@ export function planSecurityDigest(
 
   const sources = canonicalSources(input.sources);
   const sections = canonicalSections(input.sections, new Set(sources.map((source) => source.source_id)));
-  const successful = sources.filter((source) => source.state === "succeeded");
+  const successful = sources.filter((source) =>
+    source.state === "succeeded" && Date.parse(source.fresh_until!) >= Date.parse(generatedAt)
+  );
   const requiredUnavailable = sources.some(
     (source) => source.required && source.state !== "succeeded",
   );
+  const requiredStale = sources.some((source) =>
+    source.required && source.state === "succeeded" && Date.parse(source.fresh_until!) < Date.parse(generatedAt)
+  );
+  const requiredIncomplete = sources.some((source) =>
+    source.required && source.state === "succeeded" && source.coverage !== "complete"
+  );
   const planSeed = [input.kind, runKey, ...sources.map(sourceIdentity), ...sections.map(sectionIdentity)];
   const planId = `security-digest-plan:${hash(planSeed).slice(7, 39)}`;
-  if (requiredUnavailable || successful.length === 0) {
+  if (requiredUnavailable || requiredStale || requiredIncomplete || successful.length === 0) {
     return Object.freeze({
       disposition: "unavailable",
       plan_id: planId,
-      reason_code: requiredUnavailable ? "required_source_unavailable" : "no_successful_sources",
+      reason_code: requiredUnavailable
+        ? "required_source_unavailable"
+        : requiredStale
+        ? "required_source_stale"
+        : requiredIncomplete
+        ? "required_source_incomplete"
+        : "no_successful_sources",
       schema_version: "security-digest-plan/v1",
     });
   }
@@ -115,7 +171,7 @@ export function planSecurityDigest(
 
   const contentDigest = hash([
     input.kind,
-    ...successful.map(sourceIdentity),
+    ...successful.map(sourceContentIdentity),
     ...sections.map(sectionIdentity),
   ]);
   if (input.previous_content_digest === contentDigest) {
@@ -128,7 +184,12 @@ export function planSecurityDigest(
     });
   }
   return Object.freeze({
-    completeness: sources.every((source) => source.state === "succeeded") ? "complete" : "partial",
+    artifact_specs: artifactSpecs(input.kind),
+    completeness: sources.every((source) =>
+      source.state === "succeeded"
+      && source.coverage === "complete"
+      && Date.parse(source.fresh_until!) >= Date.parse(generatedAt)
+    ) ? "complete" : "partial",
     content_digest: contentDigest,
     disposition: "publish",
     generated_at: generatedAt,
@@ -137,6 +198,7 @@ export function planSecurityDigest(
     schema_version: "security-digest-plan/v1",
     sections,
     source_refs: Object.freeze(successful.map((source) => source.result_ref!)),
+    source_receipts: successful,
   });
 }
 
@@ -153,12 +215,19 @@ function canonicalSources(
     seen.add(sourceId);
     timestamp(value.observed_at, "observed_at");
     if (value.state === "succeeded") {
-      if (value.result_ref === undefined || value.result_digest === undefined) {
-        throw new SecurityDigestPolicyError("Successful sources require a result reference and digest.");
+      if (value.result_ref === undefined || value.result_digest === undefined || value.fresh_until === undefined || value.coverage === undefined) {
+        throw new SecurityDigestPolicyError("Successful sources require result, freshness, and coverage receipts.");
       }
       ref(value.result_ref, "result_ref");
       digest(value.result_digest);
-    } else if (value.state !== "unavailable" || value.result_ref !== undefined || value.result_digest !== undefined) {
+      timestamp(value.fresh_until, "fresh_until");
+      if (Date.parse(value.fresh_until) < Date.parse(value.observed_at)) {
+        throw new SecurityDigestPolicyError("fresh_until must not predate observed_at.");
+      }
+      if (value.coverage !== "complete" && value.coverage !== "partial") {
+        throw new SecurityDigestPolicyError("Successful sources require valid coverage.");
+      }
+    } else if (value.state !== "unavailable" || value.result_ref !== undefined || value.result_digest !== undefined || value.fresh_until !== undefined || value.coverage !== undefined) {
       throw new SecurityDigestPolicyError("Unavailable sources cannot include result data.");
     }
     return Object.freeze({ ...value, source_id: sourceId });
@@ -206,7 +275,18 @@ function canonicalSections(
 }
 
 function sourceIdentity(source: SecurityDigestSourceReceiptV1): string {
-  return [source.source_id, source.required, source.state, source.result_ref ?? "", source.result_digest ?? ""].join("|");
+  return source.state === "unavailable"
+    ? [source.source_id, source.required, source.state, source.observed_at].join("|")
+    : [source.source_id, source.required, source.state, source.coverage, source.observed_at, source.fresh_until, source.result_ref, source.result_digest].join("|");
+}
+
+function sourceContentIdentity(source: SecurityDigestSourceReceiptV1): string {
+  if (source.state !== "succeeded") throw new SecurityDigestPolicyError("Only successful sources have content identity.");
+  return [source.source_id, source.required, source.coverage, source.result_ref, source.result_digest].join("|");
+}
+
+function artifactSpecs(kind: SecurityDigestKindV1): readonly SecurityDigestArtifactSpecV1[] {
+  return SECURITY_OPERATION_WORKFLOWS_V1.find((workflow) => workflow.kind === kind)!.artifact_specs;
 }
 
 function sectionIdentity(section: SecurityDigestSectionV1): string {

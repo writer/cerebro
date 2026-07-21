@@ -35,11 +35,13 @@ export function planTranscriptActions(
     input.source.transcript_digest,
     ...drafts.map((draft) => JSON.stringify(draft)),
   ]).slice(7, 39)}`;
+  const proposalDigest = hash([planId, ...drafts.map((draft) => JSON.stringify(draft))]);
   if (input.approval === undefined) {
     return Object.freeze({
       action_ids: Object.freeze(drafts.map((draft) => draft.action_id)),
       disposition: "await_approval",
       plan_id: planId,
+      proposal_digest: proposalDigest,
       schema_version: "transcript-action-plan/v1",
     });
   }
@@ -48,6 +50,9 @@ export function planTranscriptActions(
     throw new TranscriptActionPolicyError("The transcript action approval version is unsupported.");
   }
   token(approval.approval_id, "approval_id");
+  if (approval.plan_id !== planId) {
+    throw new TranscriptActionPolicyError("Approval does not match the current transcript action plan.");
+  }
   reference(approval.approved_by_ref, "approved_by_ref");
   timestamp(approval.approved_at, "approved_at");
   const approvedIds = [...new Set(approval.approved_action_ids)].sort();
@@ -56,6 +61,7 @@ export function planTranscriptActions(
   }
   const selected = drafts.filter((draft) => approvedIds.includes(draft.action_id));
   return Object.freeze({
+    approval_id: approval.approval_id,
     disposition: "write_tickets",
     intents: Object.freeze(selected.map((draft) => Object.freeze({
       action_id: draft.action_id,

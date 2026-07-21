@@ -23,10 +23,12 @@ export function planSlackArtifactDelivery(
   reference(input.message_ref, "message_ref");
   const evidence = canonicalRefs(input.evidence_refs, "evidence_refs");
   const artifacts = canonicalArtifacts(input.artifacts);
+  const specs = canonicalSpecs(input.artifact_specs);
   const deliveryId = `slack-artifact-delivery:${hash([
     input.destination_ref,
     input.message_ref,
     ...evidence,
+    ...specs.map((spec) => `${spec.artifact_id}|${spec.format}|${spec.purpose}`),
     ...artifacts.map((artifact) => `${artifact.artifact_id}|${artifact.content_digest}`),
   ]).slice(7, 39)}`;
   if (artifacts.length === 0) {
@@ -34,6 +36,33 @@ export function planSlackArtifactDelivery(
       delivery_id: deliveryId,
       disposition: "unavailable",
       reason_code: "no_artifacts",
+      schema_version: "slack-artifact-delivery-plan/v1",
+    });
+  }
+  if (artifacts.some((artifact) => !specs.some((spec) => spec.artifact_id === artifact.artifact_id))) {
+    return Object.freeze({
+      delivery_id: deliveryId,
+      disposition: "unavailable",
+      reason_code: "unexpected_artifact",
+      schema_version: "slack-artifact-delivery-plan/v1",
+    });
+  }
+  if (specs.some((spec) => !artifacts.some((artifact) => artifact.artifact_id === spec.artifact_id))) {
+    return Object.freeze({
+      delivery_id: deliveryId,
+      disposition: "unavailable",
+      reason_code: "missing_artifact",
+      schema_version: "slack-artifact-delivery-plan/v1",
+    });
+  }
+  if (artifacts.some((artifact) => {
+    const spec = specs.find((candidate) => candidate.artifact_id === artifact.artifact_id)!;
+    return spec.format === "png" ? artifact.mime_type !== "image/png" : artifact.mime_type !== "text/csv";
+  })) {
+    return Object.freeze({
+      delivery_id: deliveryId,
+      disposition: "unavailable",
+      reason_code: "unexpected_artifact",
       schema_version: "slack-artifact-delivery-plan/v1",
     });
   }
@@ -53,6 +82,20 @@ export function planSlackArtifactDelivery(
     message_ref: input.message_ref,
     schema_version: "slack-artifact-delivery-plan/v1",
   });
+}
+
+function canonicalSpecs(values: SlackArtifactDeliveryPolicyInputV1["artifact_specs"]): SlackArtifactDeliveryPolicyInputV1["artifact_specs"] {
+  if (values.length === 0 || values.length > 8) throw new SlackArtifactPolicyError("Artifact delivery requires between 1 and 8 render specifications.");
+  const ids = new Set<string>();
+  return Object.freeze(values.map((spec) => {
+    const artifactId = token(spec.artifact_id, "artifact spec id");
+    if (ids.has(artifactId)) throw new SlackArtifactPolicyError("Artifact spec ids must be unique.");
+    ids.add(artifactId);
+    if ((spec.format !== "png" && spec.format !== "csv") || (spec.purpose !== "operator_queue" && spec.purpose !== "status_chart")) {
+      throw new SlackArtifactPolicyError("The artifact specification is invalid.");
+    }
+    return Object.freeze({ ...spec, artifact_id: artifactId, title: boundedText(spec.title, "artifact spec title", 300) });
+  }).sort((left, right) => left.artifact_id.localeCompare(right.artifact_id)));
 }
 
 function canonicalArtifacts(values: readonly SlackArtifactV1[]): readonly SlackArtifactV1[] {

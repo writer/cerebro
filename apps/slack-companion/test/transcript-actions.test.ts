@@ -45,21 +45,28 @@ function input(
 describe("transcript action policy", () => {
   test("keeps extracted actions in draft until approval", () => {
     const plan = planTranscriptActions(input());
+    assert.equal(plan.disposition, "await_approval");
+    if (plan.disposition !== "await_approval") assert.fail("expected approval plan");
     assert.deepEqual(plan, {
       action_ids: ["rotate_key"],
       disposition: "await_approval",
       plan_id: plan.plan_id,
+      proposal_digest: plan.proposal_digest,
       schema_version: "transcript-action-plan/v1",
     });
   });
 
   test("creates deterministic write intents for approved drafts only", () => {
+    const pending = planTranscriptActions(input());
+    assert.equal(pending.disposition, "await_approval");
+    if (pending.disposition !== "await_approval") assert.fail("expected approval plan");
     const approved = planTranscriptActions(input({
       approval: {
         approval_id: "approval_1",
         approved_action_ids: ["rotate_key"],
         approved_at: "2030-01-02T04:00:00.000Z",
         approved_by_ref: "user:security-lead",
+        plan_id: pending.plan_id,
         schema_version: "transcript-action-approval/v1",
       },
     }));
@@ -76,6 +83,7 @@ describe("transcript action policy", () => {
           approved_action_ids: ["rotate_key"],
           approved_at: "2030-01-02T04:00:00.000Z",
           approved_by_ref: "user:security-lead",
+          plan_id: pending.plan_id,
           schema_version: "transcript-action-approval/v1",
         },
       })),
@@ -86,6 +94,7 @@ describe("transcript action policy", () => {
         approved_action_ids: ["rotate_key"],
         approved_at: "2030-01-02T05:00:00.000Z",
         approved_by_ref: "user:security-lead",
+        plan_id: pending.plan_id,
         schema_version: "transcript-action-approval/v1",
       },
     }));
@@ -95,12 +104,16 @@ describe("transcript action policy", () => {
   });
 
   test("rejects unknown approvals and evidence from another transcript", () => {
+    const pending = planTranscriptActions(input());
+    assert.equal(pending.disposition, "await_approval");
+    if (pending.disposition !== "await_approval") assert.fail("expected approval plan");
     assert.throws(() => planTranscriptActions(input({
       approval: {
         approval_id: "approval_2",
         approved_action_ids: ["invented_action"],
         approved_at: "2030-01-02T04:00:00.000Z",
         approved_by_ref: "user:security-lead",
+        plan_id: pending.plan_id,
         schema_version: "transcript-action-approval/v1",
       },
     })), TranscriptActionPolicyError);
@@ -108,6 +121,23 @@ describe("transcript action policy", () => {
       drafts: [draft({
         evidence: [{ locator: "line:9", transcript_ref: "transcript:other" }],
       })],
+    })), TranscriptActionPolicyError);
+  });
+
+  test("rejects approval after any displayed draft changes", () => {
+    const pending = planTranscriptActions(input());
+    assert.equal(pending.disposition, "await_approval");
+    if (pending.disposition !== "await_approval") assert.fail("expected approval plan");
+    assert.throws(() => planTranscriptActions(input({
+      approval: {
+        approval_id: "approval_stale",
+        approved_action_ids: ["rotate_key"],
+        approved_at: "2030-01-02T04:00:00.000Z",
+        approved_by_ref: "user:security-lead",
+        plan_id: pending.plan_id,
+        schema_version: "transcript-action-approval/v1",
+      },
+      drafts: [draft({ description: "Rotate two integration keys." })],
     })), TranscriptActionPolicyError);
   });
 });

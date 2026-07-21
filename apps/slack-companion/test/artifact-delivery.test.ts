@@ -8,6 +8,12 @@ import {
 import type { SlackArtifactV1 } from "../src/artifacts/contracts.js";
 
 const evidenceRef = "result:security-board-2030-01-02";
+const artifactSpecs = [{
+  artifact_id: "security_work_age",
+  format: "png" as const,
+  purpose: "status_chart" as const,
+  title: "Security work age",
+}];
 
 function artifact(overrides: Partial<SlackArtifactV1> = {}): SlackArtifactV1 {
   return {
@@ -28,6 +34,7 @@ function artifact(overrides: Partial<SlackArtifactV1> = {}): SlackArtifactV1 {
 describe("Slack artifact delivery policy", () => {
   test("plans evidence-bound uploads without resolving provider content", () => {
     const plan = planSlackArtifactDelivery({
+      artifact_specs: artifactSpecs,
       artifacts: [artifact()],
       destination_ref: "slack-channel:security-team",
       evidence_refs: [evidenceRef],
@@ -41,6 +48,7 @@ describe("Slack artifact delivery policy", () => {
 
   test("does not upload an artifact whose evidence is absent", () => {
     const plan = planSlackArtifactDelivery({
+      artifact_specs: artifactSpecs,
       artifacts: [artifact()],
       destination_ref: "slack-channel:security-team",
       evidence_refs: ["result:other-run"],
@@ -54,11 +62,31 @@ describe("Slack artifact delivery policy", () => {
 
   test("rejects artifact content without a digest", () => {
     assert.throws(() => planSlackArtifactDelivery({
+      artifact_specs: artifactSpecs,
       artifacts: [artifact({ content_digest: "missing" })],
       destination_ref: "slack-channel:security-team",
       evidence_refs: [evidenceRef],
       message_ref: "digest:security-board-2030-01-02",
       schema_version: "slack-artifact-delivery-policy-input/v1",
     }), SlackArtifactPolicyError);
+  });
+
+  test("does not upload partial or off-contract render output", () => {
+    const missing = planSlackArtifactDelivery({
+      artifact_specs: [...artifactSpecs, {
+        artifact_id: "security_queue",
+        format: "csv",
+        purpose: "operator_queue",
+        title: "Security queue",
+      }],
+      artifacts: [artifact()],
+      destination_ref: "slack-channel:security-team",
+      evidence_refs: [evidenceRef],
+      message_ref: "digest:security-board-2030-01-02",
+      schema_version: "slack-artifact-delivery-policy-input/v1",
+    });
+    assert.equal(missing.disposition, "unavailable");
+    if (missing.disposition !== "unavailable") assert.fail("expected unavailable");
+    assert.equal(missing.reason_code, "missing_artifact");
   });
 });

@@ -27,6 +27,8 @@ export interface TranscriptActionApprovalV1 {
   readonly approved_action_ids: readonly string[];
   readonly approved_at: string;
   readonly approved_by_ref: string;
+  /** Binds approval to the exact transcript and canonical draft set shown. */
+  readonly plan_id: string;
   readonly schema_version: "transcript-action-approval/v1";
 }
 
@@ -54,11 +56,13 @@ export type TranscriptActionPlanV1 =
       readonly action_ids: readonly string[];
       readonly disposition: "await_approval";
       readonly plan_id: string;
+      readonly proposal_digest: string;
       readonly schema_version: "transcript-action-plan/v1";
     }
   | {
       readonly disposition: "write_tickets";
       readonly intents: readonly TranscriptTicketWriteIntentV1[];
       readonly plan_id: string;
+      readonly approval_id: string;
       readonly schema_version: "transcript-action-plan/v1";
     };

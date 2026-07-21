@@ -1,3 +1,5 @@
+import type { SecurityDigestArtifactSpecV1 } from "../operations/security-digests.js";
+
 export type SlackArtifactMimeTypeV1 = "application/pdf" | "image/png" | "text/csv";
 
 export interface SlackArtifactV1 {
@@ -14,6 +16,7 @@ export interface SlackArtifactV1 {
 }
 
 export interface SlackArtifactDeliveryPolicyInputV1 {
+  readonly artifact_specs: readonly SecurityDigestArtifactSpecV1[];
   readonly artifacts: readonly SlackArtifactV1[];
   readonly destination_ref: string;
   readonly evidence_refs: readonly string[];
@@ -33,6 +36,6 @@ export type SlackArtifactDeliveryPlanV1 =
   | {
       readonly delivery_id: string;
       readonly disposition: "unavailable";
-      readonly reason_code: "no_artifacts" | "missing_evidence";
+      readonly reason_code: "missing_artifact" | "missing_evidence" | "no_artifacts" | "unexpected_artifact";
       readonly schema_version: "slack-artifact-delivery-plan/v1";
     };
