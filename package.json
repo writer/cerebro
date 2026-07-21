@@ -19,6 +19,7 @@
     "typecheck:workspaces": "npm run typecheck --workspaces --if-present"
   },
   "overrides": {
+    "@hono/node-server": "2.0.11",
     "postcss": "8.5.19"
   }
 }
