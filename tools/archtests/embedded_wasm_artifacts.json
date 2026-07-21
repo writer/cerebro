@@ -20,15 +20,15 @@
     {
       "name": "sourcecoverage-evaluator",
       "path": "internal/sourcecoverage/evaluator.wasm",
-      "sha256": "83af65b2262c8c18a255c612f821031cf0ae2d15c6a60cc9d87f8f2c18869ad0",
-      "size_bytes": 150568,
+      "sha256": "c75ec4e8058290928e3064fbead877b3f9a4f0666fd858b73b7b832ff10e787c",
+      "size_bytes": 150666,
       "max_size_bytes": 175000,
       "abi_version": 1
     },
     {
       "name": "panopticon-resource-extractor",
       "path": "internal/sourceprojection/panopticonresources.wasm",
-      "sha256": "5082505a49837c981c9c1680bc9dbaf05d99932c0029818933f085d3a9a2eca5",
+      "sha256": "b6267ff1b957dcd750099e8cedbf6d109019127b141c4664c07b5d9b5ea76f99",
       "size_bytes": 134512,
       "max_size_bytes": 160000,
       "abi_version": 2
@@ -36,7 +36,7 @@
     {
       "name": "mitre-context-evaluator",
       "path": "internal/mitre/evaluator.wasm",
-      "sha256": "bcbb97629fa90464c8a2e7890b829ab6d48c012afa95de5d954fb84eac0b7aeb",
+      "sha256": "f20a62d247c2ae494ef9ce7c128ca7d1b8bf8f2b30ea02e9bdb6bfc9104f0026",
       "size_bytes": 738188,
       "max_size_bytes": 800000,
       "abi_version": 1
@@ -44,7 +44,7 @@
     {
       "name": "sourceruntime-event-admission",
       "path": "internal/sourceruntime/eventadmission/eventadmission.wasm",
-      "sha256": "66fd97711842e045d6a0df1d81ce05d9303309c54c1c81124f4f688ff6de692d",
+      "sha256": "a4ae94649e42247480f8dbc9da4d26163e8d5a1de356e841b64c8a2d2754a6ec",
       "size_bytes": 262502,
       "max_size_bytes": 265000,
       "abi_version": 2
@@ -52,16 +52,16 @@
     {
       "name": "sourceruntime-record-kernel",
       "path": "internal/sourceruntime/recordkernel/recordkernel.wasm",
-      "sha256": "d1718298df02a0a13d6c7f2eb7c23d03698eedf73bd6b7f125d00bca1c5abe15",
-      "size_bytes": 168819,
+      "sha256": "7a83481aef0cf123815737ab2afddfaafaeee2c8fe718e08edb59ed8635784b5",
+      "size_bytes": 168738,
       "max_size_bytes": 200000,
       "abi_version": 1
     },
     {
       "name": "security-path-evaluator",
       "path": "internal/securitypathdelta/evaluator.wasm",
-      "sha256": "eae8d4996500bf3dc9934469eac6bd3b2df2f46df7ebe4cc4bbbbf312f59ce9b",
-      "size_bytes": 345756,
+      "sha256": "06a4ef598b7c4d0c7212112ea707db9ddeb5e8f385ff9de6f636abf41b3fc1a5",
+      "size_bytes": 346030,
       "max_size_bytes": 400000,
       "abi_version": 1
     }
