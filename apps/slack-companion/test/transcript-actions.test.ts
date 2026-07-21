@@ -80,6 +80,18 @@ describe("transcript action policy", () => {
         },
       })),
     );
+    const reapproved = planTranscriptActions(input({
+      approval: {
+        approval_id: "approval_2",
+        approved_action_ids: ["rotate_key"],
+        approved_at: "2030-01-02T05:00:00.000Z",
+        approved_by_ref: "user:security-lead",
+        schema_version: "transcript-action-approval/v1",
+      },
+    }));
+    assert.equal(reapproved.disposition, "write_tickets");
+    if (reapproved.disposition !== "write_tickets") assert.fail("expected write intents");
+    assert.equal(reapproved.intents[0]?.idempotency_key, approved.intents[0]?.idempotency_key);
   });
 
   test("rejects unknown approvals and evidence from another transcript", () => {

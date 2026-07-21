@@ -64,7 +64,6 @@ export function planTranscriptActions(
       evidence: draft.evidence,
       idempotency_key: hash([
         input.source.transcript_digest,
-        approval.approval_id,
         draft.action_id,
       ]),
       owner_ref: draft.owner_ref,

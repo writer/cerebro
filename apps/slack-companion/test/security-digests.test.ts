@@ -81,6 +81,35 @@ describe("security digest policy", () => {
     assert.equal(plan.reason_code, "required_source_unavailable");
   });
 
+  test("does not publish an item backed only by an unavailable optional source", () => {
+    const plan = planSecurityDigest(input({
+      sections: [{
+        items: [{
+          detail: "The repository scan did not complete.",
+          item_id: "repo-1",
+          priority: "medium",
+          source_ids: ["repositories"],
+          state: "unknown",
+          title: "Repository state is unavailable",
+        }],
+        section_id: "repositories",
+        title: "Repositories",
+      }],
+      sources: [
+        ...input().sources,
+        {
+          observed_at: "2030-01-02T03:00:00.000Z",
+          required: false,
+          source_id: "repositories",
+          state: "unavailable",
+        },
+      ],
+    }));
+    assert.equal(plan.disposition, "unavailable");
+    if (plan.disposition !== "unavailable") assert.fail("expected unavailable");
+    assert.equal(plan.reason_code, "item_source_unavailable");
+  });
+
   test("rejects uncited digest items", () => {
     assert.throws(() => planSecurityDigest(input({
       sections: [{

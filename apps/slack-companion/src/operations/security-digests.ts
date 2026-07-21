@@ -63,7 +63,10 @@ export type SecurityDigestPlanV1 =
   | {
       readonly disposition: "unavailable";
       readonly plan_id: string;
-      readonly reason_code: "required_source_unavailable" | "no_successful_sources";
+      readonly reason_code:
+        | "item_source_unavailable"
+        | "required_source_unavailable"
+        | "no_successful_sources";
       readonly schema_version: "security-digest-plan/v1";
     };
 
@@ -95,6 +98,17 @@ export function planSecurityDigest(
       disposition: "unavailable",
       plan_id: planId,
       reason_code: requiredUnavailable ? "required_source_unavailable" : "no_successful_sources",
+      schema_version: "security-digest-plan/v1",
+    });
+  }
+  const successfulSourceIds = new Set(successful.map((source) => source.source_id));
+  if (sections.some((section) => section.items.some(
+    (item) => item.source_ids.some((sourceId) => !successfulSourceIds.has(sourceId)),
+  ))) {
+    return Object.freeze({
+      disposition: "unavailable",
+      plan_id: planId,
+      reason_code: "item_source_unavailable",
       schema_version: "security-digest-plan/v1",
     });
   }
