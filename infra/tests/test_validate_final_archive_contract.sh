@@ -174,6 +174,15 @@ if jq -se 'any(.[]; has("$id"))' \
 fi
 echo "ok: schemas are strict environment-neutral JSON"
 
+case_directory="$(new_case missing-option-value)"
+last_stdout="${case_directory}/stdout.log"
+last_stderr="${case_directory}/stderr.log"
+set +e
+bash "${validator}" --lock >"${last_stdout}" 2>"${last_stderr}"
+last_status=$?
+set -e
+assert_failure "missing option values are rejected" "invalid-arguments"
+
 case_directory="$(new_case slack-dry-run)"
 refresh_receipt_lock "${case_directory}"
 run_validator "${case_directory}"
@@ -241,6 +250,18 @@ sed 's/complete/changed/' "${case_directory}/ledger.tsv" >"${case_directory}/led
 mv "${case_directory}/ledger.tsv.tmp" "${case_directory}/ledger.tsv"
 run_validator "${case_directory}"
 assert_failure "mismatched ledger digest is rejected" "ledger-digest-mismatch"
+
+case_directory="$(new_case slack-invalid-disposition-count-key)"
+rewrite_json "${case_directory}/final-lock.json" '.ledger.disposition_counts.private_host_ops = 1'
+refresh_receipt_lock "${case_directory}"
+run_validator "${case_directory}"
+assert_failure "Slack disposition count keys are terminal-only" "invalid-lock"
+
+case_directory="$(new_case disposition-count-mismatch)"
+rewrite_json "${case_directory}/final-lock.json" '.ledger.disposition_counts.represented_public += 1'
+refresh_receipt_lock "${case_directory}"
+run_validator "${case_directory}"
+assert_failure "lock disposition counts must match the ledger" "disposition-count-mismatch"
 
 case_directory="$(new_case nonterminal-ledger)"
 refresh_receipt_lock "${case_directory}"

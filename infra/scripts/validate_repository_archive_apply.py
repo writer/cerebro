@@ -554,13 +554,18 @@ def validate(arguments: GateArguments, *, now_epoch: int) -> str:
         pre_observed_at=pre_observed_at,
         now_epoch=now_epoch,
     )
+    precondition_now_epoch = now_epoch if arguments.phase == "pre-apply" else sealed_at
     _validate_freshness(
         pre_observed_at,
-        now_epoch=now_epoch,
+        now_epoch=precondition_now_epoch,
         max_age=max_pre_age,
         phase="pre-apply",
     )
-    _run_final_validator(loaded, snapshot=pre_snapshot, now_epoch=now_epoch)
+    _run_final_validator(
+        loaded,
+        snapshot=pre_snapshot,
+        now_epoch=precondition_now_epoch,
+    )
 
     if arguments.phase == "pre-apply":
         _require(

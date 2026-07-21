@@ -341,6 +341,57 @@ class RepositoryArchiveApplyGateTest(unittest.TestCase):
         self.assertEqual(result, "postcondition-verified")
 
     @mock.patch.object(gate.subprocess, "run")
+    def test_postcondition_uses_sealed_time_for_pre_apply_freshness(
+        self, run: mock.Mock
+    ) -> None:
+        run.return_value = self.successful_validator_result()
+        self.write_pre_observation(NOW - 40)
+        self.write_contract(NOW - 35, NOW + 30)
+        post_observation = self.write_json(
+            "post-observation.json",
+            self.observation(
+                phase="postcondition",
+                observed_at=NOW,
+                archived=True,
+                repository_digest="3" * 64,
+            ),
+        )
+        apply_receipt = self.write_json(
+            "apply-receipt.json",
+            {
+                "schema_version": gate.APPLY_RECEIPT_SCHEMA,
+                "source_repository_id": "slack_companion",
+                "state": "archived",
+                "apply_contract_sha256": self.digest(self.apply_contract),
+                "pre_apply_observation_sha256": self.digest(self.pre_apply_observation),
+                "applied_at_epoch": NOW - 34,
+                "postcondition": {
+                    "checked": True,
+                    "archived": True,
+                    "observation_sha256": self.digest(post_observation),
+                    "source_main_commit_sha": SOURCE_MAIN,
+                    "source_tree_sha": SOURCE_TREE,
+                    "observed_at_epoch": NOW,
+                },
+            },
+        )
+        arguments = self.arguments(phase="postcondition")
+        arguments = gate.GateArguments(
+            **{
+                **arguments.__dict__,
+                "apply_receipt": apply_receipt,
+                "postcondition_observation": post_observation,
+            }
+        )
+
+        result = gate.validate(arguments, now_epoch=NOW)
+
+        self.assertEqual(result, "postcondition-verified")
+        command = run.call_args.args[0]
+        validator_epoch = command[command.index("--authority-now-epoch") + 1]
+        self.assertEqual(validator_epoch, str(NOW - 35))
+
+    @mock.patch.object(gate.subprocess, "run")
     def test_non_archived_postcondition_is_rejected(self, run: mock.Mock) -> None:
         run.return_value = self.successful_validator_result()
         post_observation = self.write_json(

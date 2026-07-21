@@ -42,20 +42,25 @@ fail() {
   return 1
 }
 
+require_value() {
+  local value="${2-}"
+  [[ -n "${value}" && "${value}" != --* ]] || fail "invalid-arguments"
+}
+
 while (($# > 0)); do
   case "$1" in
-    --lock) lock_file="$2"; shift 2 ;;
-    --receipt) receipt_file="$2"; shift 2 ;;
-    --ledger) ledger_file="$2"; shift 2 ;;
-    --source-authority) source_authority_file="$2"; shift 2 ;;
-    --inventory-receipt) inventory_receipt_file="$2"; shift 2 ;;
-    --cutover-receipt) cutover_receipt_file="$2"; shift 2 ;;
-    --rollback-receipt) rollback_receipt_file="$2"; shift 2 ;;
-    --live-source-main) live_source_main="$2"; shift 2 ;;
-    --live-source-tree) live_source_tree="$2"; shift 2 ;;
-    --live-public-target) live_public_target="$2"; shift 2 ;;
-    --live-private-target) live_private_target="$2"; shift 2 ;;
-    --authority-now-epoch) authority_now_epoch="$2"; shift 2 ;;
+    --lock) require_value "$1" "${2-}"; lock_file="$2"; shift 2 ;;
+    --receipt) require_value "$1" "${2-}"; receipt_file="$2"; shift 2 ;;
+    --ledger) require_value "$1" "${2-}"; ledger_file="$2"; shift 2 ;;
+    --source-authority) require_value "$1" "${2-}"; source_authority_file="$2"; shift 2 ;;
+    --inventory-receipt) require_value "$1" "${2-}"; inventory_receipt_file="$2"; shift 2 ;;
+    --cutover-receipt) require_value "$1" "${2-}"; cutover_receipt_file="$2"; shift 2 ;;
+    --rollback-receipt) require_value "$1" "${2-}"; rollback_receipt_file="$2"; shift 2 ;;
+    --live-source-main) require_value "$1" "${2-}"; live_source_main="$2"; shift 2 ;;
+    --live-source-tree) require_value "$1" "${2-}"; live_source_tree="$2"; shift 2 ;;
+    --live-public-target) require_value "$1" "${2-}"; live_public_target="$2"; shift 2 ;;
+    --live-private-target) require_value "$1" "${2-}"; live_private_target="$2"; shift 2 ;;
+    --authority-now-epoch) require_value "$1" "${2-}"; authority_now_epoch="$2"; shift 2 ;;
     *) fail "invalid-arguments" ;;
   esac
 done
@@ -117,6 +122,10 @@ jq -e \
         and .ledger.terminal_dispositions == $slack_terminals)
       or ((.source_repository_id == "web_public" or .source_repository_id == "web_private")
         and .ledger.terminal_dispositions == $web_terminals))
+    and ((.source_repository_id == "slack_companion"
+        and ([.ledger.disposition_counts | keys[] | select(. as $key | ($slack_terminals | index($key)) == null)] | length) == 0)
+      or ((.source_repository_id == "web_public" or .source_repository_id == "web_private")
+        and ([.ledger.disposition_counts | keys[] | select(. as $key | ($web_terminals | index($key)) == null)] | length) == 0))
     and (.ledger.terminal_row_count | type == "number" and floor == . and . > 0)
     and .ledger.nonterminal_row_count == 0
     and (.receipts | keys | sort) == (["cutover", "rollback"] | sort)
