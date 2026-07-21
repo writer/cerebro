@@ -115,6 +115,18 @@ ordered by priority, and carries stable idempotent identities so a retry never
 double-offers. The host owns candidate derivation, durable engagement history,
 and Slack transport.
 
+## Clarifying questions
+
+`src/clarification` decides whether to ask exactly one high-value clarifying
+question or to proceed with a best-effort answer, so the companion is useful
+without over-asking. `planClarification` treats a candidate as askable only when
+the missing information is answer-blocking, when no safe default covers it below
+the policy's impact threshold, and when the same question was not already asked
+in the thread. When several remain it asks the single most consequential one and
+defers the rest with a reason; when nothing is askable or the per-thread question
+budget is spent, it proceeds instead of nagging. The host owns candidate
+derivation, durable clarification history, and Slack transport.
+
 ## Progress narration
 
 `src/progress` decides whether an in-flight progress event is worth narrating to
