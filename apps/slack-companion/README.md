@@ -45,6 +45,26 @@ The same shape applies to longer-running work. Slack-visible status can show que
 
 Hosts should record the message parts Slack accepted, not an internal draft. Evaluation and conversation continuity then describe what the person actually received, including partial and failed deliveries.
 
+Before a host starts a model-planned tool, `preflightAssistantTurnInvocation`
+checks the exact registered tool, selected capability pack, authority receipt,
+source-health snapshot, replan count, lane tool budget, and elapsed time. New
+tool calls stop at 80% of the lane latency budget so the remaining time is
+reserved for a grounded response. This policy validates a model-selected plan;
+it does not classify or route the question.
+
+If primary synthesis fails, `buildAssistantTurnEvidenceFallback` creates an
+answer from bounded, already-sanitized evidence statements and exact source
+gaps. Successful receipts stay available to the host but never enter the
+display payload. A source failure cannot erase evidence that was already
+collected.
+
+`assessAssistantTurnOutcome` records the product KPI after a 24-hour
+correction and feedback window. Human requests count as successful only when a
+verified outcome completed within the selected lane's latency budget with no
+evaluator blockers, user correction, or negative feedback. Machine handoffs
+are excluded, and requests assessed before the observation window closes stay
+pending instead of becoming false successes or failures.
+
 ### Image questions
 
 `planSlackQuestionImageInput` accepts host-projected Slack file references and produces a durable, byte-free image manifest. Image-only mentions receive a concrete inspection question. Captioned images preserve the person's question. The plan requires both `slack.files.read` and `agent.input.image` capabilities.
