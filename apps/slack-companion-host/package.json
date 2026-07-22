@@ -1,0 +1,44 @@
+{
+  "name": "@writer/cerebro-slack-companion-host",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Slack runtime and host adapters for Cerebro",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist/src",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/writer/cerebro.git",
+    "directory": "apps/slack-companion-host"
+  },
+  "scripts": {
+    "prebuild": "npm run build --workspace @writer/cerebro-slack-companion",
+    "pretypecheck": "npm run build --workspace @writer/cerebro-slack-companion",
+    "build": "tsc -p tsconfig.json",
+    "check": "npm run typecheck && npm test",
+    "check:compat": "tsc -p tsconfig.public-compat.json --noEmit && tsc -p tsconfig.evidence-recheck.json && node --test compat/public-evidence-recheck-compatibility.test.mjs",
+    "start": "node dist/src/main.js",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "cerebro": {
+    "runtimeDependencyOwners": {
+      "@slack/bolt": "security-platform"
+    }
+  },
+  "dependencies": {
+    "@slack/bolt": "4.7.3",
+    "@writer/cerebro-sdk": "0.1.0",
+    "@writer/cerebro-slack-companion": "0.1.0"
+  },
+  "devDependencies": {
+    "@slack/types": "2.21.1",
+    "@types/node": "^26.0.0",
+    "typescript": "^6.0.0"
+  }
+}
