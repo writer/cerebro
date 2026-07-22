@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["compat/public-evidence-recheck.ts", "src/evidence-recheck/**/*.ts"]
+}

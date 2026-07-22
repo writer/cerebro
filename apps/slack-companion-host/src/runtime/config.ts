@@ -1,0 +1,89 @@
+export interface SlackRuntimeConfig {
+  allowedTeamIds: ReadonlySet<string>;
+  appToken: string;
+  appName: string;
+  botToken: string;
+  cerebroBaseUrl: string;
+  cerebroReadApiKey: string;
+  cerebroTenantId: string;
+  environmentLabel: string;
+  memoryDirectory: string;
+  port: number;
+  production: boolean;
+}
+
+export class SlackRuntimeConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SlackRuntimeConfigError";
+  }
+}
+
+export function loadSlackRuntimeConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): SlackRuntimeConfig {
+  const allowedTeamIds = new Set(csv(required(env.SLACK_ALLOWED_TEAM_IDS)));
+  if (allowedTeamIds.size === 0) {
+    throw new SlackRuntimeConfigError("At least one Slack workspace must be allowed.");
+  }
+  const baseUrl = validatedBaseUrl(required(env.CEREBRO_BASE_URL));
+  return Object.freeze({
+    allowedTeamIds,
+    appToken: required(env.SLACK_APP_TOKEN),
+    appName: required(env.CEREBRO_SLACK_APP_NAME),
+    botToken: required(env.SLACK_BOT_TOKEN),
+    cerebroBaseUrl: baseUrl,
+    cerebroReadApiKey: required(env.CEREBRO_READ_API_KEY),
+    cerebroTenantId: required(env.CEREBRO_TENANT_ID),
+    environmentLabel: required(env.CEREBRO_SLACK_ENVIRONMENT_LABEL),
+    memoryDirectory: env.CEREBRO_SLACK_RUNTIME_MEMORY_DIR?.trim()
+      || "/memory/slack-runtime",
+    port: port(env.PORT),
+    production: booleanBinding(env.CEREBRO_SLACK_PRODUCTION),
+  });
+}
+
+function booleanBinding(value: string | undefined): boolean {
+  const normalized = required(value);
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  throw new SlackRuntimeConfigError("A required boolean runtime binding is invalid.");
+}
+
+function required(value: string | undefined): string {
+  const normalized = value?.trim();
+  if (!normalized) {
+    throw new SlackRuntimeConfigError("A required runtime binding is missing.");
+  }
+  return normalized;
+}
+
+function csv(value: string): string[] {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function port(value: string | undefined): number {
+  const parsed = Number(value ?? "3000");
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 65_535) {
+    throw new SlackRuntimeConfigError("The runtime port is invalid.");
+  }
+  return parsed;
+}
+
+function validatedBaseUrl(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new SlackRuntimeConfigError("The Cerebro service binding is invalid.");
+  }
+  const localHttp = parsed.protocol === "http:"
+    && (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost");
+  if ((parsed.protocol !== "https:" && !localHttp) || parsed.username || parsed.password) {
+    throw new SlackRuntimeConfigError("The Cerebro service binding is invalid.");
+  }
+  parsed.pathname = parsed.pathname.replace(/\/$/, "");
+  parsed.search = "";
+  parsed.hash = "";
+  return parsed.toString().replace(/\/$/, "");
+}
