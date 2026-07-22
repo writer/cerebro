@@ -85,6 +85,24 @@ same due times after a restart or topology change and materializes occurrences
 with the existing `(schedule_id, due_at, schedule_revision)` identity. Runtime
 stores, destination bindings, and scheduler deployment policy remain host-owned.
 
+## Security operations
+
+`src/operations/security-digests.ts` defines two portable workflows: a daily
+security board and a weekly repository hygiene report. A publishable run carries
+freshness and coverage receipts for every successful source. Required sources
+that are stale, incomplete, or unavailable stop publication instead of producing
+an empty or misleading report.
+
+Each workflow requests a status chart and an operator CSV queue. Artifact policy
+accepts only the complete requested render set, checks each file format, and
+requires every upload to cite evidence from the digest run. Transcript-derived
+ticket actions remain drafts until an approval names the exact plan shown to the
+operator; any source or draft change invalidates that approval.
+
+The host owns provider calls, collection deadlines, destinations, schedules,
+rendering, durable effect receipts, and external writes. It must reconcile an
+unknown Slack or ticket outcome by stable idempotency key before retrying.
+
 ## Canonical work cases
 
 `src/canonical-work` projects a Cerebro compliance work item into a resumable
