@@ -81,6 +81,7 @@ export class CerebroAskClient {
           done = true;
           const traceId = text(event.data.trace_id);
           if (summary && traceId) summary.traceId = traceId;
+          break;
         }
         if (event.name === "error") {
           throw new CerebroAskError("unavailable", text(event.data.message) || "Cerebro could not complete the request.");
