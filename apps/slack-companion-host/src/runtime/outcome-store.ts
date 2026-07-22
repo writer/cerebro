@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   ASSISTANT_EXECUTION_LANES,
@@ -14,6 +14,10 @@ import {
 } from "../assistant-turn.js";
 
 export const OUTCOME_OBSERVATION_WINDOW_MS = 24 * 60 * 60 * 1_000;
+export const ADMISSION_RETENTION_MS = 24 * 60 * 60 * 1_000;
+export const TELEMETRY_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
+const MAX_ADMISSION_RECEIPTS = 50_000;
+const MAX_TELEMETRY_RECEIPTS = 100_000;
 
 export interface PendingAssistantOutcome {
   delivered_message_ts: string;
@@ -102,7 +106,12 @@ export class FileOutcomeStore
 
   async assessDue(host: AssistantTurnHostAdapter): Promise<number> {
     let assessed = 0;
+    await this.initialize();
     await this.serialize(async () => {
+      await Promise.all([
+        this.pruneReceiptDirectory("admissions", ADMISSION_RETENTION_MS, MAX_ADMISSION_RECEIPTS),
+        this.pruneReceiptDirectory("telemetry", TELEMETRY_RETENTION_MS, MAX_TELEMETRY_RECEIPTS),
+      ]);
       for (const file of await this.pendingFiles()) {
         const pending = await this.readPending(file);
         const openedAt = Date.parse(pending.opened_at);
@@ -186,6 +195,32 @@ export class FileOutcomeStore
     const temporary = `${path}.${randomUUID()}.tmp`;
     await writeFile(temporary, `${JSON.stringify(value)}\n`, { encoding: "utf8", mode: 0o600 });
     await rename(temporary, path);
+  }
+
+  private async pruneReceiptDirectory(
+    name: "admissions" | "telemetry",
+    retentionMs: number,
+    maximumReceipts: number,
+  ): Promise<void> {
+    const directory = this.directory(name);
+    const receipts = await Promise.all(
+      (await readdir(directory))
+        .filter((file) => file.endsWith(".json"))
+        .map(async (file) => {
+          const path = join(directory, file);
+          return { path, modifiedAt: (await stat(path)).mtimeMs };
+        }),
+    );
+    receipts.sort((left, right) => right.modifiedAt - left.modifiedAt);
+    const cutoff = this.clock().getTime() - retentionMs;
+    const expired = receipts.filter((receipt) => receipt.modifiedAt < cutoff);
+    const retained = receipts.filter((receipt) => receipt.modifiedAt >= cutoff);
+    const overLimit = retained.slice(maximumReceipts);
+    await Promise.all([...expired, ...overLimit].map(async ({ path }) => {
+      await unlink(path).catch((error: unknown) => {
+        if (errorCode(error) !== "ENOENT") throw error;
+      });
+    }));
   }
 
   private directory(name: string): string {

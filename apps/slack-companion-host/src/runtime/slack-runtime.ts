@@ -56,6 +56,26 @@ interface SlackThreadRepliesClient {
   };
 }
 
+export interface SlackMentionClient extends SlackThreadRepliesClient {
+  chat: {
+    postMessage(input: {
+      channel: string;
+      text: string;
+      thread_ts: string;
+    }): Promise<{ ts?: string }>;
+    update(input: { channel: string; text: string; ts: string }): Promise<unknown>;
+  };
+}
+
+export interface SlackMentionEvent {
+  channel: string;
+  eventTs: string;
+  hasThreadContext: boolean;
+  teamId: string;
+  text: string;
+  threadTs: string;
+}
+
 const graphCatalog = createToolCatalog([{
   authority_class: "observe",
   effect_class: "read",
@@ -315,109 +335,20 @@ export class SlackCompanionRuntime {
 
     this.app.event("app_mention", async ({ context, event, client }) => {
       if (!context.teamId || !this.config.allowedTeamIds.has(context.teamId)) return;
-      const threadTs = event.thread_ts ?? event.ts;
-      const requestKey = `${context.teamId}:${event.channel}:${threadTs}:${event.ts}`;
-      if (!await this.outcomes.claimRequest(requestKey)) return;
-      const requestDigest = digest(requestKey);
-      const runId = `slack-run-${requestDigest}`;
-      let threadContext: string | undefined;
-      if (event.thread_ts) {
-        try {
-          threadContext = await readSlackThreadContext(
-            client,
-            event.channel,
-            threadTs,
-            event.ts,
-          );
-        } catch (error) {
-          await client.chat.postMessage({
-            channel: event.channel,
-            text: formatEnvironmentMessage(
-              this.config,
-              `I couldn't read this thread, so I didn't send your message as a standalone graph query. Retry after ${this.config.appName} has channel history access.`,
-            ),
-            thread_ts: threadTs,
-          });
-          process.stderr.write(`${JSON.stringify({
-            component: "slack-runtime",
-            error_kind: error instanceof Error ? error.name : "unknown",
-            operation: "read_thread",
-            state: "blocked",
-          })}\n`);
-          return;
-        }
-      }
-      await this.host.recordProgress(runId, {
-        execution_lane: "lookup",
-        occurred_at: new Date().toISOString(),
-        phase: "checking",
-        schema_version: "assistant-turn-progress/v1",
-        sequence: 1,
-        status: "Reading this thread and checking current Cerebro evidence",
-      });
-      const progress = await client.chat.postMessage({
-        channel: event.channel,
-        text: formatEnvironmentMessage(
-          this.config,
-          threadContext
-            ? "Reading this thread and checking current Cerebro evidence…"
-            : "Checking current Cerebro evidence…",
-        ),
-        thread_ts: threadTs,
-      });
-      if (!progress.ts) throw new Error("Slack did not accept the progress message.");
-      const result = await this.questions.answer({
-        requestKey,
-        threadContext,
-        text: event.text,
-      });
-      const deliveredText = formatEnvironmentMessage(
-        this.config,
-        result.text,
-      );
-      await client.chat.update({
-        channel: event.channel,
-        text: deliveredText,
-        ts: progress.ts,
-      });
-      const deliveredAt = new Date().toISOString();
-      const references = slackDeliveryReferences(
-        context.teamId,
-        event.channel,
-        threadTs,
-        progress.ts,
-        deliveredText,
-      );
-      await this.host.recordDelivery({
-        created_at: result.pending.opened_at,
-        delivery_id: `slack-delivery-${requestDigest}`,
-        destination_ref: references.destinationRef,
-        parts: [{
-          delivered_at: deliveredAt,
-          destination_receipt: references.destinationReceipt,
-          idempotency_key: `slack-delivery-${requestDigest}:part:1`,
-          part_id: "answer",
-          payload_digest: `sha256:${digest(deliveredText)}`,
-          payload_ref: references.payloadRef,
-          sequence: 1,
-          state: "delivered",
-        }],
-        run_id: runId,
-        schema_version: "delivery-receipt/v1",
-        state: "delivered",
-        updated_at: deliveredAt,
-      });
-      await this.outcomes.recordPending({
-        ...result.pending,
-        delivered_message_ts: progress.ts,
-      });
-      await this.host.recordProgress(runId, {
-        execution_lane: "lookup",
-        occurred_at: deliveredAt,
-        phase: "completed",
-        schema_version: "assistant-turn-progress/v1",
-        sequence: 2,
-        status: "Delivered the current Cerebro answer",
+      await handleSlackMention({
+        client,
+        config: this.config,
+        event: {
+          channel: event.channel,
+          eventTs: event.ts,
+          hasThreadContext: Boolean(event.thread_ts),
+          teamId: context.teamId,
+          text: event.text,
+          threadTs: event.thread_ts ?? event.ts,
+        },
+        host: this.host,
+        outcomes: this.outcomes,
+        questions: this.questions,
       });
     });
 
@@ -440,6 +371,158 @@ export class SlackCompanionRuntime {
         state: "failed",
       })}\n`);
     }
+  }
+}
+
+export async function handleSlackMention(input: {
+  client: SlackMentionClient;
+  config: SlackRuntimeConfig;
+  event: SlackMentionEvent;
+  host: AssistantTurnHostAdapter;
+  outcomes: FileOutcomeStore;
+  questions: AssistantQuestionService;
+}): Promise<boolean> {
+  const requestKey = [
+    input.event.teamId,
+    input.event.channel,
+    input.event.threadTs,
+    input.event.eventTs,
+  ].join(":");
+  const budget = input.host.enforceBudget({
+    execution_lane: "lookup",
+    planned_tool_call_count: 1,
+    selected_capability_count: 1,
+  });
+  if (!await input.outcomes.claimRequest(requestKey)) return false;
+
+  const openedAt = new Date();
+  const requestDigest = digest(requestKey);
+  const requestId = `slack-request-${requestDigest}`;
+  const runId = `slack-run-${requestDigest}`;
+  let deliveredMessageTs = "";
+  let pendingOutcomeRecorded = false;
+  const recordBlockedPending = async (): Promise<void> => {
+    await input.outcomes.recordPending({
+      delivered_message_ts: deliveredMessageTs,
+      execution_lane: "lookup",
+      latency_budget_ms: budget.latency_budget_ms,
+      negative_feedback_count: 0,
+      opened_at: openedAt.toISOString(),
+      outcome_state: "blocked",
+      request_id: requestId,
+      schema_version: "assistant-turn-pending-outcome/v1",
+      user_correction_count: 0,
+      verified: false,
+    });
+    pendingOutcomeRecorded = true;
+  };
+
+  try {
+    let threadContext: string | undefined;
+    if (input.event.hasThreadContext) {
+      try {
+        threadContext = await readSlackThreadContext(
+          input.client,
+          input.event.channel,
+          input.event.threadTs,
+          input.event.eventTs,
+        );
+      } catch (error) {
+        const blocked = await input.client.chat.postMessage({
+          channel: input.event.channel,
+          text: formatEnvironmentMessage(
+            input.config,
+            `I couldn't read this thread, so I didn't send your message as a standalone graph query. Retry after ${input.config.appName} has channel history access.`,
+          ),
+          thread_ts: input.event.threadTs,
+        });
+        deliveredMessageTs = blocked.ts ?? "";
+        await recordBlockedPending();
+        process.stderr.write(`${JSON.stringify({
+          component: "slack-runtime",
+          error_kind: error instanceof Error ? error.name : "unknown",
+          operation: "read_thread",
+          state: "blocked",
+        })}\n`);
+        return true;
+      }
+    }
+
+    await input.host.recordProgress(runId, {
+      execution_lane: "lookup",
+      occurred_at: openedAt.toISOString(),
+      phase: "checking",
+      schema_version: "assistant-turn-progress/v1",
+      sequence: 1,
+      status: "Reading this thread and checking current Cerebro evidence",
+    });
+    const progress = await input.client.chat.postMessage({
+      channel: input.event.channel,
+      text: formatEnvironmentMessage(
+        input.config,
+        threadContext
+          ? "Reading this thread and checking current Cerebro evidence…"
+          : "Checking current Cerebro evidence…",
+      ),
+      thread_ts: input.event.threadTs,
+    });
+    if (!progress.ts) throw new Error("Slack did not accept the progress message.");
+    deliveredMessageTs = progress.ts;
+    const result = await input.questions.answer({
+      requestKey,
+      threadContext,
+      text: input.event.text,
+    });
+    const deliveredText = formatEnvironmentMessage(input.config, result.text);
+    await input.client.chat.update({
+      channel: input.event.channel,
+      text: deliveredText,
+      ts: deliveredMessageTs,
+    });
+    const deliveredAt = new Date().toISOString();
+    const references = slackDeliveryReferences(
+      input.event.teamId,
+      input.event.channel,
+      input.event.threadTs,
+      deliveredMessageTs,
+      deliveredText,
+    );
+    await input.host.recordDelivery({
+      created_at: result.pending.opened_at,
+      delivery_id: `slack-delivery-${requestDigest}`,
+      destination_ref: references.destinationRef,
+      parts: [{
+        delivered_at: deliveredAt,
+        destination_receipt: references.destinationReceipt,
+        idempotency_key: `slack-delivery-${requestDigest}:part:1`,
+        part_id: "answer",
+        payload_digest: `sha256:${digest(deliveredText)}`,
+        payload_ref: references.payloadRef,
+        sequence: 1,
+        state: "delivered",
+      }],
+      run_id: runId,
+      schema_version: "delivery-receipt/v1",
+      state: "delivered",
+      updated_at: deliveredAt,
+    });
+    await input.outcomes.recordPending({
+      ...result.pending,
+      delivered_message_ts: deliveredMessageTs,
+    });
+    pendingOutcomeRecorded = true;
+    await input.host.recordProgress(runId, {
+      execution_lane: "lookup",
+      occurred_at: deliveredAt,
+      phase: "completed",
+      schema_version: "assistant-turn-progress/v1",
+      sequence: 2,
+      status: "Delivered the current Cerebro answer",
+    });
+    return true;
+  } catch (error) {
+    if (!pendingOutcomeRecorded) await recordBlockedPending();
+    throw error;
   }
 }
 

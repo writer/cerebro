@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -13,6 +13,7 @@ import {
   environmentHomeView,
   formatEnvironmentMessage,
   formatSlackThreadContext,
+  handleSlackMention,
   readSlackThreadContext,
   slackDeliveryReferences,
 } from "../src/runtime/slack-runtime.js";
@@ -442,6 +443,69 @@ test("question service gives a bounded recovery action after a source timeout", 
   }
 });
 
+test("failed claimed mentions persist a blocked outcome before retries are suppressed", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
+  try {
+    const store = new FileOutcomeStore(root, { log: () => undefined });
+    const host = createAssistantTurnHost(store);
+    const questions = new AssistantQuestionService(
+      host,
+      new CerebroAskClient({
+        apiKey: "bound-at-runtime",
+        baseUrl: "https://cerebro.example.com",
+        fetchImpl: async () => sseResponse([]),
+        tenantId: "writer",
+      }),
+    );
+    const event = {
+      channel: "C-ONE",
+      eventTs: "1710000000.000001",
+      hasThreadContext: false,
+      teamId: "T-ONE",
+      text: "<@BOT> What changed?",
+      threadTs: "1710000000.000001",
+    };
+    const client = {
+      chat: {
+        postMessage: async () => {
+          throw new Error("Slack unavailable");
+        },
+        update: async () => undefined,
+      },
+      conversations: {
+        replies: async () => ({ messages: [] }),
+      },
+    };
+    const config = loadSlackRuntimeConfig({
+      CEREBRO_BASE_URL: "https://cerebro.example.com",
+      CEREBRO_READ_API_KEY: "bound-at-runtime",
+      CEREBRO_SLACK_APP_NAME: "Cerebro Development",
+      CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
+      CEREBRO_SLACK_PRODUCTION: "false",
+      CEREBRO_TENANT_ID: "writer",
+      SLACK_ALLOWED_TEAM_IDS: "T-ONE",
+      SLACK_APP_TOKEN: "bound-at-runtime",
+      SLACK_BOT_TOKEN: "bound-at-runtime",
+    });
+
+    await assert.rejects(
+      handleSlackMention({ client, config, event, host, outcomes: store, questions }),
+      /Slack unavailable/,
+    );
+    assert.equal(
+      await handleSlackMention({ client, config, event, host, outcomes: store, questions }),
+      false,
+    );
+    const pendingFiles = await readdir(join(root, "pending"));
+    assert.equal(pendingFiles.length, 1);
+    const pending = JSON.parse(await readFile(join(root, "pending", pendingFiles[0]!), "utf8"));
+    assert.equal(pending.outcome_state, "blocked");
+    assert.equal(pending.verified, false);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("outcome store applies negative feedback before the durable 24-hour assessment", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   const telemetry: unknown[] = [];
@@ -477,6 +541,30 @@ test("outcome store applies negative feedback before the durable 24-hour assessm
     const assessment = JSON.parse(await readFile(join(root, "assessments", assessmentFiles[0]!), "utf8"));
     assert.equal(assessment.negative_feedback_count, 1);
     assert.equal(assessment.verified_outcome_within_slo, false);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("outcome maintenance removes expired admission and telemetry receipts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
+  try {
+    const now = new Date("2026-07-19T10:00:00.000Z");
+    const store = new FileOutcomeStore(root, {
+      clock: () => now,
+      log: () => undefined,
+    });
+    await store.initialize();
+    const admission = join(root, "admissions", "expired.json");
+    const telemetry = join(root, "telemetry", "expired.json");
+    await writeFile(admission, "claimed\n");
+    await writeFile(telemetry, "{}\n");
+    const old = new Date("2026-07-01T00:00:00.000Z");
+    await Promise.all([utimes(admission, old, old), utimes(telemetry, old, old)]);
+
+    assert.equal(await store.assessDue(createAssistantTurnHost(store)), 0);
+    assert.deepEqual(await readdir(join(root, "admissions")), []);
+    assert.deepEqual(await readdir(join(root, "telemetry")), []);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
