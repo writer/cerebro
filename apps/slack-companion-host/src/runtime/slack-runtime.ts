@@ -108,15 +108,12 @@ export class AssistantQuestionService {
     const openedAt = this.clock();
     const requestId = `slack-request-${digest(input.requestKey)}`;
     const currentRequest = normalizedSlackText(input.text);
-    const question = input.threadContext
-      ? contextualQuestion(currentRequest, input.threadContext)
-      : currentRequest;
     const budget = this.host.enforceBudget({
       execution_lane: "lookup",
       planned_tool_call_count: 1,
       selected_capability_count: 1,
     });
-    if (!question) {
+    if (!currentRequest) {
       return {
         pending: pendingOutcome({
           budgetMs: budget.latency_budget_ms,
@@ -128,6 +125,9 @@ export class AssistantQuestionService {
         text: "Ask a concrete question about a finding, source, asset, owner, or evidence record.",
       };
     }
+    const question = input.threadContext
+      ? contextualQuestion(currentRequest, input.threadContext)
+      : currentRequest;
 
     const observedAt = this.clock();
     const preflight = this.host.preflightInvocation(preflightInput(

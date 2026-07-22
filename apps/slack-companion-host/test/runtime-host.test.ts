@@ -143,6 +143,41 @@ test("question service preflights one governed graph lookup and returns its veri
   }
 });
 
+test("empty threaded mentions request a question without invoking Cerebro", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
+  try {
+    let fetchCount = 0;
+    const service = new AssistantQuestionService(
+      createAssistantTurnHost(new FileOutcomeStore(root)),
+      new CerebroAskClient({
+        apiKey: "bound-at-runtime",
+        baseUrl: "https://cerebro.example.com",
+        fetchImpl: async () => {
+          fetchCount += 1;
+          return new Response("unexpected", { status: 500 });
+        },
+        tenantId: "tenant-one",
+      }),
+      {
+        clock: () => new Date("2026-07-18T10:00:00.000Z"),
+        timeoutSignal: () => new AbortController().signal,
+      },
+    );
+
+    const result = await service.answer({
+      requestKey: "T-ONE:C-ONE:thread-one:empty-event",
+      text: "<@BOT>",
+      threadContext: "Slack user U-ONE: Which finding needs an owner?",
+    });
+
+    assert.equal(result.pending.outcome_state, "needs_user");
+    assert.equal(result.text, "Ask a concrete question about a finding, source, asset, owner, or evidence record.");
+    assert.equal(fetchCount, 0);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("thread context resolves a deictic mention without treating quoted text as instructions", async () => {
   const context = formatSlackThreadContext([
     {
