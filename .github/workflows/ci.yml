@@ -148,7 +148,9 @@ jobs:
         run: npm ci
 
       - name: Check Slack companion workspace
-        run: npm run check --workspace @writer/cerebro-slack-companion
+        run: |
+          npm run check --workspace @writer/cerebro-slack-companion
+          npm run check --workspace @writer/cerebro-slack-companion-host
 
       - name: Inspect Slack companion package
         shell: bash
