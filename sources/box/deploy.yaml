@@ -1,4 +1,6 @@
 sourceId: box
+health:
+  authModel: oauth_authorization_code
 secretKeys:
   - BOX_CLIENT_ID
   - BOX_CLIENT_SECRET

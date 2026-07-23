@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/writer/cerebro/internal/connectorcatalog"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/tools/sourcedeploy"
 )
 
@@ -56,10 +58,19 @@ func run(args []string) error {
 	case "yaml":
 		data, err = fragment.MarshalYAML()
 	case "contract-json":
+		analysis, catalogErr := connectorcatalog.BuiltinRuntime()
+		if catalogErr != nil {
+			return catalogErr
+		}
+		definitions := make(map[string]connectordefinitions.Definition, len(analysis.Entries))
+		for _, entry := range analysis.Entries {
+			definitions[entry.Definition.SourceID] = entry.Definition
+		}
 		contract, contractErr := sourcedeploy.RenderContract(*sourcesRoot, manifests, sourcedeploy.ContractOptions{
 			Environment: *env,
 			TenantID:    *tenant,
 			ImageTag:    *imageTag,
+			Definitions: definitions,
 		})
 		if contractErr != nil {
 			return contractErr

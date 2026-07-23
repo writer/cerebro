@@ -174,7 +174,7 @@ func PlanDefinition(request DefinitionRequest) (*PromotionPlan, error) {
 		Title:    "Health receipt",
 		Category: "source_cdk",
 		Status:   PlanStatusReady,
-		Detail:   "Generated health receipt records freshness SLOs and runtime health endpoint.",
+		Detail:   "Deploy tooling derives the health receipt from connector, source, and runtime metadata.",
 	})
 	addStep(PromotionPlanStep{
 		ID:       "promotion." + firstNonEmptyString(plan.NextStage, "certified"),

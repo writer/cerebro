@@ -193,6 +193,25 @@ func TestBuiltin(t *testing.T) {
 	}
 }
 
+func TestBuiltinLoadsDockerHubFromConnectorCatalog(t *testing.T) {
+	for _, loader := range builtinSourceLoaders {
+		if loader.name == "docker_hub" {
+			t.Fatal("docker_hub still has a concrete source loader")
+		}
+	}
+	registry, err := Builtin()
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+	source, ok := registry.Get("docker_hub")
+	if !ok {
+		t.Fatal("Get(docker_hub) = false, want catalog-backed source")
+	}
+	if source.Spec().Name != "Docker Hub" {
+		t.Fatalf("docker_hub Spec().Name = %q, want %q", source.Spec().Name, "Docker Hub")
+	}
+}
+
 func TestBuiltinRegistersGenerateableCatalogSources(t *testing.T) {
 	registry, err := Builtin()
 	if err != nil {

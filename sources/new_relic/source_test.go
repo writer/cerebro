@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcefixture"
 	"github.com/writer/cerebro/sources/internal/newrelicapi"
 )
 
@@ -264,9 +265,9 @@ func TestNewFindingEventKeepsRequiredAttributesForPartialIssue(t *testing.T) {
 }
 
 func TestNewFixtureReplaysNewRelicFamilies(t *testing.T) {
-	source, err := NewFixture()
+	source, err := sourcefixture.NewCatalogSource(".", defaultFamily)
 	if err != nil {
-		t.Fatalf("NewFixture() error = %v", err)
+		t.Fatalf("NewCatalogSource() error = %v", err)
 	}
 	familyConfigs := map[string]sourcecdk.Config{}
 	for _, family := range []string{familyAssets, familyFindings, familyAuditEvents} {

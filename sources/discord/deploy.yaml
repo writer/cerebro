@@ -1,4 +1,6 @@
 sourceId: discord
+health:
+  authModel: api_key
 secretKeys:
   - DISCORD_APPLICATION_ID
   - DISCORD_GUILD_ID

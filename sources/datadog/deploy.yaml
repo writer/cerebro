@@ -1,4 +1,8 @@
 sourceId: datadog
+health:
+  authModel: datadog_api_application_key
+  expectedCadenceSeconds: 3600
+  staleAfterSeconds: 7200
 secretKeys:
   - DATADOG_API_KEY
   - DATADOG_APP_KEY

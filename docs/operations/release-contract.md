@@ -187,8 +187,10 @@ Per-source fields:
 | `supported_families` | runtime families inferred from catalog and manifests |
 | `required_secrets` | source-level secret env var names |
 | `role_assumption_config_keys` | config keys that may contain role assumption targets |
-| `source_health_receipt` | optional source health receipt JSON |
+| `source_health_receipt` | required health metadata derived from the source catalog, connector definition, and deploy manifest at render time |
 | `runtimes` | rendered runtime definitions for this source |
+
+Source health receipts are rendered contract data, not checked-in source files. Catalog and connector metadata supply provider status, authentication, runtime families, and evidence kinds. A source's `deploy.yaml` supplies only health values that cannot be derived, such as a provider-specific health path or cadence. Lists and provider terms are normalized to their canonical catalog representation during rendering.
 
 Per-runtime fields:
 

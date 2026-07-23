@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcefixture"
 	"gopkg.in/yaml.v3"
 )
 
@@ -226,9 +227,9 @@ func TestReadAuthentikRuntimeFamiliesUseDocumentedPaths(t *testing.T) {
 }
 
 func TestNewFixtureLoadsProviderPayloadContracts(t *testing.T) {
-	fixture, err := NewFixture()
+	fixture, err := sourcefixture.NewCatalogSource(".", defaultFamily)
 	if err != nil {
-		t.Fatalf("NewFixture() error = %v", err)
+		t.Fatalf("NewCatalogSource() error = %v", err)
 	}
 	for _, family := range []string{familyApplications, familyAuditEvents, familyGroups, familyRoles, familyUsers} {
 		cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "family": family})

@@ -8,7 +8,7 @@ import (
 
 func TestDockerHubAssetProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "docker_hub", Kind: "docker_hub.repositories", Attributes: map[string]string{"resource_id": "asset-1", "resource_type": "host", "resource_name": "host-1", "evidence_id": "evidence-1", "evidence_cas_uri": "cas://cases/evidence-1", "evidence_cas_digest": "sha256:test"}}
-	entities, links, err := dockerHubRepositoriesProjections(event)
+	entities, links, err := BuiltinRegistry().Project(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -22,7 +22,7 @@ func TestDockerHubAssetProjection(t *testing.T) {
 
 func TestDockerHubIdentityUserProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "docker_hub", Kind: "docker_hub.users", Attributes: map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"}}
-	entities, _, err := dockerHubUsersProjections(event)
+	entities, _, err := BuiltinRegistry().Project(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
@@ -33,7 +33,7 @@ func TestDockerHubIdentityUserProjection(t *testing.T) {
 
 func TestDockerHubAuditProjection(t *testing.T) {
 	event := &cerebrov1.EventEnvelope{Id: "event-1", TenantId: "tenant", SourceId: "docker_hub", Kind: "docker_hub.audit_events", Attributes: map[string]string{"event_type": "user.login", "actor_id": "user-1", "actor_email": "user@example.test", "resource_id": "app-1", "resource_type": "application"}}
-	entities, links, err := dockerHubAuditEventsProjections(event)
+	entities, links, err := BuiltinRegistry().Project(event)
 	if err != nil {
 		t.Fatalf("projection error = %v", err)
 	}
