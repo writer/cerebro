@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod parity_command;
+
 use std::{collections::BTreeMap, env, error::Error, path::PathBuf, sync::Arc};
 
 use axum::{
@@ -90,9 +92,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("migrate-stores") => migrate_stores().await,
         Some("sync-source") => sync_source().await,
         Some("catalog-summary") => catalog_summary(),
+        Some("compare-projection") => parity_command::compare_projection().await,
         Some("--help" | "-h") => {
             println!(
-                "cerebro-platform <demo|serve|serve-demo|serve-neo4j|migrate-stores|sync-source|catalog-summary>"
+                "cerebro-platform <demo|serve|serve-demo|serve-neo4j|migrate-stores|sync-source|catalog-summary|compare-projection>"
             );
             Ok(())
         }
@@ -126,6 +129,7 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
     let catalog = load_catalog()?;
     let source_id = required_env("CEREBRO_SOURCE_ID")?;
     let family_id = required_env("CEREBRO_SOURCE_FAMILY")?;
+    let tenant_id = TenantId::parse(required_env("CEREBRO_TENANT_ID")?)?;
     let source = catalog
         .get(&source_id)
         .ok_or_else(|| format!("source {source_id} is not in the catalog"))?
@@ -143,16 +147,18 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
         config,
         auth,
     )?;
-    let mapper = CatalogGraphMapper::new(source, env!("CARGO_PKG_VERSION"))?;
     let ledger = PostgresLedger::connect_tls(&required_env("CEREBRO_POSTGRES_DSN")?).await?;
     ledger.migrate().await?;
+    let identity_resolution = ledger.identity_resolution_snapshot(&tenant_id).await?;
+    let mapper = CatalogGraphMapper::new(source, env!("CARGO_PKG_VERSION"))?
+        .with_identity_resolution(identity_resolution);
     let projector = connect_neo4j().await?;
     projector.migrate().await?;
     let store = DurableGraphStore::new(ledger, projector);
     let mut runtime = SourceRuntime::new(connector, mapper, store);
     let receipt = runtime
         .sync(CollectionRequest {
-            tenant_id: TenantId::parse(required_env("CEREBRO_TENANT_ID")?)?,
+            tenant_id,
             source_runtime_id: SourceRuntimeId::parse(required_env("CEREBRO_SOURCE_RUNTIME_ID")?)?,
             cursor: env::var("CEREBRO_SOURCE_CURSOR").ok(),
         })

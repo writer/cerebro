@@ -6,7 +6,7 @@ mod http;
 mod mapper;
 
 pub use http::{HttpConnectorError, HttpSourceConnector, ResolvedAuth};
-pub use mapper::{CatalogGraphMapper, CatalogMapperError};
+pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
 
 use std::{collections::BTreeMap, error::Error, fmt};
 

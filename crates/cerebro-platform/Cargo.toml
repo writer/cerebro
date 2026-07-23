@@ -16,6 +16,7 @@ cerebro-source-catalog.workspace = true
 cerebro-source-runtime-next.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]

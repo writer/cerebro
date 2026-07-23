@@ -1,9 +1,10 @@
 use std::{collections::BTreeMap, error::Error, fmt};
 
 use cerebro_organizational_model::{
-    AssertionProvenance, Entity, EntityKind, GraphAssertion, GraphDelta, GraphDeltaBuilder,
-    ModelError, ObservationRef, ProviderIdentity, ProviderKind, RelationKind,
-    RelationshipAssertion,
+    AssertionProvenance, CanonicalIdentity, CanonicalIdentityId, Entity, EntityKind,
+    GraphAssertion, GraphDelta, GraphDeltaBuilder, IdentityBindingAssertion, IdentityBindingState,
+    IdentityClaim, IdentityResolutionMethod, ModelError, ObservationRef, ProviderIdentity,
+    ProviderKind, RelationKind, RelationshipAssertion, TenantId,
 };
 use cerebro_source_catalog::{CompiledFamily, CompiledSource};
 use serde_json::Value;
@@ -16,6 +17,7 @@ pub enum CatalogMapperError {
     MissingField { family: String, field: String },
     UnsupportedTemplate(String),
     Domain(ModelError),
+    IdentityConflict(String),
 }
 
 impl fmt::Display for CatalogMapperError {
@@ -37,6 +39,12 @@ impl fmt::Display for CatalogMapperError {
                 )
             }
             Self::Domain(error) => write!(formatter, "catalog projection is invalid: {error}"),
+            Self::IdentityConflict(claim) => {
+                write!(
+                    formatter,
+                    "identity claim {claim} resolves to conflicting people"
+                )
+            }
         }
     }
 }
@@ -49,11 +57,77 @@ impl From<ModelError> for CatalogMapperError {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ResolvedCanonicalIdentity {
+    id: CanonicalIdentityId,
+    label: String,
+}
+
+/// A tenant-scoped snapshot of claims already accepted by the durable identity
+/// registry. Provider records can match this snapshot but cannot add to it.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct IdentityResolutionSnapshot {
+    tenant_id: Option<TenantId>,
+    verified_emails: BTreeMap<String, ResolvedCanonicalIdentity>,
+}
+
+impl IdentityResolutionSnapshot {
+    pub fn new(tenant_id: TenantId) -> Self {
+        Self {
+            tenant_id: Some(tenant_id),
+            verified_emails: BTreeMap::new(),
+        }
+    }
+
+    pub fn add_verified_email(
+        &mut self,
+        email: impl Into<String>,
+        canonical_id: CanonicalIdentityId,
+        canonical_label: impl Into<String>,
+    ) -> Result<(), CatalogMapperError> {
+        let claim = IdentityClaim::verified_email(email)?;
+        let canonical_label = canonical_label.into();
+        if canonical_label.trim().is_empty() || canonical_label.trim() != canonical_label {
+            return Err(ModelError::Invalid("canonical identity label").into());
+        }
+        let resolved = ResolvedCanonicalIdentity {
+            id: canonical_id,
+            label: canonical_label,
+        };
+        if let Some(existing) = self.verified_emails.get(claim.value())
+            && existing != &resolved
+        {
+            return Err(CatalogMapperError::IdentityConflict(
+                claim.value().to_owned(),
+            ));
+        }
+        self.verified_emails
+            .insert(claim.value().to_owned(), resolved);
+        Ok(())
+    }
+
+    fn resolve_verified_email(
+        &self,
+        tenant_id: &TenantId,
+        email: &str,
+    ) -> Result<Option<&ResolvedCanonicalIdentity>, CatalogMapperError> {
+        if self
+            .tenant_id
+            .as_ref()
+            .is_some_and(|tenant| tenant != tenant_id)
+        {
+            return Err(ModelError::TenantMismatch.into());
+        }
+        let claim = IdentityClaim::verified_email(email)?;
+        Ok(self.verified_emails.get(claim.value()))
+    }
+}
+
 /// Maps the catalog's closed projection grammar into the sealed domain model.
-/// It never creates canonical identities or confirmed identity bindings.
 pub struct CatalogGraphMapper {
     source: CompiledSource,
     producer_version: String,
+    identity_resolution: IdentityResolutionSnapshot,
 }
 
 impl CatalogGraphMapper {
@@ -68,7 +142,16 @@ impl CatalogGraphMapper {
         Ok(Self {
             source,
             producer_version,
+            identity_resolution: IdentityResolutionSnapshot::default(),
         })
+    }
+
+    pub fn with_identity_resolution(
+        mut self,
+        identity_resolution: IdentityResolutionSnapshot,
+    ) -> Self {
+        self.identity_resolution = identity_resolution;
+        self
     }
 }
 
@@ -114,6 +197,14 @@ impl CatalogGraphMapper {
                 "group_membership" => {
                     self.map_group_membership(batch, family, projected, provenance, &mut builder)?
                 }
+                "identity_user" => self.map_identity_user(
+                    batch,
+                    record,
+                    family,
+                    projected,
+                    provenance,
+                    &mut builder,
+                )?,
                 template if entity_kind(template).is_some() => {
                     let entity = self.map_entity(batch, record, family, projected)?;
                     builder.add_entity(entity)?;
@@ -138,16 +229,6 @@ impl CatalogGraphMapper {
             .ok_or_else(|| CatalogMapperError::UnsupportedTemplate(template.to_owned()))?;
         let label = label_for(template, &projected, family, record);
         let provider_kind = ProviderKind::parse(format!("{}.{}", self.source.id(), template))?;
-        if template == "identity_user" {
-            let provider = ProviderIdentity::new(
-                batch.scope.receipt().tenant_id().clone(),
-                batch.scope.receipt().source_runtime_id().clone(),
-                provider_kind,
-                identity_id(&projected, record),
-                label,
-            )?;
-            return add_properties(provider.into_entity(), projected);
-        }
         let entity = Entity::provider(
             batch.scope.receipt().tenant_id().clone(),
             batch.scope.receipt().source_runtime_id().clone(),
@@ -157,6 +238,94 @@ impl CatalogGraphMapper {
             label,
         )?;
         add_properties(entity, projected)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn map_identity_user<Mode>(
+        &self,
+        batch: &CollectedBatch,
+        record: &SourceRecord,
+        family: &CompiledFamily,
+        projected: BTreeMap<String, String>,
+        provenance: AssertionProvenance,
+        builder: &mut GraphDeltaBuilder<Mode>,
+    ) -> Result<(), CatalogMapperError> {
+        let tenant_id = batch.scope.receipt().tenant_id().clone();
+        let label = label_for("identity_user", &projected, family, record);
+        let provider = ProviderIdentity::new(
+            tenant_id.clone(),
+            batch.scope.receipt().source_runtime_id().clone(),
+            ProviderKind::parse(format!("{}.identity_user", self.source.id()))?,
+            identity_id(&projected, record),
+            label.clone(),
+        )?;
+        let provider_entity = add_properties(provider.clone().into_entity(), projected.clone())?;
+        builder.add_entity(provider_entity)?;
+
+        if self.source.id() == "okta" {
+            let Some(employee_id) = first(&projected, &["employee_id", "employee_number"]) else {
+                return Ok(());
+            };
+            let employee_claim = IdentityClaim::employee_id(employee_id)?;
+            let canonical =
+                CanonicalIdentity::for_claim(tenant_id, &employee_claim, label.clone())?;
+            let employee_binding = IdentityBindingAssertion::new(
+                &provider,
+                &canonical,
+                IdentityResolutionMethod::AuthoritativeEmployeeId,
+                Some(employee_claim),
+                IdentityBindingState::Confirmed,
+                provenance.clone(),
+                batch.scope.receipt().observed_at_unix_ms(),
+            )?;
+            builder.add_entity(canonical.clone().into_entity())?;
+            builder.add_assertion(GraphAssertion::IdentityBinding(employee_binding))?;
+            if let Some(email) = first(&projected, &["email"]) {
+                let email_binding = IdentityBindingAssertion::new(
+                    &provider,
+                    &canonical,
+                    IdentityResolutionMethod::VerifiedEmail,
+                    Some(IdentityClaim::verified_email(email)?),
+                    IdentityBindingState::Confirmed,
+                    provenance,
+                    batch.scope.receipt().observed_at_unix_ms(),
+                )?;
+                builder.add_assertion(GraphAssertion::IdentityBinding(email_binding))?;
+            }
+            return Ok(());
+        }
+
+        let source_can_match = match self.source.id() {
+            "github" => first(&projected, &["email_verified"]) == Some("true"),
+            "slack" => true,
+            _ => false,
+        };
+        if !source_can_match {
+            return Ok(());
+        }
+        let Some(email) = first(&projected, &["email"]) else {
+            return Ok(());
+        };
+        let Some(resolved) = self
+            .identity_resolution
+            .resolve_verified_email(&tenant_id, email)?
+        else {
+            return Ok(());
+        };
+        let canonical =
+            CanonicalIdentity::new(tenant_id, resolved.id.clone(), resolved.label.clone())?;
+        let binding = IdentityBindingAssertion::new(
+            &provider,
+            &canonical,
+            IdentityResolutionMethod::ExistingClaimMatch,
+            Some(IdentityClaim::verified_email(email)?),
+            IdentityBindingState::Confirmed,
+            provenance,
+            batch.scope.receipt().observed_at_unix_ms(),
+        )?;
+        builder.add_entity(canonical.into_entity())?;
+        builder.add_assertion(GraphAssertion::IdentityBinding(binding))?;
+        Ok(())
     }
 
     fn map_group_membership<Mode>(
@@ -327,7 +496,8 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use cerebro_organizational_model::{
-        CollectionId, CompleteCollection, ObservationId, SourceRuntimeId, TenantId,
+        CanonicalIdentity, CanonicalIdentityId, CollectionId, CompleteCollection, IdentityClaim,
+        ObservationId, SourceRuntimeId, TenantId,
     };
     use cerebro_source_catalog::SourceCatalog;
 
@@ -388,5 +558,177 @@ mod tests {
             panic!("expected relationship")
         };
         assert_eq!(assertion.relation(), RelationKind::MemberOf);
+    }
+
+    #[test]
+    fn okta_employee_record_anchors_one_person_and_its_email() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("okta").unwrap().clone();
+        let batch = CollectedBatch {
+            scope: CollectedScope::Complete(
+                CompleteCollection::new(
+                    TenantId::parse("tenant-a").unwrap(),
+                    SourceRuntimeId::parse("okta-prod").unwrap(),
+                    CollectionId::parse("collection-okta-1").unwrap(),
+                    "okta.users",
+                    10,
+                )
+                .unwrap(),
+            ),
+            records: vec![SourceRecord {
+                observation_id: ObservationId::parse("observation-okta-1").unwrap(),
+                family: "users".to_owned(),
+                provider_kind: "okta.user".to_owned(),
+                provider_id: "00u1".to_owned(),
+                fields: BTreeMap::new(),
+                payload: serde_json::json!({
+                    "id": "00u1",
+                    "name": "Person One",
+                    "email": "person@example.com",
+                    "profile": {"employeeNumber": "employee-1"}
+                }),
+            }],
+            next_cursor: None,
+        };
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+        assert_eq!(delta.entities().len(), 2);
+        assert_eq!(delta.assertions().len(), 2);
+        assert_eq!(
+            delta
+                .entities()
+                .iter()
+                .filter(|entity| entity.kind() == &EntityKind::Person)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn slack_matches_an_existing_workforce_email_but_cannot_seed_one() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("slack").unwrap().clone();
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let employee_claim = IdentityClaim::employee_id("employee-1").unwrap();
+        let canonical =
+            CanonicalIdentity::for_claim(tenant.clone(), &employee_claim, "Person One").unwrap();
+        let canonical_id = CanonicalIdentityId::parse(
+            canonical
+                .entity()
+                .id()
+                .as_str()
+                .strip_prefix("person:canonical:")
+                .unwrap(),
+        )
+        .unwrap();
+        let mut resolution = IdentityResolutionSnapshot::new(tenant.clone());
+        resolution
+            .add_verified_email("person@example.com", canonical_id, "Person One")
+            .unwrap();
+        let batch = CollectedBatch {
+            scope: CollectedScope::Complete(
+                CompleteCollection::new(
+                    tenant,
+                    SourceRuntimeId::parse("slack-prod").unwrap(),
+                    CollectionId::parse("collection-slack-1").unwrap(),
+                    "slack.user",
+                    20,
+                )
+                .unwrap(),
+            ),
+            records: vec![SourceRecord {
+                observation_id: ObservationId::parse("observation-slack-1").unwrap(),
+                family: "user".to_owned(),
+                provider_kind: "slack.user".to_owned(),
+                provider_id: "U1".to_owned(),
+                fields: BTreeMap::new(),
+                payload: serde_json::json!({
+                    "id": "U1",
+                    "name": "person",
+                    "profile": {"email": "person@example.com"}
+                }),
+            }],
+            next_cursor: None,
+        };
+        let unbound = CatalogGraphMapper::new(source.clone(), "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+        assert!(unbound.assertions().is_empty());
+        let bound = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .with_identity_resolution(resolution)
+            .map(&batch)
+            .unwrap();
+        assert_eq!(bound.assertions().len(), 1);
+        let GraphAssertion::IdentityBinding(binding) = &bound.assertions()[0] else {
+            panic!("expected identity binding")
+        };
+        assert_eq!(
+            binding.method(),
+            IdentityResolutionMethod::ExistingClaimMatch
+        );
+    }
+
+    #[test]
+    fn github_unverified_email_cannot_match_a_person() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("github").unwrap().clone();
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let mut resolution = IdentityResolutionSnapshot::new(tenant.clone());
+        resolution
+            .add_verified_email(
+                "person@example.com",
+                CanonicalIdentityId::parse("person-1").unwrap(),
+                "Person One",
+            )
+            .unwrap();
+        let batch = CollectedBatch {
+            scope: CollectedScope::Complete(
+                CompleteCollection::new(
+                    tenant,
+                    SourceRuntimeId::parse("github-prod").unwrap(),
+                    CollectionId::parse("collection-github-1").unwrap(),
+                    "github.email",
+                    20,
+                )
+                .unwrap(),
+            ),
+            records: vec![SourceRecord {
+                observation_id: ObservationId::parse("observation-github-1").unwrap(),
+                family: "email".to_owned(),
+                provider_kind: "github.email".to_owned(),
+                provider_id: "person@example.com".to_owned(),
+                fields: BTreeMap::new(),
+                payload: serde_json::json!({
+                    "email": "person@example.com",
+                    "verified": false
+                }),
+            }],
+            next_cursor: None,
+        };
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .with_identity_resolution(resolution)
+            .map(&batch)
+            .unwrap();
+        assert!(delta.assertions().is_empty());
     }
 }

@@ -134,9 +134,12 @@ entries:
       path: "/user/emails"
       projection:
         fields:
+          email: email
+          email_verified: verified
           id: email
           name: email
           provider_id: email
+          user_id: email
         template: identity_user
       record_selector: "$[*]"
     - coverage:

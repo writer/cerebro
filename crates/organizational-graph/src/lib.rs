@@ -2,11 +2,15 @@
 
 //! Rust-owned admission and current-state graph engine.
 
-use std::{collections::BTreeMap, error::Error, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt,
+};
 
 use cerebro_organizational_model::{
     AssertionId, Entity, EntityId, GraphAssertion, GraphDelta, IdentityBindingState,
-    IdentityClaimKind, TenantId,
+    IdentityClaimKind, IdentityResolutionMethod, TenantId,
 };
 use serde::Serialize;
 
@@ -23,6 +27,12 @@ pub enum GraphError {
         claim_kind: IdentityClaimKind,
         claim_value: String,
         existing_canonical_identity: EntityId,
+        requested_canonical_identity: EntityId,
+    },
+    CanonicalIdentityUnanchored(EntityId),
+    IdentityClaimNotFound {
+        claim_kind: IdentityClaimKind,
+        claim_value: String,
         requested_canonical_identity: EntityId,
     },
     RetractionSourceMismatch(AssertionId),
@@ -58,6 +68,18 @@ impl fmt::Display for GraphError {
                 formatter,
                 "identity claim {claim_kind:?}:{claim_value} is already bound to {existing_canonical_identity}, not {requested_canonical_identity}",
             ),
+            Self::CanonicalIdentityUnanchored(identity) => write!(
+                formatter,
+                "canonical identity {identity} has no authoritative employee anchor"
+            ),
+            Self::IdentityClaimNotFound {
+                claim_kind,
+                claim_value,
+                requested_canonical_identity,
+            } => write!(
+                formatter,
+                "identity claim {claim_kind:?}:{claim_value} is not authoritatively bound to {requested_canonical_identity}",
+            ),
         }
     }
 }
@@ -81,6 +103,7 @@ struct TenantGraph {
     assertions: BTreeMap<AssertionId, GraphAssertion>,
     confirmed_identity_bindings: BTreeMap<EntityId, EntityId>,
     confirmed_identity_claims: BTreeMap<(IdentityClaimKind, String), EntityId>,
+    anchored_canonical_identities: BTreeSet<EntityId>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -113,41 +136,6 @@ impl OrganizationalGraph {
 
         for assertion in assertions {
             self.validate_assertion_entities(&candidate, &assertion)?;
-            if let GraphAssertion::IdentityBinding(binding) = &assertion
-                && binding.state() == IdentityBindingState::Confirmed
-            {
-                if let Some(existing) = candidate
-                    .confirmed_identity_bindings
-                    .get(binding.provider_identity())
-                    && existing != binding.canonical_identity()
-                {
-                    return Err(GraphError::IdentityAlreadyBound {
-                        provider_identity: binding.provider_identity().clone(),
-                        existing_canonical_identity: existing.clone(),
-                        requested_canonical_identity: binding.canonical_identity().clone(),
-                    });
-                }
-                candidate.confirmed_identity_bindings.insert(
-                    binding.provider_identity().clone(),
-                    binding.canonical_identity().clone(),
-                );
-                if let Some(claim) = binding.claim() {
-                    let key = (claim.kind(), claim.value().to_owned());
-                    if let Some(existing) = candidate.confirmed_identity_claims.get(&key)
-                        && existing != binding.canonical_identity()
-                    {
-                        return Err(GraphError::IdentityClaimAlreadyBound {
-                            claim_kind: claim.kind(),
-                            claim_value: claim.value().to_owned(),
-                            existing_canonical_identity: existing.clone(),
-                            requested_canonical_identity: binding.canonical_identity().clone(),
-                        });
-                    }
-                    candidate
-                        .confirmed_identity_claims
-                        .insert(key, binding.canonical_identity().clone());
-                }
-            }
             candidate
                 .assertions
                 .insert(assertion.id().clone(), assertion);
@@ -161,22 +149,11 @@ impl OrganizationalGraph {
                         retraction.assertion_id().clone(),
                     ));
                 }
-                if let GraphAssertion::IdentityBinding(binding) = assertion
-                    && binding.state() == IdentityBindingState::Confirmed
-                {
-                    candidate
-                        .confirmed_identity_bindings
-                        .remove(binding.provider_identity());
-                    if let Some(claim) = binding.claim() {
-                        candidate
-                            .confirmed_identity_claims
-                            .remove(&(claim.kind(), claim.value().to_owned()));
-                    }
-                }
                 candidate.assertions.remove(retraction.assertion_id());
                 retracted += 1;
             }
         }
+        candidate.rebuild_identity_indexes()?;
 
         candidate.revision = candidate.revision.saturating_add(1);
         let receipt = GraphWriteReceipt {
@@ -207,6 +184,119 @@ impl OrganizationalGraph {
                 return Err(GraphError::MissingEntity(endpoint.clone()));
             }
         }
+        Ok(())
+    }
+}
+
+impl TenantGraph {
+    fn rebuild_identity_indexes(&mut self) -> Result<(), GraphError> {
+        self.confirmed_identity_bindings.clear();
+        self.confirmed_identity_claims.clear();
+        self.anchored_canonical_identities.clear();
+
+        let confirmed = self
+            .assertions
+            .values()
+            .filter_map(|assertion| match assertion {
+                GraphAssertion::IdentityBinding(binding)
+                    if binding.state() == IdentityBindingState::Confirmed =>
+                {
+                    Some(binding.clone())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        for binding in &confirmed {
+            if let Some(existing) = self
+                .confirmed_identity_bindings
+                .get(binding.provider_identity())
+                && existing != binding.canonical_identity()
+            {
+                return Err(GraphError::IdentityAlreadyBound {
+                    provider_identity: binding.provider_identity().clone(),
+                    existing_canonical_identity: existing.clone(),
+                    requested_canonical_identity: binding.canonical_identity().clone(),
+                });
+            }
+            self.confirmed_identity_bindings.insert(
+                binding.provider_identity().clone(),
+                binding.canonical_identity().clone(),
+            );
+            if binding.method() == IdentityResolutionMethod::AuthoritativeEmployeeId {
+                self.anchored_canonical_identities
+                    .insert(binding.canonical_identity().clone());
+                self.bind_claim(binding)?;
+            }
+        }
+
+        for binding in &confirmed {
+            match binding.method() {
+                IdentityResolutionMethod::VerifiedEmail => {
+                    if !self
+                        .anchored_canonical_identities
+                        .contains(binding.canonical_identity())
+                    {
+                        return Err(GraphError::CanonicalIdentityUnanchored(
+                            binding.canonical_identity().clone(),
+                        ));
+                    }
+                    self.bind_claim(binding)?;
+                }
+                IdentityResolutionMethod::HumanDecision => {
+                    if binding.claim().is_some() {
+                        self.bind_claim(binding)?;
+                    }
+                }
+                IdentityResolutionMethod::AuthoritativeEmployeeId
+                | IdentityResolutionMethod::ExistingClaimMatch
+                | IdentityResolutionMethod::AgentProposal => {}
+            }
+        }
+
+        for binding in &confirmed {
+            if binding.method() != IdentityResolutionMethod::ExistingClaimMatch {
+                continue;
+            }
+            let Some(claim) = binding.claim() else {
+                return Err(GraphError::IdentityClaimNotFound {
+                    claim_kind: IdentityClaimKind::VerifiedEmail,
+                    claim_value: String::new(),
+                    requested_canonical_identity: binding.canonical_identity().clone(),
+                });
+            };
+            let key = (claim.kind(), claim.value().to_owned());
+            if self.confirmed_identity_claims.get(&key) != Some(binding.canonical_identity()) {
+                return Err(GraphError::IdentityClaimNotFound {
+                    claim_kind: claim.kind(),
+                    claim_value: claim.value().to_owned(),
+                    requested_canonical_identity: binding.canonical_identity().clone(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn bind_claim(
+        &mut self,
+        binding: &cerebro_organizational_model::IdentityBindingAssertion,
+    ) -> Result<(), GraphError> {
+        let Some(claim) = binding.claim() else {
+            return Ok(());
+        };
+        let key = (claim.kind(), claim.value().to_owned());
+        if let Some(existing) = self.confirmed_identity_claims.get(&key)
+            && existing != binding.canonical_identity()
+        {
+            return Err(GraphError::IdentityClaimAlreadyBound {
+                claim_kind: claim.kind(),
+                claim_value: claim.value().to_owned(),
+                existing_canonical_identity: existing.clone(),
+                requested_canonical_identity: binding.canonical_identity().clone(),
+            });
+        }
+        self.confirmed_identity_claims
+            .insert(key, binding.canonical_identity().clone());
         Ok(())
     }
 }
@@ -322,6 +412,128 @@ mod tests {
         builder.build()
     }
 
+    fn workforce_delta(employee_id: &str, email: &str) -> (GraphDelta, CanonicalIdentity) {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let runtime = SourceRuntimeId::parse("okta-prod").unwrap();
+        let collection = CompleteCollection::new(
+            tenant.clone(),
+            runtime.clone(),
+            CollectionId::parse(format!("okta-{employee_id}")).unwrap(),
+            "okta.users",
+            10,
+        )
+        .unwrap();
+        let provider = ProviderIdentity::new(
+            tenant.clone(),
+            runtime,
+            ProviderKind::parse("okta.identity_user").unwrap(),
+            "00u1",
+            "Provider Person",
+        )
+        .unwrap();
+        let employee_claim = IdentityClaim::employee_id(employee_id).unwrap();
+        let canonical =
+            CanonicalIdentity::for_claim(tenant, &employee_claim, "Canonical Person").unwrap();
+        let provenance = AssertionProvenance::direct(
+            vec![
+                ObservationRef::new(
+                    collection.receipt(),
+                    ObservationId::parse(format!("observation-{employee_id}")).unwrap(),
+                    "okta.user:00u1",
+                )
+                .unwrap(),
+            ],
+            "okta-identity-mapper",
+            "v1",
+        )
+        .unwrap();
+        let employee_binding = IdentityBindingAssertion::new(
+            &provider,
+            &canonical,
+            IdentityResolutionMethod::AuthoritativeEmployeeId,
+            Some(employee_claim),
+            IdentityBindingState::Confirmed,
+            provenance.clone(),
+            10,
+        )
+        .unwrap();
+        let email_binding = IdentityBindingAssertion::new(
+            &provider,
+            &canonical,
+            IdentityResolutionMethod::VerifiedEmail,
+            Some(IdentityClaim::verified_email(email).unwrap()),
+            IdentityBindingState::Confirmed,
+            provenance,
+            10,
+        )
+        .unwrap();
+        let mut builder = collection.begin_delta();
+        builder.add_entity(provider.into_entity()).unwrap();
+        builder.add_entity(canonical.clone().into_entity()).unwrap();
+        builder
+            .add_assertion(GraphAssertion::IdentityBinding(employee_binding))
+            .unwrap();
+        builder
+            .add_assertion(GraphAssertion::IdentityBinding(email_binding))
+            .unwrap();
+        (builder.build(), canonical)
+    }
+
+    fn claim_match_delta(
+        source: &str,
+        provider_id: &str,
+        email: &str,
+        canonical: &CanonicalIdentity,
+    ) -> GraphDelta {
+        let runtime = SourceRuntimeId::parse(format!("{source}-prod")).unwrap();
+        let collection = CompleteCollection::new(
+            canonical.entity().tenant_id().clone(),
+            runtime.clone(),
+            CollectionId::parse(format!("{source}-{provider_id}")).unwrap(),
+            format!("{source}.users"),
+            20,
+        )
+        .unwrap();
+        let provider = ProviderIdentity::new(
+            canonical.entity().tenant_id().clone(),
+            runtime,
+            ProviderKind::parse(format!("{source}.identity_user")).unwrap(),
+            provider_id,
+            format!("{source} account"),
+        )
+        .unwrap();
+        let provenance = AssertionProvenance::direct(
+            vec![
+                ObservationRef::new(
+                    collection.receipt(),
+                    ObservationId::parse(format!("observation-{source}-{provider_id}")).unwrap(),
+                    format!("{source}.user:{provider_id}"),
+                )
+                .unwrap(),
+            ],
+            format!("{source}-identity-mapper"),
+            "v1",
+        )
+        .unwrap();
+        let binding = IdentityBindingAssertion::new(
+            &provider,
+            canonical,
+            IdentityResolutionMethod::ExistingClaimMatch,
+            Some(IdentityClaim::verified_email(email).unwrap()),
+            IdentityBindingState::Confirmed,
+            provenance,
+            20,
+        )
+        .unwrap();
+        let mut builder = collection.begin_delta();
+        builder.add_entity(provider.into_entity()).unwrap();
+        builder.add_entity(canonical.clone().into_entity()).unwrap();
+        builder
+            .add_assertion(GraphAssertion::IdentityBinding(binding))
+            .unwrap();
+        builder.build()
+    }
+
     #[test]
     fn one_provider_identity_cannot_bind_to_two_canonical_identities() {
         let mut graph = OrganizationalGraph::new();
@@ -387,6 +599,104 @@ mod tests {
         assert_eq!(
             graph.graph_revision(&TenantId::parse("tenant-a").unwrap()),
             revision
+        );
+    }
+
+    #[test]
+    fn workforce_claims_unify_okta_github_and_slack_accounts() {
+        let mut graph = OrganizationalGraph::new();
+        let (workforce, canonical) = workforce_delta("employee-1", "person@example.com");
+        graph.apply(workforce).unwrap();
+        graph
+            .apply(claim_match_delta(
+                "github",
+                "github-1",
+                "person@example.com",
+                &canonical,
+            ))
+            .unwrap();
+        graph
+            .apply(claim_match_delta(
+                "slack",
+                "slack-1",
+                "person@example.com",
+                &canonical,
+            ))
+            .unwrap();
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        assert_eq!(
+            graph
+                .entities(&tenant)
+                .iter()
+                .filter(|entity| entity.kind() == &cerebro_organizational_model::EntityKind::Person)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn shared_alias_cannot_create_or_redirect_a_person() {
+        let mut graph = OrganizationalGraph::new();
+        let (workforce, canonical) = workforce_delta("employee-1", "person@example.com");
+        graph.apply(workforce).unwrap();
+        assert!(matches!(
+            graph.apply(claim_match_delta(
+                "slack",
+                "slack-2",
+                "shared@example.com",
+                &canonical,
+            )),
+            Err(GraphError::IdentityClaimNotFound { .. })
+        ));
+    }
+
+    #[test]
+    fn non_directory_provider_cannot_seed_verified_email() {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let runtime = SourceRuntimeId::parse("slack-prod").unwrap();
+        let collection = CompleteCollection::new(
+            tenant.clone(),
+            runtime.clone(),
+            CollectionId::parse("slack-user-1").unwrap(),
+            "slack.users",
+            10,
+        )
+        .unwrap();
+        let provider = ProviderIdentity::new(
+            tenant.clone(),
+            runtime,
+            ProviderKind::parse("slack.identity_user").unwrap(),
+            "U1",
+            "Slack account",
+        )
+        .unwrap();
+        let employee_claim = IdentityClaim::employee_id("employee-1").unwrap();
+        let canonical =
+            CanonicalIdentity::for_claim(tenant, &employee_claim, "Canonical Person").unwrap();
+        let provenance = AssertionProvenance::direct(
+            vec![
+                ObservationRef::new(
+                    collection.receipt(),
+                    ObservationId::parse("observation-slack-1").unwrap(),
+                    "slack.user:U1",
+                )
+                .unwrap(),
+            ],
+            "slack-identity-mapper",
+            "v1",
+        )
+        .unwrap();
+        assert_eq!(
+            IdentityBindingAssertion::new(
+                &provider,
+                &canonical,
+                IdentityResolutionMethod::VerifiedEmail,
+                Some(IdentityClaim::verified_email("person@example.com").unwrap()),
+                IdentityBindingState::Confirmed,
+                provenance,
+                10,
+            ),
+            Err(cerebro_organizational_model::ModelError::InvalidIdentityBinding)
         );
     }
 }

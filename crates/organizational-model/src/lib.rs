@@ -270,11 +270,11 @@ impl CanonicalIdentity {
         id: CanonicalIdentityId,
         label: impl Into<String>,
     ) -> Result<Self, ModelError> {
-        let entity_id = EntityId::parse(format!("identity:canonical:{id}"))?;
+        let entity_id = EntityId::parse(format!("person:canonical:{id}"))?;
         Ok(Self(Entity::canonical(
             tenant_id,
             entity_id,
-            EntityKind::Identity,
+            EntityKind::Person,
             label,
         )?))
     }
@@ -574,6 +574,7 @@ pub enum RelationKind {
     CanAssume,
     CanAccess,
     Grants,
+    ProvisionedAs,
     Governs,
     Affects,
     Supports,
@@ -596,6 +597,7 @@ impl RelationKind {
             Self::CanAssume => "can_assume",
             Self::CanAccess => "can_access",
             Self::Grants => "grants",
+            Self::ProvisionedAs => "provisioned_as",
             Self::Governs => "governs",
             Self::Affects => "affects",
             Self::Supports => "supports",
@@ -636,7 +638,7 @@ impl RelationKind {
                     )
             }
             Self::Grants => {
-                matches!(from, Group | Role | Policy)
+                matches!(from, Group | Team | Role | Policy)
                     && matches!(
                         to,
                         Role | Repository
@@ -647,6 +649,7 @@ impl RelationKind {
                             | Environment
                     )
             }
+            Self::ProvisionedAs => matches!(from, Group) && matches!(to, Team | Role | Group),
             Self::Governs => matches!(from, Policy | Control) && !matches!(to, Person | Identity),
             Self::Affects => matches!(from, Finding) && !matches!(to, Finding),
             Self::Supports => {
@@ -745,6 +748,7 @@ impl RelationshipAssertion {
 pub enum IdentityResolutionMethod {
     AuthoritativeEmployeeId,
     VerifiedEmail,
+    ExistingClaimMatch,
     HumanDecision,
     AgentProposal,
 }
@@ -817,6 +821,7 @@ pub struct IdentityBindingAssertion {
     provider_identity: EntityId,
     canonical_identity: EntityId,
     method: IdentityResolutionMethod,
+    provider_kind: ProviderKind,
     claim: Option<IdentityClaim>,
     state: IdentityBindingState,
     provenance: AssertionProvenance,
@@ -853,16 +858,27 @@ impl IdentityBindingAssertion {
                 ) | (
                     IdentityResolutionMethod::VerifiedEmail,
                     Some(IdentityClaimKind::VerifiedEmail)
+                ) | (
+                    IdentityResolutionMethod::ExistingClaimMatch,
+                    Some(IdentityClaimKind::VerifiedEmail)
                 ) | (IdentityResolutionMethod::HumanDecision, _)
             );
             if !valid_claim {
                 return Err(ModelError::InvalidIdentityBinding);
             }
+            let provider_kind = match provider.entity().authority() {
+                EntityAuthority::Provider { provider_kind, .. } => provider_kind,
+                EntityAuthority::Canonical => return Err(ModelError::InvalidIdentityBinding),
+            };
             if matches!(
                 method,
                 IdentityResolutionMethod::AuthoritativeEmployeeId
                     | IdentityResolutionMethod::VerifiedEmail
-            ) {
+            ) && !matches!(provider_kind.as_str(), "okta.user" | "okta.identity_user")
+            {
+                return Err(ModelError::InvalidIdentityBinding);
+            }
+            if method == IdentityResolutionMethod::AuthoritativeEmployeeId {
                 let claim = claim.as_ref().ok_or(ModelError::InvalidIdentityBinding)?;
                 let expected = CanonicalIdentity::for_claim(
                     provider.entity().tenant_id.clone(),
@@ -874,6 +890,10 @@ impl IdentityBindingAssertion {
                 }
             }
         }
+        let provider_kind = match provider.entity().authority() {
+            EntityAuthority::Provider { provider_kind, .. } => provider_kind.clone(),
+            EntityAuthority::Canonical => return Err(ModelError::InvalidIdentityBinding),
+        };
         let claim_value = claim.as_ref().map(IdentityClaim::value).unwrap_or("");
         let id = AssertionId::parse(deterministic_id(
             "identity-binding",
@@ -891,6 +911,7 @@ impl IdentityBindingAssertion {
             provider_identity: provider.entity().id.clone(),
             canonical_identity: canonical.entity().id.clone(),
             method,
+            provider_kind,
             claim,
             state,
             provenance,
@@ -920,6 +941,10 @@ impl IdentityBindingAssertion {
 
     pub fn method(&self) -> IdentityResolutionMethod {
         self.method
+    }
+
+    pub fn provider_kind(&self) -> &ProviderKind {
+        &self.provider_kind
     }
 
     pub fn claim(&self) -> Option<&IdentityClaim> {

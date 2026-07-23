@@ -1,0 +1,60 @@
+{
+  "tenant_id": "parity-tenant",
+  "source_runtime_id": "box-parity",
+  "source_id": "box",
+  "family_id": "content_assets",
+  "collection_id": "collection-1",
+  "complete": true,
+  "observed_at_unix_ms": 1000,
+  "compared_at_unix_ms": 2000,
+  "projection_lag": 0,
+  "input_digest": "",
+  "legacy_projector_revision": "",
+  "rust_projector_revision": "rust-catalog-semantic-v1",
+  "runtime_versions": {
+    "fixture": "box-content-assets-v1"
+  },
+  "records": [
+    {
+      "observation_id": "observation-1",
+      "family": "content_assets",
+      "provider_kind": "box.content_asset",
+      "provider_id": "asset-1",
+      "fields": {},
+      "payload": {
+        "id": "asset-1",
+        "name": "Architecture",
+        "type": "file",
+        "resource_urn": "urn:cerebro:parity-tenant:runtime_file:asset-1"
+      },
+      "event_kind": "box.content_assets",
+      "event_attributes": {
+        "resource_id": "asset-1",
+        "resource_name": "Architecture",
+        "resource_type": "file",
+        "resource_urn": "urn:cerebro:parity-tenant:runtime_file:asset-1"
+      }
+    },
+    {
+      "observation_id": "observation-2",
+      "family": "content_assets",
+      "provider_kind": "box.content_asset",
+      "provider_id": "asset-2",
+      "fields": {},
+      "payload": {
+        "id": "asset-2",
+        "name": "Runbooks",
+        "type": "folder",
+        "resource_urn": "urn:cerebro:parity-tenant:runtime_folder:asset-2"
+      },
+      "event_kind": "box.content_assets",
+      "event_attributes": {
+        "resource_id": "asset-2",
+        "resource_name": "Runbooks",
+        "resource_type": "folder",
+        "resource_urn": "urn:cerebro:parity-tenant:runtime_folder:asset-2"
+      }
+    }
+  ],
+  "legacy_facts": []
+}

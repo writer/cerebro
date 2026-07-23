@@ -457,8 +457,10 @@ pub fn validate_bounds(depth: usize, limit: usize) -> Result<(), ContextError> {
 mod tests {
     use cerebro_organizational_graph::OrganizationalGraph;
     use cerebro_organizational_model::{
-        AssertionProvenance, CollectionId, CompleteCollection, GraphAssertion, ObservationId,
-        ObservationRef, RelationKind, RelationshipAssertion, SourceRuntimeId,
+        AssertionProvenance, CanonicalIdentity, CollectionId, CompleteCollection, GraphAssertion,
+        IdentityBindingAssertion, IdentityBindingState, IdentityClaim, IdentityResolutionMethod,
+        ObservationId, ObservationRef, ProviderIdentity, ProviderKind, RelationKind,
+        RelationshipAssertion, SourceRuntimeId,
     };
 
     use super::*;
@@ -561,6 +563,199 @@ mod tests {
                 10,
             ),
             Err(ContextError::InvalidDepth)
+        );
+    }
+
+    #[test]
+    fn follows_slack_person_directory_group_github_team_repository_path() {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let okta_collection = CompleteCollection::new(
+            tenant.clone(),
+            SourceRuntimeId::parse("okta-prod").unwrap(),
+            CollectionId::parse("okta-collection").unwrap(),
+            "okta.identity_spine",
+            10,
+        )
+        .unwrap();
+        let okta_evidence = AssertionProvenance::direct(
+            vec![
+                ObservationRef::new(
+                    okta_collection.receipt(),
+                    ObservationId::parse("okta-observation").unwrap(),
+                    "okta.user:00u1",
+                )
+                .unwrap(),
+            ],
+            "identity-spine",
+            "v1",
+        )
+        .unwrap();
+        let employee_claim = IdentityClaim::employee_id("employee-1").unwrap();
+        let email_claim = IdentityClaim::verified_email("person@example.com").unwrap();
+        let person =
+            CanonicalIdentity::for_claim(tenant.clone(), &employee_claim, "Person One").unwrap();
+        let okta_identity = ProviderIdentity::new(
+            tenant.clone(),
+            SourceRuntimeId::parse("okta-prod").unwrap(),
+            ProviderKind::parse("okta.identity_user").unwrap(),
+            "00u1",
+            "Person One",
+        )
+        .unwrap();
+        let okta_group = Entity::provider(
+            tenant.clone(),
+            SourceRuntimeId::parse("okta-prod").unwrap(),
+            ProviderKind::parse("okta.identity_group").unwrap(),
+            "group-1",
+            EntityKind::Group,
+            "Engineering",
+        )
+        .unwrap();
+        let employee_binding = IdentityBindingAssertion::new(
+            &okta_identity,
+            &person,
+            IdentityResolutionMethod::AuthoritativeEmployeeId,
+            Some(employee_claim),
+            IdentityBindingState::Confirmed,
+            okta_evidence.clone(),
+            10,
+        )
+        .unwrap();
+        let email_binding = IdentityBindingAssertion::new(
+            &okta_identity,
+            &person,
+            IdentityResolutionMethod::VerifiedEmail,
+            Some(email_claim.clone()),
+            IdentityBindingState::Confirmed,
+            okta_evidence.clone(),
+            10,
+        )
+        .unwrap();
+        let membership = RelationshipAssertion::new(
+            person.entity(),
+            RelationKind::MemberOf,
+            &okta_group,
+            okta_evidence.clone(),
+            10,
+        )
+        .unwrap();
+        let github_team = Entity::provider(
+            tenant.clone(),
+            SourceRuntimeId::parse("github-prod").unwrap(),
+            ProviderKind::parse("github.team").unwrap(),
+            "team-1",
+            EntityKind::Team,
+            "Platform",
+        )
+        .unwrap();
+        let repository = Entity::provider(
+            tenant.clone(),
+            SourceRuntimeId::parse("github-prod").unwrap(),
+            ProviderKind::parse("github.repository").unwrap(),
+            "repository-1",
+            EntityKind::Repository,
+            "control-plane",
+        )
+        .unwrap();
+        let provisioned = RelationshipAssertion::new(
+            &okta_group,
+            RelationKind::ProvisionedAs,
+            &github_team,
+            okta_evidence.clone(),
+            10,
+        )
+        .unwrap();
+        let grant = RelationshipAssertion::new(
+            &github_team,
+            RelationKind::Grants,
+            &repository,
+            okta_evidence,
+            10,
+        )
+        .unwrap();
+        let mut okta_builder = okta_collection.begin_delta();
+        for entity in [
+            okta_identity.clone().into_entity(),
+            person.clone().into_entity(),
+            okta_group,
+            github_team,
+            repository.clone(),
+        ] {
+            okta_builder.add_entity(entity).unwrap();
+        }
+        for assertion in [
+            GraphAssertion::IdentityBinding(employee_binding),
+            GraphAssertion::IdentityBinding(email_binding),
+            GraphAssertion::Relationship(membership),
+            GraphAssertion::Relationship(provisioned),
+            GraphAssertion::Relationship(grant),
+        ] {
+            okta_builder.add_assertion(assertion).unwrap();
+        }
+        let mut graph = OrganizationalGraph::new();
+        graph.apply(okta_builder.build()).unwrap();
+
+        let slack_collection = CompleteCollection::new(
+            tenant.clone(),
+            SourceRuntimeId::parse("slack-prod").unwrap(),
+            CollectionId::parse("slack-collection").unwrap(),
+            "slack.users",
+            20,
+        )
+        .unwrap();
+        let slack_identity = ProviderIdentity::new(
+            tenant.clone(),
+            SourceRuntimeId::parse("slack-prod").unwrap(),
+            ProviderKind::parse("slack.identity_user").unwrap(),
+            "U1",
+            "person",
+        )
+        .unwrap();
+        let slack_evidence = AssertionProvenance::direct(
+            vec![
+                ObservationRef::new(
+                    slack_collection.receipt(),
+                    ObservationId::parse("slack-observation").unwrap(),
+                    "slack.user:U1",
+                )
+                .unwrap(),
+            ],
+            "identity-spine",
+            "v1",
+        )
+        .unwrap();
+        let slack_binding = IdentityBindingAssertion::new(
+            &slack_identity,
+            &person,
+            IdentityResolutionMethod::ExistingClaimMatch,
+            Some(email_claim),
+            IdentityBindingState::Confirmed,
+            slack_evidence,
+            20,
+        )
+        .unwrap();
+        let slack_id = slack_identity.entity().id().clone();
+        let mut slack_builder = slack_collection.begin_delta();
+        slack_builder
+            .add_entity(slack_identity.into_entity())
+            .unwrap();
+        slack_builder.add_entity(person.into_entity()).unwrap();
+        slack_builder
+            .add_assertion(GraphAssertion::IdentityBinding(slack_binding))
+            .unwrap();
+        graph.apply(slack_builder.build()).unwrap();
+
+        let paths = AgentContext::new(&graph)
+            .find_paths(&tenant, &slack_id, repository.id(), 4, 10)
+            .unwrap();
+        assert_eq!(paths.len(), 1);
+        assert_eq!(
+            paths[0]
+                .edges
+                .iter()
+                .map(|edge| edge.relation.as_str())
+                .collect::<Vec<_>>(),
+            ["represents", "member_of", "provisioned_as", "grants"]
         );
     }
 }

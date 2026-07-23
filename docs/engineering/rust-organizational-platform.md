@@ -45,7 +45,7 @@ cerebro-source-catalog --> cerebro-source-runtime-next
 
 `cerebro-source-runtime-next` owns source collection, pagination, mapping, and graph commit sequencing. Provider redirects are disabled, pagination cannot change origin, pages are bounded, and resolved credentials never enter the graph model. A source cannot obtain a graph store or construct an unvalidated graph write.
 
-`cerebro-organizational-store` commits raw observations, admitted entities, assertions, retractions, the tenant graph revision, and a projection outbox row in one PostgreSQL transaction. PostgreSQL is the durable authority. Neo4j is an idempotent, rebuildable current-state projection written in batches.
+`cerebro-organizational-store` commits raw observations, admitted entities, assertions, retractions, the tenant graph revision, parity receipts, and a projection outbox row in one PostgreSQL transaction. PostgreSQL is the transactional authority for organizational current state. Neo4j is an idempotent, rebuildable current-state projection written in batches. Production cutover still requires the Rust collection path to publish the repository's source event log before PostgreSQL projection; direct HTTP-to-PostgreSQL sync remains a draft-only path until that is wired.
 
 `cerebro-agent-context` exposes bounded search, lookup, expansion, path, and explanation operations. It does not expose Cypher or store mutation.
 
@@ -59,11 +59,13 @@ Provider identities and canonical identities are different Rust types.
 ProviderIdentity --REPRESENTS--> CanonicalIdentity
 ```
 
-A provider identity contains the source runtime, provider kind, and provider ID. A canonical identity contains an opaque Cerebro identity ID. Neither can be constructed as the other.
+A provider identity contains the source runtime, provider kind, and provider ID. A canonical person contains an opaque Cerebro person ID. Neither can be constructed as the other.
 
-Identity binding is a dedicated assertion. The general relationship constructor cannot create `REPRESENTS`. Confirmed bindings require an authoritative employee identifier, verified email, or human decision. An agent proposal cannot create a confirmed binding.
+Identity binding is a dedicated assertion. The general relationship constructor cannot create `REPRESENTS`. An Okta employee ID anchors the canonical person. The same workforce record may attach a normalized email claim to that person. GitHub can match the claim only when its email record says `verified=true`; Slack can match an existing workforce claim but cannot create one. Human decisions remain explicit assertions. An agent proposal cannot create a confirmed binding.
 
-The graph engine enforces one current confirmed canonical binding per provider identity. Authoritative employee IDs and normalized verified emails are typed `IdentityClaim` values, and the canonical identity ID is derived from the tenant and claim. Independent providers therefore produce the same canonical identity before storage. PostgreSQL repeats both invariants with tenant-scoped primary keys, so a second process or human override cannot split one claim across two canonical identities. A conflicting delta fails atomically and does not advance the tenant graph revision.
+The canonical person ID is derived once from the tenant and authoritative employee ID. Verified email is a lookup key attached to that person, not another canonical-ID generator. This permits email renames without changing the person and prevents two claims for one employee from creating two canonical records.
+
+The graph engine rebuilds the identity indexes from active assertions on every atomic admission. It enforces one current canonical person per provider identity, one canonical person per authoritative claim, an employee anchor before an email claim, and an existing authoritative claim before a GitHub or Slack match. PostgreSQL repeats those checks inside the commit transaction. A conflicting or unanchored delta fails without advancing the tenant graph revision.
 
 ## Enforced relationship model
 
@@ -101,7 +103,11 @@ For every existing source family, the parity corpus records:
 - graph paths produced from the fixture;
 - provider failure and permission states.
 
-Rust runs the same fixtures in shadow and compares complete graph deltas and deterministic digests. `CutoverGate` requires complete provider proof, at least three consecutive matching receipts, matching latest corpora, and projection lag within policy. A source family moves only after that decision allows it. The Go implementation remains available as a rollback oracle until the Rust family is authoritative, then its write path is removed.
+`make projection-parity-test` sends the same provider records through the current Go projector and the Rust mapper. The temporary Go adapter emits only catalog-governed semantic facts. Rust validates and compares provider identity, canonical identity, entity, relationship, identity-binding, provenance-observation, and retraction facts. Serialized Go and Rust storage shapes are not compared.
+
+Each receipt binds the tenant, runtime, source, family, collection, exact input digest, both projector revisions, both semantic digests, completeness, mismatch count and bounded mismatch sample, projection lag, runtime versions, and comparison time. PostgreSQL stores the full receipt under forced tenant row-level security.
+
+`CutoverGate` requires complete provider proof, at least three consecutive matching receipts, matching latest corpora, and projection lag within policy. A source family moves only after that decision allows it. The Go implementation remains available as a rollback oracle until the Rust family is authoritative, then its write path is removed.
 
 The current checked-in catalog compiles to 794 sources and 3,891 families. Based on exact provider method-and-path proof and auth support present in this Rust runtime, 33 sources and 238 families are authoritative; the other 761 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
 

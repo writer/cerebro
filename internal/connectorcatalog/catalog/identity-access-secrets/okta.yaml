@@ -111,6 +111,7 @@ entries:
             fields:
               display_name: name
               email: email
+              employee_id: profile.employeeNumber|employee_number|employee_id
               status: status
               user_id: id
             template: identity_user

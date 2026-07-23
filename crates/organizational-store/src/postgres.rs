@@ -2,9 +2,10 @@ use std::collections::BTreeSet;
 
 use cerebro_organizational_graph::GraphWriteReceipt;
 use cerebro_organizational_model::{
-    CollectionCompleteness, GraphAssertion, GraphDelta, IdentityBindingState,
+    CanonicalIdentityId, CollectionCompleteness, GraphAssertion, GraphDelta,
+    IdentityBindingAssertion, IdentityBindingState, IdentityResolutionMethod, TenantId,
 };
-use cerebro_source_runtime_next::CollectedBatch;
+use cerebro_source_runtime_next::{CollectedBatch, IdentityResolutionSnapshot};
 use postgres_native_tls::MakeTlsConnector;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -12,6 +13,7 @@ use tokio::sync::Mutex;
 use tokio_postgres::Client;
 
 use crate::StoreError;
+use crate::{ParityReceipt, ParityStatus};
 
 pub const POSTGRES_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS organizational_graph_revisions (
@@ -111,9 +113,26 @@ CREATE TABLE IF NOT EXISTS organizational_projection_outbox (
   projected_at TIMESTAMPTZ,
   PRIMARY KEY (tenant_id, graph_revision)
 );
+CREATE TABLE IF NOT EXISTS organizational_parity_receipts (
+  tenant_id TEXT NOT NULL,
+  source_runtime_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  family_id TEXT NOT NULL,
+  collection_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('match', 'mismatch', 'incomplete')),
+  mismatch_count BIGINT NOT NULL CHECK (mismatch_count >= 0),
+  projection_lag BIGINT NOT NULL CHECK (projection_lag >= 0),
+  compared_at_unix_ms BIGINT NOT NULL CHECK (compared_at_unix_ms > 0),
+  receipt_digest TEXT NOT NULL,
+  receipt_json JSONB NOT NULL,
+  PRIMARY KEY (tenant_id, receipt_digest)
+);
 CREATE INDEX IF NOT EXISTS organizational_projection_pending_idx
   ON organizational_projection_outbox (graph_revision)
   WHERE projected_at IS NULL;
+CREATE INDEX IF NOT EXISTS organizational_parity_latest_idx
+  ON organizational_parity_receipts
+    (tenant_id, source_id, family_id, compared_at_unix_ms DESC);
 ALTER TABLE organizational_graph_revisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_graph_revisions FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_collections ENABLE ROW LEVEL SECURITY;
@@ -130,6 +149,8 @@ ALTER TABLE organizational_identity_claims ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_identity_claims FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_projection_outbox ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_projection_outbox FORCE ROW LEVEL SECURITY;
+ALTER TABLE organizational_parity_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE organizational_parity_receipts FORCE ROW LEVEL SECURITY;
 DO $$
 DECLARE table_name TEXT;
 BEGIN
@@ -141,7 +162,8 @@ BEGIN
     'organizational_assertions',
     'organizational_identity_bindings',
     'organizational_identity_claims',
-    'organizational_projection_outbox'
+    'organizational_projection_outbox',
+    'organizational_parity_receipts'
   ] LOOP
     BEGIN
       EXECUTE format(
@@ -232,6 +254,108 @@ impl PostgresLedger {
         Ok(())
     }
 
+    pub async fn record_parity(&self, receipt: &ParityReceipt) -> Result<(), StoreError> {
+        let mismatch_count = i64::try_from(receipt.mismatch_count())
+            .map_err(|_| StoreError::Conflict("parity mismatch count overflow".to_owned()))?;
+        let projection_lag = i64::try_from(receipt.projection_lag())
+            .map_err(|_| StoreError::Conflict("parity projection lag overflow".to_owned()))?;
+        let receipt_json = serde_json::to_value(receipt)?;
+        let status = match receipt.status() {
+            ParityStatus::Match => "match",
+            ParityStatus::Mismatch => "mismatch",
+            ParityStatus::Incomplete => "incomplete",
+        };
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, receipt.tenant_id()).await?;
+        let row = transaction
+            .query_opt(
+                "INSERT INTO organizational_parity_receipts (tenant_id, source_runtime_id, source_id, family_id, collection_id, status, mismatch_count, projection_lag, compared_at_unix_ms, receipt_digest, receipt_json) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (tenant_id, receipt_digest) DO UPDATE SET receipt_digest = EXCLUDED.receipt_digest WHERE organizational_parity_receipts.receipt_json = EXCLUDED.receipt_json RETURNING receipt_digest",
+                &[
+                    &receipt.tenant_id(),
+                    &receipt.source_runtime_id(),
+                    &receipt.source_id(),
+                    &receipt.family_id(),
+                    &receipt.collection_id(),
+                    &status,
+                    &mismatch_count,
+                    &projection_lag,
+                    &receipt.compared_at_unix_ms(),
+                    &receipt.receipt_digest(),
+                    &receipt_json,
+                ],
+            )
+            .await?;
+        if row.is_none() {
+            return Err(StoreError::Conflict(format!(
+                "parity receipt {} conflicts with stored evidence",
+                receipt.receipt_digest()
+            )));
+        }
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    pub async fn parity_receipt_count(
+        &self,
+        tenant_id: &str,
+        source_id: &str,
+        family_id: &str,
+    ) -> Result<u64, StoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let row = transaction
+            .query_one(
+                "SELECT COUNT(*) FROM organizational_parity_receipts WHERE tenant_id = $1 AND source_id = $2 AND family_id = $3",
+                &[&tenant_id, &source_id, &family_id],
+            )
+            .await?;
+        transaction.commit().await?;
+        let count: i64 = row.get(0);
+        u64::try_from(count)
+            .map_err(|_| StoreError::Conflict("parity receipt count is negative".to_owned()))
+    }
+
+    pub async fn identity_resolution_snapshot(
+        &self,
+        tenant_id: &TenantId,
+    ) -> Result<IdentityResolutionSnapshot, StoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let rows = transaction
+            .query(
+                "SELECT claims.claim_value, claims.canonical_identity_id, entities.entity_json->>'label' FROM organizational_identity_claims claims JOIN organizational_entities entities ON entities.tenant_id = claims.tenant_id AND entities.entity_id = claims.canonical_identity_id WHERE claims.tenant_id = $1 AND claims.claim_kind = 'verified_email' ORDER BY claims.claim_value",
+                &[&tenant_id.as_str()],
+            )
+            .await?;
+        transaction.commit().await?;
+        let mut snapshot = IdentityResolutionSnapshot::new(tenant_id.clone());
+        for row in rows {
+            let email: String = row.get(0);
+            let stored_id: String = row.get(1);
+            let label: String = row.get(2);
+            let canonical_id = stored_id.strip_prefix("person:canonical:").ok_or_else(|| {
+                StoreError::Conflict(format!(
+                    "stored canonical identity {stored_id} has an invalid identifier"
+                ))
+            })?;
+            snapshot
+                .add_verified_email(
+                    email,
+                    CanonicalIdentityId::parse(canonical_id).map_err(|error| {
+                        StoreError::Conflict(format!(
+                            "stored canonical identity {stored_id} is invalid: {error}"
+                        ))
+                    })?,
+                    label,
+                )
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        }
+        Ok(snapshot)
+    }
+
     pub(crate) async fn commit(
         &self,
         batch: &CollectedBatch,
@@ -299,12 +423,15 @@ impl PostgresLedger {
         for retraction in delta.retractions() {
             let row = transaction
                 .query_opt(
-                    "SELECT source_runtime_id FROM organizational_assertions WHERE tenant_id = $1 AND assertion_id = $2 AND active = TRUE",
+                    "SELECT source_runtime_id, from_entity_id, to_entity_id, relation FROM organizational_assertions WHERE tenant_id = $1 AND assertion_id = $2 AND active = TRUE",
                     &[&tenant_id, &retraction.assertion_id().as_str()],
                 )
                 .await?;
             if let Some(row) = row {
                 let owner: String = row.get(0);
+                let from_entity_id: String = row.get(1);
+                let to_entity_id: String = row.get(2);
+                let relation: String = row.get(3);
                 if owner != delta.collection().source_runtime_id().as_str() {
                     return Err(StoreError::Conflict(format!(
                         "source runtime cannot retract assertion {} owned by {owner}",
@@ -317,12 +444,20 @@ impl PostgresLedger {
                         &[&tenant_id, &retraction.assertion_id().as_str(), &revision],
                     )
                     .await?;
-                transaction
-                    .execute(
-                        "DELETE FROM organizational_identity_bindings WHERE tenant_id = $1 AND assertion_id = $2",
-                        &[&tenant_id, &retraction.assertion_id().as_str()],
-                    )
-                    .await?;
+                if relation == "represents" {
+                    transaction
+                        .execute(
+                            "UPDATE organizational_identity_bindings SET assertion_id = replacement.assertion_id FROM (SELECT assertion_id FROM organizational_assertions WHERE tenant_id = $1 AND from_entity_id = $2 AND to_entity_id = $3 AND relation = 'represents' AND active = TRUE ORDER BY assertion_id LIMIT 1) replacement WHERE organizational_identity_bindings.tenant_id = $1 AND organizational_identity_bindings.provider_identity_id = $2",
+                            &[&tenant_id, &from_entity_id, &to_entity_id],
+                        )
+                        .await?;
+                    transaction
+                        .execute(
+                            "DELETE FROM organizational_identity_bindings WHERE tenant_id = $1 AND provider_identity_id = $2 AND NOT EXISTS (SELECT 1 FROM organizational_assertions WHERE tenant_id = $1 AND from_entity_id = $2 AND relation = 'represents' AND active = TRUE)",
+                            &[&tenant_id, &from_entity_id],
+                        )
+                        .await?;
+                }
                 transaction
                     .execute(
                         "DELETE FROM organizational_identity_claims WHERE tenant_id = $1 AND assertion_id = $2",
@@ -348,49 +483,40 @@ impl PostgresLedger {
             }
         }
 
-        for assertion in delta.assertions() {
-            if let GraphAssertion::IdentityBinding(binding) = assertion
-                && binding.state() == IdentityBindingState::Confirmed
-            {
-                let row = transaction
-                    .query_opt(
-                        "INSERT INTO organizational_identity_bindings (tenant_id, provider_identity_id, canonical_identity_id, assertion_id) VALUES ($1, $2, $3, $4) ON CONFLICT (tenant_id, provider_identity_id) DO UPDATE SET assertion_id = EXCLUDED.assertion_id WHERE organizational_identity_bindings.canonical_identity_id = EXCLUDED.canonical_identity_id RETURNING canonical_identity_id",
-                        &[
-                            &tenant_id,
-                            &binding.provider_identity().as_str(),
-                            &binding.canonical_identity().as_str(),
-                            &binding.id().as_str(),
-                        ],
-                    )
-                    .await?;
-                if row.is_none() {
-                    return Err(StoreError::Conflict(format!(
-                        "provider identity {} already has another canonical identity",
-                        binding.provider_identity()
-                    )));
-                }
-                if let Some(claim) = binding.claim() {
-                    let claim_kind = enum_name(&claim.kind())?;
-                    let row = transaction
-                        .query_opt(
-                            "INSERT INTO organizational_identity_claims (tenant_id, claim_kind, claim_value, canonical_identity_id, assertion_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (tenant_id, claim_kind, claim_value) DO UPDATE SET assertion_id = EXCLUDED.assertion_id WHERE organizational_identity_claims.canonical_identity_id = EXCLUDED.canonical_identity_id RETURNING canonical_identity_id",
-                            &[
-                                &tenant_id,
-                                &claim_kind,
-                                &claim.value(),
-                                &binding.canonical_identity().as_str(),
-                                &binding.id().as_str(),
-                            ],
-                        )
-                        .await?;
-                    if row.is_none() {
-                        return Err(StoreError::Conflict(format!(
-                            "identity claim {claim_kind}:{} already resolves to another canonical identity",
-                            claim.value()
-                        )));
+        for method in [
+            IdentityResolutionMethod::AuthoritativeEmployeeId,
+            IdentityResolutionMethod::HumanDecision,
+            IdentityResolutionMethod::VerifiedEmail,
+            IdentityResolutionMethod::ExistingClaimMatch,
+        ] {
+            for binding in delta.assertions().iter().filter_map(|assertion| {
+                let GraphAssertion::IdentityBinding(binding) = assertion else {
+                    return None;
+                };
+                (binding.state() == IdentityBindingState::Confirmed && binding.method() == method)
+                    .then_some(binding)
+            }) {
+                upsert_identity_binding(&transaction, tenant_id, binding).await?;
+                match method {
+                    IdentityResolutionMethod::AuthoritativeEmployeeId
+                    | IdentityResolutionMethod::HumanDecision => {
+                        if binding.claim().is_some() {
+                            upsert_identity_claim(&transaction, tenant_id, binding).await?;
+                        }
                     }
+                    IdentityResolutionMethod::VerifiedEmail => {
+                        require_employee_anchor(&transaction, tenant_id, binding).await?;
+                        upsert_identity_claim(&transaction, tenant_id, binding).await?;
+                    }
+                    IdentityResolutionMethod::ExistingClaimMatch => {
+                        require_identity_claim(&transaction, tenant_id, binding).await?;
+                    }
+                    IdentityResolutionMethod::AgentProposal => {}
                 }
             }
+        }
+
+        for assertion in delta.assertions() {
             let (from, to, relation) = assertion_endpoints(assertion);
             let assertion_json = serde_json::to_value(assertion)?;
             let row = transaction
@@ -527,6 +653,113 @@ impl PostgresLedger {
         transaction.commit().await?;
         Ok(())
     }
+}
+
+async fn upsert_identity_binding(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    binding: &IdentityBindingAssertion,
+) -> Result<(), StoreError> {
+    let row = transaction
+        .query_opt(
+            "INSERT INTO organizational_identity_bindings (tenant_id, provider_identity_id, canonical_identity_id, assertion_id) VALUES ($1, $2, $3, $4) ON CONFLICT (tenant_id, provider_identity_id) DO UPDATE SET assertion_id = EXCLUDED.assertion_id WHERE organizational_identity_bindings.canonical_identity_id = EXCLUDED.canonical_identity_id RETURNING canonical_identity_id",
+            &[
+                &tenant_id,
+                &binding.provider_identity().as_str(),
+                &binding.canonical_identity().as_str(),
+                &binding.id().as_str(),
+            ],
+        )
+        .await?;
+    if row.is_none() {
+        return Err(StoreError::Conflict(format!(
+            "provider identity {} already has another canonical identity",
+            binding.provider_identity()
+        )));
+    }
+    Ok(())
+}
+
+async fn upsert_identity_claim(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    binding: &IdentityBindingAssertion,
+) -> Result<(), StoreError> {
+    let claim = binding
+        .claim()
+        .ok_or_else(|| StoreError::Conflict("identity claim is required".to_owned()))?;
+    let claim_kind = enum_name(&claim.kind())?;
+    let row = transaction
+        .query_opt(
+            "INSERT INTO organizational_identity_claims (tenant_id, claim_kind, claim_value, canonical_identity_id, assertion_id) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (tenant_id, claim_kind, claim_value) DO UPDATE SET assertion_id = EXCLUDED.assertion_id WHERE organizational_identity_claims.canonical_identity_id = EXCLUDED.canonical_identity_id RETURNING canonical_identity_id",
+            &[
+                &tenant_id,
+                &claim_kind,
+                &claim.value(),
+                &binding.canonical_identity().as_str(),
+                &binding.id().as_str(),
+            ],
+        )
+        .await?;
+    if row.is_none() {
+        return Err(StoreError::Conflict(format!(
+            "identity claim {claim_kind}:{} already resolves to another canonical identity",
+            claim.value()
+        )));
+    }
+    Ok(())
+}
+
+async fn require_employee_anchor(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    binding: &IdentityBindingAssertion,
+) -> Result<(), StoreError> {
+    let exists = transaction
+        .query_opt(
+            "SELECT 1 FROM organizational_identity_claims WHERE tenant_id = $1 AND canonical_identity_id = $2 AND claim_kind = 'employee_id'",
+            &[&tenant_id, &binding.canonical_identity().as_str()],
+        )
+        .await?
+        .is_some();
+    if !exists {
+        return Err(StoreError::Conflict(format!(
+            "canonical identity {} has no authoritative employee anchor",
+            binding.canonical_identity()
+        )));
+    }
+    Ok(())
+}
+
+async fn require_identity_claim(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    binding: &IdentityBindingAssertion,
+) -> Result<(), StoreError> {
+    let claim = binding
+        .claim()
+        .ok_or_else(|| StoreError::Conflict("identity claim match is required".to_owned()))?;
+    let claim_kind = enum_name(&claim.kind())?;
+    let row = transaction
+        .query_opt(
+            "SELECT canonical_identity_id FROM organizational_identity_claims WHERE tenant_id = $1 AND claim_kind = $2 AND claim_value = $3",
+            &[&tenant_id, &claim_kind, &claim.value()],
+        )
+        .await?;
+    let Some(row) = row else {
+        return Err(StoreError::Conflict(format!(
+            "identity claim {claim_kind}:{} is not authoritative",
+            claim.value()
+        )));
+    };
+    let canonical_identity_id: String = row.get(0);
+    if canonical_identity_id != binding.canonical_identity().as_str() {
+        return Err(StoreError::Conflict(format!(
+            "identity claim {claim_kind}:{} belongs to another canonical identity",
+            claim.value()
+        )));
+    }
+    Ok(())
 }
 
 async fn set_tenant(
@@ -672,6 +905,7 @@ mod tests {
             "PRIMARY KEY (tenant_id, provider_identity_id)",
             "PRIMARY KEY (tenant_id, claim_kind, claim_value)",
             "organizational_projection_outbox",
+            "organizational_parity_receipts",
             "current_setting(''cerebro.tenant_id'', true)",
             "DEFERRABLE INITIALLY DEFERRED",
         ] {

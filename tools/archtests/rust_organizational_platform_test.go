@@ -35,6 +35,8 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 		"pub struct IdentityBindingAssertion",
 		"pub struct IdentityClaim",
 		"GraphDeltaBuilder<Authoritative>",
+		"IdentityResolutionMethod::ExistingClaimMatch",
+		`EntityId::parse(format!("person:canonical:{id}"))`,
 	} {
 		if !strings.Contains(modelSource, required) {
 			t.Errorf("organizational model missing enforced construct %q", required)
@@ -82,10 +84,23 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 		"PRIMARY KEY (tenant_id, provider_identity_id)",
 		"PRIMARY KEY (tenant_id, claim_kind, claim_value)",
 		"organizational_projection_outbox",
+		"organizational_parity_receipts",
 		"current_setting(''cerebro.tenant_id'', true)",
 	} {
 		if !strings.Contains(storeSource, required) {
 			t.Errorf("organizational store missing enforced boundary %q", required)
+		}
+	}
+
+	paritySource := readText(t, filepath.Join(root, "crates/organizational-store/src/parity.rs"))
+	for _, required := range []string{
+		"pub struct SemanticSnapshot",
+		"pub struct ParityReceipt",
+		"MAX_MISMATCHES_IN_RECEIPT",
+		"ScopeMismatch",
+	} {
+		if !strings.Contains(paritySource, required) {
+			t.Errorf("projection parity gate missing enforced boundary %q", required)
 		}
 	}
 

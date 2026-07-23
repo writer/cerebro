@@ -4,76 +4,7 @@ use cerebro_source_catalog::SourceCatalog;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ParityStatus {
-    Match,
-    Mismatch,
-    Incomplete,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct ParityReceipt {
-    pub source_id: String,
-    pub family_id: String,
-    pub corpus_id: String,
-    pub legacy_digest: String,
-    pub rust_digest: String,
-    pub status: ParityStatus,
-    pub compared_at_unix_ms: i64,
-    pub receipt_digest: String,
-}
-
-impl ParityReceipt {
-    pub fn compare(
-        source_id: impl Into<String>,
-        family_id: impl Into<String>,
-        corpus_id: impl Into<String>,
-        legacy_digest: impl Into<String>,
-        rust_digest: impl Into<String>,
-        complete: bool,
-        compared_at_unix_ms: i64,
-    ) -> Result<Self, CutoverError> {
-        let source_id = required(source_id.into(), "source_id")?;
-        let family_id = required(family_id.into(), "family_id")?;
-        let corpus_id = required(corpus_id.into(), "corpus_id")?;
-        let legacy_digest = required(legacy_digest.into(), "legacy_digest")?;
-        let rust_digest = required(rust_digest.into(), "rust_digest")?;
-        if compared_at_unix_ms <= 0 {
-            return Err(CutoverError::Invalid("compared_at_unix_ms"));
-        }
-        let status = if !complete {
-            ParityStatus::Incomplete
-        } else if legacy_digest == rust_digest {
-            ParityStatus::Match
-        } else {
-            ParityStatus::Mismatch
-        };
-        let receipt_digest = digest(&[
-            &source_id,
-            &family_id,
-            &corpus_id,
-            &legacy_digest,
-            &rust_digest,
-            match status {
-                ParityStatus::Match => "match",
-                ParityStatus::Mismatch => "mismatch",
-                ParityStatus::Incomplete => "incomplete",
-            },
-            &compared_at_unix_ms.to_string(),
-        ]);
-        Ok(Self {
-            source_id,
-            family_id,
-            corpus_id,
-            legacy_digest,
-            rust_digest,
-            status,
-            compared_at_unix_ms,
-            receipt_digest,
-        })
-    }
-}
+use crate::{ParityReceipt, ParityStatus};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CutoverPolicy {
@@ -187,13 +118,13 @@ impl CutoverGate {
         }
         let source_receipts: Vec<_> = receipts
             .iter()
-            .filter(|receipt| receipt.source_id == source_id)
-            .filter(|receipt| receipt.family_id == family_id)
+            .filter(|receipt| receipt.source_id() == source_id)
+            .filter(|receipt| receipt.family_id() == family_id)
             .collect();
         let consecutive = source_receipts
             .iter()
             .rev()
-            .take_while(|receipt| receipt.status == ParityStatus::Match)
+            .take_while(|receipt| receipt.status() == ParityStatus::Match)
             .count();
         if consecutive < self.policy.min_consecutive_matches {
             reasons.push(format!(
@@ -203,20 +134,26 @@ impl CutoverGate {
         }
         let mut latest_by_corpus = BTreeMap::new();
         for receipt in source_receipts {
-            latest_by_corpus.insert(&receipt.corpus_id, receipt);
+            latest_by_corpus.insert(receipt.collection_id(), receipt);
         }
         if latest_by_corpus
             .values()
-            .any(|receipt| receipt.status != ParityStatus::Match)
+            .any(|receipt| receipt.status() != ParityStatus::Match)
         {
             reasons.push("latest corpus comparison is not a match".to_owned());
+        }
+        if latest_by_corpus
+            .values()
+            .any(|receipt| receipt.projection_lag() > self.policy.max_projection_lag)
+        {
+            reasons.push("a latest parity receipt exceeds the projection lag policy".to_owned());
         }
         let evidence_digest = digest(
             &receipts
                 .iter()
-                .filter(|receipt| receipt.source_id == source_id)
-                .filter(|receipt| receipt.family_id == family_id)
-                .map(|receipt| receipt.receipt_digest.as_str())
+                .filter(|receipt| receipt.source_id() == source_id)
+                .filter(|receipt| receipt.family_id() == family_id)
+                .map(ParityReceipt::receipt_digest)
                 .collect::<Vec<_>>(),
         );
         Ok(CutoverDecision {
@@ -227,13 +164,6 @@ impl CutoverGate {
             evidence_digest,
         })
     }
-}
-
-fn required(value: String, field: &'static str) -> Result<String, CutoverError> {
-    if value.trim().is_empty() || value.trim() != value {
-        return Err(CutoverError::Invalid(field));
-    }
-    Ok(value)
 }
 
 fn digest(parts: &[&str]) -> String {

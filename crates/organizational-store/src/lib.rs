@@ -4,10 +4,15 @@
 
 mod cutover;
 mod neo4j;
+mod parity;
 mod postgres;
 
-pub use cutover::{CutoverDecision, CutoverGate, CutoverPolicy, ParityReceipt, ParityStatus};
+pub use cutover::{CutoverDecision, CutoverGate, CutoverPolicy};
 pub use neo4j::Neo4jProjector;
+pub use parity::{
+    MismatchSide, ParityError, ParityReceipt, ParityStatus, SemanticFact, SemanticFactKind,
+    SemanticMismatch, SemanticSnapshot,
+};
 pub use postgres::{POSTGRES_SCHEMA, PostgresLedger};
 
 use std::{error::Error, fmt};
