@@ -97,7 +97,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: ${{ github.event.action == 'synchronize' && 100 || 0 }}
       - name: Resolve review scope
         id: scope
         shell: bash
@@ -115,6 +116,13 @@ jobs:
             && git merge-base --is-ancestor "${PREVIOUS_HEAD}" "${PR_HEAD_SHA}"; then
             review_base="${PREVIOUS_HEAD}"
             review_mode="incremental"
+          elif [ "${EVENT_ACTION}" = "synchronize" ] && [ -f .git/shallow ]; then
+            git fetch --no-tags --unshallow origin
+            if [ -n "${PREVIOUS_HEAD}" ] \
+              && git merge-base --is-ancestor "${PREVIOUS_HEAD}" "${PR_HEAD_SHA}"; then
+              review_base="${PREVIOUS_HEAD}"
+              review_mode="incremental"
+            fi
           fi
           echo "review_base=${review_base}" >> "${GITHUB_OUTPUT}"
           echo "review_mode=${review_mode}" >> "${GITHUB_OUTPUT}"
@@ -166,7 +174,7 @@ jobs:
           corepack prepare pnpm@10.12.4 --activate
           pnpm -C .deepsec install --frozen-lockfile
       - name: Install Semgrep
-        if: steps.preflight.outputs.run_droid_review == 'true'
+        if: steps.preflight.outputs.run_droid_review == 'true' && steps.scope.outputs.review_mode == 'full'
         continue-on-error: true
         shell: bash
         run: |
@@ -175,7 +183,7 @@ jobs:
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
       - name: Run Droid SAST context
         id: sast
-        if: steps.preflight.outputs.run_droid_review == 'true'
+        if: steps.preflight.outputs.run_droid_review == 'true' && steps.scope.outputs.review_mode == 'full'
         shell: bash
         env:
           DROID_REVIEW_BASE: ${{ steps.scope.outputs.review_base }}

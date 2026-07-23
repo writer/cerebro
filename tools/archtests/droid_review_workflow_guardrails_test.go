@@ -21,6 +21,9 @@ func TestDroidReviewUsesIncrementalScopeAfterTheInitialReview(t *testing.T) {
 		`git merge-base --is-ancestor "${PREVIOUS_HEAD}" "${PR_HEAD_SHA}"`,
 		`review_base="${PREVIOUS_HEAD}"`,
 		`review_mode="incremental"`,
+		`ref: ${{ github.event.pull_request.head.sha }}`,
+		`fetch-depth: ${{ github.event.action == 'synchronize' && 100 || 0 }}`,
+		`git fetch --no-tags --unshallow origin`,
 		`DROID_REVIEW_BASE: ${{ steps.scope.outputs.review_base }}`,
 		`automatic_security_review: ${{ needs.droid-review-preflight.outputs.review_mode == 'full' }}`,
 		`review_depth: ${{ needs.droid-review-preflight.outputs.review_mode == 'incremental' && 'shallow' || 'deep' }}`,
@@ -31,9 +34,9 @@ func TestDroidReviewUsesIncrementalScopeAfterTheInitialReview(t *testing.T) {
 		}
 	}
 
-	deepSecFullOnly := `steps.preflight.outputs.run_droid_review == 'true' && steps.scope.outputs.review_mode == 'full'`
-	if count := strings.Count(workflow, deepSecFullOnly); count != 2 {
-		t.Fatalf("DeepSec setup must be full-review-only in both setup steps; found %d guards", count)
+	securityContextFullOnly := `steps.preflight.outputs.run_droid_review == 'true' && steps.scope.outputs.review_mode == 'full'`
+	if count := strings.Count(workflow, securityContextFullOnly); count != 4 {
+		t.Fatalf("embedded DeepSec and Semgrep context must be full-review-only; found %d guards", count)
 	}
 	if count := strings.Count(
 		workflow,
