@@ -271,6 +271,7 @@ fn digest(parts: &[&str]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SemanticSnapshot;
     use std::path::{Path, PathBuf};
 
     fn repository_root() -> PathBuf {
@@ -320,5 +321,178 @@ mod tests {
                 .unwrap()
                 .is_allowed()
         );
+    }
+
+    #[test]
+    fn promotion_request_and_decision_bind_the_exact_scope() {
+        let policy = CutoverPolicy::new(3, 2).unwrap();
+        let request =
+            ProjectionPromotionRequest::new("tenant-a", "box", "users", policy, 1, 100).unwrap();
+        assert_eq!(request.tenant_id(), "tenant-a");
+        assert_eq!(request.source_id(), "box");
+        assert_eq!(request.family_id(), "users");
+        assert_eq!(request.policy(), policy);
+        assert_eq!(request.projection_lag(), 1);
+        assert_eq!(request.promoted_at_unix_ms(), 100);
+
+        assert_eq!(CutoverPolicy::new(2, 0), Err(CutoverError::UnsafePolicy));
+        assert_eq!(
+            ProjectionPromotionRequest::new("", "box", "users", policy, 0, 1),
+            Err(CutoverError::Invalid("tenant_id"))
+        );
+        assert_eq!(
+            ProjectionPromotionRequest::new("tenant", " box", "users", policy, 0, 1),
+            Err(CutoverError::Invalid("source_id"))
+        );
+        assert_eq!(
+            ProjectionPromotionRequest::new("tenant", "box", "users", policy, 0, 0),
+            Err(CutoverError::Invalid("promoted_at_unix_ms"))
+        );
+        assert_eq!(
+            CutoverError::UnsafePolicy.to_string(),
+            "cutover requires at least three matching runs"
+        );
+        assert_eq!(
+            CutoverError::UnknownSource("missing".to_owned()).to_string(),
+            "source missing is not in the catalog"
+        );
+    }
+
+    #[test]
+    fn cutover_reports_each_failed_proof_instead_of_collapsing_them() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let receipts = vec![
+            ParityReceipt::compare_scoped(
+                "tenant-a",
+                "box-prod",
+                "box",
+                "users",
+                "corpus-1",
+                "sha256:same",
+                "sha256:same",
+                true,
+                1,
+            )
+            .unwrap(),
+            ParityReceipt::compare_scoped(
+                "tenant-a",
+                "box-prod",
+                "box",
+                "users",
+                "corpus-2",
+                "sha256:left",
+                "sha256:right",
+                true,
+                2,
+            )
+            .unwrap(),
+            ParityReceipt::compare_scoped(
+                "tenant-a",
+                "box-prod",
+                "box",
+                "users",
+                "corpus-3",
+                "sha256:same",
+                "sha256:same",
+                false,
+                3,
+            )
+            .unwrap(),
+        ];
+        let gate = CutoverGate::new(CutoverPolicy::new(3, 0).unwrap());
+        let decision = gate
+            .evaluate(&catalog, "box", "users", &receipts, 4)
+            .unwrap();
+        assert_eq!(decision.source_id(), "box");
+        assert_eq!(decision.family_id(), "users");
+        assert!(!decision.is_allowed());
+        assert!(
+            decision
+                .reasons()
+                .iter()
+                .any(|reason| reason.contains("projection lag 4"))
+        );
+        assert!(
+            decision
+                .reasons()
+                .iter()
+                .any(|reason| reason.contains("consecutive parity matches"))
+        );
+        assert!(
+            decision
+                .reasons()
+                .iter()
+                .any(|reason| reason == "latest corpus comparison is not a match")
+        );
+        assert!(decision.evidence_digest().starts_with("sha256:"));
+
+        assert_eq!(
+            gate.evaluate(&catalog, "missing", "users", &receipts, 0),
+            Err(CutoverError::UnknownSource("missing".to_owned()))
+        );
+        assert_eq!(
+            gate.evaluate(&catalog, "box", "missing", &receipts, 0),
+            Err(CutoverError::UnknownSource("box/missing".to_owned()))
+        );
+    }
+
+    #[test]
+    fn receipt_lag_is_checked_independently_of_current_projection_lag() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let base = ParityReceipt::compare(
+            "box",
+            "users",
+            "corpus-1",
+            "sha256:same",
+            "sha256:same",
+            true,
+            1,
+        )
+        .unwrap();
+        let legacy = SemanticSnapshot::from_facts(
+            "legacy-shadow",
+            "legacy-shadow",
+            "box",
+            "users",
+            "corpus-1",
+            "legacy-shadow",
+            "legacy",
+            true,
+            Vec::new(),
+        )
+        .unwrap();
+        let rust = SemanticSnapshot::from_facts(
+            "legacy-shadow",
+            "legacy-shadow",
+            "box",
+            "users",
+            "corpus-1",
+            "legacy-shadow",
+            "rust",
+            true,
+            Vec::new(),
+        )
+        .unwrap();
+        let lagged =
+            ParityReceipt::compare_snapshots(&legacy, &rust, 3, 2, BTreeMap::new()).unwrap();
+        let gate = CutoverGate::new(CutoverPolicy::new(3, 0).unwrap());
+        let decision = gate
+            .evaluate(&catalog, "box", "users", &[base.clone(), base, lagged], 0)
+            .unwrap();
+        assert!(!decision.is_allowed());
+        assert!(decision
+            .reasons()
+            .iter()
+            .any(|reason| reason == "a latest parity receipt exceeds the projection lag policy"));
     }
 }

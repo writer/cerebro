@@ -692,6 +692,12 @@ fn identity_binding_state(state: IdentityBindingState) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cerebro_organizational_model::{
+        AssertionId, AssertionProvenance, CanonicalIdentity, CollectionId, CompleteCollection,
+        Entity, EntityId, GraphAssertion, IdentityBindingAssertion, IdentityClaim,
+        IdentityResolutionMethod, ObservationId, ObservationRef, ProviderIdentity, ProviderKind,
+        RelationKind, RelationshipAssertion, SourceRuntimeId, TenantId,
+    };
 
     fn snapshot(revision: &str, facts: Vec<SemanticFact>) -> SemanticSnapshot {
         SemanticSnapshot::from_facts(
@@ -759,5 +765,254 @@ mod tests {
             ParityReceipt::compare_snapshots(&legacy, &rust, 0, 10, BTreeMap::new()),
             Err(ParityError::ScopeMismatch("input_digest"))
         ));
+    }
+
+    #[test]
+    fn graph_delta_becomes_a_complete_semantic_snapshot() {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let runtime = SourceRuntimeId::parse("okta-prod").unwrap();
+        let collection = CompleteCollection::new(
+            tenant.clone(),
+            runtime.clone(),
+            CollectionId::parse("collection-1").unwrap(),
+            "okta.users",
+            10,
+        )
+        .unwrap();
+        let observation = ObservationRef::new(
+            collection.receipt(),
+            ObservationId::parse("observation-1").unwrap(),
+            "okta.user:00u1",
+        )
+        .unwrap();
+        let evidence =
+            AssertionProvenance::direct(vec![observation], "identity-mapper", "v1").unwrap();
+        let claim = IdentityClaim::verified_email("person@example.com").unwrap();
+        let canonical = CanonicalIdentity::for_claim(tenant.clone(), &claim, "A Person").unwrap();
+        let provider = ProviderIdentity::new(
+            tenant.clone(),
+            runtime,
+            ProviderKind::parse("okta.user").unwrap(),
+            "00u1",
+            "A Person",
+        )
+        .unwrap();
+        let group = Entity::canonical(
+            tenant,
+            EntityId::parse("group-1").unwrap(),
+            EntityKind::Group,
+            "Engineering",
+        )
+        .unwrap();
+        let relationship = RelationshipAssertion::new(
+            provider.entity(),
+            RelationKind::MemberOf,
+            &group,
+            evidence.clone(),
+            10,
+        )
+        .unwrap();
+        let binding = IdentityBindingAssertion::new(
+            &provider,
+            &canonical,
+            IdentityResolutionMethod::VerifiedEmail,
+            Some(claim),
+            IdentityBindingState::Confirmed,
+            evidence,
+            10,
+        )
+        .unwrap();
+
+        let mut builder = collection.begin_delta();
+        builder.add_entity(provider.into_entity()).unwrap();
+        builder.add_entity(canonical.into_entity()).unwrap();
+        builder.add_entity(group).unwrap();
+        builder
+            .add_assertion(GraphAssertion::Relationship(relationship))
+            .unwrap();
+        builder
+            .add_assertion(GraphAssertion::IdentityBinding(binding))
+            .unwrap();
+        builder
+            .retract_missing(
+                AssertionId::parse("assertion-old").unwrap(),
+                "missing from complete collection",
+            )
+            .unwrap();
+        let delta = builder.build();
+        let snapshot =
+            SemanticSnapshot::from_delta("okta", "users", "sha256:input", "rust-v1", &delta)
+                .unwrap();
+        assert_eq!(snapshot.tenant_id(), "tenant-a");
+        assert_eq!(snapshot.source_runtime_id(), "okta-prod");
+        assert_eq!(snapshot.source_id(), "okta");
+        assert_eq!(snapshot.family_id(), "users");
+        assert_eq!(snapshot.collection_id(), "collection-1");
+        assert_eq!(snapshot.input_digest(), "sha256:input");
+        assert_eq!(snapshot.projector_revision(), "rust-v1");
+        assert!(snapshot.is_complete());
+        assert!(snapshot.digest().starts_with("sha256:"));
+        let kinds = snapshot
+            .facts()
+            .iter()
+            .map(SemanticFact::kind)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            kinds,
+            BTreeSet::from([
+                SemanticFactKind::Entity,
+                SemanticFactKind::ProviderIdentity,
+                SemanticFactKind::CanonicalIdentity,
+                SemanticFactKind::Relationship,
+                SemanticFactKind::IdentityBinding,
+                SemanticFactKind::Provenance,
+                SemanticFactKind::Retraction,
+            ])
+        );
+        assert!(snapshot.facts().iter().all(|fact| !fact.parts().is_empty()));
+    }
+
+    #[test]
+    fn every_entity_kind_and_binding_state_has_a_stable_semantic_name() {
+        let kinds = [
+            EntityKind::Person,
+            EntityKind::Identity,
+            EntityKind::Team,
+            EntityKind::Organization,
+            EntityKind::Repository,
+            EntityKind::Service,
+            EntityKind::Application,
+            EntityKind::Environment,
+            EntityKind::Account,
+            EntityKind::Resource,
+            EntityKind::Group,
+            EntityKind::Role,
+            EntityKind::Policy,
+            EntityKind::Control,
+            EntityKind::Finding,
+            EntityKind::Provider(ProviderKind::parse("github.repository").unwrap()),
+        ];
+        let names = kinds.iter().map(entity_kind).collect::<Vec<_>>();
+        assert_eq!(names.first().unwrap(), "person");
+        assert_eq!(names.last().unwrap(), "provider:github.repository");
+        assert_eq!(
+            identity_binding_state(IdentityBindingState::Proposed),
+            "proposed"
+        );
+        assert_eq!(
+            identity_binding_state(IdentityBindingState::Confirmed),
+            "confirmed"
+        );
+        assert_eq!(
+            identity_binding_state(IdentityBindingState::Rejected),
+            "rejected"
+        );
+    }
+
+    #[test]
+    fn receipt_accessors_and_mismatch_sides_bind_the_comparison() {
+        let left = SemanticFact::new(SemanticFactKind::Entity, ["legacy", "resource"]).unwrap();
+        let right = SemanticFact::new(SemanticFactKind::Entity, ["rust", "resource"]).unwrap();
+        let legacy = snapshot("legacy-v1", vec![left]);
+        let rust = snapshot("rust-v1", vec![right]);
+        let versions = BTreeMap::from([
+            ("go".to_owned(), "1.24".to_owned()),
+            ("rust".to_owned(), "1.88".to_owned()),
+        ]);
+        let receipt = ParityReceipt::compare_snapshots(&legacy, &rust, 2, 42, versions).unwrap();
+        assert_eq!(receipt.tenant_id(), "tenant-a");
+        assert_eq!(receipt.source_runtime_id(), "box-prod");
+        assert_eq!(receipt.source_id(), "box");
+        assert_eq!(receipt.family_id(), "content_assets");
+        assert_eq!(receipt.collection_id(), "collection-1");
+        assert_eq!(receipt.status(), ParityStatus::Mismatch);
+        assert_eq!(receipt.mismatch_count(), 2);
+        assert_eq!(receipt.projection_lag(), 2);
+        assert_eq!(receipt.compared_at_unix_ms(), 42);
+        assert!(receipt.receipt_digest().starts_with("sha256:"));
+        assert_eq!(receipt.mismatches[0].side(), MismatchSide::LegacyOnly);
+        assert_eq!(receipt.mismatches[1].side(), MismatchSide::RustOnly);
+        assert_eq!(
+            receipt.mismatches[0].fact().kind(),
+            SemanticFactKind::Entity
+        );
+
+        let incomplete = ParityReceipt::compare(
+            "box",
+            "content_assets",
+            "collection-1",
+            "sha256:same",
+            "sha256:same",
+            false,
+            43,
+        )
+        .unwrap();
+        assert_eq!(incomplete.status(), ParityStatus::Incomplete);
+        let mismatch = ParityReceipt::compare_scoped(
+            "tenant-a",
+            "box-prod",
+            "box",
+            "content_assets",
+            "collection-1",
+            "sha256:left",
+            "sha256:right",
+            true,
+            44,
+        )
+        .unwrap();
+        assert_eq!(mismatch.status(), ParityStatus::Mismatch);
+    }
+
+    #[test]
+    fn parity_input_validation_rejects_ambiguous_facts_and_scopes() {
+        for (name, kind) in [
+            ("entity", SemanticFactKind::Entity),
+            ("provider_identity", SemanticFactKind::ProviderIdentity),
+            ("canonical_identity", SemanticFactKind::CanonicalIdentity),
+            ("relationship", SemanticFactKind::Relationship),
+            ("identity_binding", SemanticFactKind::IdentityBinding),
+            ("provenance", SemanticFactKind::Provenance),
+            ("retraction", SemanticFactKind::Retraction),
+        ] {
+            assert_eq!(SemanticFactKind::parse(name), Ok(kind));
+        }
+        assert_eq!(
+            SemanticFactKind::parse("unknown"),
+            Err(ParityError::Invalid("semantic fact kind"))
+        );
+        assert_eq!(
+            SemanticFact::new(SemanticFactKind::Entity, Vec::<String>::new()),
+            Err(ParityError::Invalid("semantic fact parts"))
+        );
+        assert_eq!(
+            SemanticFact::new(SemanticFactKind::Entity, ["bad\npart"]),
+            Err(ParityError::Invalid("semantic fact part"))
+        );
+        assert_eq!(
+            SemanticSnapshot::from_facts(
+                "",
+                "runtime",
+                "source",
+                "family",
+                "collection",
+                "input",
+                "revision",
+                true,
+                Vec::new(),
+            ),
+            Err(ParityError::Invalid("tenant_id"))
+        );
+        assert_eq!(
+            ParityReceipt::compare("source", "family", "corpus", "left", "right", true, 0),
+            Err(ParityError::Invalid("compared_at_unix_ms"))
+        );
+        assert_eq!(
+            ParityError::Invalid("field").to_string(),
+            "field is invalid"
+        );
+        assert_eq!(
+            ParityError::ScopeMismatch("field").to_string(),
+            "projector snapshots disagree on field"
+        );
     }
 }

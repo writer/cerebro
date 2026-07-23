@@ -1310,4 +1310,304 @@ mod tests {
         assert_serialize::<GraphDelta>();
         // Validated domain values intentionally have no Deserialize bound.
     }
+
+    #[test]
+    fn validated_values_receipts_and_errors_expose_the_sealed_contract() {
+        for value in [
+            TenantId::parse("tenant-a").unwrap().to_string(),
+            SourceRuntimeId::parse("okta-prod").unwrap().to_string(),
+            CollectionId::parse("collection-1").unwrap().to_string(),
+            ObservationId::parse("observation-1").unwrap().to_string(),
+            EntityId::parse("entity-1").unwrap().to_string(),
+            AssertionId::parse("assertion-1").unwrap().to_string(),
+            CanonicalIdentityId::parse("person-1").unwrap().to_string(),
+        ] {
+            assert!(!value.is_empty());
+        }
+        assert_eq!(TenantId::parse(""), Err(ModelError::Empty("tenant id")));
+        assert_eq!(
+            TenantId::parse(" tenant"),
+            Err(ModelError::Invalid("tenant id"))
+        );
+        assert_eq!(
+            ProviderKind::parse("user"),
+            Err(ModelError::Invalid("provider entity kind"))
+        );
+        assert_eq!(
+            EntityId::parse("a".repeat(MAX_ID_BYTES + 1)),
+            Err(ModelError::Invalid("entity id"))
+        );
+
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let runtime = SourceRuntimeId::parse("okta-prod").unwrap();
+        let collection = CollectionId::parse("collection-1").unwrap();
+        let partial = CollectionReceipt::partial(
+            tenant.clone(),
+            runtime.clone(),
+            collection.clone(),
+            "okta.users",
+            10,
+        )
+        .unwrap();
+        assert_eq!(partial.tenant_id(), &tenant);
+        assert_eq!(partial.source_runtime_id(), &runtime);
+        assert_eq!(partial.collection_id(), &collection);
+        assert_eq!(partial.scope(), "okta.users");
+        assert_eq!(partial.observed_at_unix_ms(), 10);
+        assert_eq!(partial.completeness(), &CollectionCompleteness::Partial);
+        assert!(
+            partial
+                .clone()
+                .begin_delta()
+                .build()
+                .digest()
+                .starts_with("sha256:")
+        );
+
+        let incremental =
+            CollectionReceipt::incremental(tenant, runtime, collection, "okta.users", 11).unwrap();
+        assert_eq!(
+            incremental.completeness(),
+            &CollectionCompleteness::Incremental
+        );
+        assert_eq!(
+            CollectionReceipt::partial(
+                TenantId::parse("tenant-a").unwrap(),
+                SourceRuntimeId::parse("okta-prod").unwrap(),
+                CollectionId::parse("collection-1").unwrap(),
+                "scope",
+                0,
+            ),
+            Err(ModelError::Invalid("collection observed time"))
+        );
+
+        let messages = [
+            ModelError::Empty("field"),
+            ModelError::Invalid("field"),
+            ModelError::TooLong("field"),
+            ModelError::TenantMismatch,
+            ModelError::CollectionMismatch,
+            ModelError::InvalidRelationship,
+            ModelError::InvalidIdentityBinding,
+            ModelError::EvidenceRequired,
+            ModelError::DuplicateEntity,
+            ModelError::DuplicateAssertion,
+        ]
+        .map(|error| error.to_string());
+        assert!(messages.iter().all(|message| !message.is_empty()));
+    }
+
+    #[test]
+    fn every_typed_relationship_accepts_its_declared_endpoints() {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let entity = |id: &str, kind: EntityKind| {
+            Entity::canonical(tenant.clone(), EntityId::parse(id).unwrap(), kind, id).unwrap()
+        };
+        let person = entity("person", EntityKind::Person);
+        let identity = entity("identity", EntityKind::Identity);
+        let team = entity("team", EntityKind::Team);
+        let organization = entity("organization", EntityKind::Organization);
+        let repository = entity("repository", EntityKind::Repository);
+        let service = entity("service", EntityKind::Service);
+        let application = entity("application", EntityKind::Application);
+        let environment = entity("environment", EntityKind::Environment);
+        let account = entity("account", EntityKind::Account);
+        let resource = entity("resource", EntityKind::Resource);
+        let group = entity("group", EntityKind::Group);
+        let role = entity("role", EntityKind::Role);
+        let policy = entity("policy", EntityKind::Policy);
+        let control = entity("control", EntityKind::Control);
+        let finding = entity("finding", EntityKind::Finding);
+        let provider = entity(
+            "provider",
+            EntityKind::Provider(ProviderKind::parse("github.repository").unwrap()),
+        );
+        let cases = [
+            (RelationKind::MemberOf, &identity, &group, "member_of"),
+            (RelationKind::Owns, &person, &repository, "owns"),
+            (RelationKind::Maintains, &team, &service, "maintains"),
+            (
+                RelationKind::DependsOn,
+                &service,
+                &application,
+                "depends_on",
+            ),
+            (RelationKind::Builds, &repository, &service, "builds"),
+            (RelationKind::Deploys, &service, &environment, "deploys"),
+            (RelationKind::RunsIn, &resource, &account, "runs_in"),
+            (RelationKind::Contains, &organization, &resource, "contains"),
+            (RelationKind::CanAssume, &identity, &role, "can_assume"),
+            (
+                RelationKind::CanAccess,
+                &application,
+                &resource,
+                "can_access",
+            ),
+            (RelationKind::Grants, &policy, &account, "grants"),
+            (RelationKind::ProvisionedAs, &group, &team, "provisioned_as"),
+            (RelationKind::Governs, &control, &service, "governs"),
+            (RelationKind::Affects, &finding, &resource, "affects"),
+            (RelationKind::Supports, &account, &application, "supports"),
+            (
+                RelationKind::EvidenceFor,
+                &resource,
+                &finding,
+                "evidence_for",
+            ),
+            (
+                RelationKind::MappedToControl,
+                &finding,
+                &control,
+                "mapped_to_control",
+            ),
+            (RelationKind::TrackedBy, &resource, &provider, "tracked_by"),
+        ];
+        let collection = receipt();
+        for (relation, from, to, name) in cases {
+            let assertion = RelationshipAssertion::new(
+                from,
+                relation,
+                to,
+                provenance(collection.receipt()),
+                10,
+            )
+            .unwrap();
+            assert_eq!(relation.as_str(), name);
+            assert_eq!(assertion.tenant_id(), &tenant);
+            assert_eq!(assertion.from(), from.id());
+            assert_eq!(assertion.to(), to.id());
+            assert_eq!(assertion.relation(), relation);
+            assert_eq!(assertion.observed_at_unix_ms(), 10);
+            assert_eq!(assertion.provenance().producer(), "okta-user-mapper");
+        }
+    }
+
+    #[test]
+    fn authoritative_delta_preserves_identity_evidence_and_retractions() {
+        let collection = receipt();
+        let receipt = collection.receipt();
+        let observation = ObservationRef::new(
+            receipt,
+            ObservationId::parse("observation-2").unwrap(),
+            "okta.user:00u2",
+        )
+        .unwrap();
+        assert_eq!(observation.tenant_id(), receipt.tenant_id());
+        assert_eq!(observation.source_runtime_id(), receipt.source_runtime_id());
+        assert_eq!(observation.collection_id(), receipt.collection_id());
+        assert_eq!(observation.source_record(), "okta.user:00u2");
+        let evidence =
+            AssertionProvenance::direct(vec![observation], "identity-mapper", "v2").unwrap();
+        assert_eq!(evidence.observations().len(), 1);
+        assert_eq!(evidence.producer(), "identity-mapper");
+        assert_eq!(evidence.producer_version(), "v2");
+
+        let claim = IdentityClaim::employee_id("E-123").unwrap();
+        assert_eq!(claim.kind(), IdentityClaimKind::EmployeeId);
+        assert_eq!(claim.value(), "E-123");
+        assert_eq!(IdentityClaimKind::EmployeeId.as_str(), "employee_id");
+        assert_eq!(IdentityClaimKind::VerifiedEmail.as_str(), "verified_email");
+        let canonical =
+            CanonicalIdentity::for_claim(receipt.tenant_id().clone(), &claim, "A Person").unwrap();
+        let provider = ProviderIdentity::new(
+            receipt.tenant_id().clone(),
+            receipt.source_runtime_id().clone(),
+            ProviderKind::parse("okta.user").unwrap(),
+            "00u2",
+            "A Person",
+        )
+        .unwrap();
+        let binding = IdentityBindingAssertion::new(
+            &provider,
+            &canonical,
+            IdentityResolutionMethod::AuthoritativeEmployeeId,
+            Some(claim.clone()),
+            IdentityBindingState::Confirmed,
+            evidence,
+            10,
+        )
+        .unwrap();
+        assert_eq!(binding.tenant_id(), receipt.tenant_id());
+        assert_eq!(binding.provider_identity(), provider.entity().id());
+        assert_eq!(binding.canonical_identity(), canonical.entity().id());
+        assert_eq!(
+            binding.method(),
+            IdentityResolutionMethod::AuthoritativeEmployeeId
+        );
+        assert_eq!(binding.provider_kind().as_str(), "okta.user");
+        assert_eq!(binding.claim(), Some(&claim));
+        assert_eq!(binding.state(), IdentityBindingState::Confirmed);
+        assert_eq!(binding.observed_at_unix_ms(), 10);
+
+        let tenant_id = receipt.tenant_id().clone();
+        let mut builder = collection.begin_delta();
+        builder.add_entity(provider.clone().into_entity()).unwrap();
+        builder.add_entity(canonical.clone().into_entity()).unwrap();
+        let assertion = GraphAssertion::IdentityBinding(binding);
+        assert_eq!(assertion.tenant_id(), &tenant_id);
+        builder.add_assertion(assertion.clone()).unwrap();
+        builder.add_assertion(assertion).unwrap();
+        builder
+            .retract_missing(
+                AssertionId::parse("assertion-old").unwrap(),
+                "no longer observed",
+            )
+            .unwrap();
+        let delta = builder.build();
+        assert_eq!(delta.entities().len(), 2);
+        assert_eq!(delta.assertions().len(), 1);
+        assert_eq!(delta.retractions().len(), 1);
+        assert_eq!(delta.retractions()[0].reason(), "no longer observed");
+        assert_eq!(
+            delta.retractions()[0].assertion_id().as_str(),
+            "assertion-old"
+        );
+        let (receipt, entities, assertions, retractions, digest) = delta.into_components();
+        assert_eq!(receipt.completeness(), &CollectionCompleteness::Complete);
+        assert_eq!(entities.len(), 2);
+        assert_eq!(assertions.len(), 1);
+        assert_eq!(retractions.len(), 1);
+        assert!(digest.starts_with("sha256:"));
+    }
+
+    #[test]
+    fn delta_builder_rejects_cross_tenant_and_conflicting_values() {
+        let mut builder = receipt().begin_delta();
+        let first = Entity::canonical(
+            TenantId::parse("tenant-a").unwrap(),
+            EntityId::parse("entity-1").unwrap(),
+            EntityKind::Resource,
+            "first",
+        )
+        .unwrap();
+        let conflicting = Entity::canonical(
+            TenantId::parse("tenant-a").unwrap(),
+            EntityId::parse("entity-1").unwrap(),
+            EntityKind::Resource,
+            "second",
+        )
+        .unwrap();
+        builder.add_entity(first.clone()).unwrap();
+        builder.add_entity(first).unwrap();
+        assert_eq!(
+            builder.add_entity(conflicting),
+            Err(ModelError::DuplicateEntity)
+        );
+        assert_eq!(
+            builder.add_entity(
+                Entity::canonical(
+                    TenantId::parse("tenant-b").unwrap(),
+                    EntityId::parse("entity-2").unwrap(),
+                    EntityKind::Resource,
+                    "other",
+                )
+                .unwrap(),
+            ),
+            Err(ModelError::TenantMismatch)
+        );
+        assert_eq!(
+            AssertionProvenance::direct(Vec::new(), "mapper", "v1"),
+            Err(ModelError::EvidenceRequired)
+        );
+    }
 }
