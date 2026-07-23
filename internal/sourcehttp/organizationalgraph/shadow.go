@@ -72,12 +72,12 @@ func newShadowQueryStore(primary ports.GraphQueryStore, baseURL string, timeout 
 	if primary == nil {
 		return nil, errors.New("primary graph query store is required")
 	}
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if baseURL == "" {
-		return nil, errors.New("Rust organizational graph URL is required")
+	baseURL, err := normalizeBaseURL(baseURL)
+	if err != nil {
+		return nil, err
 	}
 	if timeout <= 0 {
-		return nil, errors.New("Rust organizational graph timeout must be positive")
+		return nil, errors.New("rust organizational graph timeout must be positive")
 	}
 	if sink == nil {
 		return nil, errors.New("shadow receipt sink is required")
@@ -171,7 +171,7 @@ type rustNeighborhood struct {
 	Edges    []rustEdge   `json:"edges"`
 }
 
-func (s *ShadowQueryStore) expand(ctx context.Context, rootURN string, limit int) (*rustNeighborhood, error) {
+func (s *ShadowQueryStore) expand(ctx context.Context, rootURN string, limit int) (_ *rustNeighborhood, err error) {
 	tenantID := cerebrourn.TenantID(rootURN)
 	if tenantID == "" {
 		return nil, errors.New("root is not a tenant-scoped Cerebro URN")
@@ -191,14 +191,18 @@ func (s *ShadowQueryStore) expand(ctx context.Context, rootURN string, limit int
 		return nil, fmt.Errorf("build Rust graph request: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/json")
+	// #nosec G704 -- normalizeBaseURL validates and freezes the HTTP(S)
+	// origin; the request path is constant in this package.
 	response, err := s.client.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("read Rust graph: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		err = errors.Join(err, response.Body.Close())
+	}()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
-		return nil, fmt.Errorf("Rust graph returned %s", response.Status)
+		return nil, fmt.Errorf("rust graph returned %s", response.Status)
 	}
 	var neighborhood rustNeighborhood
 	decoder := json.NewDecoder(io.LimitReader(response.Body, maxResponseBytes))

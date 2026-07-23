@@ -98,7 +98,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		deps.OrganizationalProjector = projectionClient
 		primary, ok := deps.GraphStore.(ports.GraphQueryStore)
 		if !ok || isNilInterface(primary) {
-			return fail(errors.New("Rust organizational graph shadowing requires a configured graph query store"))
+			return fail(errors.New("rust organizational graph shadowing requires a configured graph query store"))
 		}
 		shadow, err := organizationalgraph.NewShadowQueryStore(
 			primary,

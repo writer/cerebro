@@ -30,14 +30,30 @@ type ProjectionClient struct {
 }
 
 func NewProjectionClient(baseURL string, timeout time.Duration) (*ProjectionClient, error) {
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if baseURL == "" {
-		return nil, errors.New("Rust organizational graph URL is required")
+	baseURL, err := normalizeBaseURL(baseURL)
+	if err != nil {
+		return nil, err
 	}
 	if timeout <= 0 {
-		return nil, errors.New("Rust organizational graph timeout must be positive")
+		return nil, errors.New("rust organizational graph timeout must be positive")
 	}
 	return &ProjectionClient{baseURL: baseURL, client: &http.Client{Timeout: timeout}}, nil
+}
+
+func normalizeBaseURL(raw string) (string, error) {
+	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
+	parsed, err := url.Parse(raw)
+	if err != nil ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.Host == "" ||
+		parsed.User != nil ||
+		parsed.Opaque != "" ||
+		parsed.Path != "" ||
+		parsed.RawQuery != "" ||
+		parsed.Fragment != "" {
+		return "", errors.New("rust organizational graph URL must be an HTTP or HTTPS origin without credentials, path, query, or fragment")
+	}
+	return parsed.Scheme + "://" + parsed.Host, nil
 }
 
 type projectEventRequest struct {
@@ -110,7 +126,7 @@ func (c *ProjectionClient) project(ctx context.Context, event *cerebrov1.EventEn
 		return projectEventResponse{}, err
 	}
 	if response.Authority != projectionAuthorityLegacy && response.Authority != projectionAuthorityRust {
-		return projectEventResponse{}, fmt.Errorf("Rust projection returned invalid authority %q", response.Authority)
+		return projectEventResponse{}, fmt.Errorf("rust projection returned invalid authority %q", response.Authority)
 	}
 	return response, nil
 }
@@ -137,20 +153,24 @@ func (c *ProjectionClient) authority(ctx context.Context, event *cerebrov1.Event
 		return "", err
 	}
 	if response.Authority != projectionAuthorityLegacy && response.Authority != projectionAuthorityRust {
-		return "", fmt.Errorf("Rust projection returned invalid authority %q", response.Authority)
+		return "", fmt.Errorf("rust projection returned invalid authority %q", response.Authority)
 	}
 	return response.Authority, nil
 }
 
-func (c *ProjectionClient) doJSON(request *http.Request, target any) error {
+func (c *ProjectionClient) doJSON(request *http.Request, target any) (err error) {
+	// #nosec G704 -- NewProjectionClient validates and freezes the HTTP(S)
+	// origin; request paths and query keys are constants in this package.
 	response, err := c.client.Do(request)
 	if err != nil {
 		return fmt.Errorf("call Rust projection: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		err = errors.Join(err, response.Body.Close())
+	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
-		return fmt.Errorf("Rust projection returned %s", response.Status)
+		return fmt.Errorf("rust projection returned %s", response.Status)
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, maxResponseBytes))
 	decoder.DisallowUnknownFields()
@@ -179,7 +199,7 @@ func (p *AppendLogProjector) Project(ctx context.Context, event *cerebrov1.Event
 	}
 	if response.Authority == projectionAuthorityRust {
 		if !response.Projected || response.GraphRevision == nil {
-			return ports.ProjectionResult{}, errors.New("Rust-authoritative projection did not commit")
+			return ports.ProjectionResult{}, errors.New("rust-authoritative projection did not commit")
 		}
 		return ports.ProjectionResult{
 			EntitiesProjected: response.EntitiesUpserted,

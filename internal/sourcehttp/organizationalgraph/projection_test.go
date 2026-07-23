@@ -81,6 +81,21 @@ func TestAppendLogProjectorUsesExactlyOneAuthority(t *testing.T) {
 	}
 }
 
+func TestProjectionClientRequiresAFixedHTTPOrigin(t *testing.T) {
+	for _, value := range []string{
+		"",
+		"file:///tmp/graph",
+		"https://user:password@example.test",
+		"https://example.test/path",
+		"https://example.test?tenant=other",
+		"https://example.test#fragment",
+	} {
+		if _, err := NewProjectionClient(value, time.Second); err == nil {
+			t.Fatalf("NewProjectionClient(%q) error = nil", value)
+		}
+	}
+}
+
 func TestLegacyWriteGuardSuppressesGoAfterPromotion(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(authorityResponse{Authority: projectionAuthorityRust})
