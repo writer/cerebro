@@ -88,10 +88,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		return fail(fmt.Errorf("unsupported graph store driver %q", cfg.GraphStore.Driver))
 	}
 	if cfg.OrganizationalGraph.BaseURL != "" {
-		projectionClient, err := organizationalgraph.NewProjectionClient(
-			cfg.OrganizationalGraph.BaseURL,
-			cfg.OrganizationalGraph.Timeout,
-		)
+		projectionClient, err := organizationalgraph.NewProjectionClient(cfg.OrganizationalGraph.BaseURL, cfg.OrganizationalGraph.SharedSecret, cfg.OrganizationalGraph.Timeout)
 		if err != nil {
 			return fail(fmt.Errorf("open Rust organizational graph projection: %w", err))
 		}
@@ -100,11 +97,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		if !ok || isNilInterface(primary) {
 			return fail(errors.New("rust organizational graph reads require a configured compatibility query store"))
 		}
-		queryStore, err := organizationalgraph.NewQueryStore(
-			primary,
-			cfg.OrganizationalGraph.BaseURL,
-			cfg.OrganizationalGraph.Timeout,
-		)
+		queryStore, err := organizationalgraph.NewQueryStore(primary, cfg.OrganizationalGraph.BaseURL, cfg.OrganizationalGraph.SharedSecret, cfg.OrganizationalGraph.Timeout)
 		if err != nil {
 			return fail(fmt.Errorf("open Rust organizational graph reads: %w", err))
 		}

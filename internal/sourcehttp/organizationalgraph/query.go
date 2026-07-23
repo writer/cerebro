@@ -29,6 +29,7 @@ type QueryStore struct {
 	compatibility ports.GraphQueryStore
 	baseURL       string
 	client        *http.Client
+	auth          tenantAuthenticator
 }
 
 // ReadinessStore selects the product read authority when configured. Its Ping
@@ -40,7 +41,7 @@ func ReadinessStore(compatibility, authority ports.GraphStore) ports.GraphStore 
 	return compatibility
 }
 
-func NewQueryStore(compatibility ports.GraphQueryStore, baseURL string, timeout time.Duration) (*QueryStore, error) {
+func NewQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration) (*QueryStore, error) {
 	if compatibility == nil {
 		return nil, errors.New("compatibility graph query store is required")
 	}
@@ -51,10 +52,15 @@ func NewQueryStore(compatibility ports.GraphQueryStore, baseURL string, timeout 
 	if timeout <= 0 {
 		return nil, errors.New("rust organizational graph timeout must be positive")
 	}
+	auth, err := newTenantAuthenticator(sharedSecret)
+	if err != nil {
+		return nil, err
+	}
 	return &QueryStore{
 		compatibility: compatibility,
 		baseURL:       baseURL,
 		client:        &http.Client{Timeout: timeout},
+		auth:          auth,
 	}, nil
 }
 
@@ -84,7 +90,7 @@ func (s *QueryStore) GetEntityNeighborhood(ctx context.Context, rootURN string, 
 		Limit:    normalizedLimit(limit),
 	}
 	var neighborhood rustNeighborhood
-	if err := s.post(ctx, "/v1/graph/expand", request, &neighborhood); err != nil {
+	if err := s.post(ctx, "/v1/graph/expand", request.TenantID, request, &neighborhood); err != nil {
 		return nil, err
 	}
 	product, err := productNeighborhood(rootURN, neighborhood)
@@ -127,7 +133,7 @@ func (s *QueryStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []stri
 		roots = append(roots, rootURN)
 	}
 	var response expandBatchResponse
-	if err := s.post(ctx, "/v1/graph/expand-batch", expandBatchRequest{
+	if err := s.post(ctx, "/v1/graph/expand-batch", tenantID, expandBatchRequest{
 		TenantID: tenantID,
 		RootKeys: roots,
 		Depth:    1,
@@ -218,7 +224,7 @@ type rustNeighborhood struct {
 	Truncated     bool         `json:"truncated"`
 }
 
-func (s *QueryStore) post(ctx context.Context, path string, payload any, target any) error {
+func (s *QueryStore) post(ctx context.Context, path, tenantID string, payload any, target any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("encode Rust graph request: %w", err)
@@ -230,6 +236,9 @@ func (s *QueryStore) post(ctx context.Context, path string, payload any, target 
 		return fmt.Errorf("build Rust graph request: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/json")
+	if err := s.auth.authorize(request, tenantID); err != nil {
+		return err
+	}
 	return s.do(request, target)
 }
 

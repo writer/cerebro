@@ -39,6 +39,7 @@ cerebro-wasm-guest = { version = "0.1.0", path = "internal/wasmguest" }
 ciborium = "0.2.2"
 libc = "0.2.180"
 futures-util = "0.3.31"
+hmac = "0.13.0"
 prost = "0.14.4"
 prost-types = "0.14.4"
 regex = { version = "1.12.3", default-features = false, features = ["perf", "std"] }

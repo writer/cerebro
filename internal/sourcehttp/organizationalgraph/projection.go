@@ -27,9 +27,10 @@ const (
 type ProjectionClient struct {
 	baseURL string
 	client  *http.Client
+	auth    tenantAuthenticator
 }
 
-func NewProjectionClient(baseURL string, timeout time.Duration) (*ProjectionClient, error) {
+func NewProjectionClient(baseURL, sharedSecret string, timeout time.Duration) (*ProjectionClient, error) {
 	baseURL, err := normalizeBaseURL(baseURL)
 	if err != nil {
 		return nil, err
@@ -37,7 +38,11 @@ func NewProjectionClient(baseURL string, timeout time.Duration) (*ProjectionClie
 	if timeout <= 0 {
 		return nil, errors.New("rust organizational graph timeout must be positive")
 	}
-	return &ProjectionClient{baseURL: baseURL, client: &http.Client{Timeout: timeout}}, nil
+	auth, err := newTenantAuthenticator(sharedSecret)
+	if err != nil {
+		return nil, err
+	}
+	return &ProjectionClient{baseURL: baseURL, client: &http.Client{Timeout: timeout}, auth: auth}, nil
 }
 
 func normalizeBaseURL(raw string) (string, error) {
@@ -121,6 +126,9 @@ func (c *ProjectionClient) project(ctx context.Context, event *cerebrov1.EventEn
 		return projectEventResponse{}, fmt.Errorf("build Rust projection request: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/json")
+	if err := c.auth.authorize(request, event.GetTenantId()); err != nil {
+		return projectEventResponse{}, err
+	}
 	var response projectEventResponse
 	if err := c.doJSON(request, &response); err != nil {
 		return projectEventResponse{}, err
@@ -147,6 +155,9 @@ func (c *ProjectionClient) authority(ctx context.Context, event *cerebrov1.Event
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/projections/authority?"+query.Encode(), nil)
 	if err != nil {
 		return "", fmt.Errorf("build Rust projection authority request: %w", err)
+	}
+	if err := c.auth.authorize(request, event.GetTenantId()); err != nil {
+		return "", err
 	}
 	var response authorityResponse
 	if err := c.doJSON(request, &response); err != nil {

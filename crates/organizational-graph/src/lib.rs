@@ -127,7 +127,7 @@ impl OrganizationalGraph {
 
         for entity in entities {
             if let Some(existing) = candidate.entities.get(entity.id())
-                && existing != &entity
+                && !existing.has_same_identity(&entity)
             {
                 return Err(GraphError::EntityConflict(entity.id().clone()));
             }
@@ -554,6 +554,50 @@ mod tests {
             )),
             Err(GraphError::IdentityAlreadyBound { .. })
         ));
+    }
+
+    #[test]
+    fn stable_entity_identity_allows_source_data_refresh() {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let runtime = SourceRuntimeId::parse("okta-prod").unwrap();
+        let entity = ProviderIdentity::new(
+            tenant.clone(),
+            runtime.clone(),
+            ProviderKind::parse("okta.user").unwrap(),
+            "00u-refresh",
+            "Old label",
+        )
+        .unwrap()
+        .into_entity();
+        let refreshed = ProviderIdentity::new(
+            tenant.clone(),
+            runtime.clone(),
+            ProviderKind::parse("okta.user").unwrap(),
+            "00u-refresh",
+            "New label",
+        )
+        .unwrap()
+        .into_entity()
+        .with_property("department", "Security")
+        .unwrap();
+        let mut graph = OrganizationalGraph::new();
+        for (collection_id, value) in [
+            ("collection-refresh-1", entity),
+            ("collection-refresh-2", refreshed.clone()),
+        ] {
+            let collection = CompleteCollection::new(
+                tenant.clone(),
+                runtime.clone(),
+                CollectionId::parse(collection_id).unwrap(),
+                "okta.users",
+                10,
+            )
+            .unwrap();
+            let mut builder = collection.begin_delta();
+            builder.add_entity(value).unwrap();
+            graph.apply(builder.build()).unwrap();
+        }
+        assert_eq!(graph.entity(&tenant, refreshed.id()).unwrap(), refreshed);
     }
 
     #[test]

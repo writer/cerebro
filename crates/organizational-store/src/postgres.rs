@@ -674,7 +674,7 @@ impl PostgresLedger {
             let entity_json = serde_json::to_value(entity)?;
             let row = transaction
                 .query_opt(
-                    "INSERT INTO organizational_entities (tenant_id, entity_id, entity_json, last_graph_revision) VALUES ($1, $2, $3, $4) ON CONFLICT (tenant_id, entity_id) DO UPDATE SET last_graph_revision = EXCLUDED.last_graph_revision WHERE organizational_entities.entity_json = EXCLUDED.entity_json RETURNING entity_id",
+                    "INSERT INTO organizational_entities (tenant_id, entity_id, entity_json, last_graph_revision) VALUES ($1, $2, $3, $4) ON CONFLICT (tenant_id, entity_id) DO UPDATE SET entity_json = EXCLUDED.entity_json, last_graph_revision = EXCLUDED.last_graph_revision WHERE organizational_entities.entity_json->'kind' = EXCLUDED.entity_json->'kind' AND organizational_entities.entity_json->'authority' = EXCLUDED.entity_json->'authority' RETURNING entity_id",
                     &[&tenant_id, &entity.id().as_str(), &entity_json, &revision],
                 )
                 .await?;
@@ -724,7 +724,7 @@ impl PostgresLedger {
             let assertion_json = serde_json::to_value(assertion)?;
             let row = transaction
                 .query_opt(
-                    "INSERT INTO organizational_assertions (tenant_id, assertion_id, source_runtime_id, from_entity_id, to_entity_id, relation, assertion_json, active, last_graph_revision) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8) ON CONFLICT (tenant_id, assertion_id) DO UPDATE SET active = TRUE, last_graph_revision = EXCLUDED.last_graph_revision WHERE organizational_assertions.assertion_json = EXCLUDED.assertion_json RETURNING assertion_id",
+                    "INSERT INTO organizational_assertions (tenant_id, assertion_id, source_runtime_id, from_entity_id, to_entity_id, relation, assertion_json, active, last_graph_revision) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8) ON CONFLICT (tenant_id, assertion_id) DO UPDATE SET assertion_json = EXCLUDED.assertion_json, active = TRUE, last_graph_revision = EXCLUDED.last_graph_revision WHERE organizational_assertions.source_runtime_id = EXCLUDED.source_runtime_id AND organizational_assertions.from_entity_id = EXCLUDED.from_entity_id AND organizational_assertions.to_entity_id = EXCLUDED.to_entity_id AND organizational_assertions.relation = EXCLUDED.relation RETURNING assertion_id",
                     &[
                         &tenant_id,
                         &assertion.id().as_str(),
@@ -1227,6 +1227,21 @@ mod tests {
             "DEFERRABLE INITIALLY DEFERRED",
         ] {
             assert!(POSTGRES_SCHEMA.contains(required), "missing {required}");
+        }
+        for required in [
+            "entity_json = EXCLUDED.entity_json",
+            "entity_json->'kind' = EXCLUDED.entity_json->'kind'",
+            "entity_json->'authority' = EXCLUDED.entity_json->'authority'",
+            "assertion_json = EXCLUDED.assertion_json",
+            "source_runtime_id = EXCLUDED.source_runtime_id",
+            "from_entity_id = EXCLUDED.from_entity_id",
+            "to_entity_id = EXCLUDED.to_entity_id",
+            "relation = EXCLUDED.relation",
+        ] {
+            assert!(
+                include_str!("postgres.rs").contains(required),
+                "refresh upsert missing {required}"
+            );
         }
         for required in [
             "active = TRUE",

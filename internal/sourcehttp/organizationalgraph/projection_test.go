@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -38,6 +39,9 @@ func (s *sourceProjectorStub) callCount() int {
 func TestAppendLogProjectorUsesExactlyOneAuthority(t *testing.T) {
 	var authority = projectionAuthorityLegacy
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(tenantAuthHeader) != "tenant-a" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+			t.Fatalf("tenant authentication headers are missing")
+		}
 		switch r.URL.Path {
 		case "/v1/projections/events":
 			var request projectEventRequest
@@ -62,7 +66,7 @@ func TestAppendLogProjectorUsesExactlyOneAuthority(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client, err := NewProjectionClient(server.URL, time.Second)
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
 	if err != nil {
 		t.Fatalf("NewProjectionClient() error = %v", err)
 	}
@@ -90,7 +94,7 @@ func TestProjectionClientRequiresAFixedHTTPOrigin(t *testing.T) {
 		"https://example.test?tenant=other",
 		"https://example.test#fragment",
 	} {
-		if _, err := NewProjectionClient(value, time.Second); err == nil {
+		if _, err := NewProjectionClient(value, testSharedSecret, time.Second); err == nil {
 			t.Fatalf("NewProjectionClient(%q) error = nil", value)
 		}
 	}
@@ -101,7 +105,7 @@ func TestLegacyWriteGuardSuppressesGoAfterPromotion(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(authorityResponse{Authority: projectionAuthorityRust})
 	}))
 	defer server.Close()
-	client, err := NewProjectionClient(server.URL, time.Second)
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
 	if err != nil {
 		t.Fatalf("NewProjectionClient() error = %v", err)
 	}
@@ -117,7 +121,7 @@ func TestRustAuthorityFailureDoesNotFallBackToGo(t *testing.T) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
 	server.Close()
-	client, err := NewProjectionClient(server.URL, 20*time.Millisecond)
+	client, err := NewProjectionClient(server.URL, testSharedSecret, 20*time.Millisecond)
 	if err != nil {
 		t.Fatalf("NewProjectionClient() error = %v", err)
 	}
@@ -134,7 +138,7 @@ func TestProjectionRejectsMissingOccurrenceTimeBeforeCallingEitherWriter(t *test
 		serverCalled = true
 	}))
 	defer server.Close()
-	client, err := NewProjectionClient(server.URL, time.Second)
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
 	if err != nil {
 		t.Fatalf("NewProjectionClient() error = %v", err)
 	}

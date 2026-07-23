@@ -55,6 +55,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_PROJECTION_BATCH_SIZE", "")
 	t.Setenv("CEREBRO_NEO4J_PROJECTION_WRITE_CONCURRENCY", "")
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_URL", "")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "")
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT", "")
 	clearGraphAgentEnv(t)
 	clearOpenTelemetryEnv(t)

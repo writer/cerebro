@@ -56,7 +56,7 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
     };
     let provider = ProviderIdentity::new(
         tenant.clone(),
-        runtime,
+        runtime.clone(),
         ProviderKind::parse("okta.identity_user")?,
         "user-1",
         "User One",
@@ -79,7 +79,7 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
         &provider,
         &canonical,
         IdentityResolutionMethod::AuthoritativeEmployeeId,
-        Some(identity_claim),
+        Some(identity_claim.clone()),
         IdentityBindingState::Confirmed,
         provenance()?,
         10,
@@ -98,11 +98,14 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
         provenance()?,
         10,
     )?;
+    let binding_id = binding.id().clone();
+    let membership_id = membership.id().clone();
+    let access_id = access.id().clone();
     let root_id = provider.entity().id().clone();
     let mut builder = collection.clone().begin_delta();
-    builder.add_entity(provider.into_entity())?;
-    builder.add_entity(canonical.into_entity())?;
-    builder.add_entity(group)?;
+    builder.add_entity(provider.clone().into_entity())?;
+    builder.add_entity(canonical.clone().into_entity())?;
+    builder.add_entity(group.clone())?;
     builder.add_entity(repository.clone())?;
     builder.add_assertion(GraphAssertion::IdentityBinding(binding))?;
     builder.add_assertion(GraphAssertion::Relationship(membership))?;
@@ -151,6 +154,93 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
     assert_eq!(resumed, receipt);
     let replay = store.apply(&batch, delta).await?;
     assert_eq!(replay.graph_revision, receipt.graph_revision);
+
+    let refresh_collection = CompleteCollection::new(
+        tenant.clone(),
+        runtime.clone(),
+        CollectionId::parse("collection-live-2")?,
+        "okta.users",
+        20,
+    )?;
+    let refresh_observation = ObservationId::parse("observation-live-2")?;
+    let refresh_provenance = || {
+        AssertionProvenance::direct(
+            vec![ObservationRef::new(
+                refresh_collection.receipt(),
+                refresh_observation.clone(),
+                "okta.identity_user:user-1",
+            )?],
+            "live-mapper",
+            "v2",
+        )
+    };
+    let refreshed_provider = ProviderIdentity::new(
+        tenant.clone(),
+        runtime,
+        ProviderKind::parse("okta.identity_user")?,
+        "user-1",
+        "User One Updated",
+    )?;
+    let refreshed_canonical =
+        CanonicalIdentity::for_claim(tenant.clone(), &identity_claim, "User One Updated")?;
+    let refreshed_group = Entity::canonical(
+        tenant.clone(),
+        EntityId::parse("group-1")?,
+        EntityKind::Group,
+        "Platform Engineering",
+    )?;
+    let refreshed_binding = IdentityBindingAssertion::new(
+        &refreshed_provider,
+        &refreshed_canonical,
+        IdentityResolutionMethod::AuthoritativeEmployeeId,
+        Some(identity_claim),
+        IdentityBindingState::Confirmed,
+        refresh_provenance()?,
+        20,
+    )?;
+    let refreshed_membership = RelationshipAssertion::new(
+        refreshed_canonical.entity(),
+        RelationKind::MemberOf,
+        &refreshed_group,
+        refresh_provenance()?,
+        20,
+    )?;
+    let refreshed_access = RelationshipAssertion::new(
+        &refreshed_group,
+        RelationKind::CanAccess,
+        &repository,
+        refresh_provenance()?,
+        20,
+    )?;
+    assert_eq!(refreshed_binding.id(), &binding_id);
+    assert_eq!(refreshed_membership.id(), &membership_id);
+    assert_eq!(refreshed_access.id(), &access_id);
+    let mut refresh_builder = refresh_collection.clone().begin_delta();
+    refresh_builder.add_entity(refreshed_provider.into_entity())?;
+    refresh_builder.add_entity(refreshed_canonical.into_entity())?;
+    refresh_builder.add_entity(refreshed_group)?;
+    refresh_builder.add_entity(repository.clone())?;
+    refresh_builder.add_assertion(GraphAssertion::IdentityBinding(refreshed_binding))?;
+    refresh_builder.add_assertion(GraphAssertion::Relationship(refreshed_membership))?;
+    refresh_builder.add_assertion(GraphAssertion::Relationship(refreshed_access))?;
+    let refresh_batch = CollectedBatch {
+        scope: CollectedScope::Complete(refresh_collection),
+        records: vec![SourceRecord {
+            observation_id: refresh_observation,
+            family: "users".to_owned(),
+            provider_kind: "okta.identity_user".to_owned(),
+            provider_id: "user-1".to_owned(),
+            fields: BTreeMap::from([("employee_id".to_owned(), "employee-1".to_owned())]),
+            payload: serde_json::json!({"id": "user-1", "employee_id": "employee-1"}),
+        }],
+        next_cursor: None,
+    };
+    let refresh_receipt = store.apply(&refresh_batch, refresh_builder.build()).await?;
+    assert_eq!(refresh_receipt.graph_revision, 2);
+    assert_eq!(
+        reader.resolve(&tenant, root_id.as_str()).await?.label,
+        "User One Updated"
+    );
 
     let paths = reader
         .find_paths(&tenant, &root_id, repository.id(), 4, 10)

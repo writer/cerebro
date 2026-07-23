@@ -16,6 +16,7 @@ cerebro-organizational-store.workspace = true
 cerebro-source-catalog.workspace = true
 cerebro-source-runtime-next.workspace = true
 futures-util.workspace = true
+hmac.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

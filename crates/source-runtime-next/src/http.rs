@@ -11,7 +11,10 @@ use cerebro_organizational_model::{
 };
 use cerebro_source_catalog::{AuthModel, CompiledFamily, CompiledSource, HttpMethod, Pagination};
 use futures_util::StreamExt;
-use reqwest::{Client, Response, StatusCode, Url, header::LINK};
+use reqwest::{
+    Client, Response, StatusCode, Url,
+    header::{HeaderMap, HeaderName},
+};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -176,11 +179,7 @@ impl SourceConnector for HttpSourceConnector {
             if !status.is_success() {
                 return Err(HttpConnectorError::ProviderStatus(status));
             }
-            let next_link = response
-                .headers()
-                .get(LINK)
-                .and_then(|value| value.to_str().ok())
-                .and_then(next_link_url);
+            let next_link = response_next_link(response.headers(), self.family.pagination())?;
             let body = read_bounded_json(response).await?;
             let selected = select_records(&body, self.family.record_selector())?;
             let selected_count = selected.len();
@@ -569,6 +568,24 @@ fn next_link_url(header: &str) -> Option<String> {
     })
 }
 
+fn response_next_link(
+    headers: &HeaderMap,
+    pagination: &Pagination,
+) -> Result<Option<String>, HttpConnectorError> {
+    let Pagination::Link { header } = pagination else {
+        return Ok(None);
+    };
+    let header_name = HeaderName::from_bytes(header.as_bytes()).map_err(|_| {
+        HttpConnectorError::InvalidConfiguration(format!(
+            "pagination link header {header:?} is invalid"
+        ))
+    })?;
+    Ok(headers
+        .get(header_name)
+        .and_then(|value| value.to_str().ok())
+        .and_then(next_link_url))
+}
+
 fn split_link_header(value: &str, delimiter: char) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut start = 0;
@@ -782,6 +799,35 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(ensure_same_origin(&base, &changed_origin).is_err());
+    }
+
+    #[test]
+    fn link_pagination_uses_the_catalog_header_name() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-next-page",
+            "</users?page=2>; rel=\"next\"".parse().unwrap(),
+        );
+        assert_eq!(
+            response_next_link(
+                &headers,
+                &Pagination::Link {
+                    header: "x-next-page".to_owned(),
+                },
+            )
+            .unwrap()
+            .as_deref(),
+            Some("/users?page=2")
+        );
+        assert!(
+            response_next_link(
+                &headers,
+                &Pagination::Link {
+                    header: "not a header".to_owned(),
+                },
+            )
+            .is_err()
+        );
     }
 
     #[tokio::test]

@@ -7,9 +7,11 @@ mod parity_command;
 use std::{collections::BTreeMap, env, error::Error, path::PathBuf, sync::Arc};
 
 use axum::{
-    Json, Router,
-    extract::{Path, Query, State},
-    http::StatusCode,
+    Extension, Json, Router,
+    extract::{Path, Query, Request, State},
+    http::{StatusCode, header::AUTHORIZATION},
+    middleware::{self, Next},
+    response::Response,
     routing::{get, post},
 };
 use cerebro_agent_context::{
@@ -32,14 +34,108 @@ use cerebro_source_runtime_next::{
     CatalogGraphMapper, CollectedBatch, CollectedScope, CollectionRequest, CommittedSourceEvent,
     GraphMapper, GraphSink, HttpSourceConnector, ResolvedAuth, SourceRecord, SourceRuntime,
 };
+use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use tokio::sync::Mutex;
+
+const TENANT_AUTH_HEADER: &str = "x-cerebro-tenant";
+const TENANT_AUTH_CONTEXT: &[u8] = b"cerebro-organizational-graph/tenant/v1\0";
+const MIN_SHARED_SECRET_BYTES: usize = 32;
 
 #[derive(Clone)]
 struct AppState {
     graph: Arc<dyn AgentGraph>,
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
+}
+
+#[derive(Clone)]
+struct TenantRequestAuth {
+    secret: Arc<[u8]>,
+}
+
+#[derive(Clone)]
+struct AuthenticatedTenant(TenantId);
+
+impl TenantRequestAuth {
+    fn new(secret: String) -> Result<Self, String> {
+        if secret.len() < MIN_SHARED_SECRET_BYTES {
+            return Err(format!(
+                "CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET must be at least {MIN_SHARED_SECRET_BYTES} bytes"
+            ));
+        }
+        Ok(Self {
+            secret: Arc::from(secret.into_bytes()),
+        })
+    }
+
+    fn mac(&self, tenant_id: &TenantId) -> Hmac<Sha256> {
+        let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&self.secret)
+            .expect("HMAC accepts keys of any length");
+        mac.update(TENANT_AUTH_CONTEXT);
+        mac.update(&(tenant_id.as_str().len() as u64).to_be_bytes());
+        mac.update(tenant_id.as_str().as_bytes());
+        mac
+    }
+
+    fn verify(&self, tenant_id: &TenantId, token: &str) -> bool {
+        let Some(tag) = decode_hex_tag(token) else {
+            return false;
+        };
+        self.mac(tenant_id).verify_slice(&tag).is_ok()
+    }
+
+    #[cfg(test)]
+    fn token(&self, tenant_id: &TenantId) -> String {
+        self.mac(tenant_id)
+            .finalize()
+            .into_bytes()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+}
+
+fn decode_hex_tag(value: &str) -> Option<[u8; 32]> {
+    if value.len() != 64 {
+        return None;
+    }
+    let mut tag = [0_u8; 32];
+    for (index, byte) in tag.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16).ok()?;
+    }
+    Some(tag)
+}
+
+async fn authenticate_tenant(
+    State(auth): State<TenantRequestAuth>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    let tenant = request
+        .headers()
+        .get(TENANT_AUTH_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| TenantId::parse(value.to_owned()).ok());
+    let token = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "));
+    let Some(tenant) =
+        tenant.filter(|tenant| token.is_some_and(|token| auth.verify(tenant, token)))
+    else {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                code: "authentication_required",
+                message: "Valid tenant authentication is required.".to_owned(),
+            }),
+        ));
+    };
+    request.extensions_mut().insert(AuthenticatedTenant(tenant));
+    Ok(next.run(request).await)
 }
 
 struct ProjectionRuntime {
@@ -415,11 +511,14 @@ async fn serve(
     projection: Option<Arc<ProjectionRuntime>>,
 ) -> Result<(), Box<dyn Error>> {
     let bind = env::var("CEREBRO_RUST_BIND").unwrap_or_else(|_| "127.0.0.1:8080".to_owned());
+    let tenant_auth =
+        TenantRequestAuth::new(required_env("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET")?)
+            .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidInput, message))?;
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     println!("cerebro Rust platform listening on {bind}");
     axum::serve(
         listener,
-        router_with_backend(graph, load_catalog_summary().ok(), projection),
+        router_with_backend(graph, load_catalog_summary().ok(), projection, tenant_auth),
     )
     .await?;
     Ok(())
@@ -427,17 +526,21 @@ async fn serve(
 
 #[cfg(test)]
 fn router(graph: OrganizationalGraph) -> Router {
-    router_with_backend(Arc::new(MemoryAgentGraph::new(graph)), None, None)
+    router_with_backend(
+        Arc::new(MemoryAgentGraph::new(graph)),
+        None,
+        None,
+        TenantRequestAuth::new("test-organizational-graph-secret-32-bytes".to_owned()).unwrap(),
+    )
 }
 
 fn router_with_backend(
     graph: Arc<dyn AgentGraph>,
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
+    tenant_auth: TenantRequestAuth,
 ) -> Router {
-    Router::new()
-        .route("/healthz", get(health))
-        .route("/v1/sources/summary", get(source_summary))
+    let protected = Router::new()
         .route("/v1/entities/{entity_id}", get(get_entity))
         .route("/v1/assertions/{assertion_id}", get(explain_assertion))
         .route("/v1/graph/search", post(search))
@@ -446,6 +549,14 @@ fn router_with_backend(
         .route("/v1/graph/paths", post(find_paths))
         .route("/v1/projections/events", post(project_event))
         .route("/v1/projections/authority", get(projection_authority))
+        .route_layer(middleware::from_fn_with_state(
+            tenant_auth,
+            authenticate_tenant,
+        ));
+    Router::new()
+        .route("/healthz", get(health))
+        .route("/v1/sources/summary", get(source_summary))
+        .merge(protected)
         .with_state(AppState {
             graph,
             catalog_summary,
@@ -455,6 +566,7 @@ fn router_with_backend(
 
 async fn projection_authority(
     State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
     Query(query): Query<ProjectionAuthorityQuery>,
 ) -> Result<
     Json<cerebro_organizational_store::ProjectionAuthorityRecord>,
@@ -466,7 +578,7 @@ async fn projection_authority(
             "The organizational projection runtime is not configured.",
         )
     })?;
-    let tenant_id = parse_tenant(query.tenant_id)?;
+    let tenant_id = authorized_tenant(&authenticated, query.tenant_id)?;
     runtime
         .authority
         .projection_authority(tenant_id.as_str(), &query.source_id, &query.family_id)
@@ -477,6 +589,7 @@ async fn projection_authority(
 
 async fn project_event(
     State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
     Json(request): Json<ProjectEventRequest>,
 ) -> Result<Json<ProjectEventResponse>, (StatusCode, Json<ErrorResponse>)> {
     let runtime = state.projection.ok_or_else(|| {
@@ -497,7 +610,7 @@ async fn project_event(
             "observed_at_unix_ms must be positive.",
         ));
     }
-    let tenant_id = parse_tenant(request.tenant_id)?;
+    let tenant_id = authorized_tenant(&authenticated, request.tenant_id)?;
     let authority = runtime
         .authority
         .projection_authority(tenant_id.as_str(), &request.source_id, &request.family_id)
@@ -600,10 +713,11 @@ async fn source_summary(
 
 async fn get_entity(
     State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
     Path(entity_id): Path<String>,
     Query(query): Query<TenantQuery>,
 ) -> Result<Json<ContextEntity>, (StatusCode, Json<ErrorResponse>)> {
-    let tenant_id = parse_tenant(query.tenant_id)?;
+    let tenant_id = authorized_tenant(&authenticated, query.tenant_id)?;
     let entity_id = EntityId::parse(entity_id)
         .map_err(|error| bad_request("invalid_entity_id", error.to_string()))?;
     state
@@ -616,9 +730,10 @@ async fn get_entity(
 
 async fn search(
     State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
     Json(request): Json<SearchRequest>,
 ) -> Result<Json<Vec<ContextEntity>>, (StatusCode, Json<ErrorResponse>)> {
-    let tenant_id = parse_tenant(request.tenant_id)?;
+    let tenant_id = authorized_tenant(&authenticated, request.tenant_id)?;
     state
         .graph
         .search(&tenant_id, &request.query, &request.kinds, request.limit)
@@ -629,10 +744,11 @@ async fn search(
 
 async fn explain_assertion(
     State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
     Path(assertion_id): Path<String>,
     Query(query): Query<TenantQuery>,
 ) -> Result<Json<cerebro_agent_context::ContextEdge>, (StatusCode, Json<ErrorResponse>)> {
-    let tenant_id = parse_tenant(query.tenant_id)?;
+    let tenant_id = authorized_tenant(&authenticated, query.tenant_id)?;
     let assertion_id = AssertionId::parse(assertion_id)
         .map_err(|error| bad_request("invalid_assertion_id", error.to_string()))?;
     state
@@ -645,9 +761,10 @@ async fn explain_assertion(
 
 async fn expand(
     State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
     Json(request): Json<ExpandRequest>,
 ) -> Result<Json<Neighborhood>, (StatusCode, Json<ErrorResponse>)> {
-    let tenant_id = parse_tenant(request.tenant_id)?;
+    let tenant_id = authorized_tenant(&authenticated, request.tenant_id)?;
     let mut neighborhoods = state
         .graph
         .expand_many(
@@ -666,9 +783,10 @@ async fn expand(
 
 async fn expand_batch(
     State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
     Json(request): Json<ExpandBatchRequest>,
 ) -> Result<Json<ExpandBatchResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let tenant_id = parse_tenant(request.tenant_id)?;
+    let tenant_id = authorized_tenant(&authenticated, request.tenant_id)?;
     state
         .graph
         .expand_many(&tenant_id, &request.root_keys, request.depth, request.limit)
@@ -679,9 +797,10 @@ async fn expand_batch(
 
 async fn find_paths(
     State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
     Json(request): Json<PathsRequest>,
 ) -> Result<Json<PathsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let tenant_id = parse_tenant(request.tenant_id)?;
+    let tenant_id = authorized_tenant(&authenticated, request.tenant_id)?;
     let from = EntityId::parse(request.from_entity_id)
         .map_err(|error| bad_request("invalid_from_entity_id", error.to_string()))?;
     let to = EntityId::parse(request.to_entity_id)
@@ -696,6 +815,23 @@ async fn find_paths(
 
 fn parse_tenant(value: String) -> Result<TenantId, (StatusCode, Json<ErrorResponse>)> {
     TenantId::parse(value).map_err(|error| bad_request("invalid_tenant_id", error.to_string()))
+}
+
+fn authorized_tenant(
+    authenticated: &AuthenticatedTenant,
+    requested: String,
+) -> Result<TenantId, (StatusCode, Json<ErrorResponse>)> {
+    let requested = parse_tenant(requested)?;
+    if requested != authenticated.0 {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                code: "tenant_forbidden",
+                message: "The authenticated tenant does not match the requested tenant.".to_owned(),
+            }),
+        ));
+    }
+    Ok(requested)
 }
 
 fn context_error(error: ContextError) -> (StatusCode, Json<ErrorResponse>) {
@@ -905,6 +1041,28 @@ mod tests {
 
     use super::*;
 
+    const TEST_SHARED_SECRET: &str = "test-organizational-graph-secret-32-bytes";
+
+    fn authenticated(
+        mut request: axum::http::request::Builder,
+        tenant: &str,
+    ) -> axum::http::request::Builder {
+        let tenant_id = TenantId::parse(tenant).unwrap();
+        let auth = TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap();
+        request = request.header(TENANT_AUTH_HEADER, tenant);
+        request.header(AUTHORIZATION, format!("Bearer {}", auth.token(&tenant_id)))
+    }
+
+    #[test]
+    fn tenant_auth_matches_the_go_client_test_vector() {
+        let auth = TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap();
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        assert_eq!(
+            auth.token(&tenant),
+            "34b1625abbaa7a28cbca5f0a4803c1ba5360a998e5cc2f5b28d37bd32ba131d6"
+        );
+    }
+
     #[tokio::test]
     async fn health_and_bounded_graph_routes_are_served_by_rust() {
         let (graph, _, root_id) = demo_graph().unwrap();
@@ -930,7 +1088,7 @@ mod tests {
         let response = app
             .clone()
             .oneshot(
-                Request::builder()
+                authenticated(Request::builder(), "tenant-demo")
                     .method("POST")
                     .uri("/v1/graph/expand")
                     .header("content-type", "application/json")
@@ -949,7 +1107,7 @@ mod tests {
         });
         let response = app
             .oneshot(
-                Request::builder()
+                authenticated(Request::builder(), "tenant-demo")
                     .method("POST")
                     .uri("/v1/graph/expand-batch")
                     .header("content-type", "application/json")
@@ -959,6 +1117,45 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn graph_routes_require_tenant_bound_authentication() {
+        let (graph, _, root_id) = demo_graph().unwrap();
+        let app = router(graph);
+        let body = serde_json::json!({
+            "tenant_id": "tenant-demo",
+            "root_key": root_id.as_str(),
+            "depth": 1,
+            "limit": 10
+        })
+        .to_string();
+        let unauthenticated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/graph/expand")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauthenticated.status(), StatusCode::UNAUTHORIZED);
+
+        let wrong_tenant = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-other")
+                    .method("POST")
+                    .uri("/v1/graph/expand")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(wrong_tenant.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
@@ -1023,11 +1220,12 @@ mod tests {
             authority,
             store: Mutex::new(DurableGraphStore::new(store_ledger, graph.clone())),
         });
-        let app = router_with_backend(Arc::new(graph.clone()), None, Some(runtime));
+        let tenant_auth = TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap();
+        let app = router_with_backend(Arc::new(graph.clone()), None, Some(runtime), tenant_auth);
         let resource_urn = format!("urn:cerebro:{tenant_id}:runtime_file:asset-1");
         let response = app
             .oneshot(
-                Request::builder()
+                authenticated(Request::builder(), &tenant_id)
                     .method("POST")
                     .uri("/v1/projections/events")
                     .header("content-type", "application/json")

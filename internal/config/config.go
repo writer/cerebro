@@ -149,8 +149,9 @@ type GraphStoreConfig struct {
 
 // OrganizationalGraphConfig controls the Rust-owned bounded graph read plane.
 type OrganizationalGraphConfig struct {
-	BaseURL string
-	Timeout time.Duration
+	BaseURL      string
+	SharedSecret string
+	Timeout      time.Duration
 }
 
 // CacheConfig controls optional shared query/response caching.
@@ -454,6 +455,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	organizationalGraphSharedSecret, err := readConfigValue("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET")
+	if err != nil {
+		return Config{}, err
+	}
 	devMode, err := parseBoolEnv("CEREBRO_DEV_MODE")
 	if err != nil {
 		return Config{}, err
@@ -488,7 +493,8 @@ func Load() (Config, error) {
 			Neo4jDatabase: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_DATABASE")),
 		},
 		OrganizationalGraph: OrganizationalGraphConfig{
-			BaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_ORGANIZATIONAL_GRAPH_URL")), "/"),
+			BaseURL:      strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_ORGANIZATIONAL_GRAPH_URL")), "/"),
+			SharedSecret: organizationalGraphSharedSecret,
 		},
 		Cache: CacheConfig{
 			Driver:    strings.ToLower(strings.TrimSpace(os.Getenv("CEREBRO_CACHE_MODE"))),
@@ -666,6 +672,9 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT must be greater than zero")
 	}
 	if cfg.OrganizationalGraph.BaseURL != "" {
+		if len([]byte(cfg.OrganizationalGraph.SharedSecret)) < 32 {
+			return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET must be at least 32 bytes when CEREBRO_ORGANIZATIONAL_GRAPH_URL is set")
+		}
 		parsed, parseErr := url.Parse(cfg.OrganizationalGraph.BaseURL)
 		if parseErr != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
 			return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_URL must be an http or https origin without credentials")

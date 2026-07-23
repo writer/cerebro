@@ -252,6 +252,15 @@ impl Entity {
         &self.authority
     }
 
+    /// Stable identity fields cannot change when a source refreshes mutable
+    /// presentation data such as labels and properties.
+    pub fn has_same_identity(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.tenant_id == other.tenant_id
+            && self.kind == other.kind
+            && self.authority == other.authority
+    }
+
     pub fn label(&self) -> &str {
         &self.label
     }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,6 +53,9 @@ func TestQueryStoreReturnsRustNeighborhoodAndDelegatesRawCypher(t *testing.T) {
 		if r.URL.Path != "/v1/graph/expand" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
+		if r.Header.Get(tenantAuthHeader) != "tenant-a" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+			t.Fatalf("tenant authentication headers are missing")
+		}
 		var request expandRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Fatalf("decode request: %v", err)
@@ -83,7 +87,7 @@ func TestQueryStoreReturnsRustNeighborhoodAndDelegatesRawCypher(t *testing.T) {
 	defer server.Close()
 
 	rootURN := "urn:cerebro:tenant-a:runtime_file:asset-1"
-	store, err := NewQueryStore(queryStoreStub{}, server.URL, time.Second)
+	store, err := NewQueryStore(queryStoreStub{}, server.URL, testSharedSecret, time.Second)
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
@@ -108,7 +112,7 @@ func TestQueryStoreReturnsRustNeighborhoodAndDelegatesRawCypher(t *testing.T) {
 }
 
 func TestQueryStoreFailsClosedWhenRustIsUnavailable(t *testing.T) {
-	store, err := NewQueryStore(queryStoreStub{}, "http://127.0.0.1:1", 10*time.Millisecond)
+	store, err := NewQueryStore(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, 10*time.Millisecond)
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
@@ -132,7 +136,7 @@ func TestQueryStoreHealthRequiresCompatibilityAndRustAuthorities(t *testing.T) {
 	}))
 	defer server.Close()
 
-	store, err := NewQueryStore(queryStoreStub{}, server.URL, time.Second)
+	store, err := NewQueryStore(queryStoreStub{}, server.URL, testSharedSecret, time.Second)
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
@@ -146,6 +150,7 @@ func TestQueryStoreHealthRequiresCompatibilityAndRustAuthorities(t *testing.T) {
 	store, err = NewQueryStore(
 		queryStoreStub{err: errors.New("compatibility unavailable")},
 		server.URL,
+		testSharedSecret,
 		time.Second,
 	)
 	if err != nil {
@@ -169,7 +174,7 @@ func TestQueryStoreHealthRequiresCompatibilityAndRustAuthorities(t *testing.T) {
 
 func TestQueryStorePreservesProjectionAssertionCapabilities(t *testing.T) {
 	compatibility := &assertionQueryStoreStub{}
-	store, err := NewQueryStore(compatibility, "http://127.0.0.1:1", time.Second)
+	store, err := NewQueryStore(compatibility, "http://127.0.0.1:1", testSharedSecret, time.Second)
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
@@ -196,7 +201,7 @@ func TestQueryStorePreservesProjectionAssertionCapabilities(t *testing.T) {
 }
 
 func TestQueryStoreFailsClosedWithoutProjectionAssertionCapabilities(t *testing.T) {
-	store, err := NewQueryStore(queryStoreStub{}, "http://127.0.0.1:1", time.Second)
+	store, err := NewQueryStore(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second)
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
@@ -241,7 +246,7 @@ func TestQueryStoreBatchesTenantRootsInOneRustRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	store, err := NewQueryStore(queryStoreStub{}, server.URL, time.Second)
+	store, err := NewQueryStore(queryStoreStub{}, server.URL, testSharedSecret, time.Second)
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
@@ -269,7 +274,7 @@ func TestQueryStoreRejectsUnrequestedBatchRoot(t *testing.T) {
 	}))
 	defer server.Close()
 
-	store, err := NewQueryStore(queryStoreStub{}, server.URL, time.Second)
+	store, err := NewQueryStore(queryStoreStub{}, server.URL, testSharedSecret, time.Second)
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
@@ -284,7 +289,7 @@ func TestQueryStoreAgainstLiveRustGraph(t *testing.T) {
 	if baseURL == "" || rootURN == "" {
 		t.Skip("requires a disposable live Rust organizational graph")
 	}
-	store, err := NewQueryStore(queryStoreStub{}, baseURL, 5*time.Second)
+	store, err := NewQueryStore(queryStoreStub{}, baseURL, testSharedSecret, 5*time.Second)
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
