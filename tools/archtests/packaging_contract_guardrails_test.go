@@ -245,8 +245,12 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read Makefile: %v", err)
 	}
-	if !strings.Contains(string(makefile), `docker run --rm "$(DOCKER_SMOKE_IMAGE)" version`) {
+	makefileText = string(makefile)
+	if !strings.Contains(makefileText, `docker run --rm "$(DOCKER_SMOKE_IMAGE)" version`) {
 		t.Fatal("docker-smoke must run the built image entrypoint, not only build it")
+	}
+	if !strings.Contains(makefileText, `go build -trimpath -ldflags="-s -w" -o .dist/cerebro`) {
+		t.Fatal("docker-smoke must strip the runtime binary before loading the image")
 	}
 }
 

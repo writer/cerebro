@@ -771,7 +771,7 @@ github-business-demo: github-business-demo-env build ## Connect a GitHub repo, s
 docker-smoke: ## Build and smoke-test the runtime Docker image.
 	@command -v docker >/dev/null || { echo "docker is required for docker-smoke" >&2; exit 2; }
 	mkdir -p .dist
-	CGO_ENABLED=0 GOOS=linux GOARCH="$(DOCKER_SMOKE_GOARCH)" go build -trimpath -o .dist/cerebro ./cmd/cerebro
+	CGO_ENABLED=0 GOOS=linux GOARCH="$(DOCKER_SMOKE_GOARCH)" go build -trimpath -ldflags="-s -w" -o .dist/cerebro ./cmd/cerebro
 	@build_ok=0; \
 	for base_image in $(DOCKER_SMOKE_BASE_IMAGES); do \
 		attempt=1; \

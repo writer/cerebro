@@ -143,7 +143,8 @@ impl SourceConnector for HttpSourceConnector {
     async fn collect(&mut self, request: CollectionRequest) -> Result<CollectedBatch, Self::Error> {
         let observed_at = unix_millis()?;
         let mut url = self.request_url()?;
-        let mut cursor = request.cursor.clone();
+        let initial_cursor = effective_cursor(self.family.pagination(), request.cursor.as_deref());
+        let mut cursor = initial_cursor.clone();
         let mut page = pagination_start(self.family.pagination());
         let mut offset = 0usize;
         let mut records = Vec::new();
@@ -268,7 +269,7 @@ impl SourceConnector for HttpSourceConnector {
             self.family.id()
         ))?;
         let scope_name = format!("{}.{}", self.source.id(), self.family.id());
-        let authoritative = request.cursor.is_none() && self.family.is_authoritative();
+        let authoritative = initial_cursor.is_none() && self.family.is_authoritative();
         let scope = if authoritative {
             CollectedScope::Complete(CompleteCollection::new(
                 request.tenant_id,
@@ -277,7 +278,7 @@ impl SourceConnector for HttpSourceConnector {
                 scope_name,
                 observed_at,
             )?)
-        } else if request.cursor.is_some() {
+        } else if initial_cursor.is_some() {
             CollectedScope::NonAuthoritative(CollectionReceipt::incremental(
                 request.tenant_id,
                 request.source_runtime_id,
@@ -407,6 +408,13 @@ fn pagination_start(pagination: &Pagination) -> usize {
     match pagination {
         Pagination::Page { start, .. } => *start,
         _ => 0,
+    }
+}
+
+fn effective_cursor(pagination: &Pagination, requested: Option<&str>) -> Option<String> {
+    match pagination {
+        Pagination::Cursor { .. } => requested.map(str::to_owned),
+        _ => None,
     }
 }
 
@@ -703,6 +711,44 @@ mod tests {
                 query.get("tenant").map(|value| value.as_ref()),
                 Some("configured")
             );
+        }
+    }
+
+    #[test]
+    fn only_cursor_pagination_accepts_a_collection_cursor() {
+        let requested = Some("resume-here");
+        let cursor = Pagination::Cursor {
+            parameter: "cursor".to_owned(),
+            response_path: "$.next".to_owned(),
+            page_size_parameter: None,
+            page_size: 100,
+        };
+        assert_eq!(
+            effective_cursor(&cursor, requested),
+            Some("resume-here".to_owned())
+        );
+
+        for pagination in [
+            Pagination::None,
+            Pagination::Page {
+                parameter: "page".to_owned(),
+                start: 1,
+                page_size_parameter: None,
+                page_size: 100,
+            },
+            Pagination::Offset {
+                parameter: "offset".to_owned(),
+                limit_parameter: "limit".to_owned(),
+                page_size: 100,
+            },
+            Pagination::Link {
+                header: "link".to_owned(),
+            },
+            Pagination::NextUrl {
+                response_path: "$.next".to_owned(),
+            },
+        ] {
+            assert_eq!(effective_cursor(&pagination, requested), None);
         }
     }
 
