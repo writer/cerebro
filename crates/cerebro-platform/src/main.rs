@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod append_log_consumer;
 mod cutover_command;
 mod parity_command;
 
@@ -28,8 +29,8 @@ use cerebro_organizational_store::{
 };
 use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
-    CatalogGraphMapper, CollectedBatch, CollectedScope, CollectionRequest, GraphMapper, GraphSink,
-    HttpSourceConnector, ResolvedAuth, SourceRecord, SourceRuntime,
+    CatalogGraphMapper, CollectedBatch, CollectedScope, CollectionRequest, CommittedSourceEvent,
+    GraphMapper, GraphSink, HttpSourceConnector, ResolvedAuth, SourceRecord, SourceRuntime,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -45,6 +46,107 @@ struct ProjectionRuntime {
     catalog: SourceCatalog,
     authority: PostgresLedger,
     store: Mutex<DurableGraphStore>,
+}
+
+#[derive(Debug)]
+enum ProjectionFailure {
+    Invalid(String),
+    Store(StoreError),
+}
+
+impl ProjectionFailure {
+    fn is_retryable(&self) -> bool {
+        matches!(self, Self::Store(_))
+    }
+}
+
+impl std::fmt::Display for ProjectionFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Invalid(message) => formatter.write_str(message),
+            Self::Store(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for ProjectionFailure {}
+
+impl ProjectionRuntime {
+    async fn project_committed(
+        &self,
+        event: CommittedSourceEvent,
+    ) -> Result<ProjectEventResponse, ProjectionFailure> {
+        let authority = self
+            .authority
+            .projection_authority(
+                event.tenant_id().as_str(),
+                event.source_id(),
+                event.family_id(),
+            )
+            .await
+            .map_err(ProjectionFailure::Store)?;
+        if authority.authority == ProjectionAuthority::Legacy {
+            return Ok(ProjectEventResponse {
+                authority: ProjectionAuthority::Legacy,
+                projected: false,
+                graph_revision: None,
+                entities_upserted: 0,
+                assertions_upserted: 0,
+            });
+        }
+        let source = self
+            .catalog
+            .get(event.source_id())
+            .ok_or_else(|| {
+                ProjectionFailure::Invalid(format!(
+                    "source {} is not in the compiled catalog",
+                    event.source_id()
+                ))
+            })?
+            .clone();
+        let family = source
+            .families()
+            .iter()
+            .find(|family| family.id() == event.family_id())
+            .ok_or_else(|| {
+                ProjectionFailure::Invalid(format!(
+                    "family {}.{} is not in the compiled catalog",
+                    event.source_id(),
+                    event.family_id()
+                ))
+            })?;
+        let provider_id = event_provider_id(event.attributes(), event.observation_id().as_str());
+        let provider_kind = format!("{}.{}", event.source_id(), family.projection().template());
+        let tenant_id = event.tenant_id().clone();
+        let batch = event
+            .into_batch(provider_kind, provider_id)
+            .map_err(|error| ProjectionFailure::Invalid(error.to_string()))?;
+        let identity_resolution = self
+            .authority
+            .identity_resolution_snapshot(&tenant_id)
+            .await
+            .map_err(ProjectionFailure::Store)?;
+        let mapper = CatalogGraphMapper::new(source, env!("CARGO_PKG_VERSION"))
+            .map_err(|error| ProjectionFailure::Invalid(error.to_string()))?
+            .with_identity_resolution(identity_resolution);
+        let delta = mapper
+            .map(&batch)
+            .map_err(|error| ProjectionFailure::Invalid(error.to_string()))?;
+        let receipt = self
+            .store
+            .lock()
+            .await
+            .apply(&batch, delta)
+            .await
+            .map_err(ProjectionFailure::Store)?;
+        Ok(ProjectEventResponse {
+            authority: ProjectionAuthority::Rust,
+            projected: true,
+            graph_revision: Some(receipt.graph_revision),
+            entities_upserted: receipt.entities_upserted,
+            assertions_upserted: receipt.assertions_upserted,
+        })
+    }
 }
 
 #[derive(Serialize)]
@@ -135,6 +237,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("serve") => serve_memory(OrganizationalGraph::new()).await,
         Some("serve-demo") => serve_memory(demo_graph()?.0).await,
         Some("serve-neo4j") => serve_neo4j().await,
+        Some("serve-neo4j-consumer") => serve_neo4j_consumer().await,
+        Some("consume-append-log") => consume_append_log().await,
         Some("migrate-stores") => migrate_stores().await,
         Some("sync-source") => sync_source().await,
         Some("catalog-summary") => catalog_summary(),
@@ -143,7 +247,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("show-authority") => cutover_command::show_authority().await,
         Some("--help" | "-h") => {
             println!(
-                "cerebro-platform <demo|serve|serve-demo|serve-neo4j|migrate-stores|sync-source|catalog-summary|compare-projection|promote-family|show-authority>"
+                "cerebro-platform <demo|serve|serve-demo|serve-neo4j|serve-neo4j-consumer|consume-append-log|migrate-stores|sync-source|catalog-summary|compare-projection|promote-family|show-authority>"
             );
             Ok(())
         }
@@ -156,6 +260,26 @@ async fn serve_memory(graph: OrganizationalGraph) -> Result<(), Box<dyn Error>> 
 }
 
 async fn serve_neo4j() -> Result<(), Box<dyn Error>> {
+    let (graph, projection) = neo4j_runtime().await?;
+    serve(Arc::new(graph), Some(projection)).await
+}
+
+async fn serve_neo4j_consumer() -> Result<(), Box<dyn Error>> {
+    let (graph, projection) = neo4j_runtime().await?;
+    let server = serve(Arc::new(graph), Some(projection.clone()));
+    let consumer = append_log_consumer::run(projection);
+    tokio::select! {
+        result = server => result,
+        result = consumer => result,
+    }
+}
+
+async fn consume_append_log() -> Result<(), Box<dyn Error>> {
+    let (_, projection) = neo4j_runtime().await?;
+    append_log_consumer::run(projection).await
+}
+
+async fn neo4j_runtime() -> Result<(Neo4jProjector, Arc<ProjectionRuntime>), Box<dyn Error>> {
     let uri = required_env("CEREBRO_NEO4J_URI")?;
     let username = required_env("CEREBRO_NEO4J_USERNAME")?;
     let password = required_env("CEREBRO_NEO4J_PASSWORD")?;
@@ -166,12 +290,12 @@ async fn serve_neo4j() -> Result<(), Box<dyn Error>> {
     authority.migrate().await?;
     let store_ledger = PostgresLedger::connect_tls(&connection_string).await?;
     store_ledger.migrate().await?;
-    let projection = ProjectionRuntime {
+    let projection = Arc::new(ProjectionRuntime {
         catalog: load_catalog()?,
         authority,
         store: Mutex::new(DurableGraphStore::new(store_ledger, graph.clone())),
-    };
-    serve(Arc::new(graph), Some(Arc::new(projection))).await
+    });
+    Ok((graph, projection))
 }
 
 async fn migrate_stores() -> Result<(), Box<dyn Error>> {

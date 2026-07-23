@@ -8,12 +8,14 @@ publish = false
 
 [dependencies]
 axum.workspace = true
+async-nats.workspace = true
 cerebro-agent-context.workspace = true
 cerebro-organizational-graph.workspace = true
 cerebro-organizational-model.workspace = true
 cerebro-organizational-store.workspace = true
 cerebro-source-catalog.workspace = true
 cerebro-source-runtime-next.workspace = true
+futures-util.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

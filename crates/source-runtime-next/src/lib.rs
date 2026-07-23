@@ -2,9 +2,11 @@
 
 //! Rust-native source collection and graph admission boundary.
 
+mod append_log;
 mod http;
 mod mapper;
 
+pub use append_log::{AppendLogDecodeError, CommittedSourceEvent};
 pub use http::{HttpConnectorError, HttpSourceConnector, ResolvedAuth};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
 

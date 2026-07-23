@@ -495,7 +495,7 @@ rust-coverage: ## Enforce the Rust workspace line-coverage floor with the pinned
 	@actual="$$($(CARGO) llvm-cov --version 2>/dev/null || true)"; \
 		test "$$actual" = "cargo-llvm-cov 0.8.7" || { echo "rust-coverage: install cargo-llvm-cov 0.8.7 with 'cargo install cargo-llvm-cov --version 0.8.7 --locked'"; exit 1; }
 	# Database drivers, connector HTTP, and process entrypoints are exercised by live integration tests.
-	$(CARGO) llvm-cov --workspace --all-features --locked --ignore-filename-regex '(^|/)(wasm_abi\.rs|crates/cerebro-platform/src/(main|cutover_command|parity_command)\.rs|crates/organizational-store/src/(lib|neo4j|postgres)\.rs|crates/source-runtime-next/src/http\.rs)$$' --fail-under-lines 90 --summary-only
+	$(CARGO) llvm-cov --workspace --all-features --locked --ignore-filename-regex '(^|/)(wasm_abi\.rs|crates/cerebro-platform/src/(main|append_log_consumer|cutover_command|parity_command)\.rs|crates/organizational-store/src/(lib|neo4j|postgres)\.rs|crates/source-runtime-next/src/http\.rs)$$' --fail-under-lines 90 --summary-only
 
 rust-benchmark-smoke: ## Run bounded embedded Wasm host benchmarks and record their output.
 	@mkdir -p tmp
