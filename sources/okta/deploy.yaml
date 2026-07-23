@@ -1,4 +1,7 @@
 sourceId: okta
+health:
+  authModel: api_token
+  adapterPath: /api/v1/users
 secretKeys:
   - OKTA_API_TOKEN
   - OKTA_DOMAIN

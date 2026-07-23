@@ -2364,11 +2364,6 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"docebo.records":      doceboRecordsProjections,
 	"docebo.users":        doceboUsersProjections,
 
-	// docker_hub generated projectors (sourcegen promotion)
-	"docker_hub.audit_events": dockerHubAuditEventsProjections,
-	"docker_hub.repositories": dockerHubRepositoriesProjections,
-	"docker_hub.users":        dockerHubUsersProjections,
-
 	// document360 generated projectors (sourcegen promotion)
 	"document360.audit_events": document360AuditEventsProjections,
 	"document360.documents":    document360DocumentsProjections,

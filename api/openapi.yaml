@@ -14469,10 +14469,6 @@ components:
             type: string
         health_endpoint:
           type: string
-        source_health_receipt:
-          type: string
-        pr_body:
-          type: string
         next_steps:
           type: array
           items:

@@ -1,4 +1,6 @@
 sourceId: cloudflare_zero_trust
+health:
+  adapterPath: /v1/me
 secretKeys:
   - CLOUDFLARE_ZERO_TRUST_ACCOUNT_ID
   - CLOUDFLARE_ZERO_TRUST_BASE_URL

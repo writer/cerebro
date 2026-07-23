@@ -2,13 +2,14 @@ package sourcedeploy
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"gopkg.in/yaml.v3"
 )
@@ -19,6 +20,7 @@ type ContractOptions struct {
 	Environment string
 	TenantID    string
 	ImageTag    string
+	Definitions map[string]connectordefinitions.Definition
 }
 
 type Contract struct {
@@ -95,10 +97,36 @@ type ContractHealthCheck struct {
 }
 
 type contractCatalog struct {
-	ID              string                     `yaml:"id"`
-	EmittedKinds    []string                   `yaml:"emitted_kinds"`
-	RuntimeFamilies []string                   `yaml:"runtime_families"`
-	Coverage        sourcecdk.CoverageContract `yaml:"coverage_contract"`
+	ID               string                     `yaml:"id"`
+	EmittedKinds     []string                   `yaml:"emitted_kinds"`
+	RuntimeFamilies  []string                   `yaml:"runtime_families"`
+	Coverage         sourcecdk.CoverageContract `yaml:"coverage_contract"`
+	ProviderAPI      contractProviderAPI        `yaml:"provider_api"`
+	ProviderDisproof contractProviderDisproof   `yaml:"provider_api_disproof"`
+}
+
+type contractProviderAPI struct {
+	Status        string                      `yaml:"status"`
+	Transport     string                      `yaml:"transport"`
+	Auth          string                      `yaml:"auth"`
+	AuthMechanics string                      `yaml:"auth_mechanics"`
+	BaseURL       string                      `yaml:"base_url"`
+	Pagination    contractProviderPagination  `yaml:"pagination"`
+	Families      []contractProviderAPIFamily `yaml:"families"`
+}
+
+type contractProviderAPIFamily struct {
+	ID        string `yaml:"id"`
+	Path      string `yaml:"path"`
+	Operation string `yaml:"operation"`
+}
+
+type contractProviderPagination struct {
+	Type string `yaml:"type"`
+}
+
+type contractProviderDisproof struct {
+	AffectedFamilies []string `yaml:"affected_families"`
 }
 
 func RenderContract(sourcesRoot string, manifests []Manifest, opts ContractOptions) (Contract, error) {
@@ -132,7 +160,8 @@ func RenderContract(sourcesRoot string, manifests []Manifest, opts ContractOptio
 	sources := make([]ContractSource, 0, len(catalogs))
 	for _, catalog := range catalogs {
 		manifest := manifestBySource[catalog.ID]
-		receipt, err := sourceHealthReceipt(sourcesRoot, catalog.ID)
+		definition, present := opts.Definitions[catalog.ID]
+		receipt, err := deriveSourceHealthReceipt(catalog, manifest, definitionPointer(definition, present))
 		if err != nil {
 			return Contract{}, err
 		}
@@ -173,36 +202,255 @@ func (c Contract) MarshalJSONStable() ([]byte, error) {
 	return json.MarshalIndent(c, "", "  ")
 }
 
-func sourceHealthReceipt(sourcesRoot string, sourceID string) (map[string]any, error) {
-	path := filepath.Join(sourcesRoot, sourceID, "source_health_receipt.json")
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+func definitionPointer(definition connectordefinitions.Definition, present bool) *connectordefinitions.Definition {
+	if !present {
+		return nil
 	}
-	if err != nil {
-		return nil, fmt.Errorf("read source health receipt %s: %w", path, err)
+	return &definition
+}
+
+func deriveSourceHealthReceipt(catalog contractCatalog, manifest Manifest, definition *connectordefinitions.Definition) (map[string]any, error) {
+	config := firstHealthConfig(manifest.Runtimes)
+	sourceType := sourceHealthType(catalog, manifest, definition)
+	authModel := sourceHealthAuthModel(catalog, manifest, definition, config)
+	adapterHealthPath := sourceHealthPath(catalog, manifest, definition, config)
+	if sourceType == "json_api" && !strings.HasPrefix(adapterHealthPath, "/") {
+		return nil, fmt.Errorf("derive source health receipt %s: json_api adapter health path %q must start with /", catalog.ID, adapterHealthPath)
 	}
-	var receipt map[string]any
-	if err := json.Unmarshal(data, &receipt); err != nil {
-		return nil, fmt.Errorf("decode source health receipt %s: %w", path, err)
+	expectedCadence := manifest.Health.ExpectedCadenceSeconds
+	if expectedCadence <= 0 {
+		var err error
+		expectedCadence, err = positiveSeconds(config["expected_cadence_seconds"], 86400)
+		if err != nil {
+			return nil, fmt.Errorf("derive source health receipt %s: expected cadence: %w", catalog.ID, err)
+		}
 	}
-	if len(receipt) == 0 {
-		return nil, fmt.Errorf("decode source health receipt %s: receipt must be a JSON object", path)
+	staleAfter := manifest.Health.StaleAfterSeconds
+	if staleAfter <= 0 {
+		var err error
+		staleAfter, err = positiveSeconds(config["stale_after_seconds"], expectedCadence)
+		if err != nil {
+			return nil, fmt.Errorf("derive source health receipt %s: stale after: %w", catalog.ID, err)
+		}
 	}
-	if kind := strings.TrimSpace(fmt.Sprint(receipt["receipt_kind"])); kind != "source_health.receipt" {
-		return nil, fmt.Errorf("decode source health receipt %s: receipt_kind must be source_health.receipt", path)
+	failureModes := splitNonEmpty(config["failure_modes"])
+	if len(failureModes) == 0 {
+		failureModes = []string{"api_error", "auth_error", "rate_limit", "schema_drift"}
+		if sourceType == "cloud_api" {
+			failureModes = append(failureModes, "role_assumption_error")
+			sort.Strings(failureModes)
+		}
 	}
-	if rawSourceID, ok := receipt["source_id"].(string); ok && strings.TrimSpace(rawSourceID) != "" && strings.TrimSpace(rawSourceID) != sourceID {
-		return nil, fmt.Errorf("decode source health receipt %s: source_id %q does not match catalog %q", path, rawSourceID, sourceID)
+	receipt := map[string]any{
+		"receipt_kind":                "source_health.receipt",
+		"source_id":                   catalog.ID,
+		"source_type":                 sourceType,
+		"auth_model":                  authModel,
+		"health_endpoint":             "/source-runtimes/health?source_id=" + catalog.ID,
+		"adapter_health_path":         adapterHealthPath,
+		"expected_cadence_seconds":    expectedCadence,
+		"stale_after_seconds":         staleAfter,
+		"failure_modes":               failureModes,
+		"evidence_cas_reference_kind": catalog.ID + ".evidence_cas_reference",
 	}
-	sourceType := strings.TrimSpace(fmt.Sprint(receipt["source_type"]))
-	adapterHealthPath, _ := receipt["adapter_health_path"].(string)
-	adapterHealthPath = strings.TrimSpace(adapterHealthPath)
-	if sourceType == "json_api" && adapterHealthPath != "" && !strings.HasPrefix(adapterHealthPath, "/") {
-		return nil, fmt.Errorf("decode source health receipt %s: json_api adapter_health_path must start with /", path)
+	if value := strings.TrimSpace(catalog.ProviderAPI.AuthMechanics); value != "" {
+		receipt["auth_mechanics"] = value
 	}
-	receipt["source_id"] = sourceID
+	if len(catalog.RuntimeFamilies) != 0 {
+		receipt["runtime_families"] = sortedStrings(catalog.RuntimeFamilies)
+	}
+	if value := strings.TrimSpace(catalog.ProviderAPI.Status); value != "" {
+		receipt["provider_api_status"] = value
+	}
+	verifiedFamilies := providerFamilyIDs(catalog.ProviderAPI.Families)
+	if len(verifiedFamilies) != 0 {
+		receipt["provider_api_verified_families"] = verifiedFamilies
+	}
+	if len(catalog.ProviderDisproof.AffectedFamilies) != 0 {
+		receipt["provider_api_invalidated_families"] = sortedStrings(catalog.ProviderDisproof.AffectedFamilies)
+	}
+	providerAPI := map[string]any{}
+	if value := strings.TrimSpace(catalog.ProviderAPI.Status); value != "" {
+		providerAPI["status"] = value
+	}
+	if value := strings.TrimSpace(catalog.ProviderAPI.Transport); value != "" {
+		providerAPI["transport"] = value
+	}
+	if value := strings.TrimSpace(catalog.ProviderAPI.BaseURL); value != "" {
+		providerAPI["base_url"] = value
+	}
+	if value := strings.TrimSpace(catalog.ProviderAPI.Pagination.Type); value != "" {
+		providerAPI["pagination"] = value
+	}
+	if len(providerAPI) != 0 {
+		receipt["provider_api"] = providerAPI
+	}
 	return receipt, nil
+}
+
+func providerFamilyIDs(families []contractProviderAPIFamily) []string {
+	values := make([]string, 0, len(families))
+	for _, family := range families {
+		if value := strings.TrimSpace(family.ID); value != "" {
+			values = append(values, value)
+		}
+	}
+	return sortedStrings(values)
+}
+
+func firstHealthConfig(runtimes []RuntimeManifest) map[string]string {
+	for _, runtime := range runtimes {
+		if strings.TrimSpace(runtime.Config["health_path"]) != "" || strings.TrimSpace(runtime.Config["expected_cadence_seconds"]) != "" || strings.TrimSpace(runtime.Config["failure_modes"]) != "" {
+			return runtime.Config
+		}
+	}
+	if len(runtimes) != 0 {
+		return runtimes[0].Config
+	}
+	return nil
+}
+
+func sourceHealthType(catalog contractCatalog, manifest Manifest, definition *connectordefinitions.Definition) string {
+	if value := strings.TrimSpace(manifest.Health.SourceType); value != "" {
+		return value
+	}
+	config := firstHealthConfig(manifest.Runtimes)
+	if value := strings.TrimSpace(config["source_type"]); value != "" {
+		return value
+	}
+	if hasRuntimeConfig(manifest.Runtimes, "role_arn") {
+		return "cloud_api"
+	}
+	switch strings.ToLower(strings.TrimSpace(catalog.ProviderAPI.Transport)) {
+	case "graphql":
+		return "graphql"
+	case "rest", "http":
+		return "json_api"
+	case "":
+		if definition != nil && strings.TrimSpace(definition.Runtime) != "" {
+			return strings.TrimSpace(definition.Runtime)
+		}
+		return "json_api"
+	default:
+		return strings.ToLower(strings.TrimSpace(catalog.ProviderAPI.Transport))
+	}
+}
+
+func sourceHealthAuthModel(catalog contractCatalog, manifest Manifest, definition *connectordefinitions.Definition, config map[string]string) string {
+	if value := strings.TrimSpace(manifest.Health.AuthModel); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(config["auth_model"]); value != "" {
+		return value
+	}
+	if hasRuntimeConfig(manifest.Runtimes, "role_arn") {
+		return "aws_sigv4"
+	}
+	if definition != nil && strings.TrimSpace(definition.Auth.Model) != "" {
+		return strings.TrimSpace(definition.Auth.Model)
+	}
+	if value := normalizeProviderAuth(catalog.ProviderAPI.Auth); value != "" {
+		return value
+	}
+	if hasRuntimeConfig(manifest.Runtimes, "client_id") && hasRuntimeConfig(manifest.Runtimes, "client_secret") {
+		return "oauth_client_credentials"
+	}
+	if hasRuntimeConfig(manifest.Runtimes, "api_key") {
+		return "api_key"
+	}
+	if hasRuntimeConfig(manifest.Runtimes, "username") && hasRuntimeConfig(manifest.Runtimes, "password") {
+		return "basic"
+	}
+	if hasRuntimeConfig(manifest.Runtimes, "token") || hasRuntimeConfig(manifest.Runtimes, "api_token") {
+		return "bearer_token"
+	}
+	return "none"
+}
+
+func normalizeProviderAuth(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case value == "":
+		return ""
+	case strings.Contains(value, "oauth"):
+		return value
+	case value == "dd_api_and_application_keys":
+		return "datadog_api_application_key"
+	case value == "duo_signed_admin_api":
+		return "duo_hmac"
+	case value == "pagerduty_api_token" || value == "snyk_api_token" || value == "ssws_api_token" || value == "cloudflare_api_token":
+		return "api_token"
+	case value == "token_or_github_app":
+		return "api_key"
+	case strings.Contains(value, "basic"):
+		return "basic"
+	case strings.Contains(value, "bearer"):
+		return "bearer_token"
+	case strings.Contains(value, "api_key") || strings.Contains(value, "api token") || strings.Contains(value, "api_token"):
+		return "api_key"
+	case strings.Contains(value, "sigv4"):
+		return "aws_sigv4"
+	default:
+		return value
+	}
+}
+
+func sourceHealthPath(catalog contractCatalog, manifest Manifest, definition *connectordefinitions.Definition, config map[string]string) string {
+	if value := strings.TrimSpace(manifest.Health.AdapterPath); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(config["health_path"]); value != "" {
+		return value
+	}
+	if definition != nil && definition.Transport != nil && definition.Transport.Verification != nil {
+		if value := strings.TrimSpace(definition.Transport.Verification.Path); value != "" {
+			return value
+		}
+	}
+	for _, family := range catalog.ProviderAPI.Families {
+		if value := strings.TrimSpace(family.Path); value != "" {
+			return value
+		}
+		if value := strings.TrimSpace(family.Operation); value != "" {
+			return value
+		}
+	}
+	if family := strings.TrimSpace(config["family"]); family != "" {
+		return "/" + family
+	}
+	return "/"
+}
+
+func positiveSeconds(raw string, fallback int64) (int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("%q must be a positive integer number of seconds", raw)
+	}
+	return value, nil
+}
+
+func splitNonEmpty(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if value := strings.TrimSpace(part); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func hasRuntimeConfig(runtimes []RuntimeManifest, key string) bool {
+	for _, runtime := range runtimes {
+		if strings.TrimSpace(runtime.Config[key]) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func sourceCoverageContract(catalog contractCatalog) (*sourcecdk.CoverageContract, error) {

@@ -11,6 +11,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcefixture"
 	"gopkg.in/yaml.v3"
 )
 
@@ -296,9 +297,9 @@ func TestSourceCheckReportsProviderUnavailable(t *testing.T) {
 }
 
 func TestNewFixtureReplaysGoogleDriveFamilies(t *testing.T) {
-	source, err := NewFixture()
+	source, err := sourcefixture.NewCatalogSource(".", defaultFamily)
 	if err != nil {
-		t.Fatalf("NewFixture() error = %v", err)
+		t.Fatalf("NewCatalogSource() error = %v", err)
 	}
 	familyConfigs := map[string]sourcecdk.Config{}
 	for _, family := range []string{familyChanges, familyFiles, familySharedDrives} {

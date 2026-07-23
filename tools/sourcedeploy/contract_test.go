@@ -40,18 +40,12 @@ runtimes:
     config:
       domain: env:OKTA_DOMAIN
       family: audit
+      failure_modes: auth_error,rate_limit
+      health_path: /healthz
+      expected_cadence_seconds: "3600"
+      stale_after_seconds: "7200"
       token: env:OKTA_API_TOKEN
 `)
-	mkSourceHealthReceipt(t, root, "okta", `{
-  "receipt_kind": "source_health.receipt",
-  "source_id": "okta",
-  "source_type": "json_api",
-  "auth_model": "bearer_token",
-  "adapter_health_path": "/healthz",
-  "expected_cadence_seconds": 3600,
-  "stale_after_seconds": 7200,
-  "evidence_cas_reference_kind": "okta.evidence_cas_reference"
-}`)
 
 	manifests, err := Discover(root)
 	if err != nil {
@@ -125,7 +119,7 @@ runtimes:
 	if got := okta.SourceHealthReceipt["source_id"]; got != "okta" {
 		t.Fatalf("source health receipt source_id = %v", got)
 	}
-	if got := okta.SourceHealthReceipt["expected_cadence_seconds"]; got != float64(3600) {
+	if got := okta.SourceHealthReceipt["expected_cadence_seconds"]; got != int64(3600) {
 		t.Fatalf("source health receipt cadence = %v", got)
 	}
 	if okta.CoverageContract == nil || okta.CoverageContract.OwnerDomain != "identity" {
@@ -157,6 +151,65 @@ func TestContractMarshalJSONStable(t *testing.T) {
 	}
 }
 
+func TestDerivedHealthReceiptIncludesCatalogProviderMetadata(t *testing.T) {
+	t.Parallel()
+	receipt, err := deriveSourceHealthReceipt(contractCatalog{
+		ID:              "example",
+		RuntimeFamilies: []string{"users", "groups"},
+		ProviderAPI: contractProviderAPI{
+			Status:        "verified",
+			Transport:     "rest",
+			AuthMechanics: "Authorization: Bearer",
+			BaseURL:       "https://api.example.test",
+			Pagination:    contractProviderPagination{Type: "cursor"},
+			Families:      []contractProviderAPIFamily{{ID: "users", Path: "/users"}, {ID: "groups", Path: "/groups"}},
+		},
+		ProviderDisproof: contractProviderDisproof{AffectedFamilies: []string{"legacy"}},
+	}, Manifest{}, nil)
+	if err != nil {
+		t.Fatalf("deriveSourceHealthReceipt: %v", err)
+	}
+	if receipt["auth_mechanics"] != "Authorization: Bearer" || receipt["provider_api_status"] != "verified" {
+		t.Fatalf("provider metadata = %#v", receipt)
+	}
+	if !equalStrings(receipt["runtime_families"].([]string), []string{"groups", "users"}) {
+		t.Fatalf("runtime families = %#v", receipt["runtime_families"])
+	}
+	if !equalStrings(receipt["provider_api_verified_families"].([]string), []string{"groups", "users"}) {
+		t.Fatalf("verified families = %#v", receipt["provider_api_verified_families"])
+	}
+	if !equalStrings(receipt["provider_api_invalidated_families"].([]string), []string{"legacy"}) {
+		t.Fatalf("invalidated families = %#v", receipt["provider_api_invalidated_families"])
+	}
+	providerAPI := receipt["provider_api"].(map[string]any)
+	if providerAPI["base_url"] != "https://api.example.test" || providerAPI["pagination"] != "cursor" {
+		t.Fatalf("provider api = %#v", providerAPI)
+	}
+}
+
+func TestDerivedHealthReceiptManifestTimingOverridesInvalidRuntimeConfig(t *testing.T) {
+	t.Parallel()
+	receipt, err := deriveSourceHealthReceipt(contractCatalog{ID: "example"}, Manifest{
+		Runtimes: []RuntimeManifest{{Config: map[string]string{
+			"expected_cadence_seconds": "never",
+			"stale_after_seconds":      "also-never",
+		}}},
+		Health: HealthManifest{
+			ExpectedCadenceSeconds: 900,
+			StaleAfterSeconds:      1800,
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("deriveSourceHealthReceipt: %v", err)
+	}
+	if got := receipt["expected_cadence_seconds"]; got != int64(900) {
+		t.Fatalf("expected cadence = %v, want 900", got)
+	}
+	if got := receipt["stale_after_seconds"]; got != int64(1800) {
+		t.Fatalf("stale after = %v, want 1800", got)
+	}
+}
+
 func TestRenderContractUsesRuntimeFamilyCatalogOverrides(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -178,7 +231,7 @@ func TestRenderContractUsesRuntimeFamilyCatalogOverrides(t *testing.T) {
 	}
 }
 
-func TestRenderContractRejectsInvalidSourceHealthReceipt(t *testing.T) {
+func TestRenderContractRejectsInvalidDerivedHealthCadence(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	mkSource(t, root, "okta", "id: okta\nemitted_kinds:\n  - okta.audit\n", `
@@ -188,31 +241,31 @@ secretKeys:
 runtimes:
   - localId: audit
     config:
+      expected_cadence_seconds: never
       family: audit
       token: env:OKTA_API_TOKEN
 `)
-	mkSourceHealthReceipt(t, root, "okta", `{"receipt_kind":"wrong","source_id":"okta"}`)
 
 	manifests, err := Discover(root)
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
 	if _, err := RenderContract(root, manifests, ContractOptions{Environment: "dev", TenantID: "example"}); err == nil {
-		t.Fatal("RenderContract error = nil, want invalid source health receipt error")
+		t.Fatal("RenderContract error = nil, want invalid derived health cadence error")
 	}
 }
 
 func TestRenderContractRejectsRelativeJSONAPIHealthPath(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	mkSource(t, root, "okta", "id: okta\nemitted_kinds:\n  - okta.audit\n", "")
-	mkSourceHealthReceipt(t, root, "okta", `{
-  "receipt_kind": "source_health.receipt",
-  "source_type": "json_api",
-  "adapter_health_path": "healthz",
-  "expected_cadence_seconds": 3600,
-  "stale_after_seconds": 7200
-}`)
+	mkSource(t, root, "okta", "id: okta\nemitted_kinds:\n  - okta.audit\n", `
+sourceId: okta
+runtimes:
+  - localId: audit
+    config:
+      family: audit
+      health_path: healthz
+`)
 
 	manifests, err := Discover(root)
 	if err != nil {
@@ -226,14 +279,17 @@ func TestRenderContractRejectsRelativeJSONAPIHealthPath(t *testing.T) {
 func TestRenderContractAllowsCloudAPIOperationHealthPath(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	mkSource(t, root, "aws", "id: aws\nemitted_kinds:\n  - aws.public_endpoint\n", "")
-	mkSourceHealthReceipt(t, root, "aws", `{
-  "receipt_kind": "source_health.receipt",
-  "source_type": "cloud_api",
-  "adapter_health_path": "sts:GetCallerIdentity",
-  "expected_cadence_seconds": 86400,
-  "stale_after_seconds": 86400
-}`)
+	mkSource(t, root, "aws", "id: aws\nemitted_kinds:\n  - aws.public_endpoint\n", `
+sourceId: aws
+secretKeys:
+  - AWS_ROLE_ARN
+runtimes:
+  - localId: public-endpoint
+    config:
+      family: public_endpoint
+      health_path: sts:GetCallerIdentity
+      role_arn: env:AWS_ROLE_ARN
+`)
 
 	manifests, err := Discover(root)
 	if err != nil {
@@ -248,16 +304,10 @@ func TestRenderContractAllowsCloudAPIOperationHealthPath(t *testing.T) {
 	}
 }
 
-func TestRenderContractAllowsJSONAPIReceiptWithoutHealthPath(t *testing.T) {
+func TestRenderContractUsesConnectorVerificationWhenRuntimeHasNoHealthPath(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	mkSource(t, root, "okta", "id: okta\nemitted_kinds:\n  - okta.audit\n", "")
-	mkSourceHealthReceipt(t, root, "okta", `{
-  "receipt_kind": "source_health.receipt",
-  "source_type": "json_api",
-  "expected_cadence_seconds": 3600,
-  "stale_after_seconds": 7200
-}`)
 
 	manifests, err := Discover(root)
 	if err != nil {
@@ -268,7 +318,7 @@ func TestRenderContractAllowsJSONAPIReceiptWithoutHealthPath(t *testing.T) {
 	}
 }
 
-func TestRenderContractStampsMissingSourceHealthReceiptSourceID(t *testing.T) {
+func TestRenderContractDerivesHealthReceiptIdentity(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	mkSource(t, root, "okta", "id: okta\nemitted_kinds:\n  - okta.audit\n", `
@@ -281,8 +331,6 @@ runtimes:
       family: audit
       token: env:OKTA_API_TOKEN
 `)
-	mkSourceHealthReceipt(t, root, "okta", `{"receipt_kind":"source_health.receipt","expected_cadence_seconds":3600}`)
-
 	manifests, err := Discover(root)
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
@@ -325,68 +373,16 @@ func TestAWSCatalogDeclaresAssetMetadataSupportedFamily(t *testing.T) {
 	}
 }
 
-func FuzzRenderContractSourceHealthReceipt(f *testing.F) {
-	f.Add(`{"receipt_kind":"source_health.receipt","source_id":"fuzz_source","expected_cadence_seconds":3600,"stale_after_seconds":7200}`)
-	f.Add(`{"receipt_kind":"source_health.receipt","source_id":"","adapter_health_path":"/readyz"}`)
-	f.Add(`{"receipt_kind":"source_health.receipt","adapter_health_path":"/readyz"}`)
-	f.Add(`{"receipt_kind":"wrong","source_id":"fuzz_source"}`)
-	f.Add(`null`)
-	f.Add(`not-json`)
-
-	f.Fuzz(func(t *testing.T, receipt string) {
-		if len(receipt) > 4096 {
-			return
-		}
-		root := t.TempDir()
-		mkSource(t, root, "fuzz_source", "id: fuzz_source\nemitted_kinds:\n  - fuzz_source.audit\n", `
-sourceId: fuzz_source
-secretKeys:
-  - FUZZ_SOURCE_TOKEN
-runtimes:
-  - localId: audit
-    config:
-      family: audit
-      token: env:FUZZ_SOURCE_TOKEN
-`)
-		if receipt != "" {
-			mkSourceHealthReceipt(t, root, "fuzz_source", receipt)
-		}
-
-		manifests, err := Discover(root)
-		if err != nil {
-			t.Fatalf("Discover: %v", err)
-		}
-		contract, err := RenderContract(root, manifests, ContractOptions{Environment: "dev", TenantID: "example"})
-		if err != nil {
-			return
-		}
-		if len(contract.Sources) != 1 {
-			t.Fatalf("sources = %d, want 1", len(contract.Sources))
-		}
-		source := contract.Sources[0]
-		if source.SourceID != "fuzz_source" {
-			t.Fatalf("source_id = %q", source.SourceID)
-		}
-		if source.SourceHealthReceipt != nil {
-			if got := source.SourceHealthReceipt["receipt_kind"]; got != "source_health.receipt" {
-				t.Fatalf("receipt_kind = %v", got)
-			}
-			if got := source.SourceHealthReceipt["source_id"]; got != "fuzz_source" {
-				t.Fatalf("receipt source_id = %v", got)
-			}
-		}
-		if _, err := contract.MarshalJSONStable(); err != nil {
-			t.Fatalf("MarshalJSONStable: %v", err)
+func FuzzPositiveSeconds(f *testing.F) {
+	f.Add("3600")
+	f.Add("0")
+	f.Add("not-a-number")
+	f.Fuzz(func(t *testing.T, raw string) {
+		value, err := positiveSeconds(raw, 86400)
+		if err == nil && value <= 0 {
+			t.Fatalf("positiveSeconds(%q) = %d, want positive value", raw, value)
 		}
 	})
-}
-
-func mkSourceHealthReceipt(t *testing.T, root string, name string, receipt string) {
-	t.Helper()
-	path := filepath.Join(root, name, "source_health_receipt.json")
-	if err := os.WriteFile(path, []byte(receipt), 0o644); err != nil {
-		t.Fatalf("WriteFile(source_health_receipt): %v", err)
-	}
 }
 
 func mkSource(t *testing.T, root string, name string, catalog string, deploy string) {

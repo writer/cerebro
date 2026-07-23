@@ -1,4 +1,6 @@
 sourceId: bugsnag
+health:
+  adapterPath: /health
 secretKeys:
   - BUGSNAG_API_TOKEN
   - BUGSNAG_ORGANIZATION_ID

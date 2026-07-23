@@ -1,4 +1,7 @@
 sourceId: duo
+health:
+  expectedCadenceSeconds: 3600
+  staleAfterSeconds: 7200
 secretKeys:
   - DUO_TENANT_ID
   - DUO_BASE_URL

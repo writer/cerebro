@@ -1,4 +1,6 @@
 sourceId: twilio
+health:
+  authModel: basic
 secretKeys:
   - TWILIO_TOKEN
 runtimes:

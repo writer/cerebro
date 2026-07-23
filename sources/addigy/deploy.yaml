@@ -1,4 +1,7 @@
 sourceId: addigy
+health:
+  sourceType: addigy_api_v2
+  adapterPath: POST /devices
 secretKeys:
   - ADDIGY_BASE_URL
   - ADDIGY_API_KEY

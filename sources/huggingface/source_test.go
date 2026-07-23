@@ -83,7 +83,7 @@ func TestSourceReplaysCapturedModels(t *testing.T) {
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("stabilized event id is empty: %#v", event)
 	}
-	if _, err := NewFixture(); err != nil {
-		t.Fatalf("NewFixture() error = %v", err)
+	if _, err := sourcefixture.NewCatalogSource(".", defaultFamily); err != nil {
+		t.Fatalf("NewCatalogSource() error = %v", err)
 	}
 }

@@ -1,4 +1,6 @@
 sourceId: aws
+health:
+  adapterPath: sts:GetCallerIdentity
 secretKeys:
   - AWS_ACCOUNT_ID
   - AWS_REGION

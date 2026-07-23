@@ -29,27 +29,37 @@ entries:
           event:
             kind: docker_hub.repositories
             required_payload_fields:
-              - id
+              - name
             schema_ref: docker_hub/repositories/v1
             urn_kind: docker_hub_repositories
           id: repositories
-          id_field: id
+          id_field: name
           label: Repositories
           method: GET
-          pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
-          path: /v1/repositories
+          name_field: name
+          path: /v2/namespaces/${config.namespace}/repositories/${config.repository}
+          updated_at_field: last_updated
+          config:
+            auth_model: none
+            config_attributes:
+              tenant_id: tenant_id
+            encode_urn_id: true
+            id_template: ${namespace}/${name}
+            resource_urn_kind: docker_hub_repositories
           projection:
             fields:
-              resource_id: id
-              resource_type: resource_type|type|kind
+              resource_id: _record_id
+              resource_name: name
               resource_urn: resource_urn|urn|metadata.resource_urn
+              source_event_id: _record_id
+            static_fields:
+              resource_type: container_repository
+              schema: repositories
             template: repository
-          record_selector: $.data[*]
+          read:
+            disable_page_size: true
+            singleton: true
+          singleton: true
         - coverage:
             - control_domains:
                 - asset_inventory
@@ -132,4 +142,4 @@ entries:
           expect_status:
             - 200
           method: GET
-          path: /v2/user/
+          path: /v2/namespaces/${config.namespace}/repositories/${config.repository}

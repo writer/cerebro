@@ -68,7 +68,7 @@ func Generate(specPayload []byte) (GenerateResult, error) {
 		emitSchema(&b, name, schema, schemas)
 		emitted++
 	}
-	return GenerateResult{TypeScript: b.String(), TypeCount: emitted}, nil
+	return GenerateResult{TypeScript: strings.TrimRight(b.String(), "\n") + "\n", TypeCount: emitted}, nil
 }
 
 func emitSchema(b *strings.Builder, name string, schema *Schema, all map[string]*Schema) {

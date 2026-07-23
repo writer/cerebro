@@ -1,4 +1,7 @@
 sourceId: github
+health:
+  authModel: api_key
+  adapterPath: /orgs/{owner}/repos
 secretKeys:
   - GITHUB_TOKEN
 runtimes:

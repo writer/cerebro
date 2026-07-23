@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -305,7 +306,12 @@ func assertAPIKey(t *testing.T, r *http.Request) {
 
 func writeFixture(t *testing.T, w http.ResponseWriter, name string) {
 	t.Helper()
-	body, err := fixtureFS.ReadFile("testdata/" + name)
+	root, err := os.OpenRoot("testdata")
+	if err != nil {
+		t.Fatalf("open fixture root: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+	body, err := root.ReadFile(name)
 	if err != nil {
 		t.Fatalf("read fixture %s: %v", name, err)
 	}

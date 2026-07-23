@@ -1,4 +1,6 @@
 sourceId: retool
+health:
+  adapterPath: /v1/me
 secretKeys:
   - RETOOL_BASE_URL
   - RETOOL_TOKEN
