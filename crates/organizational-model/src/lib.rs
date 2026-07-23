@@ -5,7 +5,11 @@
 //! Validated values deliberately do not implement `Deserialize`. External data
 //! must cross an admission boundary and use the constructors in this crate.
 
-use std::{collections::BTreeMap, error::Error, fmt};
+use std::{
+    collections::{BTreeMap, HashMap},
+    error::Error,
+    fmt,
+};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -1096,9 +1100,12 @@ impl GraphDelta {
 
 pub struct GraphDeltaBuilder<Mode> {
     collection: CollectionReceipt,
-    entities: BTreeMap<EntityId, Entity>,
-    assertions: BTreeMap<AssertionId, GraphAssertion>,
-    retractions: BTreeMap<AssertionId, Retraction>,
+    entities: Vec<Entity>,
+    entity_indexes: HashMap<EntityId, usize>,
+    assertions: Vec<GraphAssertion>,
+    assertion_indexes: HashMap<AssertionId, usize>,
+    retractions: Vec<Retraction>,
+    retraction_indexes: HashMap<AssertionId, usize>,
     _mode: std::marker::PhantomData<Mode>,
 }
 
@@ -1106,9 +1113,12 @@ impl<Mode> GraphDeltaBuilder<Mode> {
     fn new(collection: CollectionReceipt) -> Self {
         Self {
             collection,
-            entities: BTreeMap::new(),
-            assertions: BTreeMap::new(),
-            retractions: BTreeMap::new(),
+            entities: Vec::new(),
+            entity_indexes: HashMap::new(),
+            assertions: Vec::new(),
+            assertion_indexes: HashMap::new(),
+            retractions: Vec::new(),
+            retraction_indexes: HashMap::new(),
             _mode: std::marker::PhantomData,
         }
     }
@@ -1117,15 +1127,15 @@ impl<Mode> GraphDeltaBuilder<Mode> {
         if entity.tenant_id != self.collection.tenant_id {
             return Err(ModelError::TenantMismatch);
         }
-        match self.entities.entry(entity.id.clone()) {
-            std::collections::btree_map::Entry::Vacant(entry) => {
-                entry.insert(entity);
-            }
-            std::collections::btree_map::Entry::Occupied(entry) if entry.get() != &entity => {
+        if let Some(index) = self.entity_indexes.get(&entity.id).copied() {
+            if self.entities[index] != entity {
                 return Err(ModelError::DuplicateEntity);
             }
-            std::collections::btree_map::Entry::Occupied(_) => {}
+            return Ok(());
         }
+        self.entity_indexes
+            .insert(entity.id.clone(), self.entities.len());
+        self.entities.push(entity);
         Ok(())
     }
 
@@ -1135,28 +1145,36 @@ impl<Mode> GraphDeltaBuilder<Mode> {
         {
             return Err(ModelError::TenantMismatch);
         }
-        match self.assertions.entry(assertion.id().clone()) {
-            std::collections::btree_map::Entry::Vacant(entry) => {
-                entry.insert(assertion);
-            }
-            std::collections::btree_map::Entry::Occupied(entry) if entry.get() != &assertion => {
+        if let Some(index) = self.assertion_indexes.get(assertion.id()).copied() {
+            if self.assertions[index] != assertion {
                 return Err(ModelError::DuplicateAssertion);
             }
-            std::collections::btree_map::Entry::Occupied(_) => {}
+            return Ok(());
         }
+        self.assertion_indexes
+            .insert(assertion.id().clone(), self.assertions.len());
+        self.assertions.push(assertion);
         Ok(())
     }
 
-    pub fn build(self) -> GraphDelta {
-        let entities: Vec<_> = self.entities.into_values().collect();
-        let assertions: Vec<_> = self.assertions.into_values().collect();
-        let retractions: Vec<_> = self.retractions.into_values().collect();
-        let digest = delta_digest(&self.collection, &entities, &assertions, &retractions);
+    pub fn build(mut self) -> GraphDelta {
+        self.entities
+            .sort_unstable_by(|left, right| left.id.cmp(&right.id));
+        self.assertions
+            .sort_unstable_by(|left, right| left.id().cmp(right.id()));
+        self.retractions
+            .sort_unstable_by(|left, right| left.assertion_id.cmp(&right.assertion_id));
+        let digest = delta_digest(
+            &self.collection,
+            &self.entities,
+            &self.assertions,
+            &self.retractions,
+        );
         GraphDelta {
             collection: self.collection,
-            entities,
-            assertions,
-            retractions,
+            entities: self.entities,
+            assertions: self.assertions,
+            retractions: self.retractions,
             digest,
         }
     }
@@ -1168,13 +1186,21 @@ impl GraphDeltaBuilder<Authoritative> {
         assertion_id: AssertionId,
         reason: impl Into<String>,
     ) -> Result<(), ModelError> {
-        self.retractions.insert(
-            assertion_id.clone(),
-            Retraction {
-                assertion_id,
-                reason: validate_text(reason.into(), "retraction reason")?,
-            },
-        );
+        let retraction = Retraction {
+            assertion_id,
+            reason: validate_text(reason.into(), "retraction reason")?,
+        };
+        if let Some(index) = self
+            .retraction_indexes
+            .get(&retraction.assertion_id)
+            .copied()
+        {
+            self.retractions[index] = retraction;
+        } else {
+            self.retraction_indexes
+                .insert(retraction.assertion_id.clone(), self.retractions.len());
+            self.retractions.push(retraction);
+        }
         Ok(())
     }
 }
@@ -1185,8 +1211,12 @@ fn deterministic_id(prefix: &str, parts: &[&str]) -> String {
         hasher.update((part.len() as u64).to_be_bytes());
         hasher.update(part.as_bytes());
     }
-    let digest = hex_digest(hasher.finalize().as_slice());
-    format!("{prefix}:{}", &digest[..32])
+    let digest = hasher.finalize();
+    let mut id = String::with_capacity(prefix.len() + 33);
+    id.push_str(prefix);
+    id.push(':');
+    append_hex(&mut id, &digest[..16]);
+    id
 }
 
 fn delta_digest(
@@ -1208,17 +1238,19 @@ fn delta_digest(
     for retraction in retractions {
         hasher.update(retraction.assertion_id.as_str());
     }
-    format!("sha256:{}", hex_digest(hasher.finalize().as_slice()))
+    let digest = hasher.finalize();
+    let mut encoded = String::with_capacity(7 + digest.len() * 2);
+    encoded.push_str("sha256:");
+    append_hex(&mut encoded, digest.as_slice());
+    encoded
 }
 
-fn hex_digest(bytes: &[u8]) -> String {
+fn append_hex(encoded: &mut String, bytes: &[u8]) {
     const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut result = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
-        result.push(HEX[(byte >> 4) as usize] as char);
-        result.push(HEX[(byte & 0x0f) as usize] as char);
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
     }
-    result
 }
 
 #[cfg(test)]
@@ -1676,5 +1708,38 @@ mod tests {
             AssertionProvenance::direct(Vec::new(), "mapper", "v1"),
             Err(ModelError::EvidenceRequired)
         );
+    }
+
+    #[test]
+    fn delta_order_and_digest_do_not_depend_on_insertion_order() {
+        let collection = receipt();
+        let first = Entity::canonical(
+            TenantId::parse("tenant-a").unwrap(),
+            EntityId::parse("entity-1").unwrap(),
+            EntityKind::Resource,
+            "first",
+        )
+        .unwrap();
+        let second = Entity::canonical(
+            TenantId::parse("tenant-a").unwrap(),
+            EntityId::parse("entity-2").unwrap(),
+            EntityKind::Resource,
+            "second",
+        )
+        .unwrap();
+
+        let mut forward = collection.clone().begin_delta();
+        forward.add_entity(first.clone()).unwrap();
+        forward.add_entity(second.clone()).unwrap();
+        let forward = forward.build();
+
+        let mut reverse = collection.begin_delta();
+        reverse.add_entity(second).unwrap();
+        reverse.add_entity(first).unwrap();
+        let reverse = reverse.build();
+
+        assert_eq!(forward.digest(), reverse.digest());
+        assert_eq!(forward.entities(), reverse.entities());
+        assert_eq!(forward.entities()[0].id().as_str(), "entity-1");
     }
 }

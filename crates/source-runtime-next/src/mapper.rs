@@ -244,30 +244,18 @@ impl CatalogGraphMapper {
                 .ok_or_else(|| CatalogMapperError::UnknownFamily(record.family.clone()))?;
             let family = &self.source.families()[plan.index];
             let projected = projected_fields(family, &plan.projected_paths, record);
-            let provenance = AssertionProvenance::direct(
-                vec![ObservationRef::new(
-                    batch.scope.receipt(),
-                    record.observation_id.clone(),
-                    format!("{}:{}", record.provider_kind, record.provider_id),
-                )?],
-                self.mapper_id.clone(),
-                self.producer_version.clone(),
-            )?;
             match family.projection().template() {
                 "group_membership" | "identity_group_membership" => {
+                    let provenance = self.assertion_provenance(batch, record)?;
                     self.map_group_membership(batch, family, projected, provenance, &mut builder)?
                 }
                 "identity_app_assignment" => {
+                    let provenance = self.assertion_provenance(batch, record)?;
                     self.map_app_assignment(batch, family, projected, provenance, &mut builder)?
                 }
-                "identity_user" => self.map_identity_user(
-                    batch,
-                    record,
-                    family,
-                    projected,
-                    provenance,
-                    &mut builder,
-                )?,
+                "identity_user" => {
+                    self.map_identity_user(batch, record, family, projected, &mut builder)?
+                }
                 template if entity_kind(template).is_some() => {
                     let entity = self.map_entity(batch, record, family, projected)?;
                     builder.add_entity(entity)?;
@@ -278,6 +266,22 @@ impl CatalogGraphMapper {
             }
         }
         Ok(builder.build())
+    }
+
+    fn assertion_provenance(
+        &self,
+        batch: &CollectedBatch,
+        record: &SourceRecord,
+    ) -> Result<AssertionProvenance, CatalogMapperError> {
+        Ok(AssertionProvenance::direct(
+            vec![ObservationRef::new(
+                batch.scope.receipt(),
+                record.observation_id.clone(),
+                format!("{}:{}", record.provider_kind, record.provider_id),
+            )?],
+            self.mapper_id.clone(),
+            self.producer_version.clone(),
+        )?)
     }
 
     fn map_entity(
@@ -310,7 +314,6 @@ impl CatalogGraphMapper {
         record: &SourceRecord,
         family: &CompiledFamily,
         projected: BTreeMap<String, String>,
-        provenance: AssertionProvenance,
         builder: &mut GraphDeltaBuilder<Mode>,
     ) -> Result<(), CatalogMapperError> {
         let tenant_id = batch.scope.receipt().tenant_id().clone();
@@ -332,6 +335,7 @@ impl CatalogGraphMapper {
             let employee_claim = IdentityClaim::employee_id(employee_id)?;
             let canonical =
                 CanonicalIdentity::for_claim(tenant_id, &employee_claim, label.clone())?;
+            let provenance = self.assertion_provenance(batch, record)?;
             let employee_binding = IdentityBindingAssertion::new(
                 &provider,
                 &canonical,
@@ -377,6 +381,7 @@ impl CatalogGraphMapper {
         };
         let canonical =
             CanonicalIdentity::new(tenant_id, resolved.id.clone(), resolved.label.clone())?;
+        let provenance = self.assertion_provenance(batch, record)?;
         let binding = IdentityBindingAssertion::new(
             &provider,
             &canonical,

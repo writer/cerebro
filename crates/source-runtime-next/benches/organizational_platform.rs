@@ -71,6 +71,25 @@ fn main() {
                 black_box(receipt.entities_upserted)
             },
         );
+        let mut populated_graph = OrganizationalGraph::new();
+        populated_graph
+            .apply(mapper.map(&batch).expect("initial projection succeeds"))
+            .expect("initial graph admission succeeds");
+        report(
+            &format!(
+                "BenchmarkOrganizationalPlatformRust/refresh/box_assets/records_{record_count}"
+            ),
+            record_count,
+            sample_duration,
+            samples,
+            || {
+                let delta = mapper.map(black_box(&batch)).expect("projection succeeds");
+                let receipt = populated_graph
+                    .apply(delta)
+                    .expect("graph refresh succeeds");
+                black_box(receipt.entities_upserted)
+            },
+        );
     }
 }
 

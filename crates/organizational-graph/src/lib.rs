@@ -117,60 +117,89 @@ impl OrganizationalGraph {
     }
 
     /// Applies a validated delta atomically. The candidate tenant graph is
-    /// fully checked before it replaces current state.
+    /// fully checked before current state is mutated.
     pub fn apply(&mut self, delta: GraphDelta) -> Result<GraphWriteReceipt, GraphError> {
         let (collection, entities, assertions, retractions, delta_digest) = delta.into_components();
         let tenant_id = collection.tenant_id().clone();
         let entities_upserted = entities.len();
         let assertions_upserted = assertions.len();
-        let mut candidate = self.tenants.get(&tenant_id).cloned().unwrap_or_default();
+        let current = self.tenants.get(&tenant_id);
 
-        for entity in entities {
-            if let Some(existing) = candidate.entities.get(entity.id())
-                && !existing.has_same_identity(&entity)
+        for entity in &entities {
+            if let Some(existing) = current.and_then(|graph| graph.entities.get(entity.id()))
+                && !existing.has_same_identity(entity)
             {
                 return Err(GraphError::EntityConflict(entity.id().clone()));
             }
-            candidate.entities.insert(entity.id().clone(), entity);
         }
 
+        if assertions.is_empty() && retractions.is_empty() {
+            let graph = self.tenants.entry(tenant_id.clone()).or_default();
+            for entity in entities {
+                graph.entities.insert(entity.id().clone(), entity);
+            }
+            graph.revision = graph.revision.saturating_add(1);
+            return Ok(GraphWriteReceipt {
+                tenant_id,
+                graph_revision: graph.revision,
+                delta_digest,
+                entities_upserted,
+                assertions_upserted,
+                assertions_retracted: 0,
+            });
+        }
+
+        let incoming_entity_ids = entities.iter().map(Entity::id).collect::<BTreeSet<_>>();
+        let mut candidate_assertions = current
+            .map(|graph| graph.assertions.clone())
+            .unwrap_or_default();
         for assertion in assertions {
-            self.validate_assertion_entities(&candidate, &assertion)?;
-            candidate
-                .assertions
-                .insert(assertion.id().clone(), assertion);
+            Self::validate_assertion_entities(current, &incoming_entity_ids, &assertion)?;
+            candidate_assertions.insert(assertion.id().clone(), assertion);
         }
 
         let mut retracted = 0;
         for retraction in retractions {
-            if let Some(assertion) = candidate.assertions.get(retraction.assertion_id()) {
+            if let Some(assertion) = candidate_assertions.get(retraction.assertion_id()) {
                 if assertion.provenance().source_runtime_id() != collection.source_runtime_id() {
                     return Err(GraphError::RetractionSourceMismatch(
                         retraction.assertion_id().clone(),
                     ));
                 }
-                candidate.assertions.remove(retraction.assertion_id());
+                candidate_assertions.remove(retraction.assertion_id());
                 retracted += 1;
             }
         }
-        candidate.rebuild_identity_indexes()?;
 
-        candidate.revision = candidate.revision.saturating_add(1);
+        let mut identity_candidate = TenantGraph {
+            assertions: candidate_assertions,
+            ..TenantGraph::default()
+        };
+        identity_candidate.rebuild_identity_indexes()?;
+
+        let graph = self.tenants.entry(tenant_id.clone()).or_default();
+        for entity in entities {
+            graph.entities.insert(entity.id().clone(), entity);
+        }
+        graph.assertions = identity_candidate.assertions;
+        graph.confirmed_identity_bindings = identity_candidate.confirmed_identity_bindings;
+        graph.confirmed_identity_claims = identity_candidate.confirmed_identity_claims;
+        graph.anchored_canonical_identities = identity_candidate.anchored_canonical_identities;
+        graph.revision = graph.revision.saturating_add(1);
         let receipt = GraphWriteReceipt {
             tenant_id: tenant_id.clone(),
-            graph_revision: candidate.revision,
+            graph_revision: graph.revision,
             delta_digest,
             entities_upserted,
             assertions_upserted,
             assertions_retracted: retracted,
         };
-        self.tenants.insert(tenant_id, candidate);
         Ok(receipt)
     }
 
     fn validate_assertion_entities(
-        &self,
-        graph: &TenantGraph,
+        current: Option<&TenantGraph>,
+        incoming_entity_ids: &BTreeSet<&EntityId>,
         assertion: &GraphAssertion,
     ) -> Result<(), GraphError> {
         let endpoints: [&EntityId; 2] = match assertion {
@@ -180,7 +209,9 @@ impl OrganizationalGraph {
             }
         };
         for endpoint in endpoints {
-            if !graph.entities.contains_key(endpoint) {
+            if !incoming_entity_ids.contains(endpoint)
+                && !current.is_some_and(|graph| graph.entities.contains_key(endpoint))
+            {
                 return Err(GraphError::MissingEntity(endpoint.clone()));
             }
         }
@@ -643,6 +674,11 @@ mod tests {
         assert_eq!(
             graph.graph_revision(&TenantId::parse("tenant-a").unwrap()),
             revision
+        );
+        assert_eq!(
+            graph.entities(&TenantId::parse("tenant-a").unwrap()).len(),
+            2,
+            "a rejected delta cannot insert its new canonical identity"
         );
     }
 
