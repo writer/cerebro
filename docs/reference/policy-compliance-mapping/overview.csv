@@ -1,36 +1,36 @@
 metric,value
-policy finding rules,1530
-policy-control rows,10113
-tag rows,15282
-unique tags,1066
+policy finding rules,1531
+policy-control rows,10117
+tag rows,15292
+unique tags,1068
 domains,37
 frameworks,23
 
 all finding metric,value
-public detections,1616
+public detections,1617
 non-policy detections,86
-finding-control rows,10297
-finding-tag rows,38937
-source-coverage rows,6175
-finding compliance review rows,1616
-unique finding review tags,1651
+finding-control rows,10301
+finding-tag rows,38956
+source-coverage rows,6207
+finding compliance review rows,1617
+unique finding review tags,1653
 detections missing catalog tags,0
 detections missing control refs,0
 detections missing audit depth,0
 detections missing source coverage refs,333
-detections source-backed,469
+detections source-backed,470
 detections partial source-backed,814
 detections control-only,333
 
 evidence mode,rules
 cel,1013
 query,507
-graph,10
+graph,11
 
 domain,rules
 identity,436
 github,346
-aws,135
+aws,136
 cerebro,122
 gcp,67
 kubernetes,57
@@ -67,9 +67,9 @@ graph,1
 telemetry,1
 
 framework,rules
-SOC 2,1415
+SOC 2,1416
 NIST 800-53 r5,1030
-ISO 27001:2022,973
+ISO 27001:2022,974
 CIS Controls v8,513
 PCI DSS v4.0.1,428
 CIS AWS Foundations Benchmark v2.0,50
@@ -93,10 +93,10 @@ CIS Google Workspace Benchmark,1
 
 finding evaluation mode,detections
 event,1576
-graph,40
+graph,41
 
 finding pack,detections
-policy,1530
+policy,1531
 github,15
 grc,15
 identity,15
@@ -142,6 +142,7 @@ anthropic,1
 archetype,1
 asset,1
 aurelius,1
+aws,1
 backstage,1
 cerebro,1
 cloudflare,1
@@ -165,8 +166,8 @@ trusted_endpoint,1
 
 finding framework,control rows
 NIST 800-53 r5,3016
-SOC 2,2753
-ISO 27001:2022,1867
+SOC 2,2755
+ISO 27001:2022,1869
 CIS Controls v8,1136
 PCI DSS v4.0.1,962
 ISO 42001,139
@@ -192,7 +193,7 @@ NIST SP 800-177,1
 finding audit domain,detections
 identity,462
 github,307
-aws,142
+aws,143
 vulnerability,107
 cerebro,81
 gcp,59

@@ -631,6 +631,7 @@ assessment:examine,assessment,derived,aws-ec2-sg-no-all-traffic-ingress,Security
 assessment:examine,assessment,derived,aws-ecr-immutable-tags,ECR Immutable Image Tags,aws,medium,cel,policies/aws/aws-ecr-immutable-tags.yaml
 assessment:examine,assessment,derived,aws-ecr-public-repository,ECR Public Repository,aws,high,cel,policies/aws/aws-ecr-public-repository.yaml
 assessment:examine,assessment,derived,aws-ecr-scan-on-push,ECR Scan on Push Enabled,aws,medium,cel,policies/aws/aws-ecr-scan-on-push.yaml
+assessment:examine,assessment,derived,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,aws,high,graph,policies/aws/aws-ecs-active-candidate-secret-role-path.yaml
 assessment:examine,assessment,derived,aws-ecs-ports-restricted,ECS Services Restrict Public Ports,aws,high,cel,policies/aws/aws-ecs-ports-restricted.yaml
 assessment:examine,assessment,derived,aws-ecs-secrets-in-env-vars,ECS Task Secrets in Environment Variables,aws,high,cel,policies/aws/aws-ecs-secrets-env.yaml
 assessment:examine,assessment,derived,aws-ecs-service-public-ip-disabled,AWS ECS Service Public Ip Disabled,aws,high,cel,policies/aws/aws-ecs-service-public-ip-disabled.yaml
@@ -3375,6 +3376,7 @@ aws,routing,metadata,aws-dynamodb-pitr,DynamoDB Point-in-Time Recovery Enabled,a
 aws,routing,metadata,aws-ec2-internet-facing-iam,Internet-Facing EC2 with Privileged IAM Role,aws,critical,cel,policies/aws/aws-ec2-internet-facing-iam.yaml
 aws,routing,metadata,aws-ec2-public-ports-restricted,EC2 Instance Public Ports Restricted,aws,critical,cel,policies/aws/aws-ec2-public-ports-restricted.yaml
 aws,routing,metadata,aws-ecr-public-repository,ECR Public Repository,aws,high,cel,policies/aws/aws-ecr-public-repository.yaml
+aws,routing,metadata,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,aws,high,graph,policies/aws/aws-ecs-active-candidate-secret-role-path.yaml
 aws,routing,metadata,aws-ecs-service-public-ip-disabled,AWS ECS Service Public Ip Disabled,aws,high,cel,policies/aws/aws-ecs-service-public-ip-disabled.yaml
 aws,routing,metadata,aws-ecs-task-definition-no-privileged,AWS ECS Task Definition No Privileged,aws,high,cel,policies/aws/aws-ecs-task-definition-no-privileged.yaml
 aws,routing,metadata,aws-ecs-task-definition-nonroot-user,AWS ECS Task Definition Nonroot User,aws,medium,cel,policies/aws/aws-ecs-task-definition-nonroot-user.yaml
@@ -4934,6 +4936,7 @@ cloud-ids,routing,metadata,gcp-cloud-ids-notifications,GCP Cloud IDS Notificatio
 cloud-run,routing,metadata,gcp-cloud-run-allow-unauthenticated,GCP Cloud Run Allow Unauthenticated,api,high,cel,policies/api/gcp-cloud-run-no-auth.yaml
 cloud-run,routing,metadata,gcp-cloudrun-ingress-all,GCP Cloudrun Ingress All,gcp,medium,cel,policies/gcp/gcp-cloudrun-ingress-all.yaml
 cloud-run,routing,metadata,gcp-cloudrun-service-account-default,GCP Cloudrun Service Account Default,gcp,medium,cel,policies/gcp/gcp-cloudrun-service-account-default.yaml
+cloud_security,routing,derived,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,aws,high,graph,policies/aws/aws-ecs-active-candidate-secret-role-path.yaml
 cloudflare_api_token,routing,metadata,github-secops-secret-cloudflare-api-token-open,GitHub Secret Scanning Cloudflare Api Token Alert Open,github,high,cel,policies/github/github-secops-secret-cloudflare-api-token-open.yaml
 cloudflare_api_token,routing,metadata,github-secops-secret-cloudflare-api-token-push-protection-bypassed,GitHub Secret Scanning Cloudflare Api Token Push Protection Bypassed,github,critical,cel,policies/github/github-secops-secret-cloudflare-api-token-push-protection-bypassed.yaml
 cloudflare_api_token,routing,metadata,github-secops-secret-cloudflare-api-token-resolution-false-positive,GitHub Secret Scanning Cloudflare Api Token Resolution False Positive,github,medium,cel,policies/github/github-secops-secret-cloudflare-api-token-resolution-false-positive.yaml
@@ -5815,6 +5818,7 @@ ec2,routing,metadata,aws-ec2-public-ports-restricted,EC2 Instance Public Ports R
 ecr,routing,metadata,aws-ecr-immutable-tags,ECR Immutable Image Tags,aws,medium,cel,policies/aws/aws-ecr-immutable-tags.yaml
 ecr,routing,metadata,aws-ecr-public-repository,ECR Public Repository,aws,high,cel,policies/aws/aws-ecr-public-repository.yaml
 ecr,routing,metadata,aws-ecr-scan-on-push,ECR Scan on Push Enabled,aws,medium,cel,policies/aws/aws-ecr-scan-on-push.yaml
+ecs,routing,metadata,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,aws,high,graph,policies/aws/aws-ecs-active-candidate-secret-role-path.yaml
 ecs,routing,metadata,aws-ecs-ports-restricted,ECS Services Restrict Public Ports,aws,high,cel,policies/aws/aws-ecs-ports-restricted.yaml
 ecs,routing,metadata,aws-ecs-secrets-in-env-vars,ECS Task Secrets in Environment Variables,aws,high,cel,policies/aws/aws-ecs-secrets-env.yaml
 ecs,routing,metadata,aws-ecs-service-public-ip-disabled,AWS ECS Service Public Ip Disabled,aws,high,cel,policies/aws/aws-ecs-service-public-ip-disabled.yaml
@@ -6488,6 +6492,7 @@ evidence:collaboration_control,evidence,derived,m365-sharepoint-external-sharing
 evidence:collaboration_control,evidence,derived,m365-stale-service-principal,M365 Stale Service Principals,m365,low,query,policies/m365/m365-stale-service-principal.yaml
 evidence:collaboration_control,evidence,derived,m365-tenant-legacy-auth-enabled,M365 Tenant Legacy Auth Enabled,m365,medium,cel,policies/m365/m365-tenant-legacy-auth-enabled.yaml
 evidence:collaboration_control,evidence,derived,m365-terminated-users-active,M365 Accounts Disabled on Termination,m365,high,query,policies/m365/m365-terminated-users-active.yaml
+evidence:configuration_snapshot,evidence,derived,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,aws,high,graph,policies/aws/aws-ecs-active-candidate-secret-role-path.yaml
 evidence:control_procedure,evidence,derived,compliance-background-checks,Background Checks on New Hires,compliance,high,query,policies/compliance/compliance-background-checks.yaml
 evidence:control_procedure,evidence,derived,compliance-bcdr-plan-exists,Business Continuity Plan Exists,compliance,high,cel,policies/compliance/compliance-bcdr-plan.yaml
 evidence:control_procedure,evidence,derived,compliance-data-inventory-maintained,Data Inventory Maintained,compliance,medium,cel,policies/compliance/compliance-data-inventory.yaml
@@ -8877,6 +8882,7 @@ governance,routing,metadata,identity-zoom-membership-personal-email-domain,Zoom 
 governance,routing,metadata,identity-zoom-personal-email-domain,Zoom Accounts Using Personal Email Domains,identity,medium,query,policies/identity/identity-zoom-personal-email-domain.yaml
 governance,routing,metadata,identity-zoom-privileged-personal-email,Zoom Privileged Accounts on Personal Email Domains,identity,high,query,policies/identity/identity-zoom-privileged-personal-email.yaml
 governance,routing,metadata,ml-model-registry-no-versioning,ML Model Registry No Versioning,ai,medium,cel,policies/ai/model-registry-no-versioning.yaml
+graph,generated,derived,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,aws,high,graph,policies/aws/aws-ecs-active-candidate-secret-role-path.yaml
 graph,generated,derived,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,identity,high,graph,policies/identity/identity-okta-dormant-admin-role-assignment.yaml
 graph,generated,derived,identity-okta-external-account-no-owner,Okta External Account With Access Missing Owner Evidence,identity,medium,graph,policies/identity/identity-okta-external-account-no-owner.yaml
 graph,generated,derived,identity-okta-group-grants-admin-app-graph,Okta Group Grants Admin-Like Application Access Graph Evidence,identity,high,graph,policies/identity/identity-okta-group-grants-admin-app-graph.yaml
@@ -8887,6 +8893,7 @@ graph,generated,derived,identity-okta-stale-group-membership-graph-90d,Okta Stal
 graph,generated,derived,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,identity,high,graph,policies/identity/identity-okta-suspended-user-active-assignment.yaml
 graph,generated,derived,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,identity,high,graph,policies/identity/identity-okta-suspended-user-active-group-membership.yaml
 graph,generated,metadata,graph-orphan-nonfinding-node,Graph Orphan Non-Finding Node,graph,low,graph,policies/graph/graph-orphan-nonfinding-node.yaml
+graph-backed,routing,metadata,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,aws,high,graph,policies/aws/aws-ecs-active-candidate-secret-role-path.yaml
 graph-backed,routing,metadata,github-secops-app-installation-all-repos-actions-read,GitHub App Installation All Repos Actions Read,github,medium,cel,policies/github/github-secops-app-installation-all-repos-actions-read.yaml
 graph-backed,routing,metadata,github-secops-app-installation-all-repos-actions-write,GitHub App Installation All Repos Actions Write,github,critical,cel,policies/github/github-secops-app-installation-all-repos-actions-write.yaml
 graph-backed,routing,metadata,github-secops-app-installation-all-repos-administration-write,GitHub App Installation All Repos Administration Write,github,critical,cel,policies/github/github-secops-app-installation-all-repos-administration-write.yaml
@@ -11220,6 +11227,7 @@ policy,generated,derived,aws-ec2-sg-no-all-traffic-ingress,Security Group No All
 policy,generated,derived,aws-ecr-immutable-tags,ECR Immutable Image Tags,aws,medium,cel,policies/aws/aws-ecr-immutable-tags.yaml
 policy,generated,derived,aws-ecr-public-repository,ECR Public Repository,aws,high,cel,policies/aws/aws-ecr-public-repository.yaml
 policy,generated,derived,aws-ecr-scan-on-push,ECR Scan on Push Enabled,aws,medium,cel,policies/aws/aws-ecr-scan-on-push.yaml
+policy,generated,derived,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,aws,high,graph,policies/aws/aws-ecs-active-candidate-secret-role-path.yaml
 policy,generated,derived,aws-ecs-ports-restricted,ECS Services Restrict Public Ports,aws,high,cel,policies/aws/aws-ecs-ports-restricted.yaml
 policy,generated,derived,aws-ecs-secrets-in-env-vars,ECS Task Secrets in Environment Variables,aws,high,cel,policies/aws/aws-ecs-secrets-env.yaml
 policy,generated,derived,aws-ecs-service-public-ip-disabled,AWS ECS Service Public Ip Disabled,aws,high,cel,policies/aws/aws-ecs-service-public-ip-disabled.yaml
@@ -14318,6 +14326,7 @@ secrets,risk,metadata,ai-agent-secret-redaction,AI Agent Secret Redaction,ai,med
 secrets,risk,metadata,aws-codebuild-plaintext-secrets,AWS CodeBuild Plaintext Secrets,cicd,critical,cel,policies/cicd/aws-codebuild-env-secrets.yaml
 secrets,risk,metadata,aws-codebuild-secrets-in-env-vars,CodeBuild Secrets in Environment Variables,aws,high,cel,policies/aws/aws-codebuild-secrets-env.yaml
 secrets,risk,metadata,aws-codebuild-source-credential,CodeBuild Source Credentials Stored Insecurely,aws,high,cel,policies/aws/aws-codebuild-source-credential.yaml
+secrets,risk,metadata,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,aws,high,graph,policies/aws/aws-ecs-active-candidate-secret-role-path.yaml
 secrets,risk,metadata,aws-ecs-secrets-in-env-vars,ECS Task Secrets in Environment Variables,aws,high,cel,policies/aws/aws-ecs-secrets-env.yaml
 secrets,risk,metadata,aws-eks-secrets-encryption,EKS Secrets Encryption,aws,high,cel,policies/aws/aws-eks-secrets-encryption.yaml
 secrets,risk,metadata,aws-lambda-no-env-secrets,Lambda No Environment Secrets,aws,high,cel,policies/aws/aws-lambda-env-secrets.yaml
@@ -15254,6 +15263,7 @@ workflow_run,routing,metadata,github-secops-app-installation-all-repos-event-wor
 workflows,routing,metadata,github-secops-app-installation-all-repos-workflows-read,GitHub App Installation All Repos Workflows Read,github,medium,cel,policies/github/github-secops-app-installation-all-repos-workflows-read.yaml
 workflows,routing,metadata,github-secops-app-installation-all-repos-workflows-write,GitHub App Installation All Repos Workflows Write,github,critical,cel,policies/github/github-secops-app-installation-all-repos-workflows-write.yaml
 workload,routing,metadata,k8s-workload-uses-default-service-account,Kubernetes Workload Uses Default Service Account,kubernetes,medium,cel,policies/kubernetes/k8s-workload-uses-default-service-account.yaml
+workload-identity,routing,metadata,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,aws,high,graph,policies/aws/aws-ecs-active-candidate-secret-role-path.yaml
 workload-identity,routing,metadata,gcp-gke-metadata-server,GKE Workload Identity (Metadata Server) Enabled,gcp,medium,cel,policies/gcp/gcp-gke-metadata-server.yaml
 workload-identity,routing,metadata,gcp-gke-workload-identity-disabled,GCP Gke Workload Identity Disabled,gcp,medium,cel,policies/gcp/gcp-gke-workload-identity-disabled.yaml
 workload-security,routing,metadata,k8s-rbac-pod-create-privileges,User/ServiceAccount Can Create Pods,kubernetes,low,cel,policies/kubernetes/k8s-rbac-pod-create-privileges.yaml
