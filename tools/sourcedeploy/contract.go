@@ -217,27 +217,21 @@ func deriveSourceHealthReceipt(catalog contractCatalog, manifest Manifest, defin
 	if sourceType == "json_api" && !strings.HasPrefix(adapterHealthPath, "/") {
 		return nil, fmt.Errorf("derive source health receipt %s: json_api adapter health path %q must start with /", catalog.ID, adapterHealthPath)
 	}
-	expectedFallback := manifest.Health.ExpectedCadenceSeconds
-	if expectedFallback <= 0 {
-		expectedFallback = 86400
+	expectedCadence := manifest.Health.ExpectedCadenceSeconds
+	if expectedCadence <= 0 {
+		var err error
+		expectedCadence, err = positiveSeconds(config["expected_cadence_seconds"], 86400)
+		if err != nil {
+			return nil, fmt.Errorf("derive source health receipt %s: expected cadence: %w", catalog.ID, err)
+		}
 	}
-	expectedCadence, err := positiveSeconds(config["expected_cadence_seconds"], expectedFallback)
-	if manifest.Health.ExpectedCadenceSeconds > 0 {
-		expectedCadence = manifest.Health.ExpectedCadenceSeconds
-	}
-	if err != nil {
-		return nil, fmt.Errorf("derive source health receipt %s: expected cadence: %w", catalog.ID, err)
-	}
-	staleFallback := manifest.Health.StaleAfterSeconds
-	if staleFallback <= 0 {
-		staleFallback = expectedCadence
-	}
-	staleAfter, err := positiveSeconds(config["stale_after_seconds"], staleFallback)
-	if manifest.Health.StaleAfterSeconds > 0 {
-		staleAfter = manifest.Health.StaleAfterSeconds
-	}
-	if err != nil {
-		return nil, fmt.Errorf("derive source health receipt %s: stale after: %w", catalog.ID, err)
+	staleAfter := manifest.Health.StaleAfterSeconds
+	if staleAfter <= 0 {
+		var err error
+		staleAfter, err = positiveSeconds(config["stale_after_seconds"], expectedCadence)
+		if err != nil {
+			return nil, fmt.Errorf("derive source health receipt %s: stale after: %w", catalog.ID, err)
+		}
 	}
 	failureModes := splitNonEmpty(config["failure_modes"])
 	if len(failureModes) == 0 {

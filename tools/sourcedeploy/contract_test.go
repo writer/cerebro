@@ -187,6 +187,29 @@ func TestDerivedHealthReceiptIncludesCatalogProviderMetadata(t *testing.T) {
 	}
 }
 
+func TestDerivedHealthReceiptManifestTimingOverridesInvalidRuntimeConfig(t *testing.T) {
+	t.Parallel()
+	receipt, err := deriveSourceHealthReceipt(contractCatalog{ID: "example"}, Manifest{
+		Runtimes: []RuntimeManifest{{Config: map[string]string{
+			"expected_cadence_seconds": "never",
+			"stale_after_seconds":      "also-never",
+		}}},
+		Health: HealthManifest{
+			ExpectedCadenceSeconds: 900,
+			StaleAfterSeconds:      1800,
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("deriveSourceHealthReceipt: %v", err)
+	}
+	if got := receipt["expected_cadence_seconds"]; got != int64(900) {
+		t.Fatalf("expected cadence = %v, want 900", got)
+	}
+	if got := receipt["stale_after_seconds"]; got != int64(1800) {
+		t.Fatalf("stale after = %v, want 1800", got)
+	}
+}
+
 func TestRenderContractUsesRuntimeFamilyCatalogOverrides(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
