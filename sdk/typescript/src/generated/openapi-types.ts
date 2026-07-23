@@ -5065,7 +5065,6 @@ export type SourceCDKScaffoldPlan = {
   health_endpoint?: string;
   next_steps?: string[];
   pr_body?: string;
-  source_health_receipt?: string;
   source_id?: string;
   source_type?: string;
 };
@@ -5278,4 +5277,3 @@ export type WriteClaimsResponse = {
   entities_upserted?: number;
   relation_links_projected?: number;
 };
-

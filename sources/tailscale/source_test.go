@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcefixture"
 	"gopkg.in/yaml.v3"
 )
 
@@ -232,9 +235,9 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 }
 
 func TestNewFixtureReplaysTailscaleFamilies(t *testing.T) {
-	source, err := NewFixture()
+	source, err := sourcefixture.NewCatalogSource(".", "device")
 	if err != nil {
-		t.Fatalf("NewFixture() error = %v", err)
+		t.Fatalf("NewCatalogSource() error = %v", err)
 	}
 	familyConfigs := map[string]sourcecdk.Config{}
 	for _, family := range []string{"device", "grant", "group", "service", "tag", "tailnet", "user"} {
@@ -253,7 +256,7 @@ func TestNewFixtureReplaysTailscaleFamilies(t *testing.T) {
 func TestFixtureDiscoverURNsMatchReadResourceURNs(t *testing.T) {
 	for _, family := range []string{"device", "grant", "group", "service", "tag", "tailnet", "user"} {
 		t.Run(family, func(t *testing.T) {
-			discoverPayload, err := fixtureFS.ReadFile("testdata/discover_" + family + ".json")
+			discoverPayload, err := os.ReadFile(filepath.Join("testdata", "discover_"+family+".json"))
 			if err != nil {
 				t.Fatalf("read discover fixture: %v", err)
 			}
@@ -262,7 +265,7 @@ func TestFixtureDiscoverURNsMatchReadResourceURNs(t *testing.T) {
 				t.Fatalf("unmarshal discover fixture: %v", err)
 			}
 
-			readPayload, err := fixtureFS.ReadFile("testdata/read_" + family + ".json")
+			readPayload, err := os.ReadFile(filepath.Join("testdata", "read_"+family+".json"))
 			if err != nil {
 				t.Fatalf("read fixture: %v", err)
 			}

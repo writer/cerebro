@@ -8,8 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcefixture"
+	"github.com/writer/cerebro/internal/sourceprojection"
+	"github.com/writer/cerebro/sources/catalogruntime"
 )
 
 func TestSourceReplaysCapturedRepository(t *testing.T) {
@@ -21,11 +24,17 @@ func TestSourceReplaysCapturedRepository(t *testing.T) {
 	if !strings.HasSuffix(bundle.Manifest.Request.URL, providerPath) {
 		t.Fatalf("capture URL = %q, want suffix %q", bundle.Manifest.Request.URL, providerPath)
 	}
-	source, err := New()
+	entry, ok, err := connectorcatalog.BuiltinEntry(sourceID)
 	if err != nil {
-		t.Fatalf("New() error = %v", err)
+		t.Fatalf("BuiltinEntry() error = %v", err)
 	}
-	source.allowLoopbackForTest()
+	if !ok {
+		t.Fatalf("BuiltinEntry(%q) = false", sourceID)
+	}
+	source, err := catalogruntime.NewDefinitionWithValidationOptions(entry.Definition, catalogruntime.ValidationOptions{AllowLoopbackBaseURL: true})
+	if err != nil {
+		t.Fatalf("NewDefinitionWithValidationOptions() error = %v", err)
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "" {
 			t.Fatalf("Authorization = %q, want empty for public repository endpoint", got)
@@ -38,7 +47,7 @@ func TestSourceReplaysCapturedRepository(t *testing.T) {
 		_, _ = w.Write(bundle.Payload)
 	}))
 	defer server.Close()
-	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familyRepositories, "health_path": defaultHealthPath, "namespace": "library", "repository": "ubuntu"}
+	cfgValues := map[string]string{"tenant_id": "tenant", "base_url": server.URL, "family": familyRepositories, "namespace": "library", "repository": "ubuntu"}
 	cfg := sourcecdk.NewConfig(cfgValues)
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check() error = %v", err)
@@ -60,6 +69,17 @@ func TestSourceReplaysCapturedRepository(t *testing.T) {
 	if got := event.Attributes["resource_urn"]; got != "urn:cerebro:tenant:docker_hub_repositories:library%2Fubuntu" {
 		t.Fatalf("resource_urn = %q", got)
 	}
+	entities, links, err := sourceprojection.BuiltinRegistry().Project(event)
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if len(entities) != 1 || len(links) != 0 {
+		t.Fatalf("projected entities/links = %d/%d, want 1/0", len(entities), len(links))
+	}
+	entity := entities[0]
+	if entity.URN != event.Attributes["resource_urn"] || entity.EntityType != "runtime.container.repository" || entity.Label != "ubuntu" {
+		t.Fatalf("projected repository = %#v", entity)
+	}
 	urns, err := source.Discover(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
@@ -73,7 +93,14 @@ func TestSourceReplaysCapturedRepository(t *testing.T) {
 	if strings.TrimSpace(event.Id) == "" {
 		t.Fatalf("stabilized event id is empty: %#v", event)
 	}
-	if _, err := NewFixture(); err != nil {
-		t.Fatalf("NewFixture() error = %v", err)
+	if _, err := sourcefixture.NewCatalogSource(".", defaultFamily); err != nil {
+		t.Fatalf("NewCatalogSource() error = %v", err)
+	}
+	compatibilitySource, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if compatibilitySource.Spec().Id != sourceID {
+		t.Fatalf("New().Spec().Id = %q, want %q", compatibilitySource.Spec().Id, sourceID)
 	}
 }

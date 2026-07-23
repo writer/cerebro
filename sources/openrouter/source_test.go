@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcefixture"
 )
 
 func TestSourceCheckAndRead(t *testing.T) {
@@ -325,9 +326,9 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 }
 
 func TestFixtureContractsLoad(t *testing.T) {
-	fixture, err := NewFixture()
+	fixture, err := sourcefixture.NewCatalogSource(".", defaultFamily)
 	if err != nil {
-		t.Fatalf("NewFixture() error = %v", err)
+		t.Fatalf("NewCatalogSource() error = %v", err)
 	}
 	for _, family := range []string{familyOrganizationMembers, familyApiKeys, familyProviderKeys, familyUsageReports} {
 		cfg := sourcecdk.NewConfig(map[string]string{"tenant_id": "tenant", "family": family})

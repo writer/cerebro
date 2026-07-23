@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcefixture"
 )
 
 func TestSourceCheckAndRead(t *testing.T) {
@@ -346,9 +347,9 @@ func TestReadAccessFamiliesDeriveResourceAttributes(t *testing.T) {
 }
 
 func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
-	source, err := NewFixture()
+	source, err := sourcefixture.NewCatalogSource(".", defaultFamily)
 	if err != nil {
-		t.Fatalf("NewFixture() error = %v", err)
+		t.Fatalf("NewCatalogSource() error = %v", err)
 	}
 
 	familyConfigs := map[string]sourcecdk.Config{}

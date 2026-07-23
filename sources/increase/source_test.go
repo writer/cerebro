@@ -6,10 +6,13 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcefixture"
 )
 
 func TestSourceCheckAndReadFamilies(t *testing.T) {
@@ -209,9 +212,9 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 }
 
 func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
-	source, err := NewFixture()
+	source, err := sourcefixture.NewCatalogSource(".", defaultFamily)
 	if err != nil {
-		t.Fatalf("NewFixture() error = %v", err)
+		t.Fatalf("NewCatalogSource() error = %v", err)
 	}
 	familyConfigs := map[string]sourcecdk.Config{}
 	for _, family := range increaseFamilies() {
@@ -251,7 +254,7 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 
 func fixturePayload(t *testing.T, family string) map[string]any {
 	t.Helper()
-	payload, err := fixtureFS.ReadFile("testdata/read_" + family + ".json")
+	payload, err := os.ReadFile(filepath.Join("testdata", "read_"+family+".json"))
 	if err != nil {
 		t.Fatalf("read fixture payload for %s: %v", family, err)
 	}

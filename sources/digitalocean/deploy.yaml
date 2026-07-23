@@ -1,4 +1,6 @@
 sourceId: digitalocean
+health:
+  sourceType: rest
 secretKeys:
   - DIGITALOCEAN_TOKEN
 runtimes:

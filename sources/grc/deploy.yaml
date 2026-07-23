@@ -1,4 +1,6 @@
 sourceId: grc
+health:
+  adapterPath: /v1/controls
 secretKeys:
   - GRC_CLIENT_ID
   - GRC_CLIENT_SECRET

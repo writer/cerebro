@@ -1,4 +1,6 @@
 sourceId: onelogin
+health:
+  adapterPath: /api/1/users
 secretKeys:
   - ONELOGIN_SUBDOMAIN
   - ONELOGIN_CLIENT_ID

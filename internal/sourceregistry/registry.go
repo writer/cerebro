@@ -234,7 +234,6 @@ import (
 	divvysource "github.com/writer/cerebro/sources/divvy"
 	dixasource "github.com/writer/cerebro/sources/dixa"
 	docebosource "github.com/writer/cerebro/sources/docebo"
-	dockerhubsource "github.com/writer/cerebro/sources/docker_hub"
 	document360source "github.com/writer/cerebro/sources/document360"
 	docusignsource "github.com/writer/cerebro/sources/docusign"
 	domosource "github.com/writer/cerebro/sources/domo"
@@ -2191,12 +2190,6 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "docebo",
 		load: func() (sourcecdk.Source, error) {
 			return docebosource.New()
-		},
-	},
-	{
-		name: "docker_hub",
-		load: func() (sourcecdk.Source, error) {
-			return dockerhubsource.New()
 		},
 	},
 	{

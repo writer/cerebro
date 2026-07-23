@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcefixture"
 	"github.com/writer/cerebro/sources/internal/sailpointapi"
 )
 
@@ -648,9 +649,9 @@ func TestSourcePersonalAccessTokensUsesOffsetPagination(t *testing.T) {
 }
 
 func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
-	fixture, err := NewFixture()
+	fixture, err := sourcefixture.NewCatalogSource(".", defaultFamily)
 	if err != nil {
-		t.Fatalf("NewFixture() error = %v", err)
+		t.Fatalf("NewCatalogSource() error = %v", err)
 	}
 	familyConfigs := map[string]sourcecdk.Config{}
 	for _, family := range sailpointapi.FamilyNames() {

@@ -326,7 +326,7 @@ Sources may include:
 
 - `sources/<source-id>/catalog.yaml`, which describes source capabilities,
 - `sources/<source-id>/deploy.yaml`, which declares source-level secret names and canonical runtime config,
-- `sources/<source-id>/source_health_receipt.json`, when a source ships a health receipt.
+- Source health receipts are derived at deploy-contract render time from connector, source catalog, and runtime metadata.
 
 Catalogs may declare family-level freshness probes under `families[].freshness_probe`.
 Use `confidence: authoritative` only for provider tokens or resource versions that

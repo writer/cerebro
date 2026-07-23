@@ -1,4 +1,6 @@
 sourceId: linode
+health:
+  authModel: oauth_authorization_code
 secretKeys:
   - LINODE_TOKEN
 runtimes:

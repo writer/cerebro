@@ -1,4 +1,7 @@
 sourceId: new_relic
+health:
+  expectedCadenceSeconds: 900
+  staleAfterSeconds: 1800
 secretKeys:
   - NEW_RELIC_API_KEY
   - NEW_RELIC_ACCOUNT_ID
