@@ -30,21 +30,27 @@ def go_toolchain() -> str:
     return match.group(1)
 
 
-def builtin_source_ids() -> list[str]:
-    registry = read(ROOT / "internal" / "sourceregistry" / "registry.go")
-    source_ids = set(re.findall(r'name:\s+"([^"]+)"', registry))
-    for path in (ROOT / "internal" / "connectorcatalog" / "catalog").rglob("*.yaml"):
+def supported_catalog_source_ids(catalog_root: Path) -> set[str]:
+    source_ids: set[str] = set()
+    for path in catalog_root.rglob("*.yaml"):
         supported = False
         for line in read(path).splitlines():
-            classifier = re.match(r"^  - classifier_output:\s+(\S+)\s*$", line)
+            classifier = re.match(r"^\s*-\s+classifier_output:\s+(\S+)\s*$", line)
             if classifier:
                 supported = classifier.group(1) == "supported"
                 continue
             if supported:
-                source_id = re.match(r"^      source_id:\s+(\S+)\s*$", line)
+                source_id = re.match(r"^\s+source_id:\s+(\S+)\s*$", line)
                 if source_id:
                     source_ids.add(source_id.group(1))
                     supported = False
+    return source_ids
+
+
+def builtin_source_ids() -> list[str]:
+    registry = read(ROOT / "internal" / "sourceregistry" / "registry.go")
+    source_ids = set(re.findall(r'name:\s+"([^"]+)"', registry))
+    source_ids.update(supported_catalog_source_ids(ROOT / "internal" / "connectorcatalog" / "catalog"))
     return sorted(source_ids)
 
 
