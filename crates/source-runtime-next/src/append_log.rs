@@ -15,7 +15,7 @@ use crate::{CollectedBatch, CollectedScope, SourceRecord};
 const SOURCE_RUNTIME_ID_ATTRIBUTE: &str = "source_runtime_id";
 
 #[derive(Clone, PartialEq, Message)]
-struct EventEnvelopeWire {
+struct CommittedSourceWire {
     #[prost(string, tag = "1")]
     id: String,
     #[prost(string, tag = "2")]
@@ -93,7 +93,7 @@ impl CommittedSourceEvent {
     /// envelope identifies a source, malformed source data is an error rather
     /// than something the consumer may silently skip.
     pub fn decode(payload: &[u8]) -> Result<Option<Self>, AppendLogDecodeError> {
-        let wire = EventEnvelopeWire::decode(payload)
+        let wire = CommittedSourceWire::decode(payload)
             .map_err(|error| AppendLogDecodeError::Protobuf(error.to_string()))?;
         let source_id = wire.source_id.trim().to_owned();
         if source_id.is_empty() {
@@ -230,12 +230,12 @@ fn model_error(error: impl fmt::Display) -> AppendLogDecodeError {
 mod tests {
     use super::*;
 
-    fn encode(wire: EventEnvelopeWire) -> Vec<u8> {
+    fn encode(wire: CommittedSourceWire) -> Vec<u8> {
         wire.encode_to_vec()
     }
 
-    fn source_wire() -> EventEnvelopeWire {
-        EventEnvelopeWire {
+    fn source_wire() -> CommittedSourceWire {
+        CommittedSourceWire {
             id: "event-1".to_owned(),
             tenant_id: "tenant-a".to_owned(),
             source_id: "box".to_owned(),
@@ -279,10 +279,10 @@ mod tests {
     #[test]
     fn source_owned_envelope_cannot_bypass_required_fields() {
         for mutate in [
-            |wire: &mut EventEnvelopeWire| wire.id.clear(),
-            |wire: &mut EventEnvelopeWire| wire.tenant_id.clear(),
-            |wire: &mut EventEnvelopeWire| wire.occurred_at = None,
-            |wire: &mut EventEnvelopeWire| {
+            |wire: &mut CommittedSourceWire| wire.id.clear(),
+            |wire: &mut CommittedSourceWire| wire.tenant_id.clear(),
+            |wire: &mut CommittedSourceWire| wire.occurred_at = None,
+            |wire: &mut CommittedSourceWire| {
                 wire.attributes.remove(SOURCE_RUNTIME_ID_ATTRIBUTE);
             },
         ] {
