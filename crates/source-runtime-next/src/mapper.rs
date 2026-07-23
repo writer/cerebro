@@ -112,10 +112,10 @@ impl CatalogGraphMapper {
             )?;
             match family.projection().template() {
                 "group_membership" => {
-                    self.map_group_membership(batch, family, &projected, provenance, &mut builder)?
+                    self.map_group_membership(batch, family, projected, provenance, &mut builder)?
                 }
                 template if entity_kind(template).is_some() => {
-                    let entity = self.map_entity(batch, record, family, &projected)?;
+                    let entity = self.map_entity(batch, record, family, projected)?;
                     builder.add_entity(entity)?;
                 }
                 template => {
@@ -131,19 +131,19 @@ impl CatalogGraphMapper {
         batch: &CollectedBatch,
         record: &SourceRecord,
         family: &CompiledFamily,
-        projected: &BTreeMap<String, String>,
+        projected: BTreeMap<String, String>,
     ) -> Result<Entity, CatalogMapperError> {
         let template = family.projection().template();
         let kind = entity_kind(template)
             .ok_or_else(|| CatalogMapperError::UnsupportedTemplate(template.to_owned()))?;
-        let label = label_for(template, projected, family, record);
+        let label = label_for(template, &projected, family, record);
         let provider_kind = ProviderKind::parse(format!("{}.{}", self.source.id(), template))?;
         if template == "identity_user" {
             let provider = ProviderIdentity::new(
                 batch.scope.receipt().tenant_id().clone(),
                 batch.scope.receipt().source_runtime_id().clone(),
                 provider_kind,
-                identity_id(projected, record),
+                identity_id(&projected, record),
                 label,
             )?;
             return add_properties(provider.into_entity(), projected);
@@ -152,7 +152,7 @@ impl CatalogGraphMapper {
             batch.scope.receipt().tenant_id().clone(),
             batch.scope.receipt().source_runtime_id().clone(),
             provider_kind,
-            projected_id(template, projected, record),
+            projected_id(template, &projected, record),
             kind,
             label,
         )?;
@@ -163,17 +163,17 @@ impl CatalogGraphMapper {
         &self,
         batch: &CollectedBatch,
         family: &CompiledFamily,
-        projected: &BTreeMap<String, String>,
+        projected: BTreeMap<String, String>,
         provenance: AssertionProvenance,
         builder: &mut GraphDeltaBuilder<Mode>,
     ) -> Result<(), CatalogMapperError> {
         let group_id =
-            first(projected, &["group_id"]).ok_or_else(|| CatalogMapperError::MissingField {
+            first(&projected, &["group_id"]).ok_or_else(|| CatalogMapperError::MissingField {
                 family: family.id().to_owned(),
                 field: "group_id".to_owned(),
             })?;
         let member_id = first(
-            projected,
+            &projected,
             &["member_id", "member_user_id", "user_id", "member_email"],
         )
         .ok_or_else(|| CatalogMapperError::MissingField {
@@ -185,7 +185,7 @@ impl CatalogGraphMapper {
             batch.scope.receipt().source_runtime_id().clone(),
             ProviderKind::parse(format!("{}.identity_user", self.source.id()))?,
             member_id,
-            first(projected, &["member_name", "member_email"]).unwrap_or(member_id),
+            first(&projected, &["member_name", "member_email"]).unwrap_or(member_id),
         )?;
         let group = Entity::provider(
             batch.scope.receipt().tenant_id().clone(),
@@ -193,9 +193,9 @@ impl CatalogGraphMapper {
             ProviderKind::parse(format!("{}.identity_group", self.source.id()))?,
             group_id,
             EntityKind::Group,
-            first(projected, &["group_name", "group_email"]).unwrap_or(group_id),
+            first(&projected, &["group_name", "group_email"]).unwrap_or(group_id),
         )?;
-        let identity = add_properties(identity.into_entity(), projected)?;
+        let identity = add_properties(identity.into_entity(), projected.clone())?;
         let group = add_properties(group, projected)?;
         let assertion = RelationshipAssertion::new(
             &identity,
@@ -314,10 +314,10 @@ fn first<'a>(values: &'a BTreeMap<String, String>, keys: &[&str]) -> Option<&'a 
 
 fn add_properties(
     mut entity: Entity,
-    projected: &BTreeMap<String, String>,
+    projected: BTreeMap<String, String>,
 ) -> Result<Entity, CatalogMapperError> {
     for (key, value) in projected {
-        entity = entity.with_property(key.clone(), value.clone())?;
+        entity = entity.with_property(key, value)?;
     }
     Ok(entity)
 }

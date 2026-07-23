@@ -107,6 +107,8 @@ The current checked-in catalog compiles to 794 sources and 3,891 families. Based
 
 ## Performance shape
 
+- The reproducible Go/Rust comparison and current measurements are recorded in
+  [Rust Organizational Platform Benchmarks](rust-organizational-platform-benchmarks.md).
 - Deltas are tenant- and collection-scoped, deterministic, and batchable.
 - The graph engine validates a complete candidate transaction before commit.
 - Agent traversal is limited to six hops and 500 returned entities per request.

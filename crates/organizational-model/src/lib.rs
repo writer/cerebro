@@ -1013,6 +1013,26 @@ impl GraphDelta {
     pub fn digest(&self) -> &str {
         &self.digest
     }
+
+    /// Transfers an already validated delta into the graph engine without
+    /// cloning its entities or assertions.
+    pub fn into_components(
+        self,
+    ) -> (
+        CollectionReceipt,
+        Vec<Entity>,
+        Vec<GraphAssertion>,
+        Vec<Retraction>,
+        String,
+    ) {
+        (
+            self.collection,
+            self.entities,
+            self.assertions,
+            self.retractions,
+            self.digest,
+        )
+    }
 }
 
 pub struct GraphDeltaBuilder<Mode> {
@@ -1038,10 +1058,14 @@ impl<Mode> GraphDeltaBuilder<Mode> {
         if entity.tenant_id != self.collection.tenant_id {
             return Err(ModelError::TenantMismatch);
         }
-        if let Some(previous) = self.entities.insert(entity.id.clone(), entity.clone())
-            && previous != entity
-        {
-            return Err(ModelError::DuplicateEntity);
+        match self.entities.entry(entity.id.clone()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(entity);
+            }
+            std::collections::btree_map::Entry::Occupied(entry) if entry.get() != &entity => {
+                return Err(ModelError::DuplicateEntity);
+            }
+            std::collections::btree_map::Entry::Occupied(_) => {}
         }
         Ok(())
     }
@@ -1052,12 +1076,14 @@ impl<Mode> GraphDeltaBuilder<Mode> {
         {
             return Err(ModelError::TenantMismatch);
         }
-        if let Some(previous) = self
-            .assertions
-            .insert(assertion.id().clone(), assertion.clone())
-            && previous != assertion
-        {
-            return Err(ModelError::DuplicateAssertion);
+        match self.assertions.entry(assertion.id().clone()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(assertion);
+            }
+            std::collections::btree_map::Entry::Occupied(entry) if entry.get() != &assertion => {
+                return Err(ModelError::DuplicateAssertion);
+            }
+            std::collections::btree_map::Entry::Occupied(_) => {}
         }
         Ok(())
     }

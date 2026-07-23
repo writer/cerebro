@@ -96,23 +96,24 @@ impl OrganizationalGraph {
     /// Applies a validated delta atomically. The candidate tenant graph is
     /// fully checked before it replaces current state.
     pub fn apply(&mut self, delta: GraphDelta) -> Result<GraphWriteReceipt, GraphError> {
-        let tenant_id = delta.collection().tenant_id().clone();
+        let (collection, entities, assertions, retractions, delta_digest) = delta.into_components();
+        let tenant_id = collection.tenant_id().clone();
+        let entities_upserted = entities.len();
+        let assertions_upserted = assertions.len();
         let mut candidate = self.tenants.get(&tenant_id).cloned().unwrap_or_default();
 
-        for entity in delta.entities() {
+        for entity in entities {
             if let Some(existing) = candidate.entities.get(entity.id())
-                && existing != entity
+                && existing != &entity
             {
                 return Err(GraphError::EntityConflict(entity.id().clone()));
             }
-            candidate
-                .entities
-                .insert(entity.id().clone(), entity.clone());
+            candidate.entities.insert(entity.id().clone(), entity);
         }
 
-        for assertion in delta.assertions() {
-            self.validate_assertion_entities(&candidate, assertion)?;
-            if let GraphAssertion::IdentityBinding(binding) = assertion
+        for assertion in assertions {
+            self.validate_assertion_entities(&candidate, &assertion)?;
+            if let GraphAssertion::IdentityBinding(binding) = &assertion
                 && binding.state() == IdentityBindingState::Confirmed
             {
                 if let Some(existing) = candidate
@@ -149,15 +150,13 @@ impl OrganizationalGraph {
             }
             candidate
                 .assertions
-                .insert(assertion.id().clone(), assertion.clone());
+                .insert(assertion.id().clone(), assertion);
         }
 
         let mut retracted = 0;
-        for retraction in delta.retractions() {
+        for retraction in retractions {
             if let Some(assertion) = candidate.assertions.get(retraction.assertion_id()) {
-                if assertion.provenance().source_runtime_id()
-                    != delta.collection().source_runtime_id()
-                {
+                if assertion.provenance().source_runtime_id() != collection.source_runtime_id() {
                     return Err(GraphError::RetractionSourceMismatch(
                         retraction.assertion_id().clone(),
                     ));
@@ -183,9 +182,9 @@ impl OrganizationalGraph {
         let receipt = GraphWriteReceipt {
             tenant_id: tenant_id.clone(),
             graph_revision: candidate.revision,
-            delta_digest: delta.digest().to_owned(),
-            entities_upserted: delta.entities().len(),
-            assertions_upserted: delta.assertions().len(),
+            delta_digest,
+            entities_upserted,
+            assertions_upserted,
             assertions_retracted: retracted,
         };
         self.tenants.insert(tenant_id, candidate);
