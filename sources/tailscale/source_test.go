@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -254,9 +253,14 @@ func TestNewFixtureReplaysTailscaleFamilies(t *testing.T) {
 }
 
 func TestFixtureDiscoverURNsMatchReadResourceURNs(t *testing.T) {
+	root, err := os.OpenRoot("testdata")
+	if err != nil {
+		t.Fatalf("open fixture root: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
 	for _, family := range []string{"device", "grant", "group", "service", "tag", "tailnet", "user"} {
 		t.Run(family, func(t *testing.T) {
-			discoverPayload, err := os.ReadFile(filepath.Join("testdata", "discover_"+family+".json"))
+			discoverPayload, err := root.ReadFile("discover_" + family + ".json")
 			if err != nil {
 				t.Fatalf("read discover fixture: %v", err)
 			}
@@ -265,7 +269,7 @@ func TestFixtureDiscoverURNsMatchReadResourceURNs(t *testing.T) {
 				t.Fatalf("unmarshal discover fixture: %v", err)
 			}
 
-			readPayload, err := os.ReadFile(filepath.Join("testdata", "read_"+family+".json"))
+			readPayload, err := root.ReadFile("read_" + family + ".json")
 			if err != nil {
 				t.Fatalf("read fixture: %v", err)
 			}

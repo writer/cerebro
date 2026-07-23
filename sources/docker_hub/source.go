@@ -1,15 +1,11 @@
 package docker_hub
 
 import (
-	"embed"
 	"fmt"
 
 	"github.com/writer/cerebro/internal/connectorcatalog"
 	"github.com/writer/cerebro/sources/catalogruntime"
 )
-
-//go:embed catalog.yaml
-var catalogFS embed.FS
 
 const (
 	sourceID           = "docker_hub"

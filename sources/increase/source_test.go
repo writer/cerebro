@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -254,7 +253,12 @@ func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
 
 func fixturePayload(t *testing.T, family string) map[string]any {
 	t.Helper()
-	payload, err := os.ReadFile(filepath.Join("testdata", "read_"+family+".json"))
+	root, err := os.OpenRoot("testdata")
+	if err != nil {
+		t.Fatalf("open fixture root: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+	payload, err := root.ReadFile("read_" + family + ".json")
 	if err != nil {
 		t.Fatalf("read fixture payload for %s: %v", family, err)
 	}
