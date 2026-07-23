@@ -33,12 +33,12 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
     let mut store = DurableGraphStore::new(ledger, projector);
 
     let tenant = TenantId::parse("tenant-live")?;
-    let runtime = SourceRuntimeId::parse("identity-live")?;
+    let runtime = SourceRuntimeId::parse("okta-live")?;
     let collection = CompleteCollection::new(
         tenant.clone(),
         runtime.clone(),
         CollectionId::parse("collection-live-1")?,
-        "identity.users",
+        "okta.users",
         10,
     )?;
     let observation_id = ObservationId::parse("observation-live-1")?;
@@ -47,7 +47,7 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
             vec![ObservationRef::new(
                 collection.receipt(),
                 observation_id.clone(),
-                "identity.user:user-1",
+                "okta.identity_user:user-1",
             )?],
             "live-mapper",
             "v1",
@@ -56,7 +56,7 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
     let provider = ProviderIdentity::new(
         tenant.clone(),
         runtime,
-        ProviderKind::parse("identity.user")?,
+        ProviderKind::parse("okta.identity_user")?,
         "user-1",
         "User One",
     )?;
@@ -112,7 +112,7 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
         records: vec![SourceRecord {
             observation_id,
             family: "users".to_owned(),
-            provider_kind: "identity.user".to_owned(),
+            provider_kind: "okta.identity_user".to_owned(),
             provider_id: "user-1".to_owned(),
             fields: BTreeMap::from([("employee_id".to_owned(), "employee-1".to_owned())]),
             payload: serde_json::json!({"id": "user-1", "employee_id": "employee-1"}),

@@ -356,6 +356,16 @@ impl PostgresLedger {
         Ok(snapshot)
     }
 
+    /// Commits authoritative current state and its projection outbox entry.
+    /// The caller must subsequently project or replay the pending revision.
+    pub async fn commit_pending(
+        &self,
+        batch: &CollectedBatch,
+        delta: &GraphDelta,
+    ) -> Result<GraphWriteReceipt, StoreError> {
+        Ok(self.commit(batch, delta).await?.receipt)
+    }
+
     pub(crate) async fn commit(
         &self,
         batch: &CollectedBatch,

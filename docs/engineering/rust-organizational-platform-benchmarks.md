@@ -86,6 +86,41 @@ whole-process measurement: it includes each language runtime, linked
 dependencies, catalog initialization, corpus storage, and the benchmark
 harness. It is not a per-record heap measurement.
 
+## Durable store and graph reads
+
+A second suite runs the Rust write boundary against disposable PostgreSQL 16
+and Neo4j 5 instances. It measures the transaction that commits current state
+and its outbox record, Neo4j projection, pending-outbox recovery, bounded path
+queries, and concurrent tenant writes.
+
+Run it with explicit disposable-store coordinates:
+
+```sh
+CEREBRO_TEST_POSTGRES_DSN='...' \
+CEREBRO_TEST_NEO4J_URI='...' \
+CEREBRO_TEST_NEO4J_USERNAME='...' \
+CEREBRO_TEST_NEO4J_PASSWORD='...' \
+make rust-organizational-store-benchmark
+```
+
+The July 22 local run produced:
+
+| Operation | Workload | Elapsed |
+| --- | ---: | ---: |
+| PostgreSQL commit + Neo4j projection | 100 entities | 270.3 ms |
+| PostgreSQL commit + Neo4j projection | 1,000 entities | 1,444.1 ms |
+| Replay one pending 100-entity outbox revision | 100 entities | 26.2 ms |
+| One-hop bounded path query | 200 reads | 3.76 ms/read |
+| Three-hop bounded path query | 200 reads | 3.21 ms/read |
+| Six-hop bounded path query | 200 reads | 2.82 ms/read |
+| Eight concurrent tenant commits | 8 x 100 entities | 288.2 ms total |
+
+The path corpus has one valid path at every requested depth, so this measures
+bounded lookup overhead rather than path explosion. The concurrent result uses
+separate PostgreSQL connections and a shared Neo4j projector. The live-store
+test also verified idempotent replay and a three-edge provider-account to
+repository path through a canonical person and group.
+
 ## Optimization found by the benchmark
 
 The first Rust run cloned each accepted entity in the delta builder and cloned
@@ -101,8 +136,11 @@ At 1,000 records:
 
 ## What this does not prove
 
-This receipt does not measure provider network time, PostgreSQL transaction
-latency, Neo4j batch projection, HTTP request concurrency, or multi-tenant
-contention. Those require service-level benchmarks against disposable stores.
-The in-process result establishes that the stronger Rust admission boundary is
-not slower than the equivalent Go raw-record projection path for this corpus.
+This receipt does not measure provider network time, production-sized graph
+fan-out, HTTP request concurrency, or production infrastructure. The durable
+numbers are one local run against empty disposable stores, not a capacity
+claim. The in-process result establishes that the stronger Rust admission
+boundary is not slower than the equivalent Go raw-record projection path for
+this corpus. The durable suite establishes that committed writes survive a
+projection interruption and that bounded multi-hop reads work against the
+actual databases.
