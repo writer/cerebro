@@ -4586,15 +4586,15 @@ func TestBootstrapHealthDegradesWhenRustGraphReadAuthorityIsUnavailable(t *testi
 	if response.GetStatus() != "degraded" {
 		t.Fatalf("health status = %q, want degraded", response.GetStatus())
 	}
-	if len(response.GetComponents()) != 4 {
-		t.Fatalf("health components = %d, want 4", len(response.GetComponents()))
+	if len(response.GetComponents()) != 3 {
+		t.Fatalf("health components = %d, want 3", len(response.GetComponents()))
 	}
-	component := response.GetComponents()[3]
-	if component.GetName() != "organizational_graph" || component.GetStatus() != "error" {
-		t.Fatalf("organizational graph component = %#v", component)
+	component := response.GetComponents()[2]
+	if component.GetName() != "graph_store" || component.GetStatus() != "error" {
+		t.Fatalf("authoritative graph component = %#v", component)
 	}
 	if component.GetDetail() != "unhealthy" || component.GetDetail() == rawDependencyError {
-		t.Fatalf("organizational graph detail = %q, want sanitized detail", component.GetDetail())
+		t.Fatalf("authoritative graph detail = %q, want sanitized detail", component.GetDetail())
 	}
 }
 

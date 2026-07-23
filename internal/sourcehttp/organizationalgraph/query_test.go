@@ -16,6 +16,7 @@ import (
 
 type queryStoreStub struct {
 	neighborhood *ports.EntityNeighborhood
+	err          error
 }
 
 type assertionQueryStoreStub struct {
@@ -25,7 +26,7 @@ type assertionQueryStoreStub struct {
 	migrationRequest  ports.ProjectionAssertionMigrationRequest
 }
 
-func (s queryStoreStub) Ping(context.Context) error { return nil }
+func (s queryStoreStub) Ping(context.Context) error { return s.err }
 
 func (s queryStoreStub) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
 	return s.neighborhood, nil
@@ -117,6 +118,52 @@ func TestQueryStoreFailsClosedWhenRustIsUnavailable(t *testing.T) {
 	}
 	if errors.Is(err, ports.ErrGraphEntityNotFound) {
 		t.Fatalf("GetEntityNeighborhood() error = %v, want unavailable", err)
+	}
+}
+
+func TestQueryStoreHealthRequiresCompatibilityAndRustAuthorities(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/healthz" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store, err := NewQueryStore(queryStoreStub{}, server.URL, time.Second)
+	if err != nil {
+		t.Fatalf("NewQueryStore() error = %v", err)
+	}
+	if err := store.Ping(context.Background()); err != nil {
+		t.Fatalf("Ping() error = %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("health requests = %d, want 1", requests)
+	}
+
+	store, err = NewQueryStore(
+		queryStoreStub{err: errors.New("compatibility unavailable")},
+		server.URL,
+		time.Second,
+	)
+	if err != nil {
+		t.Fatalf("NewQueryStore(failing compatibility) error = %v", err)
+	}
+	if err := store.Ping(context.Background()); err == nil {
+		t.Fatal("Ping(failing compatibility) error = nil")
+	}
+	if requests != 1 {
+		t.Fatalf("health requests after compatibility failure = %d, want 1", requests)
+	}
+
+	compatibility := queryStoreStub{}
+	if got := ReadinessStore(compatibility, nil); got != compatibility {
+		t.Fatalf("ReadinessStore(compatibility, nil) = %#v", got)
+	}
+	if got := ReadinessStore(compatibility, store); got != store {
+		t.Fatalf("ReadinessStore(compatibility, authority) = %#v", got)
 	}
 }
 

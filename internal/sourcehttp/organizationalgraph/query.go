@@ -31,6 +31,15 @@ type QueryStore struct {
 	client        *http.Client
 }
 
+// ReadinessStore selects the product read authority when configured. Its Ping
+// also checks the compatibility store needed for raw reads during migration.
+func ReadinessStore(compatibility, authority ports.GraphStore) ports.GraphStore {
+	if authority != nil {
+		return authority
+	}
+	return compatibility
+}
+
 func NewQueryStore(compatibility ports.GraphQueryStore, baseURL string, timeout time.Duration) (*QueryStore, error) {
 	if compatibility == nil {
 		return nil, errors.New("compatibility graph query store is required")
@@ -50,6 +59,9 @@ func NewQueryStore(compatibility ports.GraphQueryStore, baseURL string, timeout 
 }
 
 func (s *QueryStore) Ping(ctx context.Context) error {
+	if err := s.compatibility.Ping(ctx); err != nil {
+		return fmt.Errorf("compatibility graph health: %w", err)
+	}
 	// #nosec G704 -- normalizeBaseURL validates and freezes the operator-set
 	// HTTP(S) origin; this package supplies the constant request path.
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+"/healthz", nil)

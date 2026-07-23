@@ -1361,8 +1361,7 @@ func publicHealthResponse(ctx context.Context, deps Dependencies) *cerebrov1.Che
 	components := []*cerebrov1.ComponentStatus{
 		componentStatus(ctx, "append_log", deps.AppendLog),
 		componentStatus(ctx, "state_store", deps.StateStore),
-		componentStatus(ctx, "graph_store", deps.GraphStore),
-		componentStatus(ctx, "organizational_graph", deps.GraphQueries),
+		componentStatus(ctx, "graph_store", organizationalgraph.ReadinessStore(deps.GraphStore, deps.GraphQueries)),
 	}
 	status := "ready"
 	for _, component := range components {
