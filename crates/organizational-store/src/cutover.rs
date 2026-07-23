@@ -1,0 +1,307 @@
+use std::{collections::BTreeMap, error::Error, fmt};
+
+use cerebro_source_catalog::SourceCatalog;
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ParityStatus {
+    Match,
+    Mismatch,
+    Incomplete,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ParityReceipt {
+    pub source_id: String,
+    pub family_id: String,
+    pub corpus_id: String,
+    pub legacy_digest: String,
+    pub rust_digest: String,
+    pub status: ParityStatus,
+    pub compared_at_unix_ms: i64,
+    pub receipt_digest: String,
+}
+
+impl ParityReceipt {
+    pub fn compare(
+        source_id: impl Into<String>,
+        family_id: impl Into<String>,
+        corpus_id: impl Into<String>,
+        legacy_digest: impl Into<String>,
+        rust_digest: impl Into<String>,
+        complete: bool,
+        compared_at_unix_ms: i64,
+    ) -> Result<Self, CutoverError> {
+        let source_id = required(source_id.into(), "source_id")?;
+        let family_id = required(family_id.into(), "family_id")?;
+        let corpus_id = required(corpus_id.into(), "corpus_id")?;
+        let legacy_digest = required(legacy_digest.into(), "legacy_digest")?;
+        let rust_digest = required(rust_digest.into(), "rust_digest")?;
+        if compared_at_unix_ms <= 0 {
+            return Err(CutoverError::Invalid("compared_at_unix_ms"));
+        }
+        let status = if !complete {
+            ParityStatus::Incomplete
+        } else if legacy_digest == rust_digest {
+            ParityStatus::Match
+        } else {
+            ParityStatus::Mismatch
+        };
+        let receipt_digest = digest(&[
+            &source_id,
+            &family_id,
+            &corpus_id,
+            &legacy_digest,
+            &rust_digest,
+            match status {
+                ParityStatus::Match => "match",
+                ParityStatus::Mismatch => "mismatch",
+                ParityStatus::Incomplete => "incomplete",
+            },
+            &compared_at_unix_ms.to_string(),
+        ]);
+        Ok(Self {
+            source_id,
+            family_id,
+            corpus_id,
+            legacy_digest,
+            rust_digest,
+            status,
+            compared_at_unix_ms,
+            receipt_digest,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CutoverPolicy {
+    min_consecutive_matches: usize,
+    max_projection_lag: u64,
+}
+
+impl CutoverPolicy {
+    pub fn new(
+        min_consecutive_matches: usize,
+        max_projection_lag: u64,
+    ) -> Result<Self, CutoverError> {
+        if min_consecutive_matches < 3 {
+            return Err(CutoverError::UnsafePolicy);
+        }
+        Ok(Self {
+            min_consecutive_matches,
+            max_projection_lag,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct CutoverDecision {
+    source_id: String,
+    family_id: String,
+    allowed: bool,
+    reasons: Vec<String>,
+    evidence_digest: String,
+}
+
+impl CutoverDecision {
+    pub fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    pub fn family_id(&self) -> &str {
+        &self.family_id
+    }
+
+    pub fn is_allowed(&self) -> bool {
+        self.allowed
+    }
+
+    pub fn reasons(&self) -> &[String] {
+        &self.reasons
+    }
+
+    pub fn evidence_digest(&self) -> &str {
+        &self.evidence_digest
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum CutoverError {
+    Invalid(&'static str),
+    UnsafePolicy,
+    UnknownSource(String),
+}
+
+impl fmt::Display for CutoverError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Invalid(field) => write!(formatter, "{field} is invalid"),
+            Self::UnsafePolicy => {
+                formatter.write_str("cutover requires at least three matching runs")
+            }
+            Self::UnknownSource(source) => {
+                write!(formatter, "source {source} is not in the catalog")
+            }
+        }
+    }
+}
+
+impl Error for CutoverError {}
+
+pub struct CutoverGate {
+    policy: CutoverPolicy,
+}
+
+impl CutoverGate {
+    pub fn new(policy: CutoverPolicy) -> Self {
+        Self { policy }
+    }
+
+    pub fn evaluate(
+        &self,
+        catalog: &SourceCatalog,
+        source_id: &str,
+        family_id: &str,
+        receipts: &[ParityReceipt],
+        projection_lag: u64,
+    ) -> Result<CutoverDecision, CutoverError> {
+        let source = catalog
+            .get(source_id)
+            .ok_or_else(|| CutoverError::UnknownSource(source_id.to_owned()))?;
+        let mut reasons = Vec::new();
+        let family = source
+            .families()
+            .iter()
+            .find(|family| family.id() == family_id)
+            .ok_or_else(|| CutoverError::UnknownSource(format!("{source_id}/{family_id}")))?;
+        if !family.is_authoritative() {
+            reasons.push("provider method and path proof is incomplete".to_owned());
+        }
+        if projection_lag > self.policy.max_projection_lag {
+            reasons.push(format!(
+                "projection lag {projection_lag} exceeds {}",
+                self.policy.max_projection_lag
+            ));
+        }
+        let source_receipts: Vec<_> = receipts
+            .iter()
+            .filter(|receipt| receipt.source_id == source_id)
+            .filter(|receipt| receipt.family_id == family_id)
+            .collect();
+        let consecutive = source_receipts
+            .iter()
+            .rev()
+            .take_while(|receipt| receipt.status == ParityStatus::Match)
+            .count();
+        if consecutive < self.policy.min_consecutive_matches {
+            reasons.push(format!(
+                "{consecutive} consecutive parity matches; {} required",
+                self.policy.min_consecutive_matches
+            ));
+        }
+        let mut latest_by_corpus = BTreeMap::new();
+        for receipt in source_receipts {
+            latest_by_corpus.insert(&receipt.corpus_id, receipt);
+        }
+        if latest_by_corpus
+            .values()
+            .any(|receipt| receipt.status != ParityStatus::Match)
+        {
+            reasons.push("latest corpus comparison is not a match".to_owned());
+        }
+        let evidence_digest = digest(
+            &receipts
+                .iter()
+                .filter(|receipt| receipt.source_id == source_id)
+                .filter(|receipt| receipt.family_id == family_id)
+                .map(|receipt| receipt.receipt_digest.as_str())
+                .collect::<Vec<_>>(),
+        );
+        Ok(CutoverDecision {
+            source_id: source_id.to_owned(),
+            family_id: family_id.to_owned(),
+            allowed: reasons.is_empty(),
+            reasons,
+            evidence_digest,
+        })
+    }
+}
+
+fn required(value: String, field: &'static str) -> Result<String, CutoverError> {
+    if value.trim().is_empty() || value.trim() != value {
+        return Err(CutoverError::Invalid(field));
+    }
+    Ok(value)
+}
+
+fn digest(parts: &[&str]) -> String {
+    let mut hasher = Sha256::new();
+    for part in parts {
+        hasher.update((part.len() as u64).to_be_bytes());
+        hasher.update(part.as_bytes());
+    }
+    let bytes = hasher.finalize();
+    let mut value = String::with_capacity(7 + bytes.len() * 2);
+    value.push_str("sha256:");
+    for byte in bytes {
+        value.push_str(&format!("{byte:02x}"));
+    }
+    value
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    fn repository_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap()
+    }
+
+    #[test]
+    fn cutover_requires_proof_three_matches_and_zero_lag() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let receipts: Vec<_> = (1..=3)
+            .map(|index| {
+                ParityReceipt::compare(
+                    "box",
+                    "users",
+                    format!("corpus-{index}"),
+                    "sha256:same",
+                    "sha256:same",
+                    true,
+                    index,
+                )
+                .unwrap()
+            })
+            .collect();
+        let gate = CutoverGate::new(CutoverPolicy::new(3, 0).unwrap());
+        assert!(
+            gate.evaluate(&catalog, "box", "users", &receipts, 0)
+                .unwrap()
+                .is_allowed()
+        );
+        assert!(
+            !gate
+                .evaluate(&catalog, "box", "users", &receipts[..2], 0)
+                .unwrap()
+                .is_allowed()
+        );
+        assert!(
+            !gate
+                .evaluate(&catalog, "agiloft", "users", &receipts, 0)
+                .unwrap()
+                .is_allowed()
+        );
+    }
+}

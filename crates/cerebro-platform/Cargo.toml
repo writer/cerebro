@@ -1,0 +1,25 @@
+[package]
+name = "cerebro-platform"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+axum.workspace = true
+cerebro-agent-context = { path = "../agent-context" }
+cerebro-organizational-graph = { path = "../organizational-graph" }
+cerebro-organizational-model = { path = "../organizational-model" }
+cerebro-organizational-store = { path = "../organizational-store" }
+cerebro-source-catalog = { path = "../source-catalog" }
+cerebro-source-runtime-next = { path = "../source-runtime-next" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,586 @@
+use std::{
+    collections::BTreeMap,
+    error::Error,
+    fmt,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use async_trait::async_trait;
+use cerebro_organizational_model::{
+    CollectionId, CollectionReceipt, CompleteCollection, ModelError, ObservationId,
+};
+use cerebro_source_catalog::{AuthModel, CompiledFamily, CompiledSource, HttpMethod, Pagination};
+use reqwest::{Client, StatusCode, Url, header::LINK};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+
+use crate::{CollectedBatch, CollectedScope, CollectionRequest, SourceConnector, SourceRecord};
+
+const MAX_PAGES: usize = 10_000;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ResolvedAuth {
+    None,
+    Bearer { token: String },
+    Basic { username: String, password: String },
+    Header { name: String, value: String },
+}
+
+#[derive(Debug)]
+pub enum HttpConnectorError {
+    InvalidConfiguration(String),
+    InvalidUrl(String),
+    Request(reqwest::Error),
+    ProviderStatus(StatusCode),
+    InvalidResponse(String),
+    Domain(ModelError),
+    PageLimit,
+}
+
+impl fmt::Display for HttpConnectorError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidConfiguration(message) => formatter.write_str(message),
+            Self::InvalidUrl(message) => write!(formatter, "invalid provider URL: {message}"),
+            Self::Request(error) => write!(formatter, "provider request failed: {error}"),
+            Self::ProviderStatus(status) => write!(formatter, "provider returned HTTP {status}"),
+            Self::InvalidResponse(message) => {
+                write!(formatter, "invalid provider response: {message}")
+            }
+            Self::Domain(error) => write!(formatter, "invalid collection receipt: {error}"),
+            Self::PageLimit => formatter.write_str("provider pagination exceeded the page limit"),
+        }
+    }
+}
+
+impl Error for HttpConnectorError {}
+
+impl From<ModelError> for HttpConnectorError {
+    fn from(value: ModelError) -> Self {
+        Self::Domain(value)
+    }
+}
+
+/// Generic collector for the checked-in definition grammar. Bespoke sources
+/// implement `SourceConnector` directly but still cross the same graph mapper.
+pub struct HttpSourceConnector {
+    client: Client,
+    source: CompiledSource,
+    family: CompiledFamily,
+    base_url: Url,
+    config: BTreeMap<String, String>,
+    auth: ResolvedAuth,
+}
+
+impl HttpSourceConnector {
+    pub fn new(
+        source: CompiledSource,
+        family_id: &str,
+        base_url: &str,
+        config: BTreeMap<String, String>,
+        auth: ResolvedAuth,
+    ) -> Result<Self, HttpConnectorError> {
+        let family = source
+            .families()
+            .iter()
+            .find(|family| family.id() == family_id)
+            .cloned()
+            .ok_or_else(|| {
+                HttpConnectorError::InvalidConfiguration(format!(
+                    "source {} has no family {family_id}",
+                    source.id()
+                ))
+            })?;
+        validate_auth(source.auth(), &auth)?;
+        let mut base_url = Url::parse(base_url)
+            .map_err(|error| HttpConnectorError::InvalidUrl(error.to_string()))?;
+        if base_url.scheme() != "https" && !is_loopback(&base_url) {
+            return Err(HttpConnectorError::InvalidConfiguration(
+                "provider base URL must use HTTPS".to_owned(),
+            ));
+        }
+        if !base_url.path().ends_with('/') {
+            let path = format!("{}/", base_url.path());
+            base_url.set_path(&path);
+        }
+        let client = Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(HttpConnectorError::Request)?;
+        Ok(Self {
+            client,
+            source,
+            family,
+            base_url,
+            config,
+            auth,
+        })
+    }
+
+    fn request_url(&self) -> Result<Url, HttpConnectorError> {
+        let mut path = self.family.path().to_owned();
+        for (key, value) in &self.config {
+            path = path.replace(&format!("{{{key}}}"), value);
+            path = path.replace(&format!("${{config.{key}}}"), value);
+        }
+        if path.contains('{') || path.contains("${") {
+            return Err(HttpConnectorError::InvalidConfiguration(format!(
+                "family {} has unresolved path variables",
+                self.family.id()
+            )));
+        }
+        self.base_url
+            .join(path.trim_start_matches('/'))
+            .map_err(|error| HttpConnectorError::InvalidUrl(error.to_string()))
+    }
+}
+
+#[async_trait]
+impl SourceConnector for HttpSourceConnector {
+    type Error = HttpConnectorError;
+
+    async fn collect(&mut self, request: CollectionRequest) -> Result<CollectedBatch, Self::Error> {
+        let observed_at = unix_millis()?;
+        let mut url = self.request_url()?;
+        let mut cursor = request.cursor.clone();
+        let mut page = pagination_start(self.family.pagination());
+        let mut offset = 0usize;
+        let mut records = Vec::new();
+        let mut exhausted = false;
+
+        for _ in 0..MAX_PAGES {
+            apply_query(
+                &mut url,
+                self.family.static_query(),
+                self.family.pagination(),
+                cursor.as_deref(),
+                page,
+                offset,
+            );
+            let mut builder = match self.family.method() {
+                HttpMethod::Get => self.client.get(url.clone()),
+                HttpMethod::Post => self.client.post(url.clone()),
+            };
+            builder = match &self.auth {
+                ResolvedAuth::None => builder,
+                ResolvedAuth::Bearer { token } => builder.bearer_auth(token),
+                ResolvedAuth::Basic { username, password } => {
+                    builder.basic_auth(username, Some(password))
+                }
+                ResolvedAuth::Header { name, value } => builder.header(name, value),
+            };
+            let response = builder.send().await.map_err(HttpConnectorError::Request)?;
+            let status = response.status();
+            if !status.is_success() {
+                return Err(HttpConnectorError::ProviderStatus(status));
+            }
+            let next_link = response
+                .headers()
+                .get(LINK)
+                .and_then(|value| value.to_str().ok())
+                .and_then(next_link_url);
+            let body: Value = response.json().await.map_err(HttpConnectorError::Request)?;
+            let selected = select_records(&body, self.family.record_selector())?;
+            let selected_count = selected.len();
+            for value in selected {
+                let provider_id = scalar_at(&value, self.family.id_field()).ok_or_else(|| {
+                    HttpConnectorError::InvalidResponse(format!(
+                        "family {} record is missing {}",
+                        self.family.id(),
+                        self.family.id_field()
+                    ))
+                })?;
+                records.push(SourceRecord {
+                    observation_id: observation_id(
+                        self.source.id(),
+                        self.family.id(),
+                        &provider_id,
+                        observed_at,
+                    )?,
+                    family: self.family.id().to_owned(),
+                    provider_kind: format!("{}.{}", self.source.id(), self.family.id()),
+                    provider_id,
+                    fields: flatten_scalars(&value),
+                    payload: value,
+                });
+            }
+
+            match self.family.pagination() {
+                Pagination::None => {
+                    exhausted = true;
+                    break;
+                }
+                Pagination::Cursor { response_path, .. } => {
+                    cursor = scalar_at_path(&body, response_path);
+                    if cursor.as_deref().is_none_or(str::is_empty) {
+                        exhausted = true;
+                        break;
+                    }
+                }
+                Pagination::Page { page_size, .. } => {
+                    if selected_count < *page_size {
+                        exhausted = true;
+                        break;
+                    }
+                    page = page.saturating_add(1);
+                }
+                Pagination::Offset { page_size, .. } => {
+                    if selected_count < *page_size {
+                        exhausted = true;
+                        break;
+                    }
+                    offset = offset.saturating_add(*page_size);
+                }
+                Pagination::Link { .. } => {
+                    let Some(next) = next_link else {
+                        exhausted = true;
+                        break;
+                    };
+                    let next = Url::parse(&next)
+                        .map_err(|error| HttpConnectorError::InvalidUrl(error.to_string()))?;
+                    ensure_same_origin(&self.base_url, &next)?;
+                    url = next;
+                }
+                Pagination::NextUrl { response_path } => {
+                    let Some(next) = scalar_at_path(&body, response_path) else {
+                        exhausted = true;
+                        break;
+                    };
+                    let next = Url::parse(&next)
+                        .or_else(|_| self.base_url.join(next.trim_start_matches('/')))
+                        .map_err(|error| HttpConnectorError::InvalidUrl(error.to_string()))?;
+                    ensure_same_origin(&self.base_url, &next)?;
+                    url = next;
+                }
+            }
+        }
+        if !exhausted {
+            return Err(HttpConnectorError::PageLimit);
+        }
+
+        let collection_id = CollectionId::parse(format!(
+            "collection:{}:{}:{observed_at}",
+            self.source.id(),
+            self.family.id()
+        ))?;
+        let scope_name = format!("{}.{}", self.source.id(), self.family.id());
+        let authoritative = request.cursor.is_none() && self.family.is_authoritative();
+        let scope = if authoritative {
+            CollectedScope::Complete(CompleteCollection::new(
+                request.tenant_id,
+                request.source_runtime_id,
+                collection_id,
+                scope_name,
+                observed_at,
+            )?)
+        } else if request.cursor.is_some() {
+            CollectedScope::NonAuthoritative(CollectionReceipt::incremental(
+                request.tenant_id,
+                request.source_runtime_id,
+                collection_id,
+                scope_name,
+                observed_at,
+            )?)
+        } else {
+            CollectedScope::NonAuthoritative(CollectionReceipt::partial(
+                request.tenant_id,
+                request.source_runtime_id,
+                collection_id,
+                scope_name,
+                observed_at,
+            )?)
+        };
+        Ok(CollectedBatch {
+            scope,
+            records,
+            next_cursor: cursor,
+        })
+    }
+}
+
+fn validate_auth(expected: &AuthModel, actual: &ResolvedAuth) -> Result<(), HttpConnectorError> {
+    let valid = match expected {
+        AuthModel::None => matches!(actual, ResolvedAuth::None),
+        AuthModel::Basic => matches!(actual, ResolvedAuth::Basic { .. }),
+        AuthModel::ApiKey => matches!(actual, ResolvedAuth::Header { .. }),
+        AuthModel::BearerToken
+        | AuthModel::OauthAuthorizationCode
+        | AuthModel::OauthClientCredentials
+        | AuthModel::TwoStep
+        | AuthModel::Jwt => matches!(
+            actual,
+            ResolvedAuth::Bearer { .. } | ResolvedAuth::Header { .. }
+        ),
+        AuthModel::Signature | AuthModel::AwsSigV4 | AuthModel::DuoHmac | AuthModel::DuoHmacV5 => {
+            false
+        }
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(HttpConnectorError::InvalidConfiguration(
+            "resolved credential does not match the source auth model".to_owned(),
+        ))
+    }
+}
+
+fn is_loopback(url: &Url) -> bool {
+    matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"))
+}
+
+fn ensure_same_origin(base: &Url, next: &Url) -> Result<(), HttpConnectorError> {
+    if base.scheme() == next.scheme()
+        && base.host_str() == next.host_str()
+        && base.port_or_known_default() == next.port_or_known_default()
+    {
+        Ok(())
+    } else {
+        Err(HttpConnectorError::InvalidResponse(
+            "provider pagination changed origin".to_owned(),
+        ))
+    }
+}
+
+fn unix_millis() -> Result<i64, HttpConnectorError> {
+    let value = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| HttpConnectorError::InvalidConfiguration(error.to_string()))?
+        .as_millis();
+    i64::try_from(value)
+        .map_err(|_| HttpConnectorError::InvalidConfiguration("system time overflow".to_owned()))
+}
+
+fn pagination_start(pagination: &Pagination) -> usize {
+    match pagination {
+        Pagination::Page { start, .. } => *start,
+        _ => 0,
+    }
+}
+
+fn apply_query(
+    url: &mut Url,
+    static_query: &BTreeMap<String, String>,
+    pagination: &Pagination,
+    cursor: Option<&str>,
+    page: usize,
+    offset: usize,
+) {
+    let mut query = url.query_pairs_mut();
+    query.clear();
+    query.extend_pairs(static_query);
+    match pagination {
+        Pagination::None | Pagination::Link { .. } | Pagination::NextUrl { .. } => {}
+        Pagination::Cursor {
+            parameter,
+            page_size_parameter,
+            page_size,
+            ..
+        } => {
+            if let Some(cursor) = cursor {
+                query.append_pair(parameter, cursor);
+            }
+            if let Some(parameter) = page_size_parameter {
+                query.append_pair(parameter, &page_size.to_string());
+            }
+        }
+        Pagination::Page {
+            parameter,
+            page_size_parameter,
+            page_size,
+            ..
+        } => {
+            query.append_pair(parameter, &page.to_string());
+            if let Some(parameter) = page_size_parameter {
+                query.append_pair(parameter, &page_size.to_string());
+            }
+        }
+        Pagination::Offset {
+            parameter,
+            limit_parameter,
+            page_size,
+        } => {
+            query.append_pair(parameter, &offset.to_string());
+            query.append_pair(limit_parameter, &page_size.to_string());
+        }
+    }
+}
+
+fn select_records(body: &Value, selector: &str) -> Result<Vec<Value>, HttpConnectorError> {
+    let selector = selector.trim();
+    if selector == "$" {
+        return Ok(vec![body.clone()]);
+    }
+    let wildcard = selector.ends_with("[*]");
+    let path = selector
+        .strip_prefix("$.")
+        .or_else(|| selector.strip_prefix('$'))
+        .unwrap_or(selector)
+        .trim_end_matches("[*]");
+    let selected = value_at_path(body, path).ok_or_else(|| {
+        HttpConnectorError::InvalidResponse(format!("record selector {selector} did not match"))
+    })?;
+    if wildcard || selected.is_array() {
+        return selected.as_array().cloned().ok_or_else(|| {
+            HttpConnectorError::InvalidResponse(format!(
+                "record selector {selector} did not select an array"
+            ))
+        });
+    }
+    Ok(vec![selected.clone()])
+}
+
+fn scalar_at(value: &Value, field: &str) -> Option<String> {
+    scalar_at_path(value, field)
+}
+
+fn scalar_at_path(value: &Value, path: &str) -> Option<String> {
+    let path = path.trim().trim_start_matches("$.").trim_start_matches('$');
+    value_at_path(value, path).and_then(scalar)
+}
+
+fn value_at_path<'a>(mut value: &'a Value, path: &str) -> Option<&'a Value> {
+    if path.is_empty() {
+        return Some(value);
+    }
+    for part in path.split('.') {
+        value = value.get(part)?;
+    }
+    Some(value)
+}
+
+fn scalar(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) => Some(value.clone()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
+fn flatten_scalars(value: &Value) -> BTreeMap<String, String> {
+    let mut fields = BTreeMap::new();
+    if let Some(object) = value.as_object() {
+        for (key, value) in object {
+            if let Some(value) = scalar(value) {
+                fields.insert(key.clone(), value);
+            }
+        }
+    }
+    fields
+}
+
+fn next_link_url(header: &str) -> Option<String> {
+    header.split(',').find_map(|part| {
+        let part = part.trim();
+        if !part.contains("rel=\"next\"") && !part.contains("rel=next") {
+            return None;
+        }
+        let start = part.find('<')? + 1;
+        let end = part[start..].find('>')? + start;
+        Some(part[start..end].to_owned())
+    })
+}
+
+fn observation_id(
+    source_id: &str,
+    family_id: &str,
+    provider_id: &str,
+    observed_at: i64,
+) -> Result<ObservationId, HttpConnectorError> {
+    let mut hasher = Sha256::new();
+    let observed_at = observed_at.to_string();
+    for part in [source_id, family_id, provider_id, observed_at.as_str()] {
+        hasher.update((part.len() as u64).to_be_bytes());
+        hasher.update(part.as_bytes());
+    }
+    ObservationId::parse(format!("observation:{}", hex(&hasher.finalize()))).map_err(Into::into)
+}
+
+fn hex(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut value = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        value.push(DIGITS[(byte >> 4) as usize] as char);
+        value.push(DIGITS[(byte & 0x0f) as usize] as char);
+    }
+    value
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use cerebro_organizational_model::{SourceRuntimeId, TenantId};
+    use cerebro_source_catalog::SourceCatalog;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    use super::*;
+
+    fn repository_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap()
+    }
+
+    #[test]
+    fn selectors_and_link_pagination_are_bounded_and_deterministic() {
+        let body = serde_json::json!({"data": {"users": [{"id": 1}, {"id": 2}]}});
+        let selected = select_records(&body, "$.data.users[*]").unwrap();
+        assert_eq!(selected.len(), 2);
+        assert_eq!(scalar_at(&selected[0], "id").as_deref(), Some("1"));
+        assert_eq!(
+            next_link_url("<https://example.test/users?page=2>; rel=\"next\"").as_deref(),
+            Some("https://example.test/users?page=2")
+        );
+    }
+
+    #[tokio::test]
+    async fn verified_catalog_family_executes_and_can_complete() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /users?"));
+            assert!(request.contains("authorization: Bearer token"));
+            let body = r#"{"entries":[{"id":"user-1","name":"User One","login":"user@example.test","status":"active"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let mut connector = HttpSourceConnector::new(
+            catalog.get("box").unwrap().clone(),
+            "users",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            ResolvedAuth::Bearer {
+                token: "token".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("box-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "user-1");
+    }
+}
