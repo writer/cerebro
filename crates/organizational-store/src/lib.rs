@@ -7,7 +7,10 @@ mod neo4j;
 mod parity;
 mod postgres;
 
-pub use cutover::{CutoverDecision, CutoverGate, CutoverPolicy};
+pub use cutover::{
+    CutoverDecision, CutoverGate, CutoverPolicy, ProjectionAuthority, ProjectionAuthorityRecord,
+    ProjectionPromotionRequest,
+};
 pub use neo4j::Neo4jProjector;
 pub use parity::{
     MismatchSide, ParityError, ParityReceipt, ParityStatus, SemanticFact, SemanticFactKind,

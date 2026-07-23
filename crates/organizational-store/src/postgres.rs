@@ -5,6 +5,7 @@ use cerebro_organizational_model::{
     CanonicalIdentityId, CollectionCompleteness, GraphAssertion, GraphDelta,
     IdentityBindingAssertion, IdentityBindingState, IdentityResolutionMethod, TenantId,
 };
+use cerebro_source_catalog::SourceCatalog;
 use cerebro_source_runtime_next::{CollectedBatch, IdentityResolutionSnapshot};
 use postgres_native_tls::MakeTlsConnector;
 use serde::{Deserialize, Serialize};
@@ -13,7 +14,10 @@ use tokio::sync::Mutex;
 use tokio_postgres::Client;
 
 use crate::StoreError;
-use crate::{ParityReceipt, ParityStatus};
+use crate::{
+    CutoverDecision, CutoverGate, ParityReceipt, ParityStatus, ProjectionAuthority,
+    ProjectionAuthorityRecord, ProjectionPromotionRequest,
+};
 
 pub const POSTGRES_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS organizational_graph_revisions (
@@ -127,6 +131,20 @@ CREATE TABLE IF NOT EXISTS organizational_parity_receipts (
   receipt_json JSONB NOT NULL,
   PRIMARY KEY (tenant_id, receipt_digest)
 );
+CREATE TABLE IF NOT EXISTS organizational_projection_authority (
+  tenant_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  family_id TEXT NOT NULL,
+  authority TEXT NOT NULL CHECK (authority IN ('legacy', 'rust')),
+  evidence_digest TEXT NOT NULL,
+  decision_json JSONB NOT NULL,
+  promoted_at_unix_ms BIGINT,
+  PRIMARY KEY (tenant_id, source_id, family_id),
+  CHECK (
+    (authority = 'legacy' AND promoted_at_unix_ms IS NULL) OR
+    (authority = 'rust' AND promoted_at_unix_ms > 0)
+  )
+);
 CREATE INDEX IF NOT EXISTS organizational_projection_pending_idx
   ON organizational_projection_outbox (graph_revision)
   WHERE projected_at IS NULL;
@@ -151,6 +169,8 @@ ALTER TABLE organizational_projection_outbox ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_projection_outbox FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_parity_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_parity_receipts FORCE ROW LEVEL SECURITY;
+ALTER TABLE organizational_projection_authority ENABLE ROW LEVEL SECURITY;
+ALTER TABLE organizational_projection_authority FORCE ROW LEVEL SECURITY;
 DO $$
 DECLARE table_name TEXT;
 BEGIN
@@ -163,7 +183,8 @@ BEGIN
     'organizational_identity_bindings',
     'organizational_identity_claims',
     'organizational_projection_outbox',
-    'organizational_parity_receipts'
+    'organizational_parity_receipts',
+    'organizational_projection_authority'
   ] LOOP
     BEGIN
       EXECUTE format(
@@ -183,6 +204,8 @@ pub(crate) struct ProjectionEntity {
     pub authority_json: String,
     pub label: String,
     pub properties_json: String,
+    #[serde(default)]
+    pub external_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -315,6 +338,151 @@ impl PostgresLedger {
         let count: i64 = row.get(0);
         u64::try_from(count)
             .map_err(|_| StoreError::Conflict("parity receipt count is negative".to_owned()))
+    }
+
+    pub async fn parity_receipts(
+        &self,
+        tenant_id: &str,
+        source_id: &str,
+        family_id: &str,
+    ) -> Result<Vec<ParityReceipt>, StoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let rows = transaction
+            .query(
+                "SELECT receipt_json FROM organizational_parity_receipts WHERE tenant_id = $1 AND source_id = $2 AND family_id = $3 ORDER BY compared_at_unix_ms, receipt_digest",
+                &[&tenant_id, &source_id, &family_id],
+            )
+            .await?;
+        transaction.commit().await?;
+        rows.into_iter()
+            .map(|row| serde_json::from_value(row.get::<_, Value>(0)).map_err(Into::into))
+            .collect()
+    }
+
+    pub async fn projection_authority(
+        &self,
+        tenant_id: &str,
+        source_id: &str,
+        family_id: &str,
+    ) -> Result<ProjectionAuthorityRecord, StoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let row = transaction
+            .query_opt(
+                "SELECT authority, evidence_digest, promoted_at_unix_ms FROM organizational_projection_authority WHERE tenant_id = $1 AND source_id = $2 AND family_id = $3",
+                &[&tenant_id, &source_id, &family_id],
+            )
+            .await?;
+        transaction.commit().await?;
+        let Some(row) = row else {
+            return Ok(ProjectionAuthorityRecord {
+                tenant_id: tenant_id.to_owned(),
+                source_id: source_id.to_owned(),
+                family_id: family_id.to_owned(),
+                authority: ProjectionAuthority::Legacy,
+                evidence_digest: String::new(),
+                promoted_at_unix_ms: None,
+            });
+        };
+        let authority: String = row.get(0);
+        Ok(ProjectionAuthorityRecord {
+            tenant_id: tenant_id.to_owned(),
+            source_id: source_id.to_owned(),
+            family_id: family_id.to_owned(),
+            authority: match authority.as_str() {
+                "legacy" => ProjectionAuthority::Legacy,
+                "rust" => ProjectionAuthority::Rust,
+                _ => {
+                    return Err(StoreError::Conflict(format!(
+                        "stored projection authority {authority} is invalid"
+                    )));
+                }
+            },
+            evidence_digest: row.get(1),
+            promoted_at_unix_ms: row.get(2),
+        })
+    }
+
+    pub async fn evaluate_and_promote_projection_authority(
+        &self,
+        catalog: &SourceCatalog,
+        request: &ProjectionPromotionRequest,
+    ) -> Result<ProjectionAuthorityRecord, StoreError> {
+        let receipts = self
+            .parity_receipts(
+                request.tenant_id(),
+                request.source_id(),
+                request.family_id(),
+            )
+            .await?;
+        let decision = CutoverGate::new(request.policy())
+            .evaluate(
+                catalog,
+                request.source_id(),
+                request.family_id(),
+                &receipts,
+                request.projection_lag(),
+            )
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        self.promote_projection_authority(
+            request.tenant_id(),
+            &decision,
+            request.promoted_at_unix_ms(),
+        )
+        .await
+    }
+
+    async fn promote_projection_authority(
+        &self,
+        tenant_id: &str,
+        decision: &CutoverDecision,
+        promoted_at_unix_ms: i64,
+    ) -> Result<ProjectionAuthorityRecord, StoreError> {
+        if !decision.is_allowed() {
+            return Err(StoreError::Conflict(format!(
+                "projection cutover is blocked: {}",
+                decision.reasons().join("; ")
+            )));
+        }
+        if promoted_at_unix_ms <= 0 {
+            return Err(StoreError::Conflict(
+                "projection promotion time must be positive".to_owned(),
+            ));
+        }
+        let decision_json = serde_json::to_value(decision)?;
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let row = transaction
+            .query_opt(
+                "INSERT INTO organizational_projection_authority (tenant_id, source_id, family_id, authority, evidence_digest, decision_json, promoted_at_unix_ms) VALUES ($1, $2, $3, 'rust', $4, $5, $6) ON CONFLICT (tenant_id, source_id, family_id) DO UPDATE SET authority = 'rust', evidence_digest = EXCLUDED.evidence_digest, decision_json = EXCLUDED.decision_json, promoted_at_unix_ms = EXCLUDED.promoted_at_unix_ms WHERE organizational_projection_authority.authority = 'legacy' OR (organizational_projection_authority.authority = 'rust' AND organizational_projection_authority.evidence_digest = EXCLUDED.evidence_digest) RETURNING evidence_digest, promoted_at_unix_ms",
+                &[
+                    &tenant_id,
+                    &decision.source_id(),
+                    &decision.family_id(),
+                    &decision.evidence_digest(),
+                    &decision_json,
+                    &promoted_at_unix_ms,
+                ],
+            )
+            .await?;
+        let Some(row) = row else {
+            return Err(StoreError::Conflict(
+                "projection authority was already promoted with different evidence".to_owned(),
+            ));
+        };
+        transaction.commit().await?;
+        Ok(ProjectionAuthorityRecord {
+            tenant_id: tenant_id.to_owned(),
+            source_id: decision.source_id().to_owned(),
+            family_id: decision.family_id().to_owned(),
+            authority: ProjectionAuthority::Rust,
+            evidence_digest: row.get(0),
+            promoted_at_unix_ms: row.get(1),
+        })
     }
 
     pub async fn identity_resolution_snapshot(
@@ -842,6 +1010,12 @@ pub(crate) fn projection_commit(
                 authority_json: serde_json::to_string(entity.authority())?,
                 label: entity.label().to_owned(),
                 properties_json: serde_json::to_string(entity.properties())?,
+                external_id: entity
+                    .properties()
+                    .get("resource_urn")
+                    .or_else(|| entity.properties().get("entity_urn"))
+                    .or_else(|| entity.properties().get("urn"))
+                    .cloned(),
             })
         })
         .collect::<Result<_, StoreError>>()?;

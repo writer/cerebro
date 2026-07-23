@@ -12,7 +12,7 @@ import (
 func (a *App) grcUploadReplayHandler() http.Handler {
 	return grcuploadhttp.NewReplayHandler(grcuploadhttp.ReplayOptions{
 		Replayer:  eventReplayer(a.deps.AppendLog),
-		Projector: sourceProjector(a.deps.StateStore, a.deps.GraphStore),
+		Projector: appendLogSourceProjector(a.deps),
 		ResolveTenant: func(r *http.Request) (string, error) {
 			return effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
 		},
@@ -30,7 +30,7 @@ func (a *App) grcUploadHandler(target grcupload.Target) http.Handler {
 			return reducto.NewClient(reducto.Config{APIKey: a.cfg.DocumentParsing.Reducto.APIKey, BaseURL: a.cfg.DocumentParsing.Reducto.BaseURL, Timeout: a.cfg.DocumentParsing.Reducto.Timeout})
 		},
 		AppendLog: a.deps.AppendLog,
-		Projector: sourceProjector(a.deps.StateStore, a.deps.GraphStore),
+		Projector: appendLogSourceProjector(a.deps),
 		JobStore:  jobStore(a.deps.StateStore),
 		ResolveScope: func(r *http.Request) (grcuploadhttp.Scope, error) {
 			scope, err := grcScopeFromRequest(r)

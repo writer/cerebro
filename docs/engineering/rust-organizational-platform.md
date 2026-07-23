@@ -41,15 +41,17 @@ cerebro-source-catalog --> cerebro-source-runtime-next
 
 `cerebro-organizational-graph` is the only crate that advances current organizational graph state. A commit takes a validated `GraphDelta`; there is no public entity/link mutation method.
 
-`cerebro-source-catalog` compiles all 794 checked-in source definitions and 3,891 resource families into a closed runtime grammar. It joins those definitions to provider proof manifests. A definition without complete provider proof remains shadow-only even if it can be executed.
+`cerebro-source-catalog` compiles all 794 checked-in source definitions and 3,891 resource families into a closed runtime grammar. Every family is assigned one Rust-owned projection class: identity, access, resource, finding, activity, or bespoke. Connector YAML cannot declare another class. It joins those definitions to provider proof manifests. A definition without complete provider proof remains shadow-only even if it can be executed. Bespoke families also remain shadow-only until a native mapper is added.
 
 `cerebro-source-runtime-next` owns source collection, pagination, mapping, and graph commit sequencing. Provider redirects are disabled, pagination cannot change origin, pages are bounded, and resolved credentials never enter the graph model. A source cannot obtain a graph store or construct an unvalidated graph write.
 
-`cerebro-organizational-store` commits raw observations, admitted entities, assertions, retractions, the tenant graph revision, parity receipts, and a projection outbox row in one PostgreSQL transaction. PostgreSQL is the transactional authority for organizational current state. Neo4j is an idempotent, rebuildable current-state projection written in batches. Production cutover still requires the Rust collection path to publish the repository's source event log before PostgreSQL projection; direct HTTP-to-PostgreSQL sync remains a draft-only path until that is wired.
+`cerebro-organizational-store` commits raw observations, admitted entities, assertions, retractions, the tenant graph revision, parity receipts, and a projection outbox row in one PostgreSQL transaction. PostgreSQL is the transactional authority for organizational current state. Neo4j is an idempotent, rebuildable current-state projection written in batches.
+
+During migration, the Go source runtime remains the append-log owner. It commits the source event first and then calls the Rust projection endpoint. The endpoint checks the persisted family authority before mapping anything. A legacy family returns to the Go projector; a Rust family commits through Rust and cannot fall back to Go if that commit fails. Replay, refetch, device, CLI, and orchestrator paths use the same authority check, so an alternate Go entry point cannot restore a retired writer. The `append_log_committed` field is an internal handoff assertion, not a public trust boundary; deployment must restrict the projection endpoint to the source-runtime workload until Rust consumes the event log directly.
 
 `cerebro-agent-context` exposes bounded search, lookup, expansion, path, and explanation operations. It does not expose Cypher or store mutation.
 
-`cerebro-platform` serves the bounded agent graph API against Neo4j in production and the in-memory graph in local demos. Web and Slack use search, lookup, expansion, paths, and assertion explanation; neither receives Cypher or graph-write access.
+`cerebro-platform` serves the bounded agent graph API against Neo4j in production and the in-memory graph in local demos. Web, Slack, MCP, reports, and the graph agent shadow their existing one-hop neighborhood reads against this API without changing caller-visible results. Shadow receipts contain only a root digest, found flags, and node/relationship counts. Raw identifiers and graph payloads are not logged. Raw Cypher remains on the compatibility reader and is not part of the Rust API.
 
 ## Enforced identity model
 
@@ -81,7 +83,7 @@ Language-level constraints prevent accidental bypass inside Rust. Production aut
 
 1. Only the Rust platform workload receives graph-write credentials.
 2. Source collectors run inside the Rust source runtime and receive no graph handle.
-3. Go deployments become read-only during shadow comparison, then lose graph credentials before Rust becomes authoritative.
+3. Go deployments become read-only for each promoted family. A persisted `(tenant, source, family)` authority record selects one writer, including through replay and refetch entry points.
 4. The graph store accepts writes only from the Rust workload identity at the network and database authorization layers.
 5. CI rejects dependencies from the replacement crates onto Go projection contracts.
 6. PostgreSQL forces tenant row-level security on the ledger tables and uses a tenant-scoped unique key for confirmed identity bindings.
@@ -107,9 +109,47 @@ For every existing source family, the parity corpus records:
 
 Each receipt binds the tenant, runtime, source, family, collection, exact input digest, both projector revisions, both semantic digests, completeness, mismatch count and bounded mismatch sample, projection lag, runtime versions, and comparison time. PostgreSQL stores the full receipt under forced tenant row-level security.
 
-`CutoverGate` requires complete provider proof, at least three consecutive matching receipts, matching latest corpora, and projection lag within policy. A source family moves only after that decision allows it. The Go implementation remains available as a rollback oracle until the Rust family is authoritative, then its write path is removed.
+`CutoverGate` requires complete provider proof, a native projection class, at least three consecutive matching receipts, matching latest corpora, and projection lag within policy. A source family moves only after the ledger evaluates its own stored receipts. Callers cannot submit an approval decision. Promotion records the evidence digest and is irreversible; a later attempt with changed evidence is rejected.
 
-The current checked-in catalog compiles to 794 sources and 3,891 families. Based on exact provider method-and-path proof and auth support present in this Rust runtime, 33 sources and 238 families are authoritative; the other 761 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
+The runtime reads the same authority record before every projection. Legacy authority calls only Go. Rust authority calls only Rust, requires a commit receipt, and fails closed. The compatibility mapper remains available for parity comparison, but it is no longer a write fallback for a promoted family.
+
+The current checked-in catalog compiles to 794 sources and 3,891 families:
+
+| Projection class | Families | Rust meaning |
+| --- | ---: | --- |
+| Identity | 823 | people, provider identities, groups, memberships, credentials, and applications |
+| Access | 371 | policies and application grants |
+| Resource | 1,549 | assets, repositories, deployments, devices, cloud resources, and secrets |
+| Finding | 407 | findings, vulnerabilities, and alerts |
+| Activity | 738 | audit and operational events |
+| Bespoke | 3 | retained for source coverage but barred from authority |
+
+Based on exact provider method-and-path proof and auth support present in this Rust runtime, 33 sources and 238 families are authoritative; the other 761 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
+
+## Family cutover
+
+The first cutover unit is one tenant, source, and family. It does not move a whole connector or a whole tenant.
+
+```text
+source event
+    |
+    v
+append log commit
+    |
+    v
+PostgreSQL authority lookup
+    | legacy                     | rust
+    v                            v
+Go projector                Rust mapper
+                                 |
+                                 v
+                       PostgreSQL transaction
+                                 |
+                                 v
+                         Neo4j outbox apply
+```
+
+`cerebro-platform promote-family` evaluates stored parity receipts and records Rust authority. `cerebro-platform show-authority` reads the effective record. Both use `CEREBRO_POSTGRES_DSN` plus `CEREBRO_TENANT_ID`, `CEREBRO_SOURCE_ID`, and `CEREBRO_SOURCE_FAMILY`.
 
 ## Performance shape
 

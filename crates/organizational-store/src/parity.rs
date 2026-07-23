@@ -7,13 +7,13 @@ use std::{
 use cerebro_organizational_model::{
     EntityAuthority, EntityKind, GraphAssertion, GraphDelta, IdentityBindingState,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 const MAX_FACT_PART_BYTES: usize = 4_096;
 const MAX_MISMATCHES_IN_RECEIPT: usize = 100;
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SemanticFactKind {
     Entity,
@@ -54,7 +54,7 @@ impl SemanticFactKind {
 
 /// A comparison fact is deliberately smaller than either projector's storage
 /// shape. It describes one meaning that must survive the migration.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct SemanticFact {
     kind: SemanticFactKind,
     parts: Vec<String>,
@@ -96,7 +96,7 @@ impl SemanticFact {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SemanticSnapshot {
     tenant_id: String,
     source_runtime_id: String,
@@ -311,14 +311,14 @@ impl SemanticSnapshot {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MismatchSide {
     LegacyOnly,
     RustOnly,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SemanticMismatch {
     side: MismatchSide,
     fact: SemanticFact,
@@ -334,7 +334,7 @@ impl SemanticMismatch {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ParityStatus {
     Match,
@@ -342,7 +342,7 @@ pub enum ParityStatus {
     Incomplete,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ParityReceipt {
     tenant_id: String,
     source_runtime_id: String,
@@ -459,6 +459,33 @@ impl ParityReceipt {
         complete: bool,
         compared_at_unix_ms: i64,
     ) -> Result<Self, ParityError> {
+        Self::compare_scoped(
+            "legacy-shadow",
+            "legacy-shadow",
+            source_id,
+            family_id,
+            corpus_id,
+            legacy_digest,
+            rust_digest,
+            complete,
+            compared_at_unix_ms,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn compare_scoped(
+        tenant_id: impl Into<String>,
+        source_runtime_id: impl Into<String>,
+        source_id: impl Into<String>,
+        family_id: impl Into<String>,
+        corpus_id: impl Into<String>,
+        legacy_digest: impl Into<String>,
+        rust_digest: impl Into<String>,
+        complete: bool,
+        compared_at_unix_ms: i64,
+    ) -> Result<Self, ParityError> {
+        let tenant_id = required(tenant_id.into(), "tenant_id")?;
+        let source_runtime_id = required(source_runtime_id.into(), "source_runtime_id")?;
         let source_id = required(source_id.into(), "source_id")?;
         let family_id = required(family_id.into(), "family_id")?;
         let collection_id = required(corpus_id.into(), "corpus_id")?;
@@ -476,8 +503,8 @@ impl ParityReceipt {
         };
         let mismatch_count = usize::from(status == ParityStatus::Mismatch);
         let mut receipt = Self {
-            tenant_id: "legacy-shadow".to_owned(),
-            source_runtime_id: "legacy-shadow".to_owned(),
+            tenant_id,
+            source_runtime_id,
             source_id,
             family_id,
             collection_id,

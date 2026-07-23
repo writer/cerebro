@@ -194,8 +194,11 @@ impl CatalogGraphMapper {
                 self.producer_version.clone(),
             )?;
             match family.projection().template() {
-                "group_membership" => {
+                "group_membership" | "identity_group_membership" => {
                     self.map_group_membership(batch, family, projected, provenance, &mut builder)?
+                }
+                "identity_app_assignment" => {
+                    self.map_app_assignment(batch, family, projected, provenance, &mut builder)?
                 }
                 "identity_user" => self.map_identity_user(
                     batch,
@@ -378,10 +381,80 @@ impl CatalogGraphMapper {
         builder.add_assertion(GraphAssertion::Relationship(assertion))?;
         Ok(())
     }
+
+    fn map_app_assignment<Mode>(
+        &self,
+        batch: &CollectedBatch,
+        family: &CompiledFamily,
+        projected: BTreeMap<String, String>,
+        provenance: AssertionProvenance,
+        builder: &mut GraphDeltaBuilder<Mode>,
+    ) -> Result<(), CatalogMapperError> {
+        let app_id =
+            first(&projected, &["app_id"]).ok_or_else(|| CatalogMapperError::MissingField {
+                family: family.id().to_owned(),
+                field: "app_id".to_owned(),
+            })?;
+        let application = Entity::provider(
+            batch.scope.receipt().tenant_id().clone(),
+            batch.scope.receipt().source_runtime_id().clone(),
+            ProviderKind::parse(format!("{}.identity_application", self.source.id()))?,
+            app_id,
+            EntityKind::Application,
+            first(&projected, &["app_name"]).unwrap_or(app_id),
+        )?;
+        let application = add_properties(application, projected.clone())?;
+        let subject_id = first(
+            &projected,
+            &["subject_id", "member_user_id", "user_id", "member_email"],
+        );
+        let (principal, target) = if let Some(subject_id) = subject_id {
+            let principal = add_properties(
+                ProviderIdentity::new(
+                    batch.scope.receipt().tenant_id().clone(),
+                    batch.scope.receipt().source_runtime_id().clone(),
+                    ProviderKind::parse(format!("{}.identity_user", self.source.id()))?,
+                    subject_id,
+                    first(&projected, &["member_name", "member_email"]).unwrap_or(subject_id),
+                )?
+                .into_entity(),
+                projected,
+            )?;
+            (principal, application)
+        } else {
+            let audience = first(&projected, &["audience"]).ok_or_else(|| {
+                CatalogMapperError::MissingField {
+                    family: family.id().to_owned(),
+                    field: "subject_id or audience".to_owned(),
+                }
+            })?;
+            let target = Entity::provider(
+                batch.scope.receipt().tenant_id().clone(),
+                batch.scope.receipt().source_runtime_id().clone(),
+                ProviderKind::parse(format!("{}.access_target", self.source.id()))?,
+                audience,
+                EntityKind::Resource,
+                audience,
+            )?;
+            (application, target)
+        };
+        let assertion = RelationshipAssertion::new(
+            &principal,
+            RelationKind::CanAccess,
+            &target,
+            provenance,
+            batch.scope.receipt().observed_at_unix_ms(),
+        )?;
+        builder.add_entity(principal)?;
+        builder.add_entity(target)?;
+        builder.add_assertion(GraphAssertion::Relationship(assertion))?;
+        Ok(())
+    }
 }
 
 fn projected_fields(family: &CompiledFamily, record: &SourceRecord) -> BTreeMap<String, String> {
-    let mut values = family.projection().static_fields().clone();
+    let mut values = record.fields.clone();
+    values.extend(family.projection().static_fields().clone());
     for (target, expression) in family.projection().fields() {
         if let Some(value) = expression
             .split('|')
@@ -558,6 +631,51 @@ mod tests {
             panic!("expected relationship")
         };
         assert_eq!(assertion.relation(), RelationKind::MemberOf);
+    }
+
+    #[test]
+    fn application_grant_becomes_an_application_to_resource_access_edge() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("auth0").unwrap().clone();
+        let batch = CollectedBatch {
+            scope: CollectedScope::Complete(
+                CompleteCollection::new(
+                    TenantId::parse("tenant-a").unwrap(),
+                    SourceRuntimeId::parse("auth0-prod").unwrap(),
+                    CollectionId::parse("collection-auth0-1").unwrap(),
+                    "auth0.client_grants",
+                    10,
+                )
+                .unwrap(),
+            ),
+            records: vec![SourceRecord {
+                observation_id: ObservationId::parse("observation-auth0-1").unwrap(),
+                family: "client_grants".to_owned(),
+                provider_kind: "auth0.client_grants".to_owned(),
+                provider_id: "grant-1".to_owned(),
+                fields: BTreeMap::from([
+                    ("app_id".to_owned(), "client-1".to_owned()),
+                    ("audience".to_owned(), "https://api.example.test".to_owned()),
+                ]),
+                payload: serde_json::json!({"id": "grant-1"}),
+            }],
+            next_cursor: None,
+        };
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+        assert_eq!(delta.entities().len(), 2);
+        assert_eq!(delta.assertions().len(), 1);
+        let GraphAssertion::Relationship(assertion) = &delta.assertions()[0] else {
+            panic!("expected relationship")
+        };
+        assert_eq!(assertion.relation(), RelationKind::CanAccess);
     }
 
     #[test]

@@ -63,6 +63,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	httpcompression "github.com/writer/cerebro/internal/sourcehttp/compression"
+	"github.com/writer/cerebro/internal/sourcehttp/organizationalgraph"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -75,6 +76,8 @@ type Dependencies struct {
 	AppendLog                   ports.AppendLog
 	StateStore                  ports.StateStore
 	GraphStore                  ports.GraphStore
+	GraphQueries                ports.GraphQueryStore
+	OrganizationalProjector     *organizationalgraph.ProjectionClient
 	GraphAgentLLM               graphagent.LLMClient
 	QueryCache                  querycache.Cache
 	FindingRules                *findings.Registry
@@ -240,7 +243,7 @@ func newWithOptions(cfg config.Config, deps Dependencies, sources *sourcecdk.Reg
 			app.dpopVerifier = dpop
 			app.riskScorer = riskScorer
 			app.observationStore = obsStore
-			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth, cfg.Auth.RequestOrigin, deps.AppendLog, sourceProjector(deps.StateStore, deps.GraphStore))
+			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth, cfg.Auth.RequestOrigin, deps.AppendLog, appendLogSourceProjector(deps))
 		}
 	}
 	if cfg.Auth.Enabled && len(cfg.Auth.APICredentials) > 0 && len(cfg.Auth.CapabilityTokenSecrets) > 0 {
@@ -676,7 +679,7 @@ func (s *bootstrapService) CheckHealth(ctx context.Context, _ *connect.Request[c
 func (s *bootstrapService) ListReportDefinitions(_ context.Context, _ *connect.Request[cerebrov1.ListReportDefinitionsRequest]) (*connect.Response[cerebrov1.ListReportDefinitionsResponse], error) {
 	return connect.NewResponse(reports.New(
 		findingStore(s.deps.StateStore),
-		graphQueryStore(s.deps.GraphStore),
+		dependencyGraphQueryStore(s.deps),
 		reportStore(s.deps.StateStore),
 	).List()), nil
 }
@@ -691,7 +694,7 @@ func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[c
 	}
 	response, err := reports.New(
 		findingStore(s.deps.StateStore),
-		graphQueryStore(s.deps.GraphStore),
+		dependencyGraphQueryStore(s.deps),
 		reportStore(s.deps.StateStore),
 	).Run(ctx, req.Msg)
 	if err != nil {
@@ -706,7 +709,7 @@ func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[c
 func (s *bootstrapService) GetReportRun(ctx context.Context, req *connect.Request[cerebrov1.GetReportRunRequest]) (*connect.Response[cerebrov1.GetReportRunResponse], error) {
 	response, err := reports.New(
 		findingStore(s.deps.StateStore),
-		graphQueryStore(s.deps.GraphStore),
+		dependencyGraphQueryStore(s.deps),
 		reportStore(s.deps.StateStore),
 	).Get(ctx, req.Msg)
 	if err != nil {
@@ -1268,7 +1271,7 @@ func (s *bootstrapService) GetEntityNeighborhood(ctx context.Context, req *conne
 		return nil, graphQueryConnectError(err)
 	}
 	response, err := graphquery.New(
-		graphQueryStore(s.deps.GraphStore),
+		dependencyGraphQueryStore(s.deps),
 	).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
 		RootURN: req.Msg.GetRootUrn(),
 		Limit:   req.Msg.GetLimit(),
@@ -2012,12 +2015,35 @@ func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) p
 	return sourceprojection.New(state, graph)
 }
 
+func appendLogSourceProjector(deps Dependencies) ports.SourceProjector {
+	legacy := sourceProjector(deps.StateStore, deps.GraphStore)
+	if deps.OrganizationalProjector == nil {
+		return legacy
+	}
+	return organizationalgraph.NewAppendLogProjector(legacy, deps.OrganizationalProjector)
+}
+
+func guardedLegacyGraphProjector(deps Dependencies) ports.SourceProjector {
+	legacy := sourceProjector(nil, deps.GraphStore)
+	if deps.OrganizationalProjector == nil {
+		return legacy
+	}
+	return organizationalgraph.NewLegacyWriteGuard(legacy, deps.OrganizationalProjector)
+}
+
 func graphQueryStore(store ports.GraphStore) ports.GraphQueryStore {
 	queryStore, ok := store.(ports.GraphQueryStore)
 	if !ok || isNilInterface(queryStore) {
 		return nil
 	}
 	return queryStore
+}
+
+func dependencyGraphQueryStore(deps Dependencies) ports.GraphQueryStore {
+	if !isNilInterface(deps.GraphQueries) {
+		return deps.GraphQueries
+	}
+	return graphQueryStore(deps.GraphStore)
 }
 
 func askTrajectoryStore(store ports.StateStore) ports.AskTrajectoryStore {

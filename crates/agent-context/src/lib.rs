@@ -313,6 +313,10 @@ pub trait AgentGraph: Send + Sync {
         entity_id: &EntityId,
     ) -> Result<ContextEntity, ContextError>;
 
+    /// Resolves either a native entity ID or a stable provider-facing key.
+    async fn resolve(&self, tenant_id: &TenantId, key: &str)
+    -> Result<ContextEntity, ContextError>;
+
     async fn expand(
         &self,
         tenant_id: &TenantId,
@@ -376,6 +380,25 @@ impl AgentGraph for MemoryAgentGraph {
     ) -> Result<ContextEntity, ContextError> {
         let graph = self.graph.read().await;
         AgentContext::new(&*graph).get(tenant_id, entity_id)
+    }
+
+    async fn resolve(
+        &self,
+        tenant_id: &TenantId,
+        key: &str,
+    ) -> Result<ContextEntity, ContextError> {
+        let graph = self.graph.read().await;
+        let context = AgentContext::new(&*graph);
+        if let Ok(entity_id) = EntityId::parse(key)
+            && let Ok(entity) = context.get(tenant_id, &entity_id)
+        {
+            return Ok(entity);
+        }
+        context
+            .search(tenant_id, "", &[], MAX_RESULTS)?
+            .into_iter()
+            .find(|entity| entity.properties.values().any(|property| property == key))
+            .ok_or(ContextError::EntityNotFound)
     }
 
     async fn expand(

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod cutover_command;
 mod parity_command;
 
 use std::{collections::BTreeMap, env, error::Error, path::PathBuf, sync::Arc};
@@ -16,22 +17,34 @@ use cerebro_agent_context::{
 };
 use cerebro_organizational_graph::OrganizationalGraph;
 use cerebro_organizational_model::{
-    AssertionId, AssertionProvenance, CanonicalIdentity, CollectionId, CompleteCollection, Entity,
-    EntityId, EntityKind, GraphAssertion, IdentityBindingAssertion, IdentityBindingState,
-    IdentityClaim, IdentityResolutionMethod, ObservationId, ObservationRef, ProviderIdentity,
-    ProviderKind, RelationKind, RelationshipAssertion, SourceRuntimeId, TenantId,
+    AssertionId, AssertionProvenance, CanonicalIdentity, CollectionId, CollectionReceipt,
+    CompleteCollection, Entity, EntityId, EntityKind, GraphAssertion, IdentityBindingAssertion,
+    IdentityBindingState, IdentityClaim, IdentityResolutionMethod, ModelError, ObservationId,
+    ObservationRef, ProviderIdentity, ProviderKind, RelationKind, RelationshipAssertion,
+    SourceRuntimeId, TenantId,
 };
-use cerebro_organizational_store::{DurableGraphStore, Neo4jProjector, PostgresLedger};
+use cerebro_organizational_store::{
+    DurableGraphStore, Neo4jProjector, PostgresLedger, ProjectionAuthority, StoreError,
+};
 use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
-    CatalogGraphMapper, CollectionRequest, HttpSourceConnector, ResolvedAuth, SourceRuntime,
+    CatalogGraphMapper, CollectedBatch, CollectedScope, CollectionRequest, GraphMapper, GraphSink,
+    HttpSourceConnector, ResolvedAuth, SourceRecord, SourceRuntime,
 };
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 #[derive(Clone)]
 struct AppState {
     graph: Arc<dyn AgentGraph>,
     catalog_summary: Option<CatalogSummary>,
+    projection: Option<Arc<ProjectionRuntime>>,
+}
+
+struct ProjectionRuntime {
+    catalog: SourceCatalog,
+    authority: PostgresLedger,
+    store: Mutex<DurableGraphStore>,
 }
 
 #[derive(Serialize)]
@@ -54,7 +67,8 @@ struct TenantQuery {
 #[derive(Deserialize)]
 struct ExpandRequest {
     tenant_id: String,
-    root_entity_id: String,
+    #[serde(alias = "root_entity_id")]
+    root_key: String,
     depth: usize,
     limit: usize,
 }
@@ -82,6 +96,38 @@ struct PathsResponse {
     paths: Vec<GraphPath>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProjectEventRequest {
+    tenant_id: String,
+    source_runtime_id: String,
+    source_id: String,
+    family_id: String,
+    event_id: String,
+    observed_at_unix_ms: i64,
+    append_log_committed: bool,
+    #[serde(default)]
+    attributes: BTreeMap<String, String>,
+    #[serde(default)]
+    payload: serde_json::Value,
+}
+
+#[derive(Serialize)]
+struct ProjectEventResponse {
+    authority: ProjectionAuthority,
+    projected: bool,
+    graph_revision: Option<u64>,
+    entities_upserted: usize,
+    assertions_upserted: usize,
+}
+
+#[derive(Deserialize)]
+struct ProjectionAuthorityQuery {
+    tenant_id: String,
+    source_id: String,
+    family_id: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     match env::args().nth(1).as_deref() {
@@ -93,9 +139,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("sync-source") => sync_source().await,
         Some("catalog-summary") => catalog_summary(),
         Some("compare-projection") => parity_command::compare_projection().await,
+        Some("promote-family") => cutover_command::promote_family().await,
+        Some("show-authority") => cutover_command::show_authority().await,
         Some("--help" | "-h") => {
             println!(
-                "cerebro-platform <demo|serve|serve-demo|serve-neo4j|migrate-stores|sync-source|catalog-summary|compare-projection>"
+                "cerebro-platform <demo|serve|serve-demo|serve-neo4j|migrate-stores|sync-source|catalog-summary|compare-projection|promote-family|show-authority>"
             );
             Ok(())
         }
@@ -104,7 +152,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 async fn serve_memory(graph: OrganizationalGraph) -> Result<(), Box<dyn Error>> {
-    serve(Arc::new(MemoryAgentGraph::new(graph))).await
+    serve(Arc::new(MemoryAgentGraph::new(graph)), None).await
 }
 
 async fn serve_neo4j() -> Result<(), Box<dyn Error>> {
@@ -113,7 +161,17 @@ async fn serve_neo4j() -> Result<(), Box<dyn Error>> {
     let password = required_env("CEREBRO_NEO4J_PASSWORD")?;
     let graph = Neo4jProjector::connect(&uri, &username, &password).await?;
     graph.migrate().await?;
-    serve(Arc::new(graph)).await
+    let connection_string = required_env("CEREBRO_POSTGRES_DSN")?;
+    let authority = PostgresLedger::connect_tls(&connection_string).await?;
+    authority.migrate().await?;
+    let store_ledger = PostgresLedger::connect_tls(&connection_string).await?;
+    store_ledger.migrate().await?;
+    let projection = ProjectionRuntime {
+        catalog: load_catalog()?,
+        authority,
+        store: Mutex::new(DurableGraphStore::new(store_ledger, graph.clone())),
+    };
+    serve(Arc::new(graph), Some(Arc::new(projection))).await
 }
 
 async fn migrate_stores() -> Result<(), Box<dyn Error>> {
@@ -196,13 +254,16 @@ fn resolved_auth(model: &AuthModel) -> Result<ResolvedAuth, Box<dyn Error>> {
     })
 }
 
-async fn serve(graph: Arc<dyn AgentGraph>) -> Result<(), Box<dyn Error>> {
+async fn serve(
+    graph: Arc<dyn AgentGraph>,
+    projection: Option<Arc<ProjectionRuntime>>,
+) -> Result<(), Box<dyn Error>> {
     let bind = env::var("CEREBRO_RUST_BIND").unwrap_or_else(|_| "127.0.0.1:8080".to_owned());
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     println!("cerebro Rust platform listening on {bind}");
     axum::serve(
         listener,
-        router_with_backend(graph, load_catalog_summary().ok()),
+        router_with_backend(graph, load_catalog_summary().ok(), projection),
     )
     .await?;
     Ok(())
@@ -210,12 +271,13 @@ async fn serve(graph: Arc<dyn AgentGraph>) -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 fn router(graph: OrganizationalGraph) -> Router {
-    router_with_backend(Arc::new(MemoryAgentGraph::new(graph)), None)
+    router_with_backend(Arc::new(MemoryAgentGraph::new(graph)), None, None)
 }
 
 fn router_with_backend(
     graph: Arc<dyn AgentGraph>,
     catalog_summary: Option<CatalogSummary>,
+    projection: Option<Arc<ProjectionRuntime>>,
 ) -> Router {
     Router::new()
         .route("/healthz", get(health))
@@ -225,10 +287,137 @@ fn router_with_backend(
         .route("/v1/graph/search", post(search))
         .route("/v1/graph/expand", post(expand))
         .route("/v1/graph/paths", post(find_paths))
+        .route("/v1/projections/events", post(project_event))
+        .route("/v1/projections/authority", get(projection_authority))
         .with_state(AppState {
             graph,
             catalog_summary,
+            projection,
         })
+}
+
+async fn projection_authority(
+    State(state): State<AppState>,
+    Query(query): Query<ProjectionAuthorityQuery>,
+) -> Result<
+    Json<cerebro_organizational_store::ProjectionAuthorityRecord>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    let runtime = state.projection.ok_or_else(|| {
+        service_unavailable(
+            "projection_runtime_unavailable",
+            "The organizational projection runtime is not configured.",
+        )
+    })?;
+    let tenant_id = parse_tenant(query.tenant_id)?;
+    runtime
+        .authority
+        .projection_authority(tenant_id.as_str(), &query.source_id, &query.family_id)
+        .await
+        .map(Json)
+        .map_err(store_error)
+}
+
+async fn project_event(
+    State(state): State<AppState>,
+    Json(request): Json<ProjectEventRequest>,
+) -> Result<Json<ProjectEventResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let runtime = state.projection.ok_or_else(|| {
+        service_unavailable(
+            "projection_runtime_unavailable",
+            "The organizational projection runtime is not configured.",
+        )
+    })?;
+    if !request.append_log_committed {
+        return Err(bad_request(
+            "append_log_required",
+            "The source event must be committed to the append log before projection.",
+        ));
+    }
+    if request.observed_at_unix_ms <= 0 {
+        return Err(bad_request(
+            "invalid_observed_at",
+            "observed_at_unix_ms must be positive.",
+        ));
+    }
+    let tenant_id = parse_tenant(request.tenant_id)?;
+    let authority = runtime
+        .authority
+        .projection_authority(tenant_id.as_str(), &request.source_id, &request.family_id)
+        .await
+        .map_err(store_error)?;
+    if authority.authority == ProjectionAuthority::Legacy {
+        return Ok(Json(ProjectEventResponse {
+            authority: ProjectionAuthority::Legacy,
+            projected: false,
+            graph_revision: None,
+            entities_upserted: 0,
+            assertions_upserted: 0,
+        }));
+    }
+    let source = runtime
+        .catalog
+        .get(&request.source_id)
+        .ok_or_else(|| bad_request("unknown_source", "The source is not in the catalog."))?
+        .clone();
+    let family = source
+        .families()
+        .iter()
+        .find(|family| family.id() == request.family_id)
+        .ok_or_else(|| bad_request("unknown_family", "The source family is not in the catalog."))?;
+    let source_runtime_id =
+        SourceRuntimeId::parse(request.source_runtime_id).map_err(model_error)?;
+    let observation_id = ObservationId::parse(request.event_id.clone()).map_err(model_error)?;
+    let collection_id =
+        CollectionId::parse(format!("event:{}", request.event_id)).map_err(model_error)?;
+    let scope = CollectedScope::NonAuthoritative(
+        CollectionReceipt::incremental(
+            tenant_id.clone(),
+            source_runtime_id,
+            collection_id,
+            format!("{}.{}", request.source_id, request.family_id),
+            request.observed_at_unix_ms,
+        )
+        .map_err(model_error)?,
+    );
+    let provider_id = event_provider_id(&request.attributes, &request.event_id);
+    let batch = CollectedBatch {
+        scope,
+        records: vec![SourceRecord {
+            observation_id,
+            family: request.family_id.clone(),
+            provider_kind: format!("{}.{}", request.source_id, family.projection().template()),
+            provider_id,
+            fields: request.attributes,
+            payload: request.payload,
+        }],
+        next_cursor: None,
+    };
+    let identity_resolution = runtime
+        .authority
+        .identity_resolution_snapshot(&tenant_id)
+        .await
+        .map_err(store_error)?;
+    let mapper = CatalogGraphMapper::new(source, env!("CARGO_PKG_VERSION"))
+        .map_err(|error| bad_request("projection_mapping_failed", error.to_string()))?
+        .with_identity_resolution(identity_resolution);
+    let delta = mapper
+        .map(&batch)
+        .map_err(|error| bad_request("projection_mapping_failed", error.to_string()))?;
+    let receipt = runtime
+        .store
+        .lock()
+        .await
+        .apply(&batch, delta)
+        .await
+        .map_err(store_error)?;
+    Ok(Json(ProjectEventResponse {
+        authority: ProjectionAuthority::Rust,
+        projected: true,
+        graph_revision: Some(receipt.graph_revision),
+        entities_upserted: receipt.entities_upserted,
+        assertions_upserted: receipt.assertions_upserted,
+    }))
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -302,11 +491,14 @@ async fn expand(
     Json(request): Json<ExpandRequest>,
 ) -> Result<Json<Neighborhood>, (StatusCode, Json<ErrorResponse>)> {
     let tenant_id = parse_tenant(request.tenant_id)?;
-    let root_id = EntityId::parse(request.root_entity_id)
-        .map_err(|error| bad_request("invalid_entity_id", error.to_string()))?;
+    let root = state
+        .graph
+        .resolve(&tenant_id, &request.root_key)
+        .await
+        .map_err(context_error)?;
     state
         .graph
-        .expand(&tenant_id, &root_id, request.depth, request.limit)
+        .expand(&tenant_id, &root.entity_id, request.depth, request.limit)
         .await
         .map(Json)
         .map_err(context_error)
@@ -353,10 +545,58 @@ fn context_error(error: ContextError) -> (StatusCode, Json<ErrorResponse>) {
     }
 }
 
-fn bad_request(code: &'static str, message: String) -> (StatusCode, Json<ErrorResponse>) {
+fn event_provider_id(attributes: &BTreeMap<String, String>, fallback: &str) -> String {
+    for key in [
+        "resource_id",
+        "user_id",
+        "group_id",
+        "repository_id",
+        "finding_id",
+        "alert_id",
+        "policy_id",
+        "id",
+        "external_id",
+    ] {
+        if let Some(value) = attributes.get(key)
+            && !value.trim().is_empty()
+        {
+            return value.clone();
+        }
+    }
+    fallback.to_owned()
+}
+
+fn model_error(error: ModelError) -> (StatusCode, Json<ErrorResponse>) {
+    bad_request("invalid_projection_event", error.to_string())
+}
+
+fn store_error(error: StoreError) -> (StatusCode, Json<ErrorResponse>) {
+    service_unavailable("projection_store_unavailable", error.to_string())
+}
+
+fn service_unavailable(
+    code: &'static str,
+    message: impl Into<String>,
+) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(ErrorResponse {
+            code,
+            message: message.into(),
+        }),
+    )
+}
+
+fn bad_request(
+    code: &'static str,
+    message: impl Into<String>,
+) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
-        Json(ErrorResponse { code, message }),
+        Json(ErrorResponse {
+            code,
+            message: message.into(),
+        }),
     )
 }
 
@@ -382,7 +622,7 @@ fn load_catalog_summary() -> Result<CatalogSummary, Box<dyn Error>> {
 fn load_catalog() -> Result<SourceCatalog, Box<dyn Error>> {
     let root = env::var("CEREBRO_REPOSITORY_ROOT")
         .map(PathBuf::from)
-        .unwrap_or(env::current_dir()?);
+        .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."));
     Ok(SourceCatalog::load(
         root.join("internal/connectorcatalog/catalog"),
         root.join("sources"),
@@ -482,6 +722,8 @@ fn demo_graph() -> Result<(OrganizationalGraph, TenantId, EntityId), Box<dyn Err
 
 #[cfg(test)]
 mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -508,7 +750,7 @@ mod tests {
 
         let request = serde_json::json!({
             "tenant_id": "tenant-demo",
-            "root_entity_id": root_id.as_str(),
+            "root_key": root_id.as_str(),
             "depth": 7,
             "limit": 100
         });
@@ -524,5 +766,110 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable PostgreSQL and Neo4j instances"]
+    async fn promoted_box_family_projects_only_through_rust() {
+        let postgres_dsn = env::var("CEREBRO_TEST_POSTGRES_DSN").unwrap();
+        let authority = PostgresLedger::connect_tls(&postgres_dsn).await.unwrap();
+        authority.migrate().await.unwrap();
+        let store_ledger = PostgresLedger::connect_tls(&postgres_dsn).await.unwrap();
+        store_ledger.migrate().await.unwrap();
+        let graph = Neo4jProjector::connect(
+            &env::var("CEREBRO_TEST_NEO4J_URI").unwrap(),
+            &env::var("CEREBRO_TEST_NEO4J_USERNAME").unwrap(),
+            &env::var("CEREBRO_TEST_NEO4J_PASSWORD").unwrap(),
+        )
+        .await
+        .unwrap();
+        graph.migrate().await.unwrap();
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+            .to_string();
+        let tenant_id = format!("platform-cutover-{suffix}");
+        for index in 1..=3 {
+            authority
+                .record_parity(
+                    &cerebro_organizational_store::ParityReceipt::compare_scoped(
+                        tenant_id.clone(),
+                        "box-runtime",
+                        "box",
+                        "content_assets",
+                        format!("corpus-{suffix}-{index}"),
+                        "sha256:equal",
+                        "sha256:equal",
+                        true,
+                        index,
+                    )
+                    .unwrap(),
+                )
+                .await
+                .unwrap();
+        }
+        let catalog = load_catalog().unwrap();
+        authority
+            .evaluate_and_promote_projection_authority(
+                &catalog,
+                &cerebro_organizational_store::ProjectionPromotionRequest::new(
+                    tenant_id.clone(),
+                    "box",
+                    "content_assets",
+                    cerebro_organizational_store::CutoverPolicy::new(3, 0).unwrap(),
+                    0,
+                    100,
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        let runtime = Arc::new(ProjectionRuntime {
+            catalog,
+            authority,
+            store: Mutex::new(DurableGraphStore::new(store_ledger, graph.clone())),
+        });
+        let app = router_with_backend(Arc::new(graph.clone()), None, Some(runtime));
+        let resource_urn = format!("urn:cerebro:{tenant_id}:runtime_file:asset-1");
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/projections/events")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "tenant_id": tenant_id.clone(),
+                            "source_runtime_id": "box-runtime",
+                            "source_id": "box",
+                            "family_id": "content_assets",
+                            "event_id": "event-1",
+                            "observed_at_unix_ms": 100,
+                            "append_log_committed": true,
+                            "attributes": {
+                                "resource_id": "asset-1",
+                                "resource_name": "Architecture",
+                                "resource_type": "file",
+                                "resource_urn": resource_urn.clone()
+                            },
+                            "payload": {
+                                "id": "asset-1",
+                                "name": "Architecture",
+                                "type": "file",
+                                "resource_urn": resource_urn.clone()
+                            }
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let tenant = TenantId::parse(tenant_id).unwrap();
+        let entity = graph.resolve(&tenant, &resource_urn).await.unwrap();
+        assert_eq!(entity.label, "Architecture");
+        assert_eq!(entity.properties.get("resource_urn"), Some(&resource_urn));
     }
 }

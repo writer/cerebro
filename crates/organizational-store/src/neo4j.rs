@@ -24,6 +24,7 @@ SET entity.entity_kind = row.entity_kind,
     entity.authority_json = row.authority_json,
     entity.label = row.label,
     entity.properties_json = row.properties_json,
+    entity.external_id = row.external_id,
     entity.graph_revision = row.graph_revision
 "#;
 
@@ -67,6 +68,7 @@ SET revision.graph_revision = $graph_revision,
 const NEO4J_SCHEMA: &[&str] = &[
     "CREATE CONSTRAINT organizational_entity_identity IF NOT EXISTS FOR (entity:OrganizationalEntity) REQUIRE (entity.tenant_id, entity.entity_id) IS UNIQUE",
     "CREATE CONSTRAINT organizational_revision_tenant IF NOT EXISTS FOR (revision:OrganizationalGraphRevision) REQUIRE revision.tenant_id IS UNIQUE",
+    "CREATE INDEX organizational_entity_external_id IF NOT EXISTS FOR (entity:OrganizationalEntity) ON (entity.tenant_id, entity.external_id)",
     "CREATE INDEX organizational_relation_identity IF NOT EXISTS FOR ()-[assertion:ORGANIZATIONAL_RELATION]-() ON (assertion.tenant_id, assertion.assertion_id)",
     "CREATE INDEX organizational_relation_kind IF NOT EXISTS FOR ()-[assertion:ORGANIZATIONAL_RELATION]-() ON (assertion.tenant_id, assertion.relation)",
 ];
@@ -222,6 +224,36 @@ impl AgentGraph for Neo4jProjector {
             .map_err(context_backend)?
             .ok_or(ContextError::EntityNotFound)?;
         context_entity(&row)
+    }
+
+    async fn resolve(
+        &self,
+        tenant_id: &TenantId,
+        key: &str,
+    ) -> Result<ContextEntity, ContextError> {
+        let mut stream = self
+            .graph
+            .execute(
+                query(
+                    "MATCH (entity:OrganizationalEntity {tenant_id: $tenant_id}) WHERE entity.entity_id = $key OR entity.external_id = $key RETURN entity.entity_id AS entity_id, entity.entity_kind AS entity_kind, entity.authority_json AS authority_json, entity.label AS label, entity.properties_json AS properties_json ORDER BY entity.entity_id LIMIT 2",
+                )
+                .param("tenant_id", tenant_id.as_str())
+                .param("key", key.trim()),
+            )
+            .await
+            .map_err(context_backend)?;
+        let row = stream
+            .next()
+            .await
+            .map_err(context_backend)?
+            .ok_or(ContextError::EntityNotFound)?;
+        let entity = context_entity(&row)?;
+        if stream.next().await.map_err(context_backend)?.is_some() {
+            return Err(ContextError::BackendUnavailable(
+                "external entity key is ambiguous".to_owned(),
+            ));
+        }
+        Ok(entity)
     }
 
     async fn expand(
@@ -472,6 +504,10 @@ fn entity_row(commit: &ProjectionCommit, entity: &ProjectionEntity) -> BoltMap {
         ("authority_json", entity.authority_json.clone().into()),
         ("label", entity.label.clone().into()),
         ("properties_json", entity.properties_json.clone().into()),
+        (
+            "external_id",
+            entity.external_id.clone().unwrap_or_default().into(),
+        ),
         ("graph_revision", revision_value(commit.graph_revision)),
     ])
 }

@@ -139,12 +139,17 @@ pub enum Pagination {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Projection {
+    class: ProjectionClass,
     template: String,
     fields: BTreeMap<String, String>,
     static_fields: BTreeMap<String, String>,
 }
 
 impl Projection {
+    pub fn class(&self) -> ProjectionClass {
+        self.class
+    }
+
     pub fn template(&self) -> &str {
         &self.template
     }
@@ -155,6 +160,50 @@ impl Projection {
 
     pub fn static_fields(&self) -> &BTreeMap<String, String> {
         &self.static_fields
+    }
+}
+
+/// The closed semantic lanes a source family may project into.
+///
+/// Connector YAML cannot add a new lane. A new projection shape must first be
+/// represented here and implemented by the Rust mapper.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectionClass {
+    Identity,
+    Access,
+    Resource,
+    Finding,
+    Activity,
+    Bespoke,
+}
+
+impl ProjectionClass {
+    fn for_template(template: &str) -> Option<Self> {
+        Some(match template {
+            "identity_user"
+            | "identity_group"
+            | "group_membership"
+            | "identity_group_membership"
+            | "identity_credential"
+            | "identity_application" => Self::Identity,
+            "identity_app_assignment" | "policy" => Self::Access,
+            "asset"
+            | "cloud_resource"
+            | "deployment"
+            | "endpoint_device"
+            | "repository"
+            | "secret"
+            | "evidence_cas_reference" => Self::Resource,
+            "alert" | "finding" | "vulnerability" => Self::Finding,
+            "audit_event" => Self::Activity,
+            "" => Self::Bespoke,
+            _ => return None,
+        })
+    }
+
+    pub fn can_be_authoritative(self) -> bool {
+        self != Self::Bespoke
     }
 }
 
@@ -252,6 +301,7 @@ pub struct CatalogSummary {
     pub authoritative_sources: usize,
     pub authoritative_families: usize,
     pub shadow_only_sources: usize,
+    pub projection_classes: BTreeMap<ProjectionClass, usize>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -312,12 +362,19 @@ impl SourceCatalog {
             .flat_map(|source| &source.families)
             .filter(|family| family.authoritative)
             .count();
+        let mut projection_classes = BTreeMap::new();
+        for family in self.sources.values().flat_map(|source| &source.families) {
+            *projection_classes
+                .entry(family.projection.class())
+                .or_insert(0) += 1;
+        }
         CatalogSummary {
             sources: self.sources.len(),
             families,
             authoritative_sources,
             authoritative_families,
             shadow_only_sources: self.sources.len() - authoritative_sources,
+            projection_classes,
         }
     }
 }
@@ -516,6 +573,15 @@ fn compile_family(
             &format!("family {} projection template is required", family.id),
         );
     }
+    let template = projection.template.trim().to_owned();
+    let projection_class =
+        ProjectionClass::for_template(&template).ok_or_else(|| CatalogError::Invalid {
+            path: path.to_path_buf(),
+            message: format!(
+                "family {} has unsupported projection template {}",
+                family.id, template
+            ),
+        })?;
     let record_selector = if !family.record_selector.trim().is_empty() {
         family.record_selector
     } else if !family.list_key.trim().is_empty() {
@@ -542,7 +608,8 @@ fn compile_family(
         static_query: family.static_query,
         pagination: compile_pagination(path, family.pagination)?,
         projection: Projection {
-            template: projection.template,
+            class: projection_class,
+            template,
             fields: projection.fields,
             static_fields: projection.static_fields,
         },
@@ -793,6 +860,34 @@ mod tests {
         let summary = catalog.summary();
         assert_eq!(summary.sources, 794);
         assert_eq!(summary.families, 3_891);
+        assert_eq!(
+            summary.projection_classes.values().sum::<usize>(),
+            summary.families
+        );
+        assert_eq!(
+            summary
+                .projection_classes
+                .get(&ProjectionClass::Bespoke)
+                .copied()
+                .unwrap_or_default(),
+            3
+        );
+        for class in [
+            ProjectionClass::Identity,
+            ProjectionClass::Access,
+            ProjectionClass::Resource,
+            ProjectionClass::Finding,
+            ProjectionClass::Activity,
+        ] {
+            assert!(
+                summary
+                    .projection_classes
+                    .get(&class)
+                    .copied()
+                    .unwrap_or_default()
+                    > 0
+            );
+        }
         assert!(summary.authoritative_sources > 0);
         assert!(summary.authoritative_sources < summary.sources);
         assert_eq!(

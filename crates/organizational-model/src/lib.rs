@@ -631,7 +631,7 @@ impl RelationKind {
             }
             Self::CanAssume => matches!(from, Identity | Role) && matches!(to, Role),
             Self::CanAccess => {
-                matches!(from, Identity | Group | Role)
+                matches!(from, Identity | Group | Role | Application | Service)
                     && matches!(
                         to,
                         Repository | Service | Application | Account | Resource | Environment

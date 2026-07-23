@@ -61,6 +61,7 @@ type Config struct {
 	AppendLog             AppendLogConfig
 	StateStore            StateStoreConfig
 	GraphStore            GraphStoreConfig
+	OrganizationalGraph   OrganizationalGraphConfig
 	GraphAgentLLM         GraphAgentLLMConfig
 	Cache                 CacheConfig
 	Auth                  AuthConfig
@@ -144,6 +145,12 @@ type GraphStoreConfig struct {
 	Neo4jQueryTimeout               time.Duration
 	Neo4jProjectionBatchSize        int
 	Neo4jProjectionWriteConcurrency int
+}
+
+// OrganizationalGraphConfig controls the Rust-owned bounded graph read plane.
+type OrganizationalGraphConfig struct {
+	BaseURL       string
+	ShadowTimeout time.Duration
 }
 
 // CacheConfig controls optional shared query/response caching.
@@ -480,6 +487,9 @@ func Load() (Config, error) {
 			Neo4jPassword: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_PASSWORD")),
 			Neo4jDatabase: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_DATABASE")),
 		},
+		OrganizationalGraph: OrganizationalGraphConfig{
+			BaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_ORGANIZATIONAL_GRAPH_URL")), "/"),
+		},
 		Cache: CacheConfig{
 			Driver:    strings.ToLower(strings.TrimSpace(os.Getenv("CEREBRO_CACHE_MODE"))),
 			URL:       strings.TrimSpace(os.Getenv("CEREBRO_CACHE_URL")),
@@ -648,6 +658,21 @@ func Load() (Config, error) {
 	}
 	if cfg.GraphAgentLLM.MaxTokens, err = parseIntEnv("CEREBRO_GRAPH_AGENT_LLM_MAX_TOKENS", 0); err != nil {
 		return Config{}, err
+	}
+	if cfg.OrganizationalGraph.ShadowTimeout, err = parseDurationEnv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_TIMEOUT", time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.OrganizationalGraph.ShadowTimeout <= 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_TIMEOUT must be greater than zero")
+	}
+	if cfg.OrganizationalGraph.BaseURL != "" {
+		parsed, parseErr := url.Parse(cfg.OrganizationalGraph.BaseURL)
+		if parseErr != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
+			return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_URL must be an http or https origin without credentials")
+		}
+		if parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_URL must not include a path, query, or fragment")
+		}
 	}
 	if cfg.GraphAgentLLM.Temperature, err = parseFloatEnv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", 0); err != nil {
 		return Config{}, err

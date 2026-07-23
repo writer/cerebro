@@ -27,6 +27,73 @@ impl CutoverPolicy {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectionPromotionRequest {
+    tenant_id: String,
+    source_id: String,
+    family_id: String,
+    policy: CutoverPolicy,
+    projection_lag: u64,
+    promoted_at_unix_ms: i64,
+}
+
+impl ProjectionPromotionRequest {
+    pub fn new(
+        tenant_id: impl Into<String>,
+        source_id: impl Into<String>,
+        family_id: impl Into<String>,
+        policy: CutoverPolicy,
+        projection_lag: u64,
+        promoted_at_unix_ms: i64,
+    ) -> Result<Self, CutoverError> {
+        let tenant_id = checked_text(tenant_id.into(), "tenant_id")?;
+        let source_id = checked_text(source_id.into(), "source_id")?;
+        let family_id = checked_text(family_id.into(), "family_id")?;
+        if promoted_at_unix_ms <= 0 {
+            return Err(CutoverError::Invalid("promoted_at_unix_ms"));
+        }
+        Ok(Self {
+            tenant_id,
+            source_id,
+            family_id,
+            policy,
+            projection_lag,
+            promoted_at_unix_ms,
+        })
+    }
+
+    pub(crate) fn tenant_id(&self) -> &str {
+        &self.tenant_id
+    }
+
+    pub(crate) fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    pub(crate) fn family_id(&self) -> &str {
+        &self.family_id
+    }
+
+    pub(crate) fn policy(&self) -> CutoverPolicy {
+        self.policy
+    }
+
+    pub(crate) fn projection_lag(&self) -> u64 {
+        self.projection_lag
+    }
+
+    pub(crate) fn promoted_at_unix_ms(&self) -> i64 {
+        self.promoted_at_unix_ms
+    }
+}
+
+fn checked_text(value: String, field: &'static str) -> Result<String, CutoverError> {
+    if value.is_empty() || value.trim() != value {
+        return Err(CutoverError::Invalid(field));
+    }
+    Ok(value)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct CutoverDecision {
     source_id: String,
@@ -34,6 +101,23 @@ pub struct CutoverDecision {
     allowed: bool,
     reasons: Vec<String>,
     evidence_digest: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectionAuthority {
+    Legacy,
+    Rust,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProjectionAuthorityRecord {
+    pub tenant_id: String,
+    pub source_id: String,
+    pub family_id: String,
+    pub authority: ProjectionAuthority,
+    pub evidence_digest: String,
+    pub promoted_at_unix_ms: Option<i64>,
 }
 
 impl CutoverDecision {
@@ -109,6 +193,9 @@ impl CutoverGate {
             .ok_or_else(|| CutoverError::UnknownSource(format!("{source_id}/{family_id}")))?;
         if !family.is_authoritative() {
             reasons.push("provider method and path proof is incomplete".to_owned());
+        }
+        if !family.projection().class().can_be_authoritative() {
+            reasons.push("projection class requires a native Rust mapper".to_owned());
         }
         if projection_lag > self.policy.max_projection_lag {
             reasons.push(format!(

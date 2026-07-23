@@ -14,6 +14,7 @@ import (
 	graphstoreneo4j "github.com/writer/cerebro/internal/graphstore/neo4j"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/querycache"
+	"github.com/writer/cerebro/internal/sourcehttp/organizationalgraph"
 	statestorepostgres "github.com/writer/cerebro/internal/statestore/postgres"
 )
 
@@ -85,6 +86,29 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		})
 	default:
 		return fail(fmt.Errorf("unsupported graph store driver %q", cfg.GraphStore.Driver))
+	}
+	if cfg.OrganizationalGraph.BaseURL != "" {
+		projectionClient, err := organizationalgraph.NewProjectionClient(
+			cfg.OrganizationalGraph.BaseURL,
+			cfg.OrganizationalGraph.ShadowTimeout,
+		)
+		if err != nil {
+			return fail(fmt.Errorf("open Rust organizational graph projection: %w", err))
+		}
+		deps.OrganizationalProjector = projectionClient
+		primary, ok := deps.GraphStore.(ports.GraphQueryStore)
+		if !ok || isNilInterface(primary) {
+			return fail(errors.New("Rust organizational graph shadowing requires a configured graph query store"))
+		}
+		shadow, err := organizationalgraph.NewShadowQueryStore(
+			primary,
+			cfg.OrganizationalGraph.BaseURL,
+			cfg.OrganizationalGraph.ShadowTimeout,
+		)
+		if err != nil {
+			return fail(fmt.Errorf("open Rust organizational graph shadow: %w", err))
+		}
+		deps.GraphQueries = shadow
 	}
 	if err := pingDependency(ctx, "append log", deps.AppendLog); err != nil {
 		return fail(err)
