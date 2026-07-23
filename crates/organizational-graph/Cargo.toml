@@ -7,7 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
-cerebro-organizational-model = { path = "../organizational-model" }
+cerebro-organizational-model.workspace = true
 serde.workspace = true
 
 [lints]

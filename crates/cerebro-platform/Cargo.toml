@@ -8,12 +8,12 @@ publish = false
 
 [dependencies]
 axum.workspace = true
-cerebro-agent-context = { path = "../agent-context" }
-cerebro-organizational-graph = { path = "../organizational-graph" }
-cerebro-organizational-model = { path = "../organizational-model" }
-cerebro-organizational-store = { path = "../organizational-store" }
-cerebro-source-catalog = { path = "../source-catalog" }
-cerebro-source-runtime-next = { path = "../source-runtime-next" }
+cerebro-agent-context.workspace = true
+cerebro-organizational-graph.workspace = true
+cerebro-organizational-model.workspace = true
+cerebro-organizational-store.workspace = true
+cerebro-source-catalog.workspace = true
+cerebro-source-runtime-next.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

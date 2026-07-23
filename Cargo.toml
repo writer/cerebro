@@ -28,6 +28,12 @@ license = "Apache-2.0"
 [workspace.dependencies]
 axum = "0.8.9"
 async-trait = "0.1.91"
+cerebro-agent-context = { version = "0.1.0", path = "crates/agent-context" }
+cerebro-organizational-graph = { version = "0.1.0", path = "crates/organizational-graph" }
+cerebro-organizational-model = { version = "0.1.0", path = "crates/organizational-model" }
+cerebro-organizational-store = { version = "0.1.0", path = "crates/organizational-store" }
+cerebro-source-catalog = { version = "0.1.0", path = "crates/source-catalog" }
+cerebro-source-runtime-next = { version = "0.1.0", path = "crates/source-runtime-next" }
 cerebro-wasm-guest = { version = "0.1.0", path = "internal/wasmguest" }
 ciborium = "0.2.2"
 libc = "0.2.180"
