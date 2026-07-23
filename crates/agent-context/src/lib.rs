@@ -412,11 +412,23 @@ impl AgentGraph for MemoryAgentGraph {
     ) -> Result<Vec<ContextEntity>, ContextError> {
         validate_limit(limit)?;
         let graph = self.graph.read().await;
-        let mut entities = AgentContext::new(&*graph).search(tenant_id, query, &[], MAX_RESULTS)?;
-        if !kinds.is_empty() {
-            entities.retain(|entity| kinds.contains(&entity.entity_kind));
+        let query = query.trim().to_lowercase();
+        let mut entities = Vec::new();
+        for entity in graph.entities(tenant_id) {
+            let entity = ContextEntity::from_domain(&entity);
+            if !kinds.is_empty() && !kinds.contains(&entity.entity_kind) {
+                continue;
+            }
+            if query.is_empty()
+                || entity.label.to_lowercase().contains(&query)
+                || entity.entity_id.as_str().to_lowercase().contains(&query)
+            {
+                entities.push(entity);
+                if entities.len() == limit {
+                    break;
+                }
+            }
         }
-        entities.truncate(limit);
         Ok(entities)
     }
 
@@ -435,17 +447,24 @@ impl AgentGraph for MemoryAgentGraph {
         key: &str,
     ) -> Result<ContextEntity, ContextError> {
         let graph = self.graph.read().await;
-        let context = AgentContext::new(&*graph);
-        if let Ok(entity_id) = EntityId::parse(key)
-            && let Ok(entity) = context.get(tenant_id, &entity_id)
-        {
-            return Ok(entity);
-        }
-        context
-            .search(tenant_id, "", &[], MAX_RESULTS)?
+        let key = key.trim();
+        let mut matches = graph
+            .entities(tenant_id)
             .into_iter()
-            .find(|entity| entity.properties.values().any(|property| property == key))
-            .ok_or(ContextError::EntityNotFound)
+            .filter(|entity| {
+                entity.id().as_str() == key
+                    || entity.agent_key() == key
+                    || entity.properties().values().any(|property| property == key)
+            })
+            .take(2)
+            .map(|entity| ContextEntity::from_domain(&entity));
+        let entity = matches.next().ok_or(ContextError::EntityNotFound)?;
+        if matches.next().is_some() {
+            return Err(ContextError::BackendUnavailable(
+                "external entity key is ambiguous".to_owned(),
+            ));
+        }
+        Ok(entity)
     }
 
     async fn expand(
@@ -673,6 +692,56 @@ mod tests {
             Err(ContextError::InvalidRootKey)
         );
         assert!(validate_root_keys(&["root".to_owned()]).is_ok());
+    }
+
+    #[tokio::test]
+    async fn memory_graph_filters_before_the_bound_and_resolves_derived_agent_keys() {
+        let tenant = TenantId::parse("tenant-memory").unwrap();
+        let collection = CompleteCollection::new(
+            tenant.clone(),
+            SourceRuntimeId::parse("memory-test").unwrap(),
+            CollectionId::parse("memory-search-collection").unwrap(),
+            "memory.search",
+            10,
+        )
+        .unwrap();
+        let mut builder = collection.begin_delta();
+        for index in 0..501 {
+            builder
+                .add_entity(
+                    Entity::canonical(
+                        tenant.clone(),
+                        EntityId::parse(format!("service-{index:04}")).unwrap(),
+                        EntityKind::Service,
+                        format!("Service {index}"),
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+        }
+        let person = Entity::canonical(
+            tenant.clone(),
+            EntityId::parse("zz-person").unwrap(),
+            EntityKind::Person,
+            "Person Beyond Internal Bound",
+        )
+        .unwrap();
+        let agent_key = person.agent_key();
+        builder.add_entity(person.clone()).unwrap();
+        let mut graph = OrganizationalGraph::new();
+        graph.apply(builder.build()).unwrap();
+        let graph = MemoryAgentGraph::new(graph);
+
+        let found = graph
+            .search(&tenant, "", &["person".to_owned()], 10)
+            .await
+            .unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].entity_id, person.id().clone());
+
+        let resolved = graph.resolve(&tenant, &agent_key).await.unwrap();
+        assert_eq!(resolved.entity_id, person.id().clone());
+        assert_eq!(resolved.agent_key, agent_key);
     }
 
     #[test]

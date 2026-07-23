@@ -55,6 +55,15 @@ impl fmt::Display for StoreError {
 
 impl Error for StoreError {}
 
+impl StoreError {
+    pub fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::Postgres(_) | Self::Neo4j(_) | Self::ProjectionPending { .. }
+        )
+    }
+}
+
 impl From<tokio_postgres::Error> for StoreError {
     fn from(value: tokio_postgres::Error) -> Self {
         Self::Postgres(value)
@@ -123,5 +132,35 @@ impl GraphSink for DurableGraphStore {
             )
             .await?;
         Ok(commit.receipt)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cerebro_organizational_graph::GraphWriteReceipt;
+    use cerebro_organizational_model::TenantId;
+
+    use super::StoreError;
+
+    #[test]
+    fn retryability_separates_transient_backends_from_permanent_data_errors() {
+        let serialization =
+            serde_json::from_str::<serde_json::Value>("{").expect_err("invalid JSON");
+        assert!(!StoreError::Serialization(serialization).is_retryable());
+        assert!(!StoreError::Conflict("identity conflict".to_owned()).is_retryable());
+        assert!(
+            StoreError::ProjectionPending {
+                receipt: GraphWriteReceipt {
+                    tenant_id: TenantId::parse("tenant-a").unwrap(),
+                    graph_revision: 1,
+                    delta_digest: "digest".to_owned(),
+                    entities_upserted: 1,
+                    assertions_upserted: 1,
+                    assertions_retracted: 0,
+                },
+                message: "neo4j unavailable".to_owned(),
+            }
+            .is_retryable()
+        );
     }
 }

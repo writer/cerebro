@@ -4577,6 +4577,27 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	}
 }
 
+func TestBootstrapHealthDegradesWhenRustGraphReadAuthorityIsUnavailable(t *testing.T) {
+	const rawDependencyError = "rust graph unavailable at http://internal-graph:8081"
+	response := publicHealthResponse(context.Background(), Dependencies{
+		GraphStore:   &stubGraphStore{},
+		GraphQueries: &stubGraphStore{err: errors.New(rawDependencyError)},
+	})
+	if response.GetStatus() != "degraded" {
+		t.Fatalf("health status = %q, want degraded", response.GetStatus())
+	}
+	if len(response.GetComponents()) != 4 {
+		t.Fatalf("health components = %d, want 4", len(response.GetComponents()))
+	}
+	component := response.GetComponents()[3]
+	if component.GetName() != "organizational_graph" || component.GetStatus() != "error" {
+		t.Fatalf("organizational graph component = %#v", component)
+	}
+	if component.GetDetail() != "unhealthy" || component.GetDetail() == rawDependencyError {
+		t.Fatalf("organizational graph detail = %q, want sanitized detail", component.GetDetail())
+	}
+}
+
 func TestBootstrapReadinessReturnsUnavailableWhenDegraded(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		StateStore: stubStore{err: errors.New("state store unavailable")},

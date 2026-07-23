@@ -415,11 +415,28 @@ fn apply_query(
     page: usize,
     offset: usize,
 ) {
+    if matches!(
+        pagination,
+        Pagination::Link { .. } | Pagination::NextUrl { .. }
+    ) {
+        let retained = url
+            .query_pairs()
+            .filter(|(key, _)| !static_query.contains_key(key.as_ref()))
+            .map(|(key, value)| (key.into_owned(), value.into_owned()))
+            .collect::<Vec<_>>();
+        let mut query = url.query_pairs_mut();
+        query.clear();
+        query.extend_pairs(retained);
+        query.extend_pairs(static_query);
+        return;
+    }
+
     let mut query = url.query_pairs_mut();
     query.clear();
     query.extend_pairs(static_query);
     match pagination {
-        Pagination::None | Pagination::Link { .. } | Pagination::NextUrl { .. } => {}
+        Pagination::None => {}
+        Pagination::Link { .. } | Pagination::NextUrl { .. } => unreachable!(),
         Pagination::Cursor {
             parameter,
             page_size_parameter,
@@ -586,6 +603,39 @@ mod tests {
             next_link_url("<https://example.test/users?page=2>; rel=\"next\"").as_deref(),
             Some("https://example.test/users?page=2")
         );
+    }
+
+    #[test]
+    fn provider_owned_next_page_query_survives_static_query_merge() {
+        let static_query = BTreeMap::from([
+            ("include".to_owned(), "profile".to_owned()),
+            ("tenant".to_owned(), "configured".to_owned()),
+        ]);
+        for pagination in [
+            Pagination::Link {
+                header: "link".to_owned(),
+            },
+            Pagination::NextUrl {
+                response_path: "$.next".to_owned(),
+            },
+        ] {
+            let mut url =
+                Url::parse("https://provider.example/users?cursor=next&tenant=provider").unwrap();
+            apply_query(&mut url, &static_query, &pagination, None, 0, 0);
+            let query = url.query_pairs().collect::<BTreeMap<_, _>>();
+            assert_eq!(
+                query.get("cursor").map(|value| value.as_ref()),
+                Some("next")
+            );
+            assert_eq!(
+                query.get("include").map(|value| value.as_ref()),
+                Some("profile")
+            );
+            assert_eq!(
+                query.get("tenant").map(|value| value.as_ref()),
+                Some("configured")
+            );
+        }
     }
 
     #[tokio::test]

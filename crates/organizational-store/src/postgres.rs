@@ -197,6 +197,26 @@ BEGIN
 END $$;
 "#;
 
+const IDENTITY_CLAIM_REPLACEMENT_QUERY: &str = r#"
+SELECT assertion_id
+FROM organizational_assertions
+WHERE tenant_id = $1
+  AND to_entity_id = $2
+  AND relation = 'represents'
+  AND active = TRUE
+  AND assertion_json->>'assertion_type' = 'identity_binding'
+  AND assertion_json->>'state' = 'confirmed'
+  AND assertion_json->>'method' IN (
+    'authoritative_employee_id',
+    'verified_email',
+    'human_decision'
+  )
+  AND assertion_json->'claim'->>'kind' = $3
+  AND assertion_json->'claim'->>'value' = $4
+ORDER BY assertion_id
+LIMIT 1
+"#;
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct ProjectionEntity {
     pub entity_id: String,
@@ -635,13 +655,13 @@ impl PostgresLedger {
                             &[&tenant_id, &from_entity_id],
                         )
                         .await?;
-                }
-                transaction
-                    .execute(
-                        "DELETE FROM organizational_identity_claims WHERE tenant_id = $1 AND assertion_id = $2",
-                        &[&tenant_id, &retraction.assertion_id().as_str()],
+                    replace_or_delete_identity_claim(
+                        &transaction,
+                        tenant_id,
+                        retraction.assertion_id().as_str(),
                     )
                     .await?;
+                }
             }
         }
 
@@ -854,6 +874,53 @@ async fn upsert_identity_binding(
             "provider identity {} already has another canonical identity",
             binding.provider_identity()
         )));
+    }
+    Ok(())
+}
+
+async fn replace_or_delete_identity_claim(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    retracted_assertion_id: &str,
+) -> Result<(), StoreError> {
+    let claim = transaction
+        .query_opt(
+            "SELECT claim_kind, claim_value, canonical_identity_id FROM organizational_identity_claims WHERE tenant_id = $1 AND assertion_id = $2",
+            &[&tenant_id, &retracted_assertion_id],
+        )
+        .await?;
+    let Some(claim) = claim else {
+        return Ok(());
+    };
+    let claim_kind: String = claim.get(0);
+    let claim_value: String = claim.get(1);
+    let canonical_identity_id: String = claim.get(2);
+    let replacement = transaction
+        .query_opt(
+            IDENTITY_CLAIM_REPLACEMENT_QUERY,
+            &[
+                &tenant_id,
+                &canonical_identity_id,
+                &claim_kind,
+                &claim_value,
+            ],
+        )
+        .await?;
+    if let Some(replacement) = replacement {
+        let replacement_assertion_id: String = replacement.get(0);
+        transaction
+            .execute(
+                "UPDATE organizational_identity_claims SET assertion_id = $3 WHERE tenant_id = $1 AND assertion_id = $2",
+                &[&tenant_id, &retracted_assertion_id, &replacement_assertion_id],
+            )
+            .await?;
+    } else {
+        transaction
+            .execute(
+                "DELETE FROM organizational_identity_claims WHERE tenant_id = $1 AND assertion_id = $2",
+                &[&tenant_id, &retracted_assertion_id],
+            )
+            .await?;
     }
     Ok(())
 }
@@ -1078,6 +1145,10 @@ fn enum_name<T: Serialize>(value: &T) -> Result<String, StoreError> {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+
+    use tokio_postgres::NoTls;
+
     use super::*;
 
     #[test]
@@ -1093,5 +1164,123 @@ mod tests {
         ] {
             assert!(POSTGRES_SCHEMA.contains(required), "missing {required}");
         }
+        for required in [
+            "active = TRUE",
+            "assertion_json->>'state' = 'confirmed'",
+            "'authoritative_employee_id'",
+            "'verified_email'",
+            "'human_decision'",
+            "assertion_json->'claim'->>'kind'",
+            "assertion_json->'claim'->>'value'",
+        ] {
+            assert!(
+                IDENTITY_CLAIM_REPLACEMENT_QUERY.contains(required),
+                "claim replacement query missing {required}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable PostgreSQL"]
+    async fn retracting_one_assertion_keeps_a_claim_backed_by_another_active_assertion() {
+        let postgres_dsn = env::var("CEREBRO_TEST_POSTGRES_DSN").unwrap();
+        let (client, connection) = tokio_postgres::connect(&postgres_dsn, NoTls).await.unwrap();
+        tokio::spawn(async move {
+            connection.await.expect("PostgreSQL test connection");
+        });
+        let ledger = PostgresLedger::from_client(client);
+        ledger.migrate().await.unwrap();
+
+        let mut client = ledger.client.lock().await;
+        let transaction = client.transaction().await.unwrap();
+        let tenant_id = "tenant-claim-retraction";
+        set_tenant(&transaction, tenant_id).await.unwrap();
+        for entity_id in ["provider-old", "provider-new", "person:canonical:person-1"] {
+            transaction
+                .execute(
+                    "INSERT INTO organizational_entities (tenant_id, entity_id, entity_json, last_graph_revision) VALUES ($1, $2, $3, 1) ON CONFLICT (tenant_id, entity_id) DO NOTHING",
+                    &[&tenant_id, &entity_id, &serde_json::json!({"label": entity_id})],
+                )
+                .await
+                .unwrap();
+        }
+        for (assertion_id, provider_id) in [
+            ("identity-binding-old", "provider-old"),
+            ("identity-binding-new", "provider-new"),
+        ] {
+            let source_runtime_id = format!("runtime-{provider_id}");
+            let assertion_json = serde_json::json!({
+                "assertion_type": "identity_binding",
+                "state": "confirmed",
+                "method": "verified_email",
+                "claim": {
+                    "kind": "verified_email",
+                    "value": "person@example.com"
+                }
+            });
+            transaction
+                .execute(
+                    "INSERT INTO organizational_assertions (tenant_id, assertion_id, source_runtime_id, from_entity_id, to_entity_id, relation, assertion_json, active, last_graph_revision) VALUES ($1, $2, $3, $4, $5, 'represents', $6, TRUE, 1) ON CONFLICT (tenant_id, assertion_id) DO UPDATE SET active = TRUE",
+                    &[
+                        &tenant_id,
+                        &assertion_id,
+                        &source_runtime_id,
+                        &provider_id,
+                        &"person:canonical:person-1",
+                        &assertion_json,
+                    ],
+                )
+                .await
+                .unwrap();
+        }
+        transaction
+            .execute(
+                "INSERT INTO organizational_identity_claims (tenant_id, claim_kind, claim_value, canonical_identity_id, assertion_id) VALUES ($1, 'verified_email', 'person@example.com', 'person:canonical:person-1', 'identity-binding-new') ON CONFLICT (tenant_id, claim_kind, claim_value) DO UPDATE SET assertion_id = EXCLUDED.assertion_id",
+                &[&tenant_id],
+            )
+            .await
+            .unwrap();
+        transaction
+            .execute(
+                "UPDATE organizational_assertions SET active = FALSE WHERE tenant_id = $1 AND assertion_id = 'identity-binding-new'",
+                &[&tenant_id],
+            )
+            .await
+            .unwrap();
+
+        replace_or_delete_identity_claim(&transaction, tenant_id, "identity-binding-new")
+            .await
+            .unwrap();
+        let replacement: String = transaction
+            .query_one(
+                "SELECT assertion_id FROM organizational_identity_claims WHERE tenant_id = $1 AND claim_value = 'person@example.com'",
+                &[&tenant_id],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(replacement, "identity-binding-old");
+
+        transaction
+            .execute(
+                "UPDATE organizational_assertions SET active = FALSE WHERE tenant_id = $1 AND assertion_id = 'identity-binding-old'",
+                &[&tenant_id],
+            )
+            .await
+            .unwrap();
+        replace_or_delete_identity_claim(&transaction, tenant_id, "identity-binding-old")
+            .await
+            .unwrap();
+        assert!(
+            transaction
+                .query_opt(
+                    "SELECT assertion_id FROM organizational_identity_claims WHERE tenant_id = $1 AND claim_value = 'person@example.com'",
+                    &[&tenant_id],
+                )
+                .await
+                .unwrap()
+                .is_none()
+        );
+        transaction.rollback().await.unwrap();
     }
 }

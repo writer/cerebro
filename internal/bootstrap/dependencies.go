@@ -119,6 +119,9 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 	if err := pingDependency(ctx, "graph store", deps.GraphStore); err != nil {
 		return fail(err)
 	}
+	if err := pingDependency(ctx, "organizational graph", deps.GraphQueries); err != nil {
+		return fail(err)
+	}
 	switch cfg.Cache.Driver {
 	case "", config.CacheDriverOff:
 	case config.CacheDriverMemory:

@@ -56,7 +56,7 @@ enum ProjectionFailure {
 
 impl ProjectionFailure {
     fn is_retryable(&self) -> bool {
-        matches!(self, Self::Store(_))
+        matches!(self, Self::Store(error) if error.is_retryable())
     }
 }
 
