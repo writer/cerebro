@@ -167,7 +167,6 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
         let mut seen = BTreeSet::from([root_id.clone()]);
         let mut frontier = BTreeSet::from([root_id.clone()]);
         let mut selected_edges = Vec::new();
-        let mut truncated = false;
 
         for _ in 0..depth {
             let mut next = BTreeSet::new();
@@ -182,23 +181,26 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
                     if seen.insert(candidate.clone()) {
                         next.insert(candidate.clone());
                     }
-                    if seen.len() >= limit {
-                        truncated = true;
-                        break;
-                    }
                 }
             }
             frontier = next;
-            if frontier.is_empty() || truncated {
+            if frontier.is_empty() {
                 break;
             }
         }
 
         selected_edges.sort_by(|left, right| left.assertion_id.cmp(&right.assertion_id));
         selected_edges.dedup_by(|left, right| left.assertion_id == right.assertion_id);
+        let truncated = selected_edges.len() > limit;
+        selected_edges.truncate(limit);
+        let retained_entities = selected_edges
+            .iter()
+            .flat_map(|edge| [&edge.from, &edge.to])
+            .cloned()
+            .collect::<BTreeSet<_>>();
         let entities = all_entities
             .into_iter()
-            .filter(|entity| seen.contains(entity.id()) && entity.id() != root_id)
+            .filter(|entity| retained_entities.contains(entity.id()) && entity.id() != root_id)
             .map(|entity| ContextEntity::from_domain(&entity))
             .collect();
         Ok(Neighborhood {
@@ -333,6 +335,9 @@ pub trait AgentGraph: Send + Sync {
     async fn resolve(&self, tenant_id: &TenantId, key: &str)
     -> Result<ContextEntity, ContextError>;
 
+    /// Returns at most `limit` assertion edges and only the entity endpoints
+    /// needed to interpret those edges. `truncated` is true only when another
+    /// reachable edge exists beyond that bound.
     async fn expand(
         &self,
         tenant_id: &TenantId,
@@ -622,6 +627,18 @@ mod tests {
         }
         let mut graph = OrganizationalGraph::new();
         graph.apply(builder.build()).unwrap();
+
+        let bounded = AgentContext::new(&graph)
+            .expand(&tenant, team.id(), 4, 2)
+            .unwrap();
+        assert_eq!(bounded.edges.len(), 2);
+        assert!(bounded.truncated);
+        assert!(bounded.entities.len() <= 3);
+        let exact = AgentContext::new(&graph)
+            .expand(&tenant, team.id(), 4, 3)
+            .unwrap();
+        assert_eq!(exact.edges.len(), 3);
+        assert!(!exact.truncated);
 
         let paths = AgentContext::new(&graph)
             .find_paths(&tenant, team.id(), environment.id(), 4, 10)

@@ -18,6 +18,13 @@ type queryStoreStub struct {
 	neighborhood *ports.EntityNeighborhood
 }
 
+type assertionQueryStoreStub struct {
+	queryStoreStub
+	coverageTenant    string
+	coverageRelations []string
+	migrationRequest  ports.ProjectionAssertionMigrationRequest
+}
+
 func (s queryStoreStub) Ping(context.Context) error { return nil }
 
 func (s queryStoreStub) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
@@ -26,6 +33,17 @@ func (s queryStoreStub) GetEntityNeighborhood(context.Context, string, int) (*po
 
 func (s queryStoreStub) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
 	return []ports.CypherRow{{Values: map[string]any{"authority": "go"}}}, nil
+}
+
+func (s *assertionQueryStoreStub) CountProjectedLinksMissingAssertions(_ context.Context, tenantID string, relations []string) (uint32, error) {
+	s.coverageTenant = tenantID
+	s.coverageRelations = append([]string(nil), relations...)
+	return 7, nil
+}
+
+func (s *assertionQueryStoreStub) MigrateProjectedLinkAssertions(_ context.Context, request ports.ProjectionAssertionMigrationRequest) (ports.ProjectionAssertionMigrationResult, error) {
+	s.migrationRequest = request
+	return ports.ProjectionAssertionMigrationResult{LinksMatched: 7, LinksMigrated: 6, LinksQuarantined: 1}, nil
 }
 
 func TestQueryStoreReturnsRustNeighborhoodAndDelegatesRawCypher(t *testing.T) {
@@ -99,6 +117,47 @@ func TestQueryStoreFailsClosedWhenRustIsUnavailable(t *testing.T) {
 	}
 	if errors.Is(err, ports.ErrGraphEntityNotFound) {
 		t.Fatalf("GetEntityNeighborhood() error = %v, want unavailable", err)
+	}
+}
+
+func TestQueryStorePreservesProjectionAssertionCapabilities(t *testing.T) {
+	compatibility := &assertionQueryStoreStub{}
+	store, err := NewQueryStore(compatibility, "http://127.0.0.1:1", time.Second)
+	if err != nil {
+		t.Fatalf("NewQueryStore() error = %v", err)
+	}
+	missing, err := store.CountProjectedLinksMissingAssertions(context.Background(), "tenant-a", []string{"owns", "runs_in"})
+	if err != nil || missing != 7 {
+		t.Fatalf("CountProjectedLinksMissingAssertions() = %d, %v", missing, err)
+	}
+	if compatibility.coverageTenant != "tenant-a" || len(compatibility.coverageRelations) != 2 {
+		t.Fatalf("coverage delegation = %q, %#v", compatibility.coverageTenant, compatibility.coverageRelations)
+	}
+	request := ports.ProjectionAssertionMigrationRequest{
+		TenantID:  "tenant-a",
+		Relations: []string{"owns"},
+		Limit:     100,
+		DryRun:    true,
+	}
+	result, err := store.MigrateProjectedLinkAssertions(context.Background(), request)
+	if err != nil || result.LinksMatched != 7 || result.LinksMigrated != 6 || result.LinksQuarantined != 1 {
+		t.Fatalf("MigrateProjectedLinkAssertions() = %#v, %v", result, err)
+	}
+	if compatibility.migrationRequest.TenantID != request.TenantID || !compatibility.migrationRequest.DryRun {
+		t.Fatalf("migration delegation = %#v", compatibility.migrationRequest)
+	}
+}
+
+func TestQueryStoreFailsClosedWithoutProjectionAssertionCapabilities(t *testing.T) {
+	store, err := NewQueryStore(queryStoreStub{}, "http://127.0.0.1:1", time.Second)
+	if err != nil {
+		t.Fatalf("NewQueryStore() error = %v", err)
+	}
+	if _, err := store.CountProjectedLinksMissingAssertions(context.Background(), "tenant-a", nil); err == nil {
+		t.Fatal("CountProjectedLinksMissingAssertions() error = nil")
+	}
+	if _, err := store.MigrateProjectedLinkAssertions(context.Background(), ports.ProjectionAssertionMigrationRequest{TenantID: "tenant-a"}); err == nil {
+		t.Fatal("MigrateProjectedLinkAssertions() error = nil")
 	}
 }
 

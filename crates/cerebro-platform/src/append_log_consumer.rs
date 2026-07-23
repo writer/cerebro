@@ -15,6 +15,12 @@ const DEFAULT_CONSUMER: &str = "organizational-graph-v1";
 const ACK_WAIT: Duration = Duration::from_secs(120);
 const RETRY_DELAY: Duration = Duration::from_secs(30);
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FailureDisposition {
+    Retry,
+    Reject,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ConsumerConfig {
     nats_url: String,
@@ -85,38 +91,12 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
             message.double_ack().await.map_err(consumer_io)?;
             continue;
         }
-        let event = match CommittedSourceEvent::decode(&message.message.payload) {
-            Ok(Some(event)) if event.source_id() == subject_source => event,
-            Ok(Some(event)) => {
-                message
-                    .ack_with(AckKind::Nak(Some(RETRY_DELAY)))
-                    .await
-                    .map_err(consumer_io)?;
-                return Err(format!(
-                    "append-log subject source {subject_source} does not match envelope source {}",
-                    event.source_id()
-                )
-                .into());
-            }
-            Ok(None) => {
-                message
-                    .ack_with(AckKind::Nak(Some(RETRY_DELAY)))
-                    .await
-                    .map_err(consumer_io)?;
-                return Err(format!(
-                    "append-log subject {subject} is catalog-owned but has no source envelope"
-                )
-                .into());
-            }
+        let event = match decode_event(&message.message.payload, subject_source, &subject) {
+            Ok(event) => event,
             Err(error) => {
-                message
-                    .ack_with(AckKind::Nak(Some(RETRY_DELAY)))
-                    .await
-                    .map_err(consumer_io)?;
-                return Err(format!(
-                    "append-log subject {subject} failed the committed source boundary: {error}"
-                )
-                .into());
+                eprintln!("organizational append-log message rejected: {error}");
+                message.double_ack().await.map_err(consumer_io)?;
+                continue;
             }
         };
         match runtime.project_committed(event).await {
@@ -132,28 +112,54 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                     );
                 }
             }
-            Err(error) if error.is_retryable() => {
-                eprintln!(
-                    "organizational append-log projection retry subject={subject} error={error}"
-                );
-                message
-                    .ack_with(AckKind::Nak(Some(RETRY_DELAY)))
-                    .await
-                    .map_err(consumer_io)?;
-            }
-            Err(error) => {
-                message
-                    .ack_with(AckKind::Nak(Some(RETRY_DELAY)))
-                    .await
-                    .map_err(consumer_io)?;
-                return Err(format!(
-                    "append-log subject {subject} violates the compiled projection contract: {error}"
-                )
-                .into());
-            }
+            Err(error) => match failure_disposition(error.is_retryable()) {
+                FailureDisposition::Retry => {
+                    eprintln!(
+                        "organizational append-log projection retry subject={subject} error={error}"
+                    );
+                    message
+                        .ack_with(AckKind::Nak(Some(RETRY_DELAY)))
+                        .await
+                        .map_err(consumer_io)?;
+                }
+                FailureDisposition::Reject => {
+                    eprintln!(
+                        "organizational append-log projection rejected subject={subject} error={error}"
+                    );
+                    message.double_ack().await.map_err(consumer_io)?;
+                }
+            },
         }
     }
     Err("organizational append-log consumer stopped receiving messages".into())
+}
+
+fn decode_event(
+    payload: &[u8],
+    subject_source: &str,
+    subject: &str,
+) -> Result<CommittedSourceEvent, String> {
+    match CommittedSourceEvent::decode(payload) {
+        Ok(Some(event)) if event.source_id() == subject_source => Ok(event),
+        Ok(Some(event)) => Err(format!(
+            "append-log subject source {subject_source} does not match envelope source {}",
+            event.source_id()
+        )),
+        Ok(None) => Err(format!(
+            "append-log subject {subject} is catalog-owned but has no source envelope"
+        )),
+        Err(error) => Err(format!(
+            "append-log subject {subject} failed the committed source boundary: {error}"
+        )),
+    }
+}
+
+fn failure_disposition(retryable: bool) -> FailureDisposition {
+    if retryable {
+        FailureDisposition::Retry
+    } else {
+        FailureDisposition::Reject
+    }
 }
 
 fn validate_server_config(
@@ -267,5 +273,12 @@ mod tests {
         assert!(validate_server_config(&actual, &expected).is_ok());
         actual.max_deliver = 5;
         assert!(validate_server_config(&actual, &expected).is_err());
+    }
+
+    #[test]
+    fn poison_messages_are_rejected_while_transient_failures_are_retried() {
+        assert!(decode_event(b"not-a-source-envelope", "box", "events.box.users").is_err());
+        assert_eq!(failure_disposition(false), FailureDisposition::Reject);
+        assert_eq!(failure_disposition(true), FailureDisposition::Retry);
     }
 }

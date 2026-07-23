@@ -145,6 +145,22 @@ func (s *QueryStore) ExecuteReadCypher(ctx context.Context, request ports.Cypher
 	return s.compatibility.ExecuteReadCypher(ctx, request)
 }
 
+func (s *QueryStore) CountProjectedLinksMissingAssertions(ctx context.Context, tenantID string, relations []string) (uint32, error) {
+	store, ok := s.compatibility.(ports.ProjectionAssertionCoverageStore)
+	if !ok {
+		return 0, errors.New("compatibility graph store does not support projection assertion coverage")
+	}
+	return store.CountProjectedLinksMissingAssertions(ctx, tenantID, relations)
+}
+
+func (s *QueryStore) MigrateProjectedLinkAssertions(ctx context.Context, request ports.ProjectionAssertionMigrationRequest) (ports.ProjectionAssertionMigrationResult, error) {
+	store, ok := s.compatibility.(ports.ProjectionAssertionMigrator)
+	if !ok {
+		return ports.ProjectionAssertionMigrationResult{}, errors.New("compatibility graph store does not support projection assertion migration")
+	}
+	return store.MigrateProjectedLinkAssertions(ctx, request)
+}
+
 type expandRequest struct {
 	TenantID string `json:"tenant_id"`
 	RootKey  string `json:"root_key"`

@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     error::Error,
     fmt,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use async_trait::async_trait;
@@ -10,13 +10,17 @@ use cerebro_organizational_model::{
     CollectionId, CollectionReceipt, CompleteCollection, ModelError, ObservationId,
 };
 use cerebro_source_catalog::{AuthModel, CompiledFamily, CompiledSource, HttpMethod, Pagination};
-use reqwest::{Client, StatusCode, Url, header::LINK};
+use futures_util::StreamExt;
+use reqwest::{Client, Response, StatusCode, Url, header::LINK};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::{CollectedBatch, CollectedScope, CollectionRequest, SourceConnector, SourceRecord};
 
 const MAX_PAGES: usize = 10_000;
+const MAX_RESPONSE_BYTES: usize = 16 << 20;
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ResolvedAuth {
@@ -103,10 +107,7 @@ impl HttpSourceConnector {
             let path = format!("{}/", base_url.path());
             base_url.set_path(&path);
         }
-        let client = Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .map_err(HttpConnectorError::Request)?;
+        let client = build_client(REQUEST_TIMEOUT, CONNECT_TIMEOUT)?;
         Ok(Self {
             client,
             source,
@@ -179,7 +180,7 @@ impl SourceConnector for HttpSourceConnector {
                 .get(LINK)
                 .and_then(|value| value.to_str().ok())
                 .and_then(next_link_url);
-            let body: Value = response.json().await.map_err(HttpConnectorError::Request)?;
+            let body = read_bounded_json(response).await?;
             let selected = select_records(&body, self.family.record_selector())?;
             let selected_count = selected.len();
             for value in selected {
@@ -296,6 +297,55 @@ impl SourceConnector for HttpSourceConnector {
             next_cursor: cursor,
         })
     }
+}
+
+fn build_client(
+    request_timeout: Duration,
+    connect_timeout: Duration,
+) -> Result<Client, HttpConnectorError> {
+    Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(request_timeout)
+        .connect_timeout(connect_timeout)
+        .build()
+        .map_err(HttpConnectorError::Request)
+}
+
+async fn read_bounded_json(response: Response) -> Result<Value, HttpConnectorError> {
+    read_bounded_json_with_limit(response, MAX_RESPONSE_BYTES).await
+}
+
+async fn read_bounded_json_with_limit(
+    response: Response,
+    max_response_bytes: usize,
+) -> Result<Value, HttpConnectorError> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > max_response_bytes as u64)
+    {
+        return Err(response_too_large(max_response_bytes));
+    }
+    let mut stream = response.bytes_stream();
+    let mut body = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(HttpConnectorError::Request)?;
+        let next_len = body
+            .len()
+            .checked_add(chunk.len())
+            .ok_or_else(|| response_too_large(max_response_bytes))?;
+        if next_len > max_response_bytes {
+            return Err(response_too_large(max_response_bytes));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&body)
+        .map_err(|error| HttpConnectorError::InvalidResponse(error.to_string()))
+}
+
+fn response_too_large(max_response_bytes: usize) -> HttpConnectorError {
+    HttpConnectorError::InvalidResponse(format!(
+        "provider response exceeds the {max_response_bytes}-byte limit"
+    ))
 }
 
 fn validate_auth(expected: &AuthModel, actual: &ResolvedAuth) -> Result<(), HttpConnectorError> {
@@ -508,7 +558,10 @@ fn hex(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::{
+        path::{Path, PathBuf},
+        time::Duration,
+    };
 
     use cerebro_organizational_model::{SourceRuntimeId, TenantId};
     use cerebro_source_catalog::SourceCatalog;
@@ -582,5 +635,86 @@ mod tests {
         assert!(matches!(batch.scope, CollectedScope::Complete(_)));
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "user-1");
+    }
+
+    #[tokio::test]
+    async fn provider_response_is_rejected_before_declared_oversize_body_is_read() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let _ = socket.read(&mut request).await.unwrap();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                MAX_RESPONSE_BYTES + 1
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let response = build_client(Duration::from_secs(1), Duration::from_secs(1))
+            .unwrap()
+            .get(format!("http://{address}"))
+            .send()
+            .await
+            .unwrap();
+        let error = read_bounded_json(response).await.unwrap_err();
+        server.await.unwrap();
+        assert!(error.to_string().contains("exceeds"));
+    }
+
+    #[tokio::test]
+    async fn provider_request_timeout_also_bounds_a_stalled_response_body() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let _ = socket.read(&mut request).await.unwrap();
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n",
+                )
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        });
+
+        let response = build_client(Duration::from_millis(50), Duration::from_millis(50))
+            .unwrap()
+            .get(format!("http://{address}"))
+            .send()
+            .await
+            .unwrap();
+        let error = read_bounded_json(response).await.unwrap_err();
+        server.await.unwrap();
+        assert!(matches!(error, HttpConnectorError::Request(_)));
+    }
+
+    #[tokio::test]
+    async fn chunked_provider_response_is_bounded_without_a_content_length() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let _ = socket.read(&mut request).await.unwrap();
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n10\r\n0123456789abcdef\r\n0\r\n\r\n",
+                )
+                .await
+                .unwrap();
+        });
+
+        let response = build_client(Duration::from_secs(1), Duration::from_secs(1))
+            .unwrap()
+            .get(format!("http://{address}"))
+            .send()
+            .await
+            .unwrap();
+        let error = read_bounded_json_with_limit(response, 8).await.unwrap_err();
+        server.await.unwrap();
+        assert!(error.to_string().contains("8-byte limit"));
     }
 }

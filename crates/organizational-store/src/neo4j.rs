@@ -79,7 +79,7 @@ CALL {
   OPTIONAL MATCH (root)-[edge:ORGANIZATIONAL_RELATION]-(neighbor:OrganizationalEntity)
   WITH root_key, match_count, root, edge
   ORDER BY edge.assertion_id
-  LIMIT $limit
+  LIMIT $row_limit
   RETURN match_count, root, edge, startNode(edge) AS source, endNode(edge) AS target
 }
 OPTIONAL MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id})
@@ -106,6 +106,18 @@ RETURN root_key,
        coalesce(revision.graph_revision, 0) AS graph_revision
 ORDER BY root_key, assertion_id
 "#;
+
+fn expand_statement(depth: usize) -> String {
+    format!(
+        "MATCH path=(root:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $root_id}})-[:ORGANIZATIONAL_RELATION*1..{depth}]-(node:OrganizationalEntity) WITH relationships(path) AS relations UNWIND relations AS edge WITH DISTINCT edge MATCH (source)-[edge]->(target) WHERE source.tenant_id = $tenant_id AND target.tenant_id = $tenant_id RETURN source.entity_id AS from_id, source.entity_kind AS from_kind, source.authority_json AS from_authority, source.label AS from_label, source.properties_json AS from_properties, target.entity_id AS to_id, target.entity_kind AS to_kind, target.authority_json AS to_authority, target.label AS to_label, target.properties_json AS to_properties, edge.assertion_id AS assertion_id, edge.relation AS relation, edge.source_runtime_id AS source_runtime_id ORDER BY assertion_id LIMIT $row_limit"
+    )
+}
+
+fn paths_statement(max_depth: usize) -> String {
+    format!(
+        "MATCH path=(source:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $from_id}})-[:ORGANIZATIONAL_RELATION*1..{max_depth}]->(target:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $to_id}}) WHERE all(node IN nodes(path) WHERE node.tenant_id = $tenant_id) AND all(node IN nodes(path) WHERE single(other IN nodes(path) WHERE other = node)) RETURN [node IN nodes(path) | node.entity_id] AS entity_ids, [node IN nodes(path) | node.entity_kind] AS entity_kinds, [node IN nodes(path) | node.authority_json] AS authorities, [node IN nodes(path) | node.label] AS labels, [node IN nodes(path) | node.properties_json] AS properties, [edge IN relationships(path) | edge.assertion_id] AS assertion_ids, [edge IN relationships(path) | edge.relation] AS relations, [edge IN relationships(path) | edge.source_runtime_id] AS runtime_ids ORDER BY length(path), assertion_ids LIMIT $limit"
+    )
+}
 
 const NEO4J_SCHEMA: &[&str] = &[
     "CREATE CONSTRAINT organizational_entity_identity IF NOT EXISTS FOR (entity:OrganizationalEntity) REQUIRE (entity.tenant_id, entity.entity_id) IS UNIQUE",
@@ -307,16 +319,14 @@ impl AgentGraph for Neo4jProjector {
     ) -> Result<Neighborhood, ContextError> {
         validate_bounds(depth, limit)?;
         let root = self.get(tenant_id, root_id).await?;
-        let statement = format!(
-            "MATCH path=(root:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $root_id}})-[:ORGANIZATIONAL_RELATION*1..{depth}]-(node:OrganizationalEntity) WITH relationships(path) AS relations UNWIND relations AS edge WITH DISTINCT edge MATCH (source)-[edge]->(target) WHERE source.tenant_id = $tenant_id AND target.tenant_id = $tenant_id RETURN source.entity_id AS from_id, source.entity_kind AS from_kind, source.authority_json AS from_authority, source.label AS from_label, source.properties_json AS from_properties, target.entity_id AS to_id, target.entity_kind AS to_kind, target.authority_json AS to_authority, target.label AS to_label, target.properties_json AS to_properties, edge.assertion_id AS assertion_id, edge.relation AS relation, edge.source_runtime_id AS source_runtime_id ORDER BY assertion_id LIMIT $limit"
-        );
+        let statement = expand_statement(depth);
         let mut stream = self
             .graph
             .execute(
                 query(&statement)
                     .param("tenant_id", tenant_id.as_str())
                     .param("root_id", root_id.as_str())
-                    .param("limit", i64::try_from(limit).unwrap_or(500)),
+                    .param("row_limit", row_limit(limit)),
             )
             .await
             .map_err(context_backend)?;
@@ -339,8 +349,9 @@ impl AgentGraph for Neo4jProjector {
                 identity_binding: row_string(&row, "relation")? == "represents",
             });
         }
+        let truncated = truncate_to_limit(&mut edges, limit);
+        retain_edge_entities(&mut entities, &edges);
         entities.remove(root_id);
-        let truncated = edges.len() == limit;
         Ok(Neighborhood {
             tenant_id: tenant_id.clone(),
             graph_revision: self.revision(tenant_id).await?,
@@ -389,9 +400,7 @@ impl AgentGraph for Neo4jProjector {
         limit: usize,
     ) -> Result<Vec<GraphPath>, ContextError> {
         validate_bounds(max_depth, limit)?;
-        let statement = format!(
-            "MATCH path=(source:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $from_id}})-[:ORGANIZATIONAL_RELATION*1..{max_depth}]->(target:OrganizationalEntity {{tenant_id: $tenant_id, entity_id: $to_id}}) RETURN [node IN nodes(path) | node.entity_id] AS entity_ids, [node IN nodes(path) | node.entity_kind] AS entity_kinds, [node IN nodes(path) | node.authority_json] AS authorities, [node IN nodes(path) | node.label] AS labels, [node IN nodes(path) | node.properties_json] AS properties, [edge IN relationships(path) | edge.assertion_id] AS assertion_ids, [edge IN relationships(path) | edge.relation] AS relations, [edge IN relationships(path) | edge.source_runtime_id] AS runtime_ids ORDER BY length(path), assertion_ids LIMIT $limit"
-        );
+        let statement = paths_statement(max_depth);
         let mut stream = self
             .graph
             .execute(
@@ -502,7 +511,7 @@ impl Neo4jProjector {
                 query(ONE_HOP_BATCH_QUERY)
                     .param("tenant_id", tenant_id.as_str())
                     .param("root_keys", string_list(root_keys))
-                    .param("limit", i64::try_from(limit).unwrap_or(500)),
+                    .param("row_limit", row_limit(limit)),
             )
             .await
             .map_err(context_backend)?;
@@ -560,8 +569,9 @@ impl Neo4jProjector {
         Ok(accumulators
             .into_iter()
             .map(|(root_key, mut accumulator)| {
+                let truncated = truncate_to_limit(&mut accumulator.edges, limit);
+                retain_edge_entities(&mut accumulator.entities, &accumulator.edges);
                 accumulator.entities.remove(&accumulator.root.entity_id);
-                let truncated = accumulator.edges.len() == limit;
                 (
                     root_key,
                     Neighborhood {
@@ -601,6 +611,27 @@ struct NeighborhoodAccumulator {
     entities: std::collections::BTreeMap<EntityId, ContextEntity>,
     edges: Vec<ContextEdge>,
     graph_revision: u64,
+}
+
+fn row_limit(limit: usize) -> i64 {
+    i64::try_from(limit.saturating_add(1)).unwrap_or(i64::MAX)
+}
+
+fn truncate_to_limit<T>(values: &mut Vec<T>, limit: usize) -> bool {
+    let truncated = values.len() > limit;
+    values.truncate(limit);
+    truncated
+}
+
+fn retain_edge_entities(
+    entities: &mut std::collections::BTreeMap<EntityId, ContextEntity>,
+    edges: &[ContextEdge],
+) {
+    let retained = edges
+        .iter()
+        .flat_map(|edge| [&edge.from, &edge.to])
+        .collect::<std::collections::BTreeSet<_>>();
+    entities.retain(|entity_id, _| retained.contains(entity_id));
 }
 
 fn context_entity(row: &neo4rs::Row) -> Result<ContextEntity, ContextError> {
@@ -752,5 +783,22 @@ mod tests {
                 .iter()
                 .any(|statement| statement.contains("IS UNIQUE"))
         );
+    }
+
+    #[test]
+    fn graph_queries_enforce_edge_bounds_and_simple_paths() {
+        assert!(ONE_HOP_BATCH_QUERY.contains("LIMIT $row_limit"));
+        assert!(expand_statement(3).contains("LIMIT $row_limit"));
+        let paths = paths_statement(3);
+        assert!(paths.contains("single(other IN nodes(path) WHERE other = node)"));
+        assert!(paths.contains("node.tenant_id = $tenant_id"));
+
+        let mut exact = vec![1, 2];
+        assert!(!truncate_to_limit(&mut exact, 2));
+        assert_eq!(exact, [1, 2]);
+        let mut overflow = vec![1, 2, 3];
+        assert!(truncate_to_limit(&mut overflow, 2));
+        assert_eq!(overflow, [1, 2]);
+        assert_eq!(row_limit(500), 501);
     }
 }
