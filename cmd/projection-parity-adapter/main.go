@@ -171,11 +171,16 @@ func projectRecord(
 	if eventKind == "" {
 		eventKind = run.SourceID + "." + run.FamilyID
 	}
+	payload, err := json.Marshal(record.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("encode observation %q payload: %w", record.ObservationID, err)
+	}
 	event := &cerebrov1.EventEnvelope{
 		Id:         record.ObservationID,
 		TenantId:   run.TenantID,
 		SourceId:   run.SourceID,
 		Kind:       eventKind,
+		Payload:    payload,
 		Attributes: attributes,
 	}
 	entities, links, err := sourceprojection.ProjectEvent(event)

@@ -54,6 +54,38 @@ func TestProjectRecordRejectsFamilyDrift(t *testing.T) {
 	}
 }
 
+func TestProjectRecordPassesPayloadToLegacyProjector(t *testing.T) {
+	run := runEnvelope{
+		TenantID:        "tenant-a",
+		SourceRuntimeID: "cosmo-prod",
+		SourceID:        "cosmo",
+		FamilyID:        "message",
+	}
+	record := recordWire{
+		ObservationID: "observation-1",
+		Family:        "message",
+		ProviderKind:  "cosmo.message",
+		ProviderID:    "message-1",
+		Payload:       map[string]any{"id": "message-1"},
+		EventKind:     "cosmo.message",
+	}
+	family := connectordefinitions.ResourceFamily{
+		ID:         "message",
+		Projection: &connectordefinitions.ProjectionSpec{Template: "message"},
+	}
+	facts, err := projectRecord(run, family, record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts) != 1 {
+		t.Fatalf("fact count = %d, want 1", len(facts))
+	}
+	want := "entity\x1fprovider:cosmo-prod:cosmo.message:message-1\x1fresource\x1fmessage-1"
+	if got := canonicalFact(facts[0]); got != want {
+		t.Fatalf("fact = %q, want %q", got, want)
+	}
+}
+
 func TestDeduplicateFactsPreservesSortedUniqueFacts(t *testing.T) {
 	facts := []factWire{
 		{Kind: "entity", Parts: []string{"b"}},

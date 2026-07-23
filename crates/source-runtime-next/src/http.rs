@@ -540,15 +540,61 @@ fn flatten_scalars(value: &Value) -> BTreeMap<String, String> {
 }
 
 fn next_link_url(header: &str) -> Option<String> {
-    header.split(',').find_map(|part| {
+    split_link_header(header, ',').into_iter().find_map(|part| {
         let part = part.trim();
-        if !part.contains("rel=\"next\"") && !part.contains("rel=next") {
-            return None;
-        }
         let start = part.find('<')? + 1;
         let end = part[start..].find('>')? + start;
-        Some(part[start..end].to_owned())
+        let is_next = split_link_header(&part[end + 1..], ';')
+            .into_iter()
+            .filter_map(|parameter| parameter.trim().split_once('='))
+            .any(|(key, value)| {
+                key.trim().eq_ignore_ascii_case("rel")
+                    && value
+                        .trim()
+                        .strip_prefix('"')
+                        .and_then(|value| value.strip_suffix('"'))
+                        .unwrap_or_else(|| value.trim())
+                        .split_ascii_whitespace()
+                        .any(|relation| relation.eq_ignore_ascii_case("next"))
+            });
+        is_next.then(|| part[start..end].to_owned())
     })
+}
+
+fn split_link_header(value: &str, delimiter: char) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let mut quoted = false;
+    let mut escaped = false;
+    let mut in_target = false;
+    for (index, character) in value.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if quoted && character == '\\' {
+            escaped = true;
+            continue;
+        }
+        if character == '"' {
+            quoted = !quoted;
+            continue;
+        }
+        if quoted {
+            continue;
+        }
+        match character {
+            '<' => in_target = true,
+            '>' => in_target = false,
+            _ if character == delimiter && !in_target => {
+                parts.push(&value[start..index]);
+                start = index + character.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    parts.push(&value[start..]);
+    parts
 }
 
 fn resolve_next_url(current_url: &Url, next: &str) -> Result<Option<Url>, HttpConnectorError> {
@@ -617,6 +663,14 @@ mod tests {
             next_link_url("<https://example.test/users?page=2>; rel=\"next\"").as_deref(),
             Some("https://example.test/users?page=2")
         );
+        assert_eq!(
+            next_link_url(
+                "<https://example.test/users?labels=a,b&page=1>; rel=\"prev\"; title=\"a,b;c\", </users?page=2>; title=\"next; page\"; rel=\"prev next\""
+            )
+            .as_deref(),
+            Some("/users?page=2")
+        );
+        assert_eq!(next_link_url("</users?page=2>; title=\"rel=next\""), None);
     }
 
     #[test]

@@ -22,7 +22,6 @@ pub enum CatalogError {
     Decode { path: PathBuf, message: String },
     Invalid { path: PathBuf, message: String },
     DuplicateSource(String),
-    MissingProofManifest(String),
 }
 
 impl fmt::Display for CatalogError {
@@ -36,9 +35,6 @@ impl fmt::Display for CatalogError {
                 write!(formatter, "invalid {}: {message}", path.display())
             }
             Self::DuplicateSource(source) => write!(formatter, "duplicate source {source}"),
-            Self::MissingProofManifest(source) => {
-                write!(formatter, "source {source} has no runtime proof manifest")
-            }
         }
     }
 }
