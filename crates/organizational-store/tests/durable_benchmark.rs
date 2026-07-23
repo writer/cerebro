@@ -58,6 +58,32 @@ async fn benchmark_durable_store_and_traversal() -> Result<(), Box<dyn Error>> {
         })?;
     }
 
+    for records in [100, 1_000] {
+        let ledger = connect_ledger(&postgres_dsn).await?;
+        let (batch, delta) = entity_batch(&suffix, records, &format!("staged-{records}"))?;
+        let started = Instant::now();
+        let receipt = ledger.commit_pending(&batch, &delta).await?;
+        let elapsed = started.elapsed();
+        emit(Measurement {
+            operation: "postgres_commit_pending",
+            records,
+            iterations: 1,
+            total_ms: millis(elapsed),
+            micros_per_operation: elapsed.as_secs_f64() * 1_000_000.0,
+        })?;
+
+        let started = Instant::now();
+        projector.project(&delta, &receipt).await?;
+        let elapsed = started.elapsed();
+        emit(Measurement {
+            operation: "neo4j_projection",
+            records,
+            iterations: 1,
+            total_ms: millis(elapsed),
+            micros_per_operation: elapsed.as_secs_f64() * 1_000_000.0,
+        })?;
+    }
+
     let recovery_ledger = connect_ledger(&postgres_dsn).await?;
     let (recovery_batch, recovery_delta) = entity_batch(&suffix, 100, "recovery")?;
     recovery_ledger

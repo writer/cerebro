@@ -7,7 +7,7 @@ use cerebro_organizational_model::{
     IdentityResolutionMethod, ObservationId, ObservationRef, ProviderIdentity, ProviderKind,
     RelationKind, RelationshipAssertion, SourceRuntimeId, TenantId,
 };
-use cerebro_organizational_store::{DurableGraphStore, Neo4jProjector, PostgresLedger};
+use cerebro_organizational_store::{DurableGraphStore, Neo4jProjector, PostgresLedger, StoreError};
 use cerebro_source_runtime_next::{CollectedBatch, CollectedScope, GraphSink, SourceRecord};
 use tokio_postgres::NoTls;
 
@@ -258,6 +258,37 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
     assert_eq!(
         reader.find_paths(&tenant, &root_id, &missing, 4, 10).await,
         Err(ContextError::EntityNotFound)
+    );
+
+    let conflicting_collection = CompleteCollection::new(
+        tenant.clone(),
+        SourceRuntimeId::parse("conflict-live")?,
+        CollectionId::parse("collection-live-conflict")?,
+        "conflict.entities",
+        30,
+    )?;
+    let mut conflicting_builder = conflicting_collection.clone().begin_delta();
+    conflicting_builder.add_entity(Entity::canonical(
+        tenant.clone(),
+        root_id.clone(),
+        EntityKind::Repository,
+        "Conflicting identity",
+    )?)?;
+    let conflicting_batch = CollectedBatch {
+        scope: CollectedScope::Complete(conflicting_collection),
+        records: Vec::new(),
+        next_cursor: None,
+    };
+    assert!(matches!(
+        store
+            .apply(&conflicting_batch, conflicting_builder.build())
+            .await,
+        Err(StoreError::Conflict(_))
+    ));
+    assert_eq!(
+        reader.resolve(&tenant, root_id.as_str()).await?.label,
+        "User One Updated",
+        "a rejected bulk write cannot alter the projected entity"
     );
     Ok(())
 }

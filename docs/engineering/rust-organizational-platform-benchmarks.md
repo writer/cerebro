@@ -105,23 +105,38 @@ CEREBRO_TEST_NEO4J_PASSWORD='...' \
 make rust-organizational-store-benchmark
 ```
 
-The July 22 local run produced:
+The July 23 AWS run used one isolated `m7g.xlarge` instance with PostgreSQL 16
+and Neo4j 5 bound to its loopback interface. The host used an encrypted 50 GiB
+gp3 volume, accepted no inbound traffic, and was reached through AWS Systems
+Manager. Both revisions ran as optimized builds on the same host against the
+same warm database containers. The before revision and the optimized revision
+each ran three times; the table reports the median:
 
-| Operation | Workload | Elapsed |
-| --- | ---: | ---: |
-| PostgreSQL commit + Neo4j projection | 100 entities | 270.3 ms |
-| PostgreSQL commit + Neo4j projection | 1,000 entities | 1,444.1 ms |
-| Replay one pending 100-entity outbox revision | 100 entities | 26.2 ms |
-| One-hop bounded path query | 200 reads | 3.76 ms/read |
-| Three-hop bounded path query | 200 reads | 3.21 ms/read |
-| Six-hop bounded path query | 200 reads | 2.82 ms/read |
-| Eight concurrent tenant commits | 8 x 100 entities | 288.2 ms total |
+| Operation | Workload | Before | After | Change |
+| --- | ---: | ---: | ---: | ---: |
+| PostgreSQL commit + Neo4j projection | 100 entities | 157.2 ms | 74.9 ms | 2.10x |
+| PostgreSQL commit + Neo4j projection | 1,000 entities | 1,137.3 ms | 176.1 ms | 6.46x |
+| Eight concurrent tenant commits | 8 x 100 entities | 284.3 ms | 151.5 ms | 1.88x |
+
+At 1,000 entities, the durable path increased from about 879 to 5,677 records
+per second. The optimized median splits into 68.4 ms for the PostgreSQL commit
+and 111.8 ms for Neo4j projection. PostgreSQL uses `jsonb_to_recordset` in
+bounded 1,000-row chunks for entities, assertions, and observations. Identity
+claim resolution and retraction repair remain explicit operations because
+their conflict and replacement semantics are stronger than a generic bulk
+upsert.
+
+The Neo4j projector now sends tenant and graph revision once per query instead
+of repeating them in every row. Tenant identity remains a mandatory Cypher
+parameter for entity, assertion, and retraction writes.
 
 The path corpus has one valid path at every requested depth, so this measures
 bounded lookup overhead rather than path explosion. The concurrent result uses
 separate PostgreSQL connections and a shared Neo4j projector. The live-store
-test also verified idempotent replay and a three-edge provider-account to
-repository path through a canonical person and group.
+test verified idempotent replay, pending-outbox recovery, a three-edge
+provider-account to repository path through a canonical person and group, and
+that a conflicting bulk identity write changes neither PostgreSQL current state
+nor the projected Neo4j entity.
 
 ## Optimization found by the benchmark
 
@@ -196,10 +211,10 @@ identity delta to leave both the graph revision and entity count unchanged.
 ## What this does not prove
 
 This receipt does not measure provider network time, production-sized graph
-fan-out, HTTP request concurrency, or production infrastructure. The durable
-numbers are one local run against empty disposable stores, not a capacity
-claim. The in-process result establishes that the stronger Rust admission
-boundary is not slower than the equivalent Go raw-record projection path for
-this corpus. The durable suite establishes that committed writes survive a
-projection interruption and that bounded multi-hop reads work against the
-actual databases.
+fan-out, HTTP request concurrency, or a production database topology. The AWS
+stores were empty, disposable, and co-located on one host, so the result is not
+a production capacity claim. The in-process result establishes that the
+stronger Rust admission boundary is not slower than the equivalent Go
+raw-record projection path for this corpus. The durable suite establishes that
+committed writes survive a projection interruption and that bounded multi-hop
+reads work against the actual databases.

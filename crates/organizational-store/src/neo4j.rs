@@ -18,7 +18,7 @@ use crate::{
 const ENTITY_QUERY: &str = r#"
 UNWIND $rows AS row
 MERGE (entity:OrganizationalEntity {
-  tenant_id: row.tenant_id,
+  tenant_id: $tenant_id,
   entity_id: row.entity_id
 })
 SET entity.entity_kind = row.entity_kind,
@@ -26,21 +26,21 @@ SET entity.entity_kind = row.entity_kind,
     entity.label = row.label,
     entity.properties_json = row.properties_json,
     entity.external_id = row.external_id,
-    entity.graph_revision = row.graph_revision
+    entity.graph_revision = $graph_revision
 "#;
 
 const ASSERTION_QUERY: &str = r#"
 UNWIND $rows AS row
 MATCH (source:OrganizationalEntity {
-  tenant_id: row.tenant_id,
+  tenant_id: $tenant_id,
   entity_id: row.from_entity_id
 })
 MATCH (target:OrganizationalEntity {
-  tenant_id: row.tenant_id,
+  tenant_id: $tenant_id,
   entity_id: row.to_entity_id
 })
 MERGE (source)-[assertion:ORGANIZATIONAL_RELATION {
-  tenant_id: row.tenant_id,
+  tenant_id: $tenant_id,
   assertion_id: row.assertion_id
 }]->(target)
 SET assertion.relation = row.relation,
@@ -48,13 +48,13 @@ SET assertion.relation = row.relation,
     assertion.state = row.state,
     assertion.provenance_json = row.provenance_json,
     assertion.observed_at_unix_ms = row.observed_at_unix_ms,
-    assertion.graph_revision = row.graph_revision
+    assertion.graph_revision = $graph_revision
 "#;
 
 const RETRACTION_QUERY: &str = r#"
 UNWIND $rows AS row
 MATCH ()-[assertion:ORGANIZATIONAL_RELATION {
-  tenant_id: row.tenant_id,
+  tenant_id: $tenant_id,
   assertion_id: row.assertion_id
 }]->()
 DELETE assertion
@@ -180,53 +180,37 @@ impl Neo4jProjector {
 
     pub(crate) async fn project_wire(&self, commit: &ProjectionCommit) -> Result<(), StoreError> {
         let mut transaction = self.graph.start_txn().await?;
+        let graph_revision = i64::try_from(commit.graph_revision)
+            .map_err(|_| StoreError::Conflict("graph revision overflow".to_owned()))?;
         if !commit.entities.is_empty() {
             transaction
                 .run(
-                    query(ENTITY_QUERY).param(
-                        "rows",
-                        rows(
-                            commit
-                                .entities
-                                .iter()
-                                .map(|entity| entity_row(commit, entity)),
-                        ),
-                    ),
+                    query(ENTITY_QUERY)
+                        .param("tenant_id", commit.tenant_id.clone())
+                        .param("graph_revision", graph_revision)
+                        .param("rows", rows(commit.entities.iter().map(entity_row))),
                 )
                 .await?;
         }
         if !commit.assertions.is_empty() {
             transaction
                 .run(
-                    query(ASSERTION_QUERY).param(
-                        "rows",
-                        rows(
-                            commit
-                                .assertions
-                                .iter()
-                                .map(|assertion| assertion_row(commit, assertion)),
-                        ),
-                    ),
+                    query(ASSERTION_QUERY)
+                        .param("tenant_id", commit.tenant_id.clone())
+                        .param("graph_revision", graph_revision)
+                        .param("rows", rows(commit.assertions.iter().map(assertion_row))),
                 )
                 .await?;
         }
         if !commit.retractions.is_empty() {
             transaction
                 .run(
-                    query(RETRACTION_QUERY).param(
-                        "rows",
-                        rows(
-                            commit
-                                .retractions
-                                .iter()
-                                .map(|retraction| retraction_row(commit, retraction)),
-                        ),
-                    ),
+                    query(RETRACTION_QUERY)
+                        .param("tenant_id", commit.tenant_id.clone())
+                        .param("rows", rows(commit.retractions.iter().map(retraction_row))),
                 )
                 .await?;
         }
-        let graph_revision = i64::try_from(commit.graph_revision)
-            .map_err(|_| StoreError::Conflict("graph revision overflow".to_owned()))?;
         transaction
             .run(
                 query(REVISION_QUERY)
@@ -749,9 +733,8 @@ fn string_list(values: &[String]) -> BoltType {
     ))
 }
 
-fn entity_row(commit: &ProjectionCommit, entity: &ProjectionEntity) -> BoltMap {
+fn entity_row(entity: &ProjectionEntity) -> BoltMap {
     map([
-        ("tenant_id", commit.tenant_id.clone().into()),
         ("entity_id", entity.entity_id.clone().into()),
         ("entity_kind", entity.entity_kind.clone().into()),
         ("authority_json", entity.authority_json.clone().into()),
@@ -761,13 +744,11 @@ fn entity_row(commit: &ProjectionCommit, entity: &ProjectionEntity) -> BoltMap {
             "external_id",
             entity.external_id.clone().unwrap_or_default().into(),
         ),
-        ("graph_revision", revision_value(commit.graph_revision)),
     ])
 }
 
-fn assertion_row(commit: &ProjectionCommit, assertion: &ProjectionAssertion) -> BoltMap {
+fn assertion_row(assertion: &ProjectionAssertion) -> BoltMap {
     map([
-        ("tenant_id", commit.tenant_id.clone().into()),
         ("assertion_id", assertion.assertion_id.clone().into()),
         ("from_entity_id", assertion.from_entity_id.clone().into()),
         ("to_entity_id", assertion.to_entity_id.clone().into()),
@@ -779,19 +760,11 @@ fn assertion_row(commit: &ProjectionCommit, assertion: &ProjectionAssertion) -> 
         ("state", assertion.state.clone().into()),
         ("provenance_json", assertion.provenance_json.clone().into()),
         ("observed_at_unix_ms", assertion.observed_at_unix_ms.into()),
-        ("graph_revision", revision_value(commit.graph_revision)),
     ])
 }
 
-fn retraction_row(commit: &ProjectionCommit, retraction: &ProjectionRetraction) -> BoltMap {
-    map([
-        ("tenant_id", commit.tenant_id.clone().into()),
-        ("assertion_id", retraction.assertion_id.clone().into()),
-    ])
-}
-
-fn revision_value(revision: u64) -> BoltType {
-    i64::try_from(revision).unwrap_or(i64::MAX).into()
+fn retraction_row(retraction: &ProjectionRetraction) -> BoltMap {
+    map([("assertion_id", retraction.assertion_id.clone().into())])
 }
 
 fn map<const N: usize>(values: [(&str, BoltType); N]) -> BoltMap {
@@ -810,7 +783,12 @@ mod tests {
     fn projection_is_tenant_scoped_batched_and_uses_generic_relation_edges() {
         for query in [ENTITY_QUERY, ASSERTION_QUERY, RETRACTION_QUERY] {
             assert!(query.contains("UNWIND $rows"));
-            assert!(query.contains("tenant_id"));
+            assert!(query.contains("$tenant_id"));
+            assert!(!query.contains("row.tenant_id"));
+        }
+        for query in [ENTITY_QUERY, ASSERTION_QUERY] {
+            assert!(query.contains("$graph_revision"));
+            assert!(!query.contains("row.graph_revision"));
         }
         assert!(ASSERTION_QUERY.contains("ORGANIZATIONAL_RELATION"));
         assert!(

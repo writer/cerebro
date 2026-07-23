@@ -217,6 +217,129 @@ ORDER BY assertion_id
 LIMIT 1
 "#;
 
+const POSTGRES_WRITE_BATCH_SIZE: usize = 1_000;
+
+const UPSERT_ENTITIES_QUERY: &str = r#"
+WITH input AS MATERIALIZED (
+  SELECT entity_id, entity_json
+  FROM jsonb_to_recordset($2::jsonb)
+    AS row(entity_id TEXT, entity_json JSONB)
+),
+upserted AS (
+  INSERT INTO organizational_entities (
+    tenant_id,
+    entity_id,
+    entity_json,
+    last_graph_revision
+  )
+  SELECT $1, entity_id, entity_json, $3
+  FROM input
+  ON CONFLICT (tenant_id, entity_id) DO UPDATE
+  SET entity_json = EXCLUDED.entity_json,
+      last_graph_revision = EXCLUDED.last_graph_revision
+  WHERE organizational_entities.entity_json->'kind' = EXCLUDED.entity_json->'kind'
+    AND organizational_entities.entity_json->'authority' = EXCLUDED.entity_json->'authority'
+  RETURNING entity_id
+)
+SELECT input.entity_id
+FROM input
+LEFT JOIN upserted USING (entity_id)
+WHERE upserted.entity_id IS NULL
+ORDER BY input.entity_id
+LIMIT 1
+"#;
+
+const UPSERT_ASSERTIONS_QUERY: &str = r#"
+WITH input AS MATERIALIZED (
+  SELECT
+    assertion_id,
+    source_runtime_id,
+    from_entity_id,
+    to_entity_id,
+    relation,
+    assertion_json
+  FROM jsonb_to_recordset($2::jsonb) AS row(
+    assertion_id TEXT,
+    source_runtime_id TEXT,
+    from_entity_id TEXT,
+    to_entity_id TEXT,
+    relation TEXT,
+    assertion_json JSONB
+  )
+),
+upserted AS (
+  INSERT INTO organizational_assertions (
+    tenant_id,
+    assertion_id,
+    source_runtime_id,
+    from_entity_id,
+    to_entity_id,
+    relation,
+    assertion_json,
+    active,
+    last_graph_revision
+  )
+  SELECT
+    $1,
+    assertion_id,
+    source_runtime_id,
+    from_entity_id,
+    to_entity_id,
+    relation,
+    assertion_json,
+    TRUE,
+    $3
+  FROM input
+  ON CONFLICT (tenant_id, assertion_id) DO UPDATE
+  SET assertion_json = EXCLUDED.assertion_json,
+      active = TRUE,
+      last_graph_revision = EXCLUDED.last_graph_revision
+  WHERE organizational_assertions.source_runtime_id = EXCLUDED.source_runtime_id
+    AND organizational_assertions.from_entity_id = EXCLUDED.from_entity_id
+    AND organizational_assertions.to_entity_id = EXCLUDED.to_entity_id
+    AND organizational_assertions.relation = EXCLUDED.relation
+  RETURNING assertion_id
+)
+SELECT input.assertion_id
+FROM input
+LEFT JOIN upserted USING (assertion_id)
+WHERE upserted.assertion_id IS NULL
+ORDER BY input.assertion_id
+LIMIT 1
+"#;
+
+const INSERT_OBSERVATIONS_QUERY: &str = r#"
+INSERT INTO organizational_observations (
+  tenant_id,
+  collection_id,
+  observation_id,
+  source_runtime_id,
+  family,
+  provider_kind,
+  provider_id,
+  payload_json,
+  fields_json
+)
+SELECT
+  $1,
+  $2,
+  observation_id,
+  $3,
+  family,
+  provider_kind,
+  provider_id,
+  payload_json,
+  fields_json
+FROM jsonb_to_recordset($4::jsonb) AS row(
+  observation_id TEXT,
+  family TEXT,
+  provider_kind TEXT,
+  provider_id TEXT,
+  payload_json JSONB,
+  fields_json JSONB
+)
+"#;
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct ProjectionEntity {
     pub entity_id: String,
@@ -670,21 +793,7 @@ impl PostgresLedger {
             }
         }
 
-        for entity in delta.entities() {
-            let entity_json = serde_json::to_value(entity)?;
-            let row = transaction
-                .query_opt(
-                    "INSERT INTO organizational_entities (tenant_id, entity_id, entity_json, last_graph_revision) VALUES ($1, $2, $3, $4) ON CONFLICT (tenant_id, entity_id) DO UPDATE SET entity_json = EXCLUDED.entity_json, last_graph_revision = EXCLUDED.last_graph_revision WHERE organizational_entities.entity_json->'kind' = EXCLUDED.entity_json->'kind' AND organizational_entities.entity_json->'authority' = EXCLUDED.entity_json->'authority' RETURNING entity_id",
-                    &[&tenant_id, &entity.id().as_str(), &entity_json, &revision],
-                )
-                .await?;
-            if row.is_none() {
-                return Err(StoreError::Conflict(format!(
-                    "entity {} conflicts with stored identity",
-                    entity.id()
-                )));
-            }
-        }
+        upsert_entities(&transaction, tenant_id, revision, delta).await?;
 
         for method in [
             IdentityResolutionMethod::AuthoritativeEmployeeId,
@@ -719,31 +828,7 @@ impl PostgresLedger {
             }
         }
 
-        for assertion in delta.assertions() {
-            let (from, to, relation) = assertion_endpoints(assertion);
-            let assertion_json = serde_json::to_value(assertion)?;
-            let row = transaction
-                .query_opt(
-                    "INSERT INTO organizational_assertions (tenant_id, assertion_id, source_runtime_id, from_entity_id, to_entity_id, relation, assertion_json, active, last_graph_revision) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8) ON CONFLICT (tenant_id, assertion_id) DO UPDATE SET assertion_json = EXCLUDED.assertion_json, active = TRUE, last_graph_revision = EXCLUDED.last_graph_revision WHERE organizational_assertions.source_runtime_id = EXCLUDED.source_runtime_id AND organizational_assertions.from_entity_id = EXCLUDED.from_entity_id AND organizational_assertions.to_entity_id = EXCLUDED.to_entity_id AND organizational_assertions.relation = EXCLUDED.relation RETURNING assertion_id",
-                    &[
-                        &tenant_id,
-                        &assertion.id().as_str(),
-                        &assertion.provenance().source_runtime_id().as_str(),
-                        &from,
-                        &to,
-                        &relation,
-                        &assertion_json,
-                        &revision,
-                    ],
-                )
-                .await?;
-            if row.is_none() {
-                return Err(StoreError::Conflict(format!(
-                    "assertion {} conflicts with stored evidence",
-                    assertion.id()
-                )));
-            }
-        }
+        upsert_assertions(&transaction, tenant_id, revision, delta).await?;
 
         let graph_revision = u64::try_from(revision)
             .map_err(|_| StoreError::Conflict("graph revision is negative".to_owned()))?;
@@ -772,25 +857,7 @@ impl PostgresLedger {
                 ],
             )
             .await?;
-        for record in &batch.records {
-            let fields_json = serde_json::to_value(&record.fields)?;
-            transaction
-                .execute(
-                    "INSERT INTO organizational_observations (tenant_id, collection_id, observation_id, source_runtime_id, family, provider_kind, provider_id, payload_json, fields_json) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-                    &[
-                        &tenant_id,
-                        &delta.collection().collection_id().as_str(),
-                        &record.observation_id.as_str(),
-                        &delta.collection().source_runtime_id().as_str(),
-                        &record.family,
-                        &record.provider_kind,
-                        &record.provider_id,
-                        &record.payload,
-                        &fields_json,
-                    ],
-                )
-                .await?;
-        }
+        insert_observations(&transaction, tenant_id, batch, delta).await?;
         let projection = projection_commit(delta, graph_revision)?;
         let projection_json = serde_json::to_value(&projection)?;
         transaction
@@ -1078,6 +1145,110 @@ async fn set_tenant(
     Ok(())
 }
 
+async fn upsert_entities(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    revision: i64,
+    delta: &GraphDelta,
+) -> Result<(), StoreError> {
+    for chunk in delta.entities().chunks(POSTGRES_WRITE_BATCH_SIZE) {
+        let rows = serde_json::Value::Array(
+            chunk
+                .iter()
+                .map(|entity| {
+                    serde_json::json!({
+                        "entity_id": entity.id().as_str(),
+                        "entity_json": entity,
+                    })
+                })
+                .collect(),
+        );
+        if let Some(conflict) = transaction
+            .query_opt(UPSERT_ENTITIES_QUERY, &[&tenant_id, &rows, &revision])
+            .await?
+        {
+            let entity_id: String = conflict.get(0);
+            return Err(StoreError::Conflict(format!(
+                "entity {entity_id} conflicts with stored identity"
+            )));
+        }
+    }
+    Ok(())
+}
+
+async fn upsert_assertions(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    revision: i64,
+    delta: &GraphDelta,
+) -> Result<(), StoreError> {
+    for chunk in delta.assertions().chunks(POSTGRES_WRITE_BATCH_SIZE) {
+        let rows = serde_json::Value::Array(
+            chunk
+                .iter()
+                .map(|assertion| {
+                    let (from, to, relation) = assertion_endpoints(assertion);
+                    serde_json::json!({
+                        "assertion_id": assertion.id().as_str(),
+                        "source_runtime_id": assertion.provenance().source_runtime_id().as_str(),
+                        "from_entity_id": from,
+                        "to_entity_id": to,
+                        "relation": relation,
+                        "assertion_json": assertion,
+                    })
+                })
+                .collect(),
+        );
+        if let Some(conflict) = transaction
+            .query_opt(UPSERT_ASSERTIONS_QUERY, &[&tenant_id, &rows, &revision])
+            .await?
+        {
+            let assertion_id: String = conflict.get(0);
+            return Err(StoreError::Conflict(format!(
+                "assertion {assertion_id} conflicts with stored evidence"
+            )));
+        }
+    }
+    Ok(())
+}
+
+async fn insert_observations(
+    transaction: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    batch: &CollectedBatch,
+    delta: &GraphDelta,
+) -> Result<(), StoreError> {
+    for chunk in batch.records.chunks(POSTGRES_WRITE_BATCH_SIZE) {
+        let rows = serde_json::Value::Array(
+            chunk
+                .iter()
+                .map(|record| {
+                    serde_json::json!({
+                        "observation_id": record.observation_id.as_str(),
+                        "family": record.family,
+                        "provider_kind": record.provider_kind,
+                        "provider_id": record.provider_id,
+                        "payload_json": record.payload,
+                        "fields_json": record.fields,
+                    })
+                })
+                .collect(),
+        );
+        transaction
+            .execute(
+                INSERT_OBSERVATIONS_QUERY,
+                &[
+                    &tenant_id,
+                    &delta.collection().collection_id().as_str(),
+                    &delta.collection().source_runtime_id().as_str(),
+                    &rows,
+                ],
+            )
+            .await?;
+    }
+    Ok(())
+}
+
 fn validate_observations(batch: &CollectedBatch, delta: &GraphDelta) -> Result<(), StoreError> {
     let available: BTreeSet<_> = batch
         .records
@@ -1256,6 +1427,37 @@ mod tests {
                 IDENTITY_CLAIM_REPLACEMENT_QUERY.contains(required),
                 "claim replacement query missing {required}"
             );
+        }
+    }
+
+    #[test]
+    fn high_cardinality_writes_are_bounded_and_set_based() {
+        assert_eq!(POSTGRES_WRITE_BATCH_SIZE, 1_000);
+        for statement in [
+            UPSERT_ENTITIES_QUERY,
+            UPSERT_ASSERTIONS_QUERY,
+            INSERT_OBSERVATIONS_QUERY,
+        ] {
+            assert!(statement.contains("jsonb_to_recordset"));
+        }
+        for statement in [UPSERT_ENTITIES_QUERY, UPSERT_ASSERTIONS_QUERY] {
+            assert!(statement.contains("ON CONFLICT"));
+            assert!(statement.contains("LEFT JOIN upserted"));
+            assert!(statement.contains("LIMIT 1"));
+        }
+        for invariant in [
+            "entity_json->'kind' = EXCLUDED.entity_json->'kind'",
+            "entity_json->'authority' = EXCLUDED.entity_json->'authority'",
+        ] {
+            assert!(UPSERT_ENTITIES_QUERY.contains(invariant));
+        }
+        for invariant in [
+            "source_runtime_id = EXCLUDED.source_runtime_id",
+            "from_entity_id = EXCLUDED.from_entity_id",
+            "to_entity_id = EXCLUDED.to_entity_id",
+            "relation = EXCLUDED.relation",
+        ] {
+            assert!(UPSERT_ASSERTIONS_QUERY.contains(invariant));
         }
     }
 
