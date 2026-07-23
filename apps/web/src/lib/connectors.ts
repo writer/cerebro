@@ -918,8 +918,6 @@ export type SourceActivationScaffoldPlan = {
   dry_run?: boolean;
   files?: string[];
   health_endpoint?: string;
-  source_health_receipt?: string;
-  pr_body?: string;
   next_steps?: string[];
 };
 

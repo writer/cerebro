@@ -66,6 +66,9 @@ components:
 	if !strings.Contains(result.TypeScript, "DO NOT EDIT") {
 		t.Error("expected generated file header")
 	}
+	if strings.HasSuffix(result.TypeScript, "\n\n") {
+		t.Error("generated output ends with a blank line")
+	}
 }
 
 func TestGenerateParenthesizesEnumUnionArrayItems(t *testing.T) {

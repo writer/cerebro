@@ -1,7 +1,6 @@
 package sourcegen
 
 import (
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/internal/sourcegen/projectionspec"
-	"github.com/writer/cerebro/internal/sourcegen/templateengine"
 )
 
 const (
@@ -43,9 +41,6 @@ const (
 var errMissingSchemas = errors.New("at least one asset_schemas or finding_schemas entry is required")
 var errGeneratedNameCollision = errors.New("generated source names collide")
 var errUnsupportedDefinition = errors.New("connector definition is not executable by sourcegen")
-
-//go:embed templates/*.tmpl
-var sourcegenTemplates embed.FS
 
 // Request describes a generated Source Runtime SDK integration.
 type Request struct {
@@ -86,18 +81,16 @@ type ProviderContractEvidence struct {
 
 // Result describes the files and operator receipt produced by the generator.
 type Result struct {
-	SourceID            string     `json:"source_id"`
-	SourceType          string     `json:"source_type"`
-	AuthModel           string     `json:"auth_model"`
-	DryRun              bool       `json:"dry_run"`
-	Files               []string   `json:"files"`
-	HealthEndpoint      string     `json:"health_endpoint"`
-	SourceHealthReceipt string     `json:"source_health_receipt"`
-	GenerationManifest  string     `json:"generation_manifest"`
-	ProofBundle         string     `json:"proof_bundle"`
-	ChangePlan          ChangePlan `json:"change_plan"`
-	PRBody              string     `json:"pr_body"`
-	NextSteps           []string   `json:"next_steps"`
+	SourceID           string     `json:"source_id"`
+	SourceType         string     `json:"source_type"`
+	AuthModel          string     `json:"auth_model"`
+	DryRun             bool       `json:"dry_run"`
+	Files              []string   `json:"files"`
+	HealthEndpoint     string     `json:"health_endpoint"`
+	GenerationManifest string     `json:"generation_manifest"`
+	ProofBundle        string     `json:"proof_bundle"`
+	ChangePlan         ChangePlan `json:"change_plan"`
+	NextSteps          []string   `json:"next_steps"`
 }
 
 type normalizedRequest struct {
@@ -222,17 +215,15 @@ func generateNormalized(normalized normalizedRequest) (*Result, error) {
 	paths = append(paths, plan.ManifestPath)
 	paths = append(paths, plan.ProofPath)
 	result := &Result{
-		SourceID:            normalized.SourceID,
-		SourceType:          normalized.SourceType,
-		AuthModel:           normalized.AuthModel,
-		DryRun:              normalized.DryRun,
-		Files:               paths,
-		HealthEndpoint:      healthEndpoint(normalized.SourceID),
-		SourceHealthReceipt: filepath.Join(normalized.OutputDir, "sources", normalized.SourceID, "source_health_receipt.json"),
-		GenerationManifest:  plan.ManifestPath,
-		ProofBundle:         plan.ProofPath,
-		ChangePlan:          plan.ChangePlan,
-		PRBody:              filepath.Join(normalized.OutputDir, "sources", normalized.SourceID, "PR_BODY.md"),
+		SourceID:           normalized.SourceID,
+		SourceType:         normalized.SourceType,
+		AuthModel:          normalized.AuthModel,
+		DryRun:             normalized.DryRun,
+		Files:              paths,
+		HealthEndpoint:     healthEndpoint(normalized.SourceID),
+		GenerationManifest: plan.ManifestPath,
+		ProofBundle:        plan.ProofPath,
+		ChangePlan:         plan.ChangePlan,
 		NextSteps: []string{
 			"Review generated adapter field mappings and provider paths.",
 			fmt.Sprintf("Run: go run ./tools/sourceproofcheck -source-id %s", normalized.SourceID),
@@ -1026,19 +1017,11 @@ func validateGeneratedFamilies(families []familyData) error {
 
 func renderFiles(request normalizedRequest) ([]generatedFile, error) {
 	sourceRoot := filepath.Join(request.OutputDir, "sources", request.SourceID)
-	runtimeDocs, err := renderRuntimeDocs(request)
-	if err != nil {
-		return nil, err
-	}
 	files := []generatedFile{
 		{Path: filepath.Join(sourceRoot, "catalog.yaml"), Content: renderCatalog(request)},
 		{Path: filepath.Join(sourceRoot, "deploy.yaml"), Content: renderDeploy(request)},
 		{Path: filepath.Join(sourceRoot, "source.go"), Content: renderSourceGo(request)},
-		{Path: filepath.Join(sourceRoot, "fixture.go"), Content: renderFixtureGo(request)},
 		{Path: filepath.Join(sourceRoot, "source_test.go"), Content: renderSourceTestGo(request)},
-		{Path: filepath.Join(sourceRoot, "source_health_receipt.json"), Content: renderSourceHealthReceipt(request)},
-		{Path: filepath.Join(sourceRoot, "SOURCE_RUNTIME.md"), Content: runtimeDocs},
-		{Path: filepath.Join(sourceRoot, "PR_BODY.md"), Content: renderPRBody(request)},
 		{Path: filepath.Join(request.OutputDir, "internal", "sourceprojection", request.SourceID+".go"), Content: renderProjectionGo(request)},
 		{Path: filepath.Join(request.OutputDir, "internal", "sourceprojection", request.SourceID+"_test.go"), Content: renderProjectionTestGo(request)},
 	}
@@ -1736,36 +1719,6 @@ func staticAttributesForFamily(request normalizedRequest, family familyData) map
 	return attrs
 }
 
-func renderFixtureGo(request normalizedRequest) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "// Code generated by sourcegen; DO NOT EDIT.\n\n")
-	fmt.Fprintf(&b, "package %s\n\n", request.PackageName)
-	fmt.Fprintf(&b, "import (\n")
-	fmt.Fprintf(&b, "\t\"context\"\n")
-	fmt.Fprintf(&b, "\t\"embed\"\n")
-	fmt.Fprintf(&b, "\t\"fmt\"\n")
-	fmt.Fprintf(&b, "\t\"strings\"\n\n")
-	fmt.Fprintf(&b, "\t\"github.com/writer/cerebro/internal/sourcecdk\"\n")
-	fmt.Fprintf(&b, ")\n\n")
-	fmt.Fprintf(&b, "//go:embed testdata/*.json\nvar fixtureFS embed.FS\n\n")
-	fmt.Fprintf(&b, "// NewFixture constructs the deterministic %s source used by tests.\n", request.Name)
-	fmt.Fprintf(&b, "func NewFixture() (sourcecdk.Source, error) {\n")
-	fmt.Fprintf(&b, "\tcatalogBytes, err := catalogFS.ReadFile(\"catalog.yaml\")\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"read catalog: %%w\", err)\n\t}\n")
-	fmt.Fprintf(&b, "\tcatalog, err := sourcecdk.LoadSourceCatalog(catalogBytes)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"load catalog: %%w\", err)\n\t}\n")
-	fmt.Fprintf(&b, "\tfamilies := []sourcecdk.FixtureFamily{}\n")
-	fmt.Fprintf(&b, "\tfor _, family := range []string{%s} {\n", familyConstList(request.Families))
-	fmt.Fprintf(&b, "\t\turns, err := sourcecdk.LoadFixtureURNs(fixtureFS, \"testdata/discover_\"+family+\".json\")\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n")
-	fmt.Fprintf(&b, "\t\tevents, err := sourcecdk.LoadFixtureEventsWithContracts(fixtureFS, \"testdata/read_\"+family+\".json\", catalog.EventContracts)\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n")
-	fmt.Fprintf(&b, "\t\tfamilies = append(families, sourcecdk.FixtureFamily{Name: family, URNs: urns, Events: events})\n\t}\n")
-	fmt.Fprintf(&b, "\treturn sourcecdk.NewFixtureSource(sourcecdk.FixtureSourceOptions{\n")
-	fmt.Fprintf(&b, "\t\tSpec:          catalog.Spec,\n\t\tContracts:     catalog.EventContracts,\n\t\tDefaultFamily: defaultFamily,\n\t\tCheck:         checkFixtureConfig,\n\t\tResolveFamily: resolveFixtureFamily,\n\t\tFamilies:      families,\n\t})\n")
-	fmt.Fprintf(&b, "}\n\n")
-	fmt.Fprintf(&b, "func checkFixtureConfig(_ context.Context, cfg sourcecdk.Config) error {\n\tif fixtureTenantID(cfg) == \"\" {\n\t\treturn fmt.Errorf(\"tenant_id is required\")\n\t}\n\treturn nil\n}\n\n")
-	fmt.Fprintf(&b, "func resolveFixtureFamily(cfg sourcecdk.Config) (string, error) {\n\tif fixtureTenantID(cfg) == \"\" {\n\t\treturn \"\", fmt.Errorf(\"tenant_id is required\")\n\t}\n\tfamily := strings.TrimSpace(sourcecdk.ConfigValue(cfg, \"family\"))\n\tif family == \"\" {\n\t\treturn defaultFamily, nil\n\t}\n\treturn family, nil\n}\n\n")
-	fmt.Fprintf(&b, "func fixtureTenantID(cfg sourcecdk.Config) string {\n\treturn strings.TrimSpace(sourcecdk.ConfigValue(cfg, \"tenant_id\"))\n}\n")
-	return b.String()
-}
-
 func familyConstList(families []familyData) string {
 	values := make([]string, 0, len(families))
 	for _, family := range families {
@@ -1781,7 +1734,7 @@ func renderSourceTestGo(request normalizedRequest) string {
 	if usesDuoHMACAuth(request) {
 		fmt.Fprintf(&b, "\t\"encoding/base64\"\n")
 	}
-	fmt.Fprintf(&b, "\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/http/httptest\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"github.com/writer/cerebro/internal/sourcecdk\"\n)\n\n")
+	fmt.Fprintf(&b, "\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/http/httptest\"\n\t\"strings\"\n\t\"testing\"\n\n\t\"github.com/writer/cerebro/internal/sourcecdk\"\n\t\"github.com/writer/cerebro/internal/sourcefixture\"\n)\n\n")
 	fmt.Fprintf(&b, "func TestSourceCheckAndRead(t *testing.T) {\n")
 	fmt.Fprintf(&b, "\tsource, err := New()\n\tif err != nil {\n\t\tt.Fatalf(\"New() error = %%v\", err)\n\t}\n\tsource.allowLoopbackForTest()\n")
 	fmt.Fprintf(&b, "\tfamilyCases := []struct {\n\t\tname string\n\t\tpath string\n\t\tkind string\n\t\texpectedAttributes map[string]string\n")
@@ -1883,8 +1836,8 @@ func renderSourceTestGo(request normalizedRequest) string {
 	}
 	fmt.Fprintf(&b, "\t\tif err := unavailableSource.Check(context.Background(), sourcecdk.NewConfig(unavailableValues)); err == nil {\n\t\t\tt.Fatal(\"Check() error = nil, want provider unavailable error\")\n\t\t}\n\t})\n")
 	fmt.Fprintf(&b, "}\n")
-	fmt.Fprintf(&b, "\nfunc TestNewFixtureReplaysGeneratedFamilies(t *testing.T) {\n")
-	fmt.Fprintf(&b, "\tsource, err := NewFixture()\n\tif err != nil {\n\t\tt.Fatalf(\"NewFixture() error = %%v\", err)\n\t}\n")
+	fmt.Fprintf(&b, "\nfunc TestCatalogFixtureReplaysGeneratedFamilies(t *testing.T) {\n")
+	fmt.Fprintf(&b, "\tsource, err := sourcefixture.NewCatalogSource(\".\", defaultFamily)\n\tif err != nil {\n\t\tt.Fatalf(\"NewCatalogSource() error = %%v\", err)\n\t}\n")
 	fmt.Fprintf(&b, "\tfamilyConfigs := map[string]sourcecdk.Config{}\n")
 	fmt.Fprintf(&b, "\tfor _, family := range []string{%s} {\n", familyConstList(request.Families))
 	fmt.Fprintf(&b, "\t\tfamilyConfigs[family] = sourcecdk.NewConfig(map[string]string{\n\t\t\t\"family\": family,\n\t\t\t\"tenant_id\": \"tenant\",\n\t\t})\n\t}\n")
@@ -2560,52 +2513,6 @@ func setFixturePayloadField(payload map[string]any, rawPath string, value any) {
 		}
 		current = next
 	}
-}
-
-func renderSourceHealthReceipt(request normalizedRequest) string {
-	receipt := map[string]any{
-		"receipt_kind":                "source_health.receipt",
-		"source_id":                   request.SourceID,
-		"source_type":                 request.SourceType,
-		"auth_model":                  request.AuthModel,
-		"health_endpoint":             healthEndpoint(request.SourceID),
-		"adapter_health_path":         request.HealthPath,
-		"expected_cadence_seconds":    int64(request.FreshnessDuration.Seconds()),
-		"stale_after_seconds":         int64(request.FreshnessDuration.Seconds()),
-		"failure_modes":               request.FailureModes,
-		"evidence_cas_reference_kind": request.SourceID + ".evidence_cas_reference",
-	}
-	payload, _ := json.MarshalIndent(receipt, "", "  ")
-	return string(append(payload, '\n'))
-}
-
-func renderRuntimeDocs(request normalizedRequest) (string, error) {
-	engine, err := templateengine.New(sourcegenTemplates, "templates", nil)
-	if err != nil {
-		return "", fmt.Errorf("load sourcegen templates: %w", err)
-	}
-	document, err := engine.RenderString("runtime.md", request)
-	if err != nil {
-		return "", fmt.Errorf("render runtime documentation: %w", err)
-	}
-	return document, nil
-}
-
-func renderPRBody(request normalizedRequest) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "## Summary\n\n")
-	fmt.Fprintf(&b, "- Adds the `%s` Source Runtime SDK scaffold.\n", request.SourceID)
-	fmt.Fprintf(&b, "- Includes runtime adapter, health check, EvidenceCAS reference events, graph projection scaffolds, tests, and a source-health receipt.\n\n")
-	fmt.Fprintf(&b, "## Generated runtime contract\n\n")
-	fmt.Fprintf(&b, "- Source type: `%s`\n", request.SourceType)
-	fmt.Fprintf(&b, "- Auth model: `%s`\n", request.AuthModel)
-	fmt.Fprintf(&b, "- Health endpoint: `%s`\n", healthEndpoint(request.SourceID))
-	fmt.Fprintf(&b, "- Freshness: `%s`\n\n", request.FreshnessExpectation)
-	fmt.Fprintf(&b, "## Tests\n\n")
-	fmt.Fprintf(&b, "- Fixture pairs cover discover and read payloads for every generated family.\n")
-	fmt.Fprintf(&b, "- `go test ./sources/%s ./internal/sourceprojection -count=1`\n", request.SourceID)
-	fmt.Fprintf(&b, "- `make catalog-check`\n")
-	return b.String()
 }
 
 func renderProjectionGo(request normalizedRequest) string {

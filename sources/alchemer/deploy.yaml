@@ -1,4 +1,6 @@
 sourceId: alchemer
+health:
+  adapterPath: /v5/account
 secretKeys:
   - ALCHEMER_BASE_URL
   - ALCHEMER_API_TOKEN

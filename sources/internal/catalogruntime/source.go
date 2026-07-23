@@ -246,6 +246,9 @@ func familyConfig(resource connectordefinitions.ResourceFamily) jsonapi.FamilyCo
 		out.StaticQuery = mergeStringMaps(out.StaticQuery, resource.Config.StaticQuery)
 		out.ConfigQuery = mergeStringMaps(out.ConfigQuery, resource.Config.ConfigQuery)
 		out.ConfigAttributes = cloneStringMap(resource.Config.ConfigAttributes)
+		out.IDTemplate = strings.TrimSpace(resource.Config.IDTemplate)
+		out.EncodeURNID = resource.Config.EncodeURNID
+		out.ResourceURNKind = strings.TrimSpace(resource.Config.ResourceURNKind)
 		out.IdentityKeys = append([]string(nil), resource.Config.IdentityKeys...)
 	}
 	return out

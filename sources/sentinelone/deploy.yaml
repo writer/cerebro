@@ -1,4 +1,7 @@
 sourceId: sentinelone
+health:
+  authModel: api_token
+  adapterPath: /web/api/v2.1/agents
 secretKeys:
   - SENTINELONE_API_TOKEN
   - SENTINELONE_BASE_URL

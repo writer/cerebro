@@ -1,4 +1,7 @@
 sourceId: pagerduty
+health:
+  authModel: api_token
+  adapterPath: /users
 secretKeys:
   - PAGERDUTY_TOKEN
   # Comma-separated service IDs used to fan out the integrations runtime.

@@ -42,6 +42,17 @@ type Manifest struct {
 	SourceID   string            `yaml:"sourceId"`
 	SecretKeys []string          `yaml:"secretKeys,omitempty"`
 	Runtimes   []RuntimeManifest `yaml:"runtimes,omitempty"`
+	Health     HealthManifest    `yaml:"health,omitempty"`
+}
+
+// HealthManifest records only source-specific health contract values that
+// cannot be derived from the source catalog or runtime configuration.
+type HealthManifest struct {
+	SourceType             string `yaml:"sourceType,omitempty"`
+	AuthModel              string `yaml:"authModel,omitempty"`
+	AdapterPath            string `yaml:"adapterPath,omitempty"`
+	ExpectedCadenceSeconds int64  `yaml:"expectedCadenceSeconds,omitempty"`
+	StaleAfterSeconds      int64  `yaml:"staleAfterSeconds,omitempty"`
 }
 
 // RuntimeManifest describes a logical runtime configuration. The fully
@@ -154,6 +165,9 @@ func (m *Manifest) Validate() error {
 	}
 	if _, err := validateRuntimes(m.Runtimes, m.SecretKeys); err != nil {
 		return err
+	}
+	if m.Health.ExpectedCadenceSeconds < 0 || m.Health.StaleAfterSeconds < 0 {
+		return fmt.Errorf("health cadence values must not be negative")
 	}
 	return nil
 }

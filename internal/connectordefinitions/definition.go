@@ -355,6 +355,9 @@ type FamilyConfigSpec struct {
 	StaticQuery      map[string]string `json:"static_query,omitempty"`
 	ConfigQuery      map[string]string `json:"config_query,omitempty"`
 	ConfigAttributes map[string]string `json:"config_attributes,omitempty"`
+	IDTemplate       string            `json:"id_template,omitempty"`
+	EncodeURNID      bool              `json:"encode_urn_id,omitempty"`
+	ResourceURNKind  string            `json:"resource_urn_kind,omitempty"`
 	IdentityKeys     []string          `json:"identity_keys,omitempty"`
 }
 
@@ -1347,8 +1350,10 @@ func normalizeFamilyConfigSpec(config *FamilyConfigSpec) *FamilyConfigSpec {
 	next.StaticQuery = normalizeStringMap(next.StaticQuery)
 	next.ConfigQuery = normalizeStringMap(next.ConfigQuery)
 	next.ConfigAttributes = normalizeStringMap(next.ConfigAttributes)
+	next.IDTemplate = strings.TrimSpace(next.IDTemplate)
+	next.ResourceURNKind = strings.TrimSpace(next.ResourceURNKind)
 	next.IdentityKeys = normalizeStringList(next.IdentityKeys)
-	if next.BaseURL == "" && next.AuthModel == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 && len(next.IdentityKeys) == 0 {
+	if next.BaseURL == "" && next.AuthModel == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 && next.IDTemplate == "" && !next.EncodeURNID && next.ResourceURNKind == "" && len(next.IdentityKeys) == 0 {
 		return nil
 	}
 	return &next

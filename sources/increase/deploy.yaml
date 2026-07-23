@@ -1,4 +1,6 @@
 sourceId: increase
+health:
+  adapterPath: /events
 secretKeys:
   - INCREASE_TOKEN
 runtimes:

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/writer/cerebro/internal/connectorcatalog"
+	"github.com/writer/cerebro/internal/connectordefinitions"
 	"github.com/writer/cerebro/tools/sourcedeploy"
 	"gopkg.in/yaml.v3"
 )
@@ -32,7 +34,7 @@ var requireDeployManifest = map[string]struct{}{
 	"vulnview":         {},
 }
 
-var requireSourceHealthReceipt = map[string]struct{}{
+var requireDerivedSourceHealthReceipt = map[string]struct{}{
 	"aws":         {},
 	"github":      {},
 	"grc":         {},
@@ -72,8 +74,16 @@ func TestSourceDeployManifestsAreValid(t *testing.T) {
 	}
 }
 
-func TestPrioritySourcesDeclareHealthReceipts(t *testing.T) {
+func TestPrioritySourcesDeriveHealthReceipts(t *testing.T) {
 	root := filepath.Join("..", "..", "sources")
+	analysis, err := connectorcatalog.BuiltinRuntime()
+	if err != nil {
+		t.Fatalf("BuiltinRuntime: %v", err)
+	}
+	definitions := make(map[string]connectordefinitions.Definition, len(analysis.Entries))
+	for _, entry := range analysis.Entries {
+		definitions[entry.Definition.SourceID] = entry.Definition
+	}
 	manifests, err := sourcedeploy.Discover(root)
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
@@ -81,6 +91,7 @@ func TestPrioritySourcesDeclareHealthReceipts(t *testing.T) {
 	contract, err := sourcedeploy.RenderContract(root, manifests, sourcedeploy.ContractOptions{
 		Environment: "sec-dev",
 		TenantID:    "writer",
+		Definitions: definitions,
 	})
 	if err != nil {
 		t.Fatalf("RenderContract: %v", err)
@@ -94,7 +105,7 @@ func TestPrioritySourcesDeclareHealthReceipts(t *testing.T) {
 	}
 
 	missing := make([]string, 0)
-	for id := range requireSourceHealthReceipt {
+	for id := range requireDerivedSourceHealthReceipt {
 		receipt := receiptsBySource[id]
 		if len(receipt) == 0 {
 			missing = append(missing, id)
@@ -114,8 +125,28 @@ func TestPrioritySourcesDeclareHealthReceipts(t *testing.T) {
 	}
 	sort.Strings(missing)
 	if len(missing) > 0 {
-		t.Fatalf("priority sources missing source_health_receipt.json: %v", missing)
+		t.Fatalf("priority sources missing derived health receipts: %v", missing)
 	}
+
+	// These assertions record the intentional contract changes made when the
+	// checked-in receipt snapshots were replaced with derived catalog data.
+	requireHealthReceiptField(t, "docker_hub", receiptsBySource["docker_hub"], "adapter_health_path", "/v2/namespaces/${config.namespace}/repositories/${config.repository}")
+	requireHealthReceiptField(t, "fivetran", receiptsBySource["fivetran"], "evidence_cas_reference_kind", "fivetran.evidence_cas_reference")
+	requireHealthReceiptField(t, "sailpoint_identitynow", receiptsBySource["sailpoint_identitynow"], "evidence_cas_reference_kind", "sailpoint_identitynow.evidence_cas_reference")
+	requireHealthReceiptField(t, "beezup", receiptsBySource["beezup"], "provider_api_status", "verified")
+	requireHealthReceiptField(t, "hashicorp_vault", receiptsBySource["hashicorp_vault"], "auth_mechanics", "x_vault_token_header")
+	requireHealthReceiptStringList(t, "auth0", receiptsBySource["auth0"], "runtime_families", []string{
+		"audit_events", "client_grants", "clients", "connections", "grants", "guardian_factors", "organization_members",
+		"organizations", "resource_servers", "roles", "user_authentication_methods", "user_roles", "users",
+	})
+	duo := receiptsBySource["duo"]
+	if _, present := duo["families"]; present {
+		t.Fatalf("duo health receipt retains legacy families field: %#v", duo["families"])
+	}
+	requireHealthReceiptStringList(t, "duo", duo, "runtime_families", []string{
+		"administrator", "application", "audit_event", "authentication_log", "endpoint", "group",
+		"phone", "role", "token", "user", "web_authn_credential",
+	})
 }
 
 func TestCloudProviderDeployManifestsCoverRuntimeFamilies(t *testing.T) {
@@ -223,19 +254,48 @@ func requirePositiveHealthReceiptSeconds(t *testing.T, sourceID string, receipt 
 		if got > 0 {
 			return
 		}
+	case int64:
+		if got > 0 {
+			return
+		}
 	}
 	t.Fatalf("%s health receipt %s = %#v, want positive seconds", sourceID, key, receipt[key])
 }
 
 func requireNonEmptyHealthReceiptList(t *testing.T, sourceID string, receipt map[string]any, key string) {
 	t.Helper()
-	values, ok := receipt[key].([]any)
-	if !ok || len(values) == 0 {
+	var values []string
+	switch raw := receipt[key].(type) {
+	case []string:
+		values = raw
+	case []any:
+		for _, value := range raw {
+			text, ok := value.(string)
+			if !ok {
+				t.Fatalf("%s health receipt %s contains %#v, want non-empty strings", sourceID, key, value)
+			}
+			values = append(values, text)
+		}
+	}
+	if len(values) == 0 {
 		t.Fatalf("%s health receipt %s = %#v, want non-empty list", sourceID, key, receipt[key])
 	}
 	for _, value := range values {
-		if text, ok := value.(string); !ok || strings.TrimSpace(text) == "" {
+		if strings.TrimSpace(value) == "" {
 			t.Fatalf("%s health receipt %s contains %#v, want non-empty strings", sourceID, key, value)
+		}
+	}
+}
+
+func requireHealthReceiptStringList(t *testing.T, sourceID string, receipt map[string]any, key string, want []string) {
+	t.Helper()
+	got, ok := receipt[key].([]string)
+	if !ok || len(got) != len(want) {
+		t.Fatalf("%s health receipt %s = %#v, want %#v", sourceID, key, receipt[key], want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("%s health receipt %s = %#v, want %#v", sourceID, key, got, want)
 		}
 	}
 }

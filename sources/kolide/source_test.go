@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcefixture"
 )
 
 func TestSourceSpec(t *testing.T) {
@@ -358,9 +359,9 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 }
 
 func TestNewFixtureReplaysEveryRuntimeFamily(t *testing.T) {
-	source, err := NewFixture()
+	source, err := sourcefixture.NewCatalogSource(".", defaultFamily)
 	if err != nil {
-		t.Fatalf("NewFixture() error = %v", err)
+		t.Fatalf("NewCatalogSource() error = %v", err)
 	}
 	familyConfigs := map[string]sourcecdk.Config{}
 	for _, family := range []string{

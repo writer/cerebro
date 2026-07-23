@@ -1,4 +1,7 @@
 sourceId: slack
+health:
+  authModel: bearer_token
+  adapterPath: /auth.teams.list
 secretKeys:
   - SLACK_TOKEN
 runtimes:

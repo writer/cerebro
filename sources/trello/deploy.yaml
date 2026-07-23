@@ -1,4 +1,6 @@
 sourceId: trello
+health:
+  adapterPath: /v1/me
 secretKeys:
   - TRELLO_BASE_URL
   - TRELLO_API_KEY
