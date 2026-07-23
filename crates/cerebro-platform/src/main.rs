@@ -176,6 +176,19 @@ struct ExpandRequest {
 }
 
 #[derive(Deserialize)]
+struct ExpandBatchRequest {
+    tenant_id: String,
+    root_keys: Vec<String>,
+    depth: usize,
+    limit: usize,
+}
+
+#[derive(Serialize)]
+struct ExpandBatchResponse {
+    neighborhoods: BTreeMap<String, Neighborhood>,
+}
+
+#[derive(Deserialize)]
 struct SearchRequest {
     tenant_id: String,
     query: String,
@@ -410,6 +423,7 @@ fn router_with_backend(
         .route("/v1/assertions/{assertion_id}", get(explain_assertion))
         .route("/v1/graph/search", post(search))
         .route("/v1/graph/expand", post(expand))
+        .route("/v1/graph/expand-batch", post(expand_batch))
         .route("/v1/graph/paths", post(find_paths))
         .route("/v1/projections/events", post(project_event))
         .route("/v1/projections/authority", get(projection_authority))
@@ -615,16 +629,32 @@ async fn expand(
     Json(request): Json<ExpandRequest>,
 ) -> Result<Json<Neighborhood>, (StatusCode, Json<ErrorResponse>)> {
     let tenant_id = parse_tenant(request.tenant_id)?;
-    let root = state
+    let mut neighborhoods = state
         .graph
-        .resolve(&tenant_id, &request.root_key)
+        .expand_many(
+            &tenant_id,
+            std::slice::from_ref(&request.root_key),
+            request.depth,
+            request.limit,
+        )
         .await
         .map_err(context_error)?;
+    neighborhoods
+        .remove(&request.root_key)
+        .map(Json)
+        .ok_or_else(|| context_error(ContextError::EntityNotFound))
+}
+
+async fn expand_batch(
+    State(state): State<AppState>,
+    Json(request): Json<ExpandBatchRequest>,
+) -> Result<Json<ExpandBatchResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let tenant_id = parse_tenant(request.tenant_id)?;
     state
         .graph
-        .expand(&tenant_id, &root.entity_id, request.depth, request.limit)
+        .expand_many(&tenant_id, &request.root_keys, request.depth, request.limit)
         .await
-        .map(Json)
+        .map(|neighborhoods| Json(ExpandBatchResponse { neighborhoods }))
         .map_err(context_error)
 }
 
@@ -879,6 +909,7 @@ mod tests {
             "limit": 100
         });
         let response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
@@ -890,6 +921,25 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let request = serde_json::json!({
+            "tenant_id": "tenant-demo",
+            "root_keys": [root_id.as_str()],
+            "depth": 1,
+            "limit": 100
+        });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/graph/expand-batch")
+                    .header("content-type", "application/json")
+                    .body(Body::from(request.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[tokio::test]

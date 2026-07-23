@@ -134,6 +134,37 @@ At 1,000 records:
 - projection plus admission improved from 3,743 to 2,829 ns/record, a 24.4%
   reduction.
 
+## July 23 follow-up
+
+The mapper now compiles family lookup, projection field paths, mapper identity,
+and provider kinds once when a source mapper is created. Before and after runs
+used the same five-sample, 300 ms workload:
+
+| Workload | Before | After | Reduction |
+| --- | ---: | ---: | ---: |
+| Rust projection, 1,000 records | 2,501 ns/record | 2,247 ns/record | 10.2% |
+| Rust projection, 5,000 records | 2,674 ns/record | 2,290 ns/record | 14.4% |
+| Rust projection + admission, 1,000 records | 2,751 ns/record | 2,529 ns/record | 8.1% |
+
+In the paired follow-up run, the equivalent Go raw-record projection measured
+3,079 ns/record at 1,000 records. Rust measured 2,247 ns/record, 27.0% lower.
+
+Bounded product reads also moved from Go-primary shadowing to Rust authority.
+The Rust API now resolves a one-hop root, its edges, and the graph revision in
+one Neo4j query. The before and after release builds used the same local
+disposable stores and request shape:
+
+| HTTP workload | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| One root, concurrency 1 | 6.347 ms/request | 1.712 ms/request | 73.0% lower latency |
+| One root, concurrency 16 | 1,085.7 requests/s | 3,939.5 requests/s | 3.63x throughput |
+
+The batch route accepts one tenant and at most 100 roots. In the durable store
+suite, seven sequential one-hop reads took 27.251 ms per set. One seven-root
+query took 2.588 ms per set, a 90.5% reduction and 10.5x throughput increase.
+The batch result was checked for all seven roots and their bounded edges on
+every iteration.
+
 ## What this does not prove
 
 This receipt does not measure provider network time, production-sized graph

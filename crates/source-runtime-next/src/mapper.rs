@@ -127,7 +127,15 @@ impl IdentityResolutionSnapshot {
 pub struct CatalogGraphMapper {
     source: CompiledSource,
     producer_version: String,
+    mapper_id: String,
+    families: BTreeMap<String, FamilyPlan>,
+    provider_kinds: BTreeMap<String, ProviderKind>,
     identity_resolution: IdentityResolutionSnapshot,
+}
+
+struct FamilyPlan {
+    index: usize,
+    projected_paths: Vec<(String, Vec<String>)>,
 }
 
 impl CatalogGraphMapper {
@@ -139,9 +147,62 @@ impl CatalogGraphMapper {
         if producer_version.trim().is_empty() || producer_version.trim() != producer_version {
             return Err(ModelError::Invalid("catalog mapper version").into());
         }
+        let mut families = BTreeMap::new();
+        let mut provider_kinds = BTreeMap::new();
+        for (index, family) in source.families().iter().enumerate() {
+            let template = family.projection().template();
+            if entity_kind(template).is_some() {
+                provider_kinds
+                    .entry(template.to_owned())
+                    .or_insert(ProviderKind::parse(format!(
+                        "{}.{}",
+                        source.id(),
+                        template
+                    ))?);
+            }
+            families.insert(
+                family.id().to_owned(),
+                FamilyPlan {
+                    index,
+                    projected_paths: family
+                        .projection()
+                        .fields()
+                        .iter()
+                        .map(|(target, expression)| {
+                            (
+                                target.clone(),
+                                expression
+                                    .split('|')
+                                    .map(str::trim)
+                                    .map(str::to_owned)
+                                    .collect(),
+                            )
+                        })
+                        .collect(),
+                },
+            );
+        }
+        for template in [
+            "identity_user",
+            "identity_group",
+            "identity_application",
+            "access_target",
+        ] {
+            provider_kinds
+                .entry(template.to_owned())
+                .or_insert(ProviderKind::parse(format!(
+                    "{}.{}",
+                    source.id(),
+                    template
+                ))?);
+        }
+        let mapper_id = format!("catalog-{}-mapper", source.id());
         Ok(Self {
             source,
             producer_version,
+            mapper_id,
+            families,
+            provider_kinds,
             identity_resolution: IdentityResolutionSnapshot::default(),
         })
     }
@@ -177,20 +238,19 @@ impl CatalogGraphMapper {
         mut builder: GraphDeltaBuilder<Mode>,
     ) -> Result<GraphDelta, CatalogMapperError> {
         for record in &batch.records {
-            let family = self
-                .source
-                .families()
-                .iter()
-                .find(|family| family.id() == record.family)
+            let plan = self
+                .families
+                .get(&record.family)
                 .ok_or_else(|| CatalogMapperError::UnknownFamily(record.family.clone()))?;
-            let projected = projected_fields(family, record);
+            let family = &self.source.families()[plan.index];
+            let projected = projected_fields(family, &plan.projected_paths, record);
             let provenance = AssertionProvenance::direct(
                 vec![ObservationRef::new(
                     batch.scope.receipt(),
                     record.observation_id.clone(),
                     format!("{}:{}", record.provider_kind, record.provider_id),
                 )?],
-                format!("catalog-{}-mapper", self.source.id()),
+                self.mapper_id.clone(),
                 self.producer_version.clone(),
             )?;
             match family.projection().template() {
@@ -231,7 +291,7 @@ impl CatalogGraphMapper {
         let kind = entity_kind(template)
             .ok_or_else(|| CatalogMapperError::UnsupportedTemplate(template.to_owned()))?;
         let label = label_for(template, &projected, family, record);
-        let provider_kind = ProviderKind::parse(format!("{}.{}", self.source.id(), template))?;
+        let provider_kind = self.provider_kind(template)?;
         let entity = Entity::provider(
             batch.scope.receipt().tenant_id().clone(),
             batch.scope.receipt().source_runtime_id().clone(),
@@ -258,7 +318,7 @@ impl CatalogGraphMapper {
         let provider = ProviderIdentity::new(
             tenant_id.clone(),
             batch.scope.receipt().source_runtime_id().clone(),
-            ProviderKind::parse(format!("{}.identity_user", self.source.id()))?,
+            self.provider_kind("identity_user")?,
             identity_id(&projected, record),
             label.clone(),
         )?;
@@ -355,14 +415,14 @@ impl CatalogGraphMapper {
         let identity = ProviderIdentity::new(
             batch.scope.receipt().tenant_id().clone(),
             batch.scope.receipt().source_runtime_id().clone(),
-            ProviderKind::parse(format!("{}.identity_user", self.source.id()))?,
+            self.provider_kind("identity_user")?,
             member_id,
             first(&projected, &["member_name", "member_email"]).unwrap_or(member_id),
         )?;
         let group = Entity::provider(
             batch.scope.receipt().tenant_id().clone(),
             batch.scope.receipt().source_runtime_id().clone(),
-            ProviderKind::parse(format!("{}.identity_group", self.source.id()))?,
+            self.provider_kind("identity_group")?,
             group_id,
             EntityKind::Group,
             first(&projected, &["group_name", "group_email"]).unwrap_or(group_id),
@@ -398,7 +458,7 @@ impl CatalogGraphMapper {
         let application = Entity::provider(
             batch.scope.receipt().tenant_id().clone(),
             batch.scope.receipt().source_runtime_id().clone(),
-            ProviderKind::parse(format!("{}.identity_application", self.source.id()))?,
+            self.provider_kind("identity_application")?,
             app_id,
             EntityKind::Application,
             first(&projected, &["app_name"]).unwrap_or(app_id),
@@ -413,7 +473,7 @@ impl CatalogGraphMapper {
                 ProviderIdentity::new(
                     batch.scope.receipt().tenant_id().clone(),
                     batch.scope.receipt().source_runtime_id().clone(),
-                    ProviderKind::parse(format!("{}.identity_user", self.source.id()))?,
+                    self.provider_kind("identity_user")?,
                     subject_id,
                     first(&projected, &["member_name", "member_email"]).unwrap_or(subject_id),
                 )?
@@ -431,7 +491,7 @@ impl CatalogGraphMapper {
             let target = Entity::provider(
                 batch.scope.receipt().tenant_id().clone(),
                 batch.scope.receipt().source_runtime_id().clone(),
-                ProviderKind::parse(format!("{}.access_target", self.source.id()))?,
+                self.provider_kind("access_target")?,
                 audience,
                 EntityKind::Resource,
                 audience,
@@ -450,15 +510,26 @@ impl CatalogGraphMapper {
         builder.add_assertion(GraphAssertion::Relationship(assertion))?;
         Ok(())
     }
+
+    fn provider_kind(&self, template: &str) -> Result<ProviderKind, CatalogMapperError> {
+        self.provider_kinds
+            .get(template)
+            .cloned()
+            .ok_or_else(|| CatalogMapperError::UnsupportedTemplate(template.to_owned()))
+    }
 }
 
-fn projected_fields(family: &CompiledFamily, record: &SourceRecord) -> BTreeMap<String, String> {
+fn projected_fields(
+    family: &CompiledFamily,
+    projected_paths: &[(String, Vec<String>)],
+    record: &SourceRecord,
+) -> BTreeMap<String, String> {
     let mut values = record.fields.clone();
     values.extend(family.projection().static_fields().clone());
-    for (target, expression) in family.projection().fields() {
-        if let Some(value) = expression
-            .split('|')
-            .find_map(|path| scalar_at_path(&record.payload, path.trim()))
+    for (target, paths) in projected_paths {
+        if let Some(value) = paths
+            .iter()
+            .find_map(|path| scalar_at_path(&record.payload, path))
         {
             values.insert(target.clone(), value);
         }

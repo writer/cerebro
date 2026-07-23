@@ -111,6 +111,49 @@ async fn benchmark_durable_store_and_traversal() -> Result<(), Box<dyn Error>> {
         })?;
     }
 
+    let root_keys = path_entities
+        .iter()
+        .map(|entity| entity.id().to_string())
+        .collect::<Vec<_>>();
+    let iterations = 100;
+    let started = Instant::now();
+    for _ in 0..iterations {
+        for entity in &path_entities {
+            let neighborhood = reader
+                .expand(path_batch.scope.receipt().tenant_id(), entity.id(), 1, 10)
+                .await?;
+            if neighborhood.root.entity_id != *entity.id() {
+                return Err("sequential neighborhood returned the wrong root".into());
+            }
+        }
+    }
+    let elapsed = started.elapsed();
+    emit(Measurement {
+        operation: "seven_one_hop_reads_sequential",
+        records: root_keys.len(),
+        iterations,
+        total_ms: millis(elapsed),
+        micros_per_operation: elapsed.as_secs_f64() * 1_000_000.0 / iterations as f64,
+    })?;
+
+    let started = Instant::now();
+    for _ in 0..iterations {
+        let neighborhoods = reader
+            .expand_many(path_batch.scope.receipt().tenant_id(), &root_keys, 1, 10)
+            .await?;
+        if neighborhoods.len() != root_keys.len() {
+            return Err("batched neighborhood read omitted a root".into());
+        }
+    }
+    let elapsed = started.elapsed();
+    emit(Measurement {
+        operation: "seven_one_hop_reads_batched",
+        records: root_keys.len(),
+        iterations,
+        total_ms: millis(elapsed),
+        micros_per_operation: elapsed.as_secs_f64() * 1_000_000.0 / iterations as f64,
+    })?;
+
     let started = Instant::now();
     let mut tasks = Vec::new();
     for tenant_index in 0..8 {

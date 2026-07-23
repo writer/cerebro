@@ -2,7 +2,12 @@
 
 //! Bounded graph operations presented to agents and product surfaces.
 
-use std::{collections::BTreeSet, error::Error, fmt, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt,
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use cerebro_organizational_graph::GraphRead;
@@ -14,11 +19,14 @@ use tokio::sync::RwLock;
 
 const MAX_DEPTH: usize = 6;
 const MAX_RESULTS: usize = 500;
+const MAX_ROOTS: usize = 100;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ContextError {
     InvalidLimit,
     InvalidDepth,
+    InvalidRootKey,
+    InvalidRootCount,
     EntityNotFound,
     BackendUnavailable(String),
 }
@@ -28,6 +36,12 @@ impl fmt::Display for ContextError {
         match self {
             Self::InvalidLimit => formatter.write_str("result limit must be between 1 and 500"),
             Self::InvalidDepth => formatter.write_str("graph depth must be between 1 and 6"),
+            Self::InvalidRootKey => {
+                formatter.write_str("graph root keys must be non-empty and normalized")
+            }
+            Self::InvalidRootCount => {
+                formatter.write_str("graph root count must be between 1 and 100")
+            }
             Self::EntityNotFound => formatter.write_str("entity was not found"),
             Self::BackendUnavailable(message) => {
                 write!(formatter, "graph backend unavailable: {message}")
@@ -51,6 +65,7 @@ pub struct ContextEdge {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ContextEntity {
     pub entity_id: EntityId,
+    pub agent_key: String,
     pub entity_kind: String,
     pub authority: serde_json::Value,
     pub label: String,
@@ -61,6 +76,7 @@ impl ContextEntity {
     pub fn from_domain(entity: &Entity) -> Self {
         Self {
             entity_id: entity.id().clone(),
+            agent_key: entity.agent_key(),
             entity_kind: serde_json::to_value(entity.kind())
                 .ok()
                 .and_then(|value| value.as_str().map(str::to_owned))
@@ -325,6 +341,32 @@ pub trait AgentGraph: Send + Sync {
         limit: usize,
     ) -> Result<Neighborhood, ContextError>;
 
+    async fn expand_many(
+        &self,
+        tenant_id: &TenantId,
+        root_keys: &[String],
+        depth: usize,
+        limit: usize,
+    ) -> Result<BTreeMap<String, Neighborhood>, ContextError> {
+        validate_root_keys(root_keys)?;
+        validate_depth(depth)?;
+        validate_limit(limit)?;
+        let mut neighborhoods = BTreeMap::new();
+        for root_key in root_keys {
+            let root = match self.resolve(tenant_id, root_key).await {
+                Ok(root) => root,
+                Err(ContextError::EntityNotFound) => continue,
+                Err(error) => return Err(error),
+            };
+            neighborhoods.insert(
+                root_key.clone(),
+                self.expand(tenant_id, &root.entity_id, depth, limit)
+                    .await?,
+            );
+        }
+        Ok(neighborhoods)
+    }
+
     async fn find_paths(
         &self,
         tenant_id: &TenantId,
@@ -471,6 +513,19 @@ fn validate_depth(depth: usize) -> Result<(), ContextError> {
     Ok(())
 }
 
+pub fn validate_root_keys(root_keys: &[String]) -> Result<(), ContextError> {
+    if !(1..=MAX_ROOTS).contains(&root_keys.len()) {
+        return Err(ContextError::InvalidRootCount);
+    }
+    if root_keys
+        .iter()
+        .any(|root_key| root_key.is_empty() || root_key.trim() != root_key)
+    {
+        return Err(ContextError::InvalidRootKey);
+    }
+    Ok(())
+}
+
 pub fn validate_bounds(depth: usize, limit: usize) -> Result<(), ContextError> {
     validate_depth(depth)?;
     validate_limit(limit)
@@ -587,6 +642,20 @@ mod tests {
             ),
             Err(ContextError::InvalidDepth)
         );
+    }
+
+    #[test]
+    fn batched_graph_reads_have_a_closed_root_boundary() {
+        assert_eq!(validate_root_keys(&[]), Err(ContextError::InvalidRootCount));
+        assert_eq!(
+            validate_root_keys(&vec!["root".to_owned(); 101]),
+            Err(ContextError::InvalidRootCount)
+        );
+        assert_eq!(
+            validate_root_keys(&[" root".to_owned()]),
+            Err(ContextError::InvalidRootKey)
+        );
+        assert!(validate_root_keys(&["root".to_owned()]).is_ok());
     }
 
     #[test]

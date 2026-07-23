@@ -259,6 +259,31 @@ impl Entity {
     pub fn properties(&self) -> &BTreeMap<String, String> {
         &self.properties
     }
+
+    /// Returns the tenant-scoped key exposed at agent and product boundaries.
+    ///
+    /// Provider projections may carry an existing Cerebro URN. Values for a
+    /// different tenant are never accepted as aliases. Every other entity gets
+    /// a deterministic key derived from its sealed tenant and entity ID.
+    pub fn agent_key(&self) -> String {
+        for property in ["resource_urn", "entity_urn", "urn"] {
+            if let Some(value) = self.properties.get(property)
+                && value
+                    .strip_prefix("urn:cerebro:")
+                    .and_then(|suffix| suffix.split_once(':'))
+                    .is_some_and(|(tenant_id, remainder)| {
+                        tenant_id == self.tenant_id.as_str() && !remainder.is_empty()
+                    })
+            {
+                return value.clone();
+            }
+        }
+        format!(
+            "urn:cerebro:{}:organizational_entity:{}",
+            self.tenant_id.as_str(),
+            self.id.as_str()
+        )
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -1260,6 +1285,39 @@ mod tests {
         let second_identity = CanonicalIdentity::for_claim(tenant, &second, "A Person").unwrap();
         assert_eq!(first.value(), "person@example.com");
         assert_eq!(first_identity.entity().id(), second_identity.entity().id());
+    }
+
+    #[test]
+    fn every_entity_has_one_tenant_scoped_agent_key() {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let entity = Entity::canonical(
+            tenant,
+            EntityId::parse("person:canonical:one").unwrap(),
+            EntityKind::Person,
+            "One",
+        )
+        .unwrap();
+        assert_eq!(
+            entity.agent_key(),
+            "urn:cerebro:tenant-a:organizational_entity:person:canonical:one"
+        );
+
+        let declared = entity
+            .clone()
+            .with_property("resource_urn", "urn:cerebro:tenant-a:directory_user:one")
+            .unwrap();
+        assert_eq!(
+            declared.agent_key(),
+            "urn:cerebro:tenant-a:directory_user:one"
+        );
+
+        let cross_tenant = entity
+            .with_property("resource_urn", "urn:cerebro:tenant-b:directory_user:one")
+            .unwrap();
+        assert_eq!(
+            cross_tenant.agent_key(),
+            "urn:cerebro:tenant-a:organizational_entity:person:canonical:one"
+        );
     }
 
     #[test]

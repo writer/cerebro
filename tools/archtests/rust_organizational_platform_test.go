@@ -37,6 +37,7 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 		"GraphDeltaBuilder<Authoritative>",
 		"IdentityResolutionMethod::ExistingClaimMatch",
 		`EntityId::parse(format!("person:canonical:{id}"))`,
+		"pub fn agent_key(&self) -> String",
 	} {
 		if !strings.Contains(modelSource, required) {
 			t.Errorf("organizational model missing enforced construct %q", required)
@@ -125,6 +126,21 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 		if !strings.Contains(doc, rule) {
 			t.Errorf("Rust organizational platform decision missing rule %q", rule)
 		}
+	}
+
+	queryAdapter := readText(t, filepath.Join(root, "internal/sourcehttp/organizationalgraph/query.go"))
+	for _, required := range []string{
+		`"/v1/graph/expand-batch"`,
+		"compatibility.ExecuteReadCypher",
+		"maxBatchRoots",
+		"AgentKey",
+	} {
+		if !strings.Contains(queryAdapter, required) {
+			t.Errorf("Rust graph read adapter missing enforced boundary %q", required)
+		}
+	}
+	if strings.Contains(queryAdapter, "ShadowQueryStore") {
+		t.Error("bounded product graph reads must not restore the Go-primary shadow adapter")
 	}
 }
 

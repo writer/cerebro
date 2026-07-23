@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use cerebro_agent_context::{
     AgentGraph, ContextEdge, ContextEntity, ContextError, GraphPath, Neighborhood, validate_bounds,
+    validate_root_keys,
 };
 use cerebro_organizational_graph::GraphWriteReceipt;
 use cerebro_organizational_model::{AssertionId, EntityId, GraphDelta, TenantId};
@@ -63,6 +64,47 @@ const REVISION_QUERY: &str = r#"
 MERGE (revision:OrganizationalGraphRevision {tenant_id: $tenant_id})
 SET revision.graph_revision = $graph_revision,
     revision.delta_digest = $delta_digest
+"#;
+
+const ONE_HOP_BATCH_QUERY: &str = r#"
+UNWIND $root_keys AS root_key
+CALL {
+  WITH root_key
+  OPTIONAL MATCH (candidate:OrganizationalEntity {tenant_id: $tenant_id})
+  WHERE candidate.entity_id = root_key OR candidate.external_id = root_key
+  WITH root_key, [candidate IN collect(candidate) WHERE candidate IS NOT NULL] AS candidates
+  WITH root_key,
+       size(candidates) AS match_count,
+       CASE WHEN size(candidates) = 1 THEN candidates[0] ELSE null END AS root
+  OPTIONAL MATCH (root)-[edge:ORGANIZATIONAL_RELATION]-(neighbor:OrganizationalEntity)
+  WITH root_key, match_count, root, edge
+  ORDER BY edge.assertion_id
+  LIMIT $limit
+  RETURN match_count, root, edge, startNode(edge) AS source, endNode(edge) AS target
+}
+OPTIONAL MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id})
+RETURN root_key,
+       match_count,
+       coalesce(root.entity_id, '') AS root_id,
+       coalesce(root.entity_kind, '') AS root_kind,
+       coalesce(root.authority_json, 'null') AS root_authority,
+       coalesce(root.label, '') AS root_label,
+       coalesce(root.properties_json, '{}') AS root_properties,
+       coalesce(source.entity_id, '') AS from_id,
+       coalesce(source.entity_kind, '') AS from_kind,
+       coalesce(source.authority_json, 'null') AS from_authority,
+       coalesce(source.label, '') AS from_label,
+       coalesce(source.properties_json, '{}') AS from_properties,
+       coalesce(target.entity_id, '') AS to_id,
+       coalesce(target.entity_kind, '') AS to_kind,
+       coalesce(target.authority_json, 'null') AS to_authority,
+       coalesce(target.label, '') AS to_label,
+       coalesce(target.properties_json, '{}') AS to_properties,
+       coalesce(edge.assertion_id, '') AS assertion_id,
+       coalesce(edge.relation, '') AS relation,
+       coalesce(edge.source_runtime_id, '') AS source_runtime_id,
+       coalesce(revision.graph_revision, 0) AS graph_revision
+ORDER BY root_key, assertion_id
 "#;
 
 const NEO4J_SCHEMA: &[&str] = &[
@@ -309,6 +351,35 @@ impl AgentGraph for Neo4jProjector {
         })
     }
 
+    async fn expand_many(
+        &self,
+        tenant_id: &TenantId,
+        root_keys: &[String],
+        depth: usize,
+        limit: usize,
+    ) -> Result<std::collections::BTreeMap<String, Neighborhood>, ContextError> {
+        validate_root_keys(root_keys)?;
+        validate_bounds(depth, limit)?;
+        if depth != 1 {
+            let mut neighborhoods = std::collections::BTreeMap::new();
+            for root_key in root_keys {
+                let root = match self.resolve(tenant_id, root_key).await {
+                    Ok(root) => root,
+                    Err(ContextError::EntityNotFound) => continue,
+                    Err(error) => return Err(error),
+                };
+                neighborhoods.insert(
+                    root_key.clone(),
+                    self.expand(tenant_id, &root.entity_id, depth, limit)
+                        .await?,
+                );
+            }
+            return Ok(neighborhoods);
+        }
+
+        self.expand_one_hop_many(tenant_id, root_keys, limit).await
+    }
+
     async fn find_paths(
         &self,
         tenant_id: &TenantId,
@@ -357,13 +428,15 @@ impl AgentGraph for Neo4jProjector {
             }
             let mut entities = Vec::with_capacity(entity_ids.len());
             for index in 0..entity_ids.len() {
+                let entity_properties = parse_json(&properties[index])?;
                 entities.push(ContextEntity {
                     entity_id: EntityId::parse(&entity_ids[index])
                         .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
+                    agent_key: context_agent_key(&entity_properties)?,
                     entity_kind: entity_kinds[index].clone(),
                     authority: parse_json(&authorities[index])?,
                     label: labels[index].clone(),
-                    properties: parse_json(&properties[index])?,
+                    properties: entity_properties,
                 });
             }
             let mut edges = Vec::with_capacity(assertion_ids.len());
@@ -417,6 +490,93 @@ impl AgentGraph for Neo4jProjector {
 }
 
 impl Neo4jProjector {
+    async fn expand_one_hop_many(
+        &self,
+        tenant_id: &TenantId,
+        root_keys: &[String],
+        limit: usize,
+    ) -> Result<std::collections::BTreeMap<String, Neighborhood>, ContextError> {
+        let mut stream = self
+            .graph
+            .execute(
+                query(ONE_HOP_BATCH_QUERY)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("root_keys", string_list(root_keys))
+                    .param("limit", i64::try_from(limit).unwrap_or(500)),
+            )
+            .await
+            .map_err(context_backend)?;
+        let mut accumulators = std::collections::BTreeMap::<String, NeighborhoodAccumulator>::new();
+        while let Some(row) = stream.next().await.map_err(context_backend)? {
+            let root_key = row_string(&row, "root_key")?;
+            let match_count: i64 = row.get("match_count").map_err(context_decode)?;
+            if match_count > 1 {
+                return Err(ContextError::BackendUnavailable(format!(
+                    "external entity key {root_key:?} is ambiguous"
+                )));
+            }
+            if match_count == 0 {
+                continue;
+            }
+            let graph_revision: i64 = row.get("graph_revision").map_err(context_decode)?;
+            let graph_revision = u64::try_from(graph_revision).map_err(|_| {
+                ContextError::BackendUnavailable("Neo4j graph revision is negative".to_owned())
+            })?;
+            let root = context_entity_prefix(&row, "root")?;
+            let accumulator =
+                accumulators
+                    .entry(root_key)
+                    .or_insert_with(|| NeighborhoodAccumulator {
+                        root,
+                        entities: std::collections::BTreeMap::new(),
+                        edges: Vec::new(),
+                        graph_revision,
+                    });
+            if accumulator.graph_revision != graph_revision {
+                return Err(ContextError::BackendUnavailable(
+                    "Neo4j graph revision changed during one read".to_owned(),
+                ));
+            }
+            let assertion_id = row_string(&row, "assertion_id")?;
+            if assertion_id.is_empty() {
+                continue;
+            }
+            let from = context_entity_prefix(&row, "from")?;
+            let to = context_entity_prefix(&row, "to")?;
+            let relation = row_string(&row, "relation")?;
+            let edge = ContextEdge {
+                assertion_id: AssertionId::parse(assertion_id)
+                    .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
+                from: from.entity_id.clone(),
+                relation: relation.clone(),
+                to: to.entity_id.clone(),
+                source_runtime_id: row_string(&row, "source_runtime_id")?,
+                identity_binding: relation == "represents",
+            };
+            accumulator.entities.insert(from.entity_id.clone(), from);
+            accumulator.entities.insert(to.entity_id.clone(), to);
+            accumulator.edges.push(edge);
+        }
+        Ok(accumulators
+            .into_iter()
+            .map(|(root_key, mut accumulator)| {
+                accumulator.entities.remove(&accumulator.root.entity_id);
+                let truncated = accumulator.edges.len() == limit;
+                (
+                    root_key,
+                    Neighborhood {
+                        tenant_id: tenant_id.clone(),
+                        graph_revision: accumulator.graph_revision,
+                        root: accumulator.root,
+                        entities: accumulator.entities.into_values().collect(),
+                        edges: accumulator.edges,
+                        truncated,
+                    },
+                )
+            })
+            .collect())
+    }
+
     async fn revision(&self, tenant_id: &TenantId) -> Result<u64, ContextError> {
         let mut stream = self
             .graph
@@ -436,26 +596,53 @@ impl Neo4jProjector {
     }
 }
 
+struct NeighborhoodAccumulator {
+    root: ContextEntity,
+    entities: std::collections::BTreeMap<EntityId, ContextEntity>,
+    edges: Vec<ContextEdge>,
+    graph_revision: u64,
+}
+
 fn context_entity(row: &neo4rs::Row) -> Result<ContextEntity, ContextError> {
+    let properties = parse_json(&row_string(row, "properties_json")?)?;
     Ok(ContextEntity {
         entity_id: EntityId::parse(row_string(row, "entity_id")?)
             .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
+        agent_key: context_agent_key(&properties)?,
         entity_kind: row_string(row, "entity_kind")?,
         authority: parse_json(&row_string(row, "authority_json")?)?,
         label: row_string(row, "label")?,
-        properties: parse_json(&row_string(row, "properties_json")?)?,
+        properties,
     })
 }
 
 fn context_entity_prefix(row: &neo4rs::Row, prefix: &str) -> Result<ContextEntity, ContextError> {
+    let properties = parse_json(&row_string(row, &format!("{prefix}_properties"))?)?;
     Ok(ContextEntity {
         entity_id: EntityId::parse(row_string(row, &format!("{prefix}_id"))?)
             .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
+        agent_key: context_agent_key(&properties)?,
         entity_kind: row_string(row, &format!("{prefix}_kind"))?,
         authority: parse_json(&row_string(row, &format!("{prefix}_authority"))?)?,
         label: row_string(row, &format!("{prefix}_label"))?,
-        properties: parse_json(&row_string(row, &format!("{prefix}_properties"))?)?,
+        properties,
     })
+}
+
+fn context_agent_key(
+    properties: &std::collections::BTreeMap<String, String>,
+) -> Result<String, ContextError> {
+    properties
+        .get("entity_urn")
+        .or_else(|| properties.get("resource_urn"))
+        .or_else(|| properties.get("urn"))
+        .filter(|value| value.starts_with("urn:cerebro:"))
+        .cloned()
+        .ok_or_else(|| {
+            ContextError::BackendUnavailable(
+                "projected entity is missing its tenant-scoped agent key".to_owned(),
+            )
+        })
 }
 
 fn row_string(row: &neo4rs::Row, field: &str) -> Result<String, ContextError> {

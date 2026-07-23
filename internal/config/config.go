@@ -149,8 +149,8 @@ type GraphStoreConfig struct {
 
 // OrganizationalGraphConfig controls the Rust-owned bounded graph read plane.
 type OrganizationalGraphConfig struct {
-	BaseURL       string
-	ShadowTimeout time.Duration
+	BaseURL string
+	Timeout time.Duration
 }
 
 // CacheConfig controls optional shared query/response caching.
@@ -659,11 +659,11 @@ func Load() (Config, error) {
 	if cfg.GraphAgentLLM.MaxTokens, err = parseIntEnv("CEREBRO_GRAPH_AGENT_LLM_MAX_TOKENS", 0); err != nil {
 		return Config{}, err
 	}
-	if cfg.OrganizationalGraph.ShadowTimeout, err = parseDurationEnv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_TIMEOUT", time.Second); err != nil {
+	if cfg.OrganizationalGraph.Timeout, err = parseDurationEnv("CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT", time.Second); err != nil {
 		return Config{}, err
 	}
-	if cfg.OrganizationalGraph.ShadowTimeout <= 0 {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_TIMEOUT must be greater than zero")
+	if cfg.OrganizationalGraph.Timeout <= 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT must be greater than zero")
 	}
 	if cfg.OrganizationalGraph.BaseURL != "" {
 		parsed, parseErr := url.Parse(cfg.OrganizationalGraph.BaseURL)

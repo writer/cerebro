@@ -1004,18 +1004,16 @@ pub(crate) fn projection_commit(
         .entities()
         .iter()
         .map(|entity| {
+            let agent_key = entity.agent_key();
+            let mut properties = entity.properties().clone();
+            properties.insert("entity_urn".to_owned(), agent_key.clone());
             Ok(ProjectionEntity {
                 entity_id: entity.id().as_str().to_owned(),
                 entity_kind: enum_name(entity.kind())?,
                 authority_json: serde_json::to_string(entity.authority())?,
                 label: entity.label().to_owned(),
-                properties_json: serde_json::to_string(entity.properties())?,
-                external_id: entity
-                    .properties()
-                    .get("resource_urn")
-                    .or_else(|| entity.properties().get("entity_urn"))
-                    .or_else(|| entity.properties().get("urn"))
-                    .cloned(),
+                properties_json: serde_json::to_string(&properties)?,
+                external_id: Some(agent_key),
             })
         })
         .collect::<Result<_, StoreError>>()?;

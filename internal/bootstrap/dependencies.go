@@ -90,7 +90,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 	if cfg.OrganizationalGraph.BaseURL != "" {
 		projectionClient, err := organizationalgraph.NewProjectionClient(
 			cfg.OrganizationalGraph.BaseURL,
-			cfg.OrganizationalGraph.ShadowTimeout,
+			cfg.OrganizationalGraph.Timeout,
 		)
 		if err != nil {
 			return fail(fmt.Errorf("open Rust organizational graph projection: %w", err))
@@ -98,17 +98,17 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		deps.OrganizationalProjector = projectionClient
 		primary, ok := deps.GraphStore.(ports.GraphQueryStore)
 		if !ok || isNilInterface(primary) {
-			return fail(errors.New("rust organizational graph shadowing requires a configured graph query store"))
+			return fail(errors.New("rust organizational graph reads require a configured compatibility query store"))
 		}
-		shadow, err := organizationalgraph.NewShadowQueryStore(
+		queryStore, err := organizationalgraph.NewQueryStore(
 			primary,
 			cfg.OrganizationalGraph.BaseURL,
-			cfg.OrganizationalGraph.ShadowTimeout,
+			cfg.OrganizationalGraph.Timeout,
 		)
 		if err != nil {
-			return fail(fmt.Errorf("open Rust organizational graph shadow: %w", err))
+			return fail(fmt.Errorf("open Rust organizational graph reads: %w", err))
 		}
-		deps.GraphQueries = shadow
+		deps.GraphQueries = queryStore
 	}
 	if err := pingDependency(ctx, "append log", deps.AppendLog); err != nil {
 		return fail(err)

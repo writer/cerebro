@@ -51,7 +51,7 @@ During migration, the Go source runtime remains the append-log owner. It commits
 
 `cerebro-agent-context` exposes bounded search, lookup, expansion, path, and explanation operations. It does not expose Cypher or store mutation.
 
-`cerebro-platform` serves the bounded agent graph API against Neo4j in production and the in-memory graph in local demos. Web, Slack, MCP, reports, and the graph agent shadow their existing one-hop neighborhood reads against this API without changing caller-visible results. Shadow receipts contain only a root digest, found flags, and node/relationship counts. Raw identifiers and graph payloads are not logged. Raw Cypher remains on the compatibility reader and is not part of the Rust API.
+`cerebro-platform` serves the bounded agent graph API against Neo4j in production and the in-memory graph in local demos. Web, Slack, MCP, reports, and the graph agent use this API as the authority for bounded neighborhood reads. One-hop requests, including batches of up to 100 roots, execute as one tenant-scoped Neo4j query. Raw Cypher remains on the compatibility reader until each query has a typed Rust operation; it is not exposed by the Rust API.
 
 ## Enforced identity model
 
@@ -68,6 +68,13 @@ Identity binding is a dedicated assertion. The general relationship constructor 
 The canonical person ID is derived once from the tenant and authoritative employee ID. Verified email is a lookup key attached to that person, not another canonical-ID generator. This permits email renames without changing the person and prevents two claims for one employee from creating two canonical records.
 
 The graph engine rebuilds the identity indexes from active assertions on every atomic admission. It enforces one current canonical person per provider identity, one canonical person per authoritative claim, an employee anchor before an email claim, and an existing authoritative claim before a GitHub or Slack match. PostgreSQL repeats those checks inside the commit transaction. A conflicting or unanchored delta fails without advancing the tenant graph revision.
+
+Every entity also has one tenant-scoped `agent_key`. A valid source URN is
+kept when it belongs to the entity's tenant. Otherwise Rust derives a stable
+organizational-entity URN from the sealed tenant and entity ID. Neo4j indexes
+that key, and every bounded API response returns it explicitly. Agents can use
+any returned node as the root of the next request without learning internal
+Neo4j IDs or inventing another identity layer.
 
 ## Enforced relationship model
 
