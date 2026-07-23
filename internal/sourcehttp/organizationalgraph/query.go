@@ -50,6 +50,8 @@ func NewQueryStore(compatibility ports.GraphQueryStore, baseURL string, timeout 
 }
 
 func (s *QueryStore) Ping(ctx context.Context) error {
+	// #nosec G704 -- normalizeBaseURL validates and freezes the operator-set
+	// HTTP(S) origin; this package supplies the constant request path.
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+"/healthz", nil)
 	if err != nil {
 		return fmt.Errorf("build Rust graph health request: %w", err)
@@ -124,7 +126,7 @@ func (s *QueryStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []stri
 	result := make(map[string]*ports.EntityNeighborhood, len(response.Neighborhoods))
 	for rootURN, neighborhood := range response.Neighborhoods {
 		if _, requested := seen[rootURN]; !requested {
-			return nil, errors.New("Rust graph returned an unrequested root")
+			return nil, errors.New("rust graph returned an unrequested root")
 		}
 		product, err := productNeighborhood(rootURN, neighborhood)
 		if err != nil {
@@ -193,6 +195,8 @@ func (s *QueryStore) post(ctx context.Context, path string, payload any, target 
 	if err != nil {
 		return fmt.Errorf("encode Rust graph request: %w", err)
 	}
+	// #nosec G704 -- normalizeBaseURL validates and freezes the operator-set
+	// HTTP(S) origin; callers in this package supply constant request paths.
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("build Rust graph request: %w", err)
@@ -202,8 +206,8 @@ func (s *QueryStore) post(ctx context.Context, path string, payload any, target 
 }
 
 func (s *QueryStore) do(request *http.Request, target any) (err error) {
-	// #nosec G704 -- normalizeBaseURL validates and freezes the HTTP(S)
-	// origin; every request path is constant in this package.
+	// #nosec G704 -- requests are constructed only from the validated, frozen
+	// sidecar origin and constant paths in this package.
 	response, err := s.client.Do(request)
 	if err != nil {
 		return fmt.Errorf("read Rust graph: %w", err)
@@ -233,10 +237,10 @@ func (s *QueryStore) do(request *http.Request, target any) (err error) {
 
 func productNeighborhood(rootKey string, rust rustNeighborhood) (*ports.EntityNeighborhood, error) {
 	if rust.TenantID != cerebrourn.TenantID(rootKey) {
-		return nil, errors.New("Rust graph neighborhood belongs to a different tenant")
+		return nil, errors.New("rust graph neighborhood belongs to a different tenant")
 	}
 	if !cerebrourn.SameTenant(productEntityKey(rust.Root), rust.TenantID) {
-		return nil, errors.New("Rust graph root is missing its tenant-scoped agent key")
+		return nil, errors.New("rust graph root is missing its tenant-scoped agent key")
 	}
 	keys := make(map[string]string, len(rust.Entities)+1)
 	entityIDs := map[string]string{rootKey: rust.Root.EntityID}
@@ -244,10 +248,10 @@ func productNeighborhood(rootKey string, rust rustNeighborhood) (*ports.EntityNe
 	for _, entity := range rust.Entities {
 		key := productEntityKey(entity)
 		if !cerebrourn.SameTenant(key, rust.TenantID) {
-			return nil, errors.New("Rust graph entity is missing its tenant-scoped agent key")
+			return nil, errors.New("rust graph entity is missing its tenant-scoped agent key")
 		}
 		if existing, exists := entityIDs[key]; exists && existing != entity.EntityID {
-			return nil, errors.New("Rust graph returned duplicate product entity keys")
+			return nil, errors.New("rust graph returned duplicate product entity keys")
 		}
 		entityIDs[key] = entity.EntityID
 		keys[entity.EntityID] = key
@@ -265,7 +269,7 @@ func productNeighborhood(rootKey string, rust rustNeighborhood) (*ports.EntityNe
 		from, fromOK := keys[edge.From]
 		to, toOK := keys[edge.To]
 		if !fromOK || !toOK {
-			return nil, errors.New("Rust graph edge references an entity outside its neighborhood")
+			return nil, errors.New("rust graph edge references an entity outside its neighborhood")
 		}
 		attributes := map[string]string{"source_runtime_id": edge.SourceRuntimeID}
 		if edge.IdentityBinding {
