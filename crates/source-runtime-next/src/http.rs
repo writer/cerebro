@@ -237,8 +237,10 @@ impl SourceConnector for HttpSourceConnector {
                         exhausted = true;
                         break;
                     };
-                    let next = Url::parse(&next)
-                        .map_err(|error| HttpConnectorError::InvalidUrl(error.to_string()))?;
+                    let Some(next) = resolve_next_url(&url, &next)? else {
+                        exhausted = true;
+                        break;
+                    };
                     ensure_same_origin(&self.base_url, &next)?;
                     url = next;
                 }
@@ -247,9 +249,10 @@ impl SourceConnector for HttpSourceConnector {
                         exhausted = true;
                         break;
                     };
-                    let next = Url::parse(&next)
-                        .or_else(|_| self.base_url.join(&next))
-                        .map_err(|error| HttpConnectorError::InvalidUrl(error.to_string()))?;
+                    let Some(next) = resolve_next_url(&url, &next)? else {
+                        exhausted = true;
+                        break;
+                    };
                     ensure_same_origin(&self.base_url, &next)?;
                     url = next;
                 }
@@ -548,6 +551,17 @@ fn next_link_url(header: &str) -> Option<String> {
     })
 }
 
+fn resolve_next_url(current_url: &Url, next: &str) -> Result<Option<Url>, HttpConnectorError> {
+    let next = next.trim();
+    if next.is_empty() {
+        return Ok(None);
+    }
+    Url::parse(next)
+        .or_else(|_| current_url.join(next))
+        .map(Some)
+        .map_err(|error| HttpConnectorError::InvalidUrl(error.to_string()))
+}
+
 fn observation_id(
     source_id: &str,
     family_id: &str,
@@ -642,18 +656,31 @@ mod tests {
     fn next_url_resolution_preserves_rfc3986_path_semantics() {
         let base = Url::parse("https://provider.example/api/v1/").unwrap();
         assert_eq!(
-            base.join("/api/v2/page2").unwrap().as_str(),
+            resolve_next_url(&base, "/api/v2/page2")
+                .unwrap()
+                .unwrap()
+                .as_str(),
             "https://provider.example/api/v2/page2"
         );
         assert_eq!(
-            base.join("//provider.example/page2").unwrap().as_str(),
+            resolve_next_url(&base, "//provider.example/page2")
+                .unwrap()
+                .unwrap()
+                .as_str(),
             "https://provider.example/page2"
         );
+        let current = Url::parse("https://provider.example/api/v1/users/").unwrap();
         assert_eq!(
-            base.join("page2").unwrap().as_str(),
-            "https://provider.example/api/v1/page2"
+            resolve_next_url(&current, "page2")
+                .unwrap()
+                .unwrap()
+                .as_str(),
+            "https://provider.example/api/v1/users/page2"
         );
-        let changed_origin = base.join("//other.example/page2").unwrap();
+        assert!(resolve_next_url(&current, "  ").unwrap().is_none());
+        let changed_origin = resolve_next_url(&base, "//other.example/page2")
+            .unwrap()
+            .unwrap();
         assert!(ensure_same_origin(&base, &changed_origin).is_err());
     }
 

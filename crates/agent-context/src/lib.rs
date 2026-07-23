@@ -228,26 +228,32 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
         validate_limit(limit)?;
         self.get(tenant_id, from)?;
         self.get(tenant_id, to)?;
-        let edges: Vec<_> = self
+        let mut edges: Vec<_> = self
             .reader
             .assertions(tenant_id)
             .iter()
             .map(context_edge)
             .collect();
+        edges.sort_by(|left, right| left.assertion_id.cmp(&right.assertion_id));
         let mut paths = Vec::new();
-        let mut visited = BTreeSet::from([from.clone()]);
-        let mut edge_path = Vec::new();
-        self.walk_paths(
-            tenant_id,
-            from,
-            to,
-            max_depth,
-            limit,
-            &edges,
-            &mut visited,
-            &mut edge_path,
-            &mut paths,
-        );
+        for path_depth in 1..=max_depth {
+            let mut visited = BTreeSet::from([from.clone()]);
+            let mut edge_path = Vec::new();
+            self.walk_paths(
+                tenant_id,
+                from,
+                to,
+                path_depth,
+                limit,
+                &edges,
+                &mut visited,
+                &mut edge_path,
+                &mut paths,
+            );
+            if paths.len() == limit {
+                break;
+            }
+        }
         Ok(paths)
     }
 
@@ -276,19 +282,21 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
             }
             edge_path.push(edge.clone());
             if &edge.to == target {
-                let mut ids = Vec::with_capacity(edge_path.len() + 1);
-                ids.push(edge_path[0].from.clone());
-                ids.extend(edge_path.iter().map(|item| item.to.clone()));
-                let entities = ids
-                    .iter()
-                    .filter_map(|id| self.reader.entity(tenant_id, id))
-                    .map(|entity| ContextEntity::from_domain(&entity))
-                    .collect();
-                result.push(GraphPath {
-                    entities,
-                    edges: edge_path.clone(),
-                });
-            } else {
+                if depth_remaining == 1 {
+                    let mut ids = Vec::with_capacity(edge_path.len() + 1);
+                    ids.push(edge_path[0].from.clone());
+                    ids.extend(edge_path.iter().map(|item| item.to.clone()));
+                    let entities = ids
+                        .iter()
+                        .filter_map(|id| self.reader.entity(tenant_id, id))
+                        .map(|entity| ContextEntity::from_domain(&entity))
+                        .collect();
+                    result.push(GraphPath {
+                        entities,
+                        edges: edge_path.clone(),
+                    });
+                }
+            } else if depth_remaining > 1 {
                 self.walk_paths(
                     tenant_id,
                     &edge.to,
@@ -633,6 +641,8 @@ mod tests {
                 10,
             )
             .unwrap(),
+            RelationshipAssertion::new(&team, RelationKind::Maintains, &service, evidence(), 10)
+                .unwrap(),
         ];
         let mut builder = collection.begin_delta();
         for entity in [&team, &repository, &service, &environment] {
@@ -653,16 +663,26 @@ mod tests {
         assert!(bounded.truncated);
         assert!(bounded.entities.len() <= 3);
         let exact = AgentContext::new(&graph)
-            .expand(&tenant, team.id(), 4, 3)
+            .expand(&tenant, team.id(), 4, 4)
             .unwrap();
-        assert_eq!(exact.edges.len(), 3);
+        assert_eq!(exact.edges.len(), 4);
         assert!(!exact.truncated);
 
         let paths = AgentContext::new(&graph)
-            .find_paths(&tenant, team.id(), environment.id(), 4, 10)
+            .find_paths(&tenant, team.id(), service.id(), 4, 10)
             .unwrap();
-        assert_eq!(paths.len(), 1);
-        assert_eq!(paths[0].edges.len(), 3);
+        assert_eq!(
+            paths
+                .iter()
+                .map(|path| path.edges.len())
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        let limited = AgentContext::new(&graph)
+            .find_paths(&tenant, team.id(), service.id(), 4, 1)
+            .unwrap();
+        assert_eq!(limited.len(), 1);
+        assert_eq!(limited[0].edges.len(), 1);
     }
 
     #[test]
