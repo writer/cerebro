@@ -33,6 +33,8 @@ earlier Go stage; it is not end-to-end source throughput.
   typed-property validation, delta construction, and delta digest
 - Rust admission timed work: all Rust projection work plus atomic in-memory
   graph validation and commit
+- Rust refresh timed work: all Rust projection work plus atomic replacement of
+  the same entities in an already populated tenant graph
 - Go raw-record timed work: catalog field extraction, event construction, and
   source projection
 - Go pre-flattened admission timed work: source projection plus insertion into
@@ -51,20 +53,20 @@ Raw outputs are written to:
 
 ## Median results
 
-| Records | Go pre-flattened projection | Go raw-record projection | Rust projection | Rust projection + admission |
-| ---: | ---: | ---: | ---: | ---: |
-| 100 | 892 ns/record | 3,485 ns/record | 2,594 ns/record | 2,658 ns/record |
-| 1,000 | 888 ns/record | 3,221 ns/record | 2,578 ns/record | 2,829 ns/record |
-| 5,000 | 890 ns/record | 3,216 ns/record | 2,699 ns/record | 3,051 ns/record |
+| Records | Go pre-flattened projection | Go raw-record projection | Rust projection | Rust projection + admission | Rust populated refresh |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 100 | 943 ns/record | 3,103 ns/record | 1,907 ns/record | 2,049 ns/record | 2,079 ns/record |
+| 1,000 | 890 ns/record | 3,100 ns/record | 2,015 ns/record | 2,118 ns/record | 2,186 ns/record |
+| 5,000 | 878 ns/record | 3,125 ns/record | 2,026 ns/record | 2,221 ns/record | 2,404 ns/record |
 
 Against the equivalent raw-record boundary, Rust projection is:
 
-- 25.6% faster at 100 records;
-- 20.0% faster at 1,000 records;
-- 16.1% faster at 5,000 records.
+- 38.5% faster at 100 records;
+- 35.0% faster at 1,000 records;
+- 35.2% faster at 5,000 records.
 
-At 1,000 records, the median Rust path projects about 387,900 records per
-second. Projection plus atomic graph admission processes about 353,500 records
+At 1,000 records, the median Rust path projects about 496,300 records per
+second. Projection plus atomic graph admission processes about 472,100 records
 per second.
 
 The Go raw-record path allocates about 2.7 KB and 51 objects per record. The
@@ -164,6 +166,32 @@ suite, seven sequential one-hop reads took 27.251 ms per set. One seven-root
 query took 2.588 ms per set, a 90.5% reduction and 10.5x throughput increase.
 The batch result was checked for all seven roots and their bounded edges on
 every iteration.
+
+## July 23 admission hot-path follow-up
+
+The next pass removed four costs without moving any validation boundary:
+
+- entity-only records no longer construct unused assertion provenance;
+- delta assembly uses hash indexes for duplicate enforcement and sorts once
+  before the deterministic digest;
+- deterministic IDs encode only the 16 digest bytes used by the ID instead of
+  allocating a full 32-byte digest string and slicing it;
+- entity-only refreshes preflight conflicts and commit directly instead of
+  cloning the tenant's full graph.
+
+The before and after runs used the same five-sample, 500 ms workload:
+
+| Workload | Before | After | Reduction |
+| --- | ---: | ---: | ---: |
+| Rust projection, 1,000 records | 2,263 ns/record | 2,015 ns/record | 11.0% |
+| Rust projection, 5,000 records | 2,335 ns/record | 2,026 ns/record | 13.2% |
+| Rust projection + admission, 1,000 records | 2,503 ns/record | 2,118 ns/record | 15.4% |
+| Rust projection + admission, 5,000 records | 2,661 ns/record | 2,221 ns/record | 16.5% |
+
+The populated-refresh benchmark was added before changing graph admission. At
+5,000 records, removing the full-graph clone reduced its median from 3,016 to
+2,404 ns/record, a 20.3% reduction. The atomicity test also requires a rejected
+identity delta to leave both the graph revision and entity count unchanged.
 
 ## What this does not prove
 
