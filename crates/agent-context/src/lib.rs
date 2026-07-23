@@ -74,16 +74,19 @@ pub struct ContextEntity {
 
 impl ContextEntity {
     pub fn from_domain(entity: &Entity) -> Self {
+        let agent_key = entity.agent_key();
+        let mut properties = entity.properties().clone();
+        properties.insert("entity_urn".to_owned(), agent_key.clone());
         Self {
             entity_id: entity.id().clone(),
-            agent_key: entity.agent_key(),
+            agent_key,
             entity_kind: serde_json::to_value(entity.kind())
                 .ok()
                 .and_then(|value| value.as_str().map(str::to_owned))
                 .unwrap_or_else(|| "provider".to_owned()),
             authority: serde_json::to_value(entity.authority()).unwrap_or(serde_json::Value::Null),
             label: entity.label().to_owned(),
-            properties: entity.properties().clone(),
+            properties,
         }
     }
 }
@@ -413,7 +416,7 @@ impl AgentGraph for MemoryAgentGraph {
         validate_limit(limit)?;
         let graph = self.graph.read().await;
         let query = query.trim().to_lowercase();
-        let mut entities = Vec::new();
+        let mut entities = BTreeMap::new();
         for entity in graph.entities(tenant_id) {
             let entity = ContextEntity::from_domain(&entity);
             if !kinds.is_empty() && !kinds.contains(&entity.entity_kind) {
@@ -423,13 +426,13 @@ impl AgentGraph for MemoryAgentGraph {
                 || entity.label.to_lowercase().contains(&query)
                 || entity.entity_id.as_str().to_lowercase().contains(&query)
             {
-                entities.push(entity);
-                if entities.len() == limit {
-                    break;
+                entities.insert((entity.label.clone(), entity.entity_id.clone()), entity);
+                if entities.len() > limit {
+                    entities.pop_last();
                 }
             }
         }
-        Ok(entities)
+        Ok(entities.into_values().collect())
     }
 
     async fn get(
@@ -451,11 +454,7 @@ impl AgentGraph for MemoryAgentGraph {
         let mut matches = graph
             .entities(tenant_id)
             .into_iter()
-            .filter(|entity| {
-                entity.id().as_str() == key
-                    || entity.agent_key() == key
-                    || entity.properties().values().any(|property| property == key)
-            })
+            .filter(|entity| entity.id().as_str() == key || entity.agent_key() == key)
             .take(2)
             .map(|entity| ContextEntity::from_domain(&entity));
         let entity = matches.next().ok_or(ContextError::EntityNotFound)?;
@@ -742,6 +741,54 @@ mod tests {
         let resolved = graph.resolve(&tenant, &agent_key).await.unwrap();
         assert_eq!(resolved.entity_id, person.id().clone());
         assert_eq!(resolved.agent_key, agent_key);
+        assert_eq!(
+            resolved.properties.get("entity_urn"),
+            Some(&resolved.agent_key)
+        );
+    }
+
+    #[tokio::test]
+    async fn memory_graph_search_matches_durable_order_and_stable_keys_only() {
+        let tenant = TenantId::parse("tenant-memory-order").unwrap();
+        let collection = CompleteCollection::new(
+            tenant.clone(),
+            SourceRuntimeId::parse("memory-order-test").unwrap(),
+            CollectionId::parse("memory-order-collection").unwrap(),
+            "memory.order",
+            10,
+        )
+        .unwrap();
+        let alpha = Entity::canonical(
+            tenant.clone(),
+            EntityId::parse("entity-z").unwrap(),
+            EntityKind::Team,
+            "Alpha",
+        )
+        .unwrap()
+        .with_property("shared_value", "not-a-stable-key")
+        .unwrap();
+        let zulu = Entity::canonical(
+            tenant.clone(),
+            EntityId::parse("entity-a").unwrap(),
+            EntityKind::Team,
+            "Zulu",
+        )
+        .unwrap()
+        .with_property("shared_value", "not-a-stable-key")
+        .unwrap();
+        let mut builder = collection.begin_delta();
+        builder.add_entity(alpha.clone()).unwrap();
+        builder.add_entity(zulu).unwrap();
+        let mut graph = OrganizationalGraph::new();
+        graph.apply(builder.build()).unwrap();
+        let graph = MemoryAgentGraph::new(graph);
+
+        let found = graph.search(&tenant, "", &[], 1).await.unwrap();
+        assert_eq!(found[0].entity_id, alpha.id().clone());
+        assert_eq!(
+            graph.resolve(&tenant, "not-a-stable-key").await,
+            Err(ContextError::EntityNotFound)
+        );
     }
 
     #[test]

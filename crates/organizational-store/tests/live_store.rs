@@ -41,6 +41,7 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
         "okta.users",
         10,
     )?;
+    let collection_id = collection.receipt().collection_id().as_str().to_owned();
     let observation_id = ObservationId::parse("observation-live-1")?;
     let provenance = || {
         AssertionProvenance::direct(
@@ -121,6 +122,33 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
     };
     let receipt = store.apply(&batch, delta.clone()).await?;
     assert_eq!(receipt.graph_revision, 1);
+    let (mut outbox_client, outbox_connection) =
+        tokio_postgres::connect(&postgres_dsn, NoTls).await?;
+    tokio::spawn(async move {
+        outbox_connection
+            .await
+            .expect("PostgreSQL outbox test connection");
+    });
+    let transaction = outbox_client.transaction().await?;
+    transaction
+        .query_one(
+            "SELECT set_config('cerebro.tenant_id', $1, true)",
+            &[&tenant.as_str()],
+        )
+        .await?;
+    let stored_graph_revision = i64::try_from(receipt.graph_revision)?;
+    transaction
+        .execute(
+            "UPDATE organizational_projection_outbox SET projected_at = NULL WHERE tenant_id = $1 AND graph_revision = $2",
+            &[&tenant.as_str(), &stored_graph_revision],
+        )
+        .await?;
+    transaction.commit().await?;
+    let resumed = store
+        .resume_collection(&tenant, &collection_id)
+        .await?
+        .expect("committed collection");
+    assert_eq!(resumed, receipt);
     let replay = store.apply(&batch, delta).await?;
     assert_eq!(replay.graph_revision, receipt.graph_revision);
 

@@ -22,7 +22,7 @@ use std::{error::Error, fmt};
 
 use async_trait::async_trait;
 use cerebro_organizational_graph::GraphWriteReceipt;
-use cerebro_organizational_model::GraphDelta;
+use cerebro_organizational_model::{GraphDelta, TenantId};
 use cerebro_source_runtime_next::{CollectedBatch, GraphSink};
 
 #[derive(Debug)]
@@ -106,6 +106,29 @@ impl DurableGraphStore {
             projected += 1;
         }
         Ok(projected)
+    }
+
+    /// Returns an existing collection receipt and, when necessary, projects
+    /// the exact durable outbox payload originally committed with it.
+    pub async fn resume_collection(
+        &self,
+        tenant_id: &TenantId,
+        collection_id: &str,
+    ) -> Result<Option<GraphWriteReceipt>, StoreError> {
+        let Some(committed) = self
+            .ledger
+            .committed_collection(tenant_id, collection_id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        if let Some(projection) = committed.pending_projection {
+            self.projector.project_wire(&projection).await?;
+            self.ledger
+                .mark_projected(tenant_id.as_str(), projection.graph_revision)
+                .await?;
+        }
+        Ok(Some(committed.receipt))
     }
 }
 

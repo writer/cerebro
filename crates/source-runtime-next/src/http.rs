@@ -248,7 +248,7 @@ impl SourceConnector for HttpSourceConnector {
                         break;
                     };
                     let next = Url::parse(&next)
-                        .or_else(|_| self.base_url.join(next.trim_start_matches('/')))
+                        .or_else(|_| self.base_url.join(&next))
                         .map_err(|error| HttpConnectorError::InvalidUrl(error.to_string()))?;
                     ensure_same_origin(&self.base_url, &next)?;
                     url = next;
@@ -636,6 +636,25 @@ mod tests {
                 Some("configured")
             );
         }
+    }
+
+    #[test]
+    fn next_url_resolution_preserves_rfc3986_path_semantics() {
+        let base = Url::parse("https://provider.example/api/v1/").unwrap();
+        assert_eq!(
+            base.join("/api/v2/page2").unwrap().as_str(),
+            "https://provider.example/api/v2/page2"
+        );
+        assert_eq!(
+            base.join("//provider.example/page2").unwrap().as_str(),
+            "https://provider.example/page2"
+        );
+        assert_eq!(
+            base.join("page2").unwrap().as_str(),
+            "https://provider.example/api/v1/page2"
+        );
+        let changed_origin = base.join("//other.example/page2").unwrap();
+        assert!(ensure_same_origin(&base, &changed_origin).is_err());
     }
 
     #[tokio::test]

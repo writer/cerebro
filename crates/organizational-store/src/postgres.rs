@@ -261,6 +261,11 @@ pub(crate) struct StoredCommit {
     pub projection: ProjectionCommit,
 }
 
+pub(crate) struct CommittedCollection {
+    pub receipt: GraphWriteReceipt,
+    pub pending_projection: Option<ProjectionCommit>,
+}
+
 pub struct PostgresLedger {
     client: Mutex<Client>,
 }
@@ -832,6 +837,59 @@ impl PostgresLedger {
             .collect()
     }
 
+    pub(crate) async fn committed_collection(
+        &self,
+        tenant_id: &TenantId,
+        collection_id: &str,
+    ) -> Result<Option<CommittedCollection>, StoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let row = transaction
+            .query_opt(
+                "SELECT collection.graph_revision, collection.delta_digest, (collection.receipt_json->>'entities_upserted')::BIGINT, (collection.receipt_json->>'assertions_upserted')::BIGINT, (collection.receipt_json->>'assertions_retracted')::BIGINT, outbox.projection_json, outbox.projected_at IS NULL, outbox.graph_revision IS NOT NULL FROM organizational_collections collection LEFT JOIN organizational_projection_outbox outbox ON outbox.tenant_id = collection.tenant_id AND outbox.graph_revision = collection.graph_revision WHERE collection.tenant_id = $1 AND collection.collection_id = $2",
+                &[&tenant_id.as_str(), &collection_id],
+            )
+            .await?;
+        transaction.commit().await?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let revision: i64 = row.get(0);
+        let graph_revision = u64::try_from(revision)
+            .map_err(|_| StoreError::Conflict("stored graph revision is negative".to_owned()))?;
+        let delta_digest: String = row.get(1);
+        let outbox_exists: bool = row.get(7);
+        if !outbox_exists {
+            return Err(StoreError::Conflict(
+                "committed collection is missing its projection outbox entry".to_owned(),
+            ));
+        }
+        let receipt = GraphWriteReceipt {
+            tenant_id: tenant_id.clone(),
+            graph_revision,
+            delta_digest: delta_digest.clone(),
+            entities_upserted: stored_count(&row, 2, "entities_upserted")?,
+            assertions_upserted: stored_count(&row, 3, "assertions_upserted")?,
+            assertions_retracted: stored_count(&row, 4, "assertions_retracted")?,
+        };
+        let projection = serde_json::from_value::<ProjectionCommit>(row.get::<_, Value>(5))?;
+        if projection.tenant_id != tenant_id.as_str()
+            || projection.graph_revision != graph_revision
+            || projection.delta_digest != delta_digest
+        {
+            return Err(StoreError::Conflict(
+                "stored collection and projection outbox do not match".to_owned(),
+            ));
+        }
+        let pending: bool = row.get(6);
+        let pending_projection = pending.then_some(projection);
+        Ok(Some(CommittedCollection {
+            receipt,
+            pending_projection,
+        }))
+    }
+
     pub(crate) async fn mark_projected(
         &self,
         tenant_id: &str,
@@ -1141,6 +1199,12 @@ fn enum_name<T: Serialize>(value: &T) -> Result<String, StoreError> {
             "domain enum has no stable storage name".to_owned(),
         )),
     }
+}
+
+fn stored_count(row: &tokio_postgres::Row, index: usize, field: &str) -> Result<usize, StoreError> {
+    let value: i64 = row.get(index);
+    usize::try_from(value)
+        .map_err(|_| StoreError::Conflict(format!("stored {field} count is invalid")))
 }
 
 #[cfg(test)]

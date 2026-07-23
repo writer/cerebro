@@ -94,6 +94,26 @@ impl ProjectionRuntime {
                 assertions_upserted: 0,
             });
         }
+        let tenant_id = event.tenant_id().clone();
+        let collection_id = event
+            .collection_id()
+            .map_err(|error| ProjectionFailure::Invalid(error.to_string()))?;
+        if let Some(receipt) = self
+            .store
+            .lock()
+            .await
+            .resume_collection(&tenant_id, collection_id.as_str())
+            .await
+            .map_err(ProjectionFailure::Store)?
+        {
+            return Ok(ProjectEventResponse {
+                authority: ProjectionAuthority::Rust,
+                projected: true,
+                graph_revision: Some(receipt.graph_revision),
+                entities_upserted: receipt.entities_upserted,
+                assertions_upserted: receipt.assertions_upserted,
+            });
+        }
         let source = self
             .catalog
             .get(event.source_id())
@@ -117,7 +137,6 @@ impl ProjectionRuntime {
             })?;
         let provider_id = event_provider_id(event.attributes(), event.observation_id().as_str());
         let provider_kind = format!("{}.{}", event.source_id(), family.projection().template());
-        let tenant_id = event.tenant_id().clone();
         let batch = event
             .into_batch(provider_kind, provider_id)
             .map_err(|error| ProjectionFailure::Invalid(error.to_string()))?;

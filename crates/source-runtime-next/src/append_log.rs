@@ -171,13 +171,16 @@ impl CommittedSourceEvent {
         &self.payload
     }
 
+    pub fn collection_id(&self) -> Result<CollectionId, AppendLogDecodeError> {
+        CollectionId::parse(format!("event:{}", self.observation_id)).map_err(model_error)
+    }
+
     pub fn into_batch(
         self,
         provider_kind: String,
         provider_id: String,
     ) -> Result<CollectedBatch, AppendLogDecodeError> {
-        let collection_id =
-            CollectionId::parse(format!("event:{}", self.observation_id)).map_err(model_error)?;
+        let collection_id = self.collection_id()?;
         let scope = CollectionReceipt::incremental(
             self.tenant_id,
             self.source_runtime_id,
@@ -263,6 +266,7 @@ mod tests {
         assert_eq!(event.observation_id().as_str(), "event-1");
         assert_eq!(event.source_id(), "box");
         assert_eq!(event.family_id(), "content_assets");
+        assert_eq!(event.collection_id().unwrap().as_str(), "event:event-1");
         assert_eq!(event.observed_at_unix_ms(), 1_720_000_000_123);
         assert_eq!(event.attributes()["provider_id"], "file-1");
         assert_eq!(event.payload()["name"], "board.pdf");
