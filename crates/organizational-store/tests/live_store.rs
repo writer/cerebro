@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, env, error::Error};
 
-use cerebro_agent_context::AgentGraph;
+use cerebro_agent_context::{AgentGraph, ContextError};
 use cerebro_organizational_model::{
     AssertionProvenance, CanonicalIdentity, CollectionId, CompleteCollection, Entity, EntityId,
     EntityKind, GraphAssertion, IdentityBindingAssertion, IdentityBindingState, IdentityClaim,
@@ -158,5 +158,16 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
     assert_eq!(paths.len(), 1);
     assert_eq!(paths[0].edges.len(), 3);
     assert_eq!(paths[0].edges[0].relation, "represents");
+    let missing = EntityId::parse("missing-live-entity")?;
+    assert_eq!(
+        reader
+            .find_paths(&tenant, &missing, repository.id(), 4, 10)
+            .await,
+        Err(ContextError::EntityNotFound)
+    );
+    assert_eq!(
+        reader.find_paths(&tenant, &root_id, &missing, 4, 10).await,
+        Err(ContextError::EntityNotFound)
+    );
     Ok(())
 }

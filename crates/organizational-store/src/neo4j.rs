@@ -119,6 +119,18 @@ fn paths_statement(max_depth: usize) -> String {
     )
 }
 
+const PATH_ENDPOINTS_STATEMENT: &str = r#"
+OPTIONAL MATCH (source:OrganizationalEntity {
+    tenant_id: $tenant_id,
+    entity_id: $from_id
+})
+OPTIONAL MATCH (target:OrganizationalEntity {
+    tenant_id: $tenant_id,
+    entity_id: $to_id
+})
+RETURN source IS NOT NULL AND target IS NOT NULL AS endpoints_exist
+"#;
+
 const NEO4J_SCHEMA: &[&str] = &[
     "CREATE CONSTRAINT organizational_entity_identity IF NOT EXISTS FOR (entity:OrganizationalEntity) REQUIRE (entity.tenant_id, entity.entity_id) IS UNIQUE",
     "CREATE CONSTRAINT organizational_revision_tenant IF NOT EXISTS FOR (revision:OrganizationalGraphRevision) REQUIRE revision.tenant_id IS UNIQUE",
@@ -462,6 +474,29 @@ impl AgentGraph for Neo4jProjector {
             }
             paths.push(GraphPath { entities, edges });
         }
+        if paths.is_empty() {
+            let mut endpoint_stream = self
+                .graph
+                .execute(
+                    query(PATH_ENDPOINTS_STATEMENT)
+                        .param("tenant_id", tenant_id.as_str())
+                        .param("from_id", from.as_str())
+                        .param("to_id", to.as_str()),
+                )
+                .await
+                .map_err(context_backend)?;
+            let endpoints_exist = endpoint_stream
+                .next()
+                .await
+                .map_err(context_backend)?
+                .map(|row| row.get::<bool>("endpoints_exist"))
+                .transpose()
+                .map_err(context_decode)?
+                .unwrap_or(false);
+            if !endpoints_exist {
+                return Err(ContextError::EntityNotFound);
+            }
+        }
         Ok(paths)
     }
 
@@ -792,6 +827,8 @@ mod tests {
         let paths = paths_statement(3);
         assert!(paths.contains("single(other IN nodes(path) WHERE other = node)"));
         assert!(paths.contains("node.tenant_id = $tenant_id"));
+        assert!(PATH_ENDPOINTS_STATEMENT.contains("source IS NOT NULL"));
+        assert!(PATH_ENDPOINTS_STATEMENT.contains("target IS NOT NULL"));
 
         let mut exact = vec![1, 2];
         assert!(!truncate_to_limit(&mut exact, 2));

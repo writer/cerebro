@@ -66,16 +66,13 @@ pub(crate) async fn compare_projection() -> Result<(), Box<dyn Error>> {
     io::stdin().read_to_string(&mut input)?;
     let wire: ParityRunWire = serde_json::from_str(&input)?;
     let receipt = run_comparison(wire)?;
-    if let Ok(connection_string) = env::var("CEREBRO_ORGANIZATIONAL_POSTGRES_URL") {
+    if let Ok(connection_string) = env::var("CEREBRO_POSTGRES_DSN") {
         let ledger =
             cerebro_organizational_store::PostgresLedger::connect_tls(&connection_string).await?;
         ledger.migrate().await?;
         ledger.record_parity(&receipt).await?;
     } else if env::var("CEREBRO_PARITY_REQUIRE_PERSISTENCE").as_deref() == Ok("true") {
-        return Err(
-            "CEREBRO_ORGANIZATIONAL_POSTGRES_URL is required when parity persistence is required"
-                .into(),
-        );
+        return Err("CEREBRO_POSTGRES_DSN is required when parity persistence is required".into());
     }
     serde_json::to_writer(io::stdout(), &receipt)?;
     println!();
