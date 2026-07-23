@@ -5064,7 +5064,6 @@ export type SourceCDKScaffoldPlan = {
   files?: string[];
   health_endpoint?: string;
   next_steps?: string[];
-  pr_body?: string;
   source_id?: string;
   source_type?: string;
 };
