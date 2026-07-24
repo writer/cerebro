@@ -38,7 +38,11 @@ ENV PORT=3000
 LABEL org.opencontainers.image.revision=${SOURCE_REVISION}
 LABEL org.opencontainers.image.source="https://github.com/writer/cerebro"
 
-RUN addgroup -S nodejs && adduser -S nextjs -G nodejs -u 10001
+RUN addgroup -S nodejs \
+    && adduser -S nextjs -G nodejs -u 10001 \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+    && ! command -v npm \
+    && ! command -v npx
 
 COPY --from=builder --chown=nextjs:nodejs /workspace/apps/web/.next/standalone /app
 

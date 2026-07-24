@@ -67,7 +67,7 @@ func (a *App) newDecisionPacketService() *decisionpacket.Service {
 	resolver := decisionpacket.PortsResolver{
 		Findings: findingStore(a.deps.StateStore), FindingEvidence: findingEvidenceStore(a.deps.StateStore),
 		Claims: claimStore(a.deps.StateStore), Evidence: evidenceLedgerStore(a.deps.StateStore),
-		AuditPackets: grcAuditPacketStore(a.deps.StateStore), Graph: graphQueryStore(a.deps.GraphStore),
+		AuditPackets: grcAuditPacketStore(a.deps.StateStore), Graph: dependencyGraphQueryStore(a.deps),
 		Coverage: decisionCoverageReader{store: coverageStore, sources: a.sources}, Actions: graphactions.DefaultRegistry(),
 	}
 	return decisionpacket.NewPersistentService(resolver, decisionpacket.SystemClock{}, receipts, a.cfg.StateStore.DecisionPacketRetention)

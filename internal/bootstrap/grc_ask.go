@@ -58,7 +58,7 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	graphStore := graphQueryStore(a.deps.GraphStore)
+	graphStore := dependencyGraphQueryStore(a.deps)
 	if graphStore == nil {
 		evt.failureStage = "graph_store_nil"
 		evt.finish(r, started, http.StatusServiceUnavailable, graphquery.ErrRuntimeUnavailable)

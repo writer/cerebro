@@ -32,9 +32,11 @@ RUN --mount=type=cache,id=cerebro-go-mod-cache,target=/go/pkg/mod,sharing=locked
 
 FROM --platform=$TARGETPLATFORM rust:${RUST_VERSION}-alpine AS rust-builder
 
+ARG TARGETARCH
+
 WORKDIR /app
 
-RUN apk add --no-cache build-base musl-dev
+RUN apk add --no-cache build-base musl-dev openssl-dev openssl-libs-static pkgconfig
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
@@ -43,7 +45,18 @@ COPY tools ./tools
 
 RUN --mount=type=cache,id=cerebro-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=cerebro-cargo-git,target=/usr/local/cargo/git,sharing=locked \
-    cargo build --locked --release -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker
+    --mount=type=cache,id=cerebro-cargo-target-${TARGETARCH},target=/app/target,sharing=locked \
+    cargo build --locked --release \
+      -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker \
+      -p cerebro-platform --bin cerebro-platform && \
+    mkdir -p /out && \
+    cp /app/target/release/cerebro-event-admission-worker /out/cerebro-event-admission-worker && \
+    cp /app/target/release/cerebro-platform /out/cerebro-platform
+
+FROM alpine:3.24 AS organizational-catalog
+COPY internal/connectorcatalog/catalog /app/internal/connectorcatalog/catalog
+COPY sources /app/sources
+RUN find /app/sources -mindepth 2 -type f ! -name catalog.yaml -delete
 
 # Runtime image
 FROM alpine:3.24
@@ -54,7 +67,10 @@ RUN apk upgrade --no-cache && \
     adduser -S -G cerebro -u 10001 cerebro
 
 COPY --from=builder --chmod=0755 /cerebro /usr/local/bin/cerebro
-COPY --from=rust-builder --chmod=0755 /app/target/release/cerebro-event-admission-worker /usr/local/bin/cerebro-event-admission-worker
+COPY --from=rust-builder --chmod=0755 /out/cerebro-event-admission-worker /usr/local/bin/cerebro-event-admission-worker
+COPY --from=rust-builder --chmod=0755 /out/cerebro-platform /usr/local/bin/cerebro-platform
+COPY --from=organizational-catalog --chown=10001:101 /app/internal/connectorcatalog/catalog /app/internal/connectorcatalog/catalog
+COPY --from=organizational-catalog --chown=10001:101 /app/sources /app/sources
 COPY policies /app/policies
 
 WORKDIR /app

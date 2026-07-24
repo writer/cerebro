@@ -268,6 +268,9 @@ Use managed Postgres or an operationally equivalent deployment for shared enviro
 | `CEREBRO_NEO4J_PASSWORD` | Graph database password. Store as a secret. |
 | `CEREBRO_NEO4J_DATABASE` | Optional database name. Leave unset to use the server default. |
 | `CEREBRO_NEO4J_QUERY_TIMEOUT` | Optional timeout for read transactions. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_URL` | Rust organizational graph service origin. Setting it enables bounded shadow reads and family-level projection authority. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET` | Secret used to sign tenant-bound graph requests. Required with the graph URL and must be at least 32 bytes. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT` | Rust graph request timeout. Defaults to `1s`. |
 
 Monitor graph ingest health, query latency, index health, and storage growth. Keep graph credentials scoped to the required database.
 

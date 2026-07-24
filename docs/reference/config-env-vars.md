@@ -68,5 +68,8 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_NEO4J_PASSWORD` | unset | Neo4j/Aura password. |
 | `CEREBRO_NEO4J_DATABASE` | unset | Optional Neo4j database name. |
 | `CEREBRO_NEO4J_QUERY_TIMEOUT` | unset | Optional timeout applied to Neo4j read transactions. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_URL` | unset | Rust organizational graph service origin. When set, bounded graph reads run in shadow and source projection uses the persisted family authority. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET` | unset | Shared secret used to sign tenant-bound requests to the Rust organizational graph service. Required with `CEREBRO_ORGANIZATIONAL_GRAPH_URL`; minimum 32 bytes. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT` | `1s` | Timeout for Rust organizational graph reads and projection-authority requests. |
 
 `CEREBRO_KUZU_PATH` is rejected. Kuzu is no longer a supported graph backend.

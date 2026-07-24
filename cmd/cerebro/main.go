@@ -26,6 +26,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/sourcehttp/organizationalgraph"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceregistry"
@@ -521,7 +522,7 @@ func runSourceRuntime(args []string) error {
 		registry,
 		sourceRuntimeStore(deps.StateStore),
 		deps.AppendLog,
-		sourceProjector(deps.StateStore, deps.GraphStore),
+		appendLogSourceProjector(deps),
 	))
 	admitter, err := eventadmission.NewNativeAdmitter(
 		ctx,
@@ -896,6 +897,22 @@ func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) p
 		return nil
 	}
 	return sourceprojection.New(state, graph)
+}
+
+func appendLogSourceProjector(deps bootstrap.Dependencies) ports.SourceProjector {
+	legacy := sourceProjector(deps.StateStore, deps.GraphStore)
+	if deps.OrganizationalProjector == nil {
+		return legacy
+	}
+	return organizationalgraph.NewAppendLogProjector(legacy, deps.OrganizationalProjector)
+}
+
+func guardedLegacyGraphProjector(deps bootstrap.Dependencies) ports.SourceProjector {
+	legacy := sourceProjector(nil, deps.GraphStore)
+	if deps.OrganizationalProjector == nil {
+		return legacy
+	}
+	return organizationalgraph.NewLegacyWriteGuard(legacy, deps.OrganizationalProjector)
 }
 
 func printProto(message proto.Message) error {

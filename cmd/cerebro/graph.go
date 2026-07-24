@@ -278,7 +278,7 @@ func runGraph(args []string) error {
 		if err != nil {
 			return fmt.Errorf("open source registry: %w", err)
 		}
-		projector := sourceProjector(nil, deps.GraphStore)
+		projector := guardedLegacyGraphProjector(deps)
 		if projector == nil {
 			return fmt.Errorf("projection graph store is required")
 		}
@@ -1936,7 +1936,7 @@ func runGraphIngestRuntime(ctx context.Context, deps bootstrap.Dependencies, opt
 	if err != nil {
 		return nil, fmt.Errorf("open source registry: %w", err)
 	}
-	projector := sourceProjector(nil, deps.GraphStore)
+	projector := guardedLegacyGraphProjector(deps)
 	if projector == nil {
 		return nil, fmt.Errorf("projection graph store is required")
 	}

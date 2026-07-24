@@ -646,6 +646,7 @@ assessment:examine,assessment,catalog,aws-ec2-sg-no-all-traffic-ingress,Security
 assessment:examine,assessment,catalog,aws-ecr-immutable-tags,ECR Immutable Image Tags,policy,policy,event,medium,active,candidate
 assessment:examine,assessment,catalog,aws-ecr-public-repository,ECR Public Repository,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,aws-ecr-scan-on-push,ECR Scan on Push Enabled,policy,policy,event,medium,active,candidate
+assessment:examine,assessment,catalog,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 assessment:examine,assessment,catalog,aws-ecs-ports-restricted,ECS Services Restrict Public Ports,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,aws-ecs-secrets-in-env-vars,ECS Task Secrets in Environment Variables,policy,policy,event,high,active,candidate
 assessment:examine,assessment,catalog,aws-ecs-service-public-ip-disabled,AWS ECS Service Public Ip Disabled,policy,policy,event,high,active,candidate
@@ -3387,6 +3388,7 @@ aws,routing,catalog,aws-ec2-sg-no-all-traffic-ingress,Security Group No All Traf
 aws,routing,catalog,aws-ecr-immutable-tags,ECR Immutable Image Tags,policy,policy,event,medium,active,candidate
 aws,routing,catalog,aws-ecr-public-repository,ECR Public Repository,policy,policy,event,high,active,candidate
 aws,routing,catalog,aws-ecr-scan-on-push,ECR Scan on Push Enabled,policy,policy,event,medium,active,candidate
+aws,routing,catalog,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 aws,routing,catalog,aws-ecs-ports-restricted,ECS Services Restrict Public Ports,policy,policy,event,high,active,candidate
 aws,routing,catalog,aws-ecs-secrets-in-env-vars,ECS Task Secrets in Environment Variables,policy,policy,event,high,active,candidate
 aws,routing,catalog,aws-ecs-service-public-ip-disabled,AWS ECS Service Public Ip Disabled,policy,policy,event,high,active,candidate
@@ -5037,6 +5039,7 @@ cloud-ids,routing,catalog,gcp-cloud-ids-notifications,GCP Cloud IDS Notification
 cloud-run,routing,catalog,gcp-cloud-run-allow-unauthenticated,GCP Cloud Run Allow Unauthenticated,policy,policy,event,high,active,candidate
 cloud-run,routing,catalog,gcp-cloudrun-ingress-all,GCP Cloudrun Ingress All,policy,policy,event,medium,active,candidate
 cloud-run,routing,catalog,gcp-cloudrun-service-account-default,GCP Cloudrun Service Account Default,policy,policy,event,medium,active,candidate
+cloud_security,routing,catalog,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 cloudflare,routing,catalog,cloudflare-zone-protection-paused,Cloudflare Zone Edge Protection Paused,cloudflare,cloudflare,event,high,open,test
 cloudflare_api_token,routing,catalog,github-secops-secret-cloudflare-api-token-open,GitHub Secret Scanning Cloudflare Api Token Alert Open,policy,policy,event,high,active,candidate
 cloudflare_api_token,routing,catalog,github-secops-secret-cloudflare-api-token-push-protection-bypassed,GitHub Secret Scanning Cloudflare Api Token Push Protection Bypassed,policy,policy,event,critical,active,candidate
@@ -6650,6 +6653,7 @@ control-family:iso-27001-2022-6-planning,compliance,control_ref,compliance-risk-
 control-family:iso-27001-2022-8-operation,compliance,control_ref,compliance-risk-assessment-annual,Annual Risk Assessment Completed,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-12-a-12-controls,compliance,control_ref,github-dependabot-open-alert,GitHub Dependabot Open Alert,github,github,event,dynamic,open,test
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,aws-cloudtrail-kms-encryption,CloudTrail KMS Encryption Enabled,policy,policy,event,medium,active,candidate
+control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,aws-guardduty-c2-traffic,AWS GuardDuty Command and Control Traffic,policy,policy,event,critical,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,aws-guardduty-crypto-mining,AWS GuardDuty Crypto Mining Detection,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-5-organizational-controls,compliance,control_ref,aws-guardduty-malware-finding,AWS GuardDuty Malware Finding,policy,policy,event,critical,active,candidate
@@ -7417,6 +7421,7 @@ control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,aws
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,aws-cloudtrail-kms-encryption,CloudTrail KMS Encryption Enabled,policy,policy,event,medium,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,aws-dynamodb-pitr,DynamoDB Point-in-Time Recovery Enabled,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,aws-ec2-public-ports-restricted,EC2 Instance Public Ports Restricted,policy,policy,event,critical,active,candidate
+control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,aws-guardduty-c2-traffic,AWS GuardDuty Command and Control Traffic,policy,policy,event,critical,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,aws-guardduty-crypto-mining,AWS GuardDuty Crypto Mining Detection,policy,policy,event,high,active,candidate
 control-family:iso-27001-2022-a-8-technology-controls,compliance,control_ref,aws-guardduty-malware-finding,AWS GuardDuty Malware Finding,policy,policy,event,critical,active,candidate
@@ -11282,6 +11287,7 @@ control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,aws-
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,aws-ec2-public-ports-restricted,EC2 Instance Public Ports Restricted,policy,policy,event,critical,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,aws-ec2-sg-no-all-traffic-ingress,Security Group No All Traffic Ingress,policy,policy,event,critical,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,aws-ecr-public-repository,ECR Public Repository,policy,policy,event,high,active,candidate
+control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,aws-ecs-ports-restricted,ECS Services Restrict Public Ports,policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,aws-ecs-secrets-in-env-vars,ECS Task Secrets in Environment Variables,policy,policy,event,high,active,candidate
 control-family:soc-2-cc6-logical-and-physical-access,compliance,control_ref,aws-ecs-service-public-ip-disabled,AWS ECS Service Public Ip Disabled,policy,policy,event,high,active,candidate
@@ -14995,6 +15001,7 @@ control:iso-27001-2022:a-5-12,compliance,control_ref,data-sensitive-asset-risk,D
 control:iso-27001-2022:a-5-12,compliance,control_ref,m365-sensitivity-labels-missing,M365 Sensitivity Labels Applied,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-5-13,compliance,control_ref,compliance-inventory-data-tracking,Inventory Tracks Resources with User Data,policy,policy,event,medium,active,candidate
 control:iso-27001-2022:a-5-14,compliance,control_ref,email-domain-authentication-misconfigured,Email Domain Authentication Misconfigured,email_domain,email_domain_health,event,high,open,test
+control:iso-27001-2022:a-5-15,compliance,control_ref,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 control:iso-27001-2022:a-5-15,compliance,control_ref,aws-iam-no-full-admin,IAM Policies No Full Administrative Privileges,policy,policy,event,critical,active,candidate
 control:iso-27001-2022:a-5-15,compliance,control_ref,azure-aks-rbac-enabled,Azure AKS RBAC Enabled,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-5-15,compliance,control_ref,container-privileged,Container Privileged Mode Disabled,policy,policy,event,critical,active,candidate
@@ -16064,6 +16071,7 @@ control:iso-27001-2022:a-8-16,compliance,control_ref,vuln-kev-public-facing,Vuln
 control:iso-27001-2022:a-8-16,compliance,control_ref,vuln-sla-breach-crown-jewel,Vuln Sla Breach Crown Jewel,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-8-19,compliance,control_ref,aws-rds-auto-minor-upgrade,RDS Auto Minor Version Upgrade Enabled,policy,policy,event,low,active,candidate
 control:iso-27001-2022:a-8-2,compliance,control_ref,anthropic-unmanaged-active-api-key,Anthropic Unmanaged Active API Key,anthropic,anthropic,event,high,open,test
+control:iso-27001-2022:a-8-2,compliance,control_ref,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 control:iso-27001-2022:a-8-2,compliance,control_ref,github-org-owner-role-review-needed,GitHub Organization Owner Needs Review,github,github,graph,medium,open,test
 control:iso-27001-2022:a-8-2,compliance,control_ref,identity-okta-admin-plus-app-owner,Okta Admin with App-Owner-Like Access,policy,policy,event,high,active,candidate
 control:iso-27001-2022:a-8-2,compliance,control_ref,identity-okta-admin-privilege-grant-events-30d,Okta Admin Privilege Grant Events (30 days),policy,policy,event,high,active,candidate
@@ -21204,6 +21212,7 @@ control:soc-2:cc6-1,compliance,control_ref,aws-default-sg-no-rules,Default Secur
 control:soc-2:cc6-1,compliance,control_ref,aws-ec2-iam-instance-profile,EC2 Instances Use IAM Instance Profiles,policy,policy,event,medium,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,aws-ec2-instance-profile-attached,EC2 Instance Profile Attached,policy,policy,event,medium,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,aws-ec2-public-ports-restricted,EC2 Instance Public Ports Restricted,policy,policy,event,critical,active,candidate
+control:soc-2:cc6-1,compliance,control_ref,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,aws-ecs-ports-restricted,ECS Services Restrict Public Ports,policy,policy,event,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,aws-ecs-secrets-in-env-vars,ECS Task Secrets in Environment Variables,policy,policy,event,high,active,candidate
 control:soc-2:cc6-1,compliance,control_ref,aws-ecs-service-public-ip-disabled,AWS ECS Service Public Ip Disabled,policy,policy,event,high,active,candidate
@@ -22060,6 +22069,7 @@ control:soc-2:cc6-2,compliance,control_ref,aws-ec2-ebs-snapshot-not-public,EBS S
 control:soc-2:cc6-2,compliance,control_ref,aws-ec2-instance-profile-attached,EC2 Instance Profile Attached,policy,policy,event,medium,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,aws-ec2-internet-facing-iam,Internet-Facing EC2 with Privileged IAM Role,policy,policy,event,critical,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,aws-ecr-public-repository,ECR Public Repository,policy,policy,event,high,active,candidate
+control:soc-2:cc6-2,compliance,control_ref,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,aws-eks-public-endpoint-disabled,EKS Public Endpoint Disabled,policy,policy,event,high,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,aws-iam-access-key-rotation,IAM Access Key Rotation,policy,policy,event,medium,active,candidate
 control:soc-2:cc6-2,compliance,control_ref,aws-iam-no-full-admin,IAM Policies No Full Administrative Privileges,policy,policy,event,critical,active,candidate
@@ -24406,6 +24416,7 @@ ec2,routing,catalog,graph-aws-ec2-eni-link-missing,AWS EC2 ENI Link Missing,grc,
 ecr,routing,catalog,aws-ecr-immutable-tags,ECR Immutable Image Tags,policy,policy,event,medium,active,candidate
 ecr,routing,catalog,aws-ecr-public-repository,ECR Public Repository,policy,policy,event,high,active,candidate
 ecr,routing,catalog,aws-ecr-scan-on-push,ECR Scan on Push Enabled,policy,policy,event,medium,active,candidate
+ecs,routing,catalog,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 ecs,routing,catalog,aws-ecs-ports-restricted,ECS Services Restrict Public Ports,policy,policy,event,high,active,candidate
 ecs,routing,catalog,aws-ecs-secrets-in-env-vars,ECS Task Secrets in Environment Variables,policy,policy,event,high,active,candidate
 ecs,routing,catalog,aws-ecs-service-public-ip-disabled,AWS ECS Service Public Ip Disabled,policy,policy,event,high,active,candidate
@@ -25099,6 +25110,7 @@ evidence:collaboration_control,evidence,catalog,m365-sharepoint-external-sharing
 evidence:collaboration_control,evidence,catalog,m365-stale-service-principal,M365 Stale Service Principals,policy,policy,event,low,active,candidate
 evidence:collaboration_control,evidence,catalog,m365-tenant-legacy-auth-enabled,M365 Tenant Legacy Auth Enabled,policy,policy,event,medium,active,candidate
 evidence:collaboration_control,evidence,catalog,m365-terminated-users-active,M365 Accounts Disabled on Termination,policy,policy,event,high,active,candidate
+evidence:configuration_snapshot,evidence,catalog,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 evidence:control_procedure,evidence,catalog,compliance-background-checks,Background Checks on New Hires,policy,policy,event,high,active,candidate
 evidence:control_procedure,evidence,catalog,compliance-bcdr-plan-exists,Business Continuity Plan Exists,policy,policy,event,high,active,candidate
 evidence:control_procedure,evidence,catalog,compliance-data-inventory-maintained,Data Inventory Maintained,policy,policy,event,medium,active,candidate
@@ -27093,6 +27105,7 @@ framework:iso-27001-2022,compliance,control_ref,aws-alb-http-to-https,ALB HTTP t
 framework:iso-27001-2022,compliance,control_ref,aws-cloudtrail-kms-encryption,CloudTrail KMS Encryption Enabled,policy,policy,event,medium,active,candidate
 framework:iso-27001-2022,compliance,control_ref,aws-dynamodb-pitr,DynamoDB Point-in-Time Recovery Enabled,policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,aws-ec2-public-ports-restricted,EC2 Instance Public Ports Restricted,policy,policy,event,critical,active,candidate
+framework:iso-27001-2022,compliance,control_ref,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,aws-guardduty-c2-traffic,AWS GuardDuty Command and Control Traffic,policy,policy,event,critical,active,candidate
 framework:iso-27001-2022,compliance,control_ref,aws-guardduty-crypto-mining,AWS GuardDuty Crypto Mining Detection,policy,policy,event,high,active,candidate
 framework:iso-27001-2022,compliance,control_ref,aws-guardduty-malware-finding,AWS GuardDuty Malware Finding,policy,policy,event,critical,active,candidate
@@ -29710,6 +29723,7 @@ framework:soc-2,compliance,control_ref,aws-ec2-public-ports-restricted,EC2 Insta
 framework:soc-2,compliance,control_ref,aws-ec2-sg-no-all-traffic-ingress,Security Group No All Traffic Ingress,policy,policy,event,critical,active,candidate
 framework:soc-2,compliance,control_ref,aws-ecr-immutable-tags,ECR Immutable Image Tags,policy,policy,event,medium,active,candidate
 framework:soc-2,compliance,control_ref,aws-ecr-public-repository,ECR Public Repository,policy,policy,event,high,active,candidate
+framework:soc-2,compliance,control_ref,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 framework:soc-2,compliance,control_ref,aws-ecs-ports-restricted,ECS Services Restrict Public Ports,policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,aws-ecs-secrets-in-env-vars,ECS Task Secrets in Environment Variables,policy,policy,event,high,active,candidate
 framework:soc-2,compliance,control_ref,aws-ecs-service-public-ip-disabled,AWS ECS Service Public Ip Disabled,policy,policy,event,high,active,candidate
@@ -32309,6 +32323,7 @@ governance,routing,catalog,identity-zoom-membership-personal-email-domain,Zoom M
 governance,routing,catalog,identity-zoom-personal-email-domain,Zoom Accounts Using Personal Email Domains,policy,policy,event,medium,active,candidate
 governance,routing,catalog,identity-zoom-privileged-personal-email,Zoom Privileged Accounts on Personal Email Domains,policy,policy,event,high,active,candidate
 governance,routing,catalog,ml-model-registry-no-versioning,ML Model Registry No Versioning,policy,policy,event,medium,active,candidate
+graph,generated,catalog,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 graph,generated,catalog,graph-aws-ec2-eni-link-missing,AWS EC2 ENI Link Missing,grc,graph,graph,low,open,test
 graph,generated,catalog,graph-orphan-nonfinding-node,Graph Orphan Non-Finding Node,policy,graph,graph,low,active,candidate
 graph,generated,catalog,identity-okta-dormant-admin-role-assignment,Okta Dormant Admin Role Assignment,policy,okta,graph,high,active,candidate
@@ -32321,6 +32336,7 @@ graph,generated,catalog,identity-okta-stale-group-membership-graph-90d,Okta Stal
 graph,generated,catalog,identity-okta-suspended-user-active-assignment,Okta Suspended User Has Active App Assignment,policy,okta,graph,high,active,candidate
 graph,generated,catalog,identity-okta-suspended-user-active-group-membership,Okta Suspended User Remains in Access Group,policy,okta,graph,high,active,candidate
 graph,generated,catalog,vulnview-external-asset-concentrated-signal,VulnView External Asset Concentrated Signal,vulnview,vulnview,graph,dynamic,open,test
+graph-backed,routing,catalog,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 graph-backed,routing,catalog,github-secops-app-installation-all-repos-actions-read,GitHub App Installation All Repos Actions Read,policy,policy,event,medium,active,candidate
 graph-backed,routing,catalog,github-secops-app-installation-all-repos-actions-write,GitHub App Installation All Repos Actions Write,policy,policy,event,critical,active,candidate
 graph-backed,routing,catalog,github-secops-app-installation-all-repos-administration-write,GitHub App Installation All Repos Administration Write,policy,policy,event,critical,active,candidate
@@ -34772,6 +34788,7 @@ policy,generated,catalog,aws-ec2-sg-no-all-traffic-ingress,Security Group No All
 policy,generated,catalog,aws-ecr-immutable-tags,ECR Immutable Image Tags,policy,policy,event,medium,active,candidate
 policy,generated,catalog,aws-ecr-public-repository,ECR Public Repository,policy,policy,event,high,active,candidate
 policy,generated,catalog,aws-ecr-scan-on-push,ECR Scan on Push Enabled,policy,policy,event,medium,active,candidate
+policy,generated,catalog,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 policy,generated,catalog,aws-ecs-ports-restricted,ECS Services Restrict Public Ports,policy,policy,event,high,active,candidate
 policy,generated,catalog,aws-ecs-secrets-in-env-vars,ECS Task Secrets in Environment Variables,policy,policy,event,high,active,candidate
 policy,generated,catalog,aws-ecs-service-public-ip-disabled,AWS ECS Service Public Ip Disabled,policy,policy,event,high,active,candidate
@@ -37918,6 +37935,7 @@ secrets,risk,catalog,ai-agent-secret-redaction,AI Agent Secret Redaction,policy,
 secrets,risk,catalog,aws-codebuild-plaintext-secrets,AWS CodeBuild Plaintext Secrets,policy,policy,event,critical,active,candidate
 secrets,risk,catalog,aws-codebuild-secrets-in-env-vars,CodeBuild Secrets in Environment Variables,policy,policy,event,high,active,candidate
 secrets,risk,catalog,aws-codebuild-source-credential,CodeBuild Source Credentials Stored Insecurely,policy,policy,event,high,active,candidate
+secrets,risk,catalog,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 secrets,risk,catalog,aws-ecs-secrets-in-env-vars,ECS Task Secrets in Environment Variables,policy,policy,event,high,active,candidate
 secrets,risk,catalog,aws-eks-secrets-encryption,EKS Secrets Encryption,policy,policy,event,high,active,candidate
 secrets,risk,catalog,aws-lambda-no-env-secrets,Lambda No Environment Secrets,policy,policy,event,high,active,candidate
@@ -38907,6 +38925,7 @@ workflow_run,routing,catalog,github-secops-app-installation-all-repos-event-work
 workflows,routing,catalog,github-secops-app-installation-all-repos-workflows-read,GitHub App Installation All Repos Workflows Read,policy,policy,event,medium,active,candidate
 workflows,routing,catalog,github-secops-app-installation-all-repos-workflows-write,GitHub App Installation All Repos Workflows Write,policy,policy,event,critical,active,candidate
 workload,routing,catalog,k8s-workload-uses-default-service-account,Kubernetes Workload Uses Default Service Account,policy,policy,event,medium,active,candidate
+workload-identity,routing,catalog,aws-ecs-active-candidate-secret-role-path,Candidate ECS Launch Retains an Active Secret-Bearing Execution Path,policy,aws,graph,high,active,candidate
 workload-identity,routing,catalog,gcp-gke-metadata-server,GKE Workload Identity (Metadata Server) Enabled,policy,policy,event,medium,active,candidate
 workload-identity,routing,catalog,gcp-gke-workload-identity-disabled,GCP Gke Workload Identity Disabled,policy,policy,event,medium,active,candidate
 workload-security,routing,catalog,k8s-rbac-pod-create-privileges,User/ServiceAccount Can Create Pods,policy,policy,event,low,active,candidate

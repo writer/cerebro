@@ -307,6 +307,142 @@ jobs:
           subject-digest: ${{ steps.publish.outputs.digest }}
           push-to-registry: true
 
+  rust-organizational-e2e:
+    runs-on: ubuntu-latest
+    needs: [resolve, manifest]
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - name: Install Rust toolchain
+        run: rustup toolchain install 1.93.1 --profile minimal
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v2.6.1
+      - name: Verify and pull the exact candidate
+        env:
+          CANDIDATE_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.manifest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cut-release.yml@refs/heads/main$" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${CANDIDATE_IMAGE}" >/dev/null
+          docker pull --platform linux/amd64 "${CANDIDATE_IMAGE}"
+          runtime_image_id="$(docker image inspect --format '{{.Id}}' "${CANDIDATE_IMAGE}")"
+          [[ "${runtime_image_id}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "CEREBRO_TEST_RUNTIME_IMAGE_ID=${runtime_image_id}" >> "${GITHUB_ENV}"
+      - name: Start disposable PostgreSQL, Neo4j, and JetStream
+        run: |
+          set -euo pipefail
+          docker network create cerebro-rust-e2e
+          docker run -d --name cerebro-rust-postgres --network cerebro-rust-e2e \
+            -e POSTGRES_USER=cerebro -e POSTGRES_PASSWORD=cerebro -e POSTGRES_DB=cerebro \
+            -p 5432:5432 postgres:16-alpine
+          docker run -d --name cerebro-rust-neo4j --network cerebro-rust-e2e \
+            -e NEO4J_AUTH=neo4j/local-password -p 7687:7687 neo4j:5-community
+          docker run -d --name cerebro-rust-nats --network cerebro-rust-e2e \
+            -p 4222:4222 nats:2.10-alpine -js -sd /data
+          for attempt in $(seq 1 60); do
+            docker exec cerebro-rust-postgres pg_isready -U cerebro -d cerebro >/dev/null 2>&1 \
+              && docker exec cerebro-rust-neo4j cypher-shell -u neo4j -p local-password \
+                'RETURN 1' >/dev/null 2>&1 \
+              && docker run --rm --network cerebro-rust-e2e natsio/nats-box:0.18.0 \
+                nats --server nats://cerebro-rust-nats:4222 server check connection >/dev/null 2>&1 \
+              && break
+            if [ "${attempt}" -eq 60 ]; then
+              echo "ERROR: disposable Rust E2E stores did not become ready" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          docker run --rm --network cerebro-rust-e2e natsio/nats-box:0.18.0 \
+            nats --server nats://cerebro-rust-nats:4222 stream add CEREBRO_EVENTS \
+              --subjects "events.>" --storage file --retention limits --discard old \
+              --replicas 1 --dupe-window 2m --defaults
+      - name: Start Rust projection and graph API from the candidate image
+        env:
+          CANDIDATE_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.manifest.outputs.digest }}
+          GRAPH_SECRET: rust-candidate-e2e-tenant-secret-32-bytes
+        run: |
+          set -euo pipefail
+          docker run -d --name cerebro-rust-platform --network cerebro-rust-e2e \
+            -p 18080:8080 \
+            -e CEREBRO_NEO4J_URI=bolt://cerebro-rust-neo4j:7687 \
+            -e CEREBRO_NEO4J_USERNAME=neo4j \
+            -e CEREBRO_NEO4J_PASSWORD=local-password \
+            -e 'CEREBRO_POSTGRES_DSN=postgres://cerebro:cerebro@cerebro-rust-postgres:5432/cerebro?sslmode=disable' \
+            -e CEREBRO_JETSTREAM_URL=nats://cerebro-rust-nats:4222 \
+            -e CEREBRO_RUST_BIND=0.0.0.0:8080 \
+            -e CEREBRO_REPOSITORY_ROOT=/app \
+            -e CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET="${GRAPH_SECRET}" \
+            --entrypoint /usr/local/bin/cerebro-platform \
+            "${CANDIDATE_IMAGE}" serve-neo4j-consumer
+      - name: Seed committed events and prove the pre-restart graph
+        env:
+          CEREBRO_TEST_POSTGRES_DSN: postgres://cerebro:cerebro@127.0.0.1:5432/cerebro?sslmode=disable
+          CEREBRO_TEST_NATS_URL: nats://127.0.0.1:4222
+          CEREBRO_TEST_GRAPH_URL: http://127.0.0.1:18080
+          CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: rust-candidate-e2e-tenant-secret-32-bytes
+          CEREBRO_TEST_COMMIT: ${{ needs.resolve.outputs.sha }}
+          CEREBRO_TEST_IMAGE: ghcr.io/${{ github.repository }}:${{ needs.resolve.outputs.image_tag }}
+          CEREBRO_TEST_IMAGE_DIGEST: ${{ needs.manifest.outputs.digest }}
+          CEREBRO_TEST_PLATFORM: linux/amd64
+          CEREBRO_TEST_CHECKPOINT: .dist/rust-e2e/checkpoint.json
+          CEREBRO_TEST_RECEIPT: .dist/rust-e2e/rust-organizational-e2e-receipt.json
+          CEREBRO_REPOSITORY_ROOT: ${{ github.workspace }}
+        run: cargo run --locked -p cerebro-platform --example organizational_graph_e2e -- seed
+      - name: Restart the exact candidate and prove recovery
+        env:
+          CEREBRO_TEST_POSTGRES_DSN: postgres://cerebro:cerebro@127.0.0.1:5432/cerebro?sslmode=disable
+          CEREBRO_TEST_NATS_URL: nats://127.0.0.1:4222
+          CEREBRO_TEST_GRAPH_URL: http://127.0.0.1:18080
+          CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: rust-candidate-e2e-tenant-secret-32-bytes
+          CEREBRO_TEST_COMMIT: ${{ needs.resolve.outputs.sha }}
+          CEREBRO_TEST_IMAGE: ghcr.io/${{ github.repository }}:${{ needs.resolve.outputs.image_tag }}
+          CEREBRO_TEST_IMAGE_DIGEST: ${{ needs.manifest.outputs.digest }}
+          CEREBRO_TEST_PLATFORM: linux/amd64
+          CEREBRO_TEST_CHECKPOINT: .dist/rust-e2e/checkpoint.json
+          CEREBRO_TEST_RECEIPT: .dist/rust-e2e/rust-organizational-e2e-receipt.json
+          CEREBRO_REPOSITORY_ROOT: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          docker restart cerebro-rust-platform
+          cargo run --locked -p cerebro-platform --example organizational_graph_e2e -- verify
+          test "$(jq -r .schema_version .dist/rust-e2e/rust-organizational-e2e-receipt.json)" = \
+            "cerebro.rust-organizational-e2e/v1"
+          test "$(jq -r .status .dist/rust-e2e/rust-organizational-e2e-receipt.json)" = passed
+          test "$(jq -r .image_digest .dist/rust-e2e/rust-organizational-e2e-receipt.json)" = \
+            "${CEREBRO_TEST_IMAGE_DIGEST}"
+          test "$(jq '[.checks[] | select(.status == "passed")] | length' \
+            .dist/rust-e2e/rust-organizational-e2e-receipt.json)" -eq 10
+      - name: Attach the Rust E2E receipt to the candidate digest
+        env:
+          CANDIDATE_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.manifest.outputs.digest }}
+        run: |
+          cosign attest --yes \
+            --type "https://writer.com/cerebro/rust-organizational-e2e/v1" \
+            --predicate .dist/rust-e2e/rust-organizational-e2e-receipt.json \
+            "${CANDIDATE_IMAGE}"
+      - name: Print runtime logs
+        if: always()
+        run: docker logs cerebro-rust-platform 2>&1 || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: candidate-rust-e2e-${{ needs.resolve.outputs.sha }}
+          path: .dist/rust-e2e/rust-organizational-e2e-receipt.json
+          if-no-files-found: error
+
   web-image:
     runs-on: ubuntu-latest
     needs: resolve
@@ -551,7 +687,7 @@ jobs:
 
   receipt:
     runs-on: ubuntu-latest
-    needs: [resolve, binaries, manifest, web-manifest, scan-images, product-release]
+    needs: [resolve, binaries, manifest, rust-organizational-e2e, web-manifest, scan-images, product-release]
     permissions:
       actions: read
       contents: read
@@ -574,13 +710,20 @@ jobs:
           set -euo pipefail
           python3 scripts/release/product_release.py validate candidate/cerebro-product-release.json --bundle-root candidate
           test "$(jq -r .schema_version candidate/cerebro-product-release.json)" = "cerebro.product-release/v1"
+          test "$(jq -r .schema_version candidate/rust-organizational-e2e-receipt.json)" = \
+            "cerebro.rust-organizational-e2e/v1"
+          test "$(jq -r .status candidate/rust-organizational-e2e-receipt.json)" = "passed"
+          test "$(jq -r .commit candidate/rust-organizational-e2e-receipt.json)" = "${CANDIDATE_SHA}"
+          test "$(jq -r .image_digest candidate/rust-organizational-e2e-receipt.json)" = "${IMAGE_DIGEST}"
           product_manifest_sha256="$(sha256sum candidate/cerebro-product-release.json | awk '{print $1}')"
+          rust_e2e_receipt_sha256="$(sha256sum candidate/rust-organizational-e2e-receipt.json | awk '{print $1}')"
           jq -n --arg schema_version "cerebro.release-candidate/v1" --arg commit "${CANDIDATE_SHA}" \
             --arg image "ghcr.io/${GITHUB_REPOSITORY}:${IMAGE_TAG}" --arg digest "${IMAGE_DIGEST}" \
             --arg web_image "ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-web:${IMAGE_TAG}" \
             --arg web_digest "${WEB_IMAGE_DIGEST}" --arg product_manifest_sha256 "${product_manifest_sha256}" \
+            --arg rust_e2e_receipt_sha256 "${rust_e2e_receipt_sha256}" \
             --arg run_id "${GITHUB_RUN_ID}" --arg run_attempt "${GITHUB_RUN_ATTEMPT}" \
-            '{schema_version:$schema_version,commit:$commit,image:$image,image_digest:$digest,web_image:$web_image,web_image_digest:$web_digest,product_manifest_sha256:$product_manifest_sha256,run_id:$run_id,run_attempt:$run_attempt}' \
+            '{schema_version:$schema_version,commit:$commit,image:$image,image_digest:$digest,web_image:$web_image,web_image_digest:$web_digest,product_manifest_sha256:$product_manifest_sha256,rust_e2e_receipt_sha256:$rust_e2e_receipt_sha256,run_id:$run_id,run_attempt:$run_attempt}' \
             > candidate/candidate-receipt.json
           checksum_file="$(mktemp)"
           (cd candidate && find . -type f ! -name bundle-checksums.txt -print0 | sort -z | xargs -0 sha256sum) > "${checksum_file}"
