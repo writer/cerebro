@@ -198,10 +198,9 @@ jobs:
           include-hidden-files: true
 
   image:
-    runs-on: ubuntu-latest
-    needs: [resolve, binaries]
+    runs-on: ${{ matrix.runner }}
+    needs: resolve
     permissions:
-      actions: read
       contents: read
       packages: write
     strategy:
@@ -210,33 +209,36 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
+            runner: ubuntu-24.04
           - arch: arm64
             platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve.outputs.sha }}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          name: candidate-binaries-${{ needs.resolve.outputs.sha }}
-          path: candidate-binaries
-      - name: Prepare runtime binary
+          go-version-file: go.mod
+      - name: Build runtime binary
         shell: bash
         env:
           ARCH: ${{ matrix.arch }}
+          CANDIDATE_SHA: ${{ needs.resolve.outputs.sha }}
           SHORT_SHA: ${{ needs.resolve.outputs.short_sha }}
         run: |
+          set -euo pipefail
           mkdir -p .dist
-          tar -xzf "candidate-binaries/cerebro_candidate-${SHORT_SHA}_linux_${ARCH}.tar.gz" \
-            --strip-components=1 -C .dist
-          chmod +x .dist/cerebro
+          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          ldflags="-s -w -X github.com/writer/cerebro/internal/buildinfo.Version=candidate-${SHORT_SHA} -X github.com/writer/cerebro/internal/buildinfo.Commit=${CANDIDATE_SHA} -X github.com/writer/cerebro/internal/buildinfo.BuildDate=${build_date}"
+          CGO_ENABLED=0 GOOS=linux GOARCH="${ARCH}" \
+            go build -trimpath -ldflags "${ldflags}" -o .dist/cerebro ./cmd/cerebro
       - name: Log in to GHCR
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Build and publish candidate image
         shell: bash
