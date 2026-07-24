@@ -398,7 +398,7 @@ func TestRuntimeTopNQueriesPostgresIntegration(t *testing.T) {
 	}
 	runs, err := store.ListFindingEvaluationRuns(ctx, ports.ListFindingEvaluationRunsRequest{
 		RuntimeIDs:      runtimeIDs,
-		Limit:           uint32(len(runtimeIDs)),
+		Limit:           2,
 		LatestByRuntime: true,
 	})
 	if err != nil {
