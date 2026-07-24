@@ -157,15 +157,25 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 
 	replacementWorkflow := readText(t, filepath.Join(root, ".github/workflows/rust-graph-replacement.yml"))
 	for _, required := range []string{
-		"env -u CEREBRO_GRAPH_STORE_DRIVER",
-		"TestQueryStoreAgainstLiveRustGraph",
-		"/platform/graph/neighborhood",
-		"go_graph_credentials_absent",
-		"CEREBRO_EVENT_ADMISSION_WORKER",
+		"name: Rust-only persisted product read",
+		"--target replacement-test-runtime",
 		"--entrypoint /usr/local/bin/organizational-graph-e2e",
+		`receipt.json)" -eq 13`,
 	} {
 		if !strings.Contains(replacementWorkflow, required) {
 			t.Errorf("Rust graph replacement workflow missing proof %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"actions/setup-go",
+		"make build-go",
+		"go test",
+		"./bin/cerebro serve",
+		"CEREBRO_GRAPH_STORE_DRIVER",
+		"CEREBRO_NEO4J_DATABASE",
+	} {
+		if strings.Contains(replacementWorkflow, forbidden) {
+			t.Errorf("Rust graph replacement workflow restored non-Rust path %q", forbidden)
 		}
 	}
 

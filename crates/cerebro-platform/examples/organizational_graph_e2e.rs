@@ -304,6 +304,13 @@ async fn verify(config: &Config) -> Result<(), Box<dyn Error>> {
         )
         .into());
     }
+    let product_root = format!(
+        "urn:cerebro:{TENANT}:organizational_entity:{}",
+        checkpoint.okta_identity_id
+    );
+    let product = product_neighborhood(config, &product_root).await?;
+    require_product_neighborhood(&product, &product_root, "represents")?;
+    prove_rust_only_runtime()?;
 
     let replay = initial_events()?.remove(0);
     publish(&jetstream, replay).await?;
@@ -362,6 +369,16 @@ async fn verify(config: &Config) -> Result<(), Box<dyn Error>> {
             passed(
                 "agent_rpc_contract",
                 "tenant-signed Connect JSON returned the post-restart entity at the durable revision",
+            ),
+            passed(
+                "product_http_contract",
+                format!(
+                    "native Rust product endpoint returned the persisted neighborhood for {product_root}"
+                ),
+            ),
+            passed(
+                "rust_only_runtime",
+                "replacement image contains the Rust platform and proof driver but no Go server or Go toolchain",
             ),
             passed(
                 "multi_hop_path",
@@ -773,6 +790,76 @@ async fn connect_search(config: &Config, query: &str) -> Result<Value, Box<dyn E
         return Err(format!("agent RPC search returned {}", response.status()).into());
     }
     Ok(response.json().await?)
+}
+
+async fn product_neighborhood(config: &Config, root_urn: &str) -> Result<Value, Box<dyn Error>> {
+    let mut url = reqwest::Url::parse(&format!("{}/platform/graph/neighborhood", config.base_url))?;
+    url.query_pairs_mut()
+        .append_pair("root_urn", root_urn)
+        .append_pair("limit", "10");
+    let response = authenticated(config, TENANT)
+        .get(url.to_string())
+        .send()
+        .await?;
+    if response.status() != StatusCode::OK {
+        return Err(format!("native product neighborhood returned {}", response.status()).into());
+    }
+    Ok(response.json().await?)
+}
+
+fn require_product_neighborhood(
+    body: &Value,
+    root_urn: &str,
+    relation: &str,
+) -> Result<(), Box<dyn Error>> {
+    if body["root"]["urn"] != root_urn {
+        return Err(format!("product neighborhood root mismatch: {body}").into());
+    }
+    let neighbors = body["neighbors"]
+        .as_array()
+        .ok_or("product neighborhood is missing neighbors")?;
+    let relations = body["relations"]
+        .as_array()
+        .ok_or("product neighborhood is missing relations")?;
+    if neighbors.len() != 1
+        || relations.len() != 1
+        || relations[0]["from_urn"] != root_urn
+        || relations[0]["relation"] != relation
+        || relations[0]["attributes"]["identity_binding"] != "true"
+    {
+        return Err(format!(
+            "product neighborhood did not contain one {relation} identity edge: {body}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn prove_rust_only_runtime() -> Result<(), Box<dyn Error>> {
+    for forbidden in [
+        "/usr/local/bin/cerebro",
+        "/usr/local/go/bin/go",
+        "/usr/bin/go",
+        "/bin/go",
+    ] {
+        if Path::new(forbidden).exists() {
+            return Err(format!(
+                "replacement image contains forbidden Go runtime path {forbidden}"
+            )
+            .into());
+        }
+    }
+    for required in [
+        "/usr/local/bin/cerebro-platform",
+        "/usr/local/bin/organizational-graph-e2e",
+    ] {
+        if !Path::new(required).is_file() {
+            return Err(
+                format!("replacement image is missing required Rust binary {required}").into(),
+            );
+        }
+    }
+    Ok(())
 }
 
 fn require_path(body: &Value, edge_count: usize, relations: &[&str]) -> Result<(), Box<dyn Error>> {

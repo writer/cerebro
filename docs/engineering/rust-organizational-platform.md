@@ -53,6 +53,12 @@ During migration, the Go source runtime remains the append-log owner. It commits
 
 `cerebro-platform` serves the bounded agent graph API against Neo4j in production and the in-memory graph in local demos. Web, Slack, MCP, reports, and the graph agent use this API as the authority for bounded neighborhood reads. One-hop requests, including batches of up to 100 roots, execute as one tenant-scoped Neo4j query. Go deployments can omit the graph store and every Neo4j credential once their callers use typed Rust operations. Any remaining raw Cypher caller then fails with `typed Rust graph operation required`; it cannot fall back to another graph reader. Raw Cypher is not exposed by the Rust API.
 
+The Rust service also owns `GET /platform/graph/neighborhood`. It returns the
+existing product JSON shape directly from the bounded Rust graph operation.
+The boundary verifies the requested root, authenticated tenant, every returned
+agent key, unique entity-to-key mapping, edge endpoints, labels, relation
+metadata, and the 50-edge product limit before serializing a response.
+
 ## Enforced identity model
 
 Provider identities and canonical identities are different Rust types.
@@ -95,6 +101,10 @@ Language-level constraints prevent accidental bypass inside Rust. Production aut
 5. CI rejects dependencies from the replacement crates onto Go projection contracts.
 6. PostgreSQL forces tenant row-level security on the ledger tables and uses a tenant-scoped unique key for confirmed identity bindings.
 7. Neo4j writes are not public API operations. Agent, web, and Slack routes are read-only and hard-bound to six hops and 500 results.
+8. The replacement proof builds one Rust image without installing Go. The
+   proof driver runs inside that image, rejects a Go server or toolchain,
+   restarts the Rust service, and reads the recovered graph through both the
+   generated agent RPC and the native product HTTP route.
 
 Repository conventions and review are not the security boundary. Store credentials and workload identity are.
 

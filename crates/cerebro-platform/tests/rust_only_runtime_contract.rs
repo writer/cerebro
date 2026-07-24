@@ -2,6 +2,10 @@
 
 const DOCKERFILE: &str = include_str!("../../../Dockerfile.rust");
 const WORKFLOW: &str = include_str!("../../../.github/workflows/rust-only-candidate.yml");
+const REPLACEMENT_WORKFLOW: &str =
+    include_str!("../../../.github/workflows/rust-graph-replacement.yml");
+const PLATFORM_SOURCE: &str = include_str!("../src/main.rs");
+const REPLACEMENT_DRIVER: &str = include_str!("../examples/organizational_graph_e2e.rs");
 const WORKSPACE_MANIFEST: &str = include_str!("../../../Cargo.toml");
 const WORKSPACE_LOCK: &str = include_str!("../../../Cargo.lock");
 const MAKEFILE: &str = include_str!("../../../Makefile");
@@ -79,6 +83,62 @@ fn rust_candidate_build_never_invokes_go_or_emulation() {
         assert!(
             WORKFLOW.contains(required),
             "Rust-only candidate workflow is missing {required:?}"
+        );
+    }
+}
+
+#[test]
+fn replacement_proof_is_a_native_rust_product_path() {
+    for forbidden in [
+        "actions/setup-go",
+        "go build",
+        "go test",
+        "make build-go",
+        "./bin/cerebro serve",
+        "CEREBRO_GRAPH_STORE_DRIVER",
+        "CEREBRO_NEO4J_DATABASE",
+        "TestQueryStoreAgainstLiveRustGraph",
+    ] {
+        assert!(
+            !REPLACEMENT_WORKFLOW.contains(forbidden),
+            "Rust replacement workflow contains forbidden non-Rust path {forbidden:?}"
+        );
+    }
+    for required in [
+        "name: Rust-only persisted product read",
+        "--target replacement-test-runtime",
+        "--entrypoint /usr/local/bin/organizational-graph-e2e",
+        "docker restart cerebro-rust-graph-platform",
+        "receipt.json)\" -eq 13",
+    ] {
+        assert!(
+            REPLACEMENT_WORKFLOW.contains(required),
+            "Rust replacement workflow is missing proof {required:?}"
+        );
+    }
+    for required in [
+        "\"/platform/graph/neighborhood\"",
+        "get(product_neighborhood_route)",
+        "normalize_product_neighborhood_limit",
+        "product_urn_tenant",
+        "invalid_product_neighborhood",
+    ] {
+        assert!(
+            PLATFORM_SOURCE.contains(required),
+            "Rust platform is missing product boundary {required:?}"
+        );
+    }
+    for required in [
+        "product_http_contract",
+        "rust_only_runtime",
+        "/usr/local/bin/cerebro-platform",
+        "/usr/local/bin/organizational-graph-e2e",
+        "/usr/local/bin/cerebro",
+        "require_product_neighborhood",
+    ] {
+        assert!(
+            REPLACEMENT_DRIVER.contains(required),
+            "Rust replacement driver is missing runtime assertion {required:?}"
         );
     }
 }

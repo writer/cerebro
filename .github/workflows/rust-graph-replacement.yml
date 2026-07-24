@@ -14,11 +14,6 @@ on:
       - "crates/organizational-model/**"
       - "crates/organizational-store/**"
       - "gen/cerebro/graph/**"
-      - "go.mod"
-      - "go.sum"
-      - "internal/bootstrap/**"
-      - "internal/ports/graphquery.go"
-      - "internal/sourcehttp/organizationalgraph/**"
       - "proto/cerebro/graph/**"
   workflow_dispatch:
 
@@ -31,27 +26,20 @@ concurrency:
 
 jobs:
   replacement:
-    name: product read without Go graph credentials
+    name: Rust-only persisted product read
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
-      - name: Build the Rust runtime and Go product adapter
+      - name: Build the exact Rust runtime
         env:
           CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          make build-go &
-          go_build_pid=$!
-          if ! docker buildx build \
+          docker buildx build \
             --file Dockerfile.rust \
             --target replacement-test-runtime \
             --load \
@@ -59,18 +47,7 @@ jobs:
             --tag "cerebro-rust-graph-replacement:${CANDIDATE_SHA}" \
             --cache-from type=gha,scope=rust-graph-replacement \
             --cache-to type=gha,mode=max,ignore-error=true,scope=rust-graph-replacement \
-            .; then
-            kill "${go_build_pid}" 2>/dev/null || true
-            wait "${go_build_pid}" 2>/dev/null || true
-            exit 1
-          fi
-          wait "${go_build_pid}"
-          extractor="cerebro-rust-graph-tools-${CANDIDATE_SHA}"
-          docker create --name "${extractor}" \
-            "cerebro-rust-graph-replacement:${CANDIDATE_SHA}" >/dev/null
-          docker cp "${extractor}:/usr/local/bin/cerebro-event-admission-worker" \
-            bin/cerebro-event-admission-worker
-          docker rm "${extractor}" >/dev/null
+            .
 
       - name: Start the disposable stores
         run: |
@@ -162,75 +139,12 @@ jobs:
           docker restart cerebro-rust-graph-platform
           run_driver verify
           test "$(jq '[.checks[] | select(.status == "passed")] | length' \
-            .dist/rust-graph-replacement/receipt.json)" -eq 11
-
-      - name: Read the Rust graph through the Go product endpoint
-        env:
-          CEREBRO_TEST_ORGANIZATIONAL_GRAPH_URL: http://127.0.0.1:18080
-          CEREBRO_TEST_ORGANIZATIONAL_GRAPH_SHARED_SECRET: rust-graph-replacement-secret-32-bytes
-        run: |
-          set -euo pipefail
-          checkpoint=.dist/rust-graph-replacement/checkpoint.json
-          receipt=.dist/rust-graph-replacement/receipt.json
-          tenant_id="$(jq -r .tenant_id "${checkpoint}")"
-          entity_id="$(jq -r .okta_identity_id "${checkpoint}")"
-          root_urn="urn:cerebro:${tenant_id}:organizational_entity:${entity_id}"
-          export CEREBRO_TEST_ORGANIZATIONAL_GRAPH_ROOT="${root_urn}"
-
-          go test ./internal/sourcehttp/organizationalgraph \
-            -run '^TestQueryStoreAgainstLiveRustGraph$' -count=1 -v
-
-          env -u CEREBRO_GRAPH_STORE_DRIVER \
-            -u CEREBRO_NEO4J_URI \
-            -u CEREBRO_NEO4J_USERNAME \
-            -u CEREBRO_NEO4J_PASSWORD \
-            -u CEREBRO_NEO4J_DATABASE \
-            CEREBRO_HTTP_ADDR=127.0.0.1:18081 \
-            CEREBRO_DEV_MODE=1 \
-            CEREBRO_DEV_MODE_ACK=1 \
-            CEREBRO_EVENT_ADMISSION_WORKER="${PWD}/bin/cerebro-event-admission-worker" \
-            CEREBRO_ORGANIZATIONAL_GRAPH_URL=http://127.0.0.1:18080 \
-            CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET="${CEREBRO_TEST_ORGANIZATIONAL_GRAPH_SHARED_SECRET}" \
-            ./bin/cerebro serve >"${RUNNER_TEMP}/cerebro-go-adapter.log" 2>&1 &
-          go_pid=$!
-          trap 'kill "${go_pid}" 2>/dev/null || true' EXIT
-          for attempt in $(seq 1 30); do
-            curl -fsS http://127.0.0.1:18081/healthz >/dev/null 2>&1 && break
-            test "${attempt}" -lt 30
-            sleep 1
-          done
-          if tr '\0' '\n' <"/proc/${go_pid}/environ" \
-            | grep -Eq '^CEREBRO_(GRAPH_STORE_DRIVER|NEO4J_)'; then
-            echo "Go product process received graph-store credentials" >&2
-            exit 1
-          fi
-
-          response=.dist/rust-graph-replacement/product-neighborhood.json
-          curl -fsS -G \
-            --data-urlencode "root_urn=${root_urn}" \
-            --data-urlencode "limit=10" \
-            http://127.0.0.1:18081/platform/graph/neighborhood >"${response}"
-          jq -e --arg root "${root_urn}" '
-            .root.urn == $root
-            and (.neighbors | length) == 1
-            and (.relations | length) == 1
-            and .relations[0].relation == "represents"
-          ' "${response}" >/dev/null
-
-          jq '.checks += [{
-            name:"go_graph_credentials_absent",
-            status:"passed",
-            evidence:"Go product endpoint read the persisted Rust graph without graph-store configuration"
-          }]' "${receipt}" >"${receipt}.tmp"
-          mv "${receipt}.tmp" "${receipt}"
-          test "$(jq '[.checks[] | select(.status == "passed")] | length' "${receipt}")" -eq 12
+            .dist/rust-graph-replacement/receipt.json)" -eq 13
 
       - name: Print service logs
         if: always()
         run: |
           docker logs cerebro-rust-graph-platform 2>&1 || true
-          test ! -f "${RUNNER_TEMP}/cerebro-go-adapter.log" \
-            || tail -200 "${RUNNER_TEMP}/cerebro-go-adapter.log"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
