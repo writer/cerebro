@@ -78,6 +78,7 @@ func (s *QueryStore) Ping(ctx context.Context) (err error) {
 	if err != nil {
 		return fmt.Errorf("build Rust graph health request: %w", err)
 	}
+	// #nosec G704 -- request uses the validated, frozen origin and constant path above.
 	response, err := s.httpClient.Do(request)
 	if err != nil {
 		return fmt.Errorf("read Rust graph health: %w", err)
