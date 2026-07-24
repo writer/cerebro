@@ -1,3 +1,4 @@
+import { ArchetypeWorkspaceClient } from "./archetype-client.js";
 import { CerebroAskClient } from "./runtime/cerebro-ask-client.js";
 import { loadSlackRuntimeConfig } from "./runtime/config.js";
 import { FileOutcomeStore } from "./runtime/outcome-store.js";
@@ -6,6 +7,7 @@ import {
   createAssistantTurnHost,
   SlackCompanionRuntime,
 } from "./runtime/slack-runtime.js";
+import { ArchetypeSlackWorkspace } from "./runtime/archetype-workspace.js";
 
 async function main(): Promise<void> {
   const config = loadSlackRuntimeConfig();
@@ -16,7 +18,22 @@ async function main(): Promise<void> {
     baseUrl: config.cerebroBaseUrl,
     tenantId: config.cerebroTenantId,
   }));
-  const runtime = new SlackCompanionRuntime(config, host, questions, outcomes);
+  const archetype = config.archetype
+    ? new ArchetypeSlackWorkspace(new ArchetypeWorkspaceClient({
+      allowedEmailDomains: config.archetype.allowedEmailDomains,
+      archetypeBaseUrl: config.archetype.baseUrl,
+      oktaApiToken: config.archetype.oktaApiToken,
+      oktaDomain: config.archetype.oktaDomain,
+      timeoutMs: config.archetype.timeoutMs,
+    }))
+    : undefined;
+  const runtime = new SlackCompanionRuntime(
+    config,
+    host,
+    questions,
+    outcomes,
+    archetype,
+  );
   await runtime.start();
   process.stdout.write(`${JSON.stringify({
     component: "slack-runtime",
