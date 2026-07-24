@@ -434,7 +434,8 @@ func findingEvidenceUsesRuntimeTopN(request ports.ListFindingEvidenceRequest) bo
 	if len(runtimeIDs) < 2 {
 		return false
 	}
-	return len(normalizedNonEmptyStrings(append(append([]string(nil), request.FindingIDs...), request.FindingID))) == 0 &&
+	return request.FindingIDs == nil &&
+		strings.TrimSpace(request.FindingID) == "" &&
 		strings.TrimSpace(request.RunID) == "" &&
 		strings.TrimSpace(request.RuleID) == "" &&
 		strings.TrimSpace(request.ClaimID) == "" &&

@@ -230,6 +230,31 @@ func TestFindingEvidenceHeaderListQueryBoundsEachRuntimeBeforeGlobalSort(t *test
 	}
 }
 
+func TestFindingEvidenceListQueriesPreserveExplicitEmptyFindingBatch(t *testing.T) {
+	request := ports.ListFindingEvidenceRequest{
+		RuntimeIDs: []string{"runtime-alpha", "runtime-beta"},
+		FindingIDs: []string{},
+		Limit:      25,
+	}
+	for name, buildQuery := range map[string]func(ports.ListFindingEvidenceRequest) (string, []any, error){
+		"full":   findingEvidenceListQuery,
+		"header": findingEvidenceHeaderListQuery,
+	} {
+		t.Run(name, func(t *testing.T) {
+			query, _, err := buildQuery(request)
+			if err != nil {
+				t.Fatalf("build query: %v", err)
+			}
+			if strings.Contains(query, "CROSS JOIN LATERAL") {
+				t.Fatalf("explicit empty finding batch used runtime top-N query: %s", query)
+			}
+			if !strings.Contains(query, "FALSE") {
+				t.Fatalf("explicit empty finding batch query missing FALSE clause: %s", query)
+			}
+		})
+	}
+}
+
 func TestFindingEvidenceListQuerySupportsFindingBatches(t *testing.T) {
 	query, args, err := findingEvidenceListQuery(ports.ListFindingEvidenceRequest{
 		RuntimeIDs:   []string{"runtime-alpha", "runtime-beta"},
