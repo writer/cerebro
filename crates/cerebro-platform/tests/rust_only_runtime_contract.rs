@@ -32,7 +32,7 @@ fn rust_runtime_image_has_no_go_executable_path() {
         "/usr/local/bin/cerebro-platform",
         "ENTRYPOINT [\"/usr/local/bin/cerebro-platform\"]",
         "CMD [\"serve-neo4j-consumer\"]",
-        "http://127.0.0.1:8080/readyz",
+        "http://127.0.0.1:8080/healthz",
     ] {
         assert!(
             DOCKERFILE.contains(required),
@@ -71,6 +71,8 @@ fn rust_candidate_build_never_invokes_go_or_emulation() {
         "ghcr.io/${{ github.repository_owner }}/cerebro-rust",
         "Assert the candidate contains no Go server",
         "Run the candidate through its declared Rust entrypoint",
+        "cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- seed",
+        "cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- verify",
         "cerebro.rust-only-e2e/v1",
         "cerebro.rust-only-candidate/v1",
     ] {

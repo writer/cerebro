@@ -233,9 +233,9 @@ jobs:
           CEREBRO_REPOSITORY_ROOT: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          cargo run --locked -p cerebro-platform --example organizational_graph_e2e -- seed
+          cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- seed
           docker restart cerebro-rust-only-platform
-          cargo run --locked -p cerebro-platform --example organizational_graph_e2e -- verify
+          cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- verify
           jq '
             .schema_version = "cerebro.rust-only-e2e/v1"
             | .checks += [
