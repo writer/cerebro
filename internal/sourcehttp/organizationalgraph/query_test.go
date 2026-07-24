@@ -129,7 +129,7 @@ func TestQueryStoreHealthRequiresCompatibilityAndRustAuthorities(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
-		if r.URL.Path != "/healthz" {
+		if r.URL.Path != "/readyz" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)

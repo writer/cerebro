@@ -70,7 +70,7 @@ func (s *QueryStore) Ping(ctx context.Context) error {
 	}
 	// #nosec G704 -- normalizeBaseURL validates and freezes the operator-set
 	// HTTP(S) origin; this package supplies the constant request path.
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+"/healthz", nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+"/readyz", nil)
 	if err != nil {
 		return fmt.Errorf("build Rust graph health request: %w", err)
 	}
