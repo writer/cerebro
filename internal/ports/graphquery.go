@@ -8,6 +8,11 @@ import (
 // ErrGraphEntityNotFound indicates that the requested graph root entity does not exist.
 var ErrGraphEntityNotFound = errors.New("graph entity not found")
 
+// ErrGraphTypedOperationRequired indicates that a caller still depends on raw
+// Cypher and must move to a bounded Rust graph operation before strict
+// replacement mode can serve it.
+var ErrGraphTypedOperationRequired = errors.New("typed Rust graph operation required")
+
 // NeighborhoodNode is the normalized graph node shape returned by bounded neighborhood queries.
 type NeighborhoodNode struct {
 	URN        string `json:"urn"`

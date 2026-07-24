@@ -43,6 +43,9 @@ const (
 	// OrganizationalGraphServiceExpandProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's Expand RPC.
 	OrganizationalGraphServiceExpandProcedure = "/cerebro.graph.v1.OrganizationalGraphService/Expand"
+	// OrganizationalGraphServiceExpandBatchProcedure is the fully-qualified name of the
+	// OrganizationalGraphService's ExpandBatch RPC.
+	OrganizationalGraphServiceExpandBatchProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ExpandBatch"
 	// OrganizationalGraphServiceFindPathsProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's FindPaths RPC.
 	OrganizationalGraphServiceFindPathsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/FindPaths"
@@ -63,6 +66,8 @@ type OrganizationalGraphServiceClient interface {
 	GetEntity(context.Context, *connect.Request[v1.GetEntityRequest]) (*connect.Response[v1.GetEntityResponse], error)
 	// Expand returns the bounded neighborhood around one entity or stable agent key.
 	Expand(context.Context, *connect.Request[v1.ExpandRequest]) (*connect.Response[v1.ExpandResponse], error)
+	// ExpandBatch returns bounded neighborhoods for a closed set of roots.
+	ExpandBatch(context.Context, *connect.Request[v1.ExpandBatchRequest]) (*connect.Response[v1.ExpandBatchResponse], error)
 	// FindPaths returns bounded directed paths between two entities.
 	FindPaths(context.Context, *connect.Request[v1.FindPathsRequest]) (*connect.Response[v1.FindPathsResponse], error)
 	// ExplainAssertion returns the stored edge and source runtime for one assertion.
@@ -101,6 +106,12 @@ func NewOrganizationalGraphServiceClient(httpClient connect.HTTPClient, baseURL 
 			connect.WithSchema(organizationalGraphServiceMethods.ByName("Expand")),
 			connect.WithClientOptions(opts...),
 		),
+		expandBatch: connect.NewClient[v1.ExpandBatchRequest, v1.ExpandBatchResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceExpandBatchProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("ExpandBatch")),
+			connect.WithClientOptions(opts...),
+		),
 		findPaths: connect.NewClient[v1.FindPathsRequest, v1.FindPathsResponse](
 			httpClient,
 			baseURL+OrganizationalGraphServiceFindPathsProcedure,
@@ -127,6 +138,7 @@ type organizationalGraphServiceClient struct {
 	search           *connect.Client[v1.SearchRequest, v1.SearchResponse]
 	getEntity        *connect.Client[v1.GetEntityRequest, v1.GetEntityResponse]
 	expand           *connect.Client[v1.ExpandRequest, v1.ExpandResponse]
+	expandBatch      *connect.Client[v1.ExpandBatchRequest, v1.ExpandBatchResponse]
 	findPaths        *connect.Client[v1.FindPathsRequest, v1.FindPathsResponse]
 	explainAssertion *connect.Client[v1.ExplainAssertionRequest, v1.ExplainAssertionResponse]
 	getSourceSummary *connect.Client[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse]
@@ -145,6 +157,11 @@ func (c *organizationalGraphServiceClient) GetEntity(ctx context.Context, req *c
 // Expand calls cerebro.graph.v1.OrganizationalGraphService.Expand.
 func (c *organizationalGraphServiceClient) Expand(ctx context.Context, req *connect.Request[v1.ExpandRequest]) (*connect.Response[v1.ExpandResponse], error) {
 	return c.expand.CallUnary(ctx, req)
+}
+
+// ExpandBatch calls cerebro.graph.v1.OrganizationalGraphService.ExpandBatch.
+func (c *organizationalGraphServiceClient) ExpandBatch(ctx context.Context, req *connect.Request[v1.ExpandBatchRequest]) (*connect.Response[v1.ExpandBatchResponse], error) {
+	return c.expandBatch.CallUnary(ctx, req)
 }
 
 // FindPaths calls cerebro.graph.v1.OrganizationalGraphService.FindPaths.
@@ -171,6 +188,8 @@ type OrganizationalGraphServiceHandler interface {
 	GetEntity(context.Context, *connect.Request[v1.GetEntityRequest]) (*connect.Response[v1.GetEntityResponse], error)
 	// Expand returns the bounded neighborhood around one entity or stable agent key.
 	Expand(context.Context, *connect.Request[v1.ExpandRequest]) (*connect.Response[v1.ExpandResponse], error)
+	// ExpandBatch returns bounded neighborhoods for a closed set of roots.
+	ExpandBatch(context.Context, *connect.Request[v1.ExpandBatchRequest]) (*connect.Response[v1.ExpandBatchResponse], error)
 	// FindPaths returns bounded directed paths between two entities.
 	FindPaths(context.Context, *connect.Request[v1.FindPathsRequest]) (*connect.Response[v1.FindPathsResponse], error)
 	// ExplainAssertion returns the stored edge and source runtime for one assertion.
@@ -204,6 +223,12 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 		connect.WithSchema(organizationalGraphServiceMethods.ByName("Expand")),
 		connect.WithHandlerOptions(opts...),
 	)
+	organizationalGraphServiceExpandBatchHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceExpandBatchProcedure,
+		svc.ExpandBatch,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("ExpandBatch")),
+		connect.WithHandlerOptions(opts...),
+	)
 	organizationalGraphServiceFindPathsHandler := connect.NewUnaryHandler(
 		OrganizationalGraphServiceFindPathsProcedure,
 		svc.FindPaths,
@@ -230,6 +255,8 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 			organizationalGraphServiceGetEntityHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceExpandProcedure:
 			organizationalGraphServiceExpandHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceExpandBatchProcedure:
+			organizationalGraphServiceExpandBatchHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceFindPathsProcedure:
 			organizationalGraphServiceFindPathsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceExplainAssertionProcedure:
@@ -255,6 +282,10 @@ func (UnimplementedOrganizationalGraphServiceHandler) GetEntity(context.Context,
 
 func (UnimplementedOrganizationalGraphServiceHandler) Expand(context.Context, *connect.Request[v1.ExpandRequest]) (*connect.Response[v1.ExpandResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.Expand is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) ExpandBatch(context.Context, *connect.Request[v1.ExpandBatchRequest]) (*connect.Response[v1.ExpandBatchResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.ExpandBatch is not implemented"))
 }
 
 func (UnimplementedOrganizationalGraphServiceHandler) FindPaths(context.Context, *connect.Request[v1.FindPathsRequest]) (*connect.Response[v1.FindPathsResponse], error) {

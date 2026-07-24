@@ -1218,7 +1218,7 @@ mod tests {
 
     #[tokio::test]
     async fn connect_graph_contract_is_tenant_bound_and_served_by_rust() {
-        let (graph, _, _) = demo_graph().unwrap();
+        let (graph, _, root_id) = demo_graph().unwrap();
         let app = router(graph);
         let body = serde_json::json!({
             "tenantId": "tenant-demo",
@@ -1247,6 +1247,7 @@ mod tests {
         assert_eq!(error["code"], "unauthenticated");
 
         let response = app
+            .clone()
             .oneshot(
                 authenticated(Request::builder(), "tenant-demo")
                     .method("POST")
@@ -1271,6 +1272,35 @@ mod tests {
                 .unwrap()
                 .iter()
                 .all(|entity| entity["agentKey"].as_str().is_some())
+        );
+
+        let body = serde_json::json!({
+            "tenantId": "tenant-demo",
+            "rootKeys": [root_id.as_str()],
+            "depth": 1,
+            "limit": 10
+        })
+        .to_string();
+        let response = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/ExpandBatch")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(
+            response["neighborhoods"][root_id.as_str()]["tenantId"],
+            "tenant-demo"
         );
     }
 

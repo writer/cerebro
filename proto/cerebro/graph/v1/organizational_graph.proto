@@ -12,6 +12,8 @@ service OrganizationalGraphService {
   rpc GetEntity(GetEntityRequest) returns (GetEntityResponse);
   // Expand returns the bounded neighborhood around one entity or stable agent key.
   rpc Expand(ExpandRequest) returns (ExpandResponse);
+  // ExpandBatch returns bounded neighborhoods for a closed set of roots.
+  rpc ExpandBatch(ExpandBatchRequest) returns (ExpandBatchResponse);
   // FindPaths returns bounded directed paths between two entities.
   rpc FindPaths(FindPathsRequest) returns (FindPathsResponse);
   // ExplainAssertion returns the stored edge and source runtime for one assertion.
@@ -91,6 +93,19 @@ message ExpandResponse {
   repeated GraphEntity entities = 4;
   repeated GraphEdge edges = 5;
   bool truncated = 6;
+}
+
+// ExpandBatchRequest identifies a closed set of graph roots with shared hard bounds.
+message ExpandBatchRequest {
+  string tenant_id = 1;
+  repeated string root_keys = 2;
+  uint32 depth = 3;
+  uint32 limit = 4;
+}
+
+// ExpandBatchResponse returns one bounded neighborhood for each resolved root.
+message ExpandBatchResponse {
+  map<string, ExpandResponse> neighborhoods = 1;
 }
 
 // FindPathsRequest identifies two endpoints and hard traversal bounds.

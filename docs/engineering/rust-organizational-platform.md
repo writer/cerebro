@@ -51,7 +51,7 @@ During migration, the Go source runtime remains the append-log owner. It commits
 
 `cerebro-agent-context` exposes bounded search, lookup, expansion, path, and explanation operations. It does not expose Cypher or store mutation.
 
-`cerebro-platform` serves the bounded agent graph API against Neo4j in production and the in-memory graph in local demos. Web, Slack, MCP, reports, and the graph agent use this API as the authority for bounded neighborhood reads. One-hop requests, including batches of up to 100 roots, execute as one tenant-scoped Neo4j query. Raw Cypher remains on the compatibility reader until each query has a typed Rust operation; it is not exposed by the Rust API.
+`cerebro-platform` serves the bounded agent graph API against Neo4j in production and the in-memory graph in local demos. Web, Slack, MCP, reports, and the graph agent use this API as the authority for bounded neighborhood reads. One-hop requests, including batches of up to 100 roots, execute as one tenant-scoped Neo4j query. Go deployments can omit the graph store and every Neo4j credential once their callers use typed Rust operations. Any remaining raw Cypher caller then fails with `typed Rust graph operation required`; it cannot fall back to another graph reader. Raw Cypher is not exposed by the Rust API.
 
 ## Enforced identity model
 

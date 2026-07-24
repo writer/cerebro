@@ -1,12 +1,10 @@
-// Package organizationalgraph makes the Rust-owned bounded graph API the
-// product read authority while retaining the legacy store only for raw Cypher
-// compatibility during migration.
+// Package organizationalgraph makes the Rust-owned generated graph contract
+// the product read authority. A legacy store is optional and exists only for
+// callers that have not yet moved from raw Cypher to typed operations.
 package organizationalgraph
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
+
+	cerebrographv1 "github.com/writer/cerebro/gen/cerebro/graph/v1"
+	"github.com/writer/cerebro/gen/cerebro/graph/v1/cerebrographv1connect"
 	"github.com/writer/cerebro/internal/ports"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
@@ -23,17 +25,18 @@ const (
 	maxBatchRoots    = 100
 )
 
-// QueryStore serves bounded product reads from Rust. Raw Cypher remains on the
-// compatibility reader until those queries have typed Rust operations.
+// QueryStore serves bounded product reads from Rust. When a compatibility
+// reader is present, callers not yet moved from raw Cypher can still use it.
+// Without one, those callers fail explicitly instead of falling back.
 type QueryStore struct {
 	compatibility ports.GraphQueryStore
 	baseURL       string
-	client        *http.Client
+	httpClient    *http.Client
+	graph         cerebrographv1connect.OrganizationalGraphServiceClient
 	auth          tenantAuthenticator
 }
 
-// ReadinessStore selects the product read authority when configured. Its Ping
-// also checks the compatibility store needed for raw reads during migration.
+// ReadinessStore selects the product read authority when configured.
 func ReadinessStore(compatibility, authority ports.GraphStore) ports.GraphStore {
 	if authority != nil {
 		return authority
@@ -42,9 +45,6 @@ func ReadinessStore(compatibility, authority ports.GraphStore) ports.GraphStore 
 }
 
 func NewQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration) (*QueryStore, error) {
-	if compatibility == nil {
-		return nil, errors.New("compatibility graph query store is required")
-	}
 	baseURL, err := normalizeBaseURL(baseURL)
 	if err != nil {
 		return nil, err
@@ -56,17 +56,21 @@ func NewQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret st
 	if err != nil {
 		return nil, err
 	}
+	httpClient := &http.Client{Timeout: timeout}
 	return &QueryStore{
 		compatibility: compatibility,
 		baseURL:       baseURL,
-		client:        &http.Client{Timeout: timeout},
+		httpClient:    httpClient,
+		graph:         cerebrographv1connect.NewOrganizationalGraphServiceClient(httpClient, baseURL),
 		auth:          auth,
 	}, nil
 }
 
-func (s *QueryStore) Ping(ctx context.Context) error {
-	if err := s.compatibility.Ping(ctx); err != nil {
-		return fmt.Errorf("compatibility graph health: %w", err)
+func (s *QueryStore) Ping(ctx context.Context) (err error) {
+	if s.compatibility != nil {
+		if err := s.compatibility.Ping(ctx); err != nil {
+			return fmt.Errorf("compatibility graph health: %w", err)
+		}
 	}
 	// #nosec G704 -- normalizeBaseURL validates and freezes the operator-set
 	// HTTP(S) origin; this package supplies the constant request path.
@@ -74,7 +78,18 @@ func (s *QueryStore) Ping(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("build Rust graph health request: %w", err)
 	}
-	return s.do(request, nil)
+	response, err := s.httpClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("read Rust graph health: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, response.Body.Close())
+	}()
+	_, copyErr := io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("rust graph health returned %s", response.Status)
+	}
+	return copyErr
 }
 
 func (s *QueryStore) GetEntityNeighborhood(ctx context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
@@ -83,17 +98,21 @@ func (s *QueryStore) GetEntityNeighborhood(ctx context.Context, rootURN string, 
 		return nil, errors.New("root is not a tenant-scoped Cerebro URN")
 	}
 	rootOnly := limit <= 0
-	request := expandRequest{
-		TenantID: cerebrourn.TenantID(rootURN),
+	tenantID := cerebrourn.TenantID(rootURN)
+	request := connect.NewRequest(&cerebrographv1.ExpandRequest{
+		TenantId: tenantID,
 		RootKey:  rootURN,
 		Depth:    1,
-		Limit:    normalizedLimit(limit),
-	}
-	var neighborhood rustNeighborhood
-	if err := s.post(ctx, "/v1/graph/expand", request.TenantID, request, &neighborhood); err != nil {
+		Limit:    uint32(normalizedLimit(limit)), // #nosec G115 -- normalizedLimit is bounded to 500.
+	})
+	if err := s.auth.authorizeHeader(request.Header(), tenantID); err != nil {
 		return nil, err
 	}
-	product, err := productNeighborhood(rootURN, neighborhood)
+	response, err := s.graph.Expand(ctx, request)
+	if err != nil {
+		return nil, graphRPCError("expand", err)
+	}
+	product, err := productNeighborhood(rootURN, response.Msg)
 	if err != nil {
 		return nil, err
 	}
@@ -132,17 +151,21 @@ func (s *QueryStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []stri
 		seen[rootURN] = struct{}{}
 		roots = append(roots, rootURN)
 	}
-	var response expandBatchResponse
-	if err := s.post(ctx, "/v1/graph/expand-batch", tenantID, expandBatchRequest{
-		TenantID: tenantID,
+	request := connect.NewRequest(&cerebrographv1.ExpandBatchRequest{
+		TenantId: tenantID,
 		RootKeys: roots,
 		Depth:    1,
-		Limit:    normalizedLimit(limit),
-	}, &response); err != nil {
+		Limit:    uint32(normalizedLimit(limit)), // #nosec G115 -- normalizedLimit is bounded to 500.
+	})
+	if err := s.auth.authorizeHeader(request.Header(), tenantID); err != nil {
 		return nil, err
 	}
-	result := make(map[string]*ports.EntityNeighborhood, len(response.Neighborhoods))
-	for rootURN, neighborhood := range response.Neighborhoods {
+	response, err := s.graph.ExpandBatch(ctx, request)
+	if err != nil {
+		return nil, graphRPCError("expand batch", err)
+	}
+	result := make(map[string]*ports.EntityNeighborhood, len(response.Msg.GetNeighborhoods()))
+	for rootURN, neighborhood := range response.Msg.GetNeighborhoods() {
 		if _, requested := seen[rootURN]; !requested {
 			return nil, errors.New("rust graph returned an unrequested root")
 		}
@@ -160,10 +183,16 @@ func (s *QueryStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []stri
 }
 
 func (s *QueryStore) ExecuteReadCypher(ctx context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	if s.compatibility == nil {
+		return nil, ports.ErrGraphTypedOperationRequired
+	}
 	return s.compatibility.ExecuteReadCypher(ctx, request)
 }
 
 func (s *QueryStore) CountProjectedLinksMissingAssertions(ctx context.Context, tenantID string, relations []string) (uint32, error) {
+	if s.compatibility == nil {
+		return 0, ports.ErrGraphTypedOperationRequired
+	}
 	store, ok := s.compatibility.(ports.ProjectionAssertionCoverageStore)
 	if !ok {
 		return 0, errors.New("compatibility graph store does not support projection assertion coverage")
@@ -172,6 +201,9 @@ func (s *QueryStore) CountProjectedLinksMissingAssertions(ctx context.Context, t
 }
 
 func (s *QueryStore) MigrateProjectedLinkAssertions(ctx context.Context, request ports.ProjectionAssertionMigrationRequest) (ports.ProjectionAssertionMigrationResult, error) {
+	if s.compatibility == nil {
+		return ports.ProjectionAssertionMigrationResult{}, ports.ErrGraphTypedOperationRequired
+	}
 	store, ok := s.compatibility.(ports.ProjectionAssertionMigrator)
 	if !ok {
 		return ports.ProjectionAssertionMigrationResult{}, errors.New("compatibility graph store does not support projection assertion migration")
@@ -179,142 +211,71 @@ func (s *QueryStore) MigrateProjectedLinkAssertions(ctx context.Context, request
 	return store.MigrateProjectedLinkAssertions(ctx, request)
 }
 
-type expandRequest struct {
-	TenantID string `json:"tenant_id"`
-	RootKey  string `json:"root_key"`
-	Depth    int    `json:"depth"`
-	Limit    int    `json:"limit"`
-}
-
-type expandBatchRequest struct {
-	TenantID string   `json:"tenant_id"`
-	RootKeys []string `json:"root_keys"`
-	Depth    int      `json:"depth"`
-	Limit    int      `json:"limit"`
-}
-
-type expandBatchResponse struct {
-	Neighborhoods map[string]rustNeighborhood `json:"neighborhoods"`
-}
-
-type rustEntity struct {
-	EntityID   string            `json:"entity_id"`
-	AgentKey   string            `json:"agent_key"`
-	EntityKind string            `json:"entity_kind"`
-	Authority  json.RawMessage   `json:"authority"`
-	Label      string            `json:"label"`
-	Properties map[string]string `json:"properties"`
-}
-
-type rustEdge struct {
-	AssertionID     string `json:"assertion_id"`
-	From            string `json:"from"`
-	Relation        string `json:"relation"`
-	To              string `json:"to"`
-	SourceRuntimeID string `json:"source_runtime_id"`
-	IdentityBinding bool   `json:"identity_binding"`
-}
-
-type rustNeighborhood struct {
-	TenantID      string       `json:"tenant_id"`
-	GraphRevision uint64       `json:"graph_revision"`
-	Root          rustEntity   `json:"root"`
-	Entities      []rustEntity `json:"entities"`
-	Edges         []rustEdge   `json:"edges"`
-	Truncated     bool         `json:"truncated"`
-}
-
-func (s *QueryStore) post(ctx context.Context, path, tenantID string, payload any, target any) error {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("encode Rust graph request: %w", err)
-	}
-	// #nosec G704 -- normalizeBaseURL validates and freezes the operator-set
-	// HTTP(S) origin; callers in this package supply constant request paths.
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+path, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("build Rust graph request: %w", err)
-	}
-	request.Header.Set("Content-Type", "application/json")
-	if err := s.auth.authorize(request, tenantID); err != nil {
-		return err
-	}
-	return s.do(request, target)
-}
-
-func (s *QueryStore) do(request *http.Request, target any) (err error) {
-	// #nosec G704 -- requests are constructed only from the validated, frozen
-	// sidecar origin and constant paths in this package.
-	response, err := s.client.Do(request)
-	if err != nil {
-		return fmt.Errorf("read Rust graph: %w", err)
-	}
-	defer func() {
-		err = errors.Join(err, response.Body.Close())
-	}()
-	if response.StatusCode == http.StatusNotFound {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
+func graphRPCError(operation string, err error) error {
+	if connect.CodeOf(err) == connect.CodeNotFound {
 		return ports.ErrGraphEntityNotFound
 	}
-	if response.StatusCode != http.StatusOK {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
-		return fmt.Errorf("rust graph returned %s", response.Status)
-	}
-	if target == nil {
-		_, err = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
-		return err
-	}
-	decoder := json.NewDecoder(io.LimitReader(response.Body, maxResponseBytes))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("decode Rust graph response: %w", err)
-	}
-	return nil
+	return fmt.Errorf("rust graph %s: %w", operation, err)
 }
 
-func productNeighborhood(rootKey string, rust rustNeighborhood) (*ports.EntityNeighborhood, error) {
-	if rust.TenantID != cerebrourn.TenantID(rootKey) {
+func productNeighborhood(rootKey string, rust *cerebrographv1.ExpandResponse) (*ports.EntityNeighborhood, error) {
+	if rust == nil || rust.GetRoot() == nil {
+		return nil, errors.New("rust graph neighborhood is missing its root")
+	}
+	if rust.GetTenantId() != cerebrourn.TenantID(rootKey) {
 		return nil, errors.New("rust graph neighborhood belongs to a different tenant")
 	}
-	if !cerebrourn.SameTenant(productEntityKey(rust.Root), rust.TenantID) {
+	if !cerebrourn.SameTenant(productEntityKey(rust.GetRoot()), rust.GetTenantId()) {
 		return nil, errors.New("rust graph root is missing its tenant-scoped agent key")
 	}
-	keys := make(map[string]string, len(rust.Entities)+1)
-	entityIDs := map[string]string{rootKey: rust.Root.EntityID}
-	keys[rust.Root.EntityID] = rootKey
-	for _, entity := range rust.Entities {
+	keys := make(map[string]string, len(rust.GetEntities())+1)
+	entityIDs := map[string]string{rootKey: rust.GetRoot().GetEntityId()}
+	keys[rust.GetRoot().GetEntityId()] = rootKey
+	for _, entity := range rust.GetEntities() {
+		if entity == nil {
+			return nil, errors.New("rust graph neighborhood contains an empty entity")
+		}
 		key := productEntityKey(entity)
-		if !cerebrourn.SameTenant(key, rust.TenantID) {
+		if !cerebrourn.SameTenant(key, rust.GetTenantId()) {
 			return nil, errors.New("rust graph entity is missing its tenant-scoped agent key")
 		}
-		if existing, exists := entityIDs[key]; exists && existing != entity.EntityID {
+		if existing, exists := entityIDs[key]; exists && existing != entity.GetEntityId() {
 			return nil, errors.New("rust graph returned duplicate product entity keys")
 		}
-		entityIDs[key] = entity.EntityID
-		keys[entity.EntityID] = key
+		entityIDs[key] = entity.GetEntityId()
+		keys[entity.GetEntityId()] = key
 	}
 	result := &ports.EntityNeighborhood{
-		Root:      productNode(rootKey, rust.Root),
-		Neighbors: make([]*ports.NeighborhoodNode, 0, len(rust.Entities)),
-		Relations: make([]*ports.NeighborhoodRelation, 0, len(rust.Edges)),
+		Root:      productNode(rootKey, rust.GetRoot()),
+		Neighbors: make([]*ports.NeighborhoodNode, 0, len(rust.GetEntities())),
+		Relations: make([]*ports.NeighborhoodRelation, 0, len(rust.GetEdges())),
 	}
-	for _, entity := range rust.Entities {
-		key := keys[entity.EntityID]
+	for _, entity := range rust.GetEntities() {
+		key := keys[entity.GetEntityId()]
 		result.Neighbors = append(result.Neighbors, productNode(key, entity))
 	}
-	for _, edge := range rust.Edges {
-		from, fromOK := keys[edge.From]
-		to, toOK := keys[edge.To]
+	seenRelations := make(map[string]struct{}, len(rust.GetEdges()))
+	for _, edge := range rust.GetEdges() {
+		if edge == nil {
+			return nil, errors.New("rust graph neighborhood contains an empty edge")
+		}
+		from, fromOK := keys[edge.GetFromEntityId()]
+		to, toOK := keys[edge.GetToEntityId()]
 		if !fromOK || !toOK {
 			return nil, errors.New("rust graph edge references an entity outside its neighborhood")
 		}
-		attributes := map[string]string{"source_runtime_id": edge.SourceRuntimeID}
-		if edge.IdentityBinding {
+		relationKey := from + "\x00" + edge.GetRelation() + "\x00" + to
+		if _, seen := seenRelations[relationKey]; seen {
+			continue
+		}
+		seenRelations[relationKey] = struct{}{}
+		attributes := map[string]string{"source_runtime_id": edge.GetSourceRuntimeId()}
+		if edge.GetIdentityBinding() {
 			attributes["identity_binding"] = "true"
 		}
 		result.Relations = append(result.Relations, &ports.NeighborhoodRelation{
 			FromURN:    from,
-			Relation:   edge.Relation,
+			Relation:   edge.GetRelation(),
 			ToURN:      to,
 			Attributes: attributes,
 		})
@@ -322,16 +283,16 @@ func productNeighborhood(rootKey string, rust rustNeighborhood) (*ports.EntityNe
 	return result, nil
 }
 
-func productNode(key string, entity rustEntity) *ports.NeighborhoodNode {
-	entityType := entity.Properties["entity_type"]
+func productNode(key string, entity *cerebrographv1.GraphEntity) *ports.NeighborhoodNode {
+	entityType := entity.GetProperties()["entity_type"]
 	if entityType == "" {
-		entityType = entity.EntityKind
+		entityType = entity.GetEntityKind()
 	}
-	return &ports.NeighborhoodNode{URN: key, EntityType: entityType, Label: entity.Label}
+	return &ports.NeighborhoodNode{URN: key, EntityType: entityType, Label: entity.GetLabel()}
 }
 
-func productEntityKey(entity rustEntity) string {
-	return strings.TrimSpace(entity.AgentKey)
+func productEntityKey(entity *cerebrographv1.GraphEntity) string {
+	return strings.TrimSpace(entity.GetAgentKey())
 }
 
 func normalizedLimit(limit int) int {

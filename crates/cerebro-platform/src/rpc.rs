@@ -175,6 +175,33 @@ impl OrganizationalGraphService for GraphRpc {
         Response::ok(expand_response(neighborhood))
     }
 
+    async fn expand_batch(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, ExpandBatchRequest>,
+    ) -> ServiceResult<ExpandBatchResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let root_keys = request
+            .root_keys
+            .iter()
+            .map(|root_key| (*root_key).to_owned())
+            .collect::<Vec<_>>();
+        let depth = usize::try_from(request.depth)
+            .map_err(|_| ConnectError::invalid_argument("depth exceeds usize"))?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let neighborhoods = self
+            .graph_call(self.graph.expand_many(&tenant, &root_keys, depth, limit))
+            .await?
+            .into_iter()
+            .map(|(root_key, neighborhood)| (root_key, expand_response(neighborhood)))
+            .collect();
+        Response::ok(ExpandBatchResponse {
+            neighborhoods,
+            ..Default::default()
+        })
+    }
+
     async fn find_paths(
         &self,
         context: RequestContext,

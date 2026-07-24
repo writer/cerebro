@@ -22,6 +22,16 @@ pub type OwnedExpandRequestView = ::buffa::view::OwnedView<
 pub type OwnedExpandResponseView = ::buffa::view::OwnedView<
     crate::rpc::proto::cerebro::graph::v1::__buffa::view::ExpandResponseView<'static>,
 >;
+///Shorthand for `OwnedView<ExpandBatchRequestView<'static>>`.
+pub type OwnedExpandBatchRequestView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ExpandBatchRequestView<'static>,
+>;
+///Shorthand for `OwnedView<ExpandBatchResponseView<'static>>`.
+pub type OwnedExpandBatchResponseView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ExpandBatchResponseView<
+        'static,
+    >,
+>;
 ///Shorthand for `OwnedView<FindPathsRequestView<'static>>`.
 pub type OwnedFindPathsRequestView = ::buffa::view::OwnedView<
     crate::rpc::proto::cerebro::graph::v1::__buffa::view::FindPathsRequestView<'static>,
@@ -134,6 +144,42 @@ for crate::rpc::proto::cerebro::graph::v1::__buffa::view::ExpandResponseView<'_>
 impl ::connectrpc::Encodable<crate::rpc::proto::cerebro::graph::v1::ExpandResponse>
 for ::buffa::view::OwnedView<
     crate::rpc::proto::cerebro::graph::v1::__buffa::view::ExpandResponseView<'static>,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
+impl ::connectrpc::Encodable<crate::rpc::proto::cerebro::graph::v1::ExpandBatchResponse>
+for crate::rpc::proto::cerebro::graph::v1::__buffa::view::ExpandBatchResponseView<'_> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<crate::rpc::proto::cerebro::graph::v1::ExpandBatchResponse>
+for ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::ExpandBatchResponseView<
+        'static,
+    >,
 > {
     fn encode(
         &self,
@@ -303,6 +349,15 @@ pub const ORGANIZATIONAL_GRAPH_SERVICE_EXPAND_SPEC: ::connectrpc::Spec = ::conne
         ::connectrpc::StreamType::Unary,
     )
     .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the server-side `ExpandBatch` RPC.
+///
+/// The dispatcher surfaces this on
+/// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
+pub const ORGANIZATIONAL_GRAPH_SERVICE_EXPAND_BATCH_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/cerebro.graph.v1.OrganizationalGraphService/ExpandBatch",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
 /// Static [`Spec`](::connectrpc::Spec) for the server-side `FindPaths` RPC.
 ///
 /// The dispatcher surfaces this on
@@ -447,6 +502,29 @@ pub trait OrganizationalGraphService: Send + Sync + 'static {
         Output = ::connectrpc::ServiceResult<
             impl ::connectrpc::Encodable<
                 crate::rpc::proto::cerebro::graph::v1::ExpandResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
+    /// ExpandBatch returns bounded neighborhoods for a closed set of roots.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn expand_batch<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::rpc::proto::cerebro::graph::v1::ExpandBatchRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::rpc::proto::cerebro::graph::v1::ExpandBatchResponse,
             > + Send + use<'a, Self>,
         >,
     > + Send;
@@ -640,6 +718,35 @@ impl<S: OrganizationalGraphService> OrganizationalGraphServiceExt for S {
             .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_EXPAND_SPEC)
             .route_view(
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ExpandBatch",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::rpc::proto::cerebro::graph::v1::__buffa::view::ExpandBatchRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::rpc::proto::cerebro::graph::v1::ExpandBatchRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.expand_batch(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::rpc::proto::cerebro::graph::v1::ExpandBatchResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_EXPAND_BATCH_SPEC)
+            .route_view(
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "FindPaths",
                 {
                     let svc = ::std::sync::Arc::clone(&self);
@@ -800,6 +907,12 @@ for OrganizationalGraphServiceServer<T> {
                         .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_EXPAND_SPEC),
                 )
             }
+            "ExpandBatch" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_EXPAND_BATCH_SPEC),
+                )
+            }
             "FindPaths" => {
                 Some(
                     ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
@@ -897,6 +1010,28 @@ for OrganizationalGraphServiceServer<T> {
                         .await?
                         .encode::<
                             crate::rpc::proto::cerebro::graph::v1::ExpandResponse,
+                        >(format)
+                })
+            }
+            "ExpandBatch" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::rpc::proto::cerebro::graph::v1::ExpandBatchRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::rpc::proto::cerebro::graph::v1::__buffa::view::ExpandBatchRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::rpc::proto::cerebro::graph::v1::ExpandBatchRequest,
+                    >::from_parts(&req, &body);
+                    svc.expand_batch(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::rpc::proto::cerebro::graph::v1::ExpandBatchResponse,
                         >(format)
                 })
             }
@@ -1221,6 +1356,51 @@ where
                 &self.config,
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "Expand",
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the ExpandBatch RPC. Sends a request to /cerebro.graph.v1.OrganizationalGraphService/ExpandBatch.
+    pub async fn expand_batch(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ExpandBatchRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ExpandBatchResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.expand_batch_with_options(
+                request,
+                ::connectrpc::client::CallOptions::default(),
+            )
+            .await
+    }
+    /// Call the ExpandBatch RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn expand_batch_with_options(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::ExpandBatchRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::ExpandBatchResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "ExpandBatch",
                 request,
                 options,
             )

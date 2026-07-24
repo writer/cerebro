@@ -1,0 +1,213 @@
+name: Rust Graph Replacement
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/rust-graph-replacement.yml"
+      - "Dockerfile.rust"
+      - "Makefile"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/agent-context/**"
+      - "crates/cerebro-platform/**"
+      - "crates/organizational-graph/**"
+      - "crates/organizational-model/**"
+      - "crates/organizational-store/**"
+      - "gen/cerebro/graph/**"
+      - "go.mod"
+      - "go.sum"
+      - "internal/bootstrap/**"
+      - "internal/ports/graphquery.go"
+      - "internal/sourcehttp/organizationalgraph/**"
+      - "proto/cerebro/graph/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replacement:
+    name: product read without Go graph credentials
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install the Rust toolchain
+        run: rustup toolchain install 1.93.1 --profile minimal
+
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build the Rust runtime
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: Dockerfile.rust
+          load: true
+          provenance: false
+          tags: cerebro-rust-graph-replacement:${{ github.event.pull_request.head.sha || github.sha }}
+          cache-from: type=gha,scope=rust-graph-replacement
+          cache-to: type=gha,mode=max,ignore-error=true,scope=rust-graph-replacement
+
+      - name: Start the disposable stores
+        run: |
+          set -euo pipefail
+          docker network create cerebro-rust-graph-replacement
+          docker run -d --name cerebro-rust-graph-postgres --network cerebro-rust-graph-replacement \
+            -e POSTGRES_USER=cerebro -e POSTGRES_PASSWORD=cerebro -e POSTGRES_DB=cerebro \
+            -p 5432:5432 postgres:16-alpine
+          docker run -d --name cerebro-rust-graph-neo4j --network cerebro-rust-graph-replacement \
+            -e NEO4J_AUTH=neo4j/local-password -p 7687:7687 neo4j:5-community
+          docker run -d --name cerebro-rust-graph-nats --network cerebro-rust-graph-replacement \
+            -p 4222:4222 nats:2.10-alpine -js -sd /data
+          for attempt in $(seq 1 60); do
+            docker exec cerebro-rust-graph-postgres pg_isready -U cerebro -d cerebro >/dev/null 2>&1 \
+              && docker exec cerebro-rust-graph-neo4j cypher-shell -u neo4j -p local-password \
+                'RETURN 1' >/dev/null 2>&1 \
+              && docker run --rm --network cerebro-rust-graph-replacement natsio/nats-box:0.18.0 \
+                nats --server nats://cerebro-rust-graph-nats:4222 server check connection >/dev/null 2>&1 \
+              && break
+            test "${attempt}" -lt 60
+            sleep 1
+          done
+          docker run --rm --network cerebro-rust-graph-replacement natsio/nats-box:0.18.0 \
+            nats --server nats://cerebro-rust-graph-nats:4222 stream add CEREBRO_EVENTS \
+              --subjects "events.>" --storage file --retention limits --discard old \
+              --replicas 1 --dupe-window 2m --defaults
+
+      - name: Start the Rust graph service
+        env:
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GRAPH_SECRET: rust-graph-replacement-secret-32-bytes
+        run: |
+          set -euo pipefail
+          image="cerebro-rust-graph-replacement:${CANDIDATE_SHA}"
+          runtime_image_id="$(docker image inspect --format '{{.Id}}' "${image}")"
+          [[ "${runtime_image_id}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "CEREBRO_TEST_RUNTIME_IMAGE_ID=${runtime_image_id}" >>"${GITHUB_ENV}"
+          docker run -d --name cerebro-rust-graph-platform --network cerebro-rust-graph-replacement \
+            -p 18080:8080 \
+            -e CEREBRO_NEO4J_URI=bolt://cerebro-rust-graph-neo4j:7687 \
+            -e CEREBRO_NEO4J_USERNAME=neo4j \
+            -e CEREBRO_NEO4J_PASSWORD=local-password \
+            -e 'CEREBRO_POSTGRES_DSN=postgres://cerebro:cerebro@cerebro-rust-graph-postgres:5432/cerebro?sslmode=disable' \
+            -e CEREBRO_JETSTREAM_URL=nats://cerebro-rust-graph-nats:4222 \
+            -e CEREBRO_RUST_BIND=0.0.0.0:8080 \
+            -e CEREBRO_REPOSITORY_ROOT=/app \
+            -e CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET="${GRAPH_SECRET}" \
+            "${image}"
+
+      - name: Seed and recover the Rust graph
+        env:
+          CEREBRO_TEST_POSTGRES_DSN: postgres://cerebro:cerebro@127.0.0.1:5432/cerebro?sslmode=disable
+          CEREBRO_TEST_NATS_URL: nats://127.0.0.1:4222
+          CEREBRO_TEST_GRAPH_URL: http://127.0.0.1:18080
+          CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: rust-graph-replacement-secret-32-bytes
+          CEREBRO_TEST_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          CEREBRO_TEST_IMAGE: cerebro-rust-graph-replacement:${{ github.event.pull_request.head.sha || github.sha }}
+          CEREBRO_TEST_PLATFORM: linux/amd64
+          CEREBRO_TEST_CHECKPOINT: .dist/rust-graph-replacement/checkpoint.json
+          CEREBRO_TEST_RECEIPT: .dist/rust-graph-replacement/receipt.json
+          CEREBRO_REPOSITORY_ROOT: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          export CEREBRO_TEST_IMAGE_DIGEST="${CEREBRO_TEST_RUNTIME_IMAGE_ID}"
+          cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- seed
+          docker restart cerebro-rust-graph-platform
+          cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- verify
+          test "$(jq '[.checks[] | select(.status == "passed")] | length' \
+            .dist/rust-graph-replacement/receipt.json)" -eq 11
+
+      - name: Read the Rust graph through the Go product endpoint
+        env:
+          CEREBRO_TEST_ORGANIZATIONAL_GRAPH_URL: http://127.0.0.1:18080
+          CEREBRO_TEST_ORGANIZATIONAL_GRAPH_SHARED_SECRET: rust-graph-replacement-secret-32-bytes
+        run: |
+          set -euo pipefail
+          checkpoint=.dist/rust-graph-replacement/checkpoint.json
+          receipt=.dist/rust-graph-replacement/receipt.json
+          tenant_id="$(jq -r .tenant_id "${checkpoint}")"
+          entity_id="$(jq -r .okta_identity_id "${checkpoint}")"
+          root_urn="urn:cerebro:${tenant_id}:organizational_entity:${entity_id}"
+          export CEREBRO_TEST_ORGANIZATIONAL_GRAPH_ROOT="${root_urn}"
+
+          go test ./internal/sourcehttp/organizationalgraph \
+            -run '^TestQueryStoreAgainstLiveRustGraph$' -count=1 -v
+          make build-go
+
+          env -u CEREBRO_GRAPH_STORE_DRIVER \
+            -u CEREBRO_NEO4J_URI \
+            -u CEREBRO_NEO4J_USERNAME \
+            -u CEREBRO_NEO4J_PASSWORD \
+            -u CEREBRO_NEO4J_DATABASE \
+            CEREBRO_HTTP_ADDR=127.0.0.1:18081 \
+            CEREBRO_DEV_MODE=1 \
+            CEREBRO_DEV_MODE_ACK=1 \
+            CEREBRO_ORGANIZATIONAL_GRAPH_URL=http://127.0.0.1:18080 \
+            CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET="${CEREBRO_TEST_ORGANIZATIONAL_GRAPH_SHARED_SECRET}" \
+            ./bin/cerebro serve >"${RUNNER_TEMP}/cerebro-go-adapter.log" 2>&1 &
+          go_pid=$!
+          trap 'kill "${go_pid}" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:18081/healthz >/dev/null 2>&1 && break
+            test "${attempt}" -lt 30
+            sleep 1
+          done
+          if tr '\0' '\n' <"/proc/${go_pid}/environ" \
+            | grep -Eq '^CEREBRO_(GRAPH_STORE_DRIVER|NEO4J_)'; then
+            echo "Go product process received graph-store credentials" >&2
+            exit 1
+          fi
+
+          response=.dist/rust-graph-replacement/product-neighborhood.json
+          curl -fsS -G \
+            --data-urlencode "root_urn=${root_urn}" \
+            --data-urlencode "limit=10" \
+            http://127.0.0.1:18081/platform/graph/neighborhood >"${response}"
+          jq -e --arg root "${root_urn}" '
+            .root.urn == $root
+            and (.neighbors | length) == 1
+            and (.relations | length) == 1
+            and .relations[0].relation == "represents"
+          ' "${response}" >/dev/null
+
+          jq '.checks += [{
+            name:"go_graph_credentials_absent",
+            status:"passed",
+            evidence:"Go product endpoint read the persisted Rust graph without graph-store configuration"
+          }]' "${receipt}" >"${receipt}.tmp"
+          mv "${receipt}.tmp" "${receipt}"
+          test "$(jq '[.checks[] | select(.status == "passed")] | length' "${receipt}")" -eq 12
+
+      - name: Print service logs
+        if: always()
+        run: |
+          docker logs cerebro-rust-graph-platform 2>&1 || true
+          test ! -f "${RUNNER_TEMP}/cerebro-go-adapter.log" \
+            || tail -200 "${RUNNER_TEMP}/cerebro-go-adapter.log"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: rust-graph-replacement-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .dist/rust-graph-replacement
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Stop disposable services
+        if: always()
+        run: |
+          docker stop cerebro-rust-graph-platform cerebro-rust-graph-nats \
+            cerebro-rust-graph-neo4j cerebro-rust-graph-postgres 2>/dev/null || true
+          docker rm cerebro-rust-graph-platform cerebro-rust-graph-nats \
+            cerebro-rust-graph-neo4j cerebro-rust-graph-postgres 2>/dev/null || true
+          docker network rm cerebro-rust-graph-replacement 2>/dev/null || true

@@ -650,6 +650,120 @@ func (x *ExpandResponse) GetTruncated() bool {
 	return false
 }
 
+// ExpandBatchRequest identifies a closed set of graph roots with shared hard bounds.
+type ExpandBatchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	RootKeys      []string               `protobuf:"bytes,2,rep,name=root_keys,json=rootKeys,proto3" json:"root_keys,omitempty"`
+	Depth         uint32                 `protobuf:"varint,3,opt,name=depth,proto3" json:"depth,omitempty"`
+	Limit         uint32                 `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExpandBatchRequest) Reset() {
+	*x = ExpandBatchRequest{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExpandBatchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExpandBatchRequest) ProtoMessage() {}
+
+func (x *ExpandBatchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExpandBatchRequest.ProtoReflect.Descriptor instead.
+func (*ExpandBatchRequest) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ExpandBatchRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ExpandBatchRequest) GetRootKeys() []string {
+	if x != nil {
+		return x.RootKeys
+	}
+	return nil
+}
+
+func (x *ExpandBatchRequest) GetDepth() uint32 {
+	if x != nil {
+		return x.Depth
+	}
+	return 0
+}
+
+func (x *ExpandBatchRequest) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+// ExpandBatchResponse returns one bounded neighborhood for each resolved root.
+type ExpandBatchResponse struct {
+	state         protoimpl.MessageState     `protogen:"open.v1"`
+	Neighborhoods map[string]*ExpandResponse `protobuf:"bytes,1,rep,name=neighborhoods,proto3" json:"neighborhoods,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExpandBatchResponse) Reset() {
+	*x = ExpandBatchResponse{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExpandBatchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExpandBatchResponse) ProtoMessage() {}
+
+func (x *ExpandBatchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExpandBatchResponse.ProtoReflect.Descriptor instead.
+func (*ExpandBatchResponse) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ExpandBatchResponse) GetNeighborhoods() map[string]*ExpandResponse {
+	if x != nil {
+		return x.Neighborhoods
+	}
+	return nil
+}
+
 // FindPathsRequest identifies two endpoints and hard traversal bounds.
 type FindPathsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -664,7 +778,7 @@ type FindPathsRequest struct {
 
 func (x *FindPathsRequest) Reset() {
 	*x = FindPathsRequest{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[9]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -676,7 +790,7 @@ func (x *FindPathsRequest) String() string {
 func (*FindPathsRequest) ProtoMessage() {}
 
 func (x *FindPathsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[9]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -689,7 +803,7 @@ func (x *FindPathsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FindPathsRequest.ProtoReflect.Descriptor instead.
 func (*FindPathsRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{9}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *FindPathsRequest) GetTenantId() string {
@@ -738,7 +852,7 @@ type FindPathsResponse struct {
 
 func (x *FindPathsResponse) Reset() {
 	*x = FindPathsResponse{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[10]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -750,7 +864,7 @@ func (x *FindPathsResponse) String() string {
 func (*FindPathsResponse) ProtoMessage() {}
 
 func (x *FindPathsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[10]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -763,7 +877,7 @@ func (x *FindPathsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FindPathsResponse.ProtoReflect.Descriptor instead.
 func (*FindPathsResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{10}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *FindPathsResponse) GetGraphRevision() uint64 {
@@ -791,7 +905,7 @@ type ExplainAssertionRequest struct {
 
 func (x *ExplainAssertionRequest) Reset() {
 	*x = ExplainAssertionRequest{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[11]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -803,7 +917,7 @@ func (x *ExplainAssertionRequest) String() string {
 func (*ExplainAssertionRequest) ProtoMessage() {}
 
 func (x *ExplainAssertionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[11]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -816,7 +930,7 @@ func (x *ExplainAssertionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainAssertionRequest.ProtoReflect.Descriptor instead.
 func (*ExplainAssertionRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{11}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ExplainAssertionRequest) GetTenantId() string {
@@ -843,7 +957,7 @@ type ExplainAssertionResponse struct {
 
 func (x *ExplainAssertionResponse) Reset() {
 	*x = ExplainAssertionResponse{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[12]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -855,7 +969,7 @@ func (x *ExplainAssertionResponse) String() string {
 func (*ExplainAssertionResponse) ProtoMessage() {}
 
 func (x *ExplainAssertionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[12]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -868,7 +982,7 @@ func (x *ExplainAssertionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainAssertionResponse.ProtoReflect.Descriptor instead.
 func (*ExplainAssertionResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{12}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ExplainAssertionResponse) GetEdge() *GraphEdge {
@@ -888,7 +1002,7 @@ type GetSourceSummaryRequest struct {
 
 func (x *GetSourceSummaryRequest) Reset() {
 	*x = GetSourceSummaryRequest{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[13]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -900,7 +1014,7 @@ func (x *GetSourceSummaryRequest) String() string {
 func (*GetSourceSummaryRequest) ProtoMessage() {}
 
 func (x *GetSourceSummaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[13]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -913,7 +1027,7 @@ func (x *GetSourceSummaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSourceSummaryRequest.ProtoReflect.Descriptor instead.
 func (*GetSourceSummaryRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{13}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetSourceSummaryRequest) GetTenantId() string {
@@ -938,7 +1052,7 @@ type GetSourceSummaryResponse struct {
 
 func (x *GetSourceSummaryResponse) Reset() {
 	*x = GetSourceSummaryResponse{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[14]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -950,7 +1064,7 @@ func (x *GetSourceSummaryResponse) String() string {
 func (*GetSourceSummaryResponse) ProtoMessage() {}
 
 func (x *GetSourceSummaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[14]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -963,7 +1077,7 @@ func (x *GetSourceSummaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSourceSummaryResponse.ProtoReflect.Descriptor instead.
 func (*GetSourceSummaryResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{14}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GetSourceSummaryResponse) GetSources() uint64 {
@@ -1066,7 +1180,17 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x04root\x18\x03 \x01(\v2\x1d.cerebro.graph.v1.GraphEntityR\x04root\x129\n" +
 	"\bentities\x18\x04 \x03(\v2\x1d.cerebro.graph.v1.GraphEntityR\bentities\x121\n" +
 	"\x05edges\x18\x05 \x03(\v2\x1b.cerebro.graph.v1.GraphEdgeR\x05edges\x12\x1c\n" +
-	"\ttruncated\x18\x06 \x01(\bR\ttruncated\"\xaa\x01\n" +
+	"\ttruncated\x18\x06 \x01(\bR\ttruncated\"z\n" +
+	"\x12ExpandBatchRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
+	"\troot_keys\x18\x02 \x03(\tR\brootKeys\x12\x14\n" +
+	"\x05depth\x18\x03 \x01(\rR\x05depth\x12\x14\n" +
+	"\x05limit\x18\x04 \x01(\rR\x05limit\"\xd9\x01\n" +
+	"\x13ExpandBatchResponse\x12^\n" +
+	"\rneighborhoods\x18\x01 \x03(\v28.cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntryR\rneighborhoods\x1ab\n" +
+	"\x12NeighborhoodsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x126\n" +
+	"\x05value\x18\x02 \x01(\v2 .cerebro.graph.v1.ExpandResponseR\x05value:\x028\x01\"\xaa\x01\n" +
 	"\x10FindPathsRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12$\n" +
 	"\x0efrom_entity_id\x18\x02 \x01(\tR\ffromEntityId\x12 \n" +
@@ -1093,11 +1217,12 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x12projection_classes\x18\x06 \x03(\v2A.cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntryR\x11projectionClasses\x1aD\n" +
 	"\x16ProjectionClassesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x012\xb8\x04\n" +
+	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x012\x94\x05\n" +
 	"\x1aOrganizationalGraphService\x12K\n" +
 	"\x06Search\x12\x1f.cerebro.graph.v1.SearchRequest\x1a .cerebro.graph.v1.SearchResponse\x12T\n" +
 	"\tGetEntity\x12\".cerebro.graph.v1.GetEntityRequest\x1a#.cerebro.graph.v1.GetEntityResponse\x12K\n" +
-	"\x06Expand\x12\x1f.cerebro.graph.v1.ExpandRequest\x1a .cerebro.graph.v1.ExpandResponse\x12T\n" +
+	"\x06Expand\x12\x1f.cerebro.graph.v1.ExpandRequest\x1a .cerebro.graph.v1.ExpandResponse\x12Z\n" +
+	"\vExpandBatch\x12$.cerebro.graph.v1.ExpandBatchRequest\x1a%.cerebro.graph.v1.ExpandBatchResponse\x12T\n" +
 	"\tFindPaths\x12\".cerebro.graph.v1.FindPathsRequest\x1a#.cerebro.graph.v1.FindPathsResponse\x12i\n" +
 	"\x10ExplainAssertion\x12).cerebro.graph.v1.ExplainAssertionRequest\x1a*.cerebro.graph.v1.ExplainAssertionResponse\x12i\n" +
 	"\x10GetSourceSummary\x12).cerebro.graph.v1.GetSourceSummaryRequest\x1a*.cerebro.graph.v1.GetSourceSummaryResponseB?Z=github.com/writer/cerebro/gen/cerebro/graph/v1;cerebrographv1b\x06proto3"
@@ -1114,7 +1239,7 @@ func file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP() []byte {
 	return file_cerebro_graph_v1_organizational_graph_proto_rawDescData
 }
 
-var file_cerebro_graph_v1_organizational_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_cerebro_graph_v1_organizational_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_cerebro_graph_v1_organizational_graph_proto_goTypes = []any{
 	(*GraphEntity)(nil),              // 0: cerebro.graph.v1.GraphEntity
 	(*GraphEdge)(nil),                // 1: cerebro.graph.v1.GraphEdge
@@ -1125,17 +1250,20 @@ var file_cerebro_graph_v1_organizational_graph_proto_goTypes = []any{
 	(*GetEntityResponse)(nil),        // 6: cerebro.graph.v1.GetEntityResponse
 	(*ExpandRequest)(nil),            // 7: cerebro.graph.v1.ExpandRequest
 	(*ExpandResponse)(nil),           // 8: cerebro.graph.v1.ExpandResponse
-	(*FindPathsRequest)(nil),         // 9: cerebro.graph.v1.FindPathsRequest
-	(*FindPathsResponse)(nil),        // 10: cerebro.graph.v1.FindPathsResponse
-	(*ExplainAssertionRequest)(nil),  // 11: cerebro.graph.v1.ExplainAssertionRequest
-	(*ExplainAssertionResponse)(nil), // 12: cerebro.graph.v1.ExplainAssertionResponse
-	(*GetSourceSummaryRequest)(nil),  // 13: cerebro.graph.v1.GetSourceSummaryRequest
-	(*GetSourceSummaryResponse)(nil), // 14: cerebro.graph.v1.GetSourceSummaryResponse
-	nil,                              // 15: cerebro.graph.v1.GraphEntity.PropertiesEntry
-	nil,                              // 16: cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
+	(*ExpandBatchRequest)(nil),       // 9: cerebro.graph.v1.ExpandBatchRequest
+	(*ExpandBatchResponse)(nil),      // 10: cerebro.graph.v1.ExpandBatchResponse
+	(*FindPathsRequest)(nil),         // 11: cerebro.graph.v1.FindPathsRequest
+	(*FindPathsResponse)(nil),        // 12: cerebro.graph.v1.FindPathsResponse
+	(*ExplainAssertionRequest)(nil),  // 13: cerebro.graph.v1.ExplainAssertionRequest
+	(*ExplainAssertionResponse)(nil), // 14: cerebro.graph.v1.ExplainAssertionResponse
+	(*GetSourceSummaryRequest)(nil),  // 15: cerebro.graph.v1.GetSourceSummaryRequest
+	(*GetSourceSummaryResponse)(nil), // 16: cerebro.graph.v1.GetSourceSummaryResponse
+	nil,                              // 17: cerebro.graph.v1.GraphEntity.PropertiesEntry
+	nil,                              // 18: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
+	nil,                              // 19: cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
 }
 var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
-	15, // 0: cerebro.graph.v1.GraphEntity.properties:type_name -> cerebro.graph.v1.GraphEntity.PropertiesEntry
+	17, // 0: cerebro.graph.v1.GraphEntity.properties:type_name -> cerebro.graph.v1.GraphEntity.PropertiesEntry
 	0,  // 1: cerebro.graph.v1.GraphPath.entities:type_name -> cerebro.graph.v1.GraphEntity
 	1,  // 2: cerebro.graph.v1.GraphPath.edges:type_name -> cerebro.graph.v1.GraphEdge
 	0,  // 3: cerebro.graph.v1.SearchResponse.entities:type_name -> cerebro.graph.v1.GraphEntity
@@ -1143,26 +1271,30 @@ var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
 	0,  // 5: cerebro.graph.v1.ExpandResponse.root:type_name -> cerebro.graph.v1.GraphEntity
 	0,  // 6: cerebro.graph.v1.ExpandResponse.entities:type_name -> cerebro.graph.v1.GraphEntity
 	1,  // 7: cerebro.graph.v1.ExpandResponse.edges:type_name -> cerebro.graph.v1.GraphEdge
-	2,  // 8: cerebro.graph.v1.FindPathsResponse.paths:type_name -> cerebro.graph.v1.GraphPath
-	1,  // 9: cerebro.graph.v1.ExplainAssertionResponse.edge:type_name -> cerebro.graph.v1.GraphEdge
-	16, // 10: cerebro.graph.v1.GetSourceSummaryResponse.projection_classes:type_name -> cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
-	3,  // 11: cerebro.graph.v1.OrganizationalGraphService.Search:input_type -> cerebro.graph.v1.SearchRequest
-	5,  // 12: cerebro.graph.v1.OrganizationalGraphService.GetEntity:input_type -> cerebro.graph.v1.GetEntityRequest
-	7,  // 13: cerebro.graph.v1.OrganizationalGraphService.Expand:input_type -> cerebro.graph.v1.ExpandRequest
-	9,  // 14: cerebro.graph.v1.OrganizationalGraphService.FindPaths:input_type -> cerebro.graph.v1.FindPathsRequest
-	11, // 15: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:input_type -> cerebro.graph.v1.ExplainAssertionRequest
-	13, // 16: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:input_type -> cerebro.graph.v1.GetSourceSummaryRequest
-	4,  // 17: cerebro.graph.v1.OrganizationalGraphService.Search:output_type -> cerebro.graph.v1.SearchResponse
-	6,  // 18: cerebro.graph.v1.OrganizationalGraphService.GetEntity:output_type -> cerebro.graph.v1.GetEntityResponse
-	8,  // 19: cerebro.graph.v1.OrganizationalGraphService.Expand:output_type -> cerebro.graph.v1.ExpandResponse
-	10, // 20: cerebro.graph.v1.OrganizationalGraphService.FindPaths:output_type -> cerebro.graph.v1.FindPathsResponse
-	12, // 21: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:output_type -> cerebro.graph.v1.ExplainAssertionResponse
-	14, // 22: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:output_type -> cerebro.graph.v1.GetSourceSummaryResponse
-	17, // [17:23] is the sub-list for method output_type
-	11, // [11:17] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	18, // 8: cerebro.graph.v1.ExpandBatchResponse.neighborhoods:type_name -> cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
+	2,  // 9: cerebro.graph.v1.FindPathsResponse.paths:type_name -> cerebro.graph.v1.GraphPath
+	1,  // 10: cerebro.graph.v1.ExplainAssertionResponse.edge:type_name -> cerebro.graph.v1.GraphEdge
+	19, // 11: cerebro.graph.v1.GetSourceSummaryResponse.projection_classes:type_name -> cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
+	8,  // 12: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry.value:type_name -> cerebro.graph.v1.ExpandResponse
+	3,  // 13: cerebro.graph.v1.OrganizationalGraphService.Search:input_type -> cerebro.graph.v1.SearchRequest
+	5,  // 14: cerebro.graph.v1.OrganizationalGraphService.GetEntity:input_type -> cerebro.graph.v1.GetEntityRequest
+	7,  // 15: cerebro.graph.v1.OrganizationalGraphService.Expand:input_type -> cerebro.graph.v1.ExpandRequest
+	9,  // 16: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:input_type -> cerebro.graph.v1.ExpandBatchRequest
+	11, // 17: cerebro.graph.v1.OrganizationalGraphService.FindPaths:input_type -> cerebro.graph.v1.FindPathsRequest
+	13, // 18: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:input_type -> cerebro.graph.v1.ExplainAssertionRequest
+	15, // 19: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:input_type -> cerebro.graph.v1.GetSourceSummaryRequest
+	4,  // 20: cerebro.graph.v1.OrganizationalGraphService.Search:output_type -> cerebro.graph.v1.SearchResponse
+	6,  // 21: cerebro.graph.v1.OrganizationalGraphService.GetEntity:output_type -> cerebro.graph.v1.GetEntityResponse
+	8,  // 22: cerebro.graph.v1.OrganizationalGraphService.Expand:output_type -> cerebro.graph.v1.ExpandResponse
+	10, // 23: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:output_type -> cerebro.graph.v1.ExpandBatchResponse
+	12, // 24: cerebro.graph.v1.OrganizationalGraphService.FindPaths:output_type -> cerebro.graph.v1.FindPathsResponse
+	14, // 25: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:output_type -> cerebro.graph.v1.ExplainAssertionResponse
+	16, // 26: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:output_type -> cerebro.graph.v1.GetSourceSummaryResponse
+	20, // [20:27] is the sub-list for method output_type
+	13, // [13:20] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_graph_v1_organizational_graph_proto_init() }
@@ -1176,7 +1308,7 @@ func file_cerebro_graph_v1_organizational_graph_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_graph_v1_organizational_graph_proto_rawDesc), len(file_cerebro_graph_v1_organizational_graph_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
