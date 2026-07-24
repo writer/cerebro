@@ -426,6 +426,21 @@ jobs:
             "${CEREBRO_TEST_IMAGE_DIGEST}"
           test "$(jq '[.checks[] | select(.status == "passed")] | length' \
             .dist/rust-e2e/rust-organizational-e2e-receipt.json)" -eq 10
+      - name: Prove process liveness and backend readiness split
+        run: |
+          set -euo pipefail
+          test "$(curl --max-time 5 -sS -o /dev/null -w '%{http_code}' \
+            http://127.0.0.1:18080/healthz)" = 200
+          test "$(curl --max-time 5 -sS -o /dev/null -w '%{http_code}' \
+            http://127.0.0.1:18080/readyz)" = 200
+          docker stop cerebro-rust-neo4j
+          readiness_body="${RUNNER_TEMP}/rust-readiness-outage.json"
+          readiness_code="$(curl --max-time 5 -sS -o "${readiness_body}" -w '%{http_code}' \
+            http://127.0.0.1:18080/readyz)"
+          test "${readiness_code}" = 503
+          jq -e '.code == "graph_unavailable"' "${readiness_body}" >/dev/null
+          test "$(curl --max-time 5 -sS -o /dev/null -w '%{http_code}' \
+            http://127.0.0.1:18080/healthz)" = 200
       - name: Attach the Rust E2E receipt to the candidate digest
         env:
           CANDIDATE_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.manifest.outputs.digest }}

@@ -667,7 +667,7 @@ async fn wait_for_health(config: &Config) -> Result<(), Box<dyn Error>> {
     let start = Instant::now();
     loop {
         if let Ok(response) = client
-            .get(format!("{}/healthz", config.base_url))
+            .get(format!("{}/readyz", config.base_url))
             .send()
             .await
             && response.status() == StatusCode::OK
@@ -678,7 +678,7 @@ async fn wait_for_health(config: &Config) -> Result<(), Box<dyn Error>> {
             }
         }
         if start.elapsed() >= WAIT_TIMEOUT {
-            return Err("Rust graph health endpoint did not become ready".into());
+            return Err("Rust graph backend did not become ready".into());
         }
         thread::sleep(Duration::from_millis(250));
     }
