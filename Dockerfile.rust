@@ -27,12 +27,23 @@ RUN --mount=type=cache,id=cerebro-rust-only-cargo-registry,target=/usr/local/car
     install -Dm0755 /app/target/release/cerebro-event-admission-worker /out/cerebro-event-admission-worker && \
     install -Dm0755 /app/target/release/cerebro-platform /out/cerebro-platform
 
+FROM builder AS replacement-test-builder
+
+ARG TARGETARCH
+RUN --mount=type=cache,id=cerebro-rust-only-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cerebro-rust-only-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=cerebro-rust-only-target-${TARGETARCH},target=/app/target,sharing=locked \
+    cargo build --locked --release \
+      -p cerebro-platform --example organizational_graph_e2e && \
+    install -Dm0755 /app/target/release/examples/organizational_graph_e2e \
+      /out/organizational-graph-e2e
+
 FROM alpine:3.24 AS organizational-catalog
 COPY --from=source /src/internal/connectorcatalog/catalog /app/internal/connectorcatalog/catalog
 COPY --from=source /src/sources /app/sources
 RUN find /app/sources -mindepth 2 -type f ! -name catalog.yaml -delete
 
-FROM ${RUNTIME_BASE_IMAGE}
+FROM ${RUNTIME_BASE_IMAGE} AS runtime
 
 RUN apk upgrade --no-cache && \
     addgroup -S cerebro && \
@@ -56,3 +67,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 
 ENTRYPOINT ["/usr/local/bin/cerebro-platform"]
 CMD ["serve-neo4j-consumer"]
+
+FROM runtime AS replacement-test-runtime
+COPY --from=replacement-test-builder --chmod=0755 /out/organizational-graph-e2e /usr/local/bin/organizational-graph-e2e
+
+# Keep the default production image free of replacement-test tooling.
+FROM runtime AS final

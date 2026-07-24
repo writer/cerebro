@@ -42,9 +42,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install the Rust toolchain
-        run: rustup toolchain install 1.93.1 --profile minimal
-
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Build the Rust runtime and Go product adapter
@@ -56,6 +53,7 @@ jobs:
           go_build_pid=$!
           if ! docker buildx build \
             --file Dockerfile.rust \
+            --target replacement-test-runtime \
             --load \
             --provenance=false \
             --tag "cerebro-rust-graph-replacement:${CANDIDATE_SHA}" \
@@ -67,6 +65,12 @@ jobs:
             exit 1
           fi
           wait "${go_build_pid}"
+          extractor="cerebro-rust-graph-tools-${CANDIDATE_SHA}"
+          docker create --name "${extractor}" \
+            "cerebro-rust-graph-replacement:${CANDIDATE_SHA}" >/dev/null
+          docker cp "${extractor}:/usr/local/bin/cerebro-event-admission-worker" \
+            bin/cerebro-event-admission-worker
+          docker rm "${extractor}" >/dev/null
 
       - name: Start the disposable stores
         run: |
@@ -130,10 +134,33 @@ jobs:
           CEREBRO_REPOSITORY_ROOT: ${{ github.workspace }}
         run: |
           set -euo pipefail
+          proof_dir="${PWD}/.dist/rust-graph-replacement"
+          mkdir -p "${proof_dir}"
+          chmod 0777 "${proof_dir}"
           export CEREBRO_TEST_IMAGE_DIGEST="${CEREBRO_TEST_RUNTIME_IMAGE_ID}"
-          cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- seed
+          run_driver() {
+            docker run --rm \
+              --network cerebro-rust-graph-replacement \
+              --user 0:0 \
+              --volume "${proof_dir}:/proof" \
+              --env CEREBRO_TEST_POSTGRES_DSN='postgres://cerebro:cerebro@cerebro-rust-graph-postgres:5432/cerebro?sslmode=disable' \
+              --env CEREBRO_TEST_NATS_URL=nats://cerebro-rust-graph-nats:4222 \
+              --env CEREBRO_TEST_GRAPH_URL=http://cerebro-rust-graph-platform:8080 \
+              --env CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET \
+              --env CEREBRO_TEST_COMMIT \
+              --env CEREBRO_TEST_IMAGE \
+              --env CEREBRO_TEST_IMAGE_DIGEST \
+              --env CEREBRO_TEST_RUNTIME_IMAGE_ID \
+              --env CEREBRO_TEST_PLATFORM \
+              --env CEREBRO_TEST_CHECKPOINT=/proof/checkpoint.json \
+              --env CEREBRO_TEST_RECEIPT=/proof/receipt.json \
+              --env CEREBRO_REPOSITORY_ROOT=/app \
+              --entrypoint /usr/local/bin/organizational-graph-e2e \
+              "${CEREBRO_TEST_IMAGE}" "$1"
+          }
+          run_driver seed
           docker restart cerebro-rust-graph-platform
-          cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- verify
+          run_driver verify
           test "$(jq '[.checks[] | select(.status == "passed")] | length' \
             .dist/rust-graph-replacement/receipt.json)" -eq 11
 
@@ -161,6 +188,7 @@ jobs:
             CEREBRO_HTTP_ADDR=127.0.0.1:18081 \
             CEREBRO_DEV_MODE=1 \
             CEREBRO_DEV_MODE_ACK=1 \
+            CEREBRO_EVENT_ADMISSION_WORKER="${PWD}/bin/cerebro-event-admission-worker" \
             CEREBRO_ORGANIZATIONAL_GRAPH_URL=http://127.0.0.1:18080 \
             CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET="${CEREBRO_TEST_ORGANIZATIONAL_GRAPH_SHARED_SECRET}" \
             ./bin/cerebro serve >"${RUNNER_TEMP}/cerebro-go-adapter.log" 2>&1 &

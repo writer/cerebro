@@ -161,9 +161,22 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 		"TestQueryStoreAgainstLiveRustGraph",
 		"/platform/graph/neighborhood",
 		"go_graph_credentials_absent",
+		"CEREBRO_EVENT_ADMISSION_WORKER",
+		"--entrypoint /usr/local/bin/organizational-graph-e2e",
 	} {
 		if !strings.Contains(replacementWorkflow, required) {
 			t.Errorf("Rust graph replacement workflow missing proof %q", required)
+		}
+	}
+
+	rustImage := readText(t, filepath.Join(root, "Dockerfile.rust"))
+	for _, required := range []string{
+		"FROM runtime AS replacement-test-runtime",
+		"/out/organizational-graph-e2e",
+		"FROM runtime AS final",
+	} {
+		if !strings.Contains(rustImage, required) {
+			t.Errorf("Rust replacement test image missing boundary %q", required)
 		}
 	}
 }
