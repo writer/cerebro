@@ -22,6 +22,12 @@ import {
   FileOutcomeStore,
   type PendingAssistantOutcome,
 } from "./outcome-store.js";
+import {
+  archetypeErrorModal,
+  archetypeLoadingModal,
+  ArchetypeSlackWorkspace,
+  archetypeUnavailableHome,
+} from "./archetype-workspace.js";
 
 const GRAPH_CAPABILITY = "cerebro:graph_read";
 const GRAPH_SOURCE_REF = "source/cerebro/grc-ask";
@@ -277,6 +283,7 @@ export class SlackCompanionRuntime {
     private readonly host: AssistantTurnHostAdapter,
     private readonly questions: AssistantQuestionService,
     private readonly outcomes: FileOutcomeStore,
+    private readonly archetype?: ArchetypeSlackWorkspace,
   ) {
     this.app = new App({
       appToken: config.appToken,
@@ -327,10 +334,107 @@ export class SlackCompanionRuntime {
   private registerRoutes(): void {
     this.app.event("app_home_opened", async ({ context, event, client }) => {
       if (!context.teamId || !this.config.allowedTeamIds.has(context.teamId)) return;
+      if (this.archetype) {
+        try {
+          const view = await this.archetype.home({
+            slack: client,
+            teamId: context.teamId,
+            userId: event.user,
+          });
+          await client.views.publish({ user_id: event.user, view });
+        } catch (error) {
+          logArchetypeFailure("home", error);
+          await client.views.publish({
+            user_id: event.user,
+            view: archetypeUnavailableHome(error),
+          });
+        }
+        return;
+      }
       await client.views.publish({
         user_id: event.user,
         view: environmentHomeView(this.config),
       });
+    });
+
+    this.app.action(/^archetype_start_work_[0-9a-f]+$/u, async ({
+      ack,
+      action,
+      body,
+      client,
+    }) => {
+      await ack();
+      if (!this.archetype || action.type !== "button" || !action.value) return;
+      const teamId = body.team?.id;
+      const userId = body.user.id;
+      const triggerId = "trigger_id" in body && typeof body.trigger_id === "string"
+        ? body.trigger_id
+        : undefined;
+      if (
+        !teamId
+        || !triggerId
+        || !this.config.allowedTeamIds.has(teamId)
+      ) return;
+      const opened = await client.views.open({
+        trigger_id: triggerId,
+        view: archetypeLoadingModal(),
+      });
+      const viewId = opened.view?.id;
+      if (!viewId) return;
+      try {
+        const view = await this.archetype.preview({
+          actionValue: action.value,
+          slack: client,
+          teamId,
+          userId,
+        });
+        await client.views.update({ view, view_id: viewId });
+      } catch (error) {
+        logArchetypeFailure("preview_start_work", error);
+        await client.views.update({
+          view: archetypeErrorModal(error),
+          view_id: viewId,
+        });
+      }
+    });
+
+    this.app.action(/^archetype_confirm_start_work_[0-9a-f]+$/u, async ({
+      ack,
+      action,
+      body,
+      client,
+    }) => {
+      await ack();
+      if (!this.archetype || action.type !== "button" || !action.value) return;
+      const teamId = body.team?.id;
+      const userId = body.user.id;
+      const actionView = "view" in body ? body.view : undefined;
+      const viewId = actionView?.id;
+      if (
+        !teamId
+        || !viewId
+        || !this.config.allowedTeamIds.has(teamId)
+      ) return;
+      await client.views.update({
+        hash: actionView?.hash,
+        view: archetypeLoadingModal(),
+        view_id: viewId,
+      });
+      try {
+        const view = await this.archetype.confirm({
+          actionValue: action.value,
+          slack: client,
+          teamId,
+          userId,
+        });
+        await client.views.update({ view, view_id: viewId });
+      } catch (error) {
+        logArchetypeFailure("confirm_start_work", error);
+        await client.views.update({
+          view: archetypeErrorModal(error),
+          view_id: viewId,
+        });
+      }
     });
 
     this.app.event("app_mention", async ({ context, event, client }) => {
@@ -372,6 +476,15 @@ export class SlackCompanionRuntime {
       })}\n`);
     }
   }
+}
+
+function logArchetypeFailure(operation: string, error: unknown): void {
+  process.stderr.write(`${JSON.stringify({
+    component: "archetype-slack-workspace",
+    error_kind: error instanceof Error ? error.name : "unknown",
+    operation,
+    state: "failed",
+  })}\n`);
 }
 
 export async function handleSlackMention(input: {

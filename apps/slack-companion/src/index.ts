@@ -30,6 +30,7 @@ export * from "./delivery/coordinator.js";
 export * from "./delivery/ports.js";
 export * from "./artifacts/contracts.js";
 export * from "./artifacts/policy.js";
+export * from "./archetype/workspace.js";
 export * from "./progress/contracts.js";
 export * from "./progress/policy.js";
 export * from "./reengagement/contracts.js";

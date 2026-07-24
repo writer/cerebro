@@ -1,5 +1,14 @@
+export interface ArchetypeWorkspaceRuntimeConfig {
+  allowedEmailDomains: ReadonlySet<string>;
+  baseUrl: string;
+  oktaApiToken: string;
+  oktaDomain: string;
+  timeoutMs: number;
+}
+
 export interface SlackRuntimeConfig {
   allowedTeamIds: ReadonlySet<string>;
+  archetype?: ArchetypeWorkspaceRuntimeConfig;
   appToken: string;
   appName: string;
   botToken: string;
@@ -27,8 +36,10 @@ export function loadSlackRuntimeConfig(
     throw new SlackRuntimeConfigError("At least one Slack workspace must be allowed.");
   }
   const baseUrl = validatedBaseUrl(required(env.CEREBRO_BASE_URL));
+  const archetype = archetypeConfig(env);
   return Object.freeze({
     allowedTeamIds,
+    ...(archetype === undefined ? {} : { archetype }),
     appToken: required(env.SLACK_APP_TOKEN),
     appName: required(env.CEREBRO_SLACK_APP_NAME),
     botToken: required(env.SLACK_BOT_TOKEN),
@@ -43,11 +54,66 @@ export function loadSlackRuntimeConfig(
   });
 }
 
+function archetypeConfig(
+  env: NodeJS.ProcessEnv,
+): ArchetypeWorkspaceRuntimeConfig | undefined {
+  const enabled = optionalBooleanBinding(env.ARCHETYPE_WORKSPACE_ENABLED, false);
+  if (!enabled) {
+    const unexpected = [
+      env.ARCHETYPE_BASE_URL,
+      env.ARCHETYPE_ALLOWED_EMAIL_DOMAINS,
+      env.OKTA_DOMAIN,
+      env.OKTA_API_TOKEN,
+    ].some((value) => Boolean(value?.trim()));
+    if (unexpected) {
+      throw new SlackRuntimeConfigError(
+        "Archetype workspace bindings require ARCHETYPE_WORKSPACE_ENABLED=true.",
+      );
+    }
+    return undefined;
+  }
+  const allowedEmailDomains = new Set(
+    csv(required(env.ARCHETYPE_ALLOWED_EMAIL_DOMAINS))
+      .map((value) => value.toLowerCase()),
+  );
+  if (
+    allowedEmailDomains.size === 0
+    || [...allowedEmailDomains].some((domain) =>
+      !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain)
+    )
+  ) {
+    throw new SlackRuntimeConfigError(
+      "Archetype allowed email domains are invalid.",
+    );
+  }
+  return Object.freeze({
+    allowedEmailDomains,
+    baseUrl: validatedBaseUrl(required(env.ARCHETYPE_BASE_URL)),
+    oktaApiToken: required(env.OKTA_API_TOKEN),
+    oktaDomain: validatedBaseUrl(required(env.OKTA_DOMAIN)),
+    timeoutMs: positiveInteger(
+      env.ARCHETYPE_REQUEST_TIMEOUT_MS,
+      10_000,
+      1_000,
+      30_000,
+      "Archetype request timeout",
+    ),
+  });
+}
+
 function booleanBinding(value: string | undefined): boolean {
   const normalized = required(value);
   if (normalized === "true") return true;
   if (normalized === "false") return false;
   throw new SlackRuntimeConfigError("A required boolean runtime binding is invalid.");
+}
+
+function optionalBooleanBinding(
+  value: string | undefined,
+  fallback: boolean,
+): boolean {
+  if (value === undefined || value.trim() === "") return fallback;
+  return booleanBinding(value);
 }
 
 function required(value: string | undefined): string {
@@ -66,6 +132,24 @@ function port(value: string | undefined): number {
   const parsed = Number(value ?? "3000");
   if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 65_535) {
     throw new SlackRuntimeConfigError("The runtime port is invalid.");
+  }
+  return parsed;
+}
+
+function positiveInteger(
+  value: string | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+  field: string,
+): number {
+  const parsed = Number(value ?? String(fallback));
+  if (
+    !Number.isSafeInteger(parsed)
+    || parsed < minimum
+    || parsed > maximum
+  ) {
+    throw new SlackRuntimeConfigError(`${field} is invalid.`);
   }
   return parsed;
 }
