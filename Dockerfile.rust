@@ -15,26 +15,24 @@ RUN apk add --no-cache build-base musl-dev openssl-dev openssl-libs-static pkgco
 
 COPY --from=source /src/Cargo.toml /src/Cargo.lock ./
 COPY --from=source /src/crates ./crates
-COPY --from=source /src/internal ./internal
-COPY --from=source /src/tools ./tools
+COPY --from=source /src/internal/graphagent/staticvalidator ./internal/graphagent/staticvalidator
+COPY --from=source /src/internal/mitre/evaluator ./internal/mitre/evaluator
+COPY --from=source /src/internal/sourcecoverage/evaluator ./internal/sourcecoverage/evaluator
+COPY --from=source /src/internal/sourceprojection/panopticonresources ./internal/sourceprojection/panopticonresources
+COPY --from=source /src/internal/sourceruntime/eventadmission ./internal/sourceruntime/eventadmission
+COPY --from=source /src/internal/sourceruntime/recordkernel ./internal/sourceruntime/recordkernel
+COPY --from=source /src/internal/wasmguest ./internal/wasmguest
+COPY --from=source /src/tools/graphactiongen ./tools/graphactiongen
 
 RUN --mount=type=cache,id=cerebro-rust-only-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=cerebro-rust-only-cargo-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=cerebro-rust-only-target-${TARGETARCH},target=/app/target,sharing=locked \
     cargo build --locked --release \
       -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker \
-      -p cerebro-platform --bin cerebro-platform && \
-    install -Dm0755 /app/target/release/cerebro-event-admission-worker /out/cerebro-event-admission-worker && \
-    install -Dm0755 /app/target/release/cerebro-platform /out/cerebro-platform
-
-FROM builder AS replacement-test-builder
-
-ARG TARGETARCH
-RUN --mount=type=cache,id=cerebro-rust-only-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,id=cerebro-rust-only-cargo-git,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,id=cerebro-rust-only-target-${TARGETARCH},target=/app/target,sharing=locked \
-    cargo build --locked --release \
+      -p cerebro-platform --bin cerebro-platform \
       -p cerebro-platform --example organizational_graph_e2e && \
+    install -Dm0755 /app/target/release/cerebro-event-admission-worker /out/cerebro-event-admission-worker && \
+    install -Dm0755 /app/target/release/cerebro-platform /out/cerebro-platform && \
     install -Dm0755 /app/target/release/examples/organizational_graph_e2e \
       /out/organizational-graph-e2e
 
@@ -69,7 +67,7 @@ ENTRYPOINT ["/usr/local/bin/cerebro-platform"]
 CMD ["serve-neo4j-consumer"]
 
 FROM runtime AS replacement-test-runtime
-COPY --from=replacement-test-builder --chmod=0755 /out/organizational-graph-e2e /usr/local/bin/organizational-graph-e2e
+COPY --from=builder --chmod=0755 /out/organizational-graph-e2e /usr/local/bin/organizational-graph-e2e
 
 # Keep the default production image free of replacement-test tooling.
 FROM runtime AS final
