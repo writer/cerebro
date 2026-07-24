@@ -4,7 +4,6 @@ use std::{
     error::Error,
     fs,
     path::{Path, PathBuf},
-    thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -658,7 +657,7 @@ async fn wait_for_consumer(
         if start.elapsed() >= WAIT_TIMEOUT {
             return Err("Rust append-log consumer did not become ready".into());
         }
-        thread::sleep(Duration::from_millis(250));
+        tokio::time::sleep(Duration::from_millis(250)).await;
     }
 }
 
@@ -678,7 +677,7 @@ async fn wait_for_drain(
             )
             .into());
         }
-        thread::sleep(Duration::from_millis(250));
+        tokio::time::sleep(Duration::from_millis(250)).await;
     }
 }
 
@@ -700,7 +699,7 @@ async fn wait_for_health(config: &Config) -> Result<(), Box<dyn Error>> {
         if start.elapsed() >= WAIT_TIMEOUT {
             return Err("Rust graph backend did not become ready".into());
         }
-        thread::sleep(Duration::from_millis(250));
+        tokio::time::sleep(Duration::from_millis(250)).await;
     }
 }
 
@@ -728,7 +727,7 @@ async fn wait_for_entity(config: &Config, entity_id: &EntityId) -> Result<Value,
         if start.elapsed() >= WAIT_TIMEOUT {
             return Err(format!("entity {entity_id} was not projected").into());
         }
-        thread::sleep(Duration::from_millis(250));
+        tokio::time::sleep(Duration::from_millis(250)).await;
     }
 }
 
