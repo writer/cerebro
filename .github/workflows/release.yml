@@ -116,10 +116,19 @@ jobs:
           web_image="$(jq -r .web_image candidate/candidate-receipt.json)"
           web_digest="$(jq -r .web_image_digest candidate/candidate-receipt.json)"
           product_manifest_sha256="$(jq -r .product_manifest_sha256 candidate/candidate-receipt.json)"
+          rust_e2e_receipt_sha256="$(jq -r .rust_e2e_receipt_sha256 candidate/candidate-receipt.json)"
           [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
           [[ "${web_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
           [[ "${product_manifest_sha256}" =~ ^[0-9a-f]{64}$ ]]
+          [[ "${rust_e2e_receipt_sha256}" =~ ^[0-9a-f]{64}$ ]]
           test "$(sha256sum candidate/cerebro-product-release.json | awk '{print $1}')" = "${product_manifest_sha256}"
+          test "$(sha256sum candidate/rust-organizational-e2e-receipt.json | awk '{print $1}')" = \
+            "${rust_e2e_receipt_sha256}"
+          test "$(jq -r .schema_version candidate/rust-organizational-e2e-receipt.json)" = \
+            "cerebro.rust-organizational-e2e/v1"
+          test "$(jq -r .status candidate/rust-organizational-e2e-receipt.json)" = passed
+          test "$(jq -r .commit candidate/rust-organizational-e2e-receipt.json)" = "${EXPECTED_SHA}"
+          test "$(jq -r .image_digest candidate/rust-organizational-e2e-receipt.json)" = "${digest}"
           {
             echo "image=${image}"
             echo "digest=${digest}"
@@ -141,6 +150,8 @@ jobs:
         env:
           RELEASE_NOTES: ${{ inputs.release_notes }}
           SMOKE_RECEIPT_URL: ${{ inputs.smoke_receipt_url }}
+          CANDIDATE_IMAGE: ${{ steps.receipt.outputs.image }}
+          CANDIDATE_DIGEST: ${{ steps.receipt.outputs.digest }}
         run: |
           printf '%s\n' "${RELEASE_NOTES}" > release-notes.md
           scripts/release/validate_release_notes.sh release-notes.md
@@ -154,6 +165,11 @@ jobs:
             --certificate candidate/cerebro-product-release.json.pem \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cut-release.yml@refs/heads/main$"
+          cosign verify-attestation \
+            --type "https://writer.com/cerebro/rust-organizational-e2e/v1" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cut-release.yml@refs/heads/main$" \
+            "${CANDIDATE_IMAGE}@${CANDIDATE_DIGEST}" >/dev/null
           make release-smoke docs-drift-check readme-check oss-audit
 
   promote:
@@ -271,6 +287,7 @@ jobs:
           printf '%s\n' "${RELEASE_NOTES}" > release-notes.md
           mapfile -t files < <(find candidate -type f \( -name '*.tar.gz' -o -name 'checksums.txt' \
             -o -name 'candidate-receipt.json' -o -name 'go-module-inventory.ndjson' \
+            -o -name 'rust-organizational-e2e-receipt.json' \
             -o -name '*.tgz' -o -name 'cerebro-product-release.json*' \
             -o -name 'cerebro-openapi.yaml' -o -name 'agent-service-lifecycle.schema.json' \
             -o -name 'product-release.schema.json' -o -name 'product-release-published.schema.json' \) | sort)

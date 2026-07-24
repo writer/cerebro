@@ -375,10 +375,14 @@ dependencies = [
  "cerebro-source-runtime-next",
  "futures-util",
  "hmac",
+ "prost",
+ "prost-types",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "tokio",
+ "tokio-postgres",
  "tower",
 ]
 

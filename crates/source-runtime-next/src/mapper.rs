@@ -769,14 +769,14 @@ mod tests {
                     TenantId::parse("tenant-a").unwrap(),
                     SourceRuntimeId::parse("okta-prod").unwrap(),
                     CollectionId::parse("collection-okta-1").unwrap(),
-                    "okta.users",
+                    "okta.user",
                     10,
                 )
                 .unwrap(),
             ),
             records: vec![SourceRecord {
                 observation_id: ObservationId::parse("observation-okta-1").unwrap(),
-                family: "users".to_owned(),
+                family: "user".to_owned(),
                 provider_kind: "okta.user".to_owned(),
                 provider_id: "00u1".to_owned(),
                 fields: BTreeMap::new(),

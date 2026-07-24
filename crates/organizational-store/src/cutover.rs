@@ -191,7 +191,7 @@ impl CutoverGate {
             .iter()
             .find(|family| family.id() == family_id)
             .ok_or_else(|| CutoverError::UnknownSource(format!("{source_id}/{family_id}")))?;
-        if !family.is_authoritative() {
+        if !family.is_projection_authoritative() {
             reasons.push("provider method and path proof is incomplete".to_owned());
         }
         if !family.projection().class().can_be_authoritative() {

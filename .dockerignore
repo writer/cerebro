@@ -5,7 +5,12 @@ infra
 vendor
 target
 bin
-cerebro
+node_modules
+tmp
+apps
+plugins
+.dist/*
+!.dist/cerebro
 docker-compose.yml
 README.md
 TODO.md
@@ -13,3 +18,4 @@ TODO.md
 .env.*
 *.md
 **/*_test.go
+**/testdata

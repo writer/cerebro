@@ -2,16 +2,20 @@
 
 ARG RUST_VERSION=1.93.1
 ARG RUNTIME_BASE_IMAGE=alpine:3.24
+
+FROM scratch AS source
+COPY . /src
+
 FROM --platform=$TARGETPLATFORM rust:${RUST_VERSION}-alpine AS rust-builder
 
 WORKDIR /app
 
 RUN apk add --no-cache build-base musl-dev openssl-dev openssl-libs-static pkgconfig
 
-COPY Cargo.toml Cargo.lock ./
-COPY crates ./crates
-COPY internal ./internal
-COPY tools ./tools
+COPY --from=source /src/Cargo.toml /src/Cargo.lock ./
+COPY --from=source /src/crates ./crates
+COPY --from=source /src/internal ./internal
+COPY --from=source /src/tools ./tools
 
 RUN --mount=type=cache,id=cerebro-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=cerebro-cargo-git,target=/usr/local/cargo/git,sharing=locked \
@@ -20,8 +24,8 @@ RUN --mount=type=cache,id=cerebro-cargo-registry,target=/usr/local/cargo/registr
       -p cerebro-platform --bin cerebro-platform
 
 FROM alpine:3.24 AS organizational-catalog
-COPY internal/connectorcatalog/catalog /app/internal/connectorcatalog/catalog
-COPY sources /app/sources
+COPY --from=source /src/internal/connectorcatalog/catalog /app/internal/connectorcatalog/catalog
+COPY --from=source /src/sources /app/sources
 RUN find /app/sources -mindepth 2 -type f ! -name catalog.yaml -delete
 
 FROM ${RUNTIME_BASE_IMAGE}
@@ -30,14 +34,15 @@ RUN apk upgrade --no-cache && \
     addgroup -S cerebro && \
     adduser -S -G cerebro -u 10001 cerebro
 
-COPY --chmod=0755 .dist/cerebro /usr/local/bin/cerebro
+COPY --from=source --chmod=0755 /src/.dist/cerebro /usr/local/bin/cerebro
 COPY --from=rust-builder --chmod=0755 /app/target/release/cerebro-event-admission-worker /usr/local/bin/cerebro-event-admission-worker
 COPY --from=rust-builder --chmod=0755 /app/target/release/cerebro-platform /usr/local/bin/cerebro-platform
 COPY --from=organizational-catalog --chown=10001:101 /app/internal/connectorcatalog/catalog /app/internal/connectorcatalog/catalog
 COPY --from=organizational-catalog --chown=10001:101 /app/sources /app/sources
-COPY policies /app/policies
+COPY --from=source /src/policies /app/policies
 
 WORKDIR /app
+ENV CEREBRO_REPOSITORY_ROOT=/app
 
 USER cerebro
 

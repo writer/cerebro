@@ -215,6 +215,7 @@ pub struct CompiledFamily {
     pagination: Pagination,
     projection: Projection,
     authoritative: bool,
+    projection_authoritative: bool,
 }
 
 impl CompiledFamily {
@@ -256,6 +257,16 @@ impl CompiledFamily {
 
     pub fn is_authoritative(&self) -> bool {
         self.authoritative
+    }
+
+    /// Whether a committed event from this family may be promoted to the
+    /// native Rust projector.
+    ///
+    /// This is separate from collection authority. A source may still require
+    /// a bespoke collector while its verified, append-log-committed events use
+    /// a closed Rust projection lane.
+    pub fn is_projection_authoritative(&self) -> bool {
+        self.projection_authoritative
     }
 }
 
@@ -585,16 +596,18 @@ fn compile_family(
     } else {
         "$[*]".to_owned()
     };
+    let provider_contract_verified = verified.contains(&(
+        family.id.clone(),
+        match method {
+            HttpMethod::Get => "GET".to_owned(),
+            HttpMethod::Post => "POST".to_owned(),
+        },
+        family.path.clone(),
+    ));
     Ok(CompiledFamily {
-        authoritative: generic_runtime_supported
-            && verified.contains(&(
-                family.id.clone(),
-                match method {
-                    HttpMethod::Get => "GET".to_owned(),
-                    HttpMethod::Post => "POST".to_owned(),
-                },
-                family.path.clone(),
-            )),
+        authoritative: generic_runtime_supported && provider_contract_verified,
+        projection_authoritative: provider_contract_verified
+            && projection_class.can_be_authoritative(),
         id: nonempty(path, "family id", family.id)?,
         method,
         path: family.path,
@@ -908,5 +921,24 @@ mod tests {
             catalog.get("agiloft").unwrap().authority(),
             CollectionAuthority::ShadowOnly
         );
+    }
+
+    #[test]
+    fn bespoke_collection_does_not_block_a_verified_native_projection() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let auth0 = catalog.get("auth0").unwrap();
+        assert_eq!(auth0.authority(), CollectionAuthority::ShadowOnly);
+        let grants = auth0
+            .families()
+            .iter()
+            .find(|family| family.id() == "grants")
+            .unwrap();
+        assert!(!grants.is_authoritative());
+        assert!(grants.is_projection_authoritative());
     }
 }

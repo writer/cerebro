@@ -56,6 +56,15 @@ emitted_kinds:
   - slack.channel_member
   - slack.user_group_member
   - slack.audit_log
+runtime_families:
+  - team
+  - user
+  - channel
+  - user_group
+  - access_log
+  - channel_member
+  - user_group_member
+  - audit_log
 families:
   - id: team
   - id: user
