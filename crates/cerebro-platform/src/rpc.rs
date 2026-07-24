@@ -1,7 +1,10 @@
 use std::{future::Future, sync::Arc, time::Duration};
 
 use cerebro_agent_context::{
-    AgentGraph, ContextEdge, ContextEntity, ContextError, GraphPath as ContextPath, Neighborhood,
+    AgentGraph, ContextEdge, ContextEntity, ContextError, FactQuery, GraphPath as ContextPath,
+    Neighborhood, QueryAbsentEdge as ContextQueryAbsentEdge,
+    QueryDirection as ContextQueryDirection, QueryEdge as ContextQueryEdge,
+    QueryMatch as ContextQueryMatch, QueryNode as ContextQueryNode,
 };
 use cerebro_organizational_model::{AssertionId, EntityId, TenantId};
 use cerebro_source_catalog::CatalogSummary;
@@ -12,7 +15,12 @@ use crate::{AUTHORIZATION, TENANT_AUTH_HEADER, TenantRequestAuth};
 pub mod proto {
     pub mod cerebro {
         pub mod graph {
-            #[allow(clippy::wrong_self_convention, unused_imports)]
+            #[allow(
+                clippy::derivable_impls,
+                clippy::wrong_self_convention,
+                unused_imports,
+                non_camel_case_types
+            )]
             pub mod v1 {
                 include!("generated/buffa/cerebro.graph.v1.rs");
             }
@@ -250,6 +258,72 @@ impl OrganizationalGraphService for GraphRpc {
         })
     }
 
+    async fn query_facts(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, QueryFactsRequest>,
+    ) -> ServiceResult<QueryFactsResponse> {
+        let tenant = self.authorized_tenant(&context, request.tenant_id)?;
+        let limit = usize::try_from(request.limit)
+            .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+        let query = FactQuery::new(
+            request
+                .nodes
+                .iter()
+                .map(|node| ContextQueryNode {
+                    variable: node.variable.to_owned(),
+                    kinds: node.kinds.iter().map(|value| (*value).to_owned()).collect(),
+                    keys: node.keys.iter().map(|value| (*value).to_owned()).collect(),
+                })
+                .collect(),
+            request
+                .edges
+                .iter()
+                .map(|edge| ContextQueryEdge {
+                    variable: edge.variable.to_owned(),
+                    from_variable: edge.from_variable.to_owned(),
+                    relation: edge.relation.to_owned(),
+                    to_variable: edge.to_variable.to_owned(),
+                })
+                .collect(),
+            request
+                .absent_edges
+                .iter()
+                .map(|absence| {
+                    let direction = match absence.direction.as_known() {
+                        Some(QueryDirection::Outgoing) => ContextQueryDirection::Outgoing,
+                        Some(QueryDirection::Incoming) => ContextQueryDirection::Incoming,
+                        _ => {
+                            return Err(ConnectError::invalid_argument(
+                                "absence direction must be outgoing or incoming",
+                            ));
+                        }
+                    };
+                    Ok(ContextQueryAbsentEdge {
+                        bound_variable: absence.bound_variable.to_owned(),
+                        direction,
+                        relation: absence.relation.to_owned(),
+                        other_kinds: absence
+                            .other_kinds
+                            .iter()
+                            .map(|value| (*value).to_owned())
+                            .collect(),
+                    })
+                })
+                .collect::<Result<Vec<_>, ConnectError>>()?,
+            limit,
+        )
+        .map_err(context_error)?;
+        let result = self.graph_call(self.graph.query(&tenant, &query)).await?;
+        Response::ok(QueryFactsResponse {
+            tenant_id: result.tenant_id.to_string(),
+            graph_revision: result.graph_revision,
+            matches: result.matches.into_iter().map(query_match).collect(),
+            truncated: result.truncated,
+            ..Default::default()
+        })
+    }
+
     async fn get_source_summary(
         &self,
         context: RequestContext,
@@ -348,6 +422,30 @@ fn graph_path(path: ContextPath) -> GraphPath {
     GraphPath {
         entities: path.entities.into_iter().map(graph_entity).collect(),
         edges: path.edges.into_iter().map(graph_edge).collect(),
+        ..Default::default()
+    }
+}
+
+fn query_match(value: ContextQueryMatch) -> QueryFactMatch {
+    QueryFactMatch {
+        entities: value
+            .entities
+            .into_iter()
+            .map(|(variable, entity)| QueryBoundEntity {
+                variable,
+                entity: graph_entity(entity).into(),
+                ..Default::default()
+            })
+            .collect(),
+        edges: value
+            .edges
+            .into_iter()
+            .map(|(variable, edge)| QueryBoundEdge {
+                variable,
+                edge: graph_edge(edge).into(),
+                ..Default::default()
+            })
+            .collect(),
         ..Default::default()
     }
 }

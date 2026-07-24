@@ -18,6 +18,8 @@ service OrganizationalGraphService {
   rpc FindPaths(FindPathsRequest) returns (FindPathsResponse);
   // ExplainAssertion returns the stored edge and source runtime for one assertion.
   rpc ExplainAssertion(ExplainAssertionRequest) returns (ExplainAssertionResponse);
+  // QueryFacts executes one bounded, schema-checked graph pattern.
+  rpc QueryFacts(QueryFactsRequest) returns (QueryFactsResponse);
   // GetSourceSummary returns the catalog coverage compiled into the running Rust service.
   rpc GetSourceSummary(GetSourceSummaryRequest) returns (GetSourceSummaryResponse);
 }
@@ -132,6 +134,67 @@ message ExplainAssertionRequest {
 // ExplainAssertionResponse returns the assertion edge.
 message ExplainAssertionResponse {
   GraphEdge edge = 1;
+}
+
+// QueryNodePattern binds a variable to a closed set of entity kinds and optional stable keys.
+message QueryNodePattern {
+  string variable = 1;
+  repeated string kinds = 2;
+  repeated string keys = 3;
+}
+
+// QueryEdgePattern requires one directed typed assertion between two bound variables.
+message QueryEdgePattern {
+  string variable = 1;
+  string from_variable = 2;
+  string relation = 3;
+  string to_variable = 4;
+}
+
+enum QueryDirection {
+  QUERY_DIRECTION_UNSPECIFIED = 0;
+  QUERY_DIRECTION_OUTGOING = 1;
+  QUERY_DIRECTION_INCOMING = 2;
+}
+
+// QueryAbsentEdgePattern rejects a match when the bound variable has the specified edge.
+message QueryAbsentEdgePattern {
+  string bound_variable = 1;
+  QueryDirection direction = 2;
+  string relation = 3;
+  repeated string other_kinds = 4;
+}
+
+// QueryFactsRequest carries a bounded structured query. It never contains Cypher.
+message QueryFactsRequest {
+  string tenant_id = 1;
+  repeated QueryNodePattern nodes = 2;
+  repeated QueryEdgePattern edges = 3;
+  repeated QueryAbsentEdgePattern absent_edges = 4;
+  uint32 limit = 5;
+}
+
+message QueryBoundEntity {
+  string variable = 1;
+  GraphEntity entity = 2;
+}
+
+message QueryBoundEdge {
+  string variable = 1;
+  GraphEdge edge = 2;
+}
+
+message QueryFactMatch {
+  repeated QueryBoundEntity entities = 1;
+  repeated QueryBoundEdge edges = 2;
+}
+
+// QueryFactsResponse binds every result to one durable graph revision.
+message QueryFactsResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  repeated QueryFactMatch matches = 3;
+  bool truncated = 4;
 }
 
 // GetSourceSummaryRequest binds the catalog read to one authenticated tenant.

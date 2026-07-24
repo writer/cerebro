@@ -1325,6 +1325,14 @@ mod tests {
         ) -> Result<ContextEdge, ContextError> {
             Err(unavailable())
         }
+
+        async fn query(
+            &self,
+            _tenant_id: &TenantId,
+            _query: &cerebro_agent_context::FactQuery,
+        ) -> Result<cerebro_agent_context::QueryResult, ContextError> {
+            Err(unavailable())
+        }
     }
 
     fn authenticated(
@@ -1790,6 +1798,7 @@ mod tests {
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
         );
         let response = app
+            .clone()
             .oneshot(
                 authenticated(Request::builder(), "tenant-demo")
                     .uri("/platform/graph/neighborhood?root_urn=urn:cerebro:tenant-demo:asset:one")
@@ -1856,6 +1865,7 @@ mod tests {
             "limit": 100
         });
         let response = app
+            .clone()
             .oneshot(
                 authenticated(Request::builder(), "tenant-demo")
                     .method("POST")
@@ -1935,6 +1945,7 @@ mod tests {
         })
         .to_string();
         let response = app
+            .clone()
             .oneshot(
                 authenticated(Request::builder(), "tenant-demo")
                     .method("POST")
@@ -1955,6 +1966,148 @@ mod tests {
             response["neighborhoods"][root_id.as_str()]["tenantId"],
             "tenant-demo"
         );
+
+        let body = serde_json::json!({
+            "tenantId": "tenant-demo",
+            "nodes": [
+                {"variable": "person", "kinds": ["person"]},
+                {"variable": "group", "kinds": ["group"], "keys": ["group-security"]}
+            ],
+            "edges": [
+                {
+                    "variable": "membership",
+                    "fromVariable": "person",
+                    "relation": "member_of",
+                    "toVariable": "group"
+                }
+            ],
+            "limit": 10
+        })
+        .to_string();
+        let response = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/QueryFacts")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(response["tenantId"], "tenant-demo");
+        assert_eq!(response["graphRevision"], "1");
+        assert_eq!(response["matches"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            response["matches"][0]["edges"][0]["edge"]["relation"],
+            "member_of"
+        );
+
+        let invalid = serde_json::json!({
+            "tenantId": "tenant-demo",
+            "nodes": [
+                {"variable": "person", "kinds": ["person"]},
+                {"variable": "group", "kinds": ["group"]}
+            ],
+            "edges": [
+                {
+                    "variable": "membership",
+                    "fromVariable": "person",
+                    "relation": "raw_cypher_escape",
+                    "toVariable": "group"
+                }
+            ],
+            "limit": 10
+        })
+        .to_string();
+        let response = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/QueryFacts")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(invalid))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let cross_tenant = serde_json::json!({
+            "tenantId": "tenant-other",
+            "nodes": [{"variable": "person", "kinds": ["person"]}],
+            "limit": 10
+        })
+        .to_string();
+        let response = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/QueryFacts")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(cross_tenant))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        let unbounded = serde_json::json!({
+            "tenantId": "tenant-demo",
+            "nodes": [{"variable": "person", "kinds": ["person"]}],
+            "limit": 501
+        })
+        .to_string();
+        let response = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/QueryFacts")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(unbounded))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let unspecified_direction = serde_json::json!({
+            "tenantId": "tenant-demo",
+            "nodes": [{"variable": "person", "kinds": ["person"]}],
+            "absentEdges": [{
+                "boundVariable": "person",
+                "relation": "member_of",
+                "otherKinds": ["group"]
+            }],
+            "limit": 10
+        })
+        .to_string();
+        let response = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/QueryFacts")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(unspecified_direction))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

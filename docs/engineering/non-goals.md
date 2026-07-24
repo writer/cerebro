@@ -98,8 +98,9 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 ### LLM-authored Cypher is read-only, LIMIT-bounded, tenant-scoped, and procedure-free.
 
 - The Cypher safety validator in `internal/graphagent/validator.go` rejects any query that contains write or bulk-load tokens (`CREATE`, `MERGE`, `DELETE`, `REMOVE`, `SET`, `DROP`, `FOREACH`), `LOAD CSV`, `USING PERIODIC`, `apoc.trigger.*`, `apoc.periodic.*`, or any procedure `CALL`. It also requires every node pattern to carry the `Entity` label and inline `tenant_id: $tenant_id`, and rejects queries without a numeric `LIMIT` ≤ `MaxRows` (default 100). These constraints will not be loosened to support agent-authored data mutations or autonomous remediation through the graph.
+- The Rust replacement API does not expose this compatibility surface. `QueryFacts` accepts only a bounded structured pattern over closed entity and relation kinds. Rust validates endpoint compatibility and tenant scope, then compiles the Neo4j statement itself. Callers cannot submit labels, property expressions, procedures, or Cypher fragments.
 - Why: LLM-authored Cypher is the largest agentic blast-radius surface in the codebase. The validator is the load-bearing safety boundary; weakening it has a multiplicative effect on every other risk in the system.
-- Enforced in: `Validator.validate` and `allNodePatternsTenantScoped` in [`internal/graphagent/validator.go`](../../internal/graphagent/validator.go); validator test corpus in `internal/graphagent/validator_test.go`.
+- Enforced in: `Validator.validate` and `allNodePatternsTenantScoped` in [`internal/graphagent/validator.go`](../../internal/graphagent/validator.go); the Rust `FactQuery` constructor in `crates/agent-context`; and the parameter-only query compiler in `crates/organizational-store`.
 - What would change this: nothing for write tokens. New agent capabilities must travel through typed Action and workflow event surfaces, not through Cypher.
 
 ### The graph is not where org dynamics live as primitives.

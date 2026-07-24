@@ -109,7 +109,7 @@ fn replacement_proof_is_a_native_rust_product_path() {
         "--target replacement-test-runtime",
         "--entrypoint /usr/local/bin/organizational-graph-e2e",
         "docker restart cerebro-rust-graph-platform",
-        "receipt.json)\" -eq 13",
+        "receipt.json)\" -eq 14",
     ] {
         assert!(
             REPLACEMENT_WORKFLOW.contains(required),

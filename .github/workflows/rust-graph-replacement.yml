@@ -121,6 +121,9 @@ jobs:
               --user 0:0 \
               --volume "${proof_dir}:/proof" \
               --env CEREBRO_TEST_POSTGRES_DSN='postgres://cerebro:cerebro@cerebro-rust-graph-postgres:5432/cerebro?sslmode=disable' \
+              --env CEREBRO_TEST_NEO4J_URI=bolt://cerebro-rust-graph-neo4j:7687 \
+              --env CEREBRO_TEST_NEO4J_USERNAME=neo4j \
+              --env CEREBRO_TEST_NEO4J_PASSWORD=local-password \
               --env CEREBRO_TEST_NATS_URL=nats://cerebro-rust-graph-nats:4222 \
               --env CEREBRO_TEST_GRAPH_URL=http://cerebro-rust-graph-platform:8080 \
               --env CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET \
@@ -139,7 +142,7 @@ jobs:
           docker restart cerebro-rust-graph-platform
           run_driver verify
           test "$(jq '[.checks[] | select(.status == "passed")] | length' \
-            .dist/rust-graph-replacement/receipt.json)" -eq 13
+            .dist/rust-graph-replacement/receipt.json)" -eq 14
 
       - name: Print service logs
         if: always()

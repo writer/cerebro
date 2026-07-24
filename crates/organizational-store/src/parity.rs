@@ -662,22 +662,8 @@ fn digest<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
 
 fn entity_kind(kind: &EntityKind) -> String {
     match kind {
-        EntityKind::Person => "person".to_owned(),
-        EntityKind::Identity => "identity".to_owned(),
-        EntityKind::Team => "team".to_owned(),
-        EntityKind::Organization => "organization".to_owned(),
-        EntityKind::Repository => "repository".to_owned(),
-        EntityKind::Service => "service".to_owned(),
-        EntityKind::Application => "application".to_owned(),
-        EntityKind::Environment => "environment".to_owned(),
-        EntityKind::Account => "account".to_owned(),
-        EntityKind::Resource => "resource".to_owned(),
-        EntityKind::Group => "group".to_owned(),
-        EntityKind::Role => "role".to_owned(),
-        EntityKind::Policy => "policy".to_owned(),
-        EntityKind::Control => "control".to_owned(),
-        EntityKind::Finding => "finding".to_owned(),
         EntityKind::Provider(kind) => format!("provider:{}", kind.as_str()),
+        kind => kind.as_str().to_owned(),
     }
 }
 

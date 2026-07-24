@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     env,
     error::Error,
     fs,
@@ -9,13 +9,16 @@ use std::{
 
 use async_nats::jetstream::{self, consumer::pull};
 use cerebro_organizational_model::{
-    CanonicalIdentity, Entity, EntityId, EntityKind, IdentityClaim, ProviderIdentity, ProviderKind,
-    SourceRuntimeId, TenantId,
+    AssertionProvenance, CanonicalIdentity, CollectionId, CompleteCollection, Entity, EntityId,
+    EntityKind, GraphAssertion, IdentityClaim, ObservationId, ObservationRef, ProviderIdentity,
+    ProviderKind, RelationKind, RelationshipAssertion, SourceRuntimeId, TenantId,
 };
 use cerebro_organizational_store::{
-    CutoverPolicy, ParityReceipt, PostgresLedger, ProjectionAuthority, ProjectionPromotionRequest,
+    CutoverPolicy, DurableGraphStore, Neo4jProjector, ParityReceipt, PostgresLedger,
+    ProjectionAuthority, ProjectionPromotionRequest,
 };
 use cerebro_source_catalog::SourceCatalog;
+use cerebro_source_runtime_next::{CollectedBatch, CollectedScope, GraphSink, SourceRecord};
 use hmac::{Hmac, KeyInit, Mac};
 use prost::Message;
 use prost_types::Timestamp;
@@ -68,6 +71,10 @@ struct Checkpoint {
     auth0_identity_id: String,
     application_id: String,
     resource_id: String,
+    compliance_control_id: String,
+    unsupported_finding_id: String,
+    supported_finding_id: String,
+    evidence_id: String,
 }
 
 #[derive(Serialize)]
@@ -95,6 +102,9 @@ struct ProofReceipt {
 
 struct Config {
     postgres_dsn: String,
+    neo4j_uri: String,
+    neo4j_username: String,
+    neo4j_password: String,
     nats_url: String,
     base_url: String,
     shared_secret: String,
@@ -115,6 +125,9 @@ impl Config {
             .unwrap_or(env::current_dir()?);
         Ok(Self {
             postgres_dsn: required("CEREBRO_TEST_POSTGRES_DSN")?,
+            neo4j_uri: required("CEREBRO_TEST_NEO4J_URI")?,
+            neo4j_username: required("CEREBRO_TEST_NEO4J_USERNAME")?,
+            neo4j_password: required("CEREBRO_TEST_NEO4J_PASSWORD")?,
             nats_url: required("CEREBRO_TEST_NATS_URL")?,
             base_url: required("CEREBRO_TEST_GRAPH_URL")?
                 .trim_end_matches('/')
@@ -169,12 +182,17 @@ async fn seed(config: &Config) -> Result<(), Box<dyn Error>> {
     wait_for_drain(&mut consumer).await?;
 
     let ids = expected_ids()?;
+    seed_compliance_graph(config, ledger, &ids).await?;
     wait_for_entity(config, &ids.okta_identity_id).await?;
     wait_for_entity(config, &ids.slack_identity_id).await?;
     wait_for_entity(config, &ids.canonical_identity_id).await?;
     wait_for_entity(config, &ids.auth0_identity_id).await?;
     wait_for_entity(config, &ids.application_id).await?;
     wait_for_entity(config, &ids.resource_id).await?;
+    wait_for_entity(config, &ids.compliance_control_id).await?;
+    wait_for_entity(config, &ids.unsupported_finding_id).await?;
+    wait_for_entity(config, &ids.supported_finding_id).await?;
+    wait_for_entity(config, &ids.evidence_id).await?;
 
     let okta_path = graph_paths(
         config,
@@ -194,12 +212,14 @@ async fn seed(config: &Config) -> Result<(), Box<dyn Error>> {
     require_path(&slack_path, 1, &["represents"])?;
     let access_path = graph_paths(config, &ids.auth0_identity_id, &ids.resource_id, TENANT).await?;
     require_path(&access_path, 2, &["can_access", "can_access"])?;
+    let compliance_gaps = connect_query_compliance_gaps(config, &ids).await?;
+    require_compliance_gap(&compliance_gaps, &ids)?;
     prove_tenant_isolation(config, &ids.canonical_identity_id).await?;
 
     let graph_revision = postgres_revision(&config.postgres_dsn, TENANT).await?;
-    if graph_revision < 4 {
+    if graph_revision < 5 {
         return Err(format!(
-            "expected at least four committed graph revisions, got {graph_revision}"
+            "expected four source revisions and one compliance revision, got {graph_revision}"
         )
         .into());
     }
@@ -218,6 +238,10 @@ async fn seed(config: &Config) -> Result<(), Box<dyn Error>> {
         auth0_identity_id: ids.auth0_identity_id.to_string(),
         application_id: ids.application_id.to_string(),
         resource_id: ids.resource_id.to_string(),
+        compliance_control_id: ids.compliance_control_id.to_string(),
+        unsupported_finding_id: ids.unsupported_finding_id.to_string(),
+        supported_finding_id: ids.supported_finding_id.to_string(),
+        evidence_id: ids.evidence_id.to_string(),
     };
     write_json(&config.checkpoint_path, &checkpoint)?;
     println!(
@@ -254,6 +278,9 @@ async fn verify(config: &Config) -> Result<(), Box<dyn Error>> {
     )
     .await?;
     require_path(&recovered_path, 2, &["can_access", "can_access"])?;
+    let ids = ExpectedIds::from_checkpoint(&checkpoint)?;
+    let recovered_compliance_gaps = connect_query_compliance_gaps(config, &ids).await?;
+    require_compliance_gap(&recovered_compliance_gaps, &ids)?;
 
     let post_restart = source_event(
         "okta-e2e-post-restart",
@@ -371,6 +398,13 @@ async fn verify(config: &Config) -> Result<(), Box<dyn Error>> {
                 "tenant-signed Connect JSON returned the post-restart entity at the durable revision",
             ),
             passed(
+                "compliance_fact_query",
+                format!(
+                    "bounded Connect query returned unsupported finding {} and excluded supported finding {}",
+                    checkpoint.unsupported_finding_id, checkpoint.supported_finding_id
+                ),
+            ),
+            passed(
                 "product_http_contract",
                 format!(
                     "native Rust product endpoint returned the persisted neighborhood for {product_root}"
@@ -416,6 +450,10 @@ struct ExpectedIds {
     auth0_identity_id: EntityId,
     application_id: EntityId,
     resource_id: EntityId,
+    compliance_control_id: EntityId,
+    unsupported_finding_id: EntityId,
+    supported_finding_id: EntityId,
+    evidence_id: EntityId,
 }
 
 fn expected_ids() -> Result<ExpectedIds, Box<dyn Error>> {
@@ -469,7 +507,163 @@ fn expected_ids() -> Result<ExpectedIds, Box<dyn Error>> {
         auth0_identity_id: auth0_identity.entity().id().clone(),
         application_id: application.id().clone(),
         resource_id: resource.id().clone(),
+        compliance_control_id: EntityId::parse("control-e2e-cc6-1")?,
+        unsupported_finding_id: EntityId::parse("finding-e2e-unsupported")?,
+        supported_finding_id: EntityId::parse("finding-e2e-supported")?,
+        evidence_id: EntityId::parse("evidence-e2e-1")?,
     })
+}
+
+impl ExpectedIds {
+    fn from_checkpoint(checkpoint: &Checkpoint) -> Result<Self, Box<dyn Error>> {
+        Ok(Self {
+            okta_identity_id: EntityId::parse(checkpoint.okta_identity_id.clone())?,
+            slack_identity_id: EntityId::parse(checkpoint.slack_identity_id.clone())?,
+            canonical_identity_id: EntityId::parse(checkpoint.canonical_identity_id.clone())?,
+            auth0_identity_id: EntityId::parse(checkpoint.auth0_identity_id.clone())?,
+            application_id: EntityId::parse(checkpoint.application_id.clone())?,
+            resource_id: EntityId::parse(checkpoint.resource_id.clone())?,
+            compliance_control_id: EntityId::parse(checkpoint.compliance_control_id.clone())?,
+            unsupported_finding_id: EntityId::parse(checkpoint.unsupported_finding_id.clone())?,
+            supported_finding_id: EntityId::parse(checkpoint.supported_finding_id.clone())?,
+            evidence_id: EntityId::parse(checkpoint.evidence_id.clone())?,
+        })
+    }
+}
+
+async fn seed_compliance_graph(
+    config: &Config,
+    ledger: PostgresLedger,
+    ids: &ExpectedIds,
+) -> Result<(), Box<dyn Error>> {
+    let tenant = TenantId::parse(TENANT)?;
+    let collection = CompleteCollection::new(
+        tenant.clone(),
+        SourceRuntimeId::parse("compliance-e2e")?,
+        CollectionId::parse("compliance-e2e-current")?,
+        "compliance.current",
+        50,
+    )?;
+    let observation_id = ObservationId::parse("compliance-e2e-observation")?;
+    let provenance = || {
+        AssertionProvenance::direct(
+            vec![ObservationRef::new(
+                collection.receipt(),
+                observation_id.clone(),
+                "compliance.snapshot:current",
+            )?],
+            "compliance-projector",
+            "v1",
+        )
+    };
+    let control = Entity::canonical(
+        tenant.clone(),
+        ids.compliance_control_id.clone(),
+        EntityKind::Control,
+        "SOC 2 CC6.1",
+    )?;
+    let unsupported_finding = Entity::canonical(
+        tenant.clone(),
+        ids.unsupported_finding_id.clone(),
+        EntityKind::Finding,
+        "Missing access review evidence",
+    )?;
+    let supported_finding = Entity::canonical(
+        tenant.clone(),
+        ids.supported_finding_id.clone(),
+        EntityKind::Finding,
+        "Completed access review",
+    )?;
+    let evidence = Entity::canonical(
+        tenant.clone(),
+        ids.evidence_id.clone(),
+        EntityKind::Evidence,
+        "Access review receipt",
+    )?;
+    let resource = Entity::provider(
+        tenant,
+        SourceRuntimeId::parse("auth0-e2e")?,
+        ProviderKind::parse("auth0.access_target")?,
+        "https://api.example.test",
+        EntityKind::Resource,
+        "https://api.example.test",
+    )?;
+    if resource.id() != &ids.resource_id {
+        return Err("compliance resource identity does not match source projection".into());
+    }
+
+    let relationships = [
+        RelationshipAssertion::new(
+            &unsupported_finding,
+            RelationKind::MappedToControl,
+            &control,
+            provenance()?,
+            50,
+        )?,
+        RelationshipAssertion::new(
+            &unsupported_finding,
+            RelationKind::Affects,
+            &resource,
+            provenance()?,
+            50,
+        )?,
+        RelationshipAssertion::new(
+            &supported_finding,
+            RelationKind::MappedToControl,
+            &control,
+            provenance()?,
+            50,
+        )?,
+        RelationshipAssertion::new(
+            &supported_finding,
+            RelationKind::Affects,
+            &resource,
+            provenance()?,
+            50,
+        )?,
+        RelationshipAssertion::new(
+            &evidence,
+            RelationKind::EvidenceFor,
+            &supported_finding,
+            provenance()?,
+            50,
+        )?,
+    ];
+    let mut builder = collection.clone().begin_delta();
+    for entity in [
+        control,
+        unsupported_finding,
+        supported_finding,
+        evidence,
+        resource,
+    ] {
+        builder.add_entity(entity)?;
+    }
+    for relationship in relationships {
+        builder.add_assertion(GraphAssertion::Relationship(relationship))?;
+    }
+    let batch = CollectedBatch {
+        scope: CollectedScope::Complete(collection),
+        records: vec![SourceRecord {
+            observation_id,
+            family: "current".to_owned(),
+            provider_kind: "cerebro.compliance_snapshot".to_owned(),
+            provider_id: "current".to_owned(),
+            fields: BTreeMap::new(),
+            payload: json!({"snapshot_id": "current"}),
+        }],
+        next_cursor: None,
+    };
+    let projector = Neo4jProjector::connect(
+        &config.neo4j_uri,
+        &config.neo4j_username,
+        &config.neo4j_password,
+    )
+    .await?;
+    projector.migrate().await?;
+    let mut store = DurableGraphStore::new(ledger, projector);
+    store.apply(&batch, builder.build()).await?;
+    Ok(())
 }
 
 async fn prove_and_promote(
@@ -790,6 +984,109 @@ async fn connect_search(config: &Config, query: &str) -> Result<Value, Box<dyn E
         return Err(format!("agent RPC search returned {}", response.status()).into());
     }
     Ok(response.json().await?)
+}
+
+async fn connect_query_compliance_gaps(
+    config: &Config,
+    ids: &ExpectedIds,
+) -> Result<Value, Box<dyn Error>> {
+    let response = authenticated(config, TENANT)
+        .post(format!(
+            "{}/cerebro.graph.v1.OrganizationalGraphService/QueryFacts",
+            config.base_url
+        ))
+        .header("content-type", "application/json")
+        .header("connect-protocol-version", "1")
+        .json(&json!({
+            "tenantId": TENANT,
+            "nodes": [
+                {
+                    "variable": "finding",
+                    "kinds": ["finding"]
+                },
+                {
+                    "variable": "control",
+                    "kinds": ["control"],
+                    "keys": [ids.compliance_control_id]
+                },
+                {
+                    "variable": "resource",
+                    "kinds": ["resource"],
+                    "keys": [ids.resource_id]
+                }
+            ],
+            "edges": [
+                {
+                    "variable": "control_mapping",
+                    "fromVariable": "finding",
+                    "relation": "mapped_to_control",
+                    "toVariable": "control"
+                },
+                {
+                    "variable": "affected_resource",
+                    "fromVariable": "finding",
+                    "relation": "affects",
+                    "toVariable": "resource"
+                }
+            ],
+            "absentEdges": [
+                {
+                    "boundVariable": "finding",
+                    "direction": "QUERY_DIRECTION_INCOMING",
+                    "relation": "evidence_for",
+                    "otherKinds": ["evidence"]
+                }
+            ],
+            "limit": 10
+        }))
+        .send()
+        .await?;
+    if response.status() != StatusCode::OK {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("compliance fact query returned {status}: {body}").into());
+    }
+    Ok(response.json().await?)
+}
+
+fn require_compliance_gap(body: &Value, ids: &ExpectedIds) -> Result<(), Box<dyn Error>> {
+    let matches = body["matches"]
+        .as_array()
+        .ok_or("compliance fact query is missing matches")?;
+    if matches.len() != 1 || body["truncated"].as_bool().unwrap_or(false) {
+        return Err(
+            format!("compliance fact query should return one complete match: {body}").into(),
+        );
+    }
+    let entities = matches[0]["entities"]
+        .as_array()
+        .ok_or("compliance fact match is missing entities")?;
+    let edges = matches[0]["edges"]
+        .as_array()
+        .ok_or("compliance fact match is missing edges")?;
+    let finding = entities
+        .iter()
+        .find(|entity| entity["variable"] == "finding")
+        .ok_or("compliance fact match is missing finding binding")?;
+    let entity_ids = entities
+        .iter()
+        .filter_map(|entity| entity["entity"]["entityId"].as_str())
+        .collect::<Vec<_>>();
+    let relations = edges
+        .iter()
+        .filter_map(|edge| edge["edge"]["relation"].as_str())
+        .collect::<Vec<_>>();
+    if finding["entity"]["entityId"] != ids.unsupported_finding_id.as_str()
+        || entity_ids.contains(&ids.supported_finding_id.as_str())
+        || !relations.contains(&"mapped_to_control")
+        || !relations.contains(&"affects")
+    {
+        return Err(format!(
+            "compliance fact query did not isolate the unsupported finding: {body}"
+        )
+        .into());
+    }
+    Ok(())
 }
 
 async fn product_neighborhood(config: &Config, root_urn: &str) -> Result<Value, Box<dyn Error>> {

@@ -21,6 +21,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type QueryDirection int32
+
+const (
+	QueryDirection_QUERY_DIRECTION_UNSPECIFIED QueryDirection = 0
+	QueryDirection_QUERY_DIRECTION_OUTGOING    QueryDirection = 1
+	QueryDirection_QUERY_DIRECTION_INCOMING    QueryDirection = 2
+)
+
+// Enum value maps for QueryDirection.
+var (
+	QueryDirection_name = map[int32]string{
+		0: "QUERY_DIRECTION_UNSPECIFIED",
+		1: "QUERY_DIRECTION_OUTGOING",
+		2: "QUERY_DIRECTION_INCOMING",
+	}
+	QueryDirection_value = map[string]int32{
+		"QUERY_DIRECTION_UNSPECIFIED": 0,
+		"QUERY_DIRECTION_OUTGOING":    1,
+		"QUERY_DIRECTION_INCOMING":    2,
+	}
+)
+
+func (x QueryDirection) Enum() *QueryDirection {
+	p := new(QueryDirection)
+	*p = x
+	return p
+}
+
+func (x QueryDirection) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (QueryDirection) Descriptor() protoreflect.EnumDescriptor {
+	return file_cerebro_graph_v1_organizational_graph_proto_enumTypes[0].Descriptor()
+}
+
+func (QueryDirection) Type() protoreflect.EnumType {
+	return &file_cerebro_graph_v1_organizational_graph_proto_enumTypes[0]
+}
+
+func (x QueryDirection) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use QueryDirection.Descriptor instead.
+func (QueryDirection) EnumDescriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{0}
+}
+
 // GraphEntity is the stable agent-facing view of one organizational entity.
 type GraphEntity struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -992,6 +1041,507 @@ func (x *ExplainAssertionResponse) GetEdge() *GraphEdge {
 	return nil
 }
 
+// QueryNodePattern binds a variable to a closed set of entity kinds and optional stable keys.
+type QueryNodePattern struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Variable      string                 `protobuf:"bytes,1,opt,name=variable,proto3" json:"variable,omitempty"`
+	Kinds         []string               `protobuf:"bytes,2,rep,name=kinds,proto3" json:"kinds,omitempty"`
+	Keys          []string               `protobuf:"bytes,3,rep,name=keys,proto3" json:"keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryNodePattern) Reset() {
+	*x = QueryNodePattern{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryNodePattern) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryNodePattern) ProtoMessage() {}
+
+func (x *QueryNodePattern) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryNodePattern.ProtoReflect.Descriptor instead.
+func (*QueryNodePattern) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *QueryNodePattern) GetVariable() string {
+	if x != nil {
+		return x.Variable
+	}
+	return ""
+}
+
+func (x *QueryNodePattern) GetKinds() []string {
+	if x != nil {
+		return x.Kinds
+	}
+	return nil
+}
+
+func (x *QueryNodePattern) GetKeys() []string {
+	if x != nil {
+		return x.Keys
+	}
+	return nil
+}
+
+// QueryEdgePattern requires one directed typed assertion between two bound variables.
+type QueryEdgePattern struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Variable      string                 `protobuf:"bytes,1,opt,name=variable,proto3" json:"variable,omitempty"`
+	FromVariable  string                 `protobuf:"bytes,2,opt,name=from_variable,json=fromVariable,proto3" json:"from_variable,omitempty"`
+	Relation      string                 `protobuf:"bytes,3,opt,name=relation,proto3" json:"relation,omitempty"`
+	ToVariable    string                 `protobuf:"bytes,4,opt,name=to_variable,json=toVariable,proto3" json:"to_variable,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryEdgePattern) Reset() {
+	*x = QueryEdgePattern{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryEdgePattern) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryEdgePattern) ProtoMessage() {}
+
+func (x *QueryEdgePattern) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryEdgePattern.ProtoReflect.Descriptor instead.
+func (*QueryEdgePattern) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *QueryEdgePattern) GetVariable() string {
+	if x != nil {
+		return x.Variable
+	}
+	return ""
+}
+
+func (x *QueryEdgePattern) GetFromVariable() string {
+	if x != nil {
+		return x.FromVariable
+	}
+	return ""
+}
+
+func (x *QueryEdgePattern) GetRelation() string {
+	if x != nil {
+		return x.Relation
+	}
+	return ""
+}
+
+func (x *QueryEdgePattern) GetToVariable() string {
+	if x != nil {
+		return x.ToVariable
+	}
+	return ""
+}
+
+// QueryAbsentEdgePattern rejects a match when the bound variable has the specified edge.
+type QueryAbsentEdgePattern struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	BoundVariable string                 `protobuf:"bytes,1,opt,name=bound_variable,json=boundVariable,proto3" json:"bound_variable,omitempty"`
+	Direction     QueryDirection         `protobuf:"varint,2,opt,name=direction,proto3,enum=cerebro.graph.v1.QueryDirection" json:"direction,omitempty"`
+	Relation      string                 `protobuf:"bytes,3,opt,name=relation,proto3" json:"relation,omitempty"`
+	OtherKinds    []string               `protobuf:"bytes,4,rep,name=other_kinds,json=otherKinds,proto3" json:"other_kinds,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryAbsentEdgePattern) Reset() {
+	*x = QueryAbsentEdgePattern{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryAbsentEdgePattern) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryAbsentEdgePattern) ProtoMessage() {}
+
+func (x *QueryAbsentEdgePattern) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryAbsentEdgePattern.ProtoReflect.Descriptor instead.
+func (*QueryAbsentEdgePattern) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *QueryAbsentEdgePattern) GetBoundVariable() string {
+	if x != nil {
+		return x.BoundVariable
+	}
+	return ""
+}
+
+func (x *QueryAbsentEdgePattern) GetDirection() QueryDirection {
+	if x != nil {
+		return x.Direction
+	}
+	return QueryDirection_QUERY_DIRECTION_UNSPECIFIED
+}
+
+func (x *QueryAbsentEdgePattern) GetRelation() string {
+	if x != nil {
+		return x.Relation
+	}
+	return ""
+}
+
+func (x *QueryAbsentEdgePattern) GetOtherKinds() []string {
+	if x != nil {
+		return x.OtherKinds
+	}
+	return nil
+}
+
+// QueryFactsRequest carries a bounded structured query. It never contains Cypher.
+type QueryFactsRequest struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	TenantId      string                    `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Nodes         []*QueryNodePattern       `protobuf:"bytes,2,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	Edges         []*QueryEdgePattern       `protobuf:"bytes,3,rep,name=edges,proto3" json:"edges,omitempty"`
+	AbsentEdges   []*QueryAbsentEdgePattern `protobuf:"bytes,4,rep,name=absent_edges,json=absentEdges,proto3" json:"absent_edges,omitempty"`
+	Limit         uint32                    `protobuf:"varint,5,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryFactsRequest) Reset() {
+	*x = QueryFactsRequest{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryFactsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryFactsRequest) ProtoMessage() {}
+
+func (x *QueryFactsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryFactsRequest.ProtoReflect.Descriptor instead.
+func (*QueryFactsRequest) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *QueryFactsRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *QueryFactsRequest) GetNodes() []*QueryNodePattern {
+	if x != nil {
+		return x.Nodes
+	}
+	return nil
+}
+
+func (x *QueryFactsRequest) GetEdges() []*QueryEdgePattern {
+	if x != nil {
+		return x.Edges
+	}
+	return nil
+}
+
+func (x *QueryFactsRequest) GetAbsentEdges() []*QueryAbsentEdgePattern {
+	if x != nil {
+		return x.AbsentEdges
+	}
+	return nil
+}
+
+func (x *QueryFactsRequest) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type QueryBoundEntity struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Variable      string                 `protobuf:"bytes,1,opt,name=variable,proto3" json:"variable,omitempty"`
+	Entity        *GraphEntity           `protobuf:"bytes,2,opt,name=entity,proto3" json:"entity,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryBoundEntity) Reset() {
+	*x = QueryBoundEntity{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryBoundEntity) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryBoundEntity) ProtoMessage() {}
+
+func (x *QueryBoundEntity) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryBoundEntity.ProtoReflect.Descriptor instead.
+func (*QueryBoundEntity) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *QueryBoundEntity) GetVariable() string {
+	if x != nil {
+		return x.Variable
+	}
+	return ""
+}
+
+func (x *QueryBoundEntity) GetEntity() *GraphEntity {
+	if x != nil {
+		return x.Entity
+	}
+	return nil
+}
+
+type QueryBoundEdge struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Variable      string                 `protobuf:"bytes,1,opt,name=variable,proto3" json:"variable,omitempty"`
+	Edge          *GraphEdge             `protobuf:"bytes,2,opt,name=edge,proto3" json:"edge,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryBoundEdge) Reset() {
+	*x = QueryBoundEdge{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryBoundEdge) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryBoundEdge) ProtoMessage() {}
+
+func (x *QueryBoundEdge) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryBoundEdge.ProtoReflect.Descriptor instead.
+func (*QueryBoundEdge) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *QueryBoundEdge) GetVariable() string {
+	if x != nil {
+		return x.Variable
+	}
+	return ""
+}
+
+func (x *QueryBoundEdge) GetEdge() *GraphEdge {
+	if x != nil {
+		return x.Edge
+	}
+	return nil
+}
+
+type QueryFactMatch struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entities      []*QueryBoundEntity    `protobuf:"bytes,1,rep,name=entities,proto3" json:"entities,omitempty"`
+	Edges         []*QueryBoundEdge      `protobuf:"bytes,2,rep,name=edges,proto3" json:"edges,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryFactMatch) Reset() {
+	*x = QueryFactMatch{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryFactMatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryFactMatch) ProtoMessage() {}
+
+func (x *QueryFactMatch) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryFactMatch.ProtoReflect.Descriptor instead.
+func (*QueryFactMatch) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *QueryFactMatch) GetEntities() []*QueryBoundEntity {
+	if x != nil {
+		return x.Entities
+	}
+	return nil
+}
+
+func (x *QueryFactMatch) GetEdges() []*QueryBoundEdge {
+	if x != nil {
+		return x.Edges
+	}
+	return nil
+}
+
+// QueryFactsResponse binds every result to one durable graph revision.
+type QueryFactsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	GraphRevision uint64                 `protobuf:"varint,2,opt,name=graph_revision,json=graphRevision,proto3" json:"graph_revision,omitempty"`
+	Matches       []*QueryFactMatch      `protobuf:"bytes,3,rep,name=matches,proto3" json:"matches,omitempty"`
+	Truncated     bool                   `protobuf:"varint,4,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueryFactsResponse) Reset() {
+	*x = QueryFactsResponse{}
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueryFactsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryFactsResponse) ProtoMessage() {}
+
+func (x *QueryFactsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueryFactsResponse.ProtoReflect.Descriptor instead.
+func (*QueryFactsResponse) Descriptor() ([]byte, []int) {
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *QueryFactsResponse) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *QueryFactsResponse) GetGraphRevision() uint64 {
+	if x != nil {
+		return x.GraphRevision
+	}
+	return 0
+}
+
+func (x *QueryFactsResponse) GetMatches() []*QueryFactMatch {
+	if x != nil {
+		return x.Matches
+	}
+	return nil
+}
+
+func (x *QueryFactsResponse) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
 // GetSourceSummaryRequest binds the catalog read to one authenticated tenant.
 type GetSourceSummaryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1002,7 +1552,7 @@ type GetSourceSummaryRequest struct {
 
 func (x *GetSourceSummaryRequest) Reset() {
 	*x = GetSourceSummaryRequest{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[15]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1014,7 +1564,7 @@ func (x *GetSourceSummaryRequest) String() string {
 func (*GetSourceSummaryRequest) ProtoMessage() {}
 
 func (x *GetSourceSummaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[15]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1027,7 +1577,7 @@ func (x *GetSourceSummaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSourceSummaryRequest.ProtoReflect.Descriptor instead.
 func (*GetSourceSummaryRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{15}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GetSourceSummaryRequest) GetTenantId() string {
@@ -1052,7 +1602,7 @@ type GetSourceSummaryResponse struct {
 
 func (x *GetSourceSummaryResponse) Reset() {
 	*x = GetSourceSummaryResponse{}
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[16]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1064,7 +1614,7 @@ func (x *GetSourceSummaryResponse) String() string {
 func (*GetSourceSummaryResponse) ProtoMessage() {}
 
 func (x *GetSourceSummaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[16]
+	mi := &file_cerebro_graph_v1_organizational_graph_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1077,7 +1627,7 @@ func (x *GetSourceSummaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSourceSummaryResponse.ProtoReflect.Descriptor instead.
 func (*GetSourceSummaryResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{16}
+	return file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GetSourceSummaryResponse) GetSources() uint64 {
@@ -1205,7 +1755,43 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12!\n" +
 	"\fassertion_id\x18\x02 \x01(\tR\vassertionId\"K\n" +
 	"\x18ExplainAssertionResponse\x12/\n" +
-	"\x04edge\x18\x01 \x01(\v2\x1b.cerebro.graph.v1.GraphEdgeR\x04edge\"6\n" +
+	"\x04edge\x18\x01 \x01(\v2\x1b.cerebro.graph.v1.GraphEdgeR\x04edge\"X\n" +
+	"\x10QueryNodePattern\x12\x1a\n" +
+	"\bvariable\x18\x01 \x01(\tR\bvariable\x12\x14\n" +
+	"\x05kinds\x18\x02 \x03(\tR\x05kinds\x12\x12\n" +
+	"\x04keys\x18\x03 \x03(\tR\x04keys\"\x90\x01\n" +
+	"\x10QueryEdgePattern\x12\x1a\n" +
+	"\bvariable\x18\x01 \x01(\tR\bvariable\x12#\n" +
+	"\rfrom_variable\x18\x02 \x01(\tR\ffromVariable\x12\x1a\n" +
+	"\brelation\x18\x03 \x01(\tR\brelation\x12\x1f\n" +
+	"\vto_variable\x18\x04 \x01(\tR\n" +
+	"toVariable\"\xbc\x01\n" +
+	"\x16QueryAbsentEdgePattern\x12%\n" +
+	"\x0ebound_variable\x18\x01 \x01(\tR\rboundVariable\x12>\n" +
+	"\tdirection\x18\x02 \x01(\x0e2 .cerebro.graph.v1.QueryDirectionR\tdirection\x12\x1a\n" +
+	"\brelation\x18\x03 \x01(\tR\brelation\x12\x1f\n" +
+	"\vother_kinds\x18\x04 \x03(\tR\n" +
+	"otherKinds\"\x87\x02\n" +
+	"\x11QueryFactsRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x128\n" +
+	"\x05nodes\x18\x02 \x03(\v2\".cerebro.graph.v1.QueryNodePatternR\x05nodes\x128\n" +
+	"\x05edges\x18\x03 \x03(\v2\".cerebro.graph.v1.QueryEdgePatternR\x05edges\x12K\n" +
+	"\fabsent_edges\x18\x04 \x03(\v2(.cerebro.graph.v1.QueryAbsentEdgePatternR\vabsentEdges\x12\x14\n" +
+	"\x05limit\x18\x05 \x01(\rR\x05limit\"e\n" +
+	"\x10QueryBoundEntity\x12\x1a\n" +
+	"\bvariable\x18\x01 \x01(\tR\bvariable\x125\n" +
+	"\x06entity\x18\x02 \x01(\v2\x1d.cerebro.graph.v1.GraphEntityR\x06entity\"]\n" +
+	"\x0eQueryBoundEdge\x12\x1a\n" +
+	"\bvariable\x18\x01 \x01(\tR\bvariable\x12/\n" +
+	"\x04edge\x18\x02 \x01(\v2\x1b.cerebro.graph.v1.GraphEdgeR\x04edge\"\x88\x01\n" +
+	"\x0eQueryFactMatch\x12>\n" +
+	"\bentities\x18\x01 \x03(\v2\".cerebro.graph.v1.QueryBoundEntityR\bentities\x126\n" +
+	"\x05edges\x18\x02 \x03(\v2 .cerebro.graph.v1.QueryBoundEdgeR\x05edges\"\xb2\x01\n" +
+	"\x12QueryFactsResponse\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12%\n" +
+	"\x0egraph_revision\x18\x02 \x01(\x04R\rgraphRevision\x12:\n" +
+	"\amatches\x18\x03 \x03(\v2 .cerebro.graph.v1.QueryFactMatchR\amatches\x12\x1c\n" +
+	"\ttruncated\x18\x04 \x01(\bR\ttruncated\"6\n" +
 	"\x17GetSourceSummaryRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\"\xa4\x03\n" +
 	"\x18GetSourceSummaryResponse\x12\x18\n" +
@@ -1217,14 +1803,20 @@ const file_cerebro_graph_v1_organizational_graph_proto_rawDesc = "" +
 	"\x12projection_classes\x18\x06 \x03(\v2A.cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntryR\x11projectionClasses\x1aD\n" +
 	"\x16ProjectionClassesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x012\x94\x05\n" +
+	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01*m\n" +
+	"\x0eQueryDirection\x12\x1f\n" +
+	"\x1bQUERY_DIRECTION_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18QUERY_DIRECTION_OUTGOING\x10\x01\x12\x1c\n" +
+	"\x18QUERY_DIRECTION_INCOMING\x10\x022\xed\x05\n" +
 	"\x1aOrganizationalGraphService\x12K\n" +
 	"\x06Search\x12\x1f.cerebro.graph.v1.SearchRequest\x1a .cerebro.graph.v1.SearchResponse\x12T\n" +
 	"\tGetEntity\x12\".cerebro.graph.v1.GetEntityRequest\x1a#.cerebro.graph.v1.GetEntityResponse\x12K\n" +
 	"\x06Expand\x12\x1f.cerebro.graph.v1.ExpandRequest\x1a .cerebro.graph.v1.ExpandResponse\x12Z\n" +
 	"\vExpandBatch\x12$.cerebro.graph.v1.ExpandBatchRequest\x1a%.cerebro.graph.v1.ExpandBatchResponse\x12T\n" +
 	"\tFindPaths\x12\".cerebro.graph.v1.FindPathsRequest\x1a#.cerebro.graph.v1.FindPathsResponse\x12i\n" +
-	"\x10ExplainAssertion\x12).cerebro.graph.v1.ExplainAssertionRequest\x1a*.cerebro.graph.v1.ExplainAssertionResponse\x12i\n" +
+	"\x10ExplainAssertion\x12).cerebro.graph.v1.ExplainAssertionRequest\x1a*.cerebro.graph.v1.ExplainAssertionResponse\x12W\n" +
+	"\n" +
+	"QueryFacts\x12#.cerebro.graph.v1.QueryFactsRequest\x1a$.cerebro.graph.v1.QueryFactsResponse\x12i\n" +
 	"\x10GetSourceSummary\x12).cerebro.graph.v1.GetSourceSummaryRequest\x1a*.cerebro.graph.v1.GetSourceSummaryResponseB?Z=github.com/writer/cerebro/gen/cerebro/graph/v1;cerebrographv1b\x06proto3"
 
 var (
@@ -1239,62 +1831,83 @@ func file_cerebro_graph_v1_organizational_graph_proto_rawDescGZIP() []byte {
 	return file_cerebro_graph_v1_organizational_graph_proto_rawDescData
 }
 
-var file_cerebro_graph_v1_organizational_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_cerebro_graph_v1_organizational_graph_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_cerebro_graph_v1_organizational_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_cerebro_graph_v1_organizational_graph_proto_goTypes = []any{
-	(*GraphEntity)(nil),              // 0: cerebro.graph.v1.GraphEntity
-	(*GraphEdge)(nil),                // 1: cerebro.graph.v1.GraphEdge
-	(*GraphPath)(nil),                // 2: cerebro.graph.v1.GraphPath
-	(*SearchRequest)(nil),            // 3: cerebro.graph.v1.SearchRequest
-	(*SearchResponse)(nil),           // 4: cerebro.graph.v1.SearchResponse
-	(*GetEntityRequest)(nil),         // 5: cerebro.graph.v1.GetEntityRequest
-	(*GetEntityResponse)(nil),        // 6: cerebro.graph.v1.GetEntityResponse
-	(*ExpandRequest)(nil),            // 7: cerebro.graph.v1.ExpandRequest
-	(*ExpandResponse)(nil),           // 8: cerebro.graph.v1.ExpandResponse
-	(*ExpandBatchRequest)(nil),       // 9: cerebro.graph.v1.ExpandBatchRequest
-	(*ExpandBatchResponse)(nil),      // 10: cerebro.graph.v1.ExpandBatchResponse
-	(*FindPathsRequest)(nil),         // 11: cerebro.graph.v1.FindPathsRequest
-	(*FindPathsResponse)(nil),        // 12: cerebro.graph.v1.FindPathsResponse
-	(*ExplainAssertionRequest)(nil),  // 13: cerebro.graph.v1.ExplainAssertionRequest
-	(*ExplainAssertionResponse)(nil), // 14: cerebro.graph.v1.ExplainAssertionResponse
-	(*GetSourceSummaryRequest)(nil),  // 15: cerebro.graph.v1.GetSourceSummaryRequest
-	(*GetSourceSummaryResponse)(nil), // 16: cerebro.graph.v1.GetSourceSummaryResponse
-	nil,                              // 17: cerebro.graph.v1.GraphEntity.PropertiesEntry
-	nil,                              // 18: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
-	nil,                              // 19: cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
+	(QueryDirection)(0),              // 0: cerebro.graph.v1.QueryDirection
+	(*GraphEntity)(nil),              // 1: cerebro.graph.v1.GraphEntity
+	(*GraphEdge)(nil),                // 2: cerebro.graph.v1.GraphEdge
+	(*GraphPath)(nil),                // 3: cerebro.graph.v1.GraphPath
+	(*SearchRequest)(nil),            // 4: cerebro.graph.v1.SearchRequest
+	(*SearchResponse)(nil),           // 5: cerebro.graph.v1.SearchResponse
+	(*GetEntityRequest)(nil),         // 6: cerebro.graph.v1.GetEntityRequest
+	(*GetEntityResponse)(nil),        // 7: cerebro.graph.v1.GetEntityResponse
+	(*ExpandRequest)(nil),            // 8: cerebro.graph.v1.ExpandRequest
+	(*ExpandResponse)(nil),           // 9: cerebro.graph.v1.ExpandResponse
+	(*ExpandBatchRequest)(nil),       // 10: cerebro.graph.v1.ExpandBatchRequest
+	(*ExpandBatchResponse)(nil),      // 11: cerebro.graph.v1.ExpandBatchResponse
+	(*FindPathsRequest)(nil),         // 12: cerebro.graph.v1.FindPathsRequest
+	(*FindPathsResponse)(nil),        // 13: cerebro.graph.v1.FindPathsResponse
+	(*ExplainAssertionRequest)(nil),  // 14: cerebro.graph.v1.ExplainAssertionRequest
+	(*ExplainAssertionResponse)(nil), // 15: cerebro.graph.v1.ExplainAssertionResponse
+	(*QueryNodePattern)(nil),         // 16: cerebro.graph.v1.QueryNodePattern
+	(*QueryEdgePattern)(nil),         // 17: cerebro.graph.v1.QueryEdgePattern
+	(*QueryAbsentEdgePattern)(nil),   // 18: cerebro.graph.v1.QueryAbsentEdgePattern
+	(*QueryFactsRequest)(nil),        // 19: cerebro.graph.v1.QueryFactsRequest
+	(*QueryBoundEntity)(nil),         // 20: cerebro.graph.v1.QueryBoundEntity
+	(*QueryBoundEdge)(nil),           // 21: cerebro.graph.v1.QueryBoundEdge
+	(*QueryFactMatch)(nil),           // 22: cerebro.graph.v1.QueryFactMatch
+	(*QueryFactsResponse)(nil),       // 23: cerebro.graph.v1.QueryFactsResponse
+	(*GetSourceSummaryRequest)(nil),  // 24: cerebro.graph.v1.GetSourceSummaryRequest
+	(*GetSourceSummaryResponse)(nil), // 25: cerebro.graph.v1.GetSourceSummaryResponse
+	nil,                              // 26: cerebro.graph.v1.GraphEntity.PropertiesEntry
+	nil,                              // 27: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
+	nil,                              // 28: cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
 }
 var file_cerebro_graph_v1_organizational_graph_proto_depIdxs = []int32{
-	17, // 0: cerebro.graph.v1.GraphEntity.properties:type_name -> cerebro.graph.v1.GraphEntity.PropertiesEntry
-	0,  // 1: cerebro.graph.v1.GraphPath.entities:type_name -> cerebro.graph.v1.GraphEntity
-	1,  // 2: cerebro.graph.v1.GraphPath.edges:type_name -> cerebro.graph.v1.GraphEdge
-	0,  // 3: cerebro.graph.v1.SearchResponse.entities:type_name -> cerebro.graph.v1.GraphEntity
-	0,  // 4: cerebro.graph.v1.GetEntityResponse.entity:type_name -> cerebro.graph.v1.GraphEntity
-	0,  // 5: cerebro.graph.v1.ExpandResponse.root:type_name -> cerebro.graph.v1.GraphEntity
-	0,  // 6: cerebro.graph.v1.ExpandResponse.entities:type_name -> cerebro.graph.v1.GraphEntity
-	1,  // 7: cerebro.graph.v1.ExpandResponse.edges:type_name -> cerebro.graph.v1.GraphEdge
-	18, // 8: cerebro.graph.v1.ExpandBatchResponse.neighborhoods:type_name -> cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
-	2,  // 9: cerebro.graph.v1.FindPathsResponse.paths:type_name -> cerebro.graph.v1.GraphPath
-	1,  // 10: cerebro.graph.v1.ExplainAssertionResponse.edge:type_name -> cerebro.graph.v1.GraphEdge
-	19, // 11: cerebro.graph.v1.GetSourceSummaryResponse.projection_classes:type_name -> cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
-	8,  // 12: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry.value:type_name -> cerebro.graph.v1.ExpandResponse
-	3,  // 13: cerebro.graph.v1.OrganizationalGraphService.Search:input_type -> cerebro.graph.v1.SearchRequest
-	5,  // 14: cerebro.graph.v1.OrganizationalGraphService.GetEntity:input_type -> cerebro.graph.v1.GetEntityRequest
-	7,  // 15: cerebro.graph.v1.OrganizationalGraphService.Expand:input_type -> cerebro.graph.v1.ExpandRequest
-	9,  // 16: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:input_type -> cerebro.graph.v1.ExpandBatchRequest
-	11, // 17: cerebro.graph.v1.OrganizationalGraphService.FindPaths:input_type -> cerebro.graph.v1.FindPathsRequest
-	13, // 18: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:input_type -> cerebro.graph.v1.ExplainAssertionRequest
-	15, // 19: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:input_type -> cerebro.graph.v1.GetSourceSummaryRequest
-	4,  // 20: cerebro.graph.v1.OrganizationalGraphService.Search:output_type -> cerebro.graph.v1.SearchResponse
-	6,  // 21: cerebro.graph.v1.OrganizationalGraphService.GetEntity:output_type -> cerebro.graph.v1.GetEntityResponse
-	8,  // 22: cerebro.graph.v1.OrganizationalGraphService.Expand:output_type -> cerebro.graph.v1.ExpandResponse
-	10, // 23: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:output_type -> cerebro.graph.v1.ExpandBatchResponse
-	12, // 24: cerebro.graph.v1.OrganizationalGraphService.FindPaths:output_type -> cerebro.graph.v1.FindPathsResponse
-	14, // 25: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:output_type -> cerebro.graph.v1.ExplainAssertionResponse
-	16, // 26: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:output_type -> cerebro.graph.v1.GetSourceSummaryResponse
-	20, // [20:27] is the sub-list for method output_type
-	13, // [13:20] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	26, // 0: cerebro.graph.v1.GraphEntity.properties:type_name -> cerebro.graph.v1.GraphEntity.PropertiesEntry
+	1,  // 1: cerebro.graph.v1.GraphPath.entities:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 2: cerebro.graph.v1.GraphPath.edges:type_name -> cerebro.graph.v1.GraphEdge
+	1,  // 3: cerebro.graph.v1.SearchResponse.entities:type_name -> cerebro.graph.v1.GraphEntity
+	1,  // 4: cerebro.graph.v1.GetEntityResponse.entity:type_name -> cerebro.graph.v1.GraphEntity
+	1,  // 5: cerebro.graph.v1.ExpandResponse.root:type_name -> cerebro.graph.v1.GraphEntity
+	1,  // 6: cerebro.graph.v1.ExpandResponse.entities:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 7: cerebro.graph.v1.ExpandResponse.edges:type_name -> cerebro.graph.v1.GraphEdge
+	27, // 8: cerebro.graph.v1.ExpandBatchResponse.neighborhoods:type_name -> cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry
+	3,  // 9: cerebro.graph.v1.FindPathsResponse.paths:type_name -> cerebro.graph.v1.GraphPath
+	2,  // 10: cerebro.graph.v1.ExplainAssertionResponse.edge:type_name -> cerebro.graph.v1.GraphEdge
+	0,  // 11: cerebro.graph.v1.QueryAbsentEdgePattern.direction:type_name -> cerebro.graph.v1.QueryDirection
+	16, // 12: cerebro.graph.v1.QueryFactsRequest.nodes:type_name -> cerebro.graph.v1.QueryNodePattern
+	17, // 13: cerebro.graph.v1.QueryFactsRequest.edges:type_name -> cerebro.graph.v1.QueryEdgePattern
+	18, // 14: cerebro.graph.v1.QueryFactsRequest.absent_edges:type_name -> cerebro.graph.v1.QueryAbsentEdgePattern
+	1,  // 15: cerebro.graph.v1.QueryBoundEntity.entity:type_name -> cerebro.graph.v1.GraphEntity
+	2,  // 16: cerebro.graph.v1.QueryBoundEdge.edge:type_name -> cerebro.graph.v1.GraphEdge
+	20, // 17: cerebro.graph.v1.QueryFactMatch.entities:type_name -> cerebro.graph.v1.QueryBoundEntity
+	21, // 18: cerebro.graph.v1.QueryFactMatch.edges:type_name -> cerebro.graph.v1.QueryBoundEdge
+	22, // 19: cerebro.graph.v1.QueryFactsResponse.matches:type_name -> cerebro.graph.v1.QueryFactMatch
+	28, // 20: cerebro.graph.v1.GetSourceSummaryResponse.projection_classes:type_name -> cerebro.graph.v1.GetSourceSummaryResponse.ProjectionClassesEntry
+	9,  // 21: cerebro.graph.v1.ExpandBatchResponse.NeighborhoodsEntry.value:type_name -> cerebro.graph.v1.ExpandResponse
+	4,  // 22: cerebro.graph.v1.OrganizationalGraphService.Search:input_type -> cerebro.graph.v1.SearchRequest
+	6,  // 23: cerebro.graph.v1.OrganizationalGraphService.GetEntity:input_type -> cerebro.graph.v1.GetEntityRequest
+	8,  // 24: cerebro.graph.v1.OrganizationalGraphService.Expand:input_type -> cerebro.graph.v1.ExpandRequest
+	10, // 25: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:input_type -> cerebro.graph.v1.ExpandBatchRequest
+	12, // 26: cerebro.graph.v1.OrganizationalGraphService.FindPaths:input_type -> cerebro.graph.v1.FindPathsRequest
+	14, // 27: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:input_type -> cerebro.graph.v1.ExplainAssertionRequest
+	19, // 28: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:input_type -> cerebro.graph.v1.QueryFactsRequest
+	24, // 29: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:input_type -> cerebro.graph.v1.GetSourceSummaryRequest
+	5,  // 30: cerebro.graph.v1.OrganizationalGraphService.Search:output_type -> cerebro.graph.v1.SearchResponse
+	7,  // 31: cerebro.graph.v1.OrganizationalGraphService.GetEntity:output_type -> cerebro.graph.v1.GetEntityResponse
+	9,  // 32: cerebro.graph.v1.OrganizationalGraphService.Expand:output_type -> cerebro.graph.v1.ExpandResponse
+	11, // 33: cerebro.graph.v1.OrganizationalGraphService.ExpandBatch:output_type -> cerebro.graph.v1.ExpandBatchResponse
+	13, // 34: cerebro.graph.v1.OrganizationalGraphService.FindPaths:output_type -> cerebro.graph.v1.FindPathsResponse
+	15, // 35: cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion:output_type -> cerebro.graph.v1.ExplainAssertionResponse
+	23, // 36: cerebro.graph.v1.OrganizationalGraphService.QueryFacts:output_type -> cerebro.graph.v1.QueryFactsResponse
+	25, // 37: cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary:output_type -> cerebro.graph.v1.GetSourceSummaryResponse
+	30, // [30:38] is the sub-list for method output_type
+	22, // [22:30] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_graph_v1_organizational_graph_proto_init() }
@@ -1307,13 +1920,14 @@ func file_cerebro_graph_v1_organizational_graph_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_graph_v1_organizational_graph_proto_rawDesc), len(file_cerebro_graph_v1_organizational_graph_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   20,
+			NumEnums:      1,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_cerebro_graph_v1_organizational_graph_proto_goTypes,
 		DependencyIndexes: file_cerebro_graph_v1_organizational_graph_proto_depIdxs,
+		EnumInfos:         file_cerebro_graph_v1_organizational_graph_proto_enumTypes,
 		MessageInfos:      file_cerebro_graph_v1_organizational_graph_proto_msgTypes,
 	}.Build()
 	File_cerebro_graph_v1_organizational_graph_proto = out.File

@@ -221,6 +221,9 @@ jobs:
       - name: Seed, restart, and verify the Rust-only runtime
         env:
           CEREBRO_TEST_POSTGRES_DSN: postgres://cerebro:cerebro@127.0.0.1:5432/cerebro?sslmode=disable
+          CEREBRO_TEST_NEO4J_URI: bolt://127.0.0.1:7687
+          CEREBRO_TEST_NEO4J_USERNAME: neo4j
+          CEREBRO_TEST_NEO4J_PASSWORD: local-password
           CEREBRO_TEST_NATS_URL: nats://127.0.0.1:4222
           CEREBRO_TEST_GRAPH_URL: http://127.0.0.1:18080
           CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: rust-only-candidate-e2e-secret-32-bytes
@@ -247,7 +250,7 @@ jobs:
             > .dist/rust-only-e2e/receipt.tmp
           mv .dist/rust-only-e2e/receipt.tmp .dist/rust-only-e2e/rust-only-e2e-receipt.json
           test "$(jq '[.checks[] | select(.status == "passed")] | length' \
-            .dist/rust-only-e2e/rust-only-e2e-receipt.json)" -eq 14
+            .dist/rust-only-e2e/rust-only-e2e-receipt.json)" -eq 17
       - name: Prove backend failure blocks readiness
         run: |
           set -euo pipefail

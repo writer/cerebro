@@ -391,6 +391,9 @@ jobs:
       - name: Seed committed events and prove the pre-restart graph
         env:
           CEREBRO_TEST_POSTGRES_DSN: postgres://cerebro:cerebro@127.0.0.1:5432/cerebro?sslmode=disable
+          CEREBRO_TEST_NEO4J_URI: bolt://127.0.0.1:7687
+          CEREBRO_TEST_NEO4J_USERNAME: neo4j
+          CEREBRO_TEST_NEO4J_PASSWORD: local-password
           CEREBRO_TEST_NATS_URL: nats://127.0.0.1:4222
           CEREBRO_TEST_GRAPH_URL: http://127.0.0.1:18080
           CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: rust-candidate-e2e-tenant-secret-32-bytes
@@ -405,6 +408,9 @@ jobs:
       - name: Restart the exact candidate and prove recovery
         env:
           CEREBRO_TEST_POSTGRES_DSN: postgres://cerebro:cerebro@127.0.0.1:5432/cerebro?sslmode=disable
+          CEREBRO_TEST_NEO4J_URI: bolt://127.0.0.1:7687
+          CEREBRO_TEST_NEO4J_USERNAME: neo4j
+          CEREBRO_TEST_NEO4J_PASSWORD: local-password
           CEREBRO_TEST_NATS_URL: nats://127.0.0.1:4222
           CEREBRO_TEST_GRAPH_URL: http://127.0.0.1:18080
           CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: rust-candidate-e2e-tenant-secret-32-bytes
@@ -425,7 +431,7 @@ jobs:
           test "$(jq -r .image_digest .dist/rust-e2e/rust-organizational-e2e-receipt.json)" = \
             "${CEREBRO_TEST_IMAGE_DIGEST}"
           test "$(jq '[.checks[] | select(.status == "passed")] | length' \
-            .dist/rust-e2e/rust-organizational-e2e-receipt.json)" -eq 11
+            .dist/rust-e2e/rust-organizational-e2e-receipt.json)" -eq 14
       - name: Prove process liveness and backend readiness split
         run: |
           set -euo pipefail

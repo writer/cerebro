@@ -90,6 +90,46 @@ Every assertion requires one or more observations from one tenant, source runtim
 
 Incomplete and incremental collections cannot call `retract_missing`. That method exists only on `GraphDeltaBuilder<Authoritative>`, which can be created only from `CompleteCollection`.
 
+## Compliance facts and agent queries
+
+Compliance is part of the organizational graph, not a second graph-shaped
+schema. Frameworks, programs, objectives, rules, controls, findings, evidence,
+assessment runs, results, snapshots, remediations, verifications, and work
+items use the same sealed `Entity` type, tenant identity, observation
+provenance, revision, Postgres commit, and Neo4j projection as people,
+resources, access, and ownership.
+
+The relationship enum carries the compliance joins. For example, a finding can
+be `mapped_to_control`, `affects` a resource, be `detected_by` a rule, and be
+`addressed` by a remediation. Evidence can be linked with `evidence_for`;
+assessment results can `evaluate` an objective and `cite` evidence. Rust
+rejects invalid endpoint combinations before a delta can reach either store.
+
+Agents query these facts through `QueryFacts`. A request contains node
+variables, closed entity-kind filters, typed directed edges, optional
+`NOT EXISTS` edge checks, stable entity or agent keys, and a result limit. It
+cannot contain Cypher. Rust rejects unknown kinds and relations, incompatible
+typed endpoints, disconnected positive patterns, more than eight nodes, more
+than twelve joins, more than eight absence checks, more than 100 stable keys
+per node, duplicate filters, and limits above 500.
+Neo4j receives only a statement compiled from that validated structure, with
+tenant, values, and the hard row limit passed as parameters. The result carries
+the graph revision read in the same Neo4j query as every non-empty match.
+
+The replacement proof commits a compliance snapshot through the Rust durable
+store, restarts the Rust service, and executes this query through Connect:
+
+```text
+(finding)-[:mapped_to_control]->(control)
+    |
+    +--[:affects]->(resource)
+
+NOT EXISTS (evidence)-[:evidence_for]->(finding)
+```
+
+The proof fails unless the unsupported finding is returned and the
+evidence-backed finding is excluded both before and after restart.
+
 ## Production bypass prevention
 
 Language-level constraints prevent accidental bypass inside Rust. Production authority prevents deliberate bypass across processes:

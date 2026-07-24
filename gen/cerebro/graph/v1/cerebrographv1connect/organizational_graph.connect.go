@@ -52,6 +52,9 @@ const (
 	// OrganizationalGraphServiceExplainAssertionProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's ExplainAssertion RPC.
 	OrganizationalGraphServiceExplainAssertionProcedure = "/cerebro.graph.v1.OrganizationalGraphService/ExplainAssertion"
+	// OrganizationalGraphServiceQueryFactsProcedure is the fully-qualified name of the
+	// OrganizationalGraphService's QueryFacts RPC.
+	OrganizationalGraphServiceQueryFactsProcedure = "/cerebro.graph.v1.OrganizationalGraphService/QueryFacts"
 	// OrganizationalGraphServiceGetSourceSummaryProcedure is the fully-qualified name of the
 	// OrganizationalGraphService's GetSourceSummary RPC.
 	OrganizationalGraphServiceGetSourceSummaryProcedure = "/cerebro.graph.v1.OrganizationalGraphService/GetSourceSummary"
@@ -72,6 +75,8 @@ type OrganizationalGraphServiceClient interface {
 	FindPaths(context.Context, *connect.Request[v1.FindPathsRequest]) (*connect.Response[v1.FindPathsResponse], error)
 	// ExplainAssertion returns the stored edge and source runtime for one assertion.
 	ExplainAssertion(context.Context, *connect.Request[v1.ExplainAssertionRequest]) (*connect.Response[v1.ExplainAssertionResponse], error)
+	// QueryFacts executes one bounded, schema-checked graph pattern.
+	QueryFacts(context.Context, *connect.Request[v1.QueryFactsRequest]) (*connect.Response[v1.QueryFactsResponse], error)
 	// GetSourceSummary returns the catalog coverage compiled into the running Rust service.
 	GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error)
 }
@@ -124,6 +129,12 @@ func NewOrganizationalGraphServiceClient(httpClient connect.HTTPClient, baseURL 
 			connect.WithSchema(organizationalGraphServiceMethods.ByName("ExplainAssertion")),
 			connect.WithClientOptions(opts...),
 		),
+		queryFacts: connect.NewClient[v1.QueryFactsRequest, v1.QueryFactsResponse](
+			httpClient,
+			baseURL+OrganizationalGraphServiceQueryFactsProcedure,
+			connect.WithSchema(organizationalGraphServiceMethods.ByName("QueryFacts")),
+			connect.WithClientOptions(opts...),
+		),
 		getSourceSummary: connect.NewClient[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse](
 			httpClient,
 			baseURL+OrganizationalGraphServiceGetSourceSummaryProcedure,
@@ -141,6 +152,7 @@ type organizationalGraphServiceClient struct {
 	expandBatch      *connect.Client[v1.ExpandBatchRequest, v1.ExpandBatchResponse]
 	findPaths        *connect.Client[v1.FindPathsRequest, v1.FindPathsResponse]
 	explainAssertion *connect.Client[v1.ExplainAssertionRequest, v1.ExplainAssertionResponse]
+	queryFacts       *connect.Client[v1.QueryFactsRequest, v1.QueryFactsResponse]
 	getSourceSummary *connect.Client[v1.GetSourceSummaryRequest, v1.GetSourceSummaryResponse]
 }
 
@@ -174,6 +186,11 @@ func (c *organizationalGraphServiceClient) ExplainAssertion(ctx context.Context,
 	return c.explainAssertion.CallUnary(ctx, req)
 }
 
+// QueryFacts calls cerebro.graph.v1.OrganizationalGraphService.QueryFacts.
+func (c *organizationalGraphServiceClient) QueryFacts(ctx context.Context, req *connect.Request[v1.QueryFactsRequest]) (*connect.Response[v1.QueryFactsResponse], error) {
+	return c.queryFacts.CallUnary(ctx, req)
+}
+
 // GetSourceSummary calls cerebro.graph.v1.OrganizationalGraphService.GetSourceSummary.
 func (c *organizationalGraphServiceClient) GetSourceSummary(ctx context.Context, req *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error) {
 	return c.getSourceSummary.CallUnary(ctx, req)
@@ -194,6 +211,8 @@ type OrganizationalGraphServiceHandler interface {
 	FindPaths(context.Context, *connect.Request[v1.FindPathsRequest]) (*connect.Response[v1.FindPathsResponse], error)
 	// ExplainAssertion returns the stored edge and source runtime for one assertion.
 	ExplainAssertion(context.Context, *connect.Request[v1.ExplainAssertionRequest]) (*connect.Response[v1.ExplainAssertionResponse], error)
+	// QueryFacts executes one bounded, schema-checked graph pattern.
+	QueryFacts(context.Context, *connect.Request[v1.QueryFactsRequest]) (*connect.Response[v1.QueryFactsResponse], error)
 	// GetSourceSummary returns the catalog coverage compiled into the running Rust service.
 	GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error)
 }
@@ -241,6 +260,12 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 		connect.WithSchema(organizationalGraphServiceMethods.ByName("ExplainAssertion")),
 		connect.WithHandlerOptions(opts...),
 	)
+	organizationalGraphServiceQueryFactsHandler := connect.NewUnaryHandler(
+		OrganizationalGraphServiceQueryFactsProcedure,
+		svc.QueryFacts,
+		connect.WithSchema(organizationalGraphServiceMethods.ByName("QueryFacts")),
+		connect.WithHandlerOptions(opts...),
+	)
 	organizationalGraphServiceGetSourceSummaryHandler := connect.NewUnaryHandler(
 		OrganizationalGraphServiceGetSourceSummaryProcedure,
 		svc.GetSourceSummary,
@@ -261,6 +286,8 @@ func NewOrganizationalGraphServiceHandler(svc OrganizationalGraphServiceHandler,
 			organizationalGraphServiceFindPathsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceExplainAssertionProcedure:
 			organizationalGraphServiceExplainAssertionHandler.ServeHTTP(w, r)
+		case OrganizationalGraphServiceQueryFactsProcedure:
+			organizationalGraphServiceQueryFactsHandler.ServeHTTP(w, r)
 		case OrganizationalGraphServiceGetSourceSummaryProcedure:
 			organizationalGraphServiceGetSourceSummaryHandler.ServeHTTP(w, r)
 		default:
@@ -294,6 +321,10 @@ func (UnimplementedOrganizationalGraphServiceHandler) FindPaths(context.Context,
 
 func (UnimplementedOrganizationalGraphServiceHandler) ExplainAssertion(context.Context, *connect.Request[v1.ExplainAssertionRequest]) (*connect.Response[v1.ExplainAssertionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.ExplainAssertion is not implemented"))
+}
+
+func (UnimplementedOrganizationalGraphServiceHandler) QueryFacts(context.Context, *connect.Request[v1.QueryFactsRequest]) (*connect.Response[v1.QueryFactsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.graph.v1.OrganizationalGraphService.QueryFacts is not implemented"))
 }
 
 func (UnimplementedOrganizationalGraphServiceHandler) GetSourceSummary(context.Context, *connect.Request[v1.GetSourceSummaryRequest]) (*connect.Response[v1.GetSourceSummaryResponse], error) {

@@ -52,6 +52,14 @@ pub type OwnedExplainAssertionResponseView = ::buffa::view::OwnedView<
         'static,
     >,
 >;
+///Shorthand for `OwnedView<QueryFactsRequestView<'static>>`.
+pub type OwnedQueryFactsRequestView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::QueryFactsRequestView<'static>,
+>;
+///Shorthand for `OwnedView<QueryFactsResponseView<'static>>`.
+pub type OwnedQueryFactsResponseView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::QueryFactsResponseView<'static>,
+>;
 ///Shorthand for `OwnedView<GetSourceSummaryRequestView<'static>>`.
 pub type OwnedGetSourceSummaryRequestView = ::buffa::view::OwnedView<
     crate::rpc::proto::cerebro::graph::v1::__buffa::view::GetSourceSummaryRequestView<
@@ -278,6 +286,40 @@ for ::buffa::view::OwnedView<
         )
     }
 }
+impl ::connectrpc::Encodable<crate::rpc::proto::cerebro::graph::v1::QueryFactsResponse>
+for crate::rpc::proto::cerebro::graph::v1::__buffa::view::QueryFactsResponseView<'_> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<crate::rpc::proto::cerebro::graph::v1::QueryFactsResponse>
+for ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::graph::v1::__buffa::view::QueryFactsResponseView<'static>,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
 impl ::connectrpc::Encodable<
     crate::rpc::proto::cerebro::graph::v1::GetSourceSummaryResponse,
 >
@@ -373,6 +415,15 @@ pub const ORGANIZATIONAL_GRAPH_SERVICE_FIND_PATHS_SPEC: ::connectrpc::Spec = ::c
 /// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
 pub const ORGANIZATIONAL_GRAPH_SERVICE_EXPLAIN_ASSERTION_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
         "/cerebro.graph.v1.OrganizationalGraphService/ExplainAssertion",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the server-side `QueryFacts` RPC.
+///
+/// The dispatcher surfaces this on
+/// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
+pub const ORGANIZATIONAL_GRAPH_SERVICE_QUERY_FACTS_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/cerebro.graph.v1.OrganizationalGraphService/QueryFacts",
         ::connectrpc::StreamType::Unary,
     )
     .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
@@ -571,6 +622,29 @@ pub trait OrganizationalGraphService: Send + Sync + 'static {
         Output = ::connectrpc::ServiceResult<
             impl ::connectrpc::Encodable<
                 crate::rpc::proto::cerebro::graph::v1::ExplainAssertionResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
+    /// QueryFacts executes one bounded, schema-checked graph pattern.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn query_facts<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::rpc::proto::cerebro::graph::v1::QueryFactsRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::rpc::proto::cerebro::graph::v1::QueryFactsResponse,
             > + Send + use<'a, Self>,
         >,
     > + Send;
@@ -805,6 +879,35 @@ impl<S: OrganizationalGraphService> OrganizationalGraphServiceExt for S {
             .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_EXPLAIN_ASSERTION_SPEC)
             .route_view(
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "QueryFacts",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::rpc::proto::cerebro::graph::v1::__buffa::view::QueryFactsRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::rpc::proto::cerebro::graph::v1::QueryFactsRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.query_facts(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::rpc::proto::cerebro::graph::v1::QueryFactsResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_QUERY_FACTS_SPEC)
+            .route_view(
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "GetSourceSummary",
                 {
                     let svc = ::std::sync::Arc::clone(&self);
@@ -923,6 +1026,12 @@ for OrganizationalGraphServiceServer<T> {
                 Some(
                     ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
                         .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_EXPLAIN_ASSERTION_SPEC),
+                )
+            }
+            "QueryFacts" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(ORGANIZATIONAL_GRAPH_SERVICE_QUERY_FACTS_SPEC),
                 )
             }
             "GetSourceSummary" => {
@@ -1076,6 +1185,28 @@ for OrganizationalGraphServiceServer<T> {
                         .await?
                         .encode::<
                             crate::rpc::proto::cerebro::graph::v1::ExplainAssertionResponse,
+                        >(format)
+                })
+            }
+            "QueryFacts" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::rpc::proto::cerebro::graph::v1::QueryFactsRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::rpc::proto::cerebro::graph::v1::__buffa::view::QueryFactsRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::rpc::proto::cerebro::graph::v1::QueryFactsRequest,
+                    >::from_parts(&req, &body);
+                    svc.query_facts(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::rpc::proto::cerebro::graph::v1::QueryFactsResponse,
                         >(format)
                 })
             }
@@ -1491,6 +1622,51 @@ where
                 &self.config,
                 ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
                 "ExplainAssertion",
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the QueryFacts RPC. Sends a request to /cerebro.graph.v1.OrganizationalGraphService/QueryFacts.
+    pub async fn query_facts(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::QueryFactsRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::QueryFactsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.query_facts_with_options(
+                request,
+                ::connectrpc::client::CallOptions::default(),
+            )
+            .await
+    }
+    /// Call the QueryFacts RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn query_facts_with_options(
+        &self,
+        request: crate::rpc::proto::cerebro::graph::v1::QueryFactsRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::graph::v1::__buffa::view::QueryFactsResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                ORGANIZATIONAL_GRAPH_SERVICE_SERVICE_NAME,
+                "QueryFacts",
                 request,
                 options,
             )
