@@ -328,6 +328,8 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
 
 #[async_trait]
 pub trait AgentGraph: Send + Sync {
+    async fn health(&self) -> Result<(), ContextError>;
+
     async fn search(
         &self,
         tenant_id: &TenantId,
@@ -414,6 +416,10 @@ impl MemoryAgentGraph {
 
 #[async_trait]
 impl AgentGraph for MemoryAgentGraph {
+    async fn health(&self) -> Result<(), ContextError> {
+        Ok(())
+    }
+
     async fn search(
         &self,
         tenant_id: &TenantId,

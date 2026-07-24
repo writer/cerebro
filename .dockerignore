@@ -18,4 +18,3 @@ TODO.md
 .env.*
 *.md
 **/*_test.go
-**/testdata

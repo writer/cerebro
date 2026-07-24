@@ -555,6 +555,7 @@ fn router_with_backend(
         ));
     Router::new()
         .route("/healthz", get(health))
+        .route("/readyz", get(readiness))
         .route("/v1/sources/summary", get(source_summary))
         .merge(protected)
         .with_state(AppState {
@@ -695,6 +696,13 @@ async fn health() -> Json<HealthResponse> {
         status: "ok",
         runtime: "rust-organizational-platform",
     })
+}
+
+async fn readiness(
+    State(state): State<AppState>,
+) -> Result<Json<HealthResponse>, (StatusCode, Json<ErrorResponse>)> {
+    state.graph.health().await.map_err(context_error)?;
+    Ok(health().await)
 }
 
 async fn source_summary(
@@ -1033,15 +1041,85 @@ fn demo_graph() -> Result<(OrganizationalGraph, TenantId, EntityId), Box<dyn Err
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use async_trait::async_trait;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
     };
+    use cerebro_agent_context::ContextEdge;
     use tower::ServiceExt;
 
     use super::*;
 
     const TEST_SHARED_SECRET: &str = "test-organizational-graph-secret-32-bytes";
+
+    struct UnavailableGraph;
+
+    fn unavailable() -> ContextError {
+        ContextError::BackendUnavailable("test backend is unavailable".to_owned())
+    }
+
+    #[async_trait]
+    impl AgentGraph for UnavailableGraph {
+        async fn health(&self) -> Result<(), ContextError> {
+            Err(unavailable())
+        }
+
+        async fn search(
+            &self,
+            _tenant_id: &TenantId,
+            _query: &str,
+            _kinds: &[String],
+            _limit: usize,
+        ) -> Result<Vec<ContextEntity>, ContextError> {
+            Err(unavailable())
+        }
+
+        async fn get(
+            &self,
+            _tenant_id: &TenantId,
+            _entity_id: &EntityId,
+        ) -> Result<ContextEntity, ContextError> {
+            Err(unavailable())
+        }
+
+        async fn resolve(
+            &self,
+            _tenant_id: &TenantId,
+            _key: &str,
+        ) -> Result<ContextEntity, ContextError> {
+            Err(unavailable())
+        }
+
+        async fn expand(
+            &self,
+            _tenant_id: &TenantId,
+            _root_id: &EntityId,
+            _depth: usize,
+            _limit: usize,
+        ) -> Result<Neighborhood, ContextError> {
+            Err(unavailable())
+        }
+
+        async fn find_paths(
+            &self,
+            _tenant_id: &TenantId,
+            _from: &EntityId,
+            _to: &EntityId,
+            _max_depth: usize,
+            _limit: usize,
+        ) -> Result<Vec<GraphPath>, ContextError> {
+            Err(unavailable())
+        }
+
+        async fn explain(
+            &self,
+            _tenant_id: &TenantId,
+            _assertion_id: &AssertionId,
+        ) -> Result<ContextEdge, ContextError> {
+            Err(unavailable())
+        }
+    }
 
     fn authenticated(
         mut request: axum::http::request::Builder,
@@ -1078,6 +1156,18 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(health.status(), StatusCode::OK);
+
+        let readiness = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/readyz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(readiness.status(), StatusCode::OK);
 
         let request = serde_json::json!({
             "tenant_id": "tenant-demo",
@@ -1117,6 +1207,38 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn readiness_fails_without_breaking_process_liveness() {
+        let app = router_with_backend(
+            Arc::new(UnavailableGraph),
+            None,
+            None,
+            TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
+        );
+        let liveness = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/healthz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(liveness.status(), StatusCode::OK);
+
+        let readiness = app
+            .oneshot(
+                Request::builder()
+                    .uri("/readyz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(readiness.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]

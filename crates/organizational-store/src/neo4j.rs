@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
 use cerebro_agent_context::{
     AgentGraph, ContextEdge, ContextEntity, ContextError, GraphPath, Neighborhood, validate_bounds,
@@ -65,6 +67,8 @@ MERGE (revision:OrganizationalGraphRevision {tenant_id: $tenant_id})
 SET revision.graph_revision = $graph_revision,
     revision.delta_digest = $delta_digest
 "#;
+
+const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
 
 const ONE_HOP_BATCH_QUERY: &str = r#"
 UNWIND $root_keys AS root_key
@@ -226,6 +230,17 @@ impl Neo4jProjector {
 
 #[async_trait]
 impl AgentGraph for Neo4jProjector {
+    async fn health(&self) -> Result<(), ContextError> {
+        tokio::time::timeout(HEALTH_TIMEOUT, self.graph.run(query("RETURN 1")))
+            .await
+            .map_err(|_| {
+                ContextError::BackendUnavailable(
+                    "Neo4j readiness query exceeded 2 seconds".to_owned(),
+                )
+            })?
+            .map_err(context_backend)
+    }
+
     async fn search(
         &self,
         tenant_id: &TenantId,
