@@ -28,6 +28,7 @@ var ensureFindingEvaluationRunStatements = []string{
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
 	`CREATE INDEX IF NOT EXISTS finding_evaluation_runs_runtime_idx ON finding_evaluation_runs (runtime_id, started_at DESC)`,
+	`CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evaluation_runs_runtime_latest_idx ON finding_evaluation_runs (runtime_id, started_at DESC, id DESC)`,
 	`CREATE INDEX IF NOT EXISTS finding_evaluation_runs_rule_idx ON finding_evaluation_runs (rule_id, started_at DESC)`,
 	`CREATE INDEX IF NOT EXISTS finding_evaluation_runs_status_idx ON finding_evaluation_runs (status, started_at DESC)`,
 }
@@ -169,6 +170,9 @@ func findingEvaluationRunListQuery(request ports.ListFindingEvaluationRunsReques
 	if len(runtimeIDs) == 0 {
 		return "", nil, errors.New("finding evaluation runtime id is required")
 	}
+	if request.LatestByRuntime {
+		return findingEvaluationLatestByRuntimeQuery(request, runtimeIDs)
+	}
 	clauses := []string{}
 	args := []any{}
 	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
@@ -178,16 +182,43 @@ func findingEvaluationRunListQuery(request ports.ListFindingEvaluationRunsReques
 		args = append(args, request.FinishedAtOrBefore.UTC())
 		clauses = append(clauses, fmt.Sprintf("finished_at <= $%d", len(args)))
 	}
-	selectClause := "SELECT finding_evaluation_run_json::text"
-	orderClause := "ORDER BY finished_at DESC NULLS LAST, started_at DESC, id"
-	if request.LatestByRuntime {
-		selectClause = "SELECT DISTINCT ON (runtime_id) finding_evaluation_run_json::text"
-		orderClause = "ORDER BY runtime_id, started_at DESC, id DESC"
-	}
-	query := "\n" + selectClause + `
+	query := `
+SELECT finding_evaluation_run_json::text
 FROM finding_evaluation_runs
 WHERE ` + strings.Join(clauses, " AND ") + `
-` + orderClause
+ORDER BY finished_at DESC NULLS LAST, started_at DESC, id`
+	if request.Limit != 0 {
+		args = append(args, int64(request.Limit))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	return query, args, nil
+}
+
+func findingEvaluationLatestByRuntimeQuery(request ports.ListFindingEvaluationRunsRequest, runtimeIDs []string) (string, []any, error) {
+	args := make([]any, 0, len(runtimeIDs)+4)
+	requestedRows := make([]string, 0, len(runtimeIDs))
+	for ordinal, runtimeID := range runtimeIDs {
+		args = append(args, runtimeID)
+		requestedRows = append(requestedRows, fmt.Sprintf("($%d::text, %d)", len(args), ordinal))
+	}
+	clauses := []string{"run.runtime_id = requested.runtime_id"}
+	addFindingEvaluationRunFilter(&clauses, &args, "run.rule_id", request.RuleID)
+	addFindingEvaluationRunFilter(&clauses, &args, "run.status", request.Status)
+	if !request.FinishedAtOrBefore.IsZero() {
+		args = append(args, request.FinishedAtOrBefore.UTC())
+		clauses = append(clauses, fmt.Sprintf("run.finished_at <= $%d", len(args)))
+	}
+	query := `
+SELECT latest.finding_evaluation_run_json::text
+FROM (VALUES ` + strings.Join(requestedRows, ", ") + `) AS requested(runtime_id, ordinal)
+CROSS JOIN LATERAL (
+	SELECT run.finding_evaluation_run_json
+	FROM finding_evaluation_runs AS run
+	WHERE ` + strings.Join(clauses, " AND ") + `
+	ORDER BY run.started_at DESC, run.id DESC
+	LIMIT 1
+) AS latest
+ORDER BY requested.ordinal`
 	if request.Limit != 0 {
 		args = append(args, int64(request.Limit))
 		query += fmt.Sprintf(" LIMIT $%d", len(args))

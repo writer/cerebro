@@ -61,6 +61,7 @@ var ensureFindingEvidenceStatements = []string{
 	`CREATE INDEX IF NOT EXISTS finding_evidence_attributes_gin_idx ON finding_evidence USING GIN (attributes_json)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_last_observed_idx ON finding_evidence (runtime_id, last_observed_at DESC)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_runtime_observed_id_idx ON finding_evidence (runtime_id, last_observed_at DESC, created_at DESC, id)`,
+	`CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_created_id_idx ON finding_evidence (runtime_id, created_at DESC, id)`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_finding_observed_idx ON finding_evidence (runtime_id, finding_id, last_observed_at DESC, created_at DESC, id)`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_finding_created_idx ON finding_evidence (runtime_id, finding_id, created_at DESC, id)`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_rule_observed_idx ON finding_evidence (runtime_id, rule_id, last_observed_at DESC, created_at DESC, id)`,
@@ -393,6 +394,9 @@ func (s *Store) ensureFindingEvidenceTables(ctx context.Context) error {
 }
 
 func findingEvidenceListQuery(request ports.ListFindingEvidenceRequest) (string, []any, error) {
+	if findingEvidenceUsesRuntimeTopN(request) {
+		return findingEvidenceRuntimeTopNQuery(request, false)
+	}
 	clauses, args, err := findingEvidenceFilterClauses(request)
 	if err != nil {
 		return "", nil, err
@@ -408,6 +412,9 @@ ORDER BY ` + findingEvidenceListOrder(request)
 }
 
 func findingEvidenceHeaderListQuery(request ports.ListFindingEvidenceRequest) (string, []any, error) {
+	if findingEvidenceUsesRuntimeTopN(request) {
+		return findingEvidenceRuntimeTopNQuery(request, true)
+	}
 	clauses, args, err := findingEvidenceFilterClauses(request)
 	if err != nil {
 		return "", nil, err
@@ -419,6 +426,56 @@ WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY ` + findingEvidenceListOrder(request)
 	args = append(args, int64(findingEvidenceListLimit(request.Limit)))
 	query += fmt.Sprintf(" LIMIT $%d", len(args))
+	return query, args, nil
+}
+
+func findingEvidenceUsesRuntimeTopN(request ports.ListFindingEvidenceRequest) bool {
+	runtimeIDs := normalizedNonEmptyStrings(append(append([]string(nil), request.RuntimeIDs...), request.RuntimeID))
+	if len(runtimeIDs) < 2 {
+		return false
+	}
+	return len(normalizedNonEmptyStrings(append(append([]string(nil), request.FindingIDs...), request.FindingID))) == 0 &&
+		strings.TrimSpace(request.RunID) == "" &&
+		strings.TrimSpace(request.RuleID) == "" &&
+		strings.TrimSpace(request.ClaimID) == "" &&
+		strings.TrimSpace(request.EventID) == "" &&
+		strings.TrimSpace(request.GraphRootURN) == "" &&
+		strings.TrimSpace(request.GraphPathURN) == ""
+}
+
+func findingEvidenceRuntimeTopNQuery(request ports.ListFindingEvidenceRequest, headerOnly bool) (string, []any, error) {
+	runtimeIDs := normalizedNonEmptyStrings(append(append([]string(nil), request.RuntimeIDs...), request.RuntimeID))
+	if len(runtimeIDs) == 0 {
+		return "", nil, errors.New("finding evidence runtime id is required")
+	}
+	args := make([]any, 0, len(runtimeIDs)+1)
+	requestedRows := make([]string, 0, len(runtimeIDs))
+	for _, runtimeID := range runtimeIDs {
+		args = append(args, runtimeID)
+		requestedRows = append(requestedRows, fmt.Sprintf("($%d::text)", len(args)))
+	}
+	args = append(args, int64(findingEvidenceListLimit(request.Limit)))
+	limitPlaceholder := fmt.Sprintf("$%d", len(args))
+	candidateOrder := findingEvidenceListOrderWithAlias(request, "evidence")
+	resultOrder := findingEvidenceListOrderWithAlias(request, "candidate")
+	candidateProjection := "evidence.finding_evidence_json, evidence.last_observed_at, evidence.created_at, evidence.id"
+	resultProjection := "candidate.finding_evidence_json::text"
+	if headerOnly {
+		candidateProjection = "evidence.id, evidence.runtime_id, evidence.rule_id, evidence.finding_id, evidence.run_id, evidence.claim_ids_json, evidence.event_ids_json, evidence.graph_root_urns_json, evidence.last_observed_at, evidence.created_at"
+		resultProjection = "candidate.id, candidate.runtime_id, candidate.rule_id, candidate.finding_id, candidate.run_id, candidate.claim_ids_json::text, candidate.event_ids_json::text, candidate.graph_root_urns_json::text, candidate.created_at"
+	}
+	query := `
+SELECT ` + resultProjection + `
+FROM (VALUES ` + strings.Join(requestedRows, ", ") + `) AS requested(runtime_id)
+CROSS JOIN LATERAL (
+	SELECT ` + candidateProjection + `
+	FROM finding_evidence AS evidence
+	WHERE evidence.runtime_id = requested.runtime_id
+	ORDER BY ` + candidateOrder + `
+	LIMIT ` + limitPlaceholder + `
+) AS candidate
+ORDER BY ` + resultOrder + `
+LIMIT ` + limitPlaceholder
 	return query, args, nil
 }
 
@@ -527,10 +584,20 @@ func findingStringSliceFromJSON(payload string) ([]string, error) {
 }
 
 func findingEvidenceListOrder(request ports.ListFindingEvidenceRequest) string {
-	if request.CreatedOrder {
-		return "created_at DESC, id"
+	return findingEvidenceListOrderWithAlias(request, "")
+}
+
+func findingEvidenceListOrderWithAlias(request ports.ListFindingEvidenceRequest, alias string) string {
+	column := func(name string) string {
+		if alias == "" {
+			return name
+		}
+		return alias + "." + name
 	}
-	return "last_observed_at DESC, created_at DESC, id"
+	if request.CreatedOrder {
+		return column("created_at") + " DESC, " + column("id")
+	}
+	return column("last_observed_at") + " DESC, " + column("created_at") + " DESC, " + column("id")
 }
 
 func addFindingEvidenceRunFilter(clauses *[]string, args *[]any, runID string) {
