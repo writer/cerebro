@@ -245,6 +245,32 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 	if !strings.Contains(receipt, "    permissions:\n      actions: read\n      contents: read\n") {
 		t.Fatal("candidate receipt job must allow artifact discovery with actions: read")
 	}
+	imageStart := strings.Index(candidate, "\n  image:\n")
+	manifestStart := strings.Index(candidate, "\n  manifest:\n")
+	if imageStart < 0 || manifestStart <= imageStart {
+		t.Fatal("candidate workflow must define image and manifest jobs")
+	}
+	imageJob := candidate[imageStart:manifestStart]
+	for _, required := range []string{
+		"runs-on: ${{ matrix.runner }}",
+		"needs: resolve",
+		"runner: ubuntu-24.04",
+		"runner: ubuntu-24.04-arm",
+		"name: Build runtime binary",
+	} {
+		if !strings.Contains(imageJob, required) {
+			t.Fatalf("candidate image job must contain %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"needs: [resolve, binaries]",
+		"actions/download-artifact",
+		"docker/setup-qemu-action",
+	} {
+		if strings.Contains(imageJob, forbidden) {
+			t.Fatalf("candidate image job must not contain serialized or emulated build step %q", forbidden)
+		}
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatalf("read Makefile: %v", err)
