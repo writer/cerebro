@@ -1,0 +1,135 @@
+syntax = "proto3";
+
+package cerebro.graph.v1;
+
+option go_package = "github.com/writer/cerebro/gen/cerebro/graph/v1;cerebrographv1";
+
+// OrganizationalGraphService exposes bounded, tenant-scoped graph reads to agents and product clients.
+service OrganizationalGraphService {
+  // Search returns entities matching a label or stable identifier.
+  rpc Search(SearchRequest) returns (SearchResponse);
+  // GetEntity returns one entity by its sealed identifier.
+  rpc GetEntity(GetEntityRequest) returns (GetEntityResponse);
+  // Expand returns the bounded neighborhood around one entity or stable agent key.
+  rpc Expand(ExpandRequest) returns (ExpandResponse);
+  // FindPaths returns bounded directed paths between two entities.
+  rpc FindPaths(FindPathsRequest) returns (FindPathsResponse);
+  // ExplainAssertion returns the stored edge and source runtime for one assertion.
+  rpc ExplainAssertion(ExplainAssertionRequest) returns (ExplainAssertionResponse);
+  // GetSourceSummary returns the catalog coverage compiled into the running Rust service.
+  rpc GetSourceSummary(GetSourceSummaryRequest) returns (GetSourceSummaryResponse);
+}
+
+// GraphEntity is the stable agent-facing view of one organizational entity.
+message GraphEntity {
+  string entity_id = 1;
+  string agent_key = 2;
+  string entity_kind = 3;
+  string label = 4;
+  string authority = 5;
+  string source_runtime_id = 6;
+  string provider_kind = 7;
+  string provider_id = 8;
+  map<string, string> properties = 9;
+}
+
+// GraphEdge is one typed, source-backed assertion between two entities.
+message GraphEdge {
+  string assertion_id = 1;
+  string from_entity_id = 2;
+  string relation = 3;
+  string to_entity_id = 4;
+  string source_runtime_id = 5;
+  bool identity_binding = 6;
+}
+
+// GraphPath is an ordered directed path.
+message GraphPath {
+  repeated GraphEntity entities = 1;
+  repeated GraphEdge edges = 2;
+}
+
+// SearchRequest binds a bounded search to one authenticated tenant.
+message SearchRequest {
+  string tenant_id = 1;
+  string query = 2;
+  repeated string kinds = 3;
+  uint32 limit = 4;
+}
+
+// SearchResponse returns stable entities at one graph revision.
+message SearchResponse {
+  uint64 graph_revision = 1;
+  repeated GraphEntity entities = 2;
+}
+
+// GetEntityRequest identifies one tenant-scoped entity.
+message GetEntityRequest {
+  string tenant_id = 1;
+  string entity_id = 2;
+}
+
+// GetEntityResponse returns one stable entity at one graph revision.
+message GetEntityResponse {
+  uint64 graph_revision = 1;
+  GraphEntity entity = 2;
+}
+
+// ExpandRequest identifies one graph root and hard traversal bounds.
+message ExpandRequest {
+  string tenant_id = 1;
+  string root_key = 2;
+  uint32 depth = 3;
+  uint32 limit = 4;
+}
+
+// ExpandResponse returns only the entities needed to interpret its bounded edge set.
+message ExpandResponse {
+  string tenant_id = 1;
+  uint64 graph_revision = 2;
+  GraphEntity root = 3;
+  repeated GraphEntity entities = 4;
+  repeated GraphEdge edges = 5;
+  bool truncated = 6;
+}
+
+// FindPathsRequest identifies two endpoints and hard traversal bounds.
+message FindPathsRequest {
+  string tenant_id = 1;
+  string from_entity_id = 2;
+  string to_entity_id = 3;
+  uint32 max_depth = 4;
+  uint32 limit = 5;
+}
+
+// FindPathsResponse returns bounded directed paths at one graph revision.
+message FindPathsResponse {
+  uint64 graph_revision = 1;
+  repeated GraphPath paths = 2;
+}
+
+// ExplainAssertionRequest identifies one source-backed graph assertion.
+message ExplainAssertionRequest {
+  string tenant_id = 1;
+  string assertion_id = 2;
+}
+
+// ExplainAssertionResponse returns the assertion edge.
+message ExplainAssertionResponse {
+  GraphEdge edge = 1;
+}
+
+// GetSourceSummaryRequest binds the catalog read to one authenticated tenant.
+message GetSourceSummaryRequest {
+  string tenant_id = 1;
+}
+
+// GetSourceSummaryResponse reports the source and family coverage in this exact runtime.
+message GetSourceSummaryResponse {
+  uint64 sources = 1;
+  uint64 families = 2;
+  uint64 authoritative_sources = 3;
+  uint64 authoritative_families = 4;
+  uint64 shadow_only_sources = 5;
+  map<string, uint64> projection_classes = 6;
+}

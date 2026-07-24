@@ -425,7 +425,7 @@ jobs:
           test "$(jq -r .image_digest .dist/rust-e2e/rust-organizational-e2e-receipt.json)" = \
             "${CEREBRO_TEST_IMAGE_DIGEST}"
           test "$(jq '[.checks[] | select(.status == "passed")] | length' \
-            .dist/rust-e2e/rust-organizational-e2e-receipt.json)" -eq 10
+            .dist/rust-e2e/rust-organizational-e2e-receipt.json)" -eq 11
       - name: Prove process liveness and backend readiness split
         run: |
           set -euo pipefail

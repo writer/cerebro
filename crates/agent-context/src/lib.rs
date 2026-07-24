@@ -330,6 +330,9 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
 pub trait AgentGraph: Send + Sync {
     async fn health(&self) -> Result<(), ContextError>;
 
+    /// Returns the durable tenant graph revision observed by the backend.
+    async fn revision(&self, tenant_id: &TenantId) -> Result<u64, ContextError>;
+
     async fn search(
         &self,
         tenant_id: &TenantId,
@@ -418,6 +421,10 @@ impl MemoryAgentGraph {
 impl AgentGraph for MemoryAgentGraph {
     async fn health(&self) -> Result<(), ContextError> {
         Ok(())
+    }
+
+    async fn revision(&self, tenant_id: &TenantId) -> Result<u64, ContextError> {
+        Ok(self.graph.read().await.graph_revision(tenant_id))
     }
 
     async fn search(

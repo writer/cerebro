@@ -247,7 +247,7 @@ jobs:
             > .dist/rust-only-e2e/receipt.tmp
           mv .dist/rust-only-e2e/receipt.tmp .dist/rust-only-e2e/rust-only-e2e-receipt.json
           test "$(jq '[.checks[] | select(.status == "passed")] | length' \
-            .dist/rust-only-e2e/rust-only-e2e-receipt.json)" -eq 13
+            .dist/rust-only-e2e/rust-only-e2e-receipt.json)" -eq 14
       - name: Prove backend failure blocks readiness
         run: |
           set -euo pipefail

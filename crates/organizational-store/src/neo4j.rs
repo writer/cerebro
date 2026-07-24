@@ -241,6 +241,10 @@ impl AgentGraph for Neo4jProjector {
             .map_err(context_backend)
     }
 
+    async fn revision(&self, tenant_id: &TenantId) -> Result<u64, ContextError> {
+        Neo4jProjector::revision(self, tenant_id).await
+    }
+
     async fn search(
         &self,
         tenant_id: &TenantId,

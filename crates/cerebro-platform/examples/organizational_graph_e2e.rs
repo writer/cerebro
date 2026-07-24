@@ -289,6 +289,22 @@ async fn verify(config: &Config) -> Result<(), Box<dyn Error>> {
         )
         .into());
     }
+    let agent_rpc = connect_search(config, "Post Restart").await?;
+    if agent_rpc["graphRevision"]
+        .as_str()
+        .and_then(|revision| revision.parse::<u64>().ok())
+        != Some(after_restart_revision)
+        || agent_rpc["entities"].as_array().is_none_or(|entities| {
+            !entities
+                .iter()
+                .any(|entity| entity["entityId"] == post_restart_id.as_str())
+        })
+    {
+        return Err(format!(
+            "agent RPC did not return revision {after_restart_revision} and entity {post_restart_id}: {agent_rpc}"
+        )
+        .into());
+    }
 
     let replay = initial_events()?.remove(0);
     publish(&jetstream, replay).await?;
@@ -343,6 +359,10 @@ async fn verify(config: &Config) -> Result<(), Box<dyn Error>> {
             passed(
                 "agent_graph_api",
                 "tenant-signed entity and path APIs returned persisted graph data",
+            ),
+            passed(
+                "agent_rpc_contract",
+                "tenant-signed Connect JSON returned the post-restart entity at the durable revision",
             ),
             passed(
                 "multi_hop_path",
@@ -731,6 +751,27 @@ async fn graph_paths(
         .await?;
     if response.status() != StatusCode::OK {
         return Err(format!("path query returned {}", response.status()).into());
+    }
+    Ok(response.json().await?)
+}
+
+async fn connect_search(config: &Config, query: &str) -> Result<Value, Box<dyn Error>> {
+    let response = authenticated(config, TENANT)
+        .post(format!(
+            "{}/cerebro.graph.v1.OrganizationalGraphService/Search",
+            config.base_url
+        ))
+        .header("content-type", "application/json")
+        .header("connect-protocol-version", "1")
+        .json(&json!({
+            "tenantId": TENANT,
+            "query": query,
+            "limit": 10
+        }))
+        .send()
+        .await?;
+    if response.status() != StatusCode::OK {
+        return Err(format!("agent RPC search returned {}", response.status()).into());
     }
     Ok(response.json().await?)
 }

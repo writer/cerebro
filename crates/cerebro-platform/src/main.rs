@@ -3,6 +3,7 @@
 mod append_log_consumer;
 mod cutover_command;
 mod parity_command;
+mod rpc;
 
 use std::{collections::BTreeMap, env, error::Error, path::PathBuf, sync::Arc};
 
@@ -540,6 +541,7 @@ fn router_with_backend(
     projection: Option<Arc<ProjectionRuntime>>,
     tenant_auth: TenantRequestAuth,
 ) -> Router {
+    let connect = rpc::router(graph.clone(), catalog_summary.clone(), tenant_auth.clone());
     let protected = Router::new()
         .route("/v1/entities/{entity_id}", get(get_entity))
         .route("/v1/assertions/{assertion_id}", get(explain_assertion))
@@ -558,6 +560,7 @@ fn router_with_backend(
         .route("/readyz", get(readiness))
         .route("/v1/sources/summary", get(source_summary))
         .merge(protected)
+        .fallback_service(connect.into_axum_service())
         .with_state(AppState {
             graph,
             catalog_summary,
@@ -1065,6 +1068,10 @@ mod tests {
             Err(unavailable())
         }
 
+        async fn revision(&self, _tenant_id: &TenantId) -> Result<u64, ContextError> {
+            Err(unavailable())
+        }
+
         async fn search(
             &self,
             _tenant_id: &TenantId,
@@ -1207,6 +1214,64 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn connect_graph_contract_is_tenant_bound_and_served_by_rust() {
+        let (graph, _, _) = demo_graph().unwrap();
+        let app = router(graph);
+        let body = serde_json::json!({
+            "tenantId": "tenant-demo",
+            "query": "",
+            "limit": 10
+        })
+        .to_string();
+        let unauthenticated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/Search")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauthenticated.status(), StatusCode::UNAUTHORIZED);
+        let error = axum::body::to_bytes(unauthenticated.into_body(), 1024)
+            .await
+            .unwrap();
+        let error: serde_json::Value = serde_json::from_slice(&error).unwrap();
+        assert_eq!(error["code"], "unauthenticated");
+
+        let response = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/Search")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(response["graphRevision"], "1");
+        assert_eq!(response["entities"].as_array().unwrap().len(), 4);
+        assert!(
+            response["entities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|entity| entity["agentKey"].as_str().is_some())
+        );
     }
 
     #[tokio::test]
