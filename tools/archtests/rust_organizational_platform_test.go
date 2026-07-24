@@ -160,7 +160,7 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 		"name: Rust-only persisted product read",
 		"--target replacement-test-runtime",
 		"--entrypoint /usr/local/bin/organizational-graph-e2e",
-		`receipt.json)" -eq 13`,
+		`receipt.json)" -eq 14`,
 	} {
 		if !strings.Contains(replacementWorkflow, required) {
 			t.Errorf("Rust graph replacement workflow missing proof %q", required)
