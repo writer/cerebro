@@ -204,7 +204,7 @@ ORDER BY sequence`, tenantID, actionID)
 	if err != nil {
 		return nil, fmt.Errorf("query verified access action transitions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []verifiedaccessaction.TransitionReceipt
 	for rows.Next() {
 		var payload string

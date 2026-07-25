@@ -50,7 +50,7 @@ func TestVerifiedAccessActionPostgresGrantsOneExecutionClaim(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	ctx := context.Background()
 	tenantID := fmt.Sprintf("verified-access-action-test-%d", time.Now().UnixNano())
 	defer func() {
