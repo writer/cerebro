@@ -74,6 +74,9 @@ fn rust_candidate_build_never_invokes_go_or_emulation() {
         "file: Dockerfile.rust",
         "ghcr.io/${{ github.repository_owner }}/cerebro-rust",
         "Assert the candidate contains no Go server",
+        "test ! -e /usr/local/go/bin/go",
+        "test ! -e /usr/bin/go",
+        "test ! -e /bin/go",
         "Run the candidate through its declared Rust entrypoint",
         "cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- seed",
         "cargo +1.93.1 run --locked -p cerebro-platform --example organizational_graph_e2e -- verify",
@@ -107,6 +110,10 @@ fn replacement_proof_is_a_native_rust_product_path() {
     for required in [
         "name: Rust-only persisted product read",
         "--target replacement-test-runtime",
+        "test ! -e /usr/local/bin/cerebro",
+        "test ! -e /usr/local/go/bin/go",
+        "test ! -e /usr/bin/go",
+        "test ! -e /bin/go",
         "--entrypoint /usr/local/bin/organizational-graph-e2e",
         "docker restart cerebro-rust-graph-platform",
         "receipt.json)\" -eq 14",
@@ -130,15 +137,28 @@ fn replacement_proof_is_a_native_rust_product_path() {
     }
     for required in [
         "product_http_contract",
-        "rust_only_runtime",
-        "/usr/local/bin/cerebro-platform",
-        "/usr/local/bin/organizational-graph-e2e",
-        "/usr/local/bin/cerebro",
+        "rust_service_runtime",
         "require_product_neighborhood",
     ] {
         assert!(
             REPLACEMENT_DRIVER.contains(required),
             "Rust replacement driver is missing runtime assertion {required:?}"
+        );
+    }
+}
+
+#[test]
+fn functional_recovery_driver_does_not_inspect_the_runner_runtime() {
+    for forbidden in [
+        "prove_rust_only_runtime",
+        "\"/usr/local/bin/cerebro\"",
+        "\"/usr/local/go/bin/go\"",
+        "\"/usr/bin/go\"",
+        "\"/bin/go\"",
+    ] {
+        assert!(
+            !REPLACEMENT_DRIVER.contains(forbidden),
+            "functional recovery driver inspects its execution host via {forbidden:?}"
         );
     }
 }
