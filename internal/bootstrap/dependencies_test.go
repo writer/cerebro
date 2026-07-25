@@ -3,10 +3,15 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/agentauthoring"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestOpenDependenciesAllowsUnconfiguredStores(t *testing.T) {
@@ -25,6 +30,42 @@ func TestOpenDependenciesAllowsUnconfiguredStores(t *testing.T) {
 	}
 	if err := closeAll(); err != nil {
 		t.Fatalf("closeAll() error = %v", err)
+	}
+}
+
+func TestOpenDependenciesAllowsRustGraphWithoutGoGraphStore(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/readyz" {
+			http.NotFound(response, request)
+			return
+		}
+		response.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	deps, closeAll, err := OpenDependencies(context.Background(), config.Config{
+		OrganizationalGraph: config.OrganizationalGraphConfig{
+			BaseURL:      server.URL,
+			SharedSecret: "test-organizational-graph-secret-32-bytes",
+			Timeout:      time.Second,
+		},
+	})
+	if err != nil {
+		t.Fatalf("OpenDependencies() error = %v", err)
+	}
+	defer func() {
+		if err := closeAll(); err != nil {
+			t.Fatalf("closeAll() error = %v", err)
+		}
+	}()
+	if deps.GraphStore != nil {
+		t.Fatal("GraphStore != nil, want no Go graph store")
+	}
+	if deps.GraphQueries == nil {
+		t.Fatal("GraphQueries = nil, want Rust graph client")
+	}
+	if _, err := deps.GraphQueries.ExecuteReadCypher(context.Background(), ports.CypherQueryRequest{Query: "RETURN 1"}); !errors.Is(err, ports.ErrGraphTypedOperationRequired) {
+		t.Fatalf("ExecuteReadCypher() error = %v", err)
 	}
 }
 

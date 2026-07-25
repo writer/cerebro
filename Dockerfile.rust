@@ -1,0 +1,73 @@
+# syntax=docker/dockerfile:1.7
+
+ARG RUST_VERSION=1.93.1
+ARG RUNTIME_BASE_IMAGE=alpine:3.24
+
+FROM scratch AS source
+COPY . /src
+
+FROM --platform=$TARGETPLATFORM rust:${RUST_VERSION}-alpine AS builder
+
+ARG TARGETARCH
+WORKDIR /app
+
+RUN apk add --no-cache build-base musl-dev openssl-dev openssl-libs-static pkgconfig
+
+COPY --from=source /src/Cargo.toml /src/Cargo.lock ./
+COPY --from=source /src/crates ./crates
+COPY --from=source /src/internal/graphagent/staticvalidator ./internal/graphagent/staticvalidator
+COPY --from=source /src/internal/mitre/evaluator ./internal/mitre/evaluator
+COPY --from=source /src/internal/sourcecoverage/evaluator ./internal/sourcecoverage/evaluator
+COPY --from=source /src/internal/sourceprojection/panopticonresources ./internal/sourceprojection/panopticonresources
+COPY --from=source /src/internal/sourceruntime/eventadmission ./internal/sourceruntime/eventadmission
+COPY --from=source /src/internal/sourceruntime/recordkernel ./internal/sourceruntime/recordkernel
+COPY --from=source /src/internal/wasmguest ./internal/wasmguest
+COPY --from=source /src/tools/graphactiongen ./tools/graphactiongen
+
+RUN --mount=type=cache,id=cerebro-rust-only-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cerebro-rust-only-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=cerebro-rust-only-target-${TARGETARCH},target=/app/target,sharing=locked \
+    cargo build --locked --release \
+      -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker \
+      -p cerebro-platform --bin cerebro-platform \
+      -p cerebro-platform --example organizational_graph_e2e && \
+    install -Dm0755 /app/target/release/cerebro-event-admission-worker /out/cerebro-event-admission-worker && \
+    install -Dm0755 /app/target/release/cerebro-platform /out/cerebro-platform && \
+    install -Dm0755 /app/target/release/examples/organizational_graph_e2e \
+      /out/organizational-graph-e2e
+
+FROM alpine:3.24 AS organizational-catalog
+COPY --from=source /src/internal/connectorcatalog/catalog /app/internal/connectorcatalog/catalog
+COPY --from=source /src/sources /app/sources
+RUN find /app/sources -mindepth 2 -type f ! -name catalog.yaml -delete
+
+FROM ${RUNTIME_BASE_IMAGE} AS runtime
+
+RUN apk upgrade --no-cache && \
+    addgroup -S cerebro && \
+    adduser -S -G cerebro -u 10001 cerebro
+
+COPY --from=builder --chmod=0755 /out/cerebro-event-admission-worker /usr/local/bin/cerebro-event-admission-worker
+COPY --from=builder --chmod=0755 /out/cerebro-platform /usr/local/bin/cerebro-platform
+COPY --from=organizational-catalog --chown=10001:101 /app/internal/connectorcatalog/catalog /app/internal/connectorcatalog/catalog
+COPY --from=organizational-catalog --chown=10001:101 /app/sources /app/sources
+COPY --from=source /src/policies /app/policies
+
+WORKDIR /app
+ENV CEREBRO_REPOSITORY_ROOT=/app
+
+USER cerebro
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1
+
+ENTRYPOINT ["/usr/local/bin/cerebro-platform"]
+CMD ["serve-neo4j-consumer"]
+
+FROM runtime AS replacement-test-runtime
+COPY --from=builder --chmod=0755 /out/organizational-graph-e2e /usr/local/bin/organizational-graph-e2e
+
+# Keep the default production image free of replacement-test tooling.
+FROM runtime AS final

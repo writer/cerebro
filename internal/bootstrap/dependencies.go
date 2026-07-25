@@ -93,11 +93,11 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 			return fail(fmt.Errorf("open Rust organizational graph projection: %w", err))
 		}
 		deps.OrganizationalProjector = projectionClient
-		primary, ok := deps.GraphStore.(ports.GraphQueryStore)
-		if !ok || isNilInterface(primary) {
-			return fail(errors.New("rust organizational graph reads require a configured compatibility query store"))
+		var compatibility ports.GraphQueryStore
+		if primary, ok := deps.GraphStore.(ports.GraphQueryStore); ok && !isNilInterface(primary) {
+			compatibility = primary
 		}
-		queryStore, err := organizationalgraph.NewQueryStore(primary, cfg.OrganizationalGraph.BaseURL, cfg.OrganizationalGraph.SharedSecret, cfg.OrganizationalGraph.Timeout)
+		queryStore, err := organizationalgraph.NewQueryStore(compatibility, cfg.OrganizationalGraph.BaseURL, cfg.OrganizationalGraph.SharedSecret, cfg.OrganizationalGraph.Timeout)
 		if err != nil {
 			return fail(fmt.Errorf("open Rust organizational graph reads: %w", err))
 		}

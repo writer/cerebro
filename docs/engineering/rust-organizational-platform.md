@@ -51,7 +51,13 @@ During migration, the Go source runtime remains the append-log owner. It commits
 
 `cerebro-agent-context` exposes bounded search, lookup, expansion, path, and explanation operations. It does not expose Cypher or store mutation.
 
-`cerebro-platform` serves the bounded agent graph API against Neo4j in production and the in-memory graph in local demos. Web, Slack, MCP, reports, and the graph agent use this API as the authority for bounded neighborhood reads. One-hop requests, including batches of up to 100 roots, execute as one tenant-scoped Neo4j query. Raw Cypher remains on the compatibility reader until each query has a typed Rust operation; it is not exposed by the Rust API.
+`cerebro-platform` serves the bounded agent graph API against Neo4j in production and the in-memory graph in local demos. Web, Slack, MCP, reports, and the graph agent use this API as the authority for bounded neighborhood reads. One-hop requests, including batches of up to 100 roots, execute as one tenant-scoped Neo4j query. Go deployments can omit the graph store and every Neo4j credential once their callers use typed Rust operations. Any remaining raw Cypher caller then fails with `typed Rust graph operation required`; it cannot fall back to another graph reader. Raw Cypher is not exposed by the Rust API.
+
+The Rust service also owns `GET /platform/graph/neighborhood`. It returns the
+existing product JSON shape directly from the bounded Rust graph operation.
+The boundary verifies the requested root, authenticated tenant, every returned
+agent key, unique entity-to-key mapping, edge endpoints, labels, relation
+metadata, and the 50-edge product limit before serializing a response.
 
 ## Enforced identity model
 
@@ -84,6 +90,46 @@ Every assertion requires one or more observations from one tenant, source runtim
 
 Incomplete and incremental collections cannot call `retract_missing`. That method exists only on `GraphDeltaBuilder<Authoritative>`, which can be created only from `CompleteCollection`.
 
+## Compliance facts and agent queries
+
+Compliance is part of the organizational graph, not a second graph-shaped
+schema. Frameworks, programs, objectives, rules, controls, findings, evidence,
+assessment runs, results, snapshots, remediations, verifications, and work
+items use the same sealed `Entity` type, tenant identity, observation
+provenance, revision, Postgres commit, and Neo4j projection as people,
+resources, access, and ownership.
+
+The relationship enum carries the compliance joins. For example, a finding can
+be `mapped_to_control`, `affects` a resource, be `detected_by` a rule, and be
+`addressed` by a remediation. Evidence can be linked with `evidence_for`;
+assessment results can `evaluate` an objective and `cite` evidence. Rust
+rejects invalid endpoint combinations before a delta can reach either store.
+
+Agents query these facts through `QueryFacts`. A request contains node
+variables, closed entity-kind filters, typed directed edges, optional
+`NOT EXISTS` edge checks, stable entity or agent keys, and a result limit. It
+cannot contain Cypher. Rust rejects unknown kinds and relations, incompatible
+typed endpoints, disconnected positive patterns, more than eight nodes, more
+than twelve joins, more than eight absence checks, more than 100 stable keys
+per node, duplicate filters, and limits above 500.
+Neo4j receives only a statement compiled from that validated structure, with
+tenant, values, and the hard row limit passed as parameters. The result carries
+the graph revision read in the same Neo4j query as every non-empty match.
+
+The replacement proof commits a compliance snapshot through the Rust durable
+store, restarts the Rust service, and executes this query through Connect:
+
+```text
+(finding)-[:mapped_to_control]->(control)
+    |
+    +--[:affects]->(resource)
+
+NOT EXISTS (evidence)-[:evidence_for]->(finding)
+```
+
+The proof fails unless the unsupported finding is returned and the
+evidence-backed finding is excluded both before and after restart.
+
 ## Production bypass prevention
 
 Language-level constraints prevent accidental bypass inside Rust. Production authority prevents deliberate bypass across processes:
@@ -95,6 +141,10 @@ Language-level constraints prevent accidental bypass inside Rust. Production aut
 5. CI rejects dependencies from the replacement crates onto Go projection contracts.
 6. PostgreSQL forces tenant row-level security on the ledger tables and uses a tenant-scoped unique key for confirmed identity bindings.
 7. Neo4j writes are not public API operations. Agent, web, and Slack routes are read-only and hard-bound to six hops and 500 results.
+8. The replacement proof builds one Rust image without installing Go. The
+   proof driver runs inside that image, rejects a Go server or toolchain,
+   restarts the Rust service, and reads the recovered graph through both the
+   generated agent RPC and the native product HTTP route.
 
 Repository conventions and review are not the security boundary. Store credentials and workload identity are.
 

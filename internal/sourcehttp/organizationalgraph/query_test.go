@@ -2,7 +2,6 @@ package organizationalgraph
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+
+	cerebrographv1 "github.com/writer/cerebro/gen/cerebro/graph/v1"
+	"github.com/writer/cerebro/gen/cerebro/graph/v1/cerebrographv1connect"
 	"github.com/writer/cerebro/internal/ports"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
@@ -25,6 +28,31 @@ type assertionQueryStoreStub struct {
 	coverageTenant    string
 	coverageRelations []string
 	migrationRequest  ports.ProjectionAssertionMigrationRequest
+}
+
+type graphServiceStub struct {
+	cerebrographv1connect.UnimplementedOrganizationalGraphServiceHandler
+	expand      func(context.Context, *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error)
+	expandBatch func(context.Context, *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error)
+}
+
+func (s graphServiceStub) Expand(ctx context.Context, request *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
+	return s.expand(ctx, request)
+}
+
+func (s graphServiceStub) ExpandBatch(ctx context.Context, request *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error) {
+	return s.expandBatch(ctx, request)
+}
+
+func newGraphTestServer(t *testing.T, service graphServiceStub) *httptest.Server {
+	t.Helper()
+	path, handler := cerebrographv1connect.NewOrganizationalGraphServiceHandler(service)
+	mux := http.NewServeMux()
+	mux.Handle(path, handler)
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	return httptest.NewServer(mux)
 }
 
 func (s queryStoreStub) Ping(context.Context) error { return s.err }
@@ -49,41 +77,46 @@ func (s *assertionQueryStoreStub) MigrateProjectedLinkAssertions(_ context.Conte
 }
 
 func TestQueryStoreReturnsRustNeighborhoodAndDelegatesRawCypher(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/graph/expand" {
-			t.Fatalf("path = %q", r.URL.Path)
-		}
-		if r.Header.Get(tenantAuthHeader) != "tenant-a" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
-			t.Fatalf("tenant authentication headers are missing")
-		}
-		var request expandRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatalf("decode request: %v", err)
-		}
-		if request.TenantID != "tenant-a" || request.RootKey != "urn:cerebro:tenant-a:runtime_file:asset-1" || request.Depth != 1 {
-			t.Fatalf("request = %#v", request)
-		}
-		_ = json.NewEncoder(w).Encode(rustNeighborhood{
-			TenantID: "tenant-a",
-			Root: rustEntity{
-				EntityID: "entity-1", AgentKey: "urn:cerebro:tenant-a:runtime_file:asset-1",
-				EntityKind: "resource", Label: "One",
-			},
-			Entities: []rustEntity{{
-				EntityID:   "entity-2",
-				AgentKey:   "urn:cerebro:tenant-a:repository:asset-2",
-				EntityKind: "repository",
-				Label:      "Two",
-				Properties: map[string]string{"resource_urn": "urn:cerebro:tenant-a:repository:asset-2"},
-			}},
-			Edges: []rustEdge{{
-				From:            "entity-1",
-				Relation:        "contains",
-				To:              "entity-2",
-				SourceRuntimeID: "box-prod",
-			}},
-		})
-	}))
+	server := newGraphTestServer(t, graphServiceStub{
+		expand: func(_ context.Context, request *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
+			if request.Header().Get(tenantAuthHeader) != "tenant-a" || !strings.HasPrefix(request.Header().Get("Authorization"), "Bearer ") {
+				t.Fatalf("tenant authentication headers are missing")
+			}
+			if request.Msg.GetTenantId() != "tenant-a" || request.Msg.GetRootKey() != "urn:cerebro:tenant-a:runtime_file:asset-1" || request.Msg.GetDepth() != 1 {
+				t.Fatalf("request = %#v", request.Msg)
+			}
+			return connect.NewResponse(&cerebrographv1.ExpandResponse{
+				TenantId: "tenant-a",
+				Root: &cerebrographv1.GraphEntity{
+					EntityId: "entity-1", AgentKey: "urn:cerebro:tenant-a:runtime_file:asset-1",
+					EntityKind: "resource", Label: "One",
+				},
+				Entities: []*cerebrographv1.GraphEntity{{
+					EntityId:   "entity-2",
+					AgentKey:   "urn:cerebro:tenant-a:repository:asset-2",
+					EntityKind: "repository",
+					Label:      "Two",
+					Properties: map[string]string{"resource_urn": "urn:cerebro:tenant-a:repository:asset-2"},
+				}},
+				Edges: []*cerebrographv1.GraphEdge{
+					{
+						AssertionId:     "assertion-1",
+						FromEntityId:    "entity-1",
+						Relation:        "contains",
+						ToEntityId:      "entity-2",
+						SourceRuntimeId: "box-prod",
+					},
+					{
+						AssertionId:     "assertion-2",
+						FromEntityId:    "entity-1",
+						Relation:        "contains",
+						ToEntityId:      "entity-2",
+						SourceRuntimeId: "box-prod",
+					},
+				},
+			}), nil
+		},
+	})
 	defer server.Close()
 
 	rootURN := "urn:cerebro:tenant-a:runtime_file:asset-1"
@@ -125,11 +158,11 @@ func TestQueryStoreFailsClosedWhenRustIsUnavailable(t *testing.T) {
 	}
 }
 
-func TestQueryStoreHealthRequiresCompatibilityAndRustAuthorities(t *testing.T) {
+func TestQueryStoreHealthRequiresRustAndChecksCompatibilityWhenPresent(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
-		if r.URL.Path != "/healthz" {
+		if r.URL.Path != "/readyz" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
@@ -147,6 +180,17 @@ func TestQueryStoreHealthRequiresCompatibilityAndRustAuthorities(t *testing.T) {
 		t.Fatalf("health requests = %d, want 1", requests)
 	}
 
+	strictStore, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewQueryStore(strict) error = %v", err)
+	}
+	if err := strictStore.Ping(context.Background()); err != nil {
+		t.Fatalf("Ping(strict) error = %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("health requests after strict ping = %d, want 2", requests)
+	}
+
 	store, err = NewQueryStore(
 		queryStoreStub{err: errors.New("compatibility unavailable")},
 		server.URL,
@@ -159,8 +203,8 @@ func TestQueryStoreHealthRequiresCompatibilityAndRustAuthorities(t *testing.T) {
 	if err := store.Ping(context.Background()); err == nil {
 		t.Fatal("Ping(failing compatibility) error = nil")
 	}
-	if requests != 1 {
-		t.Fatalf("health requests after compatibility failure = %d, want 1", requests)
+	if requests != 2 {
+		t.Fatalf("health requests after compatibility failure = %d, want 2", requests)
 	}
 
 	compatibility := queryStoreStub{}
@@ -169,6 +213,22 @@ func TestQueryStoreHealthRequiresCompatibilityAndRustAuthorities(t *testing.T) {
 	}
 	if got := ReadinessStore(compatibility, store); got != store {
 		t.Fatalf("ReadinessStore(compatibility, authority) = %#v", got)
+	}
+}
+
+func TestQueryStoreStrictReplacementRejectsUntypedCompatibilityCalls(t *testing.T) {
+	store, err := NewQueryStore(nil, "http://127.0.0.1:1", testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewQueryStore() error = %v", err)
+	}
+	if _, err := store.ExecuteReadCypher(context.Background(), ports.CypherQueryRequest{Query: "RETURN 1"}); !errors.Is(err, ports.ErrGraphTypedOperationRequired) {
+		t.Fatalf("ExecuteReadCypher() error = %v", err)
+	}
+	if _, err := store.CountProjectedLinksMissingAssertions(context.Background(), "tenant-a", nil); !errors.Is(err, ports.ErrGraphTypedOperationRequired) {
+		t.Fatalf("CountProjectedLinksMissingAssertions() error = %v", err)
+	}
+	if _, err := store.MigrateProjectedLinkAssertions(context.Background(), ports.ProjectionAssertionMigrationRequest{TenantID: "tenant-a"}); !errors.Is(err, ports.ErrGraphTypedOperationRequired) {
+		t.Fatalf("MigrateProjectedLinkAssertions() error = %v", err)
 	}
 }
 
@@ -217,33 +277,28 @@ func TestQueryStoreBatchesTenantRootsInOneRustRequest(t *testing.T) {
 	rootOne := "urn:cerebro:tenant-a:runtime_file:asset-1"
 	rootTwo := "urn:cerebro:tenant-a:runtime_file:asset-2"
 	requests := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
-		if r.URL.Path != "/v1/graph/expand-batch" {
-			t.Fatalf("path = %q", r.URL.Path)
-		}
-		var request expandBatchRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatalf("decode request: %v", err)
-		}
-		if request.TenantID != "tenant-a" || len(request.RootKeys) != 2 {
-			t.Fatalf("request = %#v", request)
-		}
-		_ = json.NewEncoder(w).Encode(expandBatchResponse{Neighborhoods: map[string]rustNeighborhood{
-			rootOne: {
-				TenantID: "tenant-a",
-				Root: rustEntity{
-					EntityID: "entity-1", AgentKey: rootOne, EntityKind: "resource", Label: "One",
+	server := newGraphTestServer(t, graphServiceStub{
+		expandBatch: func(_ context.Context, request *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error) {
+			requests++
+			if request.Msg.GetTenantId() != "tenant-a" || len(request.Msg.GetRootKeys()) != 2 {
+				t.Fatalf("request = %#v", request.Msg)
+			}
+			return connect.NewResponse(&cerebrographv1.ExpandBatchResponse{Neighborhoods: map[string]*cerebrographv1.ExpandResponse{
+				rootOne: {
+					TenantId: "tenant-a",
+					Root: &cerebrographv1.GraphEntity{
+						EntityId: "entity-1", AgentKey: rootOne, EntityKind: "resource", Label: "One",
+					},
 				},
-			},
-			rootTwo: {
-				TenantID: "tenant-a",
-				Root: rustEntity{
-					EntityID: "entity-2", AgentKey: rootTwo, EntityKind: "resource", Label: "Two",
+				rootTwo: {
+					TenantId: "tenant-a",
+					Root: &cerebrographv1.GraphEntity{
+						EntityId: "entity-2", AgentKey: rootTwo, EntityKind: "resource", Label: "Two",
+					},
 				},
-			},
-		}})
-	}))
+			}}), nil
+		},
+	})
 	defer server.Close()
 
 	store, err := NewQueryStore(queryStoreStub{}, server.URL, testSharedSecret, time.Second)
@@ -262,16 +317,18 @@ func TestQueryStoreBatchesTenantRootsInOneRustRequest(t *testing.T) {
 func TestQueryStoreRejectsUnrequestedBatchRoot(t *testing.T) {
 	rootURN := "urn:cerebro:tenant-a:runtime_file:asset-1"
 	extraURN := "urn:cerebro:tenant-a:runtime_file:asset-2"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(expandBatchResponse{Neighborhoods: map[string]rustNeighborhood{
-			extraURN: {
-				TenantID: "tenant-a",
-				Root: rustEntity{
-					EntityID: "entity-2", AgentKey: extraURN, EntityKind: "resource", Label: "Two",
+	server := newGraphTestServer(t, graphServiceStub{
+		expandBatch: func(_ context.Context, _ *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error) {
+			return connect.NewResponse(&cerebrographv1.ExpandBatchResponse{Neighborhoods: map[string]*cerebrographv1.ExpandResponse{
+				extraURN: {
+					TenantId: "tenant-a",
+					Root: &cerebrographv1.GraphEntity{
+						EntityId: "entity-2", AgentKey: extraURN, EntityKind: "resource", Label: "Two",
+					},
 				},
-			},
-		}})
-	}))
+			}}), nil
+		},
+	})
 	defer server.Close()
 
 	store, err := NewQueryStore(queryStoreStub{}, server.URL, testSharedSecret, time.Second)
@@ -289,7 +346,11 @@ func TestQueryStoreAgainstLiveRustGraph(t *testing.T) {
 	if baseURL == "" || rootURN == "" {
 		t.Skip("requires a disposable live Rust organizational graph")
 	}
-	store, err := NewQueryStore(queryStoreStub{}, baseURL, testSharedSecret, 5*time.Second)
+	sharedSecret := os.Getenv("CEREBRO_TEST_ORGANIZATIONAL_GRAPH_SHARED_SECRET")
+	if sharedSecret == "" {
+		sharedSecret = testSharedSecret
+	}
+	store, err := NewQueryStore(nil, baseURL, sharedSecret, 5*time.Second)
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
@@ -307,5 +368,16 @@ func TestQueryStoreAgainstLiveRustGraph(t *testing.T) {
 		if node == nil || cerebrourn.TenantID(node.URN) != cerebrourn.TenantID(rootURN) {
 			t.Fatalf("neighbor is not round-trippable: %#v", node)
 		}
+	}
+	relationKeys := make(map[string]struct{}, len(got.Relations))
+	for _, relation := range got.Relations {
+		key := relation.FromURN + "\x00" + relation.Relation + "\x00" + relation.ToURN
+		if _, exists := relationKeys[key]; exists {
+			t.Fatalf("duplicate product relation: %#v", relation)
+		}
+		relationKeys[key] = struct{}{}
+	}
+	if _, err := store.ExecuteReadCypher(context.Background(), ports.CypherQueryRequest{Query: "RETURN 1"}); !errors.Is(err, ports.ErrGraphTypedOperationRequired) {
+		t.Fatalf("ExecuteReadCypher() error = %v", err)
 	}
 }

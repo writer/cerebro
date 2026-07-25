@@ -1,6 +1,8 @@
 use std::{collections::BTreeMap, env, error::Error};
 
-use cerebro_agent_context::{AgentGraph, ContextError};
+use cerebro_agent_context::{
+    AgentGraph, ContextError, FactQuery, QueryAbsentEdge, QueryDirection, QueryEdge, QueryNode,
+};
 use cerebro_organizational_model::{
     AssertionProvenance, CanonicalIdentity, CollectionId, CompleteCollection, Entity, EntityId,
     EntityKind, GraphAssertion, IdentityBindingAssertion, IdentityBindingState, IdentityClaim,
@@ -258,6 +260,164 @@ async fn durable_commit_projects_and_serves_a_multi_hop_graph() -> Result<(), Bo
     assert_eq!(
         reader.find_paths(&tenant, &root_id, &missing, 4, 10).await,
         Err(ContextError::EntityNotFound)
+    );
+
+    let compliance_runtime = SourceRuntimeId::parse("compliance-live")?;
+    let compliance_collection = CompleteCollection::new(
+        tenant.clone(),
+        compliance_runtime,
+        CollectionId::parse("collection-live-compliance")?,
+        "compliance.current",
+        25,
+    )?;
+    let compliance_observation = ObservationId::parse("observation-live-compliance")?;
+    let compliance_provenance = || {
+        AssertionProvenance::direct(
+            vec![ObservationRef::new(
+                compliance_collection.receipt(),
+                compliance_observation.clone(),
+                "compliance.snapshot:1",
+            )?],
+            "compliance-projector",
+            "v1",
+        )
+    };
+    let control = Entity::canonical(
+        tenant.clone(),
+        EntityId::parse("control-live-cc6-1")?,
+        EntityKind::Control,
+        "SOC 2 CC6.1",
+    )?;
+    let unsupported_finding = Entity::canonical(
+        tenant.clone(),
+        EntityId::parse("finding-live-unsupported")?,
+        EntityKind::Finding,
+        "Missing access evidence",
+    )?;
+    let supported_finding = Entity::canonical(
+        tenant.clone(),
+        EntityId::parse("finding-live-supported")?,
+        EntityKind::Finding,
+        "Reviewed access evidence",
+    )?;
+    let evidence_record = Entity::canonical(
+        tenant.clone(),
+        EntityId::parse("evidence-live-1")?,
+        EntityKind::Evidence,
+        "Access review receipt",
+    )?;
+    let compliance_relationships = [
+        RelationshipAssertion::new(
+            &unsupported_finding,
+            RelationKind::MappedToControl,
+            &control,
+            compliance_provenance()?,
+            25,
+        )?,
+        RelationshipAssertion::new(
+            &unsupported_finding,
+            RelationKind::Affects,
+            &repository,
+            compliance_provenance()?,
+            25,
+        )?,
+        RelationshipAssertion::new(
+            &supported_finding,
+            RelationKind::MappedToControl,
+            &control,
+            compliance_provenance()?,
+            25,
+        )?,
+        RelationshipAssertion::new(
+            &supported_finding,
+            RelationKind::Affects,
+            &repository,
+            compliance_provenance()?,
+            25,
+        )?,
+        RelationshipAssertion::new(
+            &evidence_record,
+            RelationKind::EvidenceFor,
+            &supported_finding,
+            compliance_provenance()?,
+            25,
+        )?,
+    ];
+    let mut compliance_builder = compliance_collection.clone().begin_delta();
+    for entity in [
+        control,
+        unsupported_finding.clone(),
+        supported_finding,
+        evidence_record,
+        repository.clone(),
+    ] {
+        compliance_builder.add_entity(entity)?;
+    }
+    for relationship in compliance_relationships {
+        compliance_builder.add_assertion(GraphAssertion::Relationship(relationship))?;
+    }
+    let compliance_batch = CollectedBatch {
+        scope: CollectedScope::Complete(compliance_collection),
+        records: vec![SourceRecord {
+            observation_id: compliance_observation,
+            family: "current".to_owned(),
+            provider_kind: "cerebro.compliance_snapshot".to_owned(),
+            provider_id: "snapshot-1".to_owned(),
+            fields: BTreeMap::new(),
+            payload: serde_json::json!({"snapshot_id": "snapshot-1"}),
+        }],
+        next_cursor: None,
+    };
+    let compliance_receipt = store
+        .apply(&compliance_batch, compliance_builder.build())
+        .await?;
+    assert_eq!(compliance_receipt.graph_revision, 3);
+    let compliance_query = FactQuery::new(
+        vec![
+            QueryNode {
+                variable: "finding".to_owned(),
+                kinds: vec!["finding".to_owned()],
+                keys: Vec::new(),
+            },
+            QueryNode {
+                variable: "control".to_owned(),
+                kinds: vec!["control".to_owned()],
+                keys: vec!["control-live-cc6-1".to_owned()],
+            },
+            QueryNode {
+                variable: "resource".to_owned(),
+                kinds: vec!["repository".to_owned()],
+                keys: vec![repository.id().to_string()],
+            },
+        ],
+        vec![
+            QueryEdge {
+                variable: "control_mapping".to_owned(),
+                from_variable: "finding".to_owned(),
+                relation: "mapped_to_control".to_owned(),
+                to_variable: "control".to_owned(),
+            },
+            QueryEdge {
+                variable: "affected_resource".to_owned(),
+                from_variable: "finding".to_owned(),
+                relation: "affects".to_owned(),
+                to_variable: "resource".to_owned(),
+            },
+        ],
+        vec![QueryAbsentEdge {
+            bound_variable: "finding".to_owned(),
+            direction: QueryDirection::Incoming,
+            relation: "evidence_for".to_owned(),
+            other_kinds: vec!["evidence".to_owned()],
+        }],
+        10,
+    )?;
+    let compliance_result = reader.query(&tenant, &compliance_query).await?;
+    assert_eq!(compliance_result.graph_revision, 3);
+    assert_eq!(compliance_result.matches.len(), 1);
+    assert_eq!(
+        compliance_result.matches[0].entities["finding"].entity_id,
+        unsupported_finding.id().clone()
     );
 
     let conflicting_collection = CompleteCollection::new(

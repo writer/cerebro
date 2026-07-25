@@ -3,6 +3,7 @@
 mod append_log_consumer;
 mod cutover_command;
 mod parity_command;
+mod rpc;
 
 use std::{collections::BTreeMap, env, error::Error, path::PathBuf, sync::Arc};
 
@@ -327,6 +328,34 @@ struct PathsResponse {
 }
 
 #[derive(Deserialize)]
+struct ProductNeighborhoodQuery {
+    root_urn: String,
+    limit: Option<u32>,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+struct ProductNeighborhoodNode {
+    urn: String,
+    entity_type: String,
+    label: String,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+struct ProductNeighborhoodRelation {
+    from_urn: String,
+    relation: String,
+    to_urn: String,
+    attributes: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+struct ProductNeighborhood {
+    root: ProductNeighborhoodNode,
+    neighbors: Vec<ProductNeighborhoodNode>,
+    relations: Vec<ProductNeighborhoodRelation>,
+}
+
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProjectEventRequest {
     tenant_id: String,
@@ -540,7 +569,12 @@ fn router_with_backend(
     projection: Option<Arc<ProjectionRuntime>>,
     tenant_auth: TenantRequestAuth,
 ) -> Router {
+    let connect = rpc::router(graph.clone(), catalog_summary.clone(), tenant_auth.clone());
     let protected = Router::new()
+        .route(
+            "/platform/graph/neighborhood",
+            get(product_neighborhood_route),
+        )
         .route("/v1/entities/{entity_id}", get(get_entity))
         .route("/v1/assertions/{assertion_id}", get(explain_assertion))
         .route("/v1/graph/search", post(search))
@@ -558,6 +592,7 @@ fn router_with_backend(
         .route("/readyz", get(readiness))
         .route("/v1/sources/summary", get(source_summary))
         .merge(protected)
+        .fallback_service(connect.into_axum_service())
         .with_state(AppState {
             graph,
             catalog_summary,
@@ -821,6 +856,173 @@ async fn find_paths(
         .map_err(context_error)
 }
 
+async fn product_neighborhood_route(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(query): Query<ProductNeighborhoodQuery>,
+) -> Result<Json<ProductNeighborhood>, (StatusCode, Json<ErrorResponse>)> {
+    let tenant = product_urn_tenant(&query.root_urn).ok_or_else(|| {
+        bad_request(
+            "invalid_root_urn",
+            "root_urn must be a tenant-scoped Cerebro URN.",
+        )
+    })?;
+    let tenant_id = authorized_tenant(&authenticated, tenant.to_owned())?;
+    let limit = normalize_product_neighborhood_limit(query.limit);
+    let mut neighborhoods = state
+        .graph
+        .expand_many(&tenant_id, std::slice::from_ref(&query.root_urn), 1, limit)
+        .await
+        .map_err(context_error)?;
+    let neighborhood = neighborhoods
+        .remove(&query.root_urn)
+        .ok_or_else(|| context_error(ContextError::EntityNotFound))?;
+    product_neighborhood(&query.root_urn, &tenant_id, neighborhood)
+        .map(Json)
+        .map_err(context_error)
+}
+
+fn normalize_product_neighborhood_limit(limit: Option<u32>) -> usize {
+    usize::try_from(limit.unwrap_or(10).clamp(1, 50)).unwrap_or(50)
+}
+
+fn product_urn_tenant(value: &str) -> Option<&str> {
+    let parts = value.split(':').collect::<Vec<_>>();
+    if parts.len() < 5
+        || parts[0] != "urn"
+        || parts[1] != "cerebro"
+        || value.chars().any(char::is_control)
+        || parts.last().is_none_or(|part| part.is_empty())
+        || parts[2..].iter().any(|part| part.trim() != *part)
+        || parts[2..5].contains(&"")
+    {
+        return None;
+    }
+    if parts[3] == "runtime" && (parts.len() < 7 || parts[5].is_empty()) {
+        return None;
+    }
+    Some(parts[2])
+}
+
+fn product_neighborhood(
+    requested_root: &str,
+    tenant_id: &TenantId,
+    neighborhood: Neighborhood,
+) -> Result<ProductNeighborhood, ContextError> {
+    if neighborhood.tenant_id != *tenant_id
+        || product_urn_tenant(&neighborhood.root.agent_key) != Some(tenant_id.as_str())
+        || neighborhood.root.agent_key != requested_root
+    {
+        return Err(invalid_product_neighborhood(
+            "graph root does not match the requested tenant-scoped key",
+        ));
+    }
+    let root = product_node(requested_root.to_owned(), &neighborhood.root)?;
+
+    let mut keys_by_id = BTreeMap::from([(
+        neighborhood.root.entity_id.clone(),
+        requested_root.to_owned(),
+    )]);
+    let mut ids_by_key = BTreeMap::from([(
+        requested_root.to_owned(),
+        neighborhood.root.entity_id.clone(),
+    )]);
+    let mut neighbors = Vec::with_capacity(neighborhood.entities.len());
+    for entity in neighborhood.entities {
+        if product_urn_tenant(&entity.agent_key) != Some(tenant_id.as_str()) {
+            return Err(invalid_product_neighborhood(
+                "graph entity is not bound to the requested tenant",
+            ));
+        }
+        if let Some(existing) = keys_by_id.get(&entity.entity_id) {
+            if existing != &entity.agent_key {
+                return Err(invalid_product_neighborhood(
+                    "one graph entity has multiple product keys",
+                ));
+            }
+            return Err(invalid_product_neighborhood(
+                "graph root was repeated as a neighbor",
+            ));
+        }
+        if ids_by_key
+            .insert(entity.agent_key.clone(), entity.entity_id.clone())
+            .is_some()
+        {
+            return Err(invalid_product_neighborhood(
+                "multiple graph entities have the same product key",
+            ));
+        }
+        keys_by_id.insert(entity.entity_id.clone(), entity.agent_key.clone());
+        neighbors.push(product_node(entity.agent_key.clone(), &entity)?);
+    }
+
+    let mut relations = Vec::with_capacity(neighborhood.edges.len());
+    let mut seen = BTreeMap::new();
+    for edge in neighborhood.edges {
+        if !valid_product_text(&edge.relation) || !valid_product_text(&edge.source_runtime_id) {
+            return Err(invalid_product_neighborhood(
+                "graph edge has invalid relation or source runtime metadata",
+            ));
+        }
+        let from_urn = keys_by_id.get(&edge.from).cloned().ok_or_else(|| {
+            invalid_product_neighborhood("graph edge starts outside its neighborhood")
+        })?;
+        let to_urn = keys_by_id.get(&edge.to).cloned().ok_or_else(|| {
+            invalid_product_neighborhood("graph edge ends outside its neighborhood")
+        })?;
+        let relation_key = (from_urn.clone(), edge.relation.clone(), to_urn.clone());
+        if seen.insert(relation_key, ()).is_some() {
+            continue;
+        }
+        let mut attributes =
+            BTreeMap::from([("source_runtime_id".to_owned(), edge.source_runtime_id)]);
+        if edge.identity_binding {
+            attributes.insert("identity_binding".to_owned(), "true".to_owned());
+        }
+        relations.push(ProductNeighborhoodRelation {
+            from_urn,
+            relation: edge.relation,
+            to_urn,
+            attributes,
+        });
+    }
+
+    Ok(ProductNeighborhood {
+        root,
+        neighbors,
+        relations,
+    })
+}
+
+fn product_node(
+    urn: String,
+    entity: &ContextEntity,
+) -> Result<ProductNeighborhoodNode, ContextError> {
+    let entity_type = entity
+        .properties
+        .get("entity_type")
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&entity.entity_kind);
+    if !valid_product_text(entity_type) || !valid_product_text(&entity.label) {
+        return Err(invalid_product_neighborhood(
+            "graph entity has invalid type or label metadata",
+        ));
+    }
+    Ok(ProductNeighborhoodNode {
+        urn,
+        entity_type: entity_type.clone(),
+        label: entity.label.clone(),
+    })
+}
+
+fn valid_product_text(value: &str) -> bool {
+    !value.trim().is_empty() && value.trim() == value && !value.chars().any(char::is_control)
+}
+
+fn invalid_product_neighborhood(message: impl Into<String>) -> ContextError {
+    ContextError::BackendUnavailable(format!("invalid product neighborhood: {}", message.into()))
+}
+
 fn parse_tenant(value: String) -> Result<TenantId, (StatusCode, Json<ErrorResponse>)> {
     TenantId::parse(value).map_err(|error| bad_request("invalid_tenant_id", error.to_string()))
 }
@@ -1065,6 +1267,10 @@ mod tests {
             Err(unavailable())
         }
 
+        async fn revision(&self, _tenant_id: &TenantId) -> Result<u64, ContextError> {
+            Err(unavailable())
+        }
+
         async fn search(
             &self,
             _tenant_id: &TenantId,
@@ -1119,6 +1325,14 @@ mod tests {
         ) -> Result<ContextEdge, ContextError> {
             Err(unavailable())
         }
+
+        async fn query(
+            &self,
+            _tenant_id: &TenantId,
+            _query: &cerebro_agent_context::FactQuery,
+        ) -> Result<cerebro_agent_context::QueryResult, ContextError> {
+            Err(unavailable())
+        }
     }
 
     fn authenticated(
@@ -1131,6 +1345,57 @@ mod tests {
         request.header(AUTHORIZATION, format!("Bearer {}", auth.token(&tenant_id)))
     }
 
+    fn context_entity(
+        entity_id: &str,
+        agent_key: &str,
+        entity_kind: &str,
+        label: &str,
+    ) -> ContextEntity {
+        ContextEntity {
+            entity_id: EntityId::parse(entity_id).unwrap(),
+            agent_key: agent_key.to_owned(),
+            entity_kind: entity_kind.to_owned(),
+            authority: serde_json::Value::Null,
+            label: label.to_owned(),
+            properties: BTreeMap::new(),
+        }
+    }
+
+    fn product_fixture() -> (String, TenantId, Neighborhood) {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let root_urn = "urn:cerebro:tenant-a:directory_user:alice".to_owned();
+        let root = context_entity("identity-alice", &root_urn, "identity", "Alice");
+        let mut neighbor = context_entity(
+            "repository-cerebro",
+            "urn:cerebro:tenant-a:repository:writer/cerebro",
+            "repository",
+            "writer/cerebro",
+        );
+        neighbor
+            .properties
+            .insert("entity_type".to_owned(), "source.repository".to_owned());
+        let edge = ContextEdge {
+            assertion_id: AssertionId::parse("assertion-access").unwrap(),
+            from: root.entity_id.clone(),
+            relation: "can_access".to_owned(),
+            to: neighbor.entity_id.clone(),
+            source_runtime_id: "github-prod".to_owned(),
+            identity_binding: false,
+        };
+        (
+            root_urn,
+            tenant.clone(),
+            Neighborhood {
+                tenant_id: tenant,
+                graph_revision: 7,
+                root,
+                entities: vec![neighbor],
+                edges: vec![edge],
+                truncated: false,
+            },
+        )
+    }
+
     #[test]
     fn tenant_auth_matches_the_go_client_test_vector() {
         let auth = TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap();
@@ -1139,6 +1404,410 @@ mod tests {
             auth.token(&tenant),
             "34b1625abbaa7a28cbca5f0a4803c1ba5360a998e5cc2f5b28d37bd32ba131d6"
         );
+    }
+
+    #[test]
+    fn tenant_auth_rejects_short_secrets_and_cross_tenant_tokens() {
+        assert!(TenantRequestAuth::new("too-short".to_owned()).is_err());
+        let auth = TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap();
+        let tenant_a = TenantId::parse("tenant-a").unwrap();
+        let tenant_b = TenantId::parse("tenant-b").unwrap();
+        assert!(auth.verify(&tenant_a, &auth.token(&tenant_a)));
+        assert!(!auth.verify(&tenant_b, &auth.token(&tenant_a)));
+    }
+
+    #[test]
+    fn tenant_auth_rejects_malformed_tags_without_panicking() {
+        let auth = TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap();
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        for token in [
+            "",
+            "0",
+            "00",
+            "g4b1625abbaa7a28cbca5f0a4803c1ba5360a998e5cc2f5b28d37bd32ba131d6",
+            "34b1625abbaa7a28cbca5f0a4803c1ba5360a998e5cc2f5b28d37bd32ba131d",
+            "34b1625abbaa7a28cbca5f0a4803c1ba5360a998e5cc2f5b28d37bd32ba131d60",
+        ] {
+            assert!(!auth.verify(&tenant, token), "token {token:?} was accepted");
+        }
+    }
+
+    #[test]
+    fn product_urn_parser_accepts_supported_cerebro_shapes() {
+        assert_eq!(
+            product_urn_tenant("urn:cerebro:tenant-a:asset:database"),
+            Some("tenant-a")
+        );
+        assert_eq!(
+            product_urn_tenant(
+                "urn:cerebro:tenant-a:runtime:github-prod:repository:writer/cerebro"
+            ),
+            Some("tenant-a")
+        );
+        assert_eq!(
+            product_urn_tenant("urn:cerebro:tenant-a:aws_resource:arn:aws:s3:::bucket"),
+            Some("tenant-a")
+        );
+    }
+
+    #[test]
+    fn product_urn_parser_rejects_every_missing_scope_component() {
+        for value in [
+            "",
+            "asset",
+            "urn:cerebro",
+            "urn:cerebro:tenant-a",
+            "urn:cerebro:tenant-a:asset",
+            "urn:other:tenant-a:asset:id",
+            "urn:cerebro::asset:id",
+            "urn:cerebro:tenant-a::id",
+            "urn:cerebro:tenant-a:asset:",
+            "urn:cerebro: tenant-a:asset:id",
+            "urn:cerebro:tenant-a:asset: id",
+            "urn:cerebro:tenant-a:asset:line\nbreak",
+            "urn:cerebro:tenant-a:runtime:runtime-id:asset",
+            "urn:cerebro:tenant-a:runtime::asset:id",
+        ] {
+            assert_eq!(product_urn_tenant(value), None, "{value:?} was accepted");
+        }
+    }
+
+    #[test]
+    fn product_neighborhood_limit_has_a_small_fixed_ceiling() {
+        assert_eq!(normalize_product_neighborhood_limit(None), 10);
+        assert_eq!(normalize_product_neighborhood_limit(Some(0)), 1);
+        assert_eq!(normalize_product_neighborhood_limit(Some(1)), 1);
+        assert_eq!(normalize_product_neighborhood_limit(Some(49)), 49);
+        assert_eq!(normalize_product_neighborhood_limit(Some(50)), 50);
+        assert_eq!(normalize_product_neighborhood_limit(Some(51)), 50);
+        assert_eq!(normalize_product_neighborhood_limit(Some(u32::MAX)), 50);
+    }
+
+    #[test]
+    fn product_neighborhood_preserves_the_exact_web_contract() {
+        let (root_urn, tenant, neighborhood) = product_fixture();
+        let product = product_neighborhood(&root_urn, &tenant, neighborhood).unwrap();
+        assert_eq!(
+            product.root,
+            ProductNeighborhoodNode {
+                urn: root_urn.clone(),
+                entity_type: "identity".to_owned(),
+                label: "Alice".to_owned(),
+            }
+        );
+        assert_eq!(
+            product.neighbors,
+            vec![ProductNeighborhoodNode {
+                urn: "urn:cerebro:tenant-a:repository:writer/cerebro".to_owned(),
+                entity_type: "source.repository".to_owned(),
+                label: "writer/cerebro".to_owned(),
+            }]
+        );
+        assert_eq!(
+            product.relations,
+            vec![ProductNeighborhoodRelation {
+                from_urn: root_urn,
+                relation: "can_access".to_owned(),
+                to_urn: "urn:cerebro:tenant-a:repository:writer/cerebro".to_owned(),
+                attributes: BTreeMap::from([(
+                    "source_runtime_id".to_owned(),
+                    "github-prod".to_owned(),
+                )]),
+            }]
+        );
+    }
+
+    #[test]
+    fn product_neighborhood_marks_identity_bindings() {
+        let (root_urn, tenant, mut neighborhood) = product_fixture();
+        neighborhood.edges[0].relation = "represents".to_owned();
+        neighborhood.edges[0].identity_binding = true;
+        let product = product_neighborhood(&root_urn, &tenant, neighborhood).unwrap();
+        assert_eq!(
+            product.relations[0].attributes,
+            BTreeMap::from([
+                ("identity_binding".to_owned(), "true".to_owned()),
+                ("source_runtime_id".to_owned(), "github-prod".to_owned()),
+            ])
+        );
+    }
+
+    #[test]
+    fn product_neighborhood_deduplicates_semantically_identical_relations() {
+        let (root_urn, tenant, mut neighborhood) = product_fixture();
+        let mut duplicate = neighborhood.edges[0].clone();
+        duplicate.assertion_id = AssertionId::parse("assertion-access-duplicate").unwrap();
+        duplicate.source_runtime_id = "github-replay".to_owned();
+        neighborhood.edges.push(duplicate);
+        let product = product_neighborhood(&root_urn, &tenant, neighborhood).unwrap();
+        assert_eq!(product.relations.len(), 1);
+        assert_eq!(
+            product.relations[0].attributes["source_runtime_id"],
+            "github-prod"
+        );
+    }
+
+    #[test]
+    fn product_neighborhood_rejects_a_cross_tenant_result() {
+        let (root_urn, tenant, mut neighborhood) = product_fixture();
+        neighborhood.tenant_id = TenantId::parse("tenant-b").unwrap();
+        assert!(matches!(
+            product_neighborhood(&root_urn, &tenant, neighborhood),
+            Err(ContextError::BackendUnavailable(_))
+        ));
+    }
+
+    #[test]
+    fn product_neighborhood_rejects_a_cross_tenant_root_key() {
+        let (root_urn, tenant, mut neighborhood) = product_fixture();
+        neighborhood.root.agent_key = "urn:cerebro:tenant-b:directory_user:alice".to_owned();
+        assert!(matches!(
+            product_neighborhood(&root_urn, &tenant, neighborhood),
+            Err(ContextError::BackendUnavailable(_))
+        ));
+    }
+
+    #[test]
+    fn product_neighborhood_rejects_a_different_same_tenant_root_key() {
+        let (root_urn, tenant, mut neighborhood) = product_fixture();
+        neighborhood.root.agent_key = "urn:cerebro:tenant-a:directory_user:bob".to_owned();
+        assert!(matches!(
+            product_neighborhood(&root_urn, &tenant, neighborhood),
+            Err(ContextError::BackendUnavailable(_))
+        ));
+    }
+
+    #[test]
+    fn product_neighborhood_rejects_a_cross_tenant_neighbor_key() {
+        let (root_urn, tenant, mut neighborhood) = product_fixture();
+        neighborhood.entities[0].agent_key =
+            "urn:cerebro:tenant-b:repository:writer/cerebro".to_owned();
+        assert!(matches!(
+            product_neighborhood(&root_urn, &tenant, neighborhood),
+            Err(ContextError::BackendUnavailable(_))
+        ));
+    }
+
+    #[test]
+    fn product_neighborhood_rejects_duplicate_product_keys() {
+        let (root_urn, tenant, mut neighborhood) = product_fixture();
+        let mut duplicate = neighborhood.entities[0].clone();
+        duplicate.entity_id = EntityId::parse("repository-other").unwrap();
+        neighborhood.entities.push(duplicate);
+        assert!(matches!(
+            product_neighborhood(&root_urn, &tenant, neighborhood),
+            Err(ContextError::BackendUnavailable(_))
+        ));
+    }
+
+    #[test]
+    fn product_neighborhood_rejects_root_repeated_as_a_neighbor() {
+        let (root_urn, tenant, mut neighborhood) = product_fixture();
+        neighborhood.entities.push(neighborhood.root.clone());
+        assert!(matches!(
+            product_neighborhood(&root_urn, &tenant, neighborhood),
+            Err(ContextError::BackendUnavailable(_))
+        ));
+    }
+
+    #[test]
+    fn product_neighborhood_rejects_edges_with_missing_endpoints() {
+        let (root_urn, tenant, mut neighborhood) = product_fixture();
+        neighborhood.edges[0].to = EntityId::parse("missing").unwrap();
+        assert!(matches!(
+            product_neighborhood(&root_urn, &tenant, neighborhood),
+            Err(ContextError::BackendUnavailable(_))
+        ));
+
+        let (root_urn, tenant, mut neighborhood) = product_fixture();
+        neighborhood.edges[0].from = EntityId::parse("missing").unwrap();
+        assert!(matches!(
+            product_neighborhood(&root_urn, &tenant, neighborhood),
+            Err(ContextError::BackendUnavailable(_))
+        ));
+    }
+
+    #[test]
+    fn product_neighborhood_rejects_invalid_entity_metadata() {
+        for invalid in ["", " ", " repository", "repository\nadmin"] {
+            let (root_urn, tenant, mut neighborhood) = product_fixture();
+            neighborhood.entities[0].entity_kind = invalid.to_owned();
+            neighborhood.entities[0].properties.clear();
+            assert!(
+                matches!(
+                    product_neighborhood(&root_urn, &tenant, neighborhood),
+                    Err(ContextError::BackendUnavailable(_))
+                ),
+                "entity kind {invalid:?} was accepted"
+            );
+        }
+        for invalid in ["", " ", " writer/cerebro", "writer\ncerebro"] {
+            let (root_urn, tenant, mut neighborhood) = product_fixture();
+            neighborhood.entities[0].label = invalid.to_owned();
+            assert!(
+                matches!(
+                    product_neighborhood(&root_urn, &tenant, neighborhood),
+                    Err(ContextError::BackendUnavailable(_))
+                ),
+                "entity label {invalid:?} was accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn product_neighborhood_rejects_invalid_edge_metadata() {
+        for invalid in ["", " ", " can_access", "can\naccess"] {
+            let (root_urn, tenant, mut neighborhood) = product_fixture();
+            neighborhood.edges[0].relation = invalid.to_owned();
+            assert!(
+                matches!(
+                    product_neighborhood(&root_urn, &tenant, neighborhood),
+                    Err(ContextError::BackendUnavailable(_))
+                ),
+                "relation {invalid:?} was accepted"
+            );
+        }
+        for invalid in ["", " ", " github-prod", "github\nprod"] {
+            let (root_urn, tenant, mut neighborhood) = product_fixture();
+            neighborhood.edges[0].source_runtime_id = invalid.to_owned();
+            assert!(
+                matches!(
+                    product_neighborhood(&root_urn, &tenant, neighborhood),
+                    Err(ContextError::BackendUnavailable(_))
+                ),
+                "source runtime {invalid:?} was accepted"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn product_neighborhood_route_is_served_entirely_by_rust() {
+        let (graph, _, root_id) = demo_graph().unwrap();
+        let root_urn = format!("urn:cerebro:tenant-demo:organizational_entity:{root_id}");
+        let response = router(graph)
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri(format!(
+                        "/platform/graph/neighborhood?root_urn={root_urn}&limit=10"
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["root"]["urn"], root_urn);
+        assert_eq!(body["neighbors"].as_array().unwrap().len(), 1);
+        assert_eq!(body["relations"].as_array().unwrap().len(), 1);
+        assert_eq!(body["relations"][0]["relation"], "represents");
+        assert_eq!(
+            body["relations"][0]["attributes"]["identity_binding"],
+            "true"
+        );
+    }
+
+    #[tokio::test]
+    async fn product_neighborhood_route_rejects_missing_auth_and_cross_tenant_auth() {
+        let (graph, _, root_id) = demo_graph().unwrap();
+        let uri = format!(
+            "/platform/graph/neighborhood?root_urn=urn:cerebro:tenant-demo:organizational_entity:{root_id}"
+        );
+        let app = router(graph);
+        let missing = app
+            .clone()
+            .oneshot(Request::builder().uri(&uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::UNAUTHORIZED);
+        let cross_tenant = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-other")
+                    .uri(uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cross_tenant.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn product_neighborhood_route_distinguishes_bad_roots_from_missing_roots() {
+        let (graph, _, _) = demo_graph().unwrap();
+        let app = router(graph);
+        let malformed = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri("/platform/graph/neighborhood?root_urn=not-a-urn")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
+        let missing = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri(
+                        "/platform/graph/neighborhood?root_urn=urn:cerebro:tenant-demo:asset:missing",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn product_neighborhood_route_rejects_invalid_query_limits() {
+        let (graph, _, root_id) = demo_graph().unwrap();
+        let app = router(graph);
+        for limit in ["-1", "ten", "4294967296"] {
+            let response = app
+                .clone()
+                .oneshot(
+                    authenticated(Request::builder(), "tenant-demo")
+                        .uri(format!(
+                            "/platform/graph/neighborhood?root_urn=urn:cerebro:tenant-demo:organizational_entity:{root_id}&limit={limit}"
+                        ))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::BAD_REQUEST,
+                "limit {limit:?} was accepted"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn product_neighborhood_route_surfaces_backend_failure_as_unavailable() {
+        let app = router_with_backend(
+            Arc::new(UnavailableGraph),
+            None,
+            None,
+            TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
+        );
+        let response = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .uri("/platform/graph/neighborhood?root_urn=urn:cerebro:tenant-demo:asset:one")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
@@ -1196,6 +1865,7 @@ mod tests {
             "limit": 100
         });
         let response = app
+            .clone()
             .oneshot(
                 authenticated(Request::builder(), "tenant-demo")
                     .method("POST")
@@ -1207,6 +1877,237 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn connect_graph_contract_is_tenant_bound_and_served_by_rust() {
+        let (graph, _, root_id) = demo_graph().unwrap();
+        let app = router(graph);
+        let body = serde_json::json!({
+            "tenantId": "tenant-demo",
+            "query": "",
+            "limit": 10
+        })
+        .to_string();
+        let unauthenticated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/Search")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauthenticated.status(), StatusCode::UNAUTHORIZED);
+        let error = axum::body::to_bytes(unauthenticated.into_body(), 1024)
+            .await
+            .unwrap();
+        let error: serde_json::Value = serde_json::from_slice(&error).unwrap();
+        assert_eq!(error["code"], "unauthenticated");
+
+        let response = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/Search")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(response["graphRevision"], "1");
+        assert_eq!(response["entities"].as_array().unwrap().len(), 4);
+        assert!(
+            response["entities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|entity| entity["agentKey"].as_str().is_some())
+        );
+
+        let body = serde_json::json!({
+            "tenantId": "tenant-demo",
+            "rootKeys": [root_id.as_str()],
+            "depth": 1,
+            "limit": 10
+        })
+        .to_string();
+        let response = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/ExpandBatch")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(
+            response["neighborhoods"][root_id.as_str()]["tenantId"],
+            "tenant-demo"
+        );
+
+        let body = serde_json::json!({
+            "tenantId": "tenant-demo",
+            "nodes": [
+                {"variable": "person", "kinds": ["person"]},
+                {"variable": "group", "kinds": ["group"], "keys": ["group-security"]}
+            ],
+            "edges": [
+                {
+                    "variable": "membership",
+                    "fromVariable": "person",
+                    "relation": "member_of",
+                    "toVariable": "group"
+                }
+            ],
+            "limit": 10
+        })
+        .to_string();
+        let response = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/QueryFacts")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(response["tenantId"], "tenant-demo");
+        assert_eq!(response["graphRevision"], "1");
+        assert_eq!(response["matches"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            response["matches"][0]["edges"][0]["edge"]["relation"],
+            "member_of"
+        );
+
+        let invalid = serde_json::json!({
+            "tenantId": "tenant-demo",
+            "nodes": [
+                {"variable": "person", "kinds": ["person"]},
+                {"variable": "group", "kinds": ["group"]}
+            ],
+            "edges": [
+                {
+                    "variable": "membership",
+                    "fromVariable": "person",
+                    "relation": "raw_cypher_escape",
+                    "toVariable": "group"
+                }
+            ],
+            "limit": 10
+        })
+        .to_string();
+        let response = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/QueryFacts")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(invalid))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let cross_tenant = serde_json::json!({
+            "tenantId": "tenant-other",
+            "nodes": [{"variable": "person", "kinds": ["person"]}],
+            "limit": 10
+        })
+        .to_string();
+        let response = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/QueryFacts")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(cross_tenant))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        let unbounded = serde_json::json!({
+            "tenantId": "tenant-demo",
+            "nodes": [{"variable": "person", "kinds": ["person"]}],
+            "limit": 501
+        })
+        .to_string();
+        let response = app
+            .clone()
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/QueryFacts")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(unbounded))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let unspecified_direction = serde_json::json!({
+            "tenantId": "tenant-demo",
+            "nodes": [{"variable": "person", "kinds": ["person"]}],
+            "absentEdges": [{
+                "boundVariable": "person",
+                "relation": "member_of",
+                "otherKinds": ["group"]
+            }],
+            "limit": 10
+        })
+        .to_string();
+        let response = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/cerebro.graph.v1.OrganizationalGraphService/QueryFacts")
+                    .header("content-type", "application/json")
+                    .header("connect-protocol-version", "1")
+                    .body(Body::from(unspecified_direction))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

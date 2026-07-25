@@ -138,6 +138,12 @@ provider-account to repository path through a canonical person and group, and
 that a conflicting bulk identity write changes neither PostgreSQL current state
 nor the projected Neo4j entity.
 
+The durable suite also runs 200 typed fact queries with two positive joins and
+one `NOT EXISTS` edge check. Every iteration must return the same middle-node
+binding and the graph revision read with that match. This is a regression
+workload for the agent query compiler; release measurements belong in the table
+only after the same-host before/after procedure above is repeated.
+
 ## Optimization found by the benchmark
 
 The first Rust run cloned each accepted entity in the delta builder and cloned

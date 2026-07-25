@@ -29,6 +29,10 @@ func newTenantAuthenticator(sharedSecret string) (tenantAuthenticator, error) {
 }
 
 func (a tenantAuthenticator) authorize(request *http.Request, tenantID string) error {
+	return a.authorizeHeader(request.Header, tenantID)
+}
+
+func (a tenantAuthenticator) authorizeHeader(header http.Header, tenantID string) error {
 	tenantID = strings.TrimSpace(tenantID)
 	if tenantID == "" {
 		return errors.New("rust organizational graph tenant ID is required")
@@ -39,7 +43,7 @@ func (a tenantAuthenticator) authorize(request *http.Request, tenantID string) e
 	binary.BigEndian.PutUint64(length[:], uint64(len([]byte(tenantID))))
 	_, _ = mac.Write(length[:])
 	_, _ = mac.Write([]byte(tenantID))
-	request.Header.Set(tenantAuthHeader, tenantID)
-	request.Header.Set("Authorization", "Bearer "+hex.EncodeToString(mac.Sum(nil)))
+	header.Set(tenantAuthHeader, tenantID)
+	header.Set("Authorization", "Bearer "+hex.EncodeToString(mac.Sum(nil)))
 	return nil
 }

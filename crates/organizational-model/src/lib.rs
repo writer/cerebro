@@ -156,7 +156,85 @@ pub enum EntityKind {
     Policy,
     Control,
     Finding,
+    Framework,
+    Program,
+    Objective,
+    Rule,
+    Evidence,
+    AssessmentRun,
+    AssessmentResult,
+    AssessmentSnapshot,
+    Remediation,
+    Verification,
+    WorkItem,
     Provider(ProviderKind),
+}
+
+impl EntityKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Person => "person",
+            Self::Identity => "identity",
+            Self::Team => "team",
+            Self::Organization => "organization",
+            Self::Repository => "repository",
+            Self::Service => "service",
+            Self::Application => "application",
+            Self::Environment => "environment",
+            Self::Account => "account",
+            Self::Resource => "resource",
+            Self::Group => "group",
+            Self::Role => "role",
+            Self::Policy => "policy",
+            Self::Control => "control",
+            Self::Finding => "finding",
+            Self::Framework => "framework",
+            Self::Program => "program",
+            Self::Objective => "objective",
+            Self::Rule => "rule",
+            Self::Evidence => "evidence",
+            Self::AssessmentRun => "assessment_run",
+            Self::AssessmentResult => "assessment_result",
+            Self::AssessmentSnapshot => "assessment_snapshot",
+            Self::Remediation => "remediation",
+            Self::Verification => "verification",
+            Self::WorkItem => "work_item",
+            Self::Provider(_) => "provider",
+        }
+    }
+
+    pub fn is_wire_name(value: &str) -> bool {
+        matches!(
+            value,
+            "person"
+                | "identity"
+                | "team"
+                | "organization"
+                | "repository"
+                | "service"
+                | "application"
+                | "environment"
+                | "account"
+                | "resource"
+                | "group"
+                | "role"
+                | "policy"
+                | "control"
+                | "finding"
+                | "framework"
+                | "program"
+                | "objective"
+                | "rule"
+                | "evidence"
+                | "assessment_run"
+                | "assessment_result"
+                | "assessment_snapshot"
+                | "remediation"
+                | "verification"
+                | "work_item"
+                | "provider"
+        )
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -619,6 +697,19 @@ pub enum RelationKind {
     EvidenceFor,
     MappedToControl,
     TrackedBy,
+    Implements,
+    Tests,
+    Includes,
+    Scopes,
+    Uses,
+    Evaluates,
+    Assesses,
+    Cites,
+    DetectedBy,
+    Addresses,
+    Verifies,
+    Commits,
+    DerivedFrom,
 }
 
 impl RelationKind {
@@ -642,10 +733,60 @@ impl RelationKind {
             Self::EvidenceFor => "evidence_for",
             Self::MappedToControl => "mapped_to_control",
             Self::TrackedBy => "tracked_by",
+            Self::Implements => "implements",
+            Self::Tests => "tests",
+            Self::Includes => "includes",
+            Self::Scopes => "scopes",
+            Self::Uses => "uses",
+            Self::Evaluates => "evaluates",
+            Self::Assesses => "assesses",
+            Self::Cites => "cites",
+            Self::DetectedBy => "detected_by",
+            Self::Addresses => "addresses",
+            Self::Verifies => "verifies",
+            Self::Commits => "commits",
+            Self::DerivedFrom => "derived_from",
         }
     }
 
-    fn accepts(self, from: &EntityKind, to: &EntityKind) -> bool {
+    pub fn from_wire(value: &str) -> Option<Self> {
+        Some(match value {
+            "member_of" => Self::MemberOf,
+            "owns" => Self::Owns,
+            "maintains" => Self::Maintains,
+            "depends_on" => Self::DependsOn,
+            "builds" => Self::Builds,
+            "deploys" => Self::Deploys,
+            "runs_in" => Self::RunsIn,
+            "contains" => Self::Contains,
+            "can_assume" => Self::CanAssume,
+            "can_access" => Self::CanAccess,
+            "grants" => Self::Grants,
+            "provisioned_as" => Self::ProvisionedAs,
+            "governs" => Self::Governs,
+            "affects" => Self::Affects,
+            "supports" => Self::Supports,
+            "evidence_for" => Self::EvidenceFor,
+            "mapped_to_control" => Self::MappedToControl,
+            "tracked_by" => Self::TrackedBy,
+            "implements" => Self::Implements,
+            "tests" => Self::Tests,
+            "includes" => Self::Includes,
+            "scopes" => Self::Scopes,
+            "uses" => Self::Uses,
+            "evaluates" => Self::Evaluates,
+            "assesses" => Self::Assesses,
+            "cites" => Self::Cites,
+            "detected_by" => Self::DetectedBy,
+            "addresses" => Self::Addresses,
+            "verifies" => Self::Verifies,
+            "commits" => Self::Commits,
+            "derived_from" => Self::DerivedFrom,
+            _ => return None,
+        })
+    }
+
+    pub fn accepts(self, from: &EntityKind, to: &EntityKind) -> bool {
         use EntityKind::*;
         match self {
             Self::MemberOf => matches!(from, Identity | Person) && matches!(to, Group | Team),
@@ -698,6 +839,63 @@ impl RelationKind {
             }
             Self::MappedToControl => matches!(from, Finding | Policy) && matches!(to, Control),
             Self::TrackedBy => !matches!(from, Person | Identity) && matches!(to, Provider(_)),
+            Self::Implements => matches!(from, Policy) && matches!(to, Control),
+            Self::Tests => matches!(from, Rule) && matches!(to, Objective),
+            Self::Includes => {
+                matches!(from, Framework | Program) && matches!(to, Control | Objective | Policy)
+            }
+            Self::Scopes => {
+                matches!(from, Program)
+                    && !matches!(
+                        to,
+                        Framework
+                            | Program
+                            | AssessmentRun
+                            | AssessmentResult
+                            | AssessmentSnapshot
+                            | Remediation
+                            | Verification
+                            | WorkItem
+                    )
+            }
+            Self::Uses => {
+                matches!(from, AssessmentRun)
+                    && matches!(to, Program | Policy | Rule | AssessmentSnapshot)
+            }
+            Self::Evaluates => {
+                matches!(from, AssessmentResult) && matches!(to, Objective | Control)
+            }
+            Self::Assesses => {
+                matches!(from, AssessmentResult)
+                    && !matches!(
+                        to,
+                        Framework
+                            | Program
+                            | Objective
+                            | Rule
+                            | Evidence
+                            | AssessmentRun
+                            | AssessmentResult
+                            | AssessmentSnapshot
+                            | Remediation
+                            | Verification
+                            | WorkItem
+                    )
+            }
+            Self::Cites => {
+                matches!(
+                    from,
+                    Finding | AssessmentResult | AssessmentSnapshot | Verification
+                ) && matches!(to, Evidence)
+            }
+            Self::DetectedBy => matches!(from, Finding) && matches!(to, Rule),
+            Self::Addresses => matches!(from, Remediation | WorkItem) && matches!(to, Finding),
+            Self::Verifies => matches!(from, Verification) && matches!(to, Remediation | Finding),
+            Self::Commits => matches!(from, AssessmentSnapshot) && matches!(to, AssessmentResult),
+            Self::DerivedFrom => {
+                matches!(from, Finding | AssessmentResult | Verification)
+                    && !matches!(to, Person | Identity)
+            }
         }
     }
 }
@@ -1517,6 +1715,17 @@ mod tests {
         let policy = entity("policy", EntityKind::Policy);
         let control = entity("control", EntityKind::Control);
         let finding = entity("finding", EntityKind::Finding);
+        let framework = entity("framework", EntityKind::Framework);
+        let program = entity("program", EntityKind::Program);
+        let objective = entity("objective", EntityKind::Objective);
+        let rule = entity("rule", EntityKind::Rule);
+        let evidence = entity("evidence", EntityKind::Evidence);
+        let assessment_run = entity("assessment-run", EntityKind::AssessmentRun);
+        let assessment_result = entity("assessment-result", EntityKind::AssessmentResult);
+        let assessment_snapshot = entity("assessment-snapshot", EntityKind::AssessmentSnapshot);
+        let remediation = entity("remediation", EntityKind::Remediation);
+        let verification = entity("verification", EntityKind::Verification);
+        let work_item = entity("work-item", EntityKind::WorkItem);
         let provider = entity(
             "provider",
             EntityKind::Provider(ProviderKind::parse("github.repository").unwrap()),
@@ -1560,6 +1769,44 @@ mod tests {
                 "mapped_to_control",
             ),
             (RelationKind::TrackedBy, &resource, &provider, "tracked_by"),
+            (RelationKind::Implements, &policy, &control, "implements"),
+            (RelationKind::Tests, &rule, &objective, "tests"),
+            (RelationKind::Includes, &framework, &control, "includes"),
+            (RelationKind::Scopes, &program, &resource, "scopes"),
+            (RelationKind::Uses, &assessment_run, &program, "uses"),
+            (
+                RelationKind::Evaluates,
+                &assessment_result,
+                &objective,
+                "evaluates",
+            ),
+            (
+                RelationKind::Assesses,
+                &assessment_result,
+                &resource,
+                "assesses",
+            ),
+            (RelationKind::Cites, &assessment_result, &evidence, "cites"),
+            (RelationKind::DetectedBy, &finding, &rule, "detected_by"),
+            (RelationKind::Addresses, &remediation, &finding, "addresses"),
+            (
+                RelationKind::Verifies,
+                &verification,
+                &remediation,
+                "verifies",
+            ),
+            (
+                RelationKind::Commits,
+                &assessment_snapshot,
+                &assessment_result,
+                "commits",
+            ),
+            (
+                RelationKind::DerivedFrom,
+                &finding,
+                &work_item,
+                "derived_from",
+            ),
         ];
         let collection = receipt();
         for (relation, from, to, name) in cases {
@@ -1579,6 +1826,17 @@ mod tests {
             assert_eq!(assertion.observed_at_unix_ms(), 10);
             assert_eq!(assertion.provenance().producer(), "okta-user-mapper");
         }
+
+        assert_eq!(
+            RelationshipAssertion::new(
+                &person,
+                RelationKind::Verifies,
+                &finding,
+                provenance(collection.receipt()),
+                10,
+            ),
+            Err(ModelError::InvalidRelationship)
+        );
     }
 
     #[test]
