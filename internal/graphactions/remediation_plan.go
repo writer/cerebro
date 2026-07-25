@@ -55,16 +55,3 @@ func (s Service) PlanReversibleRemediation(ctx context.Context, input Input) (*R
 		},
 	}, nil
 }
-
-func (s Service) ExecuteApprovedReversibleRemediation(ctx context.Context, input Input) (*Result, error) {
-	spec, err := s.actionSpec(input.Action)
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(spec.ReversibleBy) == "" {
-		return nil, fmt.Errorf("%w: action %q does not declare a reversal", ErrInvalidRequest, spec.ID)
-	}
-	input.DryRun = false
-	input.Approved = true
-	return s.Execute(ctx, input)
-}
