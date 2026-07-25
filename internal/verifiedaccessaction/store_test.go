@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestMemoryStorePersistsImmutableTransitionChain(t *testing.T) {
@@ -51,6 +52,54 @@ func TestMemoryStorePersistsImmutableTransitionChain(t *testing.T) {
 	if len(transitions) != 3 ||
 		transitions[2].PreviousTransitionDigest != transitions[1].Digest {
 		t.Fatalf("transitions = %#v", transitions)
+	}
+}
+
+func TestMemoryStoreListsBoundedFindingActionsWithinTenant(t *testing.T) {
+	t.Parallel()
+
+	store := NewMemoryStore()
+	ctx := context.Background()
+	for index, fixture := range []struct {
+		tenantID  string
+		findingID string
+	}{
+		{tenantID: "tenant-one", findingID: "finding-one"},
+		{tenantID: "tenant-one", findingID: "finding-one"},
+		{tenantID: "tenant-one", findingID: "finding-two"},
+		{tenantID: "tenant-two", findingID: "finding-one"},
+	} {
+		input := proposalInput()
+		input.TenantID = fixture.tenantID
+		input.FindingID = fixture.findingID
+		input.IdempotencyKey = input.IdempotencyKey + "-" + string(rune('a'+index))
+		input.ProposedAt = input.ProposedAt.Add(time.Duration(index) * time.Minute)
+		outcome, err := Propose(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if applied, createErr := store.CreateAccessAction(ctx, outcome); createErr != nil || !applied {
+			t.Fatalf("CreateAccessAction() = %t, %v", applied, createErr)
+		}
+	}
+
+	records, err := store.ListAccessActionsByFinding(ctx, "tenant-one", "finding-one", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 ||
+		records[0].TenantID != "tenant-one" ||
+		records[0].FindingID != "finding-one" ||
+		records[0].IdempotencyKey != "access-revocation-one-b" {
+		t.Fatalf("records = %+v", records)
+	}
+	if _, err := store.ListAccessActionsByFinding(
+		ctx,
+		"tenant-one",
+		"finding-one",
+		MaxListLimit+1,
+	); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("oversized list error = %v, want ErrInvalid", err)
 	}
 }
 

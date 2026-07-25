@@ -30,6 +30,8 @@ func TestVerifiedAccessActionSchemaIsTenantScopedAndCASReady(t *testing.T) {
 		"UNIQUE (tenant_id, idempotency_key)",
 		"UNIQUE (tenant_id, transition_digest)",
 		"FOREIGN KEY (tenant_id, action_id)",
+		"finding_id TEXT NOT NULL",
+		"(tenant_id, finding_id, updated_at DESC, action_id)",
 		"previous_transition_digest TEXT NOT NULL",
 	} {
 		if !strings.Contains(joined, fragment) {
@@ -114,6 +116,20 @@ func TestVerifiedAccessActionPostgresGrantsOneExecutionClaim(t *testing.T) {
 	}
 	if len(transitions) != 4 {
 		t.Fatalf("transition count = %d, want 4", len(transitions))
+	}
+	records, err := store.ListAccessActionsByFinding(ctx, tenantID, "finding-one", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 || records[0].ID != proposed.Record.ID {
+		t.Fatalf("finding actions = %+v", records)
+	}
+	foreign, err := store.ListAccessActionsByFinding(ctx, tenantID+"-other", "finding-one", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(foreign) != 0 {
+		t.Fatalf("cross-tenant finding actions = %+v", foreign)
 	}
 }
 
