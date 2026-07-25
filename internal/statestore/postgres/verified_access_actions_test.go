@@ -121,7 +121,8 @@ func postgresTestProposal(t *testing.T, tenantID string) verifiedaccessaction.Ou
 	t.Helper()
 	at := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 	outcome, err := verifiedaccessaction.Propose(verifiedaccessaction.ProposalInput{
-		TenantID: tenantID,
+		TenantID:  tenantID,
+		FindingID: "finding-one",
 		Definition: verifiedaccessaction.ActionDefinition{
 			Metadata: graphactions.ActionMetadata{
 				ID:             graphactions.ActionIdentityOktaSuspendUser,
