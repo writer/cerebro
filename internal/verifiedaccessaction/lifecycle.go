@@ -63,16 +63,78 @@ func Approve(record Record, input ApprovalInput) (Outcome, error) {
 	return transition(updated, StatusPreflighted, StatusApproved, ResultApproved, input.Actor, input.ApprovedAt)
 }
 
-// IngestExecution records an existing provider receipt. It never invokes a
-// provider and accepts only a successful graph-action result bound to approval.
-func IngestExecution(record Record, input ExecutionInput) (Outcome, error) {
+// ClaimExecution consumes the approved action exactly once before any provider
+// request is made. Durable stores use the transition predecessor as the
+// compare-and-swap boundary so concurrent executors cannot both hold a claim.
+func ClaimExecution(record Record, input ExecutionClaimInput) (Outcome, error) {
 	if err := requireState(record, StatusApproved); err != nil {
 		return Outcome{}, err
 	}
-	if record.Preflight == nil || record.Approval == nil || input.ProposalDigest != proposalDigest(record) || input.PreflightDigest != record.Preflight.Digest || input.ApprovalDigest != record.Approval.Digest || input.ParametersDigest != digestValue(record.Parameters) || input.Binding != record.Binding || input.DefinitionVersion != record.Definition.Version {
+	if record.Preflight == nil || record.Approval == nil ||
+		input.ProposalDigest != proposalDigest(record) ||
+		input.PreflightDigest != record.Preflight.Digest ||
+		input.ApprovalDigest != record.Approval.Digest ||
+		input.ParametersDigest != digestValue(record.Parameters) ||
+		input.Binding != record.Binding ||
+		input.DefinitionVersion != record.Definition.Version {
+		return Outcome{}, fmt.Errorf("%w: execution claim does not bind the approved action", ErrStale)
+	}
+	if !validActor(input.Actor) || input.ClaimedAt.IsZero() ||
+		input.ClaimedAt.Before(record.Approval.ApprovedAt) ||
+		input.ClaimedAt.After(record.Preflight.ValidUntil) {
+		return Outcome{}, fmt.Errorf("%w: execution claim is outside the approval window", ErrStale)
+	}
+	receipt := ExecutionClaimReceipt{ExecutionClaimInput: input}
+	receipt.Digest = digestValue(receipt)
+	updated := cloneRecord(record)
+	updated.ExecutionClaim, updated.Status = &receipt, StatusClaimed
+	return transition(updated, StatusApproved, StatusClaimed, ResultExecutionClaimed, input.Actor, input.ClaimedAt)
+}
+
+// RecordSubmissionUnknown preserves an ambiguous provider submission for
+// reconciliation. It never treats a timeout or transport failure as success.
+func RecordSubmissionUnknown(record Record, input SubmissionUnknownInput) (Outcome, error) {
+	if err := requireState(record, StatusClaimed); err != nil {
+		return Outcome{}, err
+	}
+	if record.ExecutionClaim == nil || input.ExecutionClaimDigest != record.ExecutionClaim.Digest {
+		return Outcome{}, fmt.Errorf("%w: unknown submission does not bind the execution claim", ErrStale)
+	}
+	if !validActor(input.Actor) || clean(input.ProviderRequestID) == "" ||
+		!validSubmissionErrorClass(input.ErrorClass) || input.ObservedAt.IsZero() ||
+		input.ObservedAt.Before(record.ExecutionClaim.ClaimedAt) ||
+		!input.NextReconcileAt.After(input.ObservedAt) {
+		return Outcome{}, fmt.Errorf("%w: unknown submission requires a provider request, error class, and reconciliation time", ErrInvalid)
+	}
+	receipt := SubmissionUnknownReceipt{SubmissionUnknownInput: input}
+	receipt.Digest = digestValue(receipt)
+	updated := cloneRecord(record)
+	updated.SubmissionUnknown, updated.Status = &receipt, StatusUnknown
+	return transition(updated, StatusClaimed, StatusUnknown, ResultSubmissionUnknown, input.Actor, input.ObservedAt)
+}
+
+// IngestExecution records an existing provider receipt. It never invokes a
+// provider and accepts only a successful graph-action result bound to approval.
+func IngestExecution(record Record, input ExecutionInput) (Outcome, error) {
+	from := record.Status
+	if from != StatusClaimed && from != StatusUnknown {
+		return Outcome{}, fmt.Errorf("%w: expected %s or %s", ErrState, StatusClaimed, StatusUnknown)
+	}
+	if err := requireState(record, from); err != nil {
+		return Outcome{}, err
+	}
+	if record.Preflight == nil || record.Approval == nil || record.ExecutionClaim == nil ||
+		input.ExecutionClaimDigest != record.ExecutionClaim.Digest ||
+		input.ProposalDigest != proposalDigest(record) ||
+		input.PreflightDigest != record.Preflight.Digest ||
+		input.ApprovalDigest != record.Approval.Digest ||
+		input.ParametersDigest != digestValue(record.Parameters) ||
+		input.Binding != record.Binding ||
+		input.DefinitionVersion != record.Definition.Version {
 		return Outcome{}, fmt.Errorf("%w: execution receipt does not bind the approved action", ErrStale)
 	}
-	if !validActor(input.ExecutedBy) || !validActor(input.IngestedBy) || input.OccurredAt.IsZero() || input.OccurredAt.Before(record.Approval.ApprovedAt) {
+	if !validActor(input.ExecutedBy) || !validActor(input.IngestedBy) ||
+		input.OccurredAt.IsZero() || input.OccurredAt.Before(record.ExecutionClaim.ClaimedAt) {
 		return Outcome{}, fmt.Errorf("%w: execution actor or occurrence time is invalid", ErrInvalid)
 	}
 	if err := validateGraphAction(record, input); err != nil {
@@ -85,7 +147,7 @@ func IngestExecution(record Record, input ExecutionInput) (Outcome, error) {
 	receipt.Digest = digestValue(receipt)
 	updated := cloneRecord(record)
 	updated.Execution, updated.Status = &receipt, StatusExecuted
-	return transition(updated, StatusApproved, StatusExecuted, ResultReceiptIngested, input.IngestedBy, input.OccurredAt)
+	return transition(updated, from, StatusExecuted, ResultReceiptIngested, input.IngestedBy, input.OccurredAt)
 }
 
 func VerifyClosure(record Record, input VerificationInput) (Outcome, error) {
@@ -281,7 +343,8 @@ func ProposalRecordDigest(record Record) (string, error) {
 
 func proposalDigest(record Record) string {
 	copy := cloneRecord(record)
-	copy.Status, copy.Preflight, copy.Approval, copy.Execution, copy.Verification = StatusProposed, nil, nil, nil, nil
+	copy.Status, copy.Preflight, copy.Approval = StatusProposed, nil, nil
+	copy.ExecutionClaim, copy.SubmissionUnknown, copy.Execution, copy.Verification = nil, nil, nil, nil
 	copy.Digest, copy.LastTransitionDigest = "", ""
 	return digestValue(copy)
 }
@@ -317,6 +380,14 @@ func human(actor Actor) bool {
 func sameActor(left, right Actor) bool {
 	return clean(left.ID) != "" && strings.EqualFold(clean(left.Type), clean(right.Type)) && clean(left.ID) == clean(right.ID)
 }
+func validSubmissionErrorClass(value string) bool {
+	switch clean(value) {
+	case SubmissionErrorTransportTimeout, SubmissionErrorConnectionReset, SubmissionErrorResponseLost:
+		return true
+	default:
+		return false
+	}
+}
 func first(values ...string) string {
 	for _, value := range values {
 		if clean(value) != "" {
@@ -350,6 +421,15 @@ func cloneRecord(input Record) Record {
 }
 
 func metrics(status, code string) Metrics {
-	order := map[string]int{StatusProposed: 1, StatusPreflighted: 2, StatusApproved: 3, StatusExecuted: 4, StatusClosed: 5, StatusReopened: 5}
-	return Metrics{Status: status, ResultCode: code, PreflightPassed: order[status] >= 2, Approved: order[status] >= 3, ReceiptAccepted: order[status] >= 4, VerificationClosed: status == StatusClosed, Reopened: status == StatusReopened}
+	order := map[string]int{StatusProposed: 1, StatusPreflighted: 2, StatusApproved: 3, StatusClaimed: 4, StatusUnknown: 4, StatusExecuted: 5, StatusClosed: 6, StatusReopened: 6}
+	return Metrics{
+		Status: status, ResultCode: code,
+		PreflightPassed:    order[status] >= 2,
+		Approved:           order[status] >= 3,
+		ExecutionClaimed:   order[status] >= 4,
+		SubmissionUnknown:  status == StatusUnknown,
+		ReceiptAccepted:    order[status] >= 5,
+		VerificationClosed: status == StatusClosed,
+		Reopened:           status == StatusReopened,
+	}
 }

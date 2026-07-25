@@ -61,7 +61,8 @@ type connectorTablesReady struct {
 }
 
 type platformTablesReady struct {
-	auditEvents bool
+	auditEvents          bool
+	verifiedAccessAction bool
 }
 
 type grcTablesReady struct {

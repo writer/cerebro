@@ -16,6 +16,8 @@ const (
 	StatusProposed    = "proposed"
 	StatusPreflighted = "preflighted"
 	StatusApproved    = "approved"
+	StatusClaimed     = "execution_claimed"
+	StatusUnknown     = "submission_unknown"
 	StatusExecuted    = "execution_receipt_ingested"
 	StatusClosed      = "verified_closed"
 	StatusReopened    = "reopened"
@@ -23,10 +25,16 @@ const (
 	ResultProposed                = "proposal_recorded"
 	ResultPreflightPassed         = "preflight_passed"
 	ResultApproved                = "human_approval_recorded"
+	ResultExecutionClaimed        = "execution_claimed"
+	ResultSubmissionUnknown       = "provider_submission_unknown"
 	ResultReceiptIngested         = "execution_receipt_ingested"
 	ResultVerifiedClosed          = "independently_verified_closed"
 	ResultReopenedMismatch        = "reopened_verification_mismatch"
 	ResultReopenedSourceUnhealthy = "reopened_source_unhealthy"
+
+	SubmissionErrorTransportTimeout = "transport_timeout"
+	SubmissionErrorConnectionReset  = "connection_reset"
+	SubmissionErrorResponseLost     = "response_lost"
 )
 
 var (
@@ -36,6 +44,8 @@ var (
 	ErrSeparationOfDuty     = errors.New("verified access action separation of duty failed")
 	ErrSourceUnhealthy      = errors.New("verified access action source is unhealthy")
 	ErrVerificationMismatch = errors.New("verified access action verification mismatch")
+	ErrConflict             = errors.New("verified access action persistence conflict")
+	ErrNotFound             = errors.New("verified access action not found")
 )
 
 type Actor struct {
@@ -78,24 +88,26 @@ type ProposalInput struct {
 }
 
 type Record struct {
-	SchemaVersion        string               `json:"schema_version"`
-	ID                   string               `json:"id"`
-	Digest               string               `json:"digest"`
-	TenantID             string               `json:"tenant_id"`
-	Status               string               `json:"status"`
-	Definition           ActionDefinition     `json:"definition"`
-	Binding              TargetBinding        `json:"binding"`
-	Parameters           map[string]string    `json:"parameters"`
-	Proposer             Actor                `json:"proposer"`
-	IdempotencyKey       string               `json:"idempotency_key"`
-	Rollback             RollbackPlan         `json:"rollback"`
-	Reason               string               `json:"reason"`
-	ProposedAt           time.Time            `json:"proposed_at"`
-	Preflight            *PreflightReceipt    `json:"preflight,omitempty"`
-	Approval             *ApprovalReceipt     `json:"approval,omitempty"`
-	Execution            *ExecutionReceipt    `json:"execution,omitempty"`
-	Verification         *VerificationReceipt `json:"verification,omitempty"`
-	LastTransitionDigest string               `json:"last_transition_digest"`
+	SchemaVersion        string                    `json:"schema_version"`
+	ID                   string                    `json:"id"`
+	Digest               string                    `json:"digest"`
+	TenantID             string                    `json:"tenant_id"`
+	Status               string                    `json:"status"`
+	Definition           ActionDefinition          `json:"definition"`
+	Binding              TargetBinding             `json:"binding"`
+	Parameters           map[string]string         `json:"parameters"`
+	Proposer             Actor                     `json:"proposer"`
+	IdempotencyKey       string                    `json:"idempotency_key"`
+	Rollback             RollbackPlan              `json:"rollback"`
+	Reason               string                    `json:"reason"`
+	ProposedAt           time.Time                 `json:"proposed_at"`
+	Preflight            *PreflightReceipt         `json:"preflight,omitempty"`
+	Approval             *ApprovalReceipt          `json:"approval,omitempty"`
+	ExecutionClaim       *ExecutionClaimReceipt    `json:"execution_claim,omitempty"`
+	SubmissionUnknown    *SubmissionUnknownReceipt `json:"submission_unknown,omitempty"`
+	Execution            *ExecutionReceipt         `json:"execution,omitempty"`
+	Verification         *VerificationReceipt      `json:"verification,omitempty"`
+	LastTransitionDigest string                    `json:"last_transition_digest"`
 }
 
 type PreflightInput struct {
@@ -131,8 +143,39 @@ type ApprovalReceipt struct {
 	Digest string `json:"digest"`
 }
 
+type ExecutionClaimInput struct {
+	ProposalDigest    string        `json:"proposal_digest"`
+	PreflightDigest   string        `json:"preflight_digest"`
+	ApprovalDigest    string        `json:"approval_digest"`
+	ParametersDigest  string        `json:"parameters_digest"`
+	Binding           TargetBinding `json:"binding"`
+	DefinitionVersion string        `json:"definition_version"`
+	Actor             Actor         `json:"actor"`
+	ClaimedAt         time.Time     `json:"claimed_at"`
+}
+
+type ExecutionClaimReceipt struct {
+	ExecutionClaimInput
+	Digest string `json:"digest"`
+}
+
+type SubmissionUnknownInput struct {
+	ExecutionClaimDigest string    `json:"execution_claim_digest"`
+	ProviderRequestID    string    `json:"provider_request_id"`
+	ErrorClass           string    `json:"error_class"`
+	Actor                Actor     `json:"actor"`
+	ObservedAt           time.Time `json:"observed_at"`
+	NextReconcileAt      time.Time `json:"next_reconcile_at"`
+}
+
+type SubmissionUnknownReceipt struct {
+	SubmissionUnknownInput
+	Digest string `json:"digest"`
+}
+
 type ExecutionInput struct {
 	GraphAction           graphactions.GraphAction `json:"graph_action"`
+	ExecutionClaimDigest  string                   `json:"execution_claim_digest"`
 	DefinitionVersion     string                   `json:"definition_version"`
 	ProposalDigest        string                   `json:"proposal_digest"`
 	PreflightDigest       string                   `json:"preflight_digest"`
@@ -192,6 +235,8 @@ type Metrics struct {
 	ResultCode         string `json:"result_code"`
 	PreflightPassed    bool   `json:"preflight_passed"`
 	Approved           bool   `json:"approved"`
+	ExecutionClaimed   bool   `json:"execution_claimed"`
+	SubmissionUnknown  bool   `json:"submission_unknown"`
 	ReceiptAccepted    bool   `json:"receipt_accepted"`
 	VerificationClosed bool   `json:"verification_closed"`
 	Reopened           bool   `json:"reopened"`
