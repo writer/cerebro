@@ -4,17 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 )
+
+const MaxListLimit = 100
+
+// Reader exposes tenant-qualified current state without mutation authority.
+type Reader interface {
+	GetAccessAction(context.Context, string, string) (Record, error)
+	ListAccessActionsByFinding(context.Context, string, string, int) ([]Record, error)
+	ListAccessActionTransitions(context.Context, string, string) ([]TransitionReceipt, error)
+}
 
 // Store persists the current record and its immutable transition chain.
 // The applied result is true only for the caller that advances the record.
 // Executors must not call a provider when AppendAccessAction returns false.
 type Store interface {
+	Reader
 	CreateAccessAction(context.Context, Outcome) (bool, error)
-	GetAccessAction(context.Context, string, string) (Record, error)
 	AppendAccessAction(context.Context, Outcome) (bool, error)
-	ListAccessActionTransitions(context.Context, string, string) ([]TransitionReceipt, error)
 }
 
 // MemoryStore provides the same compare-and-swap behavior as the durable store
@@ -73,6 +82,39 @@ func (s *MemoryStore) GetAccessAction(_ context.Context, tenantID, actionID stri
 		return Record{}, ErrNotFound
 	}
 	return cloneRecord(record), nil
+}
+
+func (s *MemoryStore) ListAccessActionsByFinding(
+	_ context.Context,
+	tenantID string,
+	findingID string,
+	limit int,
+) ([]Record, error) {
+	if s == nil {
+		return nil, ErrState
+	}
+	tenantID, findingID = clean(tenantID), clean(findingID)
+	if tenantID == "" || findingID == "" || limit <= 0 || limit > MaxListLimit {
+		return nil, ErrInvalid
+	}
+	s.mu.RLock()
+	result := make([]Record, 0)
+	for _, record := range s.records {
+		if record.TenantID == tenantID && record.FindingID == findingID {
+			result = append(result, cloneRecord(record))
+		}
+	}
+	s.mu.RUnlock()
+	sort.Slice(result, func(left, right int) bool {
+		if result[left].ProposedAt.Equal(result[right].ProposedAt) {
+			return result[left].ID > result[right].ID
+		}
+		return result[left].ProposedAt.After(result[right].ProposedAt)
+	})
+	if len(result) > limit {
+		result = result[:limit]
+	}
+	return result, nil
 }
 
 func (s *MemoryStore) AppendAccessAction(_ context.Context, outcome Outcome) (bool, error) {

@@ -36,11 +36,12 @@ func (s *Store) CreateAccessAction(ctx context.Context, outcome verifiedaccessac
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO verified_access_actions (
-  tenant_id, action_id, idempotency_key, status, record_digest,
+  tenant_id, action_id, finding_id, idempotency_key, status, record_digest,
   last_transition_digest, record_json, proposed_at, updated_at
-) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)
 ON CONFLICT DO NOTHING`,
-		outcome.Record.TenantID, outcome.Record.ID, outcome.Record.IdempotencyKey,
+		outcome.Record.TenantID, outcome.Record.ID, outcome.Record.FindingID,
+		outcome.Record.IdempotencyKey,
 		outcome.Record.Status, outcome.Record.Digest, outcome.Record.LastTransitionDigest,
 		recordJSON, outcome.Record.ProposedAt, outcome.Transition.OccurredAt)
 	if err != nil {
@@ -105,6 +106,51 @@ WHERE tenant_id = $1 AND action_id = $2`, tenantID, actionID).Scan(&recordJSON)
 		return verifiedaccessaction.Record{}, fmt.Errorf("query verified access action: %w", err)
 	}
 	return decodeVerifiedAccessActionRecord(recordJSON)
+}
+
+func (s *Store) ListAccessActionsByFinding(
+	ctx context.Context,
+	tenantID string,
+	findingID string,
+	limit int,
+) ([]verifiedaccessaction.Record, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	tenantID, findingID = strings.TrimSpace(tenantID), strings.TrimSpace(findingID)
+	if tenantID == "" || findingID == "" ||
+		limit <= 0 || limit > verifiedaccessaction.MaxListLimit {
+		return nil, verifiedaccessaction.ErrInvalid
+	}
+	if err := s.ensureVerifiedAccessActionTables(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT record_json::text
+FROM verified_access_actions
+WHERE tenant_id = $1 AND finding_id = $2
+ORDER BY proposed_at DESC, action_id DESC
+LIMIT $3`, tenantID, findingID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query verified access actions by finding: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]verifiedaccessaction.Record, 0)
+	for rows.Next() {
+		var payload string
+		if err := rows.Scan(&payload); err != nil {
+			return nil, fmt.Errorf("scan verified access action: %w", err)
+		}
+		record, err := decodeVerifiedAccessActionRecord(payload)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate verified access actions by finding: %w", err)
+	}
+	return result, nil
 }
 
 func (s *Store) AppendAccessAction(ctx context.Context, outcome verifiedaccessaction.Outcome) (bool, error) {

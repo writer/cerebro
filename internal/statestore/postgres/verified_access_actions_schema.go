@@ -6,6 +6,7 @@ var ensureVerifiedAccessActionStatements = []string{
 	`CREATE TABLE IF NOT EXISTS verified_access_actions (
   tenant_id TEXT NOT NULL,
   action_id TEXT NOT NULL,
+  finding_id TEXT NOT NULL,
   idempotency_key TEXT NOT NULL,
   status TEXT NOT NULL,
   record_digest TEXT NOT NULL,
@@ -16,8 +17,12 @@ var ensureVerifiedAccessActionStatements = []string{
   PRIMARY KEY (tenant_id, action_id),
   UNIQUE (tenant_id, idempotency_key)
 )`,
+	`ALTER TABLE verified_access_actions
+ADD COLUMN IF NOT EXISTS finding_id TEXT NOT NULL DEFAULT ''`,
 	`CREATE INDEX IF NOT EXISTS verified_access_actions_tenant_status_updated_idx
 ON verified_access_actions (tenant_id, status, updated_at DESC, action_id)`,
+	`CREATE INDEX IF NOT EXISTS verified_access_actions_tenant_finding_proposed_idx
+ON verified_access_actions (tenant_id, finding_id, proposed_at DESC, action_id)`,
 	`CREATE TABLE IF NOT EXISTS verified_access_action_transitions (
   tenant_id TEXT NOT NULL,
   action_id TEXT NOT NULL,
