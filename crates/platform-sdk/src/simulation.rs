@@ -1,8 +1,8 @@
 use serde::Serialize;
 
 use crate::{
-    AssertionDefinitionId, ContentDigest, EntityId, GraphChange, GraphRevision, RelationKind,
-    SdkError, SimulationId, TenantId,
+    AssertionDefinitionId, ContentDigest, EntityId, GraphRevision, RelationKind, SdkError,
+    SimulationId, TenantId,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -61,7 +61,7 @@ pub struct SimulationResult {
     pub simulation_id: SimulationId,
     pub tenant_id: TenantId,
     pub base_revision: GraphRevision,
-    pub changes: Vec<GraphChange>,
+    pub applied_changes: Vec<ProposedChange>,
     pub affected_entities: Vec<EntityId>,
     pub assertion_results: Vec<SimulationFinding>,
     pub truncated: bool,

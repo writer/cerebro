@@ -74,6 +74,9 @@ pub struct PlatformEvent {
     pub tenant_id: TenantId,
     pub kind: PlatformEventKind,
     pub graph_revision: Option<GraphRevision>,
+    pub entity_kind: Option<EntityKind>,
+    pub entity_id: Option<EntityId>,
+    pub assertion_id: Option<AssertionDefinitionId>,
     pub occurred_at_unix_millis: i64,
     pub payload_digest: ContentDigest,
 }

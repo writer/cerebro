@@ -38,7 +38,9 @@ pub use cerebro_control_kernel::{
     AuthorizationDecision, AuthorizationRequest, CapabilityGrant, DecisionReceipt, Mandate,
     Mission, MissionEvent, MissionEventEnvelope, VerificationReceipt,
 };
-pub use cerebro_organizational_model::{AssertionId, EntityId, EntityKind, RelationKind, TenantId};
+pub use cerebro_organizational_model::{
+    AssertionId, EntityId, EntityKind, RelationKind, SourceRuntimeId, TenantId,
+};
 pub use diagnostics::{CapabilityHealth, CapabilityState, OperationalDiagnostics, ProjectionLag};
 pub use error::SdkError;
 pub use identity::{

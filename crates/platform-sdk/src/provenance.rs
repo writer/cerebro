@@ -1,6 +1,9 @@
 use serde::Serialize;
 
-use crate::{AssertionId, ContentDigest, EntityId, GraphRevision, OpaqueId, SdkError, TenantId};
+use crate::{
+    AssertionId, ContentDigest, EntityId, GraphRevision, OpaqueId, SdkError, SourceRuntimeId,
+    TenantId,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -69,8 +72,8 @@ impl EvidenceQuality {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct EvidenceReference {
     pub evidence_id: OpaqueId,
-    pub source_runtime_id: String,
-    pub event_id: String,
+    pub source_runtime_id: SourceRuntimeId,
+    pub event_id: OpaqueId,
     pub observed_at_unix_millis: i64,
     pub authority: EvidenceAuthority,
     pub content_digest: ContentDigest,
