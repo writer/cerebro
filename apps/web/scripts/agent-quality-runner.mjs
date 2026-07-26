@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
+import fixture from "./fixtures/agent-quality-scenarios.json" with { type: "json" };
 
-const defaultFixture = new URL("./fixtures/agent-quality-scenarios.json", import.meta.url);
 const config = qualityRunnerConfig(process.env);
 const endpoint = config.endpoint;
 const timeoutMs = config.timeoutMs;
 const concurrency = config.concurrency;
-const fixturePath = config.fixturePath;
 const endpointURL = new URL(endpoint);
 const allowedHosts = new Set([
   "127.0.0.1",
@@ -24,7 +22,6 @@ if (endpointURL.protocol !== "http:" && endpointURL.protocol !== "https:") {
   throw new Error("CEREBRO_AGENT_EVAL_URL must use http or https.");
 }
 
-const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
 if (fixture.schema_version !== "cerebro.web-agent-quality/v1" || !Array.isArray(fixture.scenarios)) {
   throw new Error("Agent quality fixture must use cerebro.web-agent-quality/v1 with scenarios.");
 }
@@ -161,7 +158,6 @@ function qualityRunnerConfig(env) {
     endpoint: env.CEREBRO_AGENT_EVAL_URL?.trim() || "http://127.0.0.1:3000/api/agent/ask",
     timeoutMs: positiveInt(env.CEREBRO_AGENT_EVAL_TIMEOUT_MS, 180_000),
     concurrency: positiveInt(env.CEREBRO_AGENT_EVAL_CONCURRENCY, 2),
-    fixturePath: env.CEREBRO_AGENT_EVAL_FIXTURE?.trim() || defaultFixture,
     allowedHosts: splitList(env.CEREBRO_AGENT_EVAL_ALLOW_HOSTS),
     tenantId: env.CEREBRO_AGENT_EVAL_TENANT?.trim() || "writer",
     apiKey: env.CEREBRO_AGENT_EVAL_API_KEY?.trim() || "",
