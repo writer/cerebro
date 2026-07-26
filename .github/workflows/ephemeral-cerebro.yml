@@ -173,6 +173,8 @@ jobs:
         shell: bash
         env:
           API_KEY: local-dev-key
+          CEREBRO_IMAGE: ${{ steps.candidate.outputs.api_image }}
+          CEREBRO_RUST_IMAGE: ${{ steps.candidate.outputs.rust_image }}
           COMPOSE_PROJECT_NAME: ephemeral-cerebro-${{ github.run_id }}
           SOAK_SECONDS: ${{ inputs.soak_seconds || 60 }}
           CEREBRO_RUST_READ_MODE: shadow
