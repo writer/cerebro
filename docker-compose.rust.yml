@@ -1,0 +1,42 @@
+# Run with docker-compose.yml to exercise the production Go-to-Rust graph
+# boundary against disposable local stores. This overlay never uses a shared
+# graph, database, or JetStream instance.
+services:
+  rust-platform:
+    image: ${CEREBRO_RUST_IMAGE:?set CEREBRO_RUST_IMAGE to an exact candidate}
+    environment:
+      CEREBRO_NEO4J_URI: bolt://neo4j:7687
+      CEREBRO_NEO4J_USERNAME: neo4j
+      CEREBRO_NEO4J_PASSWORD: local-password
+      CEREBRO_POSTGRES_DSN: postgres://${CEREBRO_LOCAL_POSTGRES_USER:-cerebro}:${CEREBRO_LOCAL_POSTGRES_PASSWORD:-cerebro}@postgres:5432/cerebro?sslmode=disable
+      CEREBRO_JETSTREAM_URL: nats://nats:4222
+      CEREBRO_JETSTREAM_STREAM_NAME: CEREBRO_EVENTS
+      CEREBRO_JETSTREAM_SUBJECT_PREFIX: events
+      CEREBRO_RUST_BIND: 0.0.0.0:8081
+      CEREBRO_REPOSITORY_ROOT: /app
+      CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: ephemeral-cerebro-graph-secret-32-bytes
+    depends_on:
+      nats:
+        condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 20s
+
+  cerebro:
+    environment:
+      CEREBRO_API_KEYS: local-dev-key:ephemeral-cerebro:local
+      CEREBRO_ORGANIZATIONAL_GRAPH_URL: http://rust-platform:8081
+      CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: ephemeral-cerebro-graph-secret-32-bytes
+      CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT: 1s
+    depends_on:
+      rust-platform:
+        condition: service_healthy
