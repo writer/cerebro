@@ -130,7 +130,7 @@ func (s *QueryStore) Ping(ctx context.Context) (err error) {
 			return fmt.Errorf("compatibility graph health: %w", err)
 		}
 	}
-	if s.mode == readModeShadow {
+	if s.mode == readModeShadow || s.mode == readModeCanary {
 		started := time.Now()
 		err := s.pingRust(ctx)
 		status := "match"

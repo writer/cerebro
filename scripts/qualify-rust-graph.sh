@@ -262,6 +262,8 @@ assert_status 200 graph-canary-go "${output_dir}/canary-go-response.json" "${go_
 
 rust_container="$(docker compose "${compose_files[@]}" ps -q rust-platform)"
 docker stop "${rust_container}" >/dev/null
+assert_status 200 readiness-canary-without-rust \
+  "${output_dir}/readiness.json" http://127.0.0.1:8080/health
 assert_status 200 graph-canary-go-without-rust \
   "${output_dir}/canary-go-response.json" "${go_canary_url}" go-canary-key
 assert_not_status 200 graph-canary-rust-without-rust \
@@ -326,7 +328,7 @@ jq \
        {
          name: "canary_legacy_isolation",
          status: "passed",
-         evidence: "the non-sampled Go read stayed available while Rust was stopped"
+         evidence: "Go readiness and the non-sampled Go read stayed available while Rust was stopped"
        },
        {
          name: "canary_rust_fail_closed",

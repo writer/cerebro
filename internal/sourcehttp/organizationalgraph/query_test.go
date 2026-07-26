@@ -291,6 +291,36 @@ func TestCanaryQueryStoreRequiresCompatibilityAndBoundedSampling(t *testing.T) {
 	}
 }
 
+func TestCanaryQueryStoreReadinessUsesCompatibilityAuthority(t *testing.T) {
+	store, err := NewCanaryQueryStore(
+		queryStoreStub{},
+		"http://127.0.0.1:1",
+		testSharedSecret,
+		10*time.Millisecond,
+		50,
+	)
+	if err != nil {
+		t.Fatalf("NewCanaryQueryStore() error = %v", err)
+	}
+	if err := store.Ping(context.Background()); err != nil {
+		t.Fatalf("Ping() error = %v, canary readiness must keep the compatibility cohort available", err)
+	}
+
+	store, err = NewCanaryQueryStore(
+		queryStoreStub{err: errors.New("compatibility unavailable")},
+		"http://127.0.0.1:1",
+		testSharedSecret,
+		10*time.Millisecond,
+		50,
+	)
+	if err != nil {
+		t.Fatalf("NewCanaryQueryStore(failing compatibility) error = %v", err)
+	}
+	if err := store.Ping(context.Background()); err == nil {
+		t.Fatal("Ping(failing compatibility) error = nil")
+	}
+}
+
 func canaryRoot(t *testing.T, store *QueryStore, wantRust bool) string {
 	t.Helper()
 	for index := 0; index < 10_000; index++ {
