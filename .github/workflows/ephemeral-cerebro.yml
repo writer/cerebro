@@ -9,9 +9,14 @@ on:
   workflow_dispatch:
     inputs:
       candidate_sha:
-        description: Main commit with successful standard and Rust-only candidate builds
+        description: Exact repository commit with successful standard and Rust-only candidate builds
         required: true
         type: string
+      soak_seconds:
+        description: Sustained shadow-read exercise duration (60-1800 seconds)
+        required: false
+        default: 60
+        type: number
 
 permissions:
   attestations: read
@@ -25,6 +30,7 @@ concurrency:
 jobs:
   topology:
     name: Go API with Rust graph authority
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
@@ -45,13 +51,13 @@ jobs:
         id: candidate
         shell: bash
         env:
-          REQUESTED_SHA: ${{ inputs.candidate_sha || github.event.pull_request.base.sha }}
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           [[ "${REQUESTED_SHA}" =~ ^[0-9a-f]{40}$ ]]
-          git fetch origin main
-          git merge-base --is-ancestor "${REQUESTED_SHA}" origin/main
+          git fetch origin "${REQUESTED_SHA}"
+          git cat-file -e "${REQUESTED_SHA}^{commit}"
 
           api_image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro:candidate-${REQUESTED_SHA}"
           rust_image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-rust:candidate-${REQUESTED_SHA}"
@@ -86,6 +92,27 @@ jobs:
           gh attestation verify "oci://${API_IMAGE}" --repo "${GITHUB_REPOSITORY}"
           gh attestation verify "oci://${RUST_IMAGE}" --repo "${GITHUB_REPOSITORY}"
 
+      - name: Require exact-head replay and replacement proofs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          for workflow in rust-only-candidate.yml rust-graph-replacement.yml; do
+            conclusion="$(
+              gh api --method GET \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs" \
+                -f head_sha="${CANDIDATE_SHA}" \
+                -f per_page=20 \
+                --jq '[.workflow_runs[] | select(.event != "pull_request_target")] | sort_by(.created_at) | last | .conclusion // ""'
+            )"
+            if [[ "${conclusion}" != success ]]; then
+              echo "${workflow} has no successful exact-head proof for ${CANDIDATE_SHA}"
+              exit 1
+            fi
+          done
+
       - name: Start an isolated Cerebro
         shell: bash
         env:
@@ -101,8 +128,14 @@ jobs:
         env:
           API_KEY: local-dev-key
           COMPOSE_PROJECT_NAME: ephemeral-cerebro-${{ github.run_id }}
+          SOAK_SECONDS: ${{ inputs.soak_seconds || 60 }}
+          CEREBRO_RUST_READ_MODE: shadow
+          CEREBRO_RUST_SHADOW_PERCENT: 100
         run: |
           set -euo pipefail
+          [[ "${SOAK_SECONDS}" =~ ^[0-9]+$ ]]
+          test "${SOAK_SECONDS}" -ge 60
+          test "${SOAK_SECONDS}" -le 1800
           graph_url='http://127.0.0.1:8080/platform/graph/neighborhood?root_urn=urn%3Acerebro%3Alocal%3Aasset%3Amissing&limit=10'
           graph_status() {
             curl --max-time 10 --silent --show-error --output graph-response.json \
@@ -135,10 +168,27 @@ jobs:
 
           assert_status 200 readiness-before readiness_status
           assert_status 404 graph-before graph_status
+
+          deadline=$((SECONDS + SOAK_SECONDS))
+          request_count=0
+          while test "${SECONDS}" -lt "${deadline}"; do
+            seq 1 16 | xargs -P 8 -I{} curl \
+              --max-time 10 \
+              --silent \
+              --show-error \
+              --output /dev/null \
+              --write-out '%{http_code}\n' \
+              --header "Authorization: Bearer ${API_KEY}" \
+              "${graph_url}" >>shadow-statuses.txt
+            request_count=$((request_count + 16))
+          done
+          test "$(grep -c '^404$' shadow-statuses.txt)" -eq "${request_count}"
+          echo "shadow soak: ${request_count} matching legacy-authority responses"
+
           rust_container="$(docker compose -f docker-compose.yml -f docker-compose.rust.yml ps -q rust-platform)"
           test -n "${rust_container}"
           docker stop "${rust_container}" >/dev/null
-          assert_status 503 readiness-without-rust readiness_status
+          assert_status 200 readiness-shadow-without-rust readiness_status
 
           docker start "${rust_container}" >/dev/null
           for attempt in $(seq 1 36); do
@@ -150,6 +200,14 @@ jobs:
           done
           assert_status 200 readiness-after-restart readiness_status
           assert_status 404 graph-after-restart graph_status
+
+          export CEREBRO_RUST_READ_MODE=authority
+          export CEREBRO_RUST_SHADOW_PERCENT=0
+          docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d --force-recreate --wait cerebro
+          assert_status 200 readiness-authority readiness_status
+          assert_status 404 graph-authority graph_status
+          docker stop "${rust_container}" >/dev/null
+          assert_status 503 readiness-authority-without-rust readiness_status
 
       - name: Print service logs
         if: always()
