@@ -41,7 +41,8 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const encoder = new TextEncoder();
-const AGENT_MODEL = process.env.CEREBRO_AGENT_MODEL ?? "gpt-5.4-mini";
+export const DEFAULT_AGENT_MODEL = "gpt-5.6-sol";
+const AGENT_MODEL = process.env.CEREBRO_AGENT_MODEL ?? DEFAULT_AGENT_MODEL;
 
 type NormalizedAgentRequest = AskRequest & {
   question: string;
