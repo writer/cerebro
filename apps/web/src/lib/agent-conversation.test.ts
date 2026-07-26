@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import OpenAI from "openai";
 
 import {
   AgentConversationOwnershipError,
@@ -23,11 +24,14 @@ const fakeClient = () => {
 };
 
 describe("agent conversation ownership", () => {
+  const providerClient = new OpenAI({ apiKey: "test" });
+
   it("creates a provider conversation and resumes it for the same actor and tenant", async () => {
     const { client } = fakeClient();
     const created = await openAgentConversation({
       actorKey: "actor-a",
       client,
+      providerClient,
       tenantId: "tenant-a",
     });
     expect(created.conversationId).toBe("conv_owned");
@@ -36,24 +40,36 @@ describe("agent conversation ownership", () => {
       actorKey: "actor-a",
       client,
       conversationId: "conv_owned",
+      providerClient,
       tenantId: "tenant-a",
     })).resolves.toMatchObject({ conversationId: "conv_owned" });
   });
 
   it("rejects cross-tenant or cross-actor conversation reuse", async () => {
     const { client } = fakeClient();
-    await openAgentConversation({ actorKey: "actor-a", client, tenantId: "tenant-a" });
+    await openAgentConversation({
+      actorKey: "actor-a",
+      client,
+      providerClient,
+      tenantId: "tenant-a",
+    });
     await expect(openAgentConversation({
       actorKey: "actor-b",
       client,
       conversationId: "conv_owned",
+      providerClient,
       tenantId: "tenant-a",
     })).rejects.toBeInstanceOf(AgentConversationOwnershipError);
   });
 
   it("checks ownership before deleting provider state", async () => {
     const { client } = fakeClient();
-    await openAgentConversation({ actorKey: "actor-a", client, tenantId: "tenant-a" });
+    await openAgentConversation({
+      actorKey: "actor-a",
+      client,
+      providerClient,
+      tenantId: "tenant-a",
+    });
     await expect(removeAgentConversation({
       actorKey: "actor-a",
       client,

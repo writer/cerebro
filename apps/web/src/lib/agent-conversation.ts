@@ -8,7 +8,7 @@ const METADATA_SCHEMA = "cerebro-web-agent-v1";
 
 type ConversationRecord = {
   id: string;
-  metadata?: Record<string, unknown> | null;
+  metadata?: unknown;
 };
 
 export type AgentConversationClient = {
@@ -38,32 +38,47 @@ const ownsConversation = (
   actorKey: string,
 ) => {
   const expected = ownershipMetadata(tenantId, actorKey);
+  if (
+    !conversation.metadata ||
+    typeof conversation.metadata !== "object" ||
+    Array.isArray(conversation.metadata)
+  ) {
+    return false;
+  }
+  const metadata = conversation.metadata as Record<string, unknown>;
   return (
-    conversation.metadata?.schema === expected.schema &&
-    conversation.metadata?.tenant_hash === expected.tenant_hash &&
-    conversation.metadata?.actor_key === expected.actor_key
+    metadata.schema === expected.schema &&
+    metadata.tenant_hash === expected.tenant_hash &&
+    metadata.actor_key === expected.actor_key
   );
 };
 
 export const openAgentConversation = async ({
   actorKey,
-  client = new OpenAI() as unknown as AgentConversationClient,
+  client,
   conversationId,
+  providerClient,
   tenantId,
 }: {
   actorKey: string;
   client?: AgentConversationClient;
   conversationId?: string;
+  providerClient?: OpenAI;
   tenantId: string;
 }) => {
+  const openAIClient = providerClient ?? (client ? undefined : new OpenAI());
+  if (!openAIClient) {
+    throw new TypeError("A providerClient is required when overriding the conversation client.");
+  }
+  const conversationClient = client ?? openAIClient;
   let conversation: ConversationRecord;
   if (conversationId?.startsWith(CONVERSATION_PREFIX)) {
-    conversation = await client.conversations.retrieve(conversationId);
+    conversation = await conversationClient.conversations.retrieve(conversationId);
     if (!ownsConversation(conversation, tenantId, actorKey)) {
       throw new AgentConversationOwnershipError();
     }
   } else {
-    conversation = await client.conversations.create({
+    conversation = await conversationClient.conversations.create({
       metadata: ownershipMetadata(tenantId, actorKey),
     });
   }
@@ -71,14 +86,14 @@ export const openAgentConversation = async ({
     conversationId: conversation.id,
     session: new OpenAIConversationsSession({
       conversationId: conversation.id,
-      client: client as OpenAI,
+      client: openAIClient,
     }),
   };
 };
 
 export const removeAgentConversation = async ({
   actorKey,
-  client = new OpenAI() as unknown as AgentConversationClient,
+  client,
   conversationId,
   tenantId,
 }: {
@@ -88,10 +103,11 @@ export const removeAgentConversation = async ({
   tenantId: string;
 }) => {
   if (!conversationId.startsWith(CONVERSATION_PREFIX)) return false;
-  const conversation = await client.conversations.retrieve(conversationId);
+  const conversationClient = client ?? new OpenAI();
+  const conversation = await conversationClient.conversations.retrieve(conversationId);
   if (!ownsConversation(conversation, tenantId, actorKey)) {
     throw new AgentConversationOwnershipError();
   }
-  await client.conversations.delete(conversation.id);
+  await conversationClient.conversations.delete(conversation.id);
   return true;
 };

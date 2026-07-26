@@ -19,7 +19,7 @@ export const collectUrns = (value: unknown, limit = 200): Set<string> => {
   const visit = (current: unknown, depth: number) => {
     if (urns.size >= limit || depth > 10 || current === null || current === undefined) return;
     if (typeof current === "string") {
-      for (const match of current.matchAll(/\burn:[a-zA-Z0-9][^\s"'`,;)\]}]{0,1020}/g)) {
+      for (const match of current.matchAll(/\burn:[a-zA-Z0-9][^\s"'`,;)\]}.]{0,1020}/g)) {
         urns.add(match[0]);
         if (urns.size >= limit) return;
       }

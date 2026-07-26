@@ -9,7 +9,7 @@ describe("agent answer evidence", () => {
       evidence: ["See urn:cerebro:writer:evidence:e-1."],
     })]).toEqual([
       "urn:cerebro:writer:finding:f-1",
-      "urn:cerebro:writer:evidence:e-1.",
+      "urn:cerebro:writer:evidence:e-1",
     ]);
   });
 
