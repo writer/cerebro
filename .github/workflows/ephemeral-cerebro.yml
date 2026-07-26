@@ -1,6 +1,11 @@
 name: Ephemeral Cerebro
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/ephemeral-cerebro.yml"
+      - "docker-compose.yml"
+      - "docker-compose.rust.yml"
   workflow_dispatch:
     inputs:
       candidate_sha:
@@ -21,7 +26,7 @@ jobs:
   topology:
     name: Go API with Rust graph authority
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,7 +45,7 @@ jobs:
         id: candidate
         shell: bash
         env:
-          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+          REQUESTED_SHA: ${{ inputs.candidate_sha || github.event.pull_request.base.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -50,8 +55,18 @@ jobs:
 
           api_image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro:candidate-${REQUESTED_SHA}"
           rust_image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-rust:candidate-${REQUESTED_SHA}"
-          api_digest="$(docker buildx imagetools inspect "${api_image}" --format '{{.Manifest.Digest}}')"
-          rust_digest="$(docker buildx imagetools inspect "${rust_image}" --format '{{.Manifest.Digest}}')"
+          api_digest=""
+          rust_digest=""
+          for attempt in $(seq 1 90); do
+            api_digest="$(docker buildx imagetools inspect "${api_image}" --format '{{.Manifest.Digest}}' 2>/dev/null || true)"
+            rust_digest="$(docker buildx imagetools inspect "${rust_image}" --format '{{.Manifest.Digest}}' 2>/dev/null || true)"
+            if [[ "${api_digest}" =~ ^sha256:[0-9a-f]{64}$ ]] \
+              && [[ "${rust_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              break
+            fi
+            test "${attempt}" -lt 90
+            sleep 10
+          done
           [[ "${api_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
           [[ "${rust_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
 
