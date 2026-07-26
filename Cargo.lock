@@ -447,6 +447,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cerebro-platform-engine"
+version = "0.1.0"
+dependencies = [
+ "cerebro-platform-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cerebro-platform-sdk"
 version = "0.1.0"
 dependencies = [

@@ -6,6 +6,7 @@ members = [
     "crates/organizational-graph",
     "crates/organizational-model",
     "crates/organizational-store",
+    "crates/platform-engine",
     "crates/platform-sdk",
     "crates/source-catalog",
     "crates/security-path-kernel",
@@ -37,6 +38,7 @@ cerebro-control-kernel = { version = "0.1.0", path = "crates/control-kernel" }
 cerebro-organizational-graph = { version = "0.1.0", path = "crates/organizational-graph" }
 cerebro-organizational-model = { version = "0.1.0", path = "crates/organizational-model" }
 cerebro-organizational-store = { version = "0.1.0", path = "crates/organizational-store" }
+cerebro-platform-engine = { version = "0.1.0", path = "crates/platform-engine" }
 cerebro-platform-sdk = { version = "0.1.0", path = "crates/platform-sdk" }
 cerebro-source-catalog = { version = "0.1.0", path = "crates/source-catalog" }
 cerebro-source-runtime-next = { version = "0.1.0", path = "crates/source-runtime-next" }
