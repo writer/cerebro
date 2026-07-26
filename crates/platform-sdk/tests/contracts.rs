@@ -1,8 +1,9 @@
 use cerebro_platform_sdk::{
-    AnalysisPluginManifest, AssertionCondition, AssertionDefinitionId, BudgetError, ContentDigest,
-    EntityId, EvidenceQuality, GraphChange, GraphChangeKind, GraphDiffRequest, GraphRevision,
-    OpaqueId, PluginCapability, PluginId, PluginLimits, ProposedChange, ResourceBudget,
-    ResourceUsage, RevisionSelector, SimulationId, SimulationRequest, SubscriptionDefinition,
+    ActionEffect, ActionOperationId, ActionProposal, AnalysisPluginManifest, AssertionCondition,
+    AssertionDefinitionId, BudgetError, ContentDigest, EntityId, EvidenceQuality, GraphChange,
+    GraphChangeKind, GraphDiffRequest, GraphRevision, OpaqueId, PlatformEventKind,
+    PluginCapability, PluginId, PluginLimits, ProposedChange, ResourceBudget, ResourceUsage,
+    RevisionSelector, SimulationId, SimulationRequest, SubscriptionDefinition,
     SubscriptionEventFilter, SubscriptionId, TenantId,
 };
 
@@ -39,6 +40,14 @@ fn resource_budgets_reject_zero_limits_and_excess_usage() {
     assert_eq!(
         usage.validate(&budget()),
         Err(BudgetError::UsageExceedsLimit("query results"))
+    );
+    assert_eq!(
+        ResourceBudget::new(501, 6, 2_000, 8, 100, 10_000, 64 * 1024 * 1024, 1_000),
+        Err(BudgetError::ExceedsMaximum("max query results"))
+    );
+    assert_eq!(
+        ResourceBudget::new(500, 7, 2_000, 8, 100, 10_000, 64 * 1024 * 1024, 1_000),
+        Err(BudgetError::ExceedsMaximum("max query depth"))
     );
 }
 
@@ -130,6 +139,20 @@ fn subscriptions_require_a_filter_and_bounded_batches() {
         definition_digest: digest("subscription"),
     };
     assert!(subscription.validate().is_err());
+
+    let duplicate = SubscriptionDefinition {
+        filter: SubscriptionEventFilter {
+            event_kinds: vec![
+                PlatformEventKind::GraphChanged,
+                PlatformEventKind::GraphChanged,
+            ],
+            entity_kinds: Vec::new(),
+            entity_ids: Vec::new(),
+            assertion_ids: Vec::new(),
+        },
+        ..subscription
+    };
+    assert!(duplicate.validate().is_err());
 }
 
 #[test]
@@ -161,4 +184,36 @@ fn first_party_plugins_require_deterministic_zero_import_execution() {
 fn opaque_ids_reject_display_labels() {
     assert!(OpaqueId::parse("mission:one").is_ok());
     assert!(OpaqueId::parse("Mission One").is_err());
+}
+
+#[test]
+fn action_proposals_reject_duplicate_or_untyped_effects() {
+    let effect = ActionEffect {
+        target_id: OpaqueId::parse("grant:one").expect("valid target"),
+        effect_kind: "access_removed".to_owned(),
+        expected_state_digest: digest("expected"),
+    };
+    let proposal = ActionProposal {
+        operation_id: ActionOperationId::parse("operation:one").expect("valid operation"),
+        tenant_id: tenant(),
+        graph_revision: GraphRevision::new(1).expect("valid revision"),
+        action_kind: "revoke_access".to_owned(),
+        target_id: OpaqueId::parse("grant:one").expect("valid target"),
+        expected_effects: vec![effect.clone(), effect],
+        rollback_ref: OpaqueId::parse("rollback:one").expect("valid rollback"),
+        idempotency_key: OpaqueId::parse("idempotency:one").expect("valid key"),
+        simulation_digest: digest("simulation"),
+        proposal_digest: digest("proposal"),
+    };
+    assert!(proposal.validate().is_err());
+
+    let invalid_kind = ActionProposal {
+        expected_effects: vec![ActionEffect {
+            target_id: OpaqueId::parse("grant:one").expect("valid target"),
+            effect_kind: "Access removed".to_owned(),
+            expected_state_digest: digest("expected"),
+        }],
+        ..proposal
+    };
+    assert!(invalid_kind.validate().is_err());
 }

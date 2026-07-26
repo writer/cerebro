@@ -29,7 +29,8 @@ impl MaterializedViewDefinition {
         if self.name.len() > 256 {
             return Err(SdkError::TooLong("materialized view name"));
         }
-        if self.max_rows == 0 || self.max_rows > 10_000 {
+        if self.max_rows == 0 || self.max_rows > 500 || self.max_rows as usize > self.query.limit()
+        {
             return Err(SdkError::OutOfRange("materialized view max rows"));
         }
         Ok(())

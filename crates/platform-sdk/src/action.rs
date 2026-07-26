@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::collections::BTreeSet;
 
 use crate::{
     ActionOperationId, ContentDigest, GraphRevision, OpaqueId, SdkError, TenantId,
@@ -61,6 +62,24 @@ impl ActionProposal {
         }
         if self.expected_effects.is_empty() || self.expected_effects.len() > 100 {
             return Err(SdkError::OutOfRange("action expected effects"));
+        }
+        let mut effects = BTreeSet::new();
+        for effect in &self.expected_effects {
+            if effect.effect_kind.is_empty()
+                || effect.effect_kind.len() > 128
+                || effect.effect_kind.trim() != effect.effect_kind
+                || !effect
+                    .effect_kind
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:/".contains(&byte))
+            {
+                return Err(SdkError::Invalid("action effect kind"));
+            }
+            if !effects.insert((&effect.target_id, effect.effect_kind.as_str())) {
+                return Err(SdkError::Conflict(
+                    "duplicate action expected effect".to_owned(),
+                ));
+            }
         }
         Ok(())
     }

@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::collections::BTreeSet;
 
 use crate::{
     AssertionDefinitionId, ContentDigest, EntityId, EntityKind, GraphRevision, SdkError,
@@ -64,8 +65,29 @@ impl SubscriptionDefinition {
         if self.batch_limit == 0 || self.batch_limit > 500 {
             return Err(SdkError::OutOfRange("subscription batch limit"));
         }
+        if self.filter.event_kinds.len() > 6
+            || self.filter.entity_kinds.len() > 29
+            || self.filter.entity_ids.len() > 500
+            || self.filter.assertion_ids.len() > 500
+        {
+            return Err(SdkError::OutOfRange("subscription filter"));
+        }
+        if has_duplicates(&self.filter.event_kinds)
+            || has_duplicates(&self.filter.entity_kinds)
+            || has_duplicates(&self.filter.entity_ids)
+            || has_duplicates(&self.filter.assertion_ids)
+        {
+            return Err(SdkError::Conflict(
+                "duplicate subscription filter value".to_owned(),
+            ));
+        }
         Ok(())
     }
+}
+
+fn has_duplicates<T: Ord>(values: &[T]) -> bool {
+    let mut seen = BTreeSet::new();
+    values.iter().any(|value| !seen.insert(value))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]

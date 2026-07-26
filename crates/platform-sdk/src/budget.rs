@@ -3,6 +3,7 @@ use serde::Serialize;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BudgetError {
     Zero(&'static str),
+    ExceedsMaximum(&'static str),
     UsageExceedsLimit(&'static str),
 }
 
@@ -42,6 +43,24 @@ impl ResourceBudget {
         ] {
             if value == 0 {
                 return Err(BudgetError::Zero(field));
+            }
+        }
+        for (value, maximum, field) in [
+            (u64::from(max_query_results), 500, "max query results"),
+            (u64::from(max_query_depth), 6, "max query depth"),
+            (
+                u64::from(max_subscription_batch),
+                500,
+                "max subscription batch",
+            ),
+            (
+                u64::from(max_snapshot_entities),
+                10_000,
+                "max snapshot entities",
+            ),
+        ] {
+            if value > maximum {
+                return Err(BudgetError::ExceedsMaximum(field));
             }
         }
         Ok(Self {
