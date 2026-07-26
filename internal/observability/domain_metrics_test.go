@@ -92,6 +92,28 @@ func TestRecordOrganizationalGraphShadowMetricsAreLowCardinality(t *testing.T) {
 	}
 }
 
+func TestRecordOrganizationalGraphCanaryRouteMetricsAreLowCardinality(t *testing.T) {
+	reader, shutdown := installManualMetricReader(t)
+	RecordOrganizationalGraphCanaryRoute(context.Background(), OrganizationalGraphCanaryRouteMetrics{
+		Operation:         "Expand Batch",
+		Authority:         "Rust",
+		Status:            "Success",
+		ConfiguredPercent: 10,
+	})
+	t.Cleanup(shutdown)
+
+	metrics := collectMetrics(t, reader)
+	metric, ok := metrics["cerebro.organizational_graph.canary.routes"]
+	if !ok {
+		t.Fatalf("canary route metric missing from %#v", metricNames(metrics))
+	}
+	assertNoForbiddenMetricAttributes(t, metric)
+	assertMetricHasAttribute(t, metric, "operation", "expand_batch")
+	assertMetricHasAttribute(t, metric, "authority", "rust")
+	assertMetricHasAttribute(t, metric, "status", "success")
+	assertMetricHasIntAttribute(t, metric, "configured_percent", 10)
+}
+
 func TestRecordSourceProjectionMetricsAreLowCardinality(t *testing.T) {
 	reader, shutdown := installManualMetricReader(t)
 	RecordSourceProjection(context.Background(), SourceProjectionMetrics{
@@ -298,6 +320,18 @@ func assertMetricHasBoolAttribute(t *testing.T, metric metricdata.Metrics, key a
 		}
 	}
 	t.Fatalf("metric %q missing attribute %s=%t", metric.Name, key, value)
+}
+
+func assertMetricHasIntAttribute(t *testing.T, metric metricdata.Metrics, key attribute.Key, value int64) {
+	t.Helper()
+	for _, attrs := range metricAttributeSets(metric) {
+		for _, kv := range attrs.ToSlice() {
+			if kv.Key == key && kv.Value.AsInt64() == value {
+				return
+			}
+		}
+	}
+	t.Fatalf("metric %q missing attribute %s=%d", metric.Name, key, value)
 }
 
 func metricAttributeSets(metric metricdata.Metrics) []attribute.Set {

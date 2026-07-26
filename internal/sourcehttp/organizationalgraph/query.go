@@ -176,10 +176,15 @@ func (s *QueryStore) GetEntityNeighborhood(ctx context.Context, rootURN string, 
 			return nil, errors.New("root is not a tenant-scoped Cerebro URN")
 		}
 		if !s.sample(tenantID) {
-			return s.compatibility.GetEntityNeighborhood(ctx, rootURN, limit)
+			result, err := s.compatibility.GetEntityNeighborhood(ctx, rootURN, limit)
+			s.recordCanaryRoute(ctx, "expand", "go", err)
+			return result, err
 		}
+		result, err := s.getRustEntityNeighborhood(ctx, rootURN, limit)
+		s.recordCanaryRoute(ctx, "expand", "rust", err)
+		return result, err
 	}
-	if s.mode == readModeAuthority || s.mode == readModeCanary {
+	if s.mode == readModeAuthority {
 		return s.getRustEntityNeighborhood(ctx, rootURN, limit)
 	}
 	legacy, err := s.compatibility.GetEntityNeighborhood(ctx, rootURN, limit)
@@ -231,10 +236,15 @@ func (s *QueryStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []stri
 			return nil, err
 		}
 		if !s.sample(tenantID) {
-			return legacyNeighborhoods(ctx, s.compatibility, rootURNs, limit)
+			result, err := legacyNeighborhoods(ctx, s.compatibility, rootURNs, limit)
+			s.recordCanaryRoute(ctx, "expand_batch", "go", err)
+			return result, err
 		}
+		result, err := s.getRustEntityNeighborhoods(ctx, rootURNs, limit)
+		s.recordCanaryRoute(ctx, "expand_batch", "rust", err)
+		return result, err
 	}
-	if s.mode == readModeAuthority || s.mode == readModeCanary {
+	if s.mode == readModeAuthority {
 		return s.getRustEntityNeighborhoods(ctx, rootURNs, limit)
 	}
 	legacy, err := legacyNeighborhoods(ctx, s.compatibility, rootURNs, limit)
@@ -346,6 +356,19 @@ func legacyNeighborhoods(ctx context.Context, store ports.GraphQueryStore, roots
 func (s *QueryStore) sample(key string) bool {
 	digest := sha256.Sum256([]byte(key))
 	return binary.BigEndian.Uint32(digest[:4])%100 < s.samplePercent
+}
+
+func (s *QueryStore) recordCanaryRoute(ctx context.Context, operation, authority string, err error) {
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	observability.RecordOrganizationalGraphCanaryRoute(ctx, observability.OrganizationalGraphCanaryRouteMetrics{
+		Operation:         operation,
+		Authority:         authority,
+		Status:            status,
+		ConfiguredPercent: int(s.samplePercent),
+	})
 }
 
 func (s *QueryStore) recordComparison(ctx context.Context, operation string, legacy, rust any, rustErr error, started time.Time) {

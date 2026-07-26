@@ -222,6 +222,12 @@ against Go. `authority` returns Rust for every typed read. Raw Cypher is not
 part of the canary surface and must be removed before the Go graph store can be
 retired.
 
+The canary percentage controls tenant allocation, not a random share of
+requests. Monitor `cerebro.organizational_graph.canary.routes` by `authority`,
+`status`, `operation`, and `configured_percent` to compare the configured
+tenant cohort with actual Go and Rust request volume. These labels are bounded
+and never contain tenant or graph identifiers.
+
 The append-log consumer defaults to new events. A rebuild uses
 `CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY=all`, while a fenced handoff
 uses `by_start_sequence` plus

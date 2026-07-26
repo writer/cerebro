@@ -135,6 +135,14 @@ func otelOrganizationalGraphShadowDuration() otelmetric.Float64Histogram {
 	return instrument
 }
 
+func otelOrganizationalGraphCanaryRoutes() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.organizational_graph.canary.routes",
+		otelmetric.WithDescription("Typed organizational graph requests routed by stable canary authority."),
+	)
+	return instrument
+}
+
 func otelNeo4jOperations() otelmetric.Int64Counter {
 	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
 		"cerebro.neo4j.operations",
@@ -476,6 +484,22 @@ func RecordOrganizationalGraphShadow(ctx context.Context, metrics Organizational
 			otelmetric.WithAttributes(attrs...),
 		)
 	}
+}
+
+type OrganizationalGraphCanaryRouteMetrics struct {
+	Operation         string
+	Authority         string
+	Status            string
+	ConfiguredPercent int
+}
+
+func RecordOrganizationalGraphCanaryRoute(ctx context.Context, metrics OrganizationalGraphCanaryRouteMetrics) {
+	otelOrganizationalGraphCanaryRoutes().Add(ctx, 1, otelmetric.WithAttributes(
+		attribute.String("operation", boundedMetricValue(metrics.Operation, "unknown")),
+		attribute.String("authority", boundedMetricValue(metrics.Authority, "unknown")),
+		attribute.String("status", boundedMetricValue(metrics.Status, "unknown")),
+		attribute.Int("configured_percent", metrics.ConfiguredPercent),
+	))
 }
 
 func RecordOrchestratorPhase(ctx context.Context, metrics OrchestratorPhaseMetrics) {
