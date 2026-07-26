@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,7 +28,13 @@ type queryStoreStub struct {
 
 type countingQueryStoreStub struct {
 	queryStoreStub
-	requests int
+	requests atomic.Int64
+	mu       sync.RWMutex
+}
+
+type blockingQueryStoreStub struct {
+	queryStoreStub
+	started chan struct{}
 }
 
 type assertionQueryStoreStub struct {
@@ -68,8 +76,29 @@ func (s queryStoreStub) GetEntityNeighborhood(context.Context, string, int) (*po
 }
 
 func (s *countingQueryStoreStub) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
-	s.requests++
+	s.requests.Add(1)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.neighborhood, s.err
+}
+
+func (s *countingQueryStoreStub) requestCount() int {
+	return int(s.requests.Load())
+}
+
+func (s *countingQueryStoreStub) setError(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.err = err
+}
+
+func (s *blockingQueryStoreStub) GetEntityNeighborhood(ctx context.Context, _ string, _ int) (*ports.EntityNeighborhood, error) {
+	select {
+	case s.started <- struct{}{}:
+	default:
+	}
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func (s queryStoreStub) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
@@ -193,6 +222,93 @@ func TestShadowQueryStoreReturnsLegacyWhenRustIsUnavailable(t *testing.T) {
 	}
 	if err := store.Ping(context.Background()); err != nil {
 		t.Fatalf("Ping() error = %v, shadow readiness must use legacy authority", err)
+	}
+}
+
+func TestShadowComparisonDoesNotDelayLegacyResponse(t *testing.T) {
+	rustStarted := make(chan struct{}, 1)
+	rustCanceled := make(chan struct{}, 1)
+	server := newGraphTestServer(t, graphServiceStub{
+		expand: func(ctx context.Context, _ *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
+			rustStarted <- struct{}{}
+			<-ctx.Done()
+			rustCanceled <- struct{}{}
+			return nil, connect.NewError(connect.CodeCanceled, ctx.Err())
+		},
+	})
+	defer server.Close()
+
+	legacy := &ports.EntityNeighborhood{Root: &ports.NeighborhoodNode{URN: "legacy"}}
+	store, err := NewShadowQueryStore(
+		queryStoreStub{neighborhood: legacy},
+		server.URL,
+		testSharedSecret,
+		500*time.Millisecond,
+		100,
+	)
+	if err != nil {
+		t.Fatalf("NewShadowQueryStore() error = %v", err)
+	}
+
+	started := time.Now()
+	got, err := store.GetEntityNeighborhood(
+		context.Background(),
+		"urn:cerebro:tenant-a:runtime_file:asset-1",
+		10,
+	)
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhood() error = %v", err)
+	}
+	if got != legacy {
+		t.Fatalf("GetEntityNeighborhood() = %#v, want legacy", got)
+	}
+	if elapsed := time.Since(started); elapsed >= 250*time.Millisecond {
+		t.Fatalf("legacy response waited %s for a 500ms Rust timeout", elapsed)
+	}
+	select {
+	case <-rustStarted:
+	case <-time.After(time.Second):
+		t.Fatal("background Rust comparison did not start")
+	}
+	select {
+	case <-rustCanceled:
+	case <-time.After(time.Second):
+		t.Fatal("background Rust comparison did not respect its timeout")
+	}
+}
+
+func TestShadowComparisonConcurrencyIsBounded(t *testing.T) {
+	server := newGraphTestServer(t, graphServiceStub{
+		expand: func(ctx context.Context, _ *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
+			<-ctx.Done()
+			return nil, connect.NewError(connect.CodeCanceled, ctx.Err())
+		},
+	})
+	defer server.Close()
+
+	store, err := NewShadowQueryStore(
+		queryStoreStub{neighborhood: &ports.EntityNeighborhood{}},
+		server.URL,
+		testSharedSecret,
+		time.Second,
+		100,
+	)
+	if err != nil {
+		t.Fatalf("NewShadowQueryStore() error = %v", err)
+	}
+
+	started := time.Now()
+	for index := 0; index < maxConcurrentComparisons+64; index++ {
+		root := fmt.Sprintf("urn:cerebro:tenant-a:runtime_file:asset-%d", index)
+		if _, err := store.GetEntityNeighborhood(context.Background(), root, 10); err != nil {
+			t.Fatalf("GetEntityNeighborhood(%d) error = %v", index, err)
+		}
+	}
+	if elapsed := time.Since(started); elapsed >= 500*time.Millisecond {
+		t.Fatalf("bounded shadow scheduling delayed legacy traffic by %s", elapsed)
+	}
+	if got := len(store.comparisons); got != maxConcurrentComparisons {
+		t.Fatalf("in-flight comparisons = %d, want %d", got, maxConcurrentComparisons)
 	}
 }
 
@@ -349,8 +465,8 @@ func TestCanaryQueryStoreRoutesConfiguredTrafficPercentages(t *testing.T) {
 			if rustRequests != expectedRust {
 				t.Fatalf("Rust requests = %d, want %d", rustRequests, expectedRust)
 			}
-			if legacy.requests != tenants-expectedRust {
-				t.Fatalf("Go requests = %d, want %d", legacy.requests, tenants-expectedRust)
+			if legacy.requestCount() != tenants-expectedRust {
+				t.Fatalf("Go requests = %d, want %d", legacy.requestCount(), tenants-expectedRust)
 			}
 		})
 	}
@@ -396,11 +512,12 @@ func TestVerifiedCanaryQueryStoreComparesRustAuthorityWithoutChangingResponse(t 
 	if got == nil || got.Root == nil || got.Root.Label != "Rust" {
 		t.Fatalf("GetEntityNeighborhood() = %#v, want Rust authority", got)
 	}
-	if legacy.requests != 1 {
-		t.Fatalf("verification requests = %d, want 1", legacy.requests)
+	waitForRequestCount(t, legacy, 1)
+	if legacy.requestCount() != 1 {
+		t.Fatalf("verification requests = %d, want 1", legacy.requestCount())
 	}
 
-	legacy.err = errors.New("legacy unavailable")
+	legacy.setError(errors.New("legacy unavailable"))
 	got, err = store.GetEntityNeighborhood(context.Background(), root, 10)
 	if err != nil {
 		t.Fatalf("GetEntityNeighborhood(legacy error) error = %v", err)
@@ -408,8 +525,9 @@ func TestVerifiedCanaryQueryStoreComparesRustAuthorityWithoutChangingResponse(t 
 	if got == nil || got.Root == nil || got.Root.Label != "Rust" {
 		t.Fatalf("GetEntityNeighborhood(legacy error) = %#v, want Rust authority", got)
 	}
-	if legacy.requests != 2 {
-		t.Fatalf("verification requests = %d, want 2", legacy.requests)
+	waitForRequestCount(t, legacy, 2)
+	if legacy.requestCount() != 2 {
+		t.Fatalf("verification requests = %d, want 2", legacy.requestCount())
 	}
 
 	unverified, err := NewVerifiedCanaryQueryStore(
@@ -427,8 +545,55 @@ func TestVerifiedCanaryQueryStoreComparesRustAuthorityWithoutChangingResponse(t 
 	if _, err := unverified.GetEntityNeighborhood(context.Background(), unverifiedRoot, 10); err != nil {
 		t.Fatalf("GetEntityNeighborhood(unverified) error = %v", err)
 	}
-	if legacy.requests != 2 {
-		t.Fatalf("disabled verification requests = %d, want 2", legacy.requests)
+	if legacy.requestCount() != 2 {
+		t.Fatalf("disabled verification requests = %d, want 2", legacy.requestCount())
+	}
+}
+
+func TestCanaryVerificationDoesNotDelayRustAuthority(t *testing.T) {
+	server := newGraphTestServer(t, graphServiceStub{
+		expand: func(_ context.Context, request *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
+			return connect.NewResponse(&cerebrographv1.ExpandResponse{
+				TenantId: request.Msg.GetTenantId(),
+				Root: &cerebrographv1.GraphEntity{
+					EntityId:   "rust-root",
+					AgentKey:   request.Msg.GetRootKey(),
+					EntityKind: "resource",
+					Label:      "Rust",
+				},
+			}), nil
+		},
+	})
+	defer server.Close()
+
+	legacy := &blockingQueryStoreStub{started: make(chan struct{}, 1)}
+	store, err := NewVerifiedCanaryQueryStore(
+		legacy,
+		server.URL,
+		testSharedSecret,
+		500*time.Millisecond,
+		50,
+		100,
+	)
+	if err != nil {
+		t.Fatalf("NewVerifiedCanaryQueryStore() error = %v", err)
+	}
+	root := canaryRoot(t, store, true)
+	started := time.Now()
+	got, err := store.GetEntityNeighborhood(context.Background(), root, 10)
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhood() error = %v", err)
+	}
+	if got == nil || got.Root == nil || got.Root.Label != "Rust" {
+		t.Fatalf("GetEntityNeighborhood() = %#v, want Rust authority", got)
+	}
+	if elapsed := time.Since(started); elapsed >= 250*time.Millisecond {
+		t.Fatalf("Rust response waited %s for a 500ms Go verification timeout", elapsed)
+	}
+	select {
+	case <-legacy.started:
+	case <-time.After(time.Second):
+		t.Fatal("background Go verification did not start")
 	}
 }
 
@@ -530,6 +695,14 @@ func canaryRoot(t *testing.T, store *QueryStore, wantRust bool) string {
 	}
 	t.Fatalf("no canary root found for wantRust=%t", wantRust)
 	return ""
+}
+
+func waitForRequestCount(t *testing.T, store *countingQueryStoreStub, want int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for store.requestCount() < want && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func TestQueryStoreHealthRequiresRustAndChecksCompatibilityWhenPresent(t *testing.T) {
@@ -735,8 +908,9 @@ func TestVerifiedCanaryQueryStoreComparesBatchWithoutChangingAuthority(t *testin
 	if len(got) != 2 || got[first].Root.Label != "Rust" || got[second].Root.Label != "Rust" {
 		t.Fatalf("GetEntityNeighborhoods() = %#v, want Rust authority", got)
 	}
-	if legacy.requests != 2 {
-		t.Fatalf("batch verification requests = %d, want 2", legacy.requests)
+	waitForRequestCount(t, legacy, 2)
+	if legacy.requestCount() != 2 {
+		t.Fatalf("batch verification requests = %d, want 2", legacy.requestCount())
 	}
 }
 
@@ -763,6 +937,116 @@ func TestQueryStoreRejectsUnrequestedBatchRoot(t *testing.T) {
 	}
 	if _, err := store.GetEntityNeighborhoods(context.Background(), []string{rootURN}, 10); err == nil {
 		t.Fatal("GetEntityNeighborhoods() error = nil")
+	}
+}
+
+func TestQueryStoreRejectsIncompleteBatchResponse(t *testing.T) {
+	rootOne := "urn:cerebro:tenant-a:runtime_file:asset-1"
+	rootTwo := "urn:cerebro:tenant-a:runtime_file:asset-2"
+	server := newGraphTestServer(t, graphServiceStub{
+		expandBatch: func(_ context.Context, request *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error) {
+			return connect.NewResponse(&cerebrographv1.ExpandBatchResponse{
+				Neighborhoods: map[string]*cerebrographv1.ExpandResponse{
+					rootOne: {
+						TenantId: request.Msg.GetTenantId(),
+						Root: &cerebrographv1.GraphEntity{
+							EntityId:   "root-1",
+							AgentKey:   rootOne,
+							EntityKind: "resource",
+						},
+					},
+				},
+			}), nil
+		},
+	})
+	defer server.Close()
+
+	store, err := NewQueryStore(queryStoreStub{}, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewQueryStore() error = %v", err)
+	}
+	if _, err := store.GetEntityNeighborhoods(context.Background(), []string{rootOne, rootTwo}, 10); err == nil || !strings.Contains(err.Error(), "omitted") {
+		t.Fatalf("GetEntityNeighborhoods() error = %v, want omitted-root rejection", err)
+	}
+}
+
+func TestProductNeighborhoodRejectsAmbiguousRustIdentity(t *testing.T) {
+	root := "urn:cerebro:tenant-a:runtime_file:asset-1"
+	tests := []struct {
+		name     string
+		root     *cerebrographv1.GraphEntity
+		entities []*cerebrographv1.GraphEntity
+		want     string
+	}{
+		{
+			name: "different root",
+			root: &cerebrographv1.GraphEntity{
+				EntityId: "root-1",
+				AgentKey: "urn:cerebro:tenant-a:runtime_file:other",
+			},
+			want: "different root",
+		},
+		{
+			name: "missing root ID",
+			root: &cerebrographv1.GraphEntity{
+				AgentKey: root,
+			},
+			want: "missing its entity ID",
+		},
+		{
+			name: "duplicate entity ID",
+			root: &cerebrographv1.GraphEntity{
+				EntityId: "same-id",
+				AgentKey: root,
+			},
+			entities: []*cerebrographv1.GraphEntity{{
+				EntityId: "same-id",
+				AgentKey: "urn:cerebro:tenant-a:repository:repo-1",
+			}},
+			want: "duplicate entity IDs",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := productNeighborhood(root, &cerebrographv1.ExpandResponse{
+				TenantId: "tenant-a",
+				Root:     test.root,
+				Entities: test.entities,
+			})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("productNeighborhood() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestComparisonIgnoresSetOrderingButDetectsContentChanges(t *testing.T) {
+	root := &ports.NeighborhoodNode{URN: "urn:cerebro:tenant-a:resource:root"}
+	nodeOne := &ports.NeighborhoodNode{URN: "urn:cerebro:tenant-a:resource:one", Label: "One"}
+	nodeTwo := &ports.NeighborhoodNode{URN: "urn:cerebro:tenant-a:resource:two", Label: "Two"}
+	relationOne := &ports.NeighborhoodRelation{FromURN: root.URN, Relation: "contains", ToURN: nodeOne.URN}
+	relationTwo := &ports.NeighborhoodRelation{FromURN: root.URN, Relation: "contains", ToURN: nodeTwo.URN}
+	legacy := &ports.EntityNeighborhood{
+		Root:      root,
+		Neighbors: []*ports.NeighborhoodNode{nodeOne, nodeTwo},
+		Relations: []*ports.NeighborhoodRelation{relationOne, relationTwo},
+	}
+	rust := &ports.EntityNeighborhood{
+		Root:      root,
+		Neighbors: []*ports.NeighborhoodNode{nodeTwo, nodeOne},
+		Relations: []*ports.NeighborhoodRelation{relationTwo, relationOne},
+	}
+	if status := comparisonStatus(legacy, nil, rust, nil); status != "match" {
+		t.Fatalf("comparisonStatus(reordered) = %q, want match", status)
+	}
+	legacyDigest, _ := comparisonReceipt(legacy)
+	rustDigest, _ := comparisonReceipt(rust)
+	if legacyDigest != rustDigest {
+		t.Fatalf("reordered digests differ: %s != %s", legacyDigest, rustDigest)
+	}
+	rust.Neighbors[0] = &ports.NeighborhoodNode{URN: nodeTwo.URN, Label: "Changed"}
+	if status := comparisonStatus(legacy, nil, rust, nil); status != "mismatch" {
+		t.Fatalf("comparisonStatus(changed) = %q, want mismatch", status)
 	}
 }
 

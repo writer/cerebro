@@ -60,6 +60,7 @@ export CEREBRO_RUST_CANARY_API_KEYS=",rust-canary-key:local:${rust_canary_tenant
 
 cleanup() {
   local exit_code=$?
+  docker compose "${compose_files[@]}" unpause >/dev/null 2>&1 || true
   docker compose "${compose_files[@]}" logs --no-color >"${service_logs}" 2>&1 || true
   docker compose "${compose_files[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
   return "${exit_code}"
@@ -204,6 +205,21 @@ test "${matching_count}" -eq "${request_count}"
 
 rust_container="$(docker compose "${compose_files[@]}" ps -q rust-platform)"
 test -n "${rust_container}"
+docker pause "${rust_container}" >/dev/null
+: >"${output_dir}/shadow-paused-statuses.txt"
+seq 1 96 | xargs -P 32 -I{} curl \
+  --max-time 2 \
+  --silent \
+  --show-error \
+  --output /dev/null \
+  --write-out '%{http_code} %{time_total}\n' \
+  --header "${auth_header_name}: ${auth_scheme} local-dev-key" \
+  "${graph_url}" >>"${output_dir}/shadow-paused-statuses.txt" || true
+paused_count="$(wc -l <"${output_dir}/shadow-paused-statuses.txt" | tr -d ' ')"
+test "${paused_count}" -eq 96
+awk '$1 != 200 || $2 >= 1.0 { exit 1 }' "${output_dir}/shadow-paused-statuses.txt"
+docker unpause "${rust_container}" >/dev/null
+
 docker stop "${rust_container}" >/dev/null
 assert_status 200 readiness-shadow-without-rust "${output_dir}/readiness.json" http://127.0.0.1:8080/health
 assert_status 200 graph-shadow-without-rust "${output_dir}/graph-response.json" "${graph_url}"
@@ -256,9 +272,17 @@ go_canary_url="http://127.0.0.1:8080/platform/graph/neighborhood?root_urn=$(jq -
 export CEREBRO_RUST_READ_MODE=canary
 export CEREBRO_RUST_SHADOW_PERCENT=0
 export CEREBRO_RUST_AUTHORITY_PERCENT=50
+export CEREBRO_RUST_CANARY_VERIFY_PERCENT=100
 docker compose "${compose_files[@]}" up -d --force-recreate --wait cerebro
 assert_status 200 graph-canary-rust "${output_dir}/canary-rust-response.json" "${rust_canary_url}" rust-canary-key
 assert_status 200 graph-canary-go "${output_dir}/canary-go-response.json" "${go_canary_url}" go-canary-key
+
+docker compose "${compose_files[@]}" restart cerebro
+docker compose "${compose_files[@]}" up -d --wait cerebro
+assert_status 200 graph-canary-rust-after-restart \
+  "${output_dir}/canary-rust-response.json" "${rust_canary_url}" rust-canary-key
+assert_status 200 graph-canary-go-after-restart \
+  "${output_dir}/canary-go-response.json" "${go_canary_url}" go-canary-key
 
 rust_container="$(docker compose "${compose_files[@]}" ps -q rust-platform)"
 docker stop "${rust_container}" >/dev/null
@@ -280,6 +304,7 @@ done
 export CEREBRO_RUST_READ_MODE=authority
 export CEREBRO_RUST_SHADOW_PERCENT=0
 export CEREBRO_RUST_AUTHORITY_PERCENT=0
+export CEREBRO_RUST_CANARY_VERIFY_PERCENT=0
 docker compose "${compose_files[@]}" up -d --force-recreate --wait cerebro
 assert_status 200 readiness-authority "${output_dir}/readiness.json" http://127.0.0.1:8080/health
 assert_status 200 graph-authority "${output_dir}/authority-graph-response.json" "${graph_url}"
@@ -311,6 +336,11 @@ jq \
          evidence: "Go readiness and graph reads stayed available while Rust was stopped"
        },
        {
+         name: "shadow_backpressure_isolation",
+         status: "passed",
+         evidence: "96 concurrent graph reads stayed below one second while the Rust process was paused"
+       },
+       {
          name: "go_rust_authority_parity",
          status: "passed",
          evidence: "shadow and Rust authority product responses were identical"
@@ -326,6 +356,11 @@ jq \
          evidence: "stable 50 percent sampling served one typed read from Rust and one from Go"
        },
        {
+         name: "verified_canary_restart",
+         status: "passed",
+         evidence: "100 percent Go-oracle verification was enabled and both stable cohorts survived an API restart"
+       },
+       {
          name: "canary_legacy_isolation",
          status: "passed",
          evidence: "Go readiness and the non-sampled Go read stayed available while Rust was stopped"
@@ -339,5 +374,5 @@ jq \
 
 test "$(jq -r .schema_version "${qualification_receipt}")" = "cerebro.pr-rust-graph/v1"
 test "$(jq -r .status "${qualification_receipt}")" = passed
-test "$(jq '[.checks[] | select(.status == "passed")] | length' "${qualification_receipt}")" -eq 21
+test "$(jq '[.checks[] | select(.status == "passed")] | length' "${qualification_receipt}")" -eq 23
 echo "Rust PR graph qualification passed with ${request_count} shadow reads"

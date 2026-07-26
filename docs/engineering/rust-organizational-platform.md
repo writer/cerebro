@@ -150,6 +150,9 @@ Before a read family changes authority, the Go API may remain the temporary
 read authority while a bounded sample is compared with Rust. That adapter must
 return the Go result, tolerate Rust unavailability, emit only bounded comparison
 labels, and must not receive graph-write credentials or project graph changes.
+Shadow comparisons run outside the request path with the configured timeout
+and a fixed 32-operation concurrency ceiling. Saturation records
+`status=dropped`; it never queues unbounded work or delays the Go response.
 
 Repository conventions and review are not the security boundary. Store credentials and workload identity are.
 
@@ -231,10 +234,12 @@ and never contain tenant or graph identifiers.
 During the first low-volume canary, set
 `CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT=100`. Every selected
 Rust-authority read remains Rust-authoritative and is also compared with Go.
-Mismatch or Go-oracle failure changes only the bounded verification receipt; it
-does not replace the Rust result or retry through Go. Monitor
+The Go verification runs outside the request path under the same bounded
+comparison ceiling. Mismatch, Go-oracle failure, or saturation changes only
+the verification receipt; it does not delay, replace, or retry the Rust result
+through Go. Monitor
 `cerebro.organizational_graph.canary.verifications` for `match`, `mismatch`,
-`legacy_error`, and `comparison_error`, and compare
+`legacy_error`, `comparison_error`, and `dropped`, and compare
 `cerebro.organizational_graph.canary.duration` by authority before increasing
 the Rust cohort. Reduce the verification percentage independently when the
 duplicate Go load is no longer justified.
