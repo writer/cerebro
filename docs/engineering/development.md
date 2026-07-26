@@ -44,10 +44,13 @@ images and add the Rust overlay:
 ```bash
 export CEREBRO_IMAGE='ghcr.io/writer/cerebro@sha256:<api-digest>'
 export CEREBRO_RUST_IMAGE='ghcr.io/writer/cerebro-rust@sha256:<rust-digest>'
+export CEREBRO_RUST_GRAPH_SECRET="$(openssl rand -hex 32)"
 docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d --wait
 ```
 
-This stack creates its own Postgres, Neo4j, JetStream, and Docker volumes. Stop
+Keep the generated graph secret in the same shell for every Compose command
+against the running stack. This stack creates its own Postgres, Neo4j,
+JetStream, and Docker volumes. Stop
 it with `docker compose -f docker-compose.yml -f docker-compose.rust.yml down --volumes`.
 The `Ephemeral Cerebro` GitHub workflow runs the same topology on an ARM64
 runner for a main commit with successful standard and Rust-only candidate
