@@ -35,7 +35,6 @@ concurrency:
 jobs:
   topology:
     name: Seeded Go and Rust graph
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
