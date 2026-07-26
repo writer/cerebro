@@ -150,7 +150,10 @@ SELECT transition_digest
 FROM verified_access_action_transitions
 WHERE tenant_id = $1 AND action_id = $2 AND transition_id = $3`,
 			outcome.Record.TenantID, outcome.Record.ID, outcome.Transition.ID).Scan(&digest)
-		if err != nil || digest != outcome.Transition.Digest {
+		if err != nil {
+			return false, fmt.Errorf("read existing verified access action transition: %w", err)
+		}
+		if digest != outcome.Transition.Digest {
 			return false, verifiedaccessaction.ErrConflict
 		}
 		return false, nil
@@ -176,7 +179,10 @@ WHERE tenant_id = $6 AND action_id = $7
 		return false, fmt.Errorf("update verified access action: %w", err)
 	}
 	rows, err := result.RowsAffected()
-	if err != nil || rows != 1 {
+	if err != nil {
+		return false, fmt.Errorf("read verified access action update result: %w", err)
+	}
+	if rows != 1 {
 		return false, verifiedaccessaction.ErrConflict
 	}
 	if err := tx.Commit(); err != nil {
