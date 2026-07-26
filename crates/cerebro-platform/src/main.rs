@@ -5,14 +5,14 @@ mod cutover_command;
 mod parity_command;
 mod rpc;
 
-use std::{collections::BTreeMap, env, error::Error, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, env, error::Error, path::PathBuf, sync::Arc, time::Instant};
 
 use axum::{
     Extension, Json, Router,
     extract::{Path, Query, Request, State},
     http::{StatusCode, header::AUTHORIZATION},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use cerebro_agent_context::{
@@ -49,7 +49,21 @@ struct AppState {
     graph: Arc<dyn AgentGraph>,
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
+    metrics: PlatformMetrics,
 }
+
+#[derive(Clone, Default)]
+struct PlatformMetrics(Arc<Mutex<BTreeMap<&'static str, RequestSeries>>>);
+
+#[derive(Default)]
+struct RequestSeries {
+    successes: u64,
+    failures: u64,
+    duration_sum_seconds: f64,
+    duration_buckets: [u64; 8],
+}
+
+const LATENCY_BUCKETS_SECONDS: [f64; 8] = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0];
 
 #[derive(Clone)]
 struct TenantRequestAuth {
@@ -137,6 +151,98 @@ async fn authenticate_tenant(
     };
     request.extensions_mut().insert(AuthenticatedTenant(tenant));
     Ok(next.run(request).await)
+}
+
+async fn record_request(
+    State(metrics): State<PlatformMetrics>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let operation = bounded_operation(request.uri().path());
+    let started = Instant::now();
+    let response = next.run(request).await;
+    metrics
+        .record(
+            operation,
+            response.status(),
+            started.elapsed().as_secs_f64(),
+        )
+        .await;
+    response
+}
+
+fn bounded_operation(path: &str) -> &'static str {
+    match path {
+        "/healthz" => "healthz",
+        "/readyz" => "readyz",
+        "/metrics" => "metrics",
+        "/v1/sources/summary" => "source_summary",
+        "/platform/graph/neighborhood" => "neighborhood",
+        "/v1/graph/search" => "search",
+        "/v1/graph/expand" => "expand",
+        "/v1/graph/expand-batch" => "expand_batch",
+        "/v1/graph/paths" => "paths",
+        "/v1/projections/events" => "project_event",
+        "/v1/projections/authority" => "projection_authority",
+        _ if path.starts_with("/v1/entities/") => "get_entity",
+        _ if path.starts_with("/v1/assertions/") => "explain_assertion",
+        _ if path.starts_with("/cerebro.graph.v1.OrganizationalGraphService/") => "connect_rpc",
+        _ => "other",
+    }
+}
+
+impl PlatformMetrics {
+    async fn record(&self, operation: &'static str, status: StatusCode, elapsed_seconds: f64) {
+        let mut metrics = self.0.lock().await;
+        let series = metrics.entry(operation).or_default();
+        if status.is_success() {
+            series.successes += 1;
+        } else {
+            series.failures += 1;
+        }
+        series.duration_sum_seconds += elapsed_seconds;
+        for (index, upper_bound) in LATENCY_BUCKETS_SECONDS.iter().enumerate() {
+            if elapsed_seconds <= *upper_bound {
+                series.duration_buckets[index] += 1;
+            }
+        }
+    }
+
+    async fn render(&self) -> String {
+        let metrics = self.0.lock().await;
+        let mut output = String::from(
+            "# HELP cerebro_rust_http_requests_total Bounded Rust platform HTTP requests.\n\
+             # TYPE cerebro_rust_http_requests_total counter\n\
+             # HELP cerebro_rust_http_request_duration_seconds Rust platform request latency.\n\
+             # TYPE cerebro_rust_http_request_duration_seconds histogram\n",
+        );
+        for (operation, series) in metrics.iter() {
+            output.push_str(&format!(
+                "cerebro_rust_http_requests_total{{operation=\"{operation}\",status_class=\"success\"}} {}\n",
+                series.successes
+            ));
+            output.push_str(&format!(
+                "cerebro_rust_http_requests_total{{operation=\"{operation}\",status_class=\"failure\"}} {}\n",
+                series.failures
+            ));
+            for (upper_bound, count) in LATENCY_BUCKETS_SECONDS
+                .iter()
+                .zip(series.duration_buckets.iter())
+            {
+                output.push_str(&format!(
+                    "cerebro_rust_http_request_duration_seconds_bucket{{operation=\"{operation}\",le=\"{upper_bound}\"}} {count}\n"
+                ));
+            }
+            let count = series.successes + series.failures;
+            output.push_str(&format!(
+                "cerebro_rust_http_request_duration_seconds_bucket{{operation=\"{operation}\",le=\"+Inf\"}} {count}\n\
+                 cerebro_rust_http_request_duration_seconds_sum{{operation=\"{operation}\"}} {}\n\
+                 cerebro_rust_http_request_duration_seconds_count{{operation=\"{operation}\"}} {count}\n",
+                series.duration_sum_seconds
+            ));
+        }
+        output
+    }
 }
 
 struct ProjectionRuntime {
@@ -393,6 +499,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         None | Some("demo") => demo().await,
         Some("serve") => serve_memory(OrganizationalGraph::new()).await,
         Some("serve-demo") => serve_memory(demo_graph()?.0).await,
+        Some("serve-neo4j-readonly") => serve_neo4j_readonly().await,
         Some("serve-neo4j") => serve_neo4j().await,
         Some("serve-neo4j-consumer") => serve_neo4j_consumer().await,
         Some("consume-append-log") => consume_append_log().await,
@@ -400,11 +507,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("sync-source") => sync_source().await,
         Some("catalog-summary") => catalog_summary(),
         Some("compare-projection") => parity_command::compare_projection().await,
+        Some("evaluate-family") => cutover_command::evaluate_family().await,
         Some("promote-family") => cutover_command::promote_family().await,
         Some("show-authority") => cutover_command::show_authority().await,
         Some("--help" | "-h") => {
             println!(
-                "cerebro-platform <demo|serve|serve-demo|serve-neo4j|serve-neo4j-consumer|consume-append-log|migrate-stores|sync-source|catalog-summary|compare-projection|promote-family|show-authority>"
+                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-neo4j|serve-neo4j-consumer|consume-append-log|migrate-stores|sync-source|catalog-summary|compare-projection|evaluate-family|promote-family|show-authority>"
             );
             Ok(())
         }
@@ -414,6 +522,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 async fn serve_memory(graph: OrganizationalGraph) -> Result<(), Box<dyn Error>> {
     serve(Arc::new(MemoryAgentGraph::new(graph)), None).await
+}
+
+async fn serve_neo4j_readonly() -> Result<(), Box<dyn Error>> {
+    let graph = Neo4jProjector::connect(
+        &required_env("CEREBRO_NEO4J_URI")?,
+        &required_env("CEREBRO_NEO4J_USERNAME")?,
+        &required_env("CEREBRO_NEO4J_PASSWORD")?,
+    )
+    .await?;
+    serve(Arc::new(graph), None).await
 }
 
 async fn serve_neo4j() -> Result<(), Box<dyn Error>> {
@@ -569,6 +687,7 @@ fn router_with_backend(
     projection: Option<Arc<ProjectionRuntime>>,
     tenant_auth: TenantRequestAuth,
 ) -> Router {
+    let platform_metrics = PlatformMetrics::default();
     let connect = rpc::router(graph.clone(), catalog_summary.clone(), tenant_auth.clone());
     let protected = Router::new()
         .route(
@@ -590,6 +709,7 @@ fn router_with_backend(
     Router::new()
         .route("/healthz", get(health))
         .route("/readyz", get(readiness))
+        .route("/metrics", get(metrics))
         .route("/v1/sources/summary", get(source_summary))
         .merge(protected)
         .fallback_service(connect.into_axum_service())
@@ -597,7 +717,22 @@ fn router_with_backend(
             graph,
             catalog_summary,
             projection,
+            metrics: platform_metrics.clone(),
         })
+        .layer(middleware::from_fn_with_state(
+            platform_metrics,
+            record_request,
+        ))
+}
+
+async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
+        state.metrics.render().await,
+    )
 }
 
 async fn projection_authority(
@@ -1837,6 +1972,30 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(readiness.status(), StatusCode::OK);
+
+        let metrics = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(metrics.status(), StatusCode::OK);
+        let metrics = axum::body::to_bytes(metrics.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let metrics = String::from_utf8(metrics.to_vec()).unwrap();
+        assert!(metrics.contains(
+            "cerebro_rust_http_requests_total{operation=\"healthz\",status_class=\"success\"} 1"
+        ));
+        assert!(
+            metrics.contains(
+                "cerebro_rust_http_request_duration_seconds_count{operation=\"readyz\"} 1"
+            )
+        );
 
         let request = serde_json::json!({
             "tenant_id": "tenant-demo",

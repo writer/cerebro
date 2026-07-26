@@ -20,7 +20,7 @@ candidate-<40-character-commit>
 ghcr.io/writer/cerebro@sha256:<digest>
 ```
 
-The Candidate Build workflow waits for CI, builds the binary archives, runtime image, and web image once, packs the portable Slack companion and TypeScript SDK, writes checksums and a dependency inventory, verifies the exact image platform set, scans both images, attaches provenance, signs the images and product manifest, and stores a `cerebro.release-candidate/v1` receipt. Candidate builds do not create Git tags, GitHub releases, stable semantic-version image tags, `latest`, or consumer events.
+The Candidate Build workflow resolves the commit, starts its binary and image builds while the commit's CI run finishes, and requires CI success before it writes the candidate receipt. Stale candidate runs are cancelled when a newer `main` commit arrives. BuildKit and Cargo caches are shared only across matching architecture and dependency inputs. The workflow builds the binary archives, runtime image, and web image once, packs the portable Slack companion and TypeScript SDK, writes checksums and a dependency inventory, verifies the exact image platform set, scans both images, attaches provenance, signs the images and product manifest, and stores a `cerebro.release-candidate/v1` receipt. Candidate builds do not create Git tags, GitHub releases, stable semantic-version image tags, `latest`, or consumer events.
 
 Stable releases are promoted from a successful Candidate Build run through the `stable-release` GitHub environment. The operator supplies the candidate run ID, stable tag, completed release notes, and a successful smoke receipt URL. The workflow verifies the candidate bundle checksums, commit, run ID, image digest, and image signature before it assigns stable tags.
 

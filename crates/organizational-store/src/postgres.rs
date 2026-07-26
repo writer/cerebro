@@ -559,6 +559,22 @@ impl PostgresLedger {
         catalog: &SourceCatalog,
         request: &ProjectionPromotionRequest,
     ) -> Result<ProjectionAuthorityRecord, StoreError> {
+        let decision = self.evaluate_projection_authority(catalog, request).await?;
+        self.promote_projection_authority(
+            request.tenant_id(),
+            &decision,
+            request.promoted_at_unix_ms(),
+        )
+        .await
+    }
+
+    /// Evaluate the durable cutover evidence without changing projection
+    /// authority. Operators use this before the irreversible promotion step.
+    pub async fn evaluate_projection_authority(
+        &self,
+        catalog: &SourceCatalog,
+        request: &ProjectionPromotionRequest,
+    ) -> Result<CutoverDecision, StoreError> {
         let receipts = self
             .parity_receipts(
                 request.tenant_id(),
@@ -575,12 +591,7 @@ impl PostgresLedger {
                 request.projection_lag(),
             )
             .map_err(|error| StoreError::Conflict(error.to_string()))?;
-        self.promote_projection_authority(
-            request.tenant_id(),
-            &decision,
-            request.promoted_at_unix_ms(),
-        )
-        .await
+        Ok(decision)
     }
 
     async fn promote_projection_authority(

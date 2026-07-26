@@ -1,0 +1,19 @@
+[package]
+name = "cerebro-platform-engine"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+cerebro-platform-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[[bench]]
+name = "platform_engine"
+harness = false
+
+[lints]
+workspace = true

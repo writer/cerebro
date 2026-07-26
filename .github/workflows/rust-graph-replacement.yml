@@ -85,6 +85,14 @@ jobs:
           runtime_image_id="$(docker image inspect --format '{{.Id}}' "${image}")"
           [[ "${runtime_image_id}" =~ ^sha256:[0-9a-f]{64}$ ]]
           echo "CEREBRO_TEST_RUNTIME_IMAGE_ID=${runtime_image_id}" >>"${GITHUB_ENV}"
+          docker run --rm --entrypoint /bin/sh "${image}" -euc '
+            test ! -e /usr/local/bin/cerebro
+            test ! -e /usr/local/go/bin/go
+            test ! -e /usr/bin/go
+            test ! -e /bin/go
+            test -x /usr/local/bin/cerebro-platform
+            test -x /usr/local/bin/organizational-graph-e2e
+          '
           docker run -d --name cerebro-rust-graph-platform --network cerebro-rust-graph-replacement \
             -p 18080:8080 \
             -e CEREBRO_NEO4J_URI=bolt://cerebro-rust-graph-neo4j:7687 \

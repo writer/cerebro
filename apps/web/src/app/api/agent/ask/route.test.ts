@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { agentPayloadError, buildAgentInput, buildAgentInstructions, buildRuntimeAgentInstructions, forwardLegacyAskBody } from "./route";
+import {
+  DEFAULT_AGENT_MODEL,
+  agentPayloadError,
+  buildAgentInput,
+  buildAgentInstructions,
+  buildRuntimeAgentInstructions,
+  forwardLegacyAskBody,
+} from "./route";
 
 const originalProducerCatalog = process.env.CEREBRO_SECURITY_PRODUCERS_JSON;
 
@@ -10,6 +17,10 @@ afterEach(() => {
 });
 
 describe("agent instructions", () => {
+  it("uses GPT-5.6 Sol by default", () => {
+    expect(DEFAULT_AGENT_MODEL).toBe("gpt-5.6-sol");
+  });
+
   it("reports invalid image bounds separately from an empty question", () => {
     expect(agentPayloadError({
       question: "What is risky in these screenshots?",
