@@ -9,9 +9,17 @@ on:
   workflow_dispatch:
     inputs:
       candidate_sha:
-        description: Exact repository commit with successful standard and Rust-only candidate builds
+        description: Exact repository commit with successful CI and Rust replacement proof
         required: true
         type: string
+      image_source:
+        description: Build the exact commit in this run or use signed main candidate images
+        required: true
+        default: source
+        type: choice
+        options:
+          - source
+          - published
       soak_seconds:
         description: Sustained shadow-read exercise duration (60-1800 seconds)
         required: false
@@ -32,7 +40,7 @@ jobs:
     name: Go API with Rust graph authority
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -52,6 +60,7 @@ jobs:
         shell: bash
         env:
           REQUESTED_SHA: ${{ inputs.candidate_sha }}
+          IMAGE_SOURCE: ${{ inputs.image_source }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -59,6 +68,14 @@ jobs:
           git fetch origin "${REQUESTED_SHA}"
           git cat-file -e "${REQUESTED_SHA}^{commit}"
 
+          if [[ "${IMAGE_SOURCE}" == source ]]; then
+            {
+              echo "api_image=cerebro-source:${REQUESTED_SHA}"
+              echo "rust_image=cerebro-rust-source:${REQUESTED_SHA}"
+            } >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          [[ "${IMAGE_SOURCE}" == published ]]
           api_image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro:candidate-${REQUESTED_SHA}"
           rust_image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-rust:candidate-${REQUESTED_SHA}"
           api_digest=""
@@ -81,7 +98,31 @@ jobs:
             echo "rust_image=${rust_image%@*}@${rust_digest}"
           } >>"${GITHUB_OUTPUT}"
 
+      - name: Build exact source images
+        if: inputs.image_source == 'source'
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          API_IMAGE: ${{ steps.candidate.outputs.api_image }}
+          RUST_IMAGE: ${{ steps.candidate.outputs.rust_image }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach candidate-source "${CANDIDATE_SHA}"
+          docker buildx build \
+            --file candidate-source/Dockerfile \
+            --load \
+            --provenance=false \
+            --tag "${API_IMAGE}" \
+            candidate-source
+          docker buildx build \
+            --file candidate-source/Dockerfile.rust \
+            --load \
+            --provenance=false \
+            --tag "${RUST_IMAGE}" \
+            candidate-source
+
       - name: Verify candidate attestations
+        if: inputs.image_source == 'published'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -97,9 +138,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          IMAGE_SOURCE: ${{ inputs.image_source }}
         run: |
           set -euo pipefail
-          for workflow in rust-only-candidate.yml rust-graph-replacement.yml; do
+          workflows=(ci.yml rust-graph-replacement.yml)
+          if [[ "${IMAGE_SOURCE}" == published ]]; then
+            workflows+=(rust-only-candidate.yml)
+          fi
+          for workflow in "${workflows[@]}"; do
             conclusion="$(
               gh api --method GET \
                 "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs" \
