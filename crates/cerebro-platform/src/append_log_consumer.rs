@@ -242,7 +242,12 @@ fn optional(name: &str, default: &str) -> String {
 
 fn required_u64(name: &str) -> Result<u64, Box<dyn Error>> {
     let value = required(name)?;
+    parse_required_u64(name, &value)
+}
+
+fn parse_required_u64(name: &str, value: &str) -> Result<u64, Box<dyn Error>> {
     let parsed = value
+        .trim()
         .parse::<u64>()
         .map_err(|_| format!("{name} must be an unsigned integer"))?;
     if parsed == 0 {
@@ -357,6 +362,18 @@ mod tests {
                 "organizational-graph-replay-42",
             )
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn replay_start_sequence_accepts_operator_whitespace() {
+        assert_eq!(
+            parse_required_u64("CEREBRO_ORGANIZATIONAL_CONSUMER_START_SEQUENCE", " 42 \n")
+                .expect("whitespace-wrapped sequence"),
+            42
+        );
+        assert!(
+            parse_required_u64("CEREBRO_ORGANIZATIONAL_CONSUMER_START_SEQUENCE", " 0 ").is_err()
         );
     }
 }
