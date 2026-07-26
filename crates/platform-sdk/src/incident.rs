@@ -4,6 +4,9 @@ use crate::{
     ContentDigest, EntityId, GraphRevision, IncidentSnapshotId, OpaqueId, SdkError, TenantId,
 };
 
+const MAX_INCIDENT_SNAPSHOT_ENTITIES: usize = 10_000;
+const MAX_INCIDENT_SNAPSHOT_REFERENCES: usize = 10_000;
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct IncidentSnapshotManifest {
     pub snapshot_id: IncidentSnapshotId,
@@ -20,11 +23,27 @@ pub struct IncidentSnapshotManifest {
 
 impl IncidentSnapshotManifest {
     pub fn validate(&self) -> Result<(), SdkError> {
-        if self.entity_ids.is_empty() || self.entity_ids.len() > 10_000 {
+        if self.entity_ids.is_empty() || self.entity_ids.len() > MAX_INCIDENT_SNAPSHOT_ENTITIES {
             return Err(SdkError::OutOfRange("incident snapshot entity count"));
         }
         if self.source_receipt_digests.is_empty() {
             return Err(SdkError::Empty("incident snapshot source receipts"));
+        }
+        for (references, field) in [
+            (
+                self.source_receipt_digests.len(),
+                "incident snapshot source receipt count",
+            ),
+            (self.policy_digests.len(), "incident snapshot policy count"),
+            (self.mission_ids.len(), "incident snapshot mission count"),
+            (
+                self.verification_receipt_digests.len(),
+                "incident snapshot verification receipt count",
+            ),
+        ] {
+            if references > MAX_INCIDENT_SNAPSHOT_REFERENCES {
+                return Err(SdkError::OutOfRange(field));
+            }
         }
         Ok(())
     }

@@ -146,6 +146,11 @@ Language-level constraints prevent accidental bypass inside Rust. Production aut
    restarts the Rust service, and reads the recovered graph through both the
    generated agent RPC and the native product HTTP route.
 
+Before a read family changes authority, the Go API may remain the temporary
+read authority while a bounded sample is compared with Rust. That adapter must
+return the Go result, tolerate Rust unavailability, emit only bounded comparison
+labels, and must not receive graph-write credentials or project graph changes.
+
 Repository conventions and review are not the security boundary. Store credentials and workload identity are.
 
 ## Source coverage migration

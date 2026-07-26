@@ -124,7 +124,7 @@ fn assertion_conditions_have_explicit_match_semantics() {
 
 #[test]
 fn simulations_are_read_only_and_bounded() {
-    let request = SimulationRequest {
+    let mut request = SimulationRequest {
         simulation_id: SimulationId::parse("simulation:one").expect("valid simulation"),
         tenant_id: tenant(),
         base_revision: GraphRevision::new(1).expect("valid revision"),
@@ -138,6 +138,15 @@ fn simulations_are_read_only_and_bounded() {
         max_affected_entities: 10_000,
     };
     assert!(request.validate().is_ok());
+    request.assertions = vec![
+        AssertionDefinitionId::parse("assertion-definition:one")
+            .expect("valid assertion definition");
+        101
+    ];
+    assert_eq!(
+        request.validate(),
+        Err(SdkError::OutOfRange("simulation assertions"))
+    );
 }
 
 #[test]
@@ -190,11 +199,17 @@ fn first_party_plugins_require_deterministic_zero_import_execution() {
     };
     assert!(manifest.validate().is_ok());
 
-    let unsafe_manifest = AnalysisPluginManifest {
+    let mut unsafe_manifest = AnalysisPluginManifest {
         zero_imports_required: false,
         ..manifest
     };
     assert!(unsafe_manifest.validate().is_err());
+    unsafe_manifest.zero_imports_required = true;
+    unsafe_manifest.abi_version = "v".repeat(129);
+    assert_eq!(
+        unsafe_manifest.validate(),
+        Err(SdkError::TooLong("plugin ABI version"))
+    );
 }
 
 #[test]
@@ -344,6 +359,12 @@ fn incident_snapshots_require_receipts_payload_integrity_and_signatures() {
     assert_eq!(
         invalid_manifest.validate(),
         Err(SdkError::Empty("incident snapshot source receipts"))
+    );
+    invalid_manifest.source_receipt_digests = vec![digest("source receipt")];
+    invalid_manifest.policy_digests = vec![digest("policy"); 10_001];
+    assert_eq!(
+        invalid_manifest.validate(),
+        Err(SdkError::OutOfRange("incident snapshot policy count"))
     );
 
     let mut invalid = snapshot.clone();

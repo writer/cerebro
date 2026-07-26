@@ -2,6 +2,8 @@ use serde::Serialize;
 
 use crate::{ContentDigest, PluginId, SdkError};
 
+const MAX_PLUGIN_ABI_VERSION_BYTES: usize = 128;
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginCapability {
@@ -47,6 +49,9 @@ impl AnalysisPluginManifest {
     pub fn validate(&self) -> Result<(), SdkError> {
         if self.abi_version.trim() != self.abi_version || self.abi_version.is_empty() {
             return Err(SdkError::Invalid("plugin ABI version"));
+        }
+        if self.abi_version.len() > MAX_PLUGIN_ABI_VERSION_BYTES {
+            return Err(SdkError::TooLong("plugin ABI version"));
         }
         if self.capabilities.is_empty() {
             return Err(SdkError::Empty("plugin capabilities"));

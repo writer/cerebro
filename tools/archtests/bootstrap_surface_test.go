@@ -164,11 +164,12 @@ import (
 // tenant resolution, safe error mapping, and state-store capability wiring.
 // Query bounds, cursors, and response allowlisting stay in auditevents.
 // Rust organizational graph migration adds only dependency construction,
-// family-authority routing, and read-store selection. Projection decisions,
+// separate read/projection endpoint selection, family-authority routing, and
+// read-store selection. Shadow sampling, comparison, projection decisions,
 // graph mapping, and HTTP transport stay behind organizational-store and
 // internal/sourcehttp/organizationalgraph as documented in
 // docs/engineering/rust-organizational-platform.md.
-const bootstrapProductionGoLineBudget = 29607
+const bootstrapProductionGoLineBudget = 29627
 
 type bootstrapFileLineCount struct {
 	path  string

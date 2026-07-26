@@ -5,6 +5,9 @@ use crate::{
     SimulationId, TenantId,
 };
 
+const MAX_SIMULATION_CHANGES: usize = 100;
+const MAX_SIMULATION_ASSERTIONS: usize = 100;
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum ProposedChange {
@@ -38,8 +41,11 @@ impl SimulationRequest {
         if self.changes.is_empty() {
             return Err(SdkError::Empty("simulation changes"));
         }
-        if self.changes.len() > 100 {
+        if self.changes.len() > MAX_SIMULATION_CHANGES {
             return Err(SdkError::OutOfRange("simulation changes"));
+        }
+        if self.assertions.len() > MAX_SIMULATION_ASSERTIONS {
+            return Err(SdkError::OutOfRange("simulation assertions"));
         }
         if self.max_affected_entities == 0 || self.max_affected_entities > 10_000 {
             return Err(SdkError::OutOfRange("simulation affected entity limit"));
