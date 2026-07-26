@@ -21,27 +21,27 @@ use cerebro_agent_context::{
 };
 use cerebro_organizational_graph::OrganizationalGraph;
 use cerebro_organizational_model::{
-    AssertionId, AssertionProvenance, CanonicalIdentity, CollectionId, CollectionReceipt,
-    CompleteCollection, Entity, EntityId, EntityKind, GraphAssertion, IdentityBindingAssertion,
-    IdentityBindingState, IdentityClaim, IdentityResolutionMethod, ModelError, ObservationId,
-    ObservationRef, ProviderIdentity, ProviderKind, RelationKind, RelationshipAssertion,
-    SourceRuntimeId, TenantId,
+    AssertionId, AssertionProvenance, CanonicalIdentity, CollectionId, CompleteCollection, Entity,
+    EntityId, EntityKind, GraphAssertion, IdentityBindingAssertion, IdentityBindingState,
+    IdentityClaim, IdentityResolutionMethod, ModelError, ObservationId, ObservationRef,
+    ProviderIdentity, ProviderKind, RelationKind, RelationshipAssertion, SourceRuntimeId, TenantId,
 };
 use cerebro_organizational_store::{
     DurableGraphStore, Neo4jProjector, PostgresLedger, ProjectionAuthority, StoreError,
 };
 use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
-    CatalogGraphMapper, CollectedBatch, CollectedScope, CollectionRequest, CommittedSourceEvent,
-    GraphMapper, GraphSink, HttpSourceConnector, ResolvedAuth, SourceRecord, SourceRuntime,
+    CatalogGraphMapper, CollectionRequest, CommittedSourceEvent, CommittedSourceInput, GraphMapper,
+    GraphSink, HttpSourceConnector, ResolvedAuth, SourceRuntime,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 
 const TENANT_AUTH_HEADER: &str = "x-cerebro-tenant";
 const TENANT_AUTH_CONTEXT: &[u8] = b"cerebro-organizational-graph/tenant/v1\0";
+const MAX_LEGACY_DELTA_RECORDS: usize = 100_000;
 const MIN_SHARED_SECRET_BYTES: usize = 32;
 
 #[derive(Clone)]
@@ -183,6 +183,8 @@ fn bounded_operation(path: &str) -> &'static str {
         "/v1/graph/expand-batch" => "expand_batch",
         "/v1/graph/paths" => "paths",
         "/v1/projections/events" => "project_event",
+        "/v1/projections/legacy-deltas" => "record_legacy_projection",
+        "/v1/projections/collections" => "record_source_collection",
         "/v1/projections/authority" => "projection_authority",
         _ if path.starts_with("/v1/entities/") => "get_entity",
         _ if path.starts_with("/v1/assertions/") => "explain_assertion",
@@ -279,6 +281,10 @@ impl ProjectionRuntime {
         &self,
         event: CommittedSourceEvent,
     ) -> Result<ProjectEventResponse, ProjectionFailure> {
+        self.authority
+            .record_source_event(&event)
+            .await
+            .map_err(ProjectionFailure::Store)?;
         let authority = self
             .authority
             .projection_authority(
@@ -367,6 +373,68 @@ impl ProjectionRuntime {
             graph_revision: Some(receipt.graph_revision),
             entities_upserted: receipt.entities_upserted,
             assertions_upserted: receipt.assertions_upserted,
+        })
+    }
+
+    async fn record_legacy_projection(
+        &self,
+        tenant_id: &TenantId,
+        request: &LegacyProjectionRequest,
+    ) -> Result<LegacyProjectionResponse, StoreError> {
+        let delta_json = serde_json::to_value(&request.delta)?;
+        let delta_digest = json_digest(&delta_json);
+        self.authority
+            .record_legacy_projection(
+                tenant_id.as_str(),
+                request.event_id.trim(),
+                request.source_runtime_id.trim(),
+                request.source_id.trim(),
+                request.family_id.trim(),
+                request.observed_at_unix_ms,
+                request.delta.entities.len(),
+                request.delta.links.len(),
+                request.delta.entity_retractions.len(),
+                request.delta.link_retractions.len(),
+                request.delta.cleanup_requests.len(),
+                &delta_digest,
+                &delta_json,
+            )
+            .await?;
+        Ok(LegacyProjectionResponse {
+            recorded: true,
+            delta_digest,
+        })
+    }
+
+    async fn record_source_collection(
+        &self,
+        tenant_id: &TenantId,
+        request: &SourceCollectionRequest,
+    ) -> Result<SourceCollectionResponse, StoreError> {
+        let manifest_json = serde_json::to_value(request)?;
+        let manifest_digest = json_digest(&manifest_json);
+        self.authority
+            .record_source_collection(
+                tenant_id.as_str(),
+                request.collection_id.trim(),
+                request.source_runtime_id.trim(),
+                request.source_id.trim(),
+                request.started_at_unix_ms,
+                request.completed_at_unix_ms,
+                &request.status,
+                request.pages_read,
+                request.records_scanned,
+                request.records_accepted,
+                request.records_rejected,
+                request.entities_projected,
+                request.links_projected,
+                &manifest_digest,
+                &manifest_json,
+            )
+            .await?;
+        Ok(SourceCollectionResponse {
+            recorded: true,
+            manifest_digest,
         })
     }
 }
@@ -469,6 +537,10 @@ struct ProjectEventRequest {
     source_id: String,
     family_id: String,
     event_id: String,
+    #[serde(default)]
+    event_kind: String,
+    #[serde(default)]
+    schema_ref: String,
     observed_at_unix_ms: i64,
     append_log_committed: bool,
     #[serde(default)]
@@ -484,6 +556,112 @@ struct ProjectEventResponse {
     graph_revision: Option<u64>,
     entities_upserted: usize,
     assertions_upserted: usize,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyEntityDeltaRecord {
+    urn: String,
+    tenant_id: String,
+    source_id: String,
+    runtime_id: String,
+    entity_type: String,
+    label: String,
+    #[serde(default)]
+    attributes: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyLinkDeltaRecord {
+    tenant_id: String,
+    source_id: String,
+    runtime_id: String,
+    from_urn: String,
+    to_urn: String,
+    relation: String,
+    #[serde(default)]
+    attributes: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyCleanupRequest {
+    tenant_id: String,
+    source_id: String,
+    runtime_id: String,
+    finding_id: String,
+    #[serde(default)]
+    entity_types: Vec<String>,
+    #[serde(default)]
+    urn_prefixes: Vec<String>,
+    only_isolated: bool,
+    limit: u32,
+    dry_run: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyProjectionDelta {
+    #[serde(default)]
+    entities: Vec<LegacyEntityDeltaRecord>,
+    #[serde(default)]
+    links: Vec<LegacyLinkDeltaRecord>,
+    #[serde(default)]
+    entity_retractions: Vec<String>,
+    #[serde(default)]
+    link_retractions: Vec<LegacyLinkDeltaRecord>,
+    #[serde(default)]
+    cleanup_requests: Vec<LegacyCleanupRequest>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyProjectionRequest {
+    tenant_id: String,
+    source_runtime_id: String,
+    source_id: String,
+    family_id: String,
+    event_id: String,
+    observed_at_unix_ms: i64,
+    append_log_committed: bool,
+    delta: LegacyProjectionDelta,
+}
+
+#[derive(Serialize)]
+struct LegacyProjectionResponse {
+    recorded: bool,
+    delta_digest: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct SourceCollectionRequest {
+    collection_id: String,
+    tenant_id: String,
+    source_id: String,
+    source_runtime_id: String,
+    started_at_unix_ms: i64,
+    completed_at_unix_ms: i64,
+    status: String,
+    #[serde(default)]
+    incompleteness_reasons: Vec<String>,
+    #[serde(default)]
+    expected_family_ids: Vec<String>,
+    #[serde(default)]
+    observed_family_ids: Vec<String>,
+    pages_read: u32,
+    records_scanned: u32,
+    records_accepted: u32,
+    records_rejected: u32,
+    entities_projected: u32,
+    links_projected: u32,
+}
+
+#[derive(Serialize)]
+struct SourceCollectionResponse {
+    recorded: bool,
+    manifest_digest: String,
 }
 
 #[derive(Deserialize)]
@@ -701,6 +879,14 @@ fn router_with_backend(
         .route("/v1/graph/expand-batch", post(expand_batch))
         .route("/v1/graph/paths", post(find_paths))
         .route("/v1/projections/events", post(project_event))
+        .route(
+            "/v1/projections/legacy-deltas",
+            post(record_legacy_projection),
+        )
+        .route(
+            "/v1/projections/collections",
+            post(record_source_collection),
+        )
         .route("/v1/projections/authority", get(projection_authority))
         .route_layer(middleware::from_fn_with_state(
             tenant_auth,
@@ -782,83 +968,268 @@ async fn project_event(
         ));
     }
     let tenant_id = authorized_tenant(&authenticated, request.tenant_id)?;
-    let authority = runtime
-        .authority
-        .projection_authority(tenant_id.as_str(), &request.source_id, &request.family_id)
-        .await
-        .map_err(store_error)?;
-    if authority.authority == ProjectionAuthority::Legacy {
-        return Ok(Json(ProjectEventResponse {
-            authority: ProjectionAuthority::Legacy,
-            projected: false,
-            graph_revision: None,
-            entities_upserted: 0,
-            assertions_upserted: 0,
-        }));
-    }
-    let source = runtime
-        .catalog
-        .get(&request.source_id)
-        .ok_or_else(|| bad_request("unknown_source", "The source is not in the catalog."))?
-        .clone();
-    let family = source
-        .families()
-        .iter()
-        .find(|family| family.id() == request.family_id)
-        .ok_or_else(|| bad_request("unknown_family", "The source family is not in the catalog."))?;
-    let source_runtime_id =
-        SourceRuntimeId::parse(request.source_runtime_id).map_err(model_error)?;
-    let observation_id = ObservationId::parse(request.event_id.clone()).map_err(model_error)?;
-    let collection_id =
-        CollectionId::parse(format!("event:{}", request.event_id)).map_err(model_error)?;
-    let scope = CollectedScope::NonAuthoritative(
-        CollectionReceipt::incremental(
-            tenant_id.clone(),
-            source_runtime_id,
-            collection_id,
-            format!("{}.{}", request.source_id, request.family_id),
-            request.observed_at_unix_ms,
-        )
-        .map_err(model_error)?,
-    );
-    let provider_id = event_provider_id(&request.attributes, &request.event_id);
-    let batch = CollectedBatch {
-        scope,
-        records: vec![SourceRecord {
-            observation_id,
-            family: request.family_id.clone(),
-            provider_kind: format!("{}.{}", request.source_id, family.projection().template()),
-            provider_id,
-            fields: request.attributes,
-            payload: request.payload,
-        }],
-        next_cursor: None,
+    let source_id = request.source_id.trim().to_owned();
+    let family_id = request.family_id.trim().to_owned();
+    let event_kind = if request.event_kind.trim().is_empty() {
+        format!("{source_id}.{family_id}")
+    } else {
+        request.event_kind
     };
-    let identity_resolution = runtime
-        .authority
-        .identity_resolution_snapshot(&tenant_id)
+    let event = CommittedSourceEvent::from_input(CommittedSourceInput {
+        tenant_id,
+        source_runtime_id: SourceRuntimeId::parse(request.source_runtime_id)
+            .map_err(model_error)?,
+        observation_id: ObservationId::parse(request.event_id).map_err(model_error)?,
+        source_id,
+        family_id,
+        event_kind,
+        schema_ref: request.schema_ref,
+        observed_at_unix_ms: request.observed_at_unix_ms,
+        attributes: request.attributes,
+        payload: request.payload,
+    })
+    .map_err(|error| bad_request("invalid_source_event", error.to_string()))?;
+    runtime
+        .project_committed(event)
         .await
-        .map_err(store_error)?;
-    let mapper = CatalogGraphMapper::new(source, env!("CARGO_PKG_VERSION"))
-        .map_err(|error| bad_request("projection_mapping_failed", error.to_string()))?
-        .with_identity_resolution(identity_resolution);
-    let delta = mapper
-        .map(&batch)
-        .map_err(|error| bad_request("projection_mapping_failed", error.to_string()))?;
-    let receipt = runtime
-        .store
-        .lock()
+        .map(Json)
+        .map_err(|error| match error {
+            ProjectionFailure::Invalid(message) => {
+                bad_request("projection_mapping_failed", message)
+            }
+            ProjectionFailure::Store(error) => store_error(error),
+        })
+}
+
+async fn record_legacy_projection(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Json(request): Json<LegacyProjectionRequest>,
+) -> Result<Json<LegacyProjectionResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let runtime = state.projection.ok_or_else(|| {
+        service_unavailable(
+            "projection_runtime_unavailable",
+            "The organizational projection runtime is not configured.",
+        )
+    })?;
+    if !request.append_log_committed {
+        return Err(bad_request(
+            "append_log_required",
+            "The source event must be committed to the append log before recording its legacy projection.",
+        ));
+    }
+    if request.observed_at_unix_ms <= 0 {
+        return Err(bad_request(
+            "invalid_observed_at",
+            "observed_at_unix_ms must be positive.",
+        ));
+    }
+    let tenant_id = authorized_tenant(&authenticated, request.tenant_id.clone())?;
+    validate_legacy_projection(&tenant_id, &request)?;
+    runtime
+        .record_legacy_projection(&tenant_id, &request)
         .await
-        .apply(&batch, delta)
+        .map(Json)
+        .map_err(store_error)
+}
+
+async fn record_source_collection(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Json(request): Json<SourceCollectionRequest>,
+) -> Result<Json<SourceCollectionResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let runtime = state.projection.ok_or_else(|| {
+        service_unavailable(
+            "projection_runtime_unavailable",
+            "The organizational projection runtime is not configured.",
+        )
+    })?;
+    let tenant_id = authorized_tenant(&authenticated, request.tenant_id.clone())?;
+    validate_source_collection(&request)?;
+    runtime
+        .record_source_collection(&tenant_id, &request)
         .await
-        .map_err(store_error)?;
-    Ok(Json(ProjectEventResponse {
-        authority: ProjectionAuthority::Rust,
-        projected: true,
-        graph_revision: Some(receipt.graph_revision),
-        entities_upserted: receipt.entities_upserted,
-        assertions_upserted: receipt.assertions_upserted,
-    }))
+        .map(Json)
+        .map_err(store_error)
+}
+
+fn validate_source_collection(
+    request: &SourceCollectionRequest,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    CollectionId::parse(request.collection_id.clone()).map_err(model_error)?;
+    SourceRuntimeId::parse(request.source_runtime_id.clone()).map_err(model_error)?;
+    if request.source_id.trim().is_empty() {
+        return Err(bad_request(
+            "invalid_source_collection",
+            "source_id is required.",
+        ));
+    }
+    if request.started_at_unix_ms <= 0 || request.completed_at_unix_ms < request.started_at_unix_ms
+    {
+        return Err(bad_request(
+            "invalid_source_collection_time",
+            "Collection times must be positive and completed_at_unix_ms cannot precede started_at_unix_ms.",
+        ));
+    }
+    match request.status.as_str() {
+        "complete" if !request.incompleteness_reasons.is_empty() => {
+            return Err(bad_request(
+                "invalid_source_collection_status",
+                "A complete collection cannot contain incompleteness reasons.",
+            ));
+        }
+        "incomplete" if request.incompleteness_reasons.is_empty() => {
+            return Err(bad_request(
+                "invalid_source_collection_status",
+                "An incomplete collection must contain at least one reason.",
+            ));
+        }
+        "complete" | "incomplete" => {}
+        _ => {
+            return Err(bad_request(
+                "invalid_source_collection_status",
+                "status must be complete or incomplete.",
+            ));
+        }
+    }
+    if request
+        .records_accepted
+        .saturating_add(request.records_rejected)
+        > request.records_scanned
+    {
+        return Err(bad_request(
+            "invalid_source_collection_counts",
+            "Accepted and rejected records cannot exceed scanned records.",
+        ));
+    }
+    for values in [
+        &request.incompleteness_reasons,
+        &request.expected_family_ids,
+        &request.observed_family_ids,
+    ] {
+        if values.len() > 10_000
+            || values.iter().any(|value| value.trim().is_empty())
+            || values.windows(2).any(|pair| pair[0] >= pair[1])
+        {
+            return Err(bad_request(
+                "invalid_source_collection_values",
+                "Collection reason and family lists must be non-empty, unique, sorted, and bounded.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_legacy_projection(
+    tenant_id: &TenantId,
+    request: &LegacyProjectionRequest,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    SourceRuntimeId::parse(request.source_runtime_id.clone()).map_err(model_error)?;
+    ObservationId::parse(request.event_id.clone()).map_err(model_error)?;
+    let source_id = request.source_id.trim();
+    let family_id = request.family_id.trim();
+    if source_id.is_empty() || family_id.is_empty() {
+        return Err(bad_request(
+            "invalid_legacy_projection",
+            "source_id and family_id are required.",
+        ));
+    }
+    let record_count = request
+        .delta
+        .entities
+        .len()
+        .saturating_add(request.delta.links.len())
+        .saturating_add(request.delta.entity_retractions.len())
+        .saturating_add(request.delta.link_retractions.len())
+        .saturating_add(request.delta.cleanup_requests.len());
+    if record_count > MAX_LEGACY_DELTA_RECORDS {
+        return Err(bad_request(
+            "legacy_projection_too_large",
+            format!(
+                "A legacy projection delta cannot contain more than {MAX_LEGACY_DELTA_RECORDS} records."
+            ),
+        ));
+    }
+    let expected_tenant = tenant_id.as_str();
+    let expected_runtime = request.source_runtime_id.trim();
+    for entity in &request.delta.entities {
+        if entity.tenant_id.trim() != expected_tenant
+            || entity.source_id.trim() != source_id
+            || entity.runtime_id.trim() != expected_runtime
+            || entity.urn.trim().is_empty()
+            || entity.entity_type.trim().is_empty()
+            || !legacy_urn_matches_tenant(expected_tenant, &entity.urn)
+        {
+            return Err(bad_request(
+                "legacy_projection_scope_mismatch",
+                "Every projected entity must match the request tenant, source, and runtime.",
+            ));
+        }
+    }
+    for link in request
+        .delta
+        .links
+        .iter()
+        .chain(request.delta.link_retractions.iter())
+    {
+        if link.tenant_id.trim() != expected_tenant
+            || link.source_id.trim() != source_id
+            || link.runtime_id.trim() != expected_runtime
+            || link.relation.trim().is_empty()
+            || !legacy_urn_matches_tenant(expected_tenant, &link.from_urn)
+            || !legacy_urn_matches_tenant(expected_tenant, &link.to_urn)
+        {
+            return Err(bad_request(
+                "legacy_projection_scope_mismatch",
+                "Every projected link must match the request tenant, source, and runtime.",
+            ));
+        }
+    }
+    if request
+        .delta
+        .entity_retractions
+        .iter()
+        .any(|urn| !legacy_urn_matches_tenant(expected_tenant, urn))
+    {
+        return Err(bad_request(
+            "legacy_projection_scope_mismatch",
+            "Every entity retraction must match the request tenant.",
+        ));
+    }
+    for cleanup in &request.delta.cleanup_requests {
+        if cleanup.tenant_id.trim() != expected_tenant
+            || cleanup.source_id.trim() != source_id
+            || cleanup.runtime_id.trim() != expected_runtime
+            || cleanup
+                .urn_prefixes
+                .iter()
+                .any(|urn| !legacy_urn_matches_tenant(expected_tenant, urn))
+        {
+            return Err(bad_request(
+                "legacy_projection_scope_mismatch",
+                "Every cleanup request must match the request tenant, source, and runtime.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn legacy_urn_matches_tenant(tenant_id: &str, value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty()
+        && (!value.starts_with("urn:cerebro:")
+            || value.starts_with(&format!("urn:cerebro:{tenant_id}:")))
+}
+
+fn json_digest(value: &serde_json::Value) -> String {
+    let bytes = serde_json::to_vec(value).expect("serializing a JSON value cannot fail");
+    let digest = Sha256::digest(bytes);
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    output
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -1565,6 +1936,68 @@ mod tests {
         ] {
             assert!(!auth.verify(&tenant, token), "token {token:?} was accepted");
         }
+    }
+
+    #[test]
+    fn source_collection_requires_consistent_status_counts_and_sorted_families() {
+        let mut request = SourceCollectionRequest {
+            collection_id: "collection-one".to_owned(),
+            tenant_id: "tenant-demo".to_owned(),
+            source_id: "box".to_owned(),
+            source_runtime_id: "box-runtime".to_owned(),
+            started_at_unix_ms: 100,
+            completed_at_unix_ms: 200,
+            status: "complete".to_owned(),
+            incompleteness_reasons: Vec::new(),
+            expected_family_ids: vec!["content_assets".to_owned(), "users".to_owned()],
+            observed_family_ids: vec!["content_assets".to_owned()],
+            pages_read: 1,
+            records_scanned: 2,
+            records_accepted: 2,
+            records_rejected: 0,
+            entities_projected: 2,
+            links_projected: 1,
+        };
+        assert!(validate_source_collection(&request).is_ok());
+
+        request.status = "incomplete".to_owned();
+        assert!(validate_source_collection(&request).is_err());
+        request.incompleteness_reasons = vec!["next_cursor_present".to_owned()];
+        assert!(validate_source_collection(&request).is_ok());
+        request.observed_family_ids = vec!["users".to_owned(), "content_assets".to_owned()];
+        assert!(validate_source_collection(&request).is_err());
+    }
+
+    #[test]
+    fn legacy_projection_rejects_cross_scope_records() {
+        let tenant_id = TenantId::parse("tenant-demo").unwrap();
+        let mut request = LegacyProjectionRequest {
+            tenant_id: tenant_id.as_str().to_owned(),
+            source_runtime_id: "box-runtime".to_owned(),
+            source_id: "box".to_owned(),
+            family_id: "content_assets".to_owned(),
+            event_id: "event-one".to_owned(),
+            observed_at_unix_ms: 100,
+            append_log_committed: true,
+            delta: LegacyProjectionDelta {
+                entities: vec![LegacyEntityDeltaRecord {
+                    urn: "urn:cerebro:tenant-demo:asset:one".to_owned(),
+                    tenant_id: tenant_id.as_str().to_owned(),
+                    source_id: "box".to_owned(),
+                    runtime_id: "box-runtime".to_owned(),
+                    entity_type: "box.asset".to_owned(),
+                    label: "One".to_owned(),
+                    attributes: BTreeMap::new(),
+                }],
+                links: Vec::new(),
+                entity_retractions: Vec::new(),
+                link_retractions: Vec::new(),
+                cleanup_requests: Vec::new(),
+            },
+        };
+        assert!(validate_legacy_projection(&tenant_id, &request).is_ok());
+        request.delta.entities[0].tenant_id = "tenant-other".to_owned();
+        assert!(validate_legacy_projection(&tenant_id, &request).is_err());
     }
 
     #[test]

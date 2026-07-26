@@ -160,6 +160,27 @@ Repository conventions and review are not the security boundary. Store credentia
 
 Source migration is definition- and family-based, not package-by-package translation.
 
+The append log remains the source-event log of record throughout migration.
+Rust records every valid source event in a tenant-scoped, idempotent PostgreSQL
+receipt projection before it evaluates family authority. An event from a
+legacy or not-yet-cataloged family is retained and acknowledged as legacy; it
+is not silently discarded. Reusing an event ID with different content fails
+closed. The receipt contains event metadata and content digests, not a second
+copy of the raw payload or secret material.
+
+While a family remains legacy-authoritative, the shared Go projection boundary
+also sends Rust the exact normalized entities, links, entity retractions, link
+retractions, and scoped cleanup requests written for that event. These
+compatibility records preserve existing source coverage for parity and replay;
+they do not grant Rust graph-write authority and they are not another system of
+record.
+
+After each bounded source-runtime sync, the same boundary records a collection
+manifest with expected and observed families, page and record counts,
+projection counts, and deterministic incompleteness reasons. A completed sync
+receipt is coverage evidence only. It does not become an authoritative
+`CompleteCollection`, and therefore cannot enable missing-record retraction.
+
 For every existing source family, the parity corpus records:
 
 - provider request and pagination behavior;

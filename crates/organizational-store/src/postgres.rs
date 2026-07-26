@@ -6,7 +6,9 @@ use cerebro_organizational_model::{
     IdentityBindingAssertion, IdentityBindingState, IdentityResolutionMethod, TenantId,
 };
 use cerebro_source_catalog::SourceCatalog;
-use cerebro_source_runtime_next::{CollectedBatch, IdentityResolutionSnapshot};
+use cerebro_source_runtime_next::{
+    CollectedBatch, CommittedSourceEvent, IdentityResolutionSnapshot,
+};
 use postgres_native_tls::MakeTlsConnector;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -51,6 +53,57 @@ CREATE TABLE IF NOT EXISTS organizational_observations (
   FOREIGN KEY (tenant_id, collection_id)
     REFERENCES organizational_collections (tenant_id, collection_id)
     DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE IF NOT EXISTS organizational_source_event_receipts (
+  tenant_id TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  source_runtime_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  family_id TEXT NOT NULL,
+  event_kind TEXT NOT NULL,
+  schema_ref TEXT NOT NULL,
+  observed_at_unix_ms BIGINT NOT NULL CHECK (observed_at_unix_ms > 0),
+  attributes_digest TEXT NOT NULL,
+  payload_digest TEXT NOT NULL,
+  record_digest TEXT NOT NULL,
+  PRIMARY KEY (tenant_id, event_id)
+);
+CREATE TABLE IF NOT EXISTS organizational_legacy_projection_receipts (
+  tenant_id TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  source_runtime_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  family_id TEXT NOT NULL,
+  observed_at_unix_ms BIGINT NOT NULL CHECK (observed_at_unix_ms > 0),
+  entity_count BIGINT NOT NULL CHECK (entity_count >= 0),
+  link_count BIGINT NOT NULL CHECK (link_count >= 0),
+  entity_retraction_count BIGINT NOT NULL CHECK (entity_retraction_count >= 0),
+  link_retraction_count BIGINT NOT NULL CHECK (link_retraction_count >= 0),
+  cleanup_request_count BIGINT NOT NULL CHECK (cleanup_request_count >= 0),
+  delta_digest TEXT NOT NULL,
+  delta_json JSONB NOT NULL,
+  PRIMARY KEY (tenant_id, event_id),
+  FOREIGN KEY (tenant_id, event_id)
+    REFERENCES organizational_source_event_receipts (tenant_id, event_id)
+    DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE IF NOT EXISTS organizational_source_collection_receipts (
+  tenant_id TEXT NOT NULL,
+  collection_id TEXT NOT NULL,
+  source_runtime_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  started_at_unix_ms BIGINT NOT NULL CHECK (started_at_unix_ms > 0),
+  completed_at_unix_ms BIGINT NOT NULL CHECK (completed_at_unix_ms >= started_at_unix_ms),
+  status TEXT NOT NULL CHECK (status IN ('complete', 'incomplete')),
+  pages_read BIGINT NOT NULL CHECK (pages_read >= 0),
+  records_scanned BIGINT NOT NULL CHECK (records_scanned >= 0),
+  records_accepted BIGINT NOT NULL CHECK (records_accepted >= 0),
+  records_rejected BIGINT NOT NULL CHECK (records_rejected >= 0),
+  entities_projected BIGINT NOT NULL CHECK (entities_projected >= 0),
+  links_projected BIGINT NOT NULL CHECK (links_projected >= 0),
+  manifest_digest TEXT NOT NULL,
+  manifest_json JSONB NOT NULL,
+  PRIMARY KEY (tenant_id, collection_id)
 );
 CREATE TABLE IF NOT EXISTS organizational_entities (
   tenant_id TEXT NOT NULL,
@@ -151,12 +204,21 @@ CREATE INDEX IF NOT EXISTS organizational_projection_pending_idx
 CREATE INDEX IF NOT EXISTS organizational_parity_latest_idx
   ON organizational_parity_receipts
     (tenant_id, source_id, family_id, compared_at_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS organizational_source_collection_latest_idx
+  ON organizational_source_collection_receipts
+    (tenant_id, source_runtime_id, completed_at_unix_ms DESC);
 ALTER TABLE organizational_graph_revisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_graph_revisions FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_collections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_collections FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_observations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_observations FORCE ROW LEVEL SECURITY;
+ALTER TABLE organizational_source_event_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE organizational_source_event_receipts FORCE ROW LEVEL SECURITY;
+ALTER TABLE organizational_legacy_projection_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE organizational_legacy_projection_receipts FORCE ROW LEVEL SECURITY;
+ALTER TABLE organizational_source_collection_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE organizational_source_collection_receipts FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_entities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_entities FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_assertions ENABLE ROW LEVEL SECURITY;
@@ -178,6 +240,9 @@ BEGIN
     'organizational_graph_revisions',
     'organizational_collections',
     'organizational_observations',
+    'organizational_source_event_receipts',
+    'organizational_legacy_projection_receipts',
+    'organizational_source_collection_receipts',
     'organizational_entities',
     'organizational_assertions',
     'organizational_identity_bindings',
@@ -389,6 +454,27 @@ pub(crate) struct CommittedCollection {
     pub pending_projection: Option<ProjectionCommit>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceEventReceipt {
+    pub tenant_id: String,
+    pub event_id: String,
+    pub record_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LegacyProjectionReceipt {
+    pub tenant_id: String,
+    pub event_id: String,
+    pub delta_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceCollectionReceipt {
+    pub tenant_id: String,
+    pub collection_id: String,
+    pub manifest_digest: String,
+}
+
 pub struct PostgresLedger {
     client: Mutex<Client>,
 }
@@ -423,6 +509,181 @@ impl PostgresLedger {
             .batch_execute(POSTGRES_SCHEMA)
             .await?;
         Ok(())
+    }
+
+    /// Records the rebuildable PostgreSQL receipt for one source event already
+    /// committed to JetStream. Replays are idempotent; an event ID reused for
+    /// different content fails closed.
+    pub async fn record_source_event(
+        &self,
+        event: &CommittedSourceEvent,
+    ) -> Result<SourceEventReceipt, StoreError> {
+        let tenant_id = event.tenant_id().as_str();
+        let event_id = event.observation_id().as_str();
+        let record_digest = event.record_digest();
+        let attributes_digest = event.attributes_digest();
+        let payload_digest = event.payload_digest();
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let row = transaction
+            .query_opt(
+                "INSERT INTO organizational_source_event_receipts (tenant_id, event_id, source_runtime_id, source_id, family_id, event_kind, schema_ref, observed_at_unix_ms, attributes_digest, payload_digest, record_digest) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (tenant_id, event_id) DO UPDATE SET record_digest = EXCLUDED.record_digest WHERE organizational_source_event_receipts.record_digest = EXCLUDED.record_digest RETURNING record_digest",
+                &[
+                    &tenant_id,
+                    &event_id,
+                    &event.source_runtime_id().as_str(),
+                    &event.source_id(),
+                    &event.family_id(),
+                    &event.event_kind(),
+                    &event.schema_ref(),
+                    &event.observed_at_unix_ms(),
+                    &attributes_digest,
+                    &payload_digest,
+                    &record_digest,
+                ],
+            )
+            .await?;
+        if row.is_none() {
+            return Err(StoreError::Conflict(format!(
+                "source event {event_id} conflicts with the stored record"
+            )));
+        }
+        transaction.commit().await?;
+        Ok(SourceEventReceipt {
+            tenant_id: tenant_id.to_owned(),
+            event_id: event_id.to_owned(),
+            record_digest,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_legacy_projection(
+        &self,
+        tenant_id: &str,
+        event_id: &str,
+        source_runtime_id: &str,
+        source_id: &str,
+        family_id: &str,
+        observed_at_unix_ms: i64,
+        entity_count: usize,
+        link_count: usize,
+        entity_retraction_count: usize,
+        link_retraction_count: usize,
+        cleanup_request_count: usize,
+        delta_digest: &str,
+        delta_json: &Value,
+    ) -> Result<LegacyProjectionReceipt, StoreError> {
+        let entity_count = i64::try_from(entity_count)
+            .map_err(|_| StoreError::Conflict("legacy entity count overflow".to_owned()))?;
+        let link_count = i64::try_from(link_count)
+            .map_err(|_| StoreError::Conflict("legacy link count overflow".to_owned()))?;
+        let entity_retraction_count = i64::try_from(entity_retraction_count).map_err(|_| {
+            StoreError::Conflict("legacy entity retraction count overflow".to_owned())
+        })?;
+        let link_retraction_count = i64::try_from(link_retraction_count).map_err(|_| {
+            StoreError::Conflict("legacy link retraction count overflow".to_owned())
+        })?;
+        let cleanup_request_count = i64::try_from(cleanup_request_count).map_err(|_| {
+            StoreError::Conflict("legacy cleanup request count overflow".to_owned())
+        })?;
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let row = transaction
+            .query_opt(
+                "INSERT INTO organizational_legacy_projection_receipts (tenant_id, event_id, source_runtime_id, source_id, family_id, observed_at_unix_ms, entity_count, link_count, entity_retraction_count, link_retraction_count, cleanup_request_count, delta_digest, delta_json) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT (tenant_id, event_id) DO UPDATE SET delta_digest = EXCLUDED.delta_digest WHERE organizational_legacy_projection_receipts.delta_digest = EXCLUDED.delta_digest AND organizational_legacy_projection_receipts.delta_json = EXCLUDED.delta_json RETURNING delta_digest",
+                &[
+                    &tenant_id,
+                    &event_id,
+                    &source_runtime_id,
+                    &source_id,
+                    &family_id,
+                    &observed_at_unix_ms,
+                    &entity_count,
+                    &link_count,
+                    &entity_retraction_count,
+                    &link_retraction_count,
+                    &cleanup_request_count,
+                    &delta_digest,
+                    &delta_json,
+                ],
+            )
+            .await?;
+        if row.is_none() {
+            return Err(StoreError::Conflict(format!(
+                "legacy projection for source event {event_id} conflicts with the stored record"
+            )));
+        }
+        transaction.commit().await?;
+        Ok(LegacyProjectionReceipt {
+            tenant_id: tenant_id.to_owned(),
+            event_id: event_id.to_owned(),
+            delta_digest: delta_digest.to_owned(),
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_source_collection(
+        &self,
+        tenant_id: &str,
+        collection_id: &str,
+        source_runtime_id: &str,
+        source_id: &str,
+        started_at_unix_ms: i64,
+        completed_at_unix_ms: i64,
+        status: &str,
+        pages_read: u32,
+        records_scanned: u32,
+        records_accepted: u32,
+        records_rejected: u32,
+        entities_projected: u32,
+        links_projected: u32,
+        manifest_digest: &str,
+        manifest_json: &Value,
+    ) -> Result<SourceCollectionReceipt, StoreError> {
+        let pages_read = i64::from(pages_read);
+        let records_scanned = i64::from(records_scanned);
+        let records_accepted = i64::from(records_accepted);
+        let records_rejected = i64::from(records_rejected);
+        let entities_projected = i64::from(entities_projected);
+        let links_projected = i64::from(links_projected);
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let row = transaction
+            .query_opt(
+                "INSERT INTO organizational_source_collection_receipts (tenant_id, collection_id, source_runtime_id, source_id, started_at_unix_ms, completed_at_unix_ms, status, pages_read, records_scanned, records_accepted, records_rejected, entities_projected, links_projected, manifest_digest, manifest_json) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (tenant_id, collection_id) DO UPDATE SET manifest_digest = EXCLUDED.manifest_digest WHERE organizational_source_collection_receipts.manifest_digest = EXCLUDED.manifest_digest AND organizational_source_collection_receipts.manifest_json = EXCLUDED.manifest_json RETURNING manifest_digest",
+                &[
+                    &tenant_id,
+                    &collection_id,
+                    &source_runtime_id,
+                    &source_id,
+                    &started_at_unix_ms,
+                    &completed_at_unix_ms,
+                    &status,
+                    &pages_read,
+                    &records_scanned,
+                    &records_accepted,
+                    &records_rejected,
+                    &entities_projected,
+                    &links_projected,
+                    &manifest_digest,
+                    &manifest_json,
+                ],
+            )
+            .await?;
+        if row.is_none() {
+            return Err(StoreError::Conflict(format!(
+                "source collection {collection_id} conflicts with the stored record"
+            )));
+        }
+        transaction.commit().await?;
+        Ok(SourceCollectionReceipt {
+            tenant_id: tenant_id.to_owned(),
+            collection_id: collection_id.to_owned(),
+            manifest_digest: manifest_digest.to_owned(),
+        })
     }
 
     pub async fn record_parity(&self, receipt: &ParityReceipt) -> Result<(), StoreError> {
@@ -1405,11 +1666,24 @@ mod tests {
             "PRIMARY KEY (tenant_id, claim_kind, claim_value)",
             "organizational_projection_outbox",
             "organizational_parity_receipts",
+            "organizational_source_event_receipts",
+            "organizational_legacy_projection_receipts",
+            "organizational_source_collection_receipts",
+            "organizational_source_collection_latest_idx",
             "current_setting(''cerebro.tenant_id'', true)",
             "DEFERRABLE INITIALLY DEFERRED",
         ] {
             assert!(POSTGRES_SCHEMA.contains(required), "missing {required}");
         }
+        let source_receipt_schema = POSTGRES_SCHEMA
+            .split("CREATE TABLE IF NOT EXISTS organizational_source_event_receipts")
+            .nth(1)
+            .and_then(|schema| schema.split("CREATE TABLE IF NOT EXISTS").next())
+            .expect("source event receipt schema");
+        assert!(source_receipt_schema.contains("attributes_digest TEXT NOT NULL"));
+        assert!(source_receipt_schema.contains("payload_digest TEXT NOT NULL"));
+        assert!(!source_receipt_schema.contains("attributes_json"));
+        assert!(!source_receipt_schema.contains("payload_json"));
         for required in [
             "entity_json = EXCLUDED.entity_json",
             "entity_json->'kind' = EXCLUDED.entity_json->'kind'",

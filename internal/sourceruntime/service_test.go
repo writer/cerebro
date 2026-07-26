@@ -210,9 +210,11 @@ func runtimeTestEvent(id string, sourceID string, kind string) *cerebrov1.EventE
 }
 
 type projector struct {
-	err    error
-	result ports.ProjectionResult
-	events []*cerebrov1.EventEnvelope
+	err         error
+	manifestErr error
+	result      ports.ProjectionResult
+	events      []*cerebrov1.EventEnvelope
+	manifests   []ports.SourceCollectionManifest
 }
 
 func (p *projector) Project(_ context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
@@ -221,6 +223,14 @@ func (p *projector) Project(_ context.Context, event *cerebrov1.EventEnvelope) (
 	}
 	p.events = append(p.events, proto.Clone(event).(*cerebrov1.EventEnvelope))
 	return p.result, nil
+}
+
+func (p *projector) RecordSourceCollection(_ context.Context, manifest ports.SourceCollectionManifest) error {
+	if p.manifestErr != nil {
+		return p.manifestErr
+	}
+	p.manifests = append(p.manifests, manifest)
+	return nil
 }
 
 type emptyPageSource struct{}
@@ -1547,6 +1557,19 @@ func TestSyncRuntimeUsesPageLedgerWhenStoreSupportsIt(t *testing.T) {
 	}
 	if len(log.events) != 1 || len(projector.events) != 1 {
 		t.Fatalf("append/project counts = %d/%d, want 1/1", len(log.events), len(projector.events))
+	}
+	if len(projector.manifests) != 1 {
+		t.Fatalf("collection manifests = %d, want 1", len(projector.manifests))
+	}
+	manifest := projector.manifests[0]
+	if manifest.Status != "complete" ||
+		manifest.RuntimeID != "writer-github" ||
+		manifest.PagesRead != 1 ||
+		manifest.RecordsScanned != 1 ||
+		manifest.RecordsAccepted != 1 ||
+		len(manifest.ObservedFamilyIDs) != 1 ||
+		manifest.ObservedFamilyIDs[0] != "pull_request" {
+		t.Fatalf("collection manifest = %#v", manifest)
 	}
 	if len(store.attempts) != 1 {
 		t.Fatalf("ledger attempts = %d, want 1", len(store.attempts))

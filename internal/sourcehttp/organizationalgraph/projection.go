@@ -67,6 +67,8 @@ type projectEventRequest struct {
 	SourceID           string            `json:"source_id"`
 	FamilyID           string            `json:"family_id"`
 	EventID            string            `json:"event_id"`
+	EventKind          string            `json:"event_kind"`
+	SchemaRef          string            `json:"schema_ref"`
 	ObservedAtUnixMS   int64             `json:"observed_at_unix_ms"`
 	AppendLogCommitted bool              `json:"append_log_committed"`
 	Attributes         map[string]string `json:"attributes"`
@@ -79,6 +81,86 @@ type projectEventResponse struct {
 	GraphRevision      *uint64 `json:"graph_revision"`
 	EntitiesUpserted   uint32  `json:"entities_upserted"`
 	AssertionsUpserted uint32  `json:"assertions_upserted"`
+}
+
+type legacyProjectedEntity struct {
+	URN        string            `json:"urn"`
+	TenantID   string            `json:"tenant_id"`
+	SourceID   string            `json:"source_id"`
+	RuntimeID  string            `json:"runtime_id"`
+	EntityType string            `json:"entity_type"`
+	Label      string            `json:"label"`
+	Attributes map[string]string `json:"attributes"`
+}
+
+type legacyProjectedLink struct {
+	TenantID   string            `json:"tenant_id"`
+	SourceID   string            `json:"source_id"`
+	RuntimeID  string            `json:"runtime_id"`
+	FromURN    string            `json:"from_urn"`
+	ToURN      string            `json:"to_urn"`
+	Relation   string            `json:"relation"`
+	Attributes map[string]string `json:"attributes"`
+}
+
+type legacyCleanupRequest struct {
+	TenantID     string   `json:"tenant_id"`
+	SourceID     string   `json:"source_id"`
+	RuntimeID    string   `json:"runtime_id"`
+	FindingID    string   `json:"finding_id"`
+	EntityTypes  []string `json:"entity_types"`
+	URNPrefixes  []string `json:"urn_prefixes"`
+	OnlyIsolated bool     `json:"only_isolated"`
+	Limit        uint32   `json:"limit"`
+	DryRun       bool     `json:"dry_run"`
+}
+
+type legacyProjectionDelta struct {
+	Entities          []legacyProjectedEntity `json:"entities"`
+	Links             []legacyProjectedLink   `json:"links"`
+	EntityRetractions []string                `json:"entity_retractions"`
+	LinkRetractions   []legacyProjectedLink   `json:"link_retractions"`
+	CleanupRequests   []legacyCleanupRequest  `json:"cleanup_requests"`
+}
+
+type legacyProjectionRequest struct {
+	TenantID           string                `json:"tenant_id"`
+	SourceRuntimeID    string                `json:"source_runtime_id"`
+	SourceID           string                `json:"source_id"`
+	FamilyID           string                `json:"family_id"`
+	EventID            string                `json:"event_id"`
+	ObservedAtUnixMS   int64                 `json:"observed_at_unix_ms"`
+	AppendLogCommitted bool                  `json:"append_log_committed"`
+	Delta              legacyProjectionDelta `json:"delta"`
+}
+
+type legacyProjectionResponse struct {
+	Recorded    bool   `json:"recorded"`
+	DeltaDigest string `json:"delta_digest"`
+}
+
+type sourceCollectionRequest struct {
+	CollectionID          string   `json:"collection_id"`
+	TenantID              string   `json:"tenant_id"`
+	SourceID              string   `json:"source_id"`
+	SourceRuntimeID       string   `json:"source_runtime_id"`
+	StartedAtUnixMS       int64    `json:"started_at_unix_ms"`
+	CompletedAtUnixMS     int64    `json:"completed_at_unix_ms"`
+	Status                string   `json:"status"`
+	IncompletenessReasons []string `json:"incompleteness_reasons"`
+	ExpectedFamilyIDs     []string `json:"expected_family_ids"`
+	ObservedFamilyIDs     []string `json:"observed_family_ids"`
+	PagesRead             uint32   `json:"pages_read"`
+	RecordsScanned        uint32   `json:"records_scanned"`
+	RecordsAccepted       uint32   `json:"records_accepted"`
+	RecordsRejected       uint32   `json:"records_rejected"`
+	EntitiesProjected     uint32   `json:"entities_projected"`
+	LinksProjected        uint32   `json:"links_projected"`
+}
+
+type sourceCollectionResponse struct {
+	Recorded       bool   `json:"recorded"`
+	ManifestDigest string `json:"manifest_digest"`
 }
 
 type authorityResponse struct {
@@ -113,6 +195,8 @@ func (c *ProjectionClient) project(ctx context.Context, event *cerebrov1.EventEn
 		SourceID:           strings.TrimSpace(event.GetSourceId()),
 		FamilyID:           familyID,
 		EventID:            strings.TrimSpace(event.GetId()),
+		EventKind:          strings.TrimSpace(event.GetKind()),
+		SchemaRef:          strings.TrimSpace(event.GetSchemaRef()),
 		ObservedAtUnixMS:   observedAt,
 		AppendLogCommitted: true,
 		Attributes:         cloneAttributes(event.GetAttributes()),
@@ -137,6 +221,87 @@ func (c *ProjectionClient) project(ctx context.Context, event *cerebrov1.EventEn
 		return projectEventResponse{}, fmt.Errorf("rust projection returned invalid authority %q", response.Authority)
 	}
 	return response, nil
+}
+
+func (c *ProjectionClient) recordLegacyProjection(ctx context.Context, event *cerebrov1.EventEnvelope, delta ports.SourceProjectionDelta) error {
+	familyID, err := eventFamily(event)
+	if err != nil {
+		return err
+	}
+	observedAt, err := observedAtUnixMS(event.GetOccurredAt())
+	if err != nil {
+		return err
+	}
+	runtimeID := strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID])
+	requestBody, err := json.Marshal(legacyProjectionRequest{
+		TenantID:           strings.TrimSpace(event.GetTenantId()),
+		SourceRuntimeID:    runtimeID,
+		SourceID:           strings.TrimSpace(event.GetSourceId()),
+		FamilyID:           familyID,
+		EventID:            strings.TrimSpace(event.GetId()),
+		ObservedAtUnixMS:   observedAt,
+		AppendLogCommitted: true,
+		Delta:              legacyDeltaRequest(delta),
+	})
+	if err != nil {
+		return fmt.Errorf("encode Rust legacy projection request: %w", err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/projections/legacy-deltas", bytes.NewReader(requestBody))
+	if err != nil {
+		return fmt.Errorf("build Rust legacy projection request: %w", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if err := c.auth.authorize(request, event.GetTenantId()); err != nil {
+		return err
+	}
+	var response legacyProjectionResponse
+	if err := c.doJSON(request, &response); err != nil {
+		return err
+	}
+	if !response.Recorded || strings.TrimSpace(response.DeltaDigest) == "" {
+		return errors.New("rust legacy projection receipt was not committed")
+	}
+	return nil
+}
+
+func (c *ProjectionClient) recordSourceCollection(ctx context.Context, manifest ports.SourceCollectionManifest) error {
+	requestBody, err := json.Marshal(sourceCollectionRequest{
+		CollectionID:          manifest.CollectionID,
+		TenantID:              manifest.TenantID,
+		SourceID:              manifest.SourceID,
+		SourceRuntimeID:       manifest.RuntimeID,
+		StartedAtUnixMS:       manifest.StartedAtUnixMS,
+		CompletedAtUnixMS:     manifest.CompletedAtUnixMS,
+		Status:                manifest.Status,
+		IncompletenessReasons: append([]string(nil), manifest.IncompletenessReasons...),
+		ExpectedFamilyIDs:     append([]string(nil), manifest.ExpectedFamilyIDs...),
+		ObservedFamilyIDs:     append([]string(nil), manifest.ObservedFamilyIDs...),
+		PagesRead:             manifest.PagesRead,
+		RecordsScanned:        manifest.RecordsScanned,
+		RecordsAccepted:       manifest.RecordsAccepted,
+		RecordsRejected:       manifest.RecordsRejected,
+		EntitiesProjected:     manifest.EntitiesProjected,
+		LinksProjected:        manifest.LinksProjected,
+	})
+	if err != nil {
+		return fmt.Errorf("encode Rust source collection request: %w", err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/projections/collections", bytes.NewReader(requestBody))
+	if err != nil {
+		return fmt.Errorf("build Rust source collection request: %w", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if err := c.auth.authorize(request, manifest.TenantID); err != nil {
+		return err
+	}
+	var response sourceCollectionResponse
+	if err := c.doJSON(request, &response); err != nil {
+		return err
+	}
+	if !response.Recorded || strings.TrimSpace(response.ManifestDigest) == "" {
+		return errors.New("rust source collection receipt was not committed")
+	}
+	return nil
 }
 
 func (c *ProjectionClient) authority(ctx context.Context, event *cerebrov1.EventEnvelope) (string, error) {
@@ -203,6 +368,15 @@ func NewAppendLogProjector(legacy ports.SourceProjector, rust *ProjectionClient)
 	return &AppendLogProjector{legacy: legacy, rust: rust}
 }
 
+// RecordSourceCollection retains coverage and completeness after the final
+// page of a bounded sync run is committed.
+func (p *AppendLogProjector) RecordSourceCollection(ctx context.Context, manifest ports.SourceCollectionManifest) error {
+	if p == nil || p.rust == nil {
+		return errors.New("rust projection client is required")
+	}
+	return p.rust.recordSourceCollection(ctx, manifest)
+}
+
 func (p *AppendLogProjector) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
 	response, err := p.rust.project(ctx, event)
 	if err != nil {
@@ -219,6 +393,16 @@ func (p *AppendLogProjector) Project(ctx context.Context, event *cerebrov1.Event
 	}
 	if p.legacy == nil {
 		return ports.ProjectionResult{}, nil
+	}
+	if projector, ok := p.legacy.(ports.SourceProjectorWithDelta); ok {
+		result, delta, err := projector.ProjectWithDelta(ctx, event)
+		if err != nil {
+			return ports.ProjectionResult{}, err
+		}
+		if err := p.rust.recordLegacyProjection(ctx, event, delta); err != nil {
+			return ports.ProjectionResult{}, err
+		}
+		return result, nil
 	}
 	return p.legacy.Project(ctx, event)
 }
@@ -275,4 +459,64 @@ func cloneAttributes(values map[string]string) map[string]string {
 		result[key] = value
 	}
 	return result
+}
+
+func legacyDeltaRequest(delta ports.SourceProjectionDelta) legacyProjectionDelta {
+	result := legacyProjectionDelta{
+		Entities:          make([]legacyProjectedEntity, 0, len(delta.Entities)),
+		Links:             make([]legacyProjectedLink, 0, len(delta.Links)),
+		EntityRetractions: append([]string(nil), delta.EntityRetractions...),
+		LinkRetractions:   make([]legacyProjectedLink, 0, len(delta.LinkRetractions)),
+		CleanupRequests:   make([]legacyCleanupRequest, 0, len(delta.CleanupRequests)),
+	}
+	for _, entity := range delta.Entities {
+		if entity == nil {
+			continue
+		}
+		result.Entities = append(result.Entities, legacyProjectedEntity{
+			URN:        entity.URN,
+			TenantID:   entity.TenantID,
+			SourceID:   entity.SourceID,
+			RuntimeID:  entity.RuntimeID,
+			EntityType: entity.EntityType,
+			Label:      entity.Label,
+			Attributes: cloneAttributes(entity.Attributes),
+		})
+	}
+	for _, link := range delta.Links {
+		if link != nil {
+			result.Links = append(result.Links, legacyLinkRequest(link))
+		}
+	}
+	for _, link := range delta.LinkRetractions {
+		if link != nil {
+			result.LinkRetractions = append(result.LinkRetractions, legacyLinkRequest(link))
+		}
+	}
+	for _, cleanup := range delta.CleanupRequests {
+		result.CleanupRequests = append(result.CleanupRequests, legacyCleanupRequest{
+			TenantID:     cleanup.TenantID,
+			SourceID:     cleanup.SourceID,
+			RuntimeID:    cleanup.RuntimeID,
+			FindingID:    cleanup.FindingID,
+			EntityTypes:  append([]string(nil), cleanup.EntityTypes...),
+			URNPrefixes:  append([]string(nil), cleanup.URNPrefixes...),
+			OnlyIsolated: cleanup.OnlyIsolated,
+			Limit:        cleanup.Limit,
+			DryRun:       cleanup.DryRun,
+		})
+	}
+	return result
+}
+
+func legacyLinkRequest(link *ports.ProjectedLink) legacyProjectedLink {
+	return legacyProjectedLink{
+		TenantID:   link.TenantID,
+		SourceID:   link.SourceID,
+		RuntimeID:  link.RuntimeID,
+		FromURN:    link.FromURN,
+		ToURN:      link.ToURN,
+		Relation:   link.Relation,
+		Attributes: cloneAttributes(link.Attributes),
+	}
 }

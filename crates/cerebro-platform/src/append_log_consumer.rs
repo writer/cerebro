@@ -118,10 +118,6 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
             message.double_ack().await.map_err(consumer_io)?;
             continue;
         };
-        if runtime.catalog.get(subject_source).is_none() {
-            message.double_ack().await.map_err(consumer_io)?;
-            continue;
-        }
         let event = match decode_event(&message.message.payload, subject_source, &subject) {
             Ok(event) => event,
             Err(error) => {
