@@ -27,7 +27,9 @@ mod view;
 pub use action::{
     ActionEffect, ActionOperation, ActionProposal, ActionReceipt, ActionState, VerificationState,
 };
-pub use assertion::{AssertionDefinition, AssertionEvaluation, AssertionState, EvaluationTrigger};
+pub use assertion::{
+    AssertionCondition, AssertionDefinition, AssertionEvaluation, AssertionState, EvaluationTrigger,
+};
 pub use budget::{BudgetError, ResourceBudget, ResourceUsage};
 pub use cerebro_agent_context::{
     FactQuery, QueryAbsentEdge, QueryDirection, QueryEdge, QueryMatch, QueryNode, QueryResult,

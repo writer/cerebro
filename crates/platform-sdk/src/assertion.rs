@@ -19,12 +19,40 @@ pub enum AssertionState {
     Indeterminate,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "count")]
+pub enum AssertionCondition {
+    NoMatches,
+    AtLeastOneMatch,
+    MatchCountAtMost(u32),
+    MatchCountAtLeast(u32),
+}
+
+impl AssertionCondition {
+    pub fn evaluate(self, matching_paths: u32) -> bool {
+        match self {
+            Self::NoMatches => matching_paths == 0,
+            Self::AtLeastOneMatch => matching_paths > 0,
+            Self::MatchCountAtMost(maximum) => matching_paths <= maximum,
+            Self::MatchCountAtLeast(minimum) => matching_paths >= minimum,
+        }
+    }
+
+    fn validate(self) -> Result<(), SdkError> {
+        if matches!(self, Self::MatchCountAtLeast(0)) {
+            return Err(SdkError::OutOfRange("assertion minimum match count"));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct AssertionDefinition {
     pub assertion_id: AssertionDefinitionId,
     pub tenant_id: TenantId,
     pub name: String,
     pub query: FactQuery,
+    pub condition: AssertionCondition,
     pub triggers: Vec<EvaluationTrigger>,
     pub evidence_max_age_seconds: u64,
     pub enabled: bool,
@@ -45,7 +73,7 @@ impl AssertionDefinition {
         if self.evidence_max_age_seconds == 0 {
             return Err(SdkError::OutOfRange("assertion evidence max age"));
         }
-        Ok(())
+        self.condition.validate()
     }
 }
 

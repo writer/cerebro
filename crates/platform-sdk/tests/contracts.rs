@@ -1,8 +1,8 @@
 use cerebro_platform_sdk::{
-    AnalysisPluginManifest, AssertionDefinitionId, BudgetError, ContentDigest, EntityId,
-    EvidenceQuality, GraphChange, GraphChangeKind, GraphDiffRequest, GraphRevision, OpaqueId,
-    PluginCapability, PluginId, PluginLimits, ProposedChange, ResourceBudget, ResourceUsage,
-    RevisionSelector, SimulationId, SimulationRequest, SubscriptionDefinition,
+    AnalysisPluginManifest, AssertionCondition, AssertionDefinitionId, BudgetError, ContentDigest,
+    EntityId, EvidenceQuality, GraphChange, GraphChangeKind, GraphDiffRequest, GraphRevision,
+    OpaqueId, PluginCapability, PluginId, PluginLimits, ProposedChange, ResourceBudget,
+    ResourceUsage, RevisionSelector, SimulationId, SimulationRequest, SubscriptionDefinition,
     SubscriptionEventFilter, SubscriptionId, TenantId,
 };
 
@@ -85,6 +85,15 @@ fn evidence_quality_is_bounded_and_conservative() {
     let quality = EvidenceQuality::new(90, 80, 70, 60, 50, false).expect("valid quality");
     assert_eq!(quality.minimum_score(), 50);
     assert!(EvidenceQuality::new(101, 80, 70, 60, 50, false).is_err());
+}
+
+#[test]
+fn assertion_conditions_have_explicit_match_semantics() {
+    assert!(AssertionCondition::NoMatches.evaluate(0));
+    assert!(!AssertionCondition::NoMatches.evaluate(1));
+    assert!(AssertionCondition::AtLeastOneMatch.evaluate(1));
+    assert!(AssertionCondition::MatchCountAtMost(2).evaluate(2));
+    assert!(AssertionCondition::MatchCountAtLeast(2).evaluate(3));
 }
 
 #[test]
