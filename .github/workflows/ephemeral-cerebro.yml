@@ -1,0 +1,277 @@
+name: Ephemeral Cerebro
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ephemeral-cerebro.yml"
+      - "docker-compose.yml"
+      - "docker-compose.rust.yml"
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact repository commit with successful CI and Rust replacement proof
+        required: true
+        type: string
+      image_source:
+        description: Build the exact commit in this run or use signed main candidate images
+        required: true
+        default: source
+        type: choice
+        options:
+          - source
+          - published
+      soak_seconds:
+        description: Sustained shadow-read exercise duration (60-1800 seconds)
+        required: false
+        default: 60
+        type: number
+
+permissions:
+  actions: read
+  attestations: read
+  contents: read
+  packages: read
+
+concurrency:
+  group: ephemeral-cerebro-${{ inputs.candidate_sha || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  topology:
+    name: Go API with Rust graph authority
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve candidate images
+        id: candidate
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+          IMAGE_SOURCE: ${{ inputs.image_source }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "${REQUESTED_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          git fetch origin "${REQUESTED_SHA}"
+          git cat-file -e "${REQUESTED_SHA}^{commit}"
+
+          if [[ "${IMAGE_SOURCE}" == source ]]; then
+            {
+              echo "api_image=cerebro-source:${REQUESTED_SHA}"
+              echo "rust_image=cerebro-rust-source:${REQUESTED_SHA}"
+            } >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          [[ "${IMAGE_SOURCE}" == published ]]
+          api_image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro:candidate-${REQUESTED_SHA}"
+          rust_image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-rust:candidate-${REQUESTED_SHA}"
+          api_digest=""
+          rust_digest=""
+          for attempt in $(seq 1 90); do
+            api_digest="$(docker buildx imagetools inspect "${api_image}" --format '{{.Manifest.Digest}}' 2>/dev/null || true)"
+            rust_digest="$(docker buildx imagetools inspect "${rust_image}" --format '{{.Manifest.Digest}}' 2>/dev/null || true)"
+            if [[ "${api_digest}" =~ ^sha256:[0-9a-f]{64}$ ]] \
+              && [[ "${rust_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              break
+            fi
+            test "${attempt}" -lt 90
+            sleep 10
+          done
+          [[ "${api_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${rust_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+
+          {
+            echo "api_image=${api_image%@*}@${api_digest}"
+            echo "rust_image=${rust_image%@*}@${rust_digest}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Build exact source images
+        if: inputs.image_source == 'source'
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          API_IMAGE: ${{ steps.candidate.outputs.api_image }}
+          RUST_IMAGE: ${{ steps.candidate.outputs.rust_image }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach candidate-source "${CANDIDATE_SHA}"
+          docker buildx build \
+            --file candidate-source/Dockerfile \
+            --load \
+            --provenance=false \
+            --tag "${API_IMAGE}" \
+            candidate-source
+          docker buildx build \
+            --file candidate-source/Dockerfile.rust \
+            --load \
+            --provenance=false \
+            --tag "${RUST_IMAGE}" \
+            candidate-source
+
+      - name: Verify candidate attestations
+        if: inputs.image_source == 'published'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          API_IMAGE: ${{ steps.candidate.outputs.api_image }}
+          RUST_IMAGE: ${{ steps.candidate.outputs.rust_image }}
+        run: |
+          set -euo pipefail
+          gh attestation verify "oci://${API_IMAGE}" --repo "${GITHUB_REPOSITORY}"
+          gh attestation verify "oci://${RUST_IMAGE}" --repo "${GITHUB_REPOSITORY}"
+
+      - name: Require exact-head replay and replacement proofs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          IMAGE_SOURCE: ${{ inputs.image_source }}
+        run: |
+          set -euo pipefail
+          workflows=(ci.yml rust-graph-replacement.yml)
+          if [[ "${IMAGE_SOURCE}" == published ]]; then
+            workflows+=(rust-only-candidate.yml)
+          fi
+          for workflow in "${workflows[@]}"; do
+            conclusion="$(
+              gh api --method GET \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs" \
+                -f head_sha="${CANDIDATE_SHA}" \
+                -f per_page=20 \
+                --jq '[.workflow_runs[] | select(.event != "pull_request_target")] | sort_by(.created_at) | last | .conclusion // ""'
+            )"
+            if [[ "${conclusion}" != success ]]; then
+              echo "${workflow} has no successful exact-head proof for ${CANDIDATE_SHA}"
+              exit 1
+            fi
+          done
+
+      - name: Start an isolated Cerebro
+        shell: bash
+        env:
+          CEREBRO_IMAGE: ${{ steps.candidate.outputs.api_image }}
+          CEREBRO_RUST_IMAGE: ${{ steps.candidate.outputs.rust_image }}
+          COMPOSE_PROJECT_NAME: ephemeral-cerebro-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d --wait --wait-timeout 180
+
+      - name: Exercise the Go-to-Rust boundary and recovery
+        shell: bash
+        env:
+          API_KEY: local-dev-key
+          CEREBRO_IMAGE: ${{ steps.candidate.outputs.api_image }}
+          CEREBRO_RUST_IMAGE: ${{ steps.candidate.outputs.rust_image }}
+          COMPOSE_PROJECT_NAME: ephemeral-cerebro-${{ github.run_id }}
+          SOAK_SECONDS: ${{ inputs.soak_seconds || 60 }}
+          CEREBRO_RUST_READ_MODE: shadow
+          CEREBRO_RUST_SHADOW_PERCENT: 100
+        run: |
+          set -euo pipefail
+          [[ "${SOAK_SECONDS}" =~ ^[0-9]+$ ]]
+          test "${SOAK_SECONDS}" -ge 60
+          test "${SOAK_SECONDS}" -le 1800
+          graph_url='http://127.0.0.1:8080/platform/graph/neighborhood?root_urn=urn%3Acerebro%3Alocal%3Aasset%3Amissing&limit=10'
+          graph_status() {
+            curl --max-time 10 --silent --show-error --output graph-response.json \
+              --write-out '%{http_code} %{time_total}' \
+              --header "Authorization: Bearer ${API_KEY}" \
+              "${graph_url}"
+          }
+          readiness_status() {
+            curl --max-time 10 --silent --show-error --output readiness.json \
+              --write-out '%{http_code} %{time_total}' \
+              http://127.0.0.1:8080/health
+          }
+          assert_status() {
+            local expected="$1"
+            local label="$2"
+            shift 2
+            local receipt
+            receipt="$("$@" || true)"
+            echo "${label}: ${receipt}"
+            if [[ "${receipt%% *}" != "${expected}" ]]; then
+              echo "${label} body:"
+              if [[ "${label}" == graph* ]]; then
+                cat graph-response.json || true
+              else
+                cat readiness.json || true
+              fi
+              return 1
+            fi
+          }
+
+          assert_status 200 readiness-before readiness_status
+          assert_status 404 graph-before graph_status
+
+          deadline=$((SECONDS + SOAK_SECONDS))
+          request_count=0
+          while test "${SECONDS}" -lt "${deadline}"; do
+            seq 1 2 | xargs -P 2 -I{} curl \
+              --max-time 10 \
+              --silent \
+              --show-error \
+              --output /dev/null \
+              --write-out '%{http_code}\n' \
+              --header "Authorization: Bearer ${API_KEY}" \
+              "${graph_url}" >>shadow-statuses.txt || true
+            request_count=$((request_count + 2))
+            sleep 1
+          done
+          echo "shadow soak status distribution:"
+          sort shadow-statuses.txt | uniq -c
+          observed_count="$(wc -l <shadow-statuses.txt | tr -d ' ')"
+          test "${observed_count}" -eq "${request_count}"
+          matching_count="$(grep -c '^404$' shadow-statuses.txt || true)"
+          test "${matching_count}" -eq "${request_count}"
+          echo "shadow soak: ${request_count} matching legacy-authority responses"
+
+          rust_container="$(docker compose -f docker-compose.yml -f docker-compose.rust.yml ps -q rust-platform)"
+          test -n "${rust_container}"
+          docker stop "${rust_container}" >/dev/null
+          assert_status 200 readiness-shadow-without-rust readiness_status
+
+          docker start "${rust_container}" >/dev/null
+          for attempt in $(seq 1 36); do
+            if docker inspect --format '{{.State.Health.Status}}' "${rust_container}" | grep -qx healthy; then
+              break
+            fi
+            test "${attempt}" -lt 36
+            sleep 5
+          done
+          assert_status 200 readiness-after-restart readiness_status
+          assert_status 404 graph-after-restart graph_status
+
+          export CEREBRO_RUST_READ_MODE=authority
+          export CEREBRO_RUST_SHADOW_PERCENT=0
+          docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d --force-recreate --wait cerebro
+          assert_status 200 readiness-authority readiness_status
+          assert_status 404 graph-authority graph_status
+          docker stop "${rust_container}" >/dev/null
+          assert_status 503 readiness-authority-without-rust readiness_status
+
+      - name: Print service logs
+        if: always()
+        env:
+          COMPOSE_PROJECT_NAME: ephemeral-cerebro-${{ github.run_id }}
+        run: docker compose -f docker-compose.yml -f docker-compose.rust.yml logs --no-color
+
+      - name: Stop the isolated Cerebro
+        if: always()
+        env:
+          COMPOSE_PROJECT_NAME: ephemeral-cerebro-${{ github.run_id }}
+        run: docker compose -f docker-compose.yml -f docker-compose.rust.yml down --volumes --remove-orphans
