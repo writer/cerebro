@@ -444,10 +444,15 @@ fn provenance_requires_one_target_and_at_least_one_evidence_reference() {
         invalid.validate(),
         Err(SdkError::Invalid("provenance target"))
     );
-    invalid = explanation;
+    invalid = explanation.clone();
     invalid.evidence.clear();
     assert_eq!(
         invalid.validate(),
         Err(SdkError::Empty("provenance evidence"))
+    );
+    invalid.evidence = vec![explanation.evidence[0].clone(); 10_001];
+    assert_eq!(
+        invalid.validate(),
+        Err(SdkError::OutOfRange("provenance evidence count"))
     );
 }

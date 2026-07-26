@@ -5,6 +5,8 @@ use crate::{
     TenantId,
 };
 
+const MAX_PROVENANCE_EVIDENCE_REFERENCES: usize = 10_000;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceAuthority {
@@ -97,6 +99,9 @@ impl ProvenanceExplanation {
         }
         if self.evidence.is_empty() {
             return Err(SdkError::Empty("provenance evidence"));
+        }
+        if self.evidence.len() > MAX_PROVENANCE_EVIDENCE_REFERENCES {
+            return Err(SdkError::OutOfRange("provenance evidence count"));
         }
         Ok(())
     }
