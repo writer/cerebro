@@ -232,13 +232,23 @@ docker exec "${neo4j_container}" cypher-shell -u neo4j -p local-password \
   --param "rust_tenant => '${rust_canary_tenant}'" \
   --param "go_urn => '${go_canary_urn}'" \
   --param "go_tenant => '${go_canary_tenant}'" \
-  'MERGE (rust:Entity {urn: $rust_urn})
+  'MERGE (rust:Entity:OrganizationalEntity {urn: $rust_urn})
    SET rust.tenant_id = $rust_tenant,
+       rust.entity_id = "rust-canary-entity",
+       rust.external_id = $rust_urn,
        rust.entity_type = "resource",
+       rust.entity_kind = "resource",
+       rust.authority_json = "\"qualification\"",
+       rust.properties_json = "{\"entity_urn\":\"" + $rust_urn + "\"}",
        rust.label = "Rust canary"
-   MERGE (legacy:Entity {urn: $go_urn})
+   MERGE (legacy:Entity:OrganizationalEntity {urn: $go_urn})
    SET legacy.tenant_id = $go_tenant,
+       legacy.entity_id = "go-canary-entity",
+       legacy.external_id = $go_urn,
        legacy.entity_type = "resource",
+       legacy.entity_kind = "resource",
+       legacy.authority_json = "\"qualification\"",
+       legacy.properties_json = "{\"entity_urn\":\"" + $go_urn + "\"}",
        legacy.label = "Go canary"'
 rust_canary_url="http://127.0.0.1:8080/platform/graph/neighborhood?root_urn=$(jq -rn --arg value "${rust_canary_urn}" '$value|@uri')&limit=10"
 go_canary_url="http://127.0.0.1:8080/platform/graph/neighborhood?root_urn=$(jq -rn --arg value "${go_canary_urn}" '$value|@uri')&limit=10"
