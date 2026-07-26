@@ -129,7 +129,7 @@ func (s *Store) ListAccessActionsByFinding(
 SELECT record_json::text
 FROM verified_access_actions
 WHERE tenant_id = $1 AND finding_id = $2
-ORDER BY updated_at DESC, action_id DESC
+ORDER BY proposed_at DESC, action_id DESC
 LIMIT $3`, tenantID, findingID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query verified access actions by finding: %w", err)

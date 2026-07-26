@@ -31,7 +31,7 @@ func TestVerifiedAccessActionSchemaIsTenantScopedAndCASReady(t *testing.T) {
 		"UNIQUE (tenant_id, transition_digest)",
 		"FOREIGN KEY (tenant_id, action_id)",
 		"finding_id TEXT NOT NULL",
-		"(tenant_id, finding_id, updated_at DESC, action_id)",
+		"(tenant_id, finding_id, proposed_at DESC, action_id)",
 		"previous_transition_digest TEXT NOT NULL",
 	} {
 		if !strings.Contains(joined, fragment) {

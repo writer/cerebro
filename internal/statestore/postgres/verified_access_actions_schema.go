@@ -21,8 +21,8 @@ var ensureVerifiedAccessActionStatements = []string{
 ADD COLUMN IF NOT EXISTS finding_id TEXT NOT NULL DEFAULT ''`,
 	`CREATE INDEX IF NOT EXISTS verified_access_actions_tenant_status_updated_idx
 ON verified_access_actions (tenant_id, status, updated_at DESC, action_id)`,
-	`CREATE INDEX IF NOT EXISTS verified_access_actions_tenant_finding_updated_idx
-ON verified_access_actions (tenant_id, finding_id, updated_at DESC, action_id)`,
+	`CREATE INDEX IF NOT EXISTS verified_access_actions_tenant_finding_proposed_idx
+ON verified_access_actions (tenant_id, finding_id, proposed_at DESC, action_id)`,
 	`CREATE TABLE IF NOT EXISTS verified_access_action_transitions (
   tenant_id TEXT NOT NULL,
   action_id TEXT NOT NULL,
