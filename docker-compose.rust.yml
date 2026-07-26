@@ -8,11 +8,23 @@ services:
       CEREBRO_NEO4J_URI: bolt://neo4j:7687
       CEREBRO_NEO4J_USERNAME: neo4j
       CEREBRO_NEO4J_PASSWORD: local-password
+      CEREBRO_POSTGRES_DSN: postgres://${CEREBRO_LOCAL_POSTGRES_USER:-cerebro}:${CEREBRO_LOCAL_POSTGRES_PASSWORD:-cerebro}@postgres:5432/cerebro?sslmode=disable
+      CEREBRO_JETSTREAM_URL: nats://nats:4222
+      CEREBRO_JETSTREAM_STREAM_NAME: CEREBRO_EVENTS
+      CEREBRO_JETSTREAM_SUBJECT_PREFIX: events
       CEREBRO_RUST_BIND: 0.0.0.0:8081
       CEREBRO_REPOSITORY_ROOT: /app
-      CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: ephemeral-cerebro-graph-secret-32-bytes
-    command: ["serve-neo4j-readonly"]
+      CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: ${CEREBRO_RUST_GRAPH_SECRET:?set CEREBRO_RUST_GRAPH_SECRET}
+    command: ["${CEREBRO_RUST_COMMAND:-serve-neo4j-readonly}"]
+    ports:
+      - "${CEREBRO_RUST_PORT:-18081}:8081"
     depends_on:
+      nats:
+        condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
       neo4j:
         condition: service_healthy
     healthcheck:
@@ -24,11 +36,13 @@ services:
 
   cerebro:
     environment:
-      CEREBRO_API_KEYS: local-dev-key:ephemeral-cerebro:local
+      CEREBRO_API_KEYS: local-dev-key:local:rust-e2e${CEREBRO_RUST_CANARY_API_KEYS:-}
       CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL: http://rust-platform:8081
       CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE: ${CEREBRO_RUST_READ_MODE:-shadow}
       CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT: ${CEREBRO_RUST_SHADOW_PERCENT:-100}
-      CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: ephemeral-cerebro-graph-secret-32-bytes
+      CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT: ${CEREBRO_RUST_AUTHORITY_PERCENT:-0}
+      CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT: ${CEREBRO_RUST_CANARY_VERIFY_PERCENT:-0}
+      CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: ${CEREBRO_RUST_GRAPH_SECRET:?set CEREBRO_RUST_GRAPH_SECRET}
       # Keep this topology gate tolerant of a cold Neo4j page cache on shared
       # hosted runners. Latency regression belongs in the benchmark workflow.
       CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT: 5s

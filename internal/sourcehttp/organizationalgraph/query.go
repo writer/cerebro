@@ -12,11 +12,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect"
+	"go.opentelemetry.io/otel/trace"
 
 	cerebrographv1 "github.com/writer/cerebro/gen/cerebro/graph/v1"
 	"github.com/writer/cerebro/gen/cerebro/graph/v1/cerebrographv1connect"
@@ -26,8 +29,25 @@ import (
 )
 
 const (
-	maxResponseBytes = 4 << 20
-	maxBatchRoots    = 100
+	maxResponseBytes         = 4 << 20
+	maxBatchRoots            = 100
+	maxConcurrentComparisons = 32
+)
+
+var (
+	errComparisonCapacity         = errors.New("organizational graph comparison capacity exhausted")
+	errRustGraphOmittedRoot       = errors.New("rust graph omitted a requested root")
+	errRustGraphDifferentRoot     = errors.New("rust graph returned a different root")
+	errRustGraphMissingRootID     = errors.New("rust graph root is missing its entity ID")
+	errRustGraphDuplicateEntityID = errors.New("rust graph returned duplicate entity IDs")
+)
+
+type readMode uint8
+
+const (
+	readModeAuthority readMode = iota
+	readModeShadow
+	readModeCanary
 )
 
 // QueryStore serves bounded product reads from Rust. When a compatibility
@@ -39,8 +59,11 @@ type QueryStore struct {
 	httpClient    *http.Client
 	graph         cerebrographv1connect.OrganizationalGraphServiceClient
 	auth          tenantAuthenticator
-	shadow        bool
-	shadowPercent uint32
+	mode          readMode
+	samplePercent uint32
+	verifyPercent uint32
+	timeout       time.Duration
+	comparisons   chan struct{}
 }
 
 // ReadinessStore selects the product read authority when configured.
@@ -52,7 +75,19 @@ func ReadinessStore(compatibility, authority ports.GraphStore) ports.GraphStore 
 }
 
 func NewQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration) (*QueryStore, error) {
-	return newQueryStore(compatibility, baseURL, sharedSecret, timeout, false, 0)
+	return newQueryStore(compatibility, baseURL, sharedSecret, timeout, readModeAuthority, 100)
+}
+
+// NewConfiguredQueryStore selects one validated deployment read strategy.
+func NewConfiguredQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode string, shadowPercent, authorityPercent, canaryVerifyPercent int) (*QueryStore, error) {
+	switch mode {
+	case "shadow":
+		return NewShadowQueryStore(compatibility, baseURL, sharedSecret, timeout, shadowPercent)
+	case "canary":
+		return NewVerifiedCanaryQueryStore(compatibility, baseURL, sharedSecret, timeout, authorityPercent, canaryVerifyPercent)
+	default:
+		return NewQueryStore(compatibility, baseURL, sharedSecret, timeout)
+	}
 }
 
 func NewShadowQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, shadowPercent int) (*QueryStore, error) {
@@ -62,10 +97,38 @@ func NewShadowQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSec
 	if shadowPercent <= 0 || shadowPercent > 100 {
 		return nil, errors.New("shadow graph read percent must be between 1 and 100")
 	}
-	return newQueryStore(compatibility, baseURL, sharedSecret, timeout, true, uint32(shadowPercent)) // #nosec G115 -- validated above.
+	return newQueryStore(compatibility, baseURL, sharedSecret, timeout, readModeShadow, uint32(shadowPercent)) // #nosec G115 -- validated above.
 }
 
-func newQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, shadow bool, shadowPercent uint32) (*QueryStore, error) {
+// NewCanaryQueryStore returns Rust responses for one stable sample of typed
+// reads and the compatibility response for the rest. A sampled Rust failure
+// fails closed; it never retries the same request against Go.
+func NewCanaryQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, authorityPercent int) (*QueryStore, error) {
+	return NewVerifiedCanaryQueryStore(compatibility, baseURL, sharedSecret, timeout, authorityPercent, 0)
+}
+
+// NewVerifiedCanaryQueryStore also compares a stable sample of Rust-authority
+// reads with the compatibility result. Verification never changes the selected
+// authority or falls back after a Rust failure.
+func NewVerifiedCanaryQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, authorityPercent, verifyPercent int) (*QueryStore, error) {
+	if compatibility == nil {
+		return nil, errors.New("canary graph reads require the legacy compatibility store")
+	}
+	if authorityPercent <= 0 || authorityPercent >= 100 {
+		return nil, errors.New("canary graph read percent must be between 1 and 99")
+	}
+	if verifyPercent < 0 || verifyPercent > 100 {
+		return nil, errors.New("canary graph verification percent must be between 0 and 100")
+	}
+	store, err := newQueryStore(compatibility, baseURL, sharedSecret, timeout, readModeCanary, uint32(authorityPercent)) // #nosec G115 -- validated above.
+	if err != nil {
+		return nil, err
+	}
+	store.verifyPercent = uint32(verifyPercent) // #nosec G115 -- validated above.
+	return store, nil
+}
+
+func newQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode readMode, samplePercent uint32) (*QueryStore, error) {
 	baseURL, err := normalizeBaseURL(baseURL)
 	if err != nil {
 		return nil, err
@@ -84,8 +147,10 @@ func newQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret st
 		httpClient:    httpClient,
 		graph:         cerebrographv1connect.NewOrganizationalGraphServiceClient(httpClient, baseURL),
 		auth:          auth,
-		shadow:        shadow,
-		shadowPercent: shadowPercent,
+		mode:          mode,
+		samplePercent: samplePercent,
+		timeout:       timeout,
+		comparisons:   make(chan struct{}, maxConcurrentComparisons),
 	}, nil
 }
 
@@ -95,17 +160,9 @@ func (s *QueryStore) Ping(ctx context.Context) (err error) {
 			return fmt.Errorf("compatibility graph health: %w", err)
 		}
 	}
-	if s.shadow {
-		started := time.Now()
-		err := s.pingRust(ctx)
-		status := "match"
-		if err != nil {
-			status = "rust_error"
-		}
-		observability.RecordOrganizationalGraphShadow(ctx, observability.OrganizationalGraphShadowMetrics{
-			Operation: "readiness",
-			Status:    status,
-			Duration:  time.Since(started),
+	if s.mode == readModeShadow || s.mode == readModeCanary {
+		s.scheduleShadowComparison(ctx, "readiness", nil, func(comparisonCtx context.Context) (any, error) {
+			return nil, s.pingRust(comparisonCtx)
 		})
 		return nil
 	}
@@ -135,16 +192,36 @@ func (s *QueryStore) pingRust(ctx context.Context) (err error) {
 }
 
 func (s *QueryStore) GetEntityNeighborhood(ctx context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
-	if !s.shadow {
+	if s.mode == readModeCanary {
+		tenantID := cerebrourn.TenantID(strings.TrimSpace(rootURN))
+		if tenantID == "" {
+			return nil, errors.New("root is not a tenant-scoped Cerebro URN")
+		}
+		started := time.Now()
+		if !s.sample(tenantID) {
+			result, err := s.compatibility.GetEntityNeighborhood(ctx, rootURN, limit)
+			s.recordCanaryRoute(ctx, "expand", "go", err, started)
+			return result, err
+		}
+		result, err := s.getRustEntityNeighborhood(ctx, rootURN, limit)
+		if err == nil && s.verifyCanary("expand", rootURN) {
+			s.scheduleCanaryVerification(ctx, "expand", result, func(comparisonCtx context.Context) (any, error) {
+				return s.compatibility.GetEntityNeighborhood(comparisonCtx, rootURN, limit)
+			})
+		}
+		s.recordCanaryRoute(ctx, "expand", "rust", err, started)
+		return result, err
+	}
+	if s.mode == readModeAuthority {
 		return s.getRustEntityNeighborhood(ctx, rootURN, limit)
 	}
 	legacy, err := s.compatibility.GetEntityNeighborhood(ctx, rootURN, limit)
 	if err != nil || !s.sample(rootURN) {
 		return legacy, err
 	}
-	started := time.Now()
-	rust, rustErr := s.getRustEntityNeighborhood(ctx, rootURN, limit)
-	s.recordComparison(ctx, "expand", legacy, rust, rustErr, started)
+	s.scheduleShadowComparison(ctx, "expand", legacy, func(comparisonCtx context.Context) (any, error) {
+		return s.getRustEntityNeighborhood(comparisonCtx, rootURN, limit)
+	})
 	return legacy, nil
 }
 
@@ -180,16 +257,37 @@ func (s *QueryStore) getRustEntityNeighborhood(ctx context.Context, rootURN stri
 }
 
 func (s *QueryStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
-	if !s.shadow {
+	sampleKey := strings.Join(rootURNs, "\x00")
+	if s.mode == readModeCanary {
+		tenantID, err := graphRootsTenant(rootURNs)
+		if err != nil {
+			return nil, err
+		}
+		started := time.Now()
+		if !s.sample(tenantID) {
+			result, err := legacyNeighborhoods(ctx, s.compatibility, rootURNs, limit)
+			s.recordCanaryRoute(ctx, "expand_batch", "go", err, started)
+			return result, err
+		}
+		result, err := s.getRustEntityNeighborhoods(ctx, rootURNs, limit)
+		if err == nil && s.verifyCanary("expand_batch", sampleKey) {
+			s.scheduleCanaryVerification(ctx, "expand_batch", result, func(comparisonCtx context.Context) (any, error) {
+				return legacyNeighborhoods(comparisonCtx, s.compatibility, rootURNs, limit)
+			})
+		}
+		s.recordCanaryRoute(ctx, "expand_batch", "rust", err, started)
+		return result, err
+	}
+	if s.mode == readModeAuthority {
 		return s.getRustEntityNeighborhoods(ctx, rootURNs, limit)
 	}
 	legacy, err := legacyNeighborhoods(ctx, s.compatibility, rootURNs, limit)
-	if err != nil || !s.sample(strings.Join(rootURNs, "\x00")) {
+	if err != nil || !s.sample(sampleKey) {
 		return legacy, err
 	}
-	started := time.Now()
-	rust, rustErr := s.getRustEntityNeighborhoods(ctx, rootURNs, limit)
-	s.recordComparison(ctx, "expand_batch", legacy, rust, rustErr, started)
+	s.scheduleShadowComparison(ctx, "expand_batch", legacy, func(comparisonCtx context.Context) (any, error) {
+		return s.getRustEntityNeighborhoods(comparisonCtx, rootURNs, limit)
+	})
 	return legacy, nil
 }
 
@@ -249,7 +347,29 @@ func (s *QueryStore) getRustEntityNeighborhoods(ctx context.Context, rootURNs []
 		}
 		result[rootURN] = product
 	}
+	if len(result) != len(seen) {
+		return nil, errRustGraphOmittedRoot
+	}
 	return result, nil
+}
+
+func graphRootsTenant(rootURNs []string) (string, error) {
+	if len(rootURNs) == 0 {
+		return "", nil
+	}
+	tenantID := ""
+	for _, rootURN := range rootURNs {
+		rootTenantID := cerebrourn.TenantID(strings.TrimSpace(rootURN))
+		if rootTenantID == "" {
+			return "", errors.New("root is not a tenant-scoped Cerebro URN")
+		}
+		if tenantID == "" {
+			tenantID = rootTenantID
+		} else if rootTenantID != tenantID {
+			return "", errors.New("graph roots belong to different tenants")
+		}
+	}
+	return tenantID, nil
 }
 
 func legacyNeighborhoods(ctx context.Context, store ports.GraphQueryStore, roots []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
@@ -271,28 +391,255 @@ func legacyNeighborhoods(ctx context.Context, store ports.GraphQueryStore, roots
 }
 
 func (s *QueryStore) sample(key string) bool {
+	return sampleAtPercent(key, s.samplePercent)
+}
+
+func (s *QueryStore) verifyCanary(operation, key string) bool {
+	return sampleAtPercent("canary-verify\x00"+operation+"\x00"+key, s.verifyPercent)
+}
+
+func sampleAtPercent(key string, percent uint32) bool {
+	if percent == 0 {
+		return false
+	}
+	if percent >= 100 {
+		return true
+	}
 	digest := sha256.Sum256([]byte(key))
-	return binary.BigEndian.Uint32(digest[:4])%100 < s.shadowPercent
+	return binary.BigEndian.Uint32(digest[:4])%100 < percent
+}
+
+func (s *QueryStore) scheduleShadowComparison(ctx context.Context, operation string, legacy any, compare func(context.Context) (any, error)) {
+	if !s.scheduleComparison(ctx, func(comparisonCtx context.Context) {
+		started := time.Now()
+		rust, rustErr := compare(comparisonCtx)
+		s.recordComparison(comparisonCtx, operation, legacy, rust, rustErr, started)
+	}) {
+		logComparisonReceipt(ctx, operation, "dropped", legacy, nil, errComparisonCapacity)
+		observability.RecordOrganizationalGraphShadow(ctx, observability.OrganizationalGraphShadowMetrics{
+			Operation: operation,
+			Status:    "dropped",
+		})
+	}
+}
+
+func (s *QueryStore) scheduleCanaryVerification(ctx context.Context, operation string, rust any, compare func(context.Context) (any, error)) {
+	if !s.scheduleComparison(ctx, func(comparisonCtx context.Context) {
+		started := time.Now()
+		legacy, legacyErr := compare(comparisonCtx)
+		s.recordCanaryVerification(comparisonCtx, operation, legacy, legacyErr, rust, started)
+	}) {
+		logComparisonReceipt(ctx, operation, "dropped", nil, rust, errComparisonCapacity)
+		observability.RecordOrganizationalGraphCanaryVerification(ctx, observability.OrganizationalGraphCanaryVerificationMetrics{
+			Operation: operation,
+			Status:    "dropped",
+		})
+	}
+}
+
+func (s *QueryStore) scheduleComparison(ctx context.Context, compare func(context.Context)) bool {
+	select {
+	case s.comparisons <- struct{}{}:
+	default:
+		return false
+	}
+	detached := context.WithoutCancel(ctx)
+	go func() {
+		defer func() { <-s.comparisons }()
+		comparisonCtx, cancel := context.WithTimeout(detached, s.timeout)
+		defer cancel()
+		compare(comparisonCtx)
+	}()
+	return true
+}
+
+func (s *QueryStore) recordCanaryRoute(ctx context.Context, operation, authority string, err error, started time.Time) {
+	status := "success"
+	if err != nil {
+		status = "error"
+		// #nosec G706 -- operation and authority use closed vocabularies; the
+		// percentage is validated configuration and the error is emitted only
+		// as a locally generated digest.
+		log.Printf(
+			"organizational graph canary route operation=%s authority=%s status=error configured_percent=%d error_sha256=%s",
+			operation,
+			authority,
+			s.samplePercent,
+			digestString(err.Error()),
+		)
+	}
+	observability.RecordOrganizationalGraphCanaryRoute(ctx, observability.OrganizationalGraphCanaryRouteMetrics{
+		Operation:         operation,
+		Authority:         authority,
+		Status:            status,
+		ConfiguredPercent: int(s.samplePercent),
+		Duration:          time.Since(started),
+	})
+}
+
+func (s *QueryStore) recordCanaryVerification(ctx context.Context, operation string, legacy any, legacyErr error, rust any, started time.Time) {
+	status := comparisonStatus(legacy, legacyErr, rust, nil)
+	if status != "match" {
+		logComparisonReceipt(ctx, operation, status, legacy, rust, legacyErr)
+	}
+	observability.RecordOrganizationalGraphCanaryVerification(ctx, observability.OrganizationalGraphCanaryVerificationMetrics{
+		Operation: operation,
+		Status:    status,
+		Duration:  time.Since(started),
+	})
 }
 
 func (s *QueryStore) recordComparison(ctx context.Context, operation string, legacy, rust any, rustErr error, started time.Time) {
-	status := "match"
-	if rustErr != nil {
-		status = "rust_error"
-	} else {
-		legacyJSON, legacyErr := json.Marshal(legacy)
-		rustJSON, rustMarshalErr := json.Marshal(rust)
-		if legacyErr != nil || rustMarshalErr != nil {
-			status = "comparison_error"
-		} else if !bytes.Equal(legacyJSON, rustJSON) {
-			status = "mismatch"
-		}
+	status := comparisonStatus(legacy, nil, rust, rustErr)
+	if status != "match" {
+		logComparisonReceipt(ctx, operation, status, legacy, rust, rustErr)
 	}
 	observability.RecordOrganizationalGraphShadow(ctx, observability.OrganizationalGraphShadowMetrics{
 		Operation: operation,
 		Status:    status,
 		Duration:  time.Since(started),
 	})
+}
+
+func comparisonStatus(legacy any, legacyErr error, rust any, rustErr error) string {
+	switch {
+	case rustErr != nil:
+		return "rust_error"
+	case legacyErr != nil:
+		return "legacy_error"
+	}
+	legacyJSON, legacyMarshalErr := canonicalComparisonJSON(legacy)
+	rustJSON, rustMarshalErr := canonicalComparisonJSON(rust)
+	if legacyMarshalErr != nil || rustMarshalErr != nil {
+		return "comparison_error"
+	}
+	if !bytes.Equal(legacyJSON, rustJSON) {
+		return "mismatch"
+	}
+	return "match"
+}
+
+func logComparisonReceipt(ctx context.Context, operation, status string, legacy, rust any, comparisonErr error) {
+	legacyDigest, legacyShape := comparisonReceipt(legacy)
+	rustDigest, rustShape := comparisonReceipt(rust)
+	errorDigest := ""
+	if comparisonErr != nil {
+		errorDigest = digestString(comparisonErr.Error())
+	}
+	traceID := trace.SpanContextFromContext(ctx).TraceID().String()
+	// #nosec G706 -- operation and status use closed vocabularies; trace IDs
+	// and every receipt value are locally generated hex, counts, or type names.
+	log.Printf(
+		"organizational graph parity operation=%s status=%s trace_id=%s legacy_sha256=%s rust_sha256=%s legacy_shape=%q rust_shape=%q error_sha256=%s",
+		operation,
+		status,
+		traceID,
+		legacyDigest,
+		rustDigest,
+		legacyShape,
+		rustShape,
+		errorDigest,
+	)
+}
+
+func comparisonReceipt(value any) (string, string) {
+	if value == nil {
+		return "", "nil"
+	}
+	encoded, err := canonicalComparisonJSON(value)
+	if err != nil {
+		return "", "unencodable"
+	}
+	shape := fmt.Sprintf("type=%T", value)
+	switch typed := value.(type) {
+	case *ports.EntityNeighborhood:
+		if typed == nil {
+			return digestBytes(encoded), "neighborhood:nil"
+		}
+		shape = fmt.Sprintf(
+			"neighborhood:root=%t,neighbors=%d,relations=%d",
+			typed.Root != nil,
+			len(typed.Neighbors),
+			len(typed.Relations),
+		)
+	case map[string]*ports.EntityNeighborhood:
+		neighbors, relations := 0, 0
+		for _, neighborhood := range typed {
+			if neighborhood != nil {
+				neighbors += len(neighborhood.Neighbors)
+				relations += len(neighborhood.Relations)
+			}
+		}
+		shape = fmt.Sprintf(
+			"neighborhood_batch:roots=%d,neighbors=%d,relations=%d",
+			len(typed),
+			neighbors,
+			relations,
+		)
+	}
+	return digestBytes(encoded), shape
+}
+
+func canonicalComparisonJSON(value any) ([]byte, error) {
+	return json.Marshal(canonicalComparisonValue(value))
+}
+
+func canonicalComparisonValue(value any) any {
+	switch typed := value.(type) {
+	case *ports.EntityNeighborhood:
+		return canonicalNeighborhood(typed)
+	case map[string]*ports.EntityNeighborhood:
+		canonical := make(map[string]*ports.EntityNeighborhood, len(typed))
+		for root, neighborhood := range typed {
+			canonical[root] = canonicalNeighborhood(neighborhood)
+		}
+		return canonical
+	default:
+		return value
+	}
+}
+
+func canonicalNeighborhood(neighborhood *ports.EntityNeighborhood) *ports.EntityNeighborhood {
+	if neighborhood == nil {
+		return nil
+	}
+	canonical := &ports.EntityNeighborhood{
+		Root:      neighborhood.Root,
+		Neighbors: append([]*ports.NeighborhoodNode(nil), neighborhood.Neighbors...),
+		Relations: append([]*ports.NeighborhoodRelation(nil), neighborhood.Relations...),
+	}
+	sort.Slice(canonical.Neighbors, func(i, j int) bool {
+		left, right := canonical.Neighbors[i], canonical.Neighbors[j]
+		if left == nil || right == nil {
+			return left == nil && right != nil
+		}
+		if left.URN != right.URN {
+			return left.URN < right.URN
+		}
+		if left.EntityType != right.EntityType {
+			return left.EntityType < right.EntityType
+		}
+		return left.Label < right.Label
+	})
+	sort.Slice(canonical.Relations, func(i, j int) bool {
+		left, right := canonical.Relations[i], canonical.Relations[j]
+		if left == nil || right == nil {
+			return left == nil && right != nil
+		}
+		leftKey, _ := json.Marshal(left)
+		rightKey, _ := json.Marshal(right)
+		return bytes.Compare(leftKey, rightKey) < 0
+	})
+	return canonical
+}
+
+func digestString(value string) string {
+	return digestBytes([]byte(value))
+}
+
+func digestBytes(value []byte) string {
+	digest := sha256.Sum256(value)
+	return fmt.Sprintf("%x", digest)
 }
 
 func (s *QueryStore) ExecuteReadCypher(ctx context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
@@ -338,8 +685,14 @@ func productNeighborhood(rootKey string, rust *cerebrographv1.ExpandResponse) (*
 	if rust.GetTenantId() != cerebrourn.TenantID(rootKey) {
 		return nil, errors.New("rust graph neighborhood belongs to a different tenant")
 	}
+	if productEntityKey(rust.GetRoot()) != strings.TrimSpace(rootKey) {
+		return nil, errRustGraphDifferentRoot
+	}
 	if !cerebrourn.SameTenant(productEntityKey(rust.GetRoot()), rust.GetTenantId()) {
 		return nil, errors.New("rust graph root is missing its tenant-scoped agent key")
+	}
+	if strings.TrimSpace(rust.GetRoot().GetEntityId()) == "" {
+		return nil, errRustGraphMissingRootID
 	}
 	keys := make(map[string]string, len(rust.GetEntities())+1)
 	entityIDs := map[string]string{rootKey: rust.GetRoot().GetEntityId()}
@@ -351,6 +704,12 @@ func productNeighborhood(rootKey string, rust *cerebrographv1.ExpandResponse) (*
 		key := productEntityKey(entity)
 		if !cerebrourn.SameTenant(key, rust.GetTenantId()) {
 			return nil, errors.New("rust graph entity is missing its tenant-scoped agent key")
+		}
+		if strings.TrimSpace(entity.GetEntityId()) == "" {
+			return nil, errors.New("rust graph entity is missing its entity ID")
+		}
+		if _, exists := keys[entity.GetEntityId()]; exists {
+			return nil, errRustGraphDuplicateEntityID
 		}
 		if existing, exists := entityIDs[key]; exists && existing != entity.GetEntityId() {
 			return nil, errors.New("rust graph returned duplicate product entity keys")
