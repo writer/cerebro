@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -173,8 +176,11 @@ func TestFindingEvidenceListQuerySupportsRuntimeBatches(t *testing.T) {
 		t.Fatalf("findingEvidenceListQuery() error = %v", err)
 	}
 	for _, fragment := range []string{
-		"runtime_id IN ($1, $2)",
-		"ORDER BY last_observed_at DESC, created_at DESC, id",
+		"FROM (VALUES ($1::text), ($2::text)) AS requested(runtime_id)",
+		"CROSS JOIN LATERAL",
+		"evidence.runtime_id = requested.runtime_id",
+		"ORDER BY evidence.last_observed_at DESC, evidence.created_at DESC, evidence.id",
+		"ORDER BY candidate.last_observed_at DESC, candidate.created_at DESC, candidate.id",
 		"LIMIT $3",
 	} {
 		if !strings.Contains(query, fragment) {
@@ -192,6 +198,60 @@ func TestFindingEvidenceListQuerySupportsRuntimeBatches(t *testing.T) {
 	}
 	if got := args[2]; got != int64(25) {
 		t.Fatalf("findingEvidenceListQuery().args[2] = %#v, want 25", got)
+	}
+}
+
+func TestFindingEvidenceHeaderListQueryBoundsEachRuntimeBeforeGlobalSort(t *testing.T) {
+	query, args, err := findingEvidenceHeaderListQuery(ports.ListFindingEvidenceRequest{
+		RuntimeIDs:   []string{"runtime-alpha", "runtime-beta"},
+		Limit:        25,
+		CreatedOrder: true,
+	})
+	if err != nil {
+		t.Fatalf("findingEvidenceHeaderListQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"SELECT candidate.id, candidate.runtime_id",
+		"FROM (VALUES ($1::text), ($2::text)) AS requested(runtime_id)",
+		"CROSS JOIN LATERAL",
+		"ORDER BY evidence.created_at DESC, evidence.id",
+		"LIMIT $3",
+		"ORDER BY candidate.created_at DESC, candidate.id",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingEvidenceHeaderListQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	if strings.Contains(query, "finding_evidence_json") {
+		t.Fatalf("findingEvidenceHeaderListQuery() selected full payload: %s", query)
+	}
+	if got := len(args); got != 3 {
+		t.Fatalf("len(findingEvidenceHeaderListQuery().args) = %d, want 3", got)
+	}
+}
+
+func TestFindingEvidenceListQueriesPreserveExplicitEmptyFindingBatch(t *testing.T) {
+	request := ports.ListFindingEvidenceRequest{
+		RuntimeIDs: []string{"runtime-alpha", "runtime-beta"},
+		FindingIDs: []string{},
+		Limit:      25,
+	}
+	for name, buildQuery := range map[string]func(ports.ListFindingEvidenceRequest) (string, []any, error){
+		"full":   findingEvidenceListQuery,
+		"header": findingEvidenceHeaderListQuery,
+	} {
+		t.Run(name, func(t *testing.T) {
+			query, _, err := buildQuery(request)
+			if err != nil {
+				t.Fatalf("build query: %v", err)
+			}
+			if strings.Contains(query, "CROSS JOIN LATERAL") {
+				t.Fatalf("explicit empty finding batch used runtime top-N query: %s", query)
+			}
+			if !strings.Contains(query, "FALSE") {
+				t.Fatalf("explicit empty finding batch query missing FALSE clause: %s", query)
+			}
+		})
 	}
 }
 
@@ -236,8 +296,9 @@ func TestFindingEvidenceListQuerySupportsCreatedOrder(t *testing.T) {
 		t.Fatalf("findingEvidenceListQuery() error = %v", err)
 	}
 	for _, fragment := range []string{
-		"runtime_id IN ($1, $2)",
-		"ORDER BY created_at DESC, id",
+		"FROM (VALUES ($1::text), ($2::text)) AS requested(runtime_id)",
+		"ORDER BY evidence.created_at DESC, evidence.id",
+		"ORDER BY candidate.created_at DESC, candidate.id",
 		"LIMIT $3",
 	} {
 		if !strings.Contains(query, fragment) {
@@ -298,6 +359,9 @@ func TestFindingEvidenceSchemaPersistsEnrichedEvidence(t *testing.T) {
 		"finding_evidence_graph_path_urns_gin_idx",
 		"finding_evidence_run_ids_gin_idx",
 		"finding_evidence_attributes_gin_idx",
+		"finding_evidence_runtime_created_id_idx",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_created_id_idx",
+		"runtime_id, created_at DESC, id",
 		"finding_evidence_runtime_finding_observed_idx",
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_finding_observed_idx",
 		"runtime_id, finding_id, last_observed_at DESC, created_at DESC, id",
@@ -310,6 +374,100 @@ func TestFindingEvidenceSchemaPersistsEnrichedEvidence(t *testing.T) {
 	} {
 		if !strings.Contains(joined, fragment) {
 			t.Fatalf("finding evidence schema missing %q:\n%s", fragment, joined)
+		}
+	}
+}
+
+func TestRuntimeTopNQueriesPostgresIntegration(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("set CEREBRO_POSTGRES_DSN to run runtime top-N query integration test")
+	}
+	store, err := Open(config.StateStoreConfig{Driver: config.StateStoreDriverPostgres, PostgresDSN: dsn})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	ctx := context.Background()
+	if err := store.ensureFindingEvaluationRunTables(ctx); err != nil {
+		t.Fatalf("ensure finding evaluation run tables: %v", err)
+	}
+	if err := store.ensureFindingEvidenceTables(ctx); err != nil {
+		t.Fatalf("ensure finding evidence tables: %v", err)
+	}
+	prefix := fmt.Sprintf("runtime-top-n-%d", time.Now().UnixNano())
+	runtimeIDs := []string{prefix + "-a", prefix + "-b"}
+	cleanup := func() {
+		_, _ = store.db.ExecContext(context.Background(), `DELETE FROM finding_evidence WHERE runtime_id IN ($1, $2)`, runtimeIDs[0], runtimeIDs[1])
+		_, _ = store.db.ExecContext(context.Background(), `DELETE FROM finding_evaluation_runs WHERE runtime_id IN ($1, $2)`, runtimeIDs[0], runtimeIDs[1])
+	}
+	cleanup()
+	t.Cleanup(func() {
+		cleanup()
+		_ = store.Close()
+	})
+
+	startedAt := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
+	for _, runtimeID := range runtimeIDs {
+		for _, suffix := range []string{"a", "z"} {
+			run := &cerebrov1.FindingEvaluationRun{
+				Id:        runtimeID + "-" + suffix,
+				RuntimeId: runtimeID,
+				RuleId:    "rule-a",
+				Status:    "completed",
+				StartedAt: timestamppb.New(startedAt),
+			}
+			if err := store.PutFindingEvaluationRun(ctx, run); err != nil {
+				t.Fatalf("PutFindingEvaluationRun(%q) error = %v", run.GetId(), err)
+			}
+		}
+	}
+	runs, err := store.ListFindingEvaluationRuns(ctx, ports.ListFindingEvaluationRunsRequest{
+		RuntimeIDs:      runtimeIDs,
+		Limit:           2,
+		LatestByRuntime: true,
+	})
+	if err != nil {
+		t.Fatalf("ListFindingEvaluationRuns() error = %v", err)
+	}
+	if len(runs) != len(runtimeIDs) {
+		t.Fatalf("ListFindingEvaluationRuns() returned %d runs, want %d", len(runs), len(runtimeIDs))
+	}
+	for _, run := range runs {
+		if !strings.HasSuffix(run.GetId(), "-z") {
+			t.Fatalf("ListFindingEvaluationRuns() returned non-latest run %q", run.GetId())
+		}
+	}
+
+	evidenceTimes := []time.Time{startedAt.Add(time.Minute), startedAt.Add(3 * time.Minute), startedAt.Add(2 * time.Minute), startedAt.Add(4 * time.Minute)}
+	for index, observedAt := range evidenceTimes {
+		runtimeID := runtimeIDs[index%len(runtimeIDs)]
+		evidence := &cerebrov1.FindingEvidence{
+			Id:             fmt.Sprintf("%s-evidence-%d", runtimeID, index),
+			RuntimeId:      runtimeID,
+			RuleId:         "rule-a",
+			FindingId:      "finding-a",
+			RunId:          "run-a",
+			CreatedAt:      timestamppb.New(observedAt),
+			LastObservedAt: timestamppb.New(observedAt),
+		}
+		if err := store.PutFindingEvidence(ctx, evidence); err != nil {
+			t.Fatalf("PutFindingEvidence(%q) error = %v", evidence.GetId(), err)
+		}
+	}
+	evidence, err := store.ListGRCFindingEvidence(ctx, ports.ListFindingEvidenceRequest{
+		RuntimeIDs:   runtimeIDs,
+		Limit:        3,
+		CreatedOrder: true,
+	})
+	if err != nil {
+		t.Fatalf("ListGRCFindingEvidence() error = %v", err)
+	}
+	if len(evidence) != 3 {
+		t.Fatalf("ListGRCFindingEvidence() returned %d records, want 3", len(evidence))
+	}
+	for index := 1; index < len(evidence); index++ {
+		if evidence[index-1].GetCreatedAt().AsTime().Before(evidence[index].GetCreatedAt().AsTime()) {
+			t.Fatalf("ListGRCFindingEvidence() records are not globally newest-first: %#v", evidence)
 		}
 	}
 }
