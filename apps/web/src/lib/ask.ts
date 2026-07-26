@@ -9,6 +9,8 @@ export type AskHistoryEntry = {
   content: string;
 };
 
+export type AskAgentMode = "auto" | "deep";
+
 export type AskRequest = {
   tenant_id: string;
   question: string;
@@ -19,6 +21,7 @@ export type AskRequest = {
   surface?: string;
   conversation_id?: string;
   images?: AskImageAttachment[];
+  agent_mode?: AskAgentMode;
 };
 
 export type AskAgentContextChip = {
@@ -91,6 +94,8 @@ export type AskCitation = {
 export type AskSummaryEvent = {
   markdown: string;
   citations: AskCitation[];
+  evidence_gaps?: string[];
+  confidence?: "high" | "medium" | "low";
 };
 
 export type AskDoneEvent = {
@@ -101,6 +106,12 @@ export type AskDoneEvent = {
   tool_calls?: number;
   tool_results?: number;
   delta_count?: number;
+  conversation_id?: string;
+  agent_profile?: "fast" | "balanced" | "deep";
+  model_route?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
 };
 
 export type AskErrorEvent = {
@@ -244,8 +255,35 @@ const normalizeSummaryEvent = (payload: unknown): AskSummaryEvent | null => {
           return normalized ? [normalized] : [];
         })
       : [],
+    evidence_gaps: Array.isArray(payload.evidence_gaps)
+      ? payload.evidence_gaps.filter((item): item is string => typeof item === "string")
+      : undefined,
+    confidence:
+      payload.confidence === "high" || payload.confidence === "medium" || payload.confidence === "low"
+        ? payload.confidence
+        : undefined,
   };
 };
+
+export async function deleteAgentConversation(
+  conversationId: string,
+  tenantId: string,
+  apiKey: string,
+) {
+  if (!conversationId.startsWith("conv_")) return;
+  const response = await fetch("/api/agent/ask", {
+    method: "DELETE",
+    headers: {
+      "content-type": "application/json",
+      ...(apiKey ? { "x-api-key": apiKey } : {}),
+    },
+    body: JSON.stringify({ conversation_id: conversationId, tenant_id: tenantId }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Conversation cleanup failed (${response.status}).`);
+  }
+}
 
 export const normalizeAskError = (code: string, message: string, retryable = false): AskErrorEvent => ({
   code,

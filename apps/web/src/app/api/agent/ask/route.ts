@@ -1,5 +1,6 @@
 import {
   Agent,
+  createMCPToolStaticFilter,
   MCPServerStreamableHttp,
   Runner,
   type AgentInputItem,
@@ -13,13 +14,24 @@ import {
   fetchCerebro,
   getCerebroProxyConfig,
 } from "@/lib/cerebro-proxy";
+import { agentAnswerSchema, collectUrns, validateAgentAnswer } from "@/lib/agent-answer";
+import {
+  AgentConversationOwnershipError,
+  openAgentConversation,
+  removeAgentConversation,
+} from "@/lib/agent-conversation";
+import {
+  AGENT_TOOL_PACKS,
+  selectAgentModelRoute,
+  type AgentModelRoute,
+} from "@/lib/agent-model-route";
 import {
   type AskAgentContext,
   type AskRequest,
   normalizeAskError,
   normalizeAskModel,
 } from "@/lib/ask";
-import { mcpUrlFromApiBase } from "@/lib/ask-agent-config";
+import { askAgentRuntimeConfig, mcpUrlFromApiBase } from "@/lib/ask-agent-config";
 import { ASK_AGENT_FALLBACK_STATUS } from "@/lib/ask-agent-status";
 import { normalizeAskImages } from "@/lib/ask-images";
 import {
@@ -42,7 +54,6 @@ export const maxDuration = 300;
 
 const encoder = new TextEncoder();
 export const DEFAULT_AGENT_MODEL = "gpt-5.6-sol";
-const AGENT_MODEL = process.env.CEREBRO_AGENT_MODEL ?? DEFAULT_AGENT_MODEL;
 
 type NormalizedAgentRequest = AskRequest & {
   question: string;
@@ -58,6 +69,7 @@ type AgentStreamStats = {
   agentRunMs?: number;
   firstToolMs?: number;
   firstDeltaMs?: number;
+  observedUrns: Set<string>;
 };
 
 const sse = (event: string, data: unknown) =>
@@ -106,6 +118,7 @@ const normalizePayload = (payload: unknown): NormalizedAgentRequest | null => {
     context: normalizeContext(source.context),
     surface: trimString(source.surface) || "agent",
     conversation_id: trimString(source.conversation_id) || undefined,
+    agent_mode: source.agent_mode === "deep" ? "deep" : "auto",
     images,
   };
 };
@@ -141,10 +154,7 @@ const normalizeContext = (value: unknown): AskAgentContext | undefined => {
 
 export async function POST(request: NextRequest) {
   const span = startWebSpan("cerebro.agent.request", agentRequestSpanAttributes(request), request.headers.get("traceparent"));
-  const [currentUser, rawPayload] = await Promise.all([
-    resolveCurrentUserFromHeadersWithFallback(request.headers),
-    request.json().catch(() => null),
-  ]);
+  const currentUser = await resolveCurrentUserFromHeadersWithFallback(request.headers);
   const decision = authorizeCurrentUser(currentUser, "agent:ask");
   span.annotate(authorizationSpanAttributes(decision, currentUser));
   if (!decision.allowed) {
@@ -152,6 +162,7 @@ export async function POST(request: NextRequest) {
     return tracedAuthorizationError(decision, span);
   }
 
+  const rawPayload = await request.json().catch(() => null);
   const payloadError = agentPayloadError(rawPayload);
   const payload = payloadError ? null : normalizePayload(rawPayload);
   if (!payload) {
@@ -168,20 +179,26 @@ export async function POST(request: NextRequest) {
   }
 
   span.annotate(agentPayloadSpanAttributes(payload));
-  const mcpUrl = getMcpUrl();
-  const canRunAgent = Boolean(process.env.OPENAI_API_KEY && mcpUrl);
+  const runtimeConfig = resolvedAgentRuntimeConfig();
+  const canRunAgent = runtimeConfig.canRunAgent;
   span.annotate({
     agent_mode: canRunAgent ? "agent" : "agent-fallback",
-    agent_model: AGENT_MODEL,
-    mcp_configured: Boolean(mcpUrl),
-    openai_configured: Boolean(process.env.OPENAI_API_KEY),
+    mcp_configured: Boolean(runtimeConfig.mcpUrl),
+    openai_configured: runtimeConfig.openAIConfigured,
   });
   let streamStatus: "completed" | "failed" | "cancelled" = "completed";
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
         if (canRunAgent) {
-          await streamAgentRun(controller, request, payload, span);
+          await streamAgentRun(
+            controller,
+            request,
+            payload,
+            currentUserServerAuditFields(currentUser).actorKey,
+            runtimeConfig,
+            span,
+          );
         } else if (payload.images?.length) {
           controller.enqueue(sse("error", normalizeAskError(
             "image_input_unavailable",
@@ -201,31 +218,13 @@ export async function POST(request: NextRequest) {
           component: "agent-ask-route",
           operation: canRunAgent ? "agent_stream" : "legacy_stream",
         });
-        if (canRunAgent && !payload.images?.length && isAgentStartupConfigurationError(error)) {
-          span.annotate({
-            agent_startup_configuration_fallback: true,
-          });
-          try {
-            await streamLegacyAsk(controller, request, payload, span);
-            streamStatus = "completed";
-          } catch (fallbackError) {
-            streamStatus = "failed";
-            span.captureException(fallbackError, {
-              component: "agent-ask-route",
-              operation: "legacy_stream_after_agent_startup_error",
-            });
-            controller.enqueue(sse("error", normalizeAskError(
-              "agent_fallback_failed",
-              "Ask could not run. Retry the request in a moment.",
-              true,
-            )));
-          }
-          return;
-        }
+        const ownershipError = error instanceof AgentConversationOwnershipError;
         controller.enqueue(sse("error", normalizeAskError(
-          "agent_exception",
-          error instanceof Error ? error.message : "Cerebro agent failed",
-          true,
+          ownershipError ? "agent_conversation_forbidden" : "agent_exception",
+          ownershipError
+            ? "This conversation is not available for the current identity and tenant."
+            : error instanceof Error ? error.message : "Cerebro agent failed",
+          !ownershipError,
         )));
       } finally {
         span.annotate({
@@ -254,10 +253,40 @@ export async function POST(request: NextRequest) {
   });
 }
 
+export async function DELETE(request: NextRequest) {
+  const currentUser = await resolveCurrentUserFromHeadersWithFallback(request.headers);
+  const decision = authorizeCurrentUser(currentUser, "agent:ask");
+  if (!decision.allowed) return authorizationErrorResponse(decision);
+  const rawPayload = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const conversationId = trimString(rawPayload?.conversation_id);
+  const tenantId = trimString(rawPayload?.tenant_id) || "writer";
+  if (!conversationId) {
+    return NextResponse.json({ error: "conversation_id is required" }, { status: 400 });
+  }
+  try {
+    const removed = await removeAgentConversation({
+      actorKey: currentUserServerAuditFields(currentUser).actorKey,
+      conversationId,
+      tenantId,
+    });
+    return NextResponse.json({ removed });
+  } catch (error) {
+    if (error instanceof AgentConversationOwnershipError) {
+      return NextResponse.json(
+        { error: "This conversation is not available for the current identity and tenant." },
+        { status: 403 },
+      );
+    }
+    throw error;
+  }
+}
+
 async function streamAgentRun(
   controller: ReadableStreamDefaultController<Uint8Array>,
   request: NextRequest,
   payload: NormalizedAgentRequest,
+  actorKey: string,
+  runtimeConfig: ReturnType<typeof resolvedAgentRuntimeConfig>,
   span: WebSpan,
 ) {
   const startedAt = Date.now();
@@ -266,8 +295,9 @@ async function streamAgentRun(
     toolCalls: 0,
     toolResults: 0,
     deltaCount: 0,
+    observedUrns: new Set(),
   };
-  const mcpUrl = getMcpUrl();
+  const mcpUrl = runtimeConfig.mcpUrl;
   if (!mcpUrl) {
     span.annotate({
       mcp_connected: false,
@@ -277,13 +307,37 @@ async function streamAgentRun(
     return;
   }
 
-  const mcpHeaders = headersWithTrace(headersForMcp(request), span);
+  const route = selectAgentModelRoute(
+    {
+      question: payload.question,
+      mode: payload.agent_mode,
+      context: payload.context,
+      scopeUrn: payload.scope_urn,
+      imageCount: payload.images?.length,
+    },
+    runtimeConfig.modelOverride,
+  );
+  const conversation = await openAgentConversation({
+    actorKey,
+    conversationId: payload.conversation_id,
+    tenantId: payload.tenant_id,
+  });
+  span.annotate({
+    agent_model: route.model,
+    agent_profile: route.profile,
+    agent_route_reason: route.selectionReason,
+    agent_tool_pack: route.toolPack,
+    conversation_resumed: Boolean(payload.conversation_id?.startsWith("conv_")),
+  });
+  const mcpHeaders = headersWithTrace(headersForMcp(request, runtimeConfig.mcpToken), span);
   const server = new MCPServerStreamableHttp({
     url: mcpUrl,
     name: "Cerebro MCP",
     cacheToolsList: true,
     requestInit: { headers: Object.fromEntries(mcpHeaders.entries()) },
     timeout: 60_000,
+    toolFilter: createMCPToolStaticFilter({ allowed: AGENT_TOOL_PACKS[route.toolPack] }),
+    useStructuredContent: true,
   });
 
   controller.enqueue(sse("agent_status", {
@@ -315,7 +369,9 @@ async function streamAgentRun(
     const agent = new Agent({
       name: "Cerebro Operator",
       instructions: runtimeInstructions.instructions,
-      model: AGENT_MODEL,
+      model: route.model,
+      modelSettings: route.modelSettings,
+      outputType: agentAnswerSchema,
       mcpServers: [server],
       mcpConfig: {
         convertSchemasToStrict: true,
@@ -325,12 +381,13 @@ async function streamAgentRun(
     const runner = new Runner({
       workflowName: "Cerebro Web Agent",
       traceIncludeSensitiveData: false,
-      groupId: payload.conversation_id,
+      groupId: conversation.conversationId,
     });
-    const result = await runner.run(agent, buildAgentInput(payload), {
+    const result = await runner.run(agent, buildAgentInput(payload, route), {
       stream: true,
       signal: request.signal,
-      maxTurns: 8,
+      maxTurns: route.maxTurns,
+      session: conversation.session,
     });
 
     const agentRunStartedAt = Date.now();
@@ -340,17 +397,22 @@ async function streamAgentRun(
     await result.completed;
     stats.agentRunMs = Date.now() - agentRunStartedAt;
 
-    const finalOutput = stringifyFinalOutput(result.finalOutput);
-    if (finalOutput) {
+    const summary = validateAgentAnswer(result.finalOutput, stats.observedUrns);
+    if (summary.markdown) {
       span.annotate({
-        final_output_chars: finalOutput.length,
+        final_output_chars: summary.markdown.length,
+        citation_count: summary.citations.length,
+        evidence_gap_count: summary.evidence_gaps?.length ?? 0,
       });
-      controller.enqueue(sse("summary", {
-        markdown: finalOutput,
-        citations: [],
-      }));
+      controller.enqueue(sse("summary", summary));
     }
+    const usage = result.state.usage;
     span.annotate(agentStreamStatsAttributes(stats));
+    span.annotate({
+      input_tokens: usage.inputTokens,
+      output_tokens: usage.outputTokens,
+      total_tokens: usage.totalTokens,
+    });
     controller.enqueue(sse("done", {
       trace_id: span.traceId,
       total_ms: Date.now() - startedAt,
@@ -359,6 +421,12 @@ async function streamAgentRun(
       tool_calls: stats.toolCalls,
       tool_results: stats.toolResults,
       delta_count: stats.deltaCount,
+      conversation_id: conversation.conversationId,
+      agent_profile: route.profile,
+      model_route: route.model,
+      input_tokens: usage.inputTokens,
+      output_tokens: usage.outputTokens,
+      total_tokens: usage.totalTokens,
     }));
   } finally {
     await server.close().catch(() => undefined);
@@ -483,23 +551,17 @@ const legacyAskFailure = (status: number, body: string) => {
   };
 };
 
-const isAgentStartupConfigurationError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  return /\b(api key|credential|authentication|model provider|not configured|missing configuration)\b/i.test(message);
-};
-
-const getMcpUrl = () => {
-  const configured = process.env.CEREBRO_MCP_URL?.trim();
-  if (configured) return configured;
+const resolvedAgentRuntimeConfig = () => {
+  const config = askAgentRuntimeConfig();
+  if (config.mcpUrl) return config;
   const { apiBase } = getCerebroProxyConfig();
-  return mcpUrlFromApiBase(apiBase);
+  const mcpUrl = mcpUrlFromApiBase(apiBase);
+  return { ...config, mcpUrl, canRunAgent: Boolean(config.openAIConfigured && mcpUrl) };
 };
 
-const headersForMcp = (request: NextRequest) => {
+const headersForMcp = (request: NextRequest, configuredToken: string) => {
   const headers = new Headers(authHeadersFor(request));
-  const token =
-    process.env.CEREBRO_MCP_BEARER_TOKEN?.trim() ??
-    process.env.CEREBRO_MCP_TOKEN?.trim();
+  const token = configuredToken.trim();
   if (token) {
     headers.set("authorization", token.toLowerCase().startsWith("bearer ") ? token : `Bearer ${token}`);
   }
@@ -521,7 +583,7 @@ Fast tool routing:
 ${buildFastToolGuidance(payload, catalog.state === "ready" ? catalog.producers : [])}
 - Avoid decomposing a request into findings, evidence, asset, and graph calls when one bundled tool already returns the needed context.
 
-Answer in concise Markdown. Lead with the actionable answer, then give supporting evidence, caveats, and suggested next action when useful. Mention the MCP tool names you used only when it helps auditability.
+Return the required structured answer. Put the concise, actionable answer in markdown. Cite only URNs present in tool results. List missing or conflicting evidence in evidence_gaps; use an empty list only when the requested claim is fully supported. Mention MCP tool names only when it helps auditability.
 
 Current request metadata:
 - Tenant: ${quotedInstructionMetadata(payload.tenant_id, "writer", 128)}
@@ -608,17 +670,16 @@ const contextStringList = (context: AskAgentContext | undefined, key: string) =>
   return [];
 };
 
-export const buildAgentInput = (payload: NormalizedAgentRequest): AgentInputItem[] => {
+export const buildAgentInput = (
+  payload: NormalizedAgentRequest,
+  route?: Pick<AgentModelRoute, "imageDetail">,
+): AgentInputItem[] => {
   const context = payload.context
     ? JSON.stringify(payload.context, null, 2)
     : "{}";
-  const history = payload.history?.length
-    ? payload.history.slice(-8).map((entry) => `${entry.role}: ${entry.content}`).join("\n")
-    : "none";
   const text = [
     `Question: ${payload.question}`,
     `Context JSON:\n${context}`,
-    `Recent conversation:\n${history}`,
   ].join("\n\n");
   return [{
     role: "user",
@@ -627,7 +688,7 @@ export const buildAgentInput = (payload: NormalizedAgentRequest): AgentInputItem
       ...(payload.images ?? []).map((image) => ({
         type: "input_image" as const,
         image: image.data_url,
-        detail: "auto",
+        detail: route?.imageDetail ?? "auto",
       })),
     ],
   }];
@@ -646,12 +707,7 @@ const emitAgentStreamEvent = (
   stats: AgentStreamStats,
 ) => {
   if (event.type === "raw_model_stream_event") {
-    const delta = textDeltaFromRawEvent(event.data);
-    if (delta) {
-      stats.deltaCount += 1;
-      stats.firstDeltaMs ??= Date.now() - stats.startedAt;
-      controller.enqueue(sse("agent_delta", { text: delta }));
-    }
+    // Structured output streams partial JSON. Keep it out of the operator-facing answer.
     return;
   }
 
@@ -676,6 +732,7 @@ const emitAgentStreamEvent = (
     }
     if (event.name === "tool_output") {
       stats.toolResults += 1;
+      for (const urn of collectUrns(toolOutputFromItem(event.item))) stats.observedUrns.add(urn);
       controller.enqueue(sse("agent_tool", {
         name: toolNameFromItem(event.item),
         status: "completed",
@@ -701,26 +758,6 @@ const compactTimings = (stats: AgentStreamStats) => {
   return timings;
 };
 
-const textDeltaFromRawEvent = (data: unknown) => {
-  if (!data || typeof data !== "object") return "";
-  const record = data as Record<string, unknown>;
-  if (record.type === "output_text_delta" && typeof record.delta === "string") {
-    return record.delta;
-  }
-  const nested = record.event;
-  if (nested && typeof nested === "object") {
-    const nestedRecord = nested as Record<string, unknown>;
-    if (
-      (nestedRecord.type === "response.output_text.delta" ||
-        nestedRecord.type === "response.output_text.annotation.added") &&
-      typeof nestedRecord.delta === "string"
-    ) {
-      return nestedRecord.delta;
-    }
-  }
-  return "";
-};
-
 const toolNameFromItem = (item: unknown) => {
   if (!item || typeof item !== "object") return "cerebro.tool";
   const record = item as Record<string, unknown>;
@@ -733,14 +770,14 @@ const toolNameFromItem = (item: unknown) => {
   return "cerebro.tool";
 };
 
-const stringifyFinalOutput = (output: unknown) => {
-  if (typeof output === "string") return output.trim();
-  if (output === undefined || output === null) return "";
-  try {
-    return JSON.stringify(output, null, 2);
-  } catch {
-    return String(output);
+const toolOutputFromItem = (item: unknown) => {
+  if (!item || typeof item !== "object") return undefined;
+  const record = item as Record<string, unknown>;
+  const rawItem = record.rawItem;
+  if (rawItem && typeof rawItem === "object" && "output" in rawItem) {
+    return (rawItem as Record<string, unknown>).output;
   }
+  return record.output;
 };
 
 function agentRequestSpanAttributes(request: NextRequest) {

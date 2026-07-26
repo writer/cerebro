@@ -195,7 +195,11 @@ export const AGENT_PLATFORM_FALLBACK_CONTRACT: AgentPlatformContract = {
       eval: {
         required: true,
         status: "required",
-        localCommands: ["npm run eval:ask:local", "npm run eval:ask:adversarial"],
+        localCommands: [
+          "npm run eval:ask:local",
+          "npm run eval:ask:adversarial",
+          "npm run eval:agent:live",
+        ],
         scenarioSets: ["ask-golden", "ask-adversarial"],
         rubrics: ["groundedness", "source use", "safe refusal", "answer completeness"],
       },
