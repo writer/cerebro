@@ -244,10 +244,17 @@ func TestLoadAcceptsBoundedRustGraphCanaryConfiguration(t *testing.T) {
 }
 
 func TestLoadRejectsUnsafeRustGraphCanaryConfiguration(t *testing.T) {
-	for _, value := range []string{"0", "100", "101"} {
-		t.Run(value, func(t *testing.T) {
+	for name, value := range map[string]string{
+		"missing endpoint": "10",
+		"zero authority":   "0",
+		"full authority":   "100",
+		"excess authority": "101",
+	} {
+		t.Run(name, func(t *testing.T) {
 			clearDependencyEnv(t)
-			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
+			if name != "missing endpoint" {
+				t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
+			}
 			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "canary")
 			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT", value)
 			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "test-organizational-graph-secret-32-bytes")

@@ -710,6 +710,9 @@ func Load() (Config, error) {
 	if cfg.OrganizationalGraph.ReadMode == "shadow" && cfg.OrganizationalGraph.ReadBaseURL == "" {
 		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL is required in shadow mode")
 	}
+	if cfg.OrganizationalGraph.ReadMode == "canary" && cfg.OrganizationalGraph.ReadBaseURL == "" {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL is required in canary mode")
+	}
 	if cfg.OrganizationalGraph.ReadMode == "shadow" && cfg.OrganizationalGraph.ShadowPercent == 0 {
 		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be greater than zero in shadow mode")
 	}
