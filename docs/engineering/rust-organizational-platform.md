@@ -206,7 +206,11 @@ Go projector                Rust mapper
                          Neo4j outbox apply
 ```
 
-`cerebro-platform promote-family` evaluates stored parity receipts and records Rust authority. `cerebro-platform show-authority` reads the effective record. Both use `CEREBRO_POSTGRES_DSN` plus `CEREBRO_TENANT_ID`, `CEREBRO_SOURCE_ID`, and `CEREBRO_SOURCE_FAMILY`.
+`cerebro-platform evaluate-family` evaluates stored parity receipts without changing authority. `cerebro-platform promote-family` repeats that evaluation and records Rust authority. `cerebro-platform show-authority` reads the effective record. These commands use `CEREBRO_POSTGRES_DSN` plus `CEREBRO_TENANT_ID`, `CEREBRO_SOURCE_ID`, and `CEREBRO_SOURCE_FAMILY`.
+
+`cerebro-platform serve-neo4j-readonly` opens only the bounded Neo4j read plane. It does not connect to PostgreSQL, run store migrations, expose a projection runtime, or consume the append log. Use this process for pre-cutover shadow and read canaries. `serve-neo4j` adds the projection API, while `serve-neo4j-consumer` also starts append-log consumption.
+
+Every server mode exposes Prometheus request counters and latency histograms on `/metrics`. Operation labels come from a fixed route vocabulary; tenant IDs, entity IDs, request paths, and evidence do not enter metric labels.
 
 ## Performance shape
 

@@ -158,6 +158,45 @@ func TestQueryStoreFailsClosedWhenRustIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestShadowQueryStoreReturnsLegacyWhenRustIsUnavailable(t *testing.T) {
+	rootURN := "urn:cerebro:tenant-a:runtime_file:asset-1"
+	legacy := &ports.EntityNeighborhood{
+		Root: &ports.NeighborhoodNode{URN: rootURN, Label: "Legacy"},
+	}
+	store, err := NewShadowQueryStore(
+		queryStoreStub{neighborhood: legacy},
+		"http://127.0.0.1:1",
+		testSharedSecret,
+		10*time.Millisecond,
+		100,
+	)
+	if err != nil {
+		t.Fatalf("NewShadowQueryStore() error = %v", err)
+	}
+	got, err := store.GetEntityNeighborhood(context.Background(), rootURN, 10)
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhood() error = %v", err)
+	}
+	if got != legacy {
+		t.Fatalf("GetEntityNeighborhood() = %#v, want legacy response", got)
+	}
+	if err := store.Ping(context.Background()); err != nil {
+		t.Fatalf("Ping() error = %v, shadow readiness must use legacy authority", err)
+	}
+}
+
+func TestShadowQueryStoreRequiresCompatibilityAndBoundedSampling(t *testing.T) {
+	if _, err := NewShadowQueryStore(nil, "http://127.0.0.1:1", testSharedSecret, time.Second, 100); err == nil {
+		t.Fatal("NewShadowQueryStore(nil) error = nil")
+	}
+	if _, err := NewShadowQueryStore(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second, 0); err == nil {
+		t.Fatal("NewShadowQueryStore(0%) error = nil")
+	}
+	if _, err := NewShadowQueryStore(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second, 101); err == nil {
+		t.Fatal("NewShadowQueryStore(101%) error = nil")
+	}
+}
+
 func TestQueryStoreHealthRequiresRustAndChecksCompatibilityWhenPresent(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
