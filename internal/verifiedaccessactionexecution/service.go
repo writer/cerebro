@@ -18,6 +18,7 @@ var (
 	ErrNotConfigured     = errors.New("verified access action execution is not configured")
 	ErrInvalidRequest    = errors.New("invalid verified access action execution request")
 	ErrClaimNotAcquired  = errors.New("verified access action execution claim was not acquired")
+	ErrProviderReceipt   = errors.New("verified access action provider receipt was rejected")
 	ErrSubmissionUnknown = errors.New("verified access action provider submission is unknown")
 )
 
@@ -121,7 +122,7 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 		)
 	}
 	action := cloneGraphAction(execution.Action)
-	bindActionMetadata(action, claim.Record)
+	bindMissingActionMetadata(action, claim.Record)
 	occurredAt := time.Unix(action.CompletedAtUnix, 0).UTC()
 	executedBy := verifiedaccessaction.Actor{
 		Type: strings.TrimSpace(action.ActorType),
@@ -142,7 +143,7 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 		OccurredAt:            occurredAt,
 	})
 	if err != nil {
-		return nil, s.recordUnknown(ctx, claim.Record, input.Worker, err)
+		return &Result{Record: claim.Record, Action: action}, errors.Join(ErrProviderReceipt, err)
 	}
 	applied, err = s.Store.AppendAccessAction(ctx, outcome)
 	if err != nil {
@@ -216,7 +217,7 @@ func submissionErrorClass(err error) string {
 	}
 }
 
-func bindActionMetadata(action *graphactions.GraphAction, record verifiedaccessaction.Record) {
+func bindMissingActionMetadata(action *graphactions.GraphAction, record verifiedaccessaction.Record) {
 	if action.Metadata == nil {
 		action.Metadata = map[string]string{}
 	}
@@ -228,7 +229,9 @@ func bindActionMetadata(action *graphactions.GraphAction, record verifiedaccessa
 		"source_revision":    record.Binding.SourceRevision,
 		"definition_version": record.Definition.Version,
 	} {
-		action.Metadata[key] = value
+		if strings.TrimSpace(action.Metadata[key]) == "" {
+			action.Metadata[key] = value
+		}
 	}
 }
 

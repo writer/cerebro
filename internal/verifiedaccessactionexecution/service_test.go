@@ -132,6 +132,88 @@ func TestExecuteRecordsAmbiguousSubmissionForReconciliation(t *testing.T) {
 	}
 }
 
+func TestExecuteReturnsDefinitiveProviderFailureWithoutRecordingAmbiguity(t *testing.T) {
+	t.Parallel()
+
+	store, record, proposalDigest := approvedAction(t)
+	clock := record.Approval.ApprovedAt.Add(time.Minute)
+	execution := successfulExecution(clock.Add(time.Minute))
+	execution.Action.Status = graphactions.ActionStatusFailed
+	execution.Action.ExternalStatus = graphactions.ActionStatusFailed
+	execution.Action.ExternalStatusReason = "provider denied the request"
+	execution.Action.LastError = "account is protected"
+	service := Service{
+		Store:    store,
+		Executor: &stubExecutor{execute: execution},
+		Clock:    func() time.Time { return clock },
+	}
+
+	result, err := service.Execute(
+		context.Background(),
+		executionRequest(record, proposalDigest),
+	)
+	if result == nil || result.Action == nil {
+		t.Fatalf("result = %+v, want the rejected provider receipt", result)
+	}
+	if !errors.Is(err, ErrProviderReceipt) ||
+		!errors.Is(err, verifiedaccessaction.ErrVerificationMismatch) ||
+		errors.Is(err, ErrSubmissionUnknown) {
+		t.Fatalf("Execute() error = %v, want rejected receipt without submission ambiguity", err)
+	}
+	if result.Action.ExternalStatusReason != "provider denied the request" ||
+		result.Action.LastError != "account is protected" {
+		t.Fatalf("provider failure details were not preserved: %+v", result.Action)
+	}
+
+	persisted, getErr := store.GetAccessAction(context.Background(), record.TenantID, record.ID)
+	if getErr != nil {
+		t.Fatal(getErr)
+	}
+	if persisted.Status != verifiedaccessaction.StatusClaimed ||
+		persisted.SubmissionUnknown != nil {
+		t.Fatalf("definitive failure was persisted as ambiguous: %+v", persisted)
+	}
+}
+
+func TestExecuteRejectsMismatchedProviderMetadataBeforeFillingDefaults(t *testing.T) {
+	t.Parallel()
+
+	store, record, proposalDigest := approvedAction(t)
+	clock := record.Approval.ApprovedAt.Add(time.Minute)
+	execution := successfulExecution(clock.Add(time.Minute))
+	execution.Action.Metadata = map[string]string{"tenant_id": "tenant-other"}
+	service := Service{
+		Store:    store,
+		Executor: &stubExecutor{execute: execution},
+		Clock:    func() time.Time { return clock },
+	}
+
+	result, err := service.Execute(
+		context.Background(),
+		executionRequest(record, proposalDigest),
+	)
+	if result == nil || result.Action == nil {
+		t.Fatalf("result = %+v, want the rejected provider receipt", result)
+	}
+	if !errors.Is(err, ErrProviderReceipt) ||
+		!errors.Is(err, verifiedaccessaction.ErrStale) {
+		t.Fatalf("Execute() error = %v, want stale provider metadata", err)
+	}
+	if result.Action.Metadata["tenant_id"] != "tenant-other" {
+		t.Fatalf("provider tenant metadata was overwritten: %+v", result.Action.Metadata)
+	}
+
+	persisted, getErr := store.GetAccessAction(context.Background(), record.TenantID, record.ID)
+	if getErr != nil {
+		t.Fatal(getErr)
+	}
+	if persisted.Status != verifiedaccessaction.StatusClaimed ||
+		persisted.Execution != nil ||
+		persisted.SubmissionUnknown != nil {
+		t.Fatalf("mismatched receipt changed durable state: %+v", persisted)
+	}
+}
+
 func TestExecuteRejectsStaleProposalBeforeCallingProvider(t *testing.T) {
 	t.Parallel()
 
