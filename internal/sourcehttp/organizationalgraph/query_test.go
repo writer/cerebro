@@ -24,6 +24,11 @@ type queryStoreStub struct {
 	err          error
 }
 
+type countingQueryStoreStub struct {
+	queryStoreStub
+	requests int
+}
+
 type assertionQueryStoreStub struct {
 	queryStoreStub
 	coverageTenant    string
@@ -60,6 +65,11 @@ func (s queryStoreStub) Ping(context.Context) error { return s.err }
 
 func (s queryStoreStub) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
 	return s.neighborhood, nil
+}
+
+func (s *countingQueryStoreStub) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
+	s.requests++
+	return s.neighborhood, s.err
 }
 
 func (s queryStoreStub) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
@@ -277,6 +287,113 @@ func TestCanaryQueryStoreUsesStableSingleAuthorityAndFailsClosed(t *testing.T) {
 		10,
 	); err == nil {
 		t.Fatal("sampled Rust failure fell back to Go")
+	}
+}
+
+func TestCanaryQueryStoreRoutesConfiguredTrafficPercentages(t *testing.T) {
+	rustRequests := 0
+	server := newGraphTestServer(t, graphServiceStub{
+		expand: func(_ context.Context, request *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
+			rustRequests++
+			return connect.NewResponse(&cerebrographv1.ExpandResponse{
+				TenantId: request.Msg.GetTenantId(),
+				Root: &cerebrographv1.GraphEntity{
+					EntityId:   "rust-root",
+					AgentKey:   request.Msg.GetRootKey(),
+					EntityKind: "resource",
+					Label:      "Rust",
+				},
+			}), nil
+		},
+	})
+	defer server.Close()
+
+	const tenants = 1_000
+	for _, percent := range []int{1, 10, 25, 50, 99} {
+		t.Run(fmt.Sprintf("%d-percent", percent), func(t *testing.T) {
+			rustRequests = 0
+			legacy := &countingQueryStoreStub{queryStoreStub: queryStoreStub{
+				neighborhood: &ports.EntityNeighborhood{
+					Root: &ports.NeighborhoodNode{URN: "legacy", Label: "Go"},
+				},
+			}}
+			store, err := NewCanaryQueryStore(legacy, server.URL, testSharedSecret, time.Second, percent)
+			if err != nil {
+				t.Fatalf("NewCanaryQueryStore() error = %v", err)
+			}
+
+			expectedRust := 0
+			for index := 0; index < tenants; index++ {
+				tenantID := fmt.Sprintf("traffic-tenant-%d", index)
+				root := fmt.Sprintf("urn:cerebro:%s:runtime_file:asset", tenantID)
+				wantRust := store.sample(tenantID)
+				if wantRust {
+					expectedRust++
+				}
+				got, err := store.GetEntityNeighborhood(context.Background(), root, 10)
+				if err != nil {
+					t.Fatalf("GetEntityNeighborhood(%q) error = %v", root, err)
+				}
+				wantLabel := "Go"
+				if wantRust {
+					wantLabel = "Rust"
+				}
+				if got == nil || got.Root == nil || got.Root.Label != wantLabel {
+					t.Fatalf("GetEntityNeighborhood(%q) label = %#v, want %q", root, got, wantLabel)
+				}
+			}
+
+			if expectedRust == 0 || expectedRust == tenants {
+				t.Fatalf("expected Rust requests = %d, want a partial cohort", expectedRust)
+			}
+			if rustRequests != expectedRust {
+				t.Fatalf("Rust requests = %d, want %d", rustRequests, expectedRust)
+			}
+			if legacy.requests != tenants-expectedRust {
+				t.Fatalf("Go requests = %d, want %d", legacy.requests, tenants-expectedRust)
+			}
+		})
+	}
+}
+
+func TestCanarySamplingIsStableNestedAndTracksConfiguredPercent(t *testing.T) {
+	const tenants = 100_000
+	previous := make([]bool, tenants)
+	for percentIndex, percent := range []int{1, 5, 10, 25, 50, 75, 99} {
+		store, err := NewCanaryQueryStore(
+			queryStoreStub{},
+			"http://127.0.0.1:1",
+			testSharedSecret,
+			time.Second,
+			percent,
+		)
+		if err != nil {
+			t.Fatalf("NewCanaryQueryStore(%d%%) error = %v", percent, err)
+		}
+
+		selected := 0
+		for index := 0; index < tenants; index++ {
+			tenantID := fmt.Sprintf("distribution-tenant-%d", index)
+			current := store.sample(tenantID)
+			if current != store.sample(tenantID) {
+				t.Fatalf("tenant %q changed cohort at %d%%", tenantID, percent)
+			}
+			if percentIndex > 0 && previous[index] && !current {
+				t.Fatalf("tenant %q left the Rust cohort when allocation increased to %d%%", tenantID, percent)
+			}
+			previous[index] = current
+			if current {
+				selected++
+			}
+		}
+
+		scaledDelta := selected*100 - percent*tenants
+		if scaledDelta < 0 {
+			scaledDelta = -scaledDelta
+		}
+		if scaledDelta > tenants/4 {
+			t.Fatalf("selected %d of %d tenants at %d%%, outside 0.25 percentage points", selected, tenants, percent)
+		}
 	}
 }
 
