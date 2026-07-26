@@ -367,6 +367,8 @@ func (s *QueryStore) recordComparison(ctx context.Context, operation string, leg
 	}
 	if status != "match" {
 		traceID := trace.SpanContextFromContext(ctx).TraceID().String()
+		// #nosec G706 -- operation and status use closed vocabularies; trace IDs
+		// and every receipt value are locally generated hex, counts, or type names.
 		log.Printf(
 			"organizational graph parity operation=%s status=%s trace_id=%s legacy_sha256=%s rust_sha256=%s legacy_shape=%q rust_shape=%q error_sha256=%s",
 			operation,
