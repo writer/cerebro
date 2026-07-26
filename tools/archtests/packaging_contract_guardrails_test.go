@@ -242,8 +242,27 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		t.Fatal("candidate workflow must define the receipt job")
 	}
 	receipt := candidate[receiptIndex:]
-	if !strings.Contains(receipt, "needs: [resolve, binaries, manifest, rust-organizational-e2e, web-manifest, scan-images, product-release]") {
-		t.Fatal("candidate receipt must wait for both image scans and the exact-image Rust proof")
+	if !strings.Contains(receipt, "needs: [resolve, ci-gate, binaries, manifest, rust-organizational-e2e, web-manifest, scan-images, product-release]") {
+		t.Fatal("candidate receipt must wait for CI, both image scans, and the exact-image Rust proof")
+	}
+	if !strings.Contains(candidate, "group: candidate-build-main") ||
+		!strings.Contains(candidate, "cancel-in-progress: true") {
+		t.Fatal("candidate workflow must cancel stale main builds")
+	}
+	resolveIndex := strings.Index(candidate, "  resolve:\n")
+	ciGateIndex := strings.Index(candidate, "  ci-gate:\n")
+	binaryIndex := strings.Index(candidate, "  binary:\n")
+	if resolveIndex == -1 || ciGateIndex <= resolveIndex || binaryIndex <= ciGateIndex {
+		t.Fatal("candidate workflow must define resolve, CI gate, and binary jobs in order")
+	}
+	resolveJob := candidate[resolveIndex:ciGateIndex]
+	ciGateJob := candidate[ciGateIndex:binaryIndex]
+	if strings.Contains(resolveJob, "Require successful CI") {
+		t.Fatal("candidate resolution must not wait for CI before builds can start")
+	}
+	if !strings.Contains(ciGateJob, "needs: resolve") ||
+		!strings.Contains(ciGateJob, "Require successful CI") {
+		t.Fatal("candidate workflow must enforce CI in a parallel gate")
 	}
 	if !strings.Contains(receipt, "    permissions:\n      actions: read\n      contents: read\n") {
 		t.Fatal("candidate receipt job must allow artifact discovery with actions: read")
