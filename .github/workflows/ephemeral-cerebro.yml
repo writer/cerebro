@@ -32,7 +32,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: ephemeral-cerebro-${{ inputs.candidate_sha }}
+  group: ephemeral-cerebro-${{ inputs.candidate_sha || github.event.pull_request.number || github.run_id }}
   cancel-in-progress: false
 
 jobs:
