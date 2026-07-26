@@ -99,6 +99,7 @@ jobs:
       - name: Exercise the Go-to-Rust boundary and recovery
         shell: bash
         env:
+          API_KEY: local-dev-key
           COMPOSE_PROJECT_NAME: ephemeral-cerebro-${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -106,7 +107,7 @@ jobs:
           graph_status() {
             curl --max-time 10 --silent --show-error --output graph-response.json \
               --write-out '%{http_code} %{time_total}' \
-              --header 'Authorization: Bearer local-dev-key' \
+              --header "Authorization: Bearer ${API_KEY}" \
               "${graph_url}"
           }
           readiness_status() {
