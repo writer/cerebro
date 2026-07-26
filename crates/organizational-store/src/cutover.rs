@@ -62,15 +62,15 @@ impl ProjectionPromotionRequest {
         })
     }
 
-    pub(crate) fn tenant_id(&self) -> &str {
+    pub fn tenant_id(&self) -> &str {
         &self.tenant_id
     }
 
-    pub(crate) fn source_id(&self) -> &str {
+    pub fn source_id(&self) -> &str {
         &self.source_id
     }
 
-    pub(crate) fn family_id(&self) -> &str {
+    pub fn family_id(&self) -> &str {
         &self.family_id
     }
 
@@ -78,7 +78,7 @@ impl ProjectionPromotionRequest {
         self.policy
     }
 
-    pub(crate) fn projection_lag(&self) -> u64 {
+    pub fn projection_lag(&self) -> u64 {
         self.projection_lag
     }
 

@@ -146,6 +146,11 @@ Language-level constraints prevent accidental bypass inside Rust. Production aut
    restarts the Rust service, and reads the recovered graph through both the
    generated agent RPC and the native product HTTP route.
 
+Before a read family changes authority, the Go API may remain the temporary
+read authority while a bounded sample is compared with Rust. That adapter must
+return the Go result, tolerate Rust unavailability, emit only bounded comparison
+labels, and must not receive graph-write credentials or project graph changes.
+
 Repository conventions and review are not the security boundary. Store credentials and workload identity are.
 
 ## Source coverage migration
@@ -206,7 +211,11 @@ Go projector                Rust mapper
                          Neo4j outbox apply
 ```
 
-`cerebro-platform promote-family` evaluates stored parity receipts and records Rust authority. `cerebro-platform show-authority` reads the effective record. Both use `CEREBRO_POSTGRES_DSN` plus `CEREBRO_TENANT_ID`, `CEREBRO_SOURCE_ID`, and `CEREBRO_SOURCE_FAMILY`.
+`cerebro-platform evaluate-family` evaluates stored parity receipts without changing authority. `cerebro-platform promote-family` repeats that evaluation and records Rust authority. `cerebro-platform show-authority` reads the effective record. These commands use `CEREBRO_POSTGRES_DSN` plus `CEREBRO_TENANT_ID`, `CEREBRO_SOURCE_ID`, and `CEREBRO_SOURCE_FAMILY`.
+
+`cerebro-platform serve-neo4j-readonly` opens only the bounded Neo4j read plane. It does not connect to PostgreSQL, run store migrations, expose a projection runtime, or consume the append log. Use this process for pre-cutover shadow and read canaries. `serve-neo4j` adds the projection API, while `serve-neo4j-consumer` also starts append-log consumption.
+
+Every server mode exposes Prometheus request counters and latency histograms on `/metrics`. Operation labels come from a fixed route vocabulary; tenant IDs, entity IDs, request paths, and evidence do not enter metric labels.
 
 ## Performance shape
 

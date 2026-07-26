@@ -151,8 +151,14 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 			t.Errorf("Rust graph read adapter restored handwritten wire contract %q", forbidden)
 		}
 	}
-	if strings.Contains(queryAdapter, "ShadowQueryStore") {
-		t.Error("bounded product graph reads must not restore the Go-primary shadow adapter")
+	for _, required := range []string{
+		"NewShadowQueryStore",
+		"return legacy, nil",
+		"RecordOrganizationalGraphShadow",
+	} {
+		if !strings.Contains(queryAdapter, required) {
+			t.Errorf("bounded shadow comparison missing enforced safety boundary %q", required)
+		}
 	}
 
 	replacementWorkflow := readText(t, filepath.Join(root, ".github/workflows/rust-graph-replacement.yml"))

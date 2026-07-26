@@ -68,6 +68,30 @@ func TestRecordContentPackSelectionMetricsAreLowCardinality(t *testing.T) {
 	assertMetricHasAttribute(t, metric, "status", "embedded_fallback")
 }
 
+func TestRecordOrganizationalGraphShadowMetricsAreLowCardinality(t *testing.T) {
+	reader, shutdown := installManualMetricReader(t)
+	RecordOrganizationalGraphShadow(context.Background(), OrganizationalGraphShadowMetrics{
+		Operation: "Expand Batch",
+		Status:    "Mismatch",
+		Duration:  20 * time.Millisecond,
+	})
+	t.Cleanup(shutdown)
+
+	metrics := collectMetrics(t, reader)
+	for _, name := range []string{
+		"cerebro.organizational_graph.shadow.comparisons",
+		"cerebro.organizational_graph.shadow.duration",
+	} {
+		metric, ok := metrics[name]
+		if !ok {
+			t.Fatalf("metric %q missing from %#v", name, metricNames(metrics))
+		}
+		assertNoForbiddenMetricAttributes(t, metric)
+		assertMetricHasAttribute(t, metric, "operation", "expand_batch")
+		assertMetricHasAttribute(t, metric, "status", "mismatch")
+	}
+}
+
 func TestRecordSourceProjectionMetricsAreLowCardinality(t *testing.T) {
 	reader, shutdown := installManualMetricReader(t)
 	RecordSourceProjection(context.Background(), SourceProjectionMetrics{

@@ -118,6 +118,23 @@ func otelGraphRuleRecords() otelmetric.Int64Counter {
 	return instrument
 }
 
+func otelOrganizationalGraphShadowComparisons() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.organizational_graph.shadow.comparisons",
+		otelmetric.WithDescription("Sampled legacy and Rust organizational graph read comparisons."),
+	)
+	return instrument
+}
+
+func otelOrganizationalGraphShadowDuration() otelmetric.Float64Histogram {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Float64Histogram(
+		"cerebro.organizational_graph.shadow.duration",
+		otelmetric.WithDescription("Rust side of sampled organizational graph read comparisons."),
+		otelmetric.WithUnit("s"),
+	)
+	return instrument
+}
+
 func otelNeo4jOperations() otelmetric.Int64Counter {
 	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
 		"cerebro.neo4j.operations",
@@ -437,6 +454,27 @@ func RecordNeo4jOperation(ctx context.Context, metrics Neo4jOperationMetrics) {
 	otelNeo4jOperations().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
 	if metrics.Duration >= 0 {
 		otelNeo4jOperationDuration().Record(ctx, metrics.Duration.Seconds(), otelmetric.WithAttributes(attrs...))
+	}
+}
+
+type OrganizationalGraphShadowMetrics struct {
+	Operation string
+	Status    string
+	Duration  time.Duration
+}
+
+func RecordOrganizationalGraphShadow(ctx context.Context, metrics OrganizationalGraphShadowMetrics) {
+	attrs := []attribute.KeyValue{
+		attribute.String("operation", boundedMetricValue(metrics.Operation, "unknown")),
+		attribute.String("status", boundedMetricValue(metrics.Status, "unknown")),
+	}
+	otelOrganizationalGraphShadowComparisons().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
+	if metrics.Duration >= 0 {
+		otelOrganizationalGraphShadowDuration().Record(
+			ctx,
+			metrics.Duration.Seconds(),
+			otelmetric.WithAttributes(attrs...),
+		)
 	}
 }
 

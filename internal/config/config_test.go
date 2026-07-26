@@ -55,6 +55,10 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_PROJECTION_BATCH_SIZE", "")
 	t.Setenv("CEREBRO_NEO4J_PROJECTION_WRITE_CONCURRENCY", "")
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_URL", "")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL", "")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", "")
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "")
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT", "")
 	clearGraphAgentEnv(t)
@@ -176,6 +180,49 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.Auth.DeviceAuth.RefreshTTL != defaultDeviceAuthRefreshTTL {
 		t.Fatalf("DeviceAuth.RefreshTTL = %v, want %v", cfg.Auth.DeviceAuth.RefreshTTL, defaultDeviceAuthRefreshTTL)
+	}
+}
+
+func TestLoadSeparatesRustGraphReadAndProjectionEndpoints(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "shadow")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", "25")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "test-organizational-graph-secret-32-bytes")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.OrganizationalGraph.ReadBaseURL != "http://127.0.0.1:8081" {
+		t.Fatalf("ReadBaseURL = %q", cfg.OrganizationalGraph.ReadBaseURL)
+	}
+	if cfg.OrganizationalGraph.ProjectionBaseURL != "" {
+		t.Fatalf("ProjectionBaseURL = %q, want disabled", cfg.OrganizationalGraph.ProjectionBaseURL)
+	}
+	if cfg.OrganizationalGraph.ReadMode != "shadow" || cfg.OrganizationalGraph.ShadowPercent != 25 {
+		t.Fatalf("OrganizationalGraph = %#v", cfg.OrganizationalGraph)
+	}
+}
+
+func TestLoadRejectsUnsafeRustGraphShadowConfiguration(t *testing.T) {
+	for name, value := range map[string]string{
+		"missing endpoint": "",
+		"zero sampling":    "0",
+		"excess sampling":  "101",
+	} {
+		t.Run(name, func(t *testing.T) {
+			clearDependencyEnv(t)
+			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "shadow")
+			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "test-organizational-graph-secret-32-bytes")
+			if name != "missing endpoint" {
+				t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
+			}
+			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", value)
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() error = nil")
+			}
+		})
 	}
 }
 

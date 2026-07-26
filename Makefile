@@ -527,6 +527,11 @@ rust-coverage: ## Enforce the Rust workspace line-coverage floor with the pinned
 	# and process entrypoints are exercised by live integration tests.
 	$(CARGO) llvm-cov --workspace --all-features --locked --ignore-filename-regex '(^|/)(wasm_abi\.rs|crates/cerebro-platform/src/(generated/.*|main|append_log_consumer|cutover_command|parity_command)\.rs|crates/organizational-store/src/(lib|neo4j|postgres)\.rs|crates/source-runtime-next/src/http\.rs)$$' --fail-under-lines 90 --summary-only
 
+rust-platform-engine-coverage: ## Enforce focused coverage for reusable platform engines.
+	@actual="$$($(CARGO) llvm-cov --version 2>/dev/null || true)"; \
+		test "$$actual" = "cargo-llvm-cov 0.8.7" || { echo "rust-platform-engine-coverage: install cargo-llvm-cov 0.8.7 with 'cargo install cargo-llvm-cov --version 0.8.7 --locked'"; exit 1; }
+	$(CARGO) llvm-cov -p cerebro-platform-engine --all-features --locked --fail-under-lines 90 --summary-only
+
 rust-benchmark-smoke: ## Run bounded embedded Wasm host benchmarks and record their output.
 	@mkdir -p tmp
 	@go test ./internal/wasmhost ./internal/graphagent ./internal/sourcecoverage ./internal/mitre ./internal/sourceprojection ./internal/sourceruntime/eventadmission -run '^$$' -bench '^(BenchmarkRuntimeRun|BenchmarkStaticValidator|BenchmarkCoverageEvaluator|BenchmarkContextEvaluator|BenchmarkPanopticonResourceExtractor|BenchmarkAdmissionSmoke)$$' -benchtime=20x -count=1 > tmp/rust-wasm-benchmark.txt 2>&1; status=$$?; cat tmp/rust-wasm-benchmark.txt; exit $$status
@@ -542,6 +547,10 @@ rust-organizational-platform-benchmark: ## Compare the Go and Rust organizationa
 	@mkdir -p tmp
 	@GOMAXPROCS=1 go test ./internal/graphrebuild ./internal/sourceruntime -run '^TestOrganizationalPlatform.*BenchmarkCorpus$$' -bench '^BenchmarkOrganizationalPlatformGo' -benchmem -benchtime=$(ORGANIZATIONAL_BENCH_SAMPLE_MS)ms -count=$(ORGANIZATIONAL_BENCH_SAMPLES) -cpu=1 > tmp/organizational-platform-go-benchmark.txt 2>&1; status=$$?; cat tmp/organizational-platform-go-benchmark.txt; test $$status -eq 0
 	@ORGANIZATIONAL_BENCH_SAMPLE_MS=$(ORGANIZATIONAL_BENCH_SAMPLE_MS) ORGANIZATIONAL_BENCH_SAMPLES=$(ORGANIZATIONAL_BENCH_SAMPLES) $(CARGO) bench --locked -p cerebro-source-runtime-next --bench organizational_platform > tmp/organizational-platform-rust-benchmark.txt 2>&1; status=$$?; cat tmp/organizational-platform-rust-benchmark.txt; exit $$status
+
+rust-platform-engine-benchmark: ## Measure reusable platform diff, assertion, and simulation engines.
+	@mkdir -p tmp
+	@$(CARGO) bench --locked -p cerebro-platform-engine --bench platform_engine > tmp/rust-platform-engine-benchmark.txt 2>&1; status=$$?; cat tmp/rust-platform-engine-benchmark.txt; exit $$status
 
 rust-organizational-store-benchmark: ## Measure durable commits, recovery, traversal, and tenant concurrency against disposable stores.
 	@test -n "$(CEREBRO_TEST_POSTGRES_DSN)" || { echo "CEREBRO_TEST_POSTGRES_DSN is required" >&2; exit 2; }
