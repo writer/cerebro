@@ -1,0 +1,156 @@
+syntax = "proto3";
+
+package cerebro.v1;
+
+option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
+
+import "cerebro/v1/primitives.proto";
+import "google/protobuf/timestamp.proto";
+
+// SecurityLifecycleService exposes bounded lifecycle reads from the Rust
+// organizational platform.
+service SecurityLifecycleService {
+  rpc ListSecurityLifecycle(ListSecurityLifecycleRequest) returns (ListSecurityLifecycleResponse);
+}
+
+message ListSecurityLifecycleRequest {
+  SecurityLifecycleQuery query = 1;
+}
+
+message ListSecurityLifecycleResponse {
+  SecurityLifecycleQueryResult result = 1;
+}
+
+// SecurityLifecycleSubjectKind is the closed set of expiry-governed resource
+// classes represented by this portable contract.
+enum SecurityLifecycleSubjectKind {
+  SECURITY_LIFECYCLE_SUBJECT_KIND_UNSPECIFIED = 0;
+  SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL = 1;
+  SECURITY_LIFECYCLE_SUBJECT_KIND_CERTIFICATE = 2;
+}
+
+// SecurityLifecycleState describes observed provider state. Cerebro correlates
+// and evaluates this state but does not mutate it.
+enum SecurityLifecycleState {
+  SECURITY_LIFECYCLE_STATE_UNSPECIFIED = 0;
+  SECURITY_LIFECYCLE_STATE_ACTIVE = 1;
+  SECURITY_LIFECYCLE_STATE_EXPIRING = 2;
+  SECURITY_LIFECYCLE_STATE_EXPIRED = 3;
+  SECURITY_LIFECYCLE_STATE_ROTATED = 4;
+  SECURITY_LIFECYCLE_STATE_REVOKED = 5;
+  SECURITY_LIFECYCLE_STATE_INACTIVE = 6;
+  SECURITY_LIFECYCLE_STATE_UNKNOWN = 7;
+}
+
+// SecurityLifecycleObservation is one provider-neutral current-state
+// observation carried by EventEnvelope. It intentionally contains references
+// and metadata only; secret or private-key material is never part of the
+// contract.
+message SecurityLifecycleObservation {
+  // subject_ref.id is the canonical Cerebro URN. subject_ref.revision carries
+  // the currently observed key, certificate, or material revision.
+  ResourceRef subject_ref = 1;
+  SecurityLifecycleSubjectKind subject_kind = 2;
+  // provider is an open identifier for the provider family.
+  string provider = 3;
+  // authority_id identifies the provider authority and scope in which the
+  // stable locator is unique.
+  string authority_id = 4;
+  // stable_locator identifies the governed slot or deployment target. It must
+  // survive key and certificate rotation.
+  string stable_locator = 5;
+  string display_name = 6;
+  SecurityLifecycleState state = 7;
+  google.protobuf.Timestamp observed_at = 8;
+  google.protobuf.Timestamp issued_at = 9;
+  google.protobuf.Timestamp expires_at = 10;
+  google.protobuf.Timestamp rotated_at = 11;
+  google.protobuf.Timestamp revoked_at = 12;
+  string owner_urn = 13;
+  repeated ResourceRef scope_refs = 14;
+  repeated ResourceRef evidence_claim_refs = 15;
+  map<string, string> attributes = 16;
+}
+
+// SecurityLifecyclePolicyEvaluation records one deterministic expiry policy
+// decision over an exact observation.
+message SecurityLifecyclePolicyEvaluation {
+  string policy_id = 1;
+  string policy_version = 2;
+  ResourceRef subject_ref = 3;
+  string state = 4;
+  uint32 warning_window_days = 5;
+  int64 seconds_until_expiry = 6;
+  google.protobuf.Timestamp evaluated_at = 7;
+  repeated ResourceRef evidence_claim_refs = 8;
+}
+
+// SecurityLifecycleFindingBinding connects a durable Cerebro finding to the
+// exact governed resource and evidence used to open or resolve it.
+message SecurityLifecycleFindingBinding {
+  ResourceRef finding_ref = 1;
+  ResourceRef subject_ref = 2;
+  string finding_kind = 3;
+  string status = 4;
+  repeated ResourceRef evidence_claim_refs = 5;
+  google.protobuf.Timestamp due_at = 6;
+  ResourceRef remediation_outcome_ref = 7;
+}
+
+// SecurityLifecycleActionRoute is an authorization-safe route to an external
+// mutation authority. It is not an execution request and carries no credential
+// value, certificate key, or provider command payload.
+message SecurityLifecycleActionRoute {
+  ResourceRef finding_ref = 1;
+  ResourceRef target_ref = 2;
+  string action_type = 3;
+  bool approval_required = 4;
+  ResourceRef action_intent_ref = 5;
+  ResourceRef dispatch_ref = 6;
+  ResourceRef verification_ref = 7;
+}
+
+// SecurityLifecycleVerificationBinding is a read-only outcome binding over a
+// later observation. Dispatch success alone can never produce verified_closed.
+message SecurityLifecycleVerificationBinding {
+  ResourceRef finding_ref = 1;
+  ResourceRef remediation_outcome_ref = 2;
+  ResourceRef observation_event_ref = 3;
+  ResourceRef source_runtime_ref = 4;
+  string result = 5;
+  bool source_complete = 6;
+  bool source_truncated = 7;
+  google.protobuf.Timestamp observed_at = 8;
+  repeated ResourceRef evidence_claim_refs = 9;
+}
+
+// SecurityLifecycleRecord is the operator read model for one governed resource.
+message SecurityLifecycleRecord {
+  SecurityLifecycleObservation observation = 1;
+  reserved 2;
+  reserved "links";
+  repeated SecurityLifecyclePolicyEvaluation policy_evaluations = 3;
+  repeated SecurityLifecycleFindingBinding findings = 4;
+  repeated SecurityLifecycleActionRoute action_routes = 5;
+  google.protobuf.Timestamp projected_at = 6;
+}
+
+// SecurityLifecycleQuery is a bounded, tenant-scoped selector for lifecycle
+// records. Empty filters do not relax tenant scoping.
+message SecurityLifecycleQuery {
+  string tenant_id = 1;
+  repeated SecurityLifecycleSubjectKind subject_kinds = 2;
+  repeated SecurityLifecycleState states = 3;
+  repeated string owner_urns = 4;
+  google.protobuf.Timestamp expires_before = 5;
+  bool findings_only = 6;
+  uint32 limit = 7;
+  string page_token = 8;
+}
+
+message SecurityLifecycleQueryResult {
+  repeated SecurityLifecycleRecord records = 1;
+  string next_page_token = 2;
+  bool truncated = 3;
+  google.protobuf.Timestamp as_of = 4;
+}

@@ -427,12 +427,15 @@ $(BUFFA_CODEGEN):
 rust-proto-generate: $(CONNECTRPC_CODEGEN) $(BUFFA_CODEGEN) ## Generate the Rust agent-facing RPC contract.
 	PATH="$(CURDIR)/$(CONNECTRPC_CODEGEN_ROOT)/bin:$$PATH" \
 		$(BUF) generate --template buf.gen.rust.yaml \
-		--path proto/cerebro/graph/v1/organizational_graph.proto
+		--path proto/cerebro/graph/v1/organizational_graph.proto \
+		--path proto/cerebro/v1/primitives.proto \
+		--path proto/cerebro/v1/security_lifecycle.proto
 
 proto-generate: rust-proto-generate ## Generate protobuf-derived code.
 	$(BUF) generate
 	$(BUF) generate --template buf.gen.sdk.yaml \
 		--path proto/cerebro/v1/primitives.proto \
+		--path proto/cerebro/v1/security_lifecycle.proto \
 		--path proto/cerebro/graph/v1/organizational_graph.proto
 
 proto-generate-check: proto-generate ## Verify protobuf generated files are current.

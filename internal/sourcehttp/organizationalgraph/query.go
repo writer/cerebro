@@ -23,6 +23,8 @@ import (
 
 	cerebrographv1 "github.com/writer/cerebro/gen/cerebro/graph/v1"
 	"github.com/writer/cerebro/gen/cerebro/graph/v1/cerebrographv1connect"
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
@@ -58,6 +60,7 @@ type QueryStore struct {
 	baseURL       string
 	httpClient    *http.Client
 	graph         cerebrographv1connect.OrganizationalGraphServiceClient
+	lifecycle     cerebrov1connect.SecurityLifecycleServiceClient
 	auth          tenantAuthenticator
 	mode          readMode
 	samplePercent uint32
@@ -146,12 +149,38 @@ func newQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret st
 		baseURL:       baseURL,
 		httpClient:    httpClient,
 		graph:         cerebrographv1connect.NewOrganizationalGraphServiceClient(httpClient, baseURL),
+		lifecycle:     cerebrov1connect.NewSecurityLifecycleServiceClient(httpClient, baseURL),
 		auth:          auth,
 		mode:          mode,
 		samplePercent: samplePercent,
 		timeout:       timeout,
 		comparisons:   make(chan struct{}, maxConcurrentComparisons),
 	}, nil
+}
+
+// ListSecurityLifecycle reads the Rust-owned credential and certificate
+// lifecycle projection. The bootstrap remains a transport and authentication
+// adapter; it does not re-evaluate lifecycle policy.
+func (s *QueryStore) ListSecurityLifecycle(ctx context.Context, query *cerebrov1.SecurityLifecycleQuery) (*cerebrov1.SecurityLifecycleQueryResult, error) {
+	if query == nil {
+		return nil, errors.New("security lifecycle query is required")
+	}
+	tenantID := strings.TrimSpace(query.GetTenantId())
+	if tenantID == "" {
+		return nil, errors.New("security lifecycle tenant_id is required")
+	}
+	request := connect.NewRequest(&cerebrov1.ListSecurityLifecycleRequest{Query: query})
+	if err := s.auth.authorizeHeader(request.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.lifecycle.ListSecurityLifecycle(ctx, request)
+	if err != nil {
+		return nil, fmt.Errorf("list Rust security lifecycle: %w", err)
+	}
+	if response.Msg.GetResult() == nil {
+		return nil, errors.New("rust security lifecycle response omitted result")
+	}
+	return response.Msg.GetResult(), nil
 }
 
 func (s *QueryStore) Ping(ctx context.Context) (err error) {

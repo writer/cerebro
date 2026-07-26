@@ -274,6 +274,12 @@ the live forward-only durable identity.
 
 Every server mode exposes Prometheus request counters and latency histograms on `/metrics`. Operation labels come from a fixed route vocabulary; tenant IDs, entity IDs, request paths, and evidence do not enter metric labels.
 
+Generated Rust protobuf and Connect modules are wire contracts, not
+compatibility authorities. Architecture scans enforce the forbidden legacy
+contract rule against handwritten Rust; generated modules may contain unused
+declarations from an imported protobuf package, while platform services expose
+only explicitly registered Rust-owned methods.
+
 ## Performance shape
 
 - The reproducible Go/Rust comparison and current measurements are recorded in

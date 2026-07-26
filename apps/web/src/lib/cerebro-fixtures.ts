@@ -4253,6 +4253,12 @@ const writeFixture = (path: string, body?: string) => {
   return notFoundFixture(path);
 };
 
+const lifecycleEnumLabelFixture = (value: string) =>
+  value
+    .replace(/^SECURITY_LIFECYCLE_SUBJECT_KIND_/, "")
+    .replace(/^SECURITY_LIFECYCLE_STATE_/, "")
+    .toLowerCase();
+
 export const cerebroFixtureResponseFor = ({
   body,
   method,
@@ -4352,6 +4358,62 @@ export const cerebroFixtureResponseFor = ({
 
   if (normalizedPath === "credential-stores") {
     return jsonFixture(credentialStoresFixture(searchParams));
+  }
+
+  if (normalizedPath === "v1/security/lifecycle") {
+    const lifecycleRecords = [
+      {
+        observation: {
+          subject_ref: { kind: "credential", id: `urn:cerebro:${tenantID}:credential:aws%2Fproduction:deploy%2Fsigning`, revision: "key-2026-07" },
+          subject_kind: "SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL",
+          provider: "aws",
+          authority_id: "aws/production",
+          stable_locator: "deploy/signing",
+          display_name: "Deployment signing credential",
+          state: "SECURITY_LIFECYCLE_STATE_EXPIRING",
+          observed_at: "2026-07-26T12:00:00Z",
+          expires_at: "2026-08-01T12:00:00Z",
+          owner_urn: `urn:cerebro:${tenantID}:team:security-platform`,
+          evidence_claim_refs: [],
+        },
+        policy_evaluations: [{ state: "expiring", warning_window_days: 30, evaluated_at: "2026-07-26T12:00:00Z" }],
+        findings: [{ finding_ref: { kind: "finding", id: `urn:cerebro:${tenantID}:finding:deploy-signing-expiry` }, finding_kind: "credential_expiry", status: "open" }],
+        action_routes: [{
+          action_type: "rotate_credential",
+          approval_required: true,
+          action_intent_ref: { kind: "action_intent", id: `urn:cerebro:${tenantID}:action_intent:deploy-signing` },
+          dispatch_ref: { kind: "dispatch", id: `urn:cerebro:${tenantID}:dispatch:deploy-signing` },
+          verification_ref: { kind: "verification", id: `urn:cerebro:${tenantID}:verification:deploy-signing` },
+        }],
+        projected_at: "2026-07-26T12:00:00Z",
+      },
+      {
+        observation: {
+          subject_ref: { kind: "certificate", id: `urn:cerebro:${tenantID}:certificate:cloudflare%2Fproduction:api.writer.com`, revision: "sha256:fixture-certificate" },
+          subject_kind: "SECURITY_LIFECYCLE_SUBJECT_KIND_CERTIFICATE",
+          provider: "cloudflare",
+          authority_id: "cloudflare/production",
+          stable_locator: "api.writer.com",
+          display_name: "api.writer.com certificate",
+          state: "SECURITY_LIFECYCLE_STATE_ACTIVE",
+          observed_at: "2026-07-26T12:00:00Z",
+          expires_at: "2026-11-18T12:00:00Z",
+          owner_urn: `urn:cerebro:${tenantID}:team:edge-platform`,
+          evidence_claim_refs: [],
+        },
+        policy_evaluations: [{ state: "compliant", warning_window_days: 30, evaluated_at: "2026-07-26T12:00:00Z" }],
+        findings: [],
+        action_routes: [],
+        projected_at: "2026-07-26T12:00:00Z",
+      },
+    ].filter((record) => {
+      const kind = lifecycleEnumLabelFixture(record.observation.subject_kind);
+      const state = lifecycleEnumLabelFixture(record.observation.state);
+      return (!searchParams?.get("subject_kind") || searchParams.get("subject_kind") === kind)
+        && (!searchParams?.get("state") || searchParams.get("state") === state)
+        && (!["true", "1"].includes(searchParams?.get("findings_only") ?? "") || record.findings.length > 0);
+    });
+    return jsonFixture({ records: lifecycleRecords, truncated: false, as_of: "2026-07-26T12:00:00Z" });
   }
 
   if (normalizedPath === "grc/findings") {

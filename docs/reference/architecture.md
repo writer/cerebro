@@ -97,6 +97,12 @@ the long-running reasoning pipeline. That deadline is owned by `net/http` and
 the response writer, so the hook belongs in bootstrap instead of the graphagent
 domain package.
 
+Credential and certificate lifecycle reads add a narrow transport adapter:
+bootstrap maps authenticated HTTP query parameters to the generated Connect
+client and returns the generated response. Stable identity, lifecycle policy,
+pagination, finding construction, action routing, and verification remain in
+the Rust organizational platform.
+
 The budget also includes explicit source-coverage evaluator error propagation at
 HTTP, MCP, and A2A boundaries. Coverage classification remains in
 `internal/sourcecoverage`; bootstrap only maps an unavailable embedded evaluator

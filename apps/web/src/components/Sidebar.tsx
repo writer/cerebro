@@ -29,6 +29,7 @@ const icons: Record<string, ReactNode> = {
   "/reports/schedules": <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />,
   "/connectors": <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />,
   "/credential-stores": <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6.75a3.75 3.75 0 1 0-7.5 0v3.75m-.75 11.25h9A2.25 2.25 0 0 0 18.75 19.5v-6.75A2.25 2.25 0 0 0 16.5 10.5h-9a2.25 2.25 0 0 0-2.25 2.25v6.75A2.25 2.25 0 0 0 7.5 21.75Z" />,
+  "/security/lifecycle": <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6.75a3.75 3.75 0 1 0-7.5 0v3.75m-.75 11.25h9A2.25 2.25 0 0 0 18.75 19.5v-6.75A2.25 2.25 0 0 0 16.5 10.5h-9a2.25 2.25 0 0 0-2.25 2.25v6.75A2.25 2.25 0 0 0 7.5 21.75Z" />,
   "/connectors/activation": <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />,
   "/controls/builder": <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />,
   "/developer": <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />,
@@ -63,7 +64,7 @@ export const sidebarNavGroups: SidebarNavGroup[] = [
     id: "assets",
     label: "Assets",
     iconHref: "/inventory",
-    links: linksFor(["/inventory", "/vendors", "/impact", "/credential-stores"]),
+    links: linksFor(["/inventory", "/vendors", "/impact", "/security/lifecycle", "/credential-stores"]),
   },
   {
     id: "sources",
