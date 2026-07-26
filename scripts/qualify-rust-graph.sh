@@ -75,8 +75,20 @@ run_harness() {
 
 run_harness seed
 
-root_id="$(jq -r .okta_identity_id "${checkpoint}")"
-canonical_id="$(jq -r .canonical_identity_id "${checkpoint}")"
+validate_entity_id() {
+  local label="$1"
+  local value="$2"
+  if ((${#value} == 0 || ${#value} > 256)) ||
+    ! [[ "${value}" =~ ^[A-Za-z0-9._:/-]+$ ]]; then
+    echo "${label} is not a valid organizational entity ID" >&2
+    return 1
+  fi
+}
+
+root_id="$(jq -er '.okta_identity_id | select(type == "string")' "${checkpoint}")"
+canonical_id="$(jq -er '.canonical_identity_id | select(type == "string")' "${checkpoint}")"
+validate_entity_id okta_identity_id "${root_id}"
+validate_entity_id canonical_identity_id "${canonical_id}"
 root_urn="urn:cerebro:rust-e2e:organizational_entity:${root_id}"
 canonical_urn="urn:cerebro:rust-e2e:organizational_entity:${canonical_id}"
 encoded_root="$(jq -rn --arg value "${root_urn}" '$value|@uri')"
