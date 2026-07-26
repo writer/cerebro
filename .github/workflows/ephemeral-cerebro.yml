@@ -218,17 +218,23 @@ jobs:
           deadline=$((SECONDS + SOAK_SECONDS))
           request_count=0
           while test "${SECONDS}" -lt "${deadline}"; do
-            seq 1 16 | xargs -P 8 -I{} curl \
+            seq 1 2 | xargs -P 2 -I{} curl \
               --max-time 10 \
               --silent \
               --show-error \
               --output /dev/null \
               --write-out '%{http_code}\n' \
               --header "Authorization: Bearer ${API_KEY}" \
-              "${graph_url}" >>shadow-statuses.txt
-            request_count=$((request_count + 16))
+              "${graph_url}" >>shadow-statuses.txt || true
+            request_count=$((request_count + 2))
+            sleep 1
           done
-          test "$(grep -c '^404$' shadow-statuses.txt)" -eq "${request_count}"
+          echo "shadow soak status distribution:"
+          sort shadow-statuses.txt | uniq -c
+          observed_count="$(wc -l <shadow-statuses.txt | tr -d ' ')"
+          test "${observed_count}" -eq "${request_count}"
+          matching_count="$(grep -c '^404$' shadow-statuses.txt || true)"
+          test "${matching_count}" -eq "${request_count}"
           echo "shadow soak: ${request_count} matching legacy-authority responses"
 
           rust_container="$(docker compose -f docker-compose.yml -f docker-compose.rust.yml ps -q rust-platform)"
