@@ -78,7 +78,8 @@ run_harness seed
 validate_entity_id() {
   local label="$1"
   local value="$2"
-  if ((${#value} == 0 || ${#value} > 256)) ||
+  if [ "${value}" = "null" ] ||
+    ((${#value} == 0 || ${#value} > 256)) ||
     ! [[ "${value}" =~ ^[A-Za-z0-9._:/-]+$ ]]; then
     echo "${label} is not a valid organizational entity ID" >&2
     return 1
