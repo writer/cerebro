@@ -15,11 +15,14 @@ import (
 )
 
 var (
-	ErrNotConfigured     = errors.New("verified access action execution is not configured")
-	ErrInvalidRequest    = errors.New("invalid verified access action execution request")
-	ErrClaimNotAcquired  = errors.New("verified access action execution claim was not acquired")
-	ErrProviderReceipt   = errors.New("verified access action provider receipt was rejected")
-	ErrSubmissionUnknown = errors.New("verified access action provider submission is unknown")
+	ErrNotConfigured        = errors.New("verified access action execution is not configured")
+	ErrInvalidRequest       = errors.New("invalid verified access action execution request")
+	ErrClaimNotAcquired     = errors.New("verified access action execution claim was not acquired")
+	ErrProviderReceipt      = errors.New("verified access action provider receipt was rejected")
+	ErrSubmissionUnknown    = errors.New("verified access action provider submission is unknown")
+	ErrExecutionPersistence = errors.New(
+		"verified access action execution receipt persistence failed",
+	)
 )
 
 type GraphActionExecutor interface {
@@ -145,12 +148,13 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 	if err != nil {
 		return &Result{Record: claim.Record, Action: action}, errors.Join(ErrProviderReceipt, err)
 	}
+	result := &Result{Record: claim.Record, Action: action}
 	applied, err = s.Store.AppendAccessAction(ctx, outcome)
 	if err != nil {
-		return nil, errors.Join(ErrSubmissionUnknown, err)
+		return result, errors.Join(ErrExecutionPersistence, err)
 	}
 	if !applied {
-		return nil, errors.Join(ErrSubmissionUnknown, ErrClaimNotAcquired)
+		return result, errors.Join(ErrExecutionPersistence, ErrClaimNotAcquired)
 	}
 	return &Result{Record: outcome.Record, Action: action}, nil
 }

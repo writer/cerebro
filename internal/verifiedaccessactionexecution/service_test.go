@@ -175,6 +175,55 @@ func TestExecuteReturnsDefinitiveProviderFailureWithoutRecordingAmbiguity(t *tes
 	}
 }
 
+func TestExecuteDistinguishesValidatedProviderSuccessFromPersistenceFailure(t *testing.T) {
+	t.Parallel()
+
+	store, record, proposalDigest := approvedAction(t)
+	clock := record.Approval.ApprovedAt.Add(time.Minute)
+	persistErr := errors.New("database unavailable")
+	service := Service{
+		Store: &failExecutedAppendStore{
+			Store: store,
+			err:   persistErr,
+		},
+		Executor: &stubExecutor{execute: successfulExecution(clock.Add(time.Minute))},
+		Clock:    func() time.Time { return clock },
+	}
+
+	result, err := service.Execute(
+		context.Background(),
+		executionRequest(record, proposalDigest),
+	)
+	if result == nil || result.Action == nil {
+		t.Fatalf("result = %+v, want the validated provider receipt", result)
+	}
+	if !errors.Is(err, ErrExecutionPersistence) ||
+		!errors.Is(err, persistErr) ||
+		errors.Is(err, ErrSubmissionUnknown) {
+		t.Fatalf(
+			"Execute() error = %v, want execution persistence without submission ambiguity",
+			err,
+		)
+	}
+	if result.Record.Status != verifiedaccessaction.StatusClaimed {
+		t.Fatalf(
+			"result status = %q, want last durable status %q",
+			result.Record.Status,
+			verifiedaccessaction.StatusClaimed,
+		)
+	}
+
+	persisted, getErr := store.GetAccessAction(context.Background(), record.TenantID, record.ID)
+	if getErr != nil {
+		t.Fatal(getErr)
+	}
+	if persisted.Status != verifiedaccessaction.StatusClaimed ||
+		persisted.Execution != nil ||
+		persisted.SubmissionUnknown != nil {
+		t.Fatalf("persistence failure changed durable state: %+v", persisted)
+	}
+}
+
 func TestExecuteRejectsMismatchedProviderMetadataBeforeFillingDefaults(t *testing.T) {
 	t.Parallel()
 
@@ -236,6 +285,21 @@ func TestExecuteRejectsStaleProposalBeforeCallingProvider(t *testing.T) {
 	if calls := executor.calls.Load(); calls != 0 {
 		t.Fatalf("provider calls = %d, want 0", calls)
 	}
+}
+
+type failExecutedAppendStore struct {
+	verifiedaccessaction.Store
+	err error
+}
+
+func (s *failExecutedAppendStore) AppendAccessAction(
+	ctx context.Context,
+	outcome verifiedaccessaction.Outcome,
+) (bool, error) {
+	if outcome.Record.Status == verifiedaccessaction.StatusExecuted {
+		return false, s.err
+	}
+	return s.Store.AppendAccessAction(ctx, outcome)
 }
 
 type stubExecutor struct {
