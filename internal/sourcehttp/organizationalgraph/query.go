@@ -34,7 +34,13 @@ const (
 	maxConcurrentComparisons = 32
 )
 
-var errComparisonCapacity = errors.New("organizational graph comparison capacity exhausted")
+var (
+	errComparisonCapacity         = errors.New("organizational graph comparison capacity exhausted")
+	errRustGraphOmittedRoot       = errors.New("rust graph omitted a requested root")
+	errRustGraphDifferentRoot     = errors.New("rust graph returned a different root")
+	errRustGraphMissingRootID     = errors.New("rust graph root is missing its entity ID")
+	errRustGraphDuplicateEntityID = errors.New("rust graph returned duplicate entity IDs")
+)
 
 type readMode uint8
 
@@ -342,7 +348,7 @@ func (s *QueryStore) getRustEntityNeighborhoods(ctx context.Context, rootURNs []
 		result[rootURN] = product
 	}
 	if len(result) != len(seen) {
-		return nil, errors.New("rust graph omitted a requested root")
+		return nil, errRustGraphOmittedRoot
 	}
 	return result, nil
 }
@@ -680,13 +686,13 @@ func productNeighborhood(rootKey string, rust *cerebrographv1.ExpandResponse) (*
 		return nil, errors.New("rust graph neighborhood belongs to a different tenant")
 	}
 	if productEntityKey(rust.GetRoot()) != strings.TrimSpace(rootKey) {
-		return nil, errors.New("rust graph returned a different root")
+		return nil, errRustGraphDifferentRoot
 	}
 	if !cerebrourn.SameTenant(productEntityKey(rust.GetRoot()), rust.GetTenantId()) {
 		return nil, errors.New("rust graph root is missing its tenant-scoped agent key")
 	}
 	if strings.TrimSpace(rust.GetRoot().GetEntityId()) == "" {
-		return nil, errors.New("rust graph root is missing its entity ID")
+		return nil, errRustGraphMissingRootID
 	}
 	keys := make(map[string]string, len(rust.GetEntities())+1)
 	entityIDs := map[string]string{rootKey: rust.GetRoot().GetEntityId()}
@@ -703,7 +709,7 @@ func productNeighborhood(rootKey string, rust *cerebrographv1.ExpandResponse) (*
 			return nil, errors.New("rust graph entity is missing its entity ID")
 		}
 		if _, exists := keys[entity.GetEntityId()]; exists {
-			return nil, errors.New("rust graph returned duplicate entity IDs")
+			return nil, errRustGraphDuplicateEntityID
 		}
 		if existing, exists := entityIDs[key]; exists && existing != entity.GetEntityId() {
 			return nil, errors.New("rust graph returned duplicate product entity keys")

@@ -965,7 +965,7 @@ func TestQueryStoreRejectsIncompleteBatchResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
-	if _, err := store.GetEntityNeighborhoods(context.Background(), []string{rootOne, rootTwo}, 10); err == nil || !strings.Contains(err.Error(), "omitted") {
+	if _, err := store.GetEntityNeighborhoods(context.Background(), []string{rootOne, rootTwo}, 10); !errors.Is(err, errRustGraphOmittedRoot) {
 		t.Fatalf("GetEntityNeighborhoods() error = %v, want omitted-root rejection", err)
 	}
 }
@@ -976,7 +976,7 @@ func TestProductNeighborhoodRejectsAmbiguousRustIdentity(t *testing.T) {
 		name     string
 		root     *cerebrographv1.GraphEntity
 		entities []*cerebrographv1.GraphEntity
-		want     string
+		want     error
 	}{
 		{
 			name: "different root",
@@ -984,14 +984,14 @@ func TestProductNeighborhoodRejectsAmbiguousRustIdentity(t *testing.T) {
 				EntityId: "root-1",
 				AgentKey: "urn:cerebro:tenant-a:runtime_file:other",
 			},
-			want: "different root",
+			want: errRustGraphDifferentRoot,
 		},
 		{
 			name: "missing root ID",
 			root: &cerebrographv1.GraphEntity{
 				AgentKey: root,
 			},
-			want: "missing its entity ID",
+			want: errRustGraphMissingRootID,
 		},
 		{
 			name: "duplicate entity ID",
@@ -1003,7 +1003,7 @@ func TestProductNeighborhoodRejectsAmbiguousRustIdentity(t *testing.T) {
 				EntityId: "same-id",
 				AgentKey: "urn:cerebro:tenant-a:repository:repo-1",
 			}},
-			want: "duplicate entity IDs",
+			want: errRustGraphDuplicateEntityID,
 		},
 	}
 	for _, test := range tests {
@@ -1013,8 +1013,8 @@ func TestProductNeighborhoodRejectsAmbiguousRustIdentity(t *testing.T) {
 				Root:     test.root,
 				Entities: test.entities,
 			})
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("productNeighborhood() error = %v, want %q", err, test.want)
+			if !errors.Is(err, test.want) {
+				t.Fatalf("productNeighborhood() error = %v, want %v", err, test.want)
 			}
 		})
 	}
