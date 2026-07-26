@@ -215,6 +215,20 @@ Go projector                Rust mapper
 
 `cerebro-platform serve-neo4j-readonly` opens only the bounded Neo4j read plane. It does not connect to PostgreSQL, run store migrations, expose a projection runtime, or consume the append log. Use this process for pre-cutover shadow and read canaries. `serve-neo4j` adds the projection API, while `serve-neo4j-consumer` also starts append-log consumption.
 
+Read promotion uses three explicit states. `shadow` always returns Go and
+compares a stable sample with Rust. `canary` assigns each tenant to Rust or Go
+with a stable hash; a Rust-tenant failure fails closed and never retries
+against Go. `authority` returns Rust for every typed read. Raw Cypher is not
+part of the canary surface and must be removed before the Go graph store can be
+retired.
+
+The append-log consumer defaults to new events. A rebuild uses
+`CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY=all`, while a fenced handoff
+uses `by_start_sequence` plus
+`CEREBRO_ORGANIZATIONAL_CONSUMER_START_SEQUENCE`. Either replay mode requires
+an explicit, separate `CEREBRO_ORGANIZATIONAL_CONSUMER_NAME`; it cannot reuse
+the live forward-only durable identity.
+
 Every server mode exposes Prometheus request counters and latency histograms on `/metrics`. Operation labels come from a fixed route vocabulary; tenant IDs, entity IDs, request paths, and evidence do not enter metric labels.
 
 ## Performance shape

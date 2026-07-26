@@ -27,15 +27,34 @@ struct ConsumerConfig {
     stream: String,
     subject_prefix: String,
     durable_name: String,
+    deliver_policy: DeliverPolicy,
 }
 
 impl ConsumerConfig {
     fn from_env() -> Result<Self, Box<dyn Error>> {
+        let deliver_policy = match optional("CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY", "new")
+            .as_str()
+        {
+            "new" => DeliverPolicy::New,
+            "all" => DeliverPolicy::All,
+            "by_start_sequence" => DeliverPolicy::ByStartSequence {
+                start_sequence: required_u64("CEREBRO_ORGANIZATIONAL_CONSUMER_START_SEQUENCE")?,
+            },
+            _ => {
+                return Err(
+                    "CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY must be new, all, or by_start_sequence"
+                        .into(),
+                );
+            }
+        };
+        let durable_name = optional("CEREBRO_ORGANIZATIONAL_CONSUMER_NAME", DEFAULT_CONSUMER);
+        validate_delivery_identity(deliver_policy, &durable_name)?;
         Ok(Self {
             nats_url: required("CEREBRO_JETSTREAM_URL")?,
             stream: optional("CEREBRO_JETSTREAM_STREAM_NAME", DEFAULT_STREAM),
             subject_prefix: optional("CEREBRO_JETSTREAM_SUBJECT_PREFIX", DEFAULT_SUBJECT_PREFIX),
-            durable_name: optional("CEREBRO_ORGANIZATIONAL_CONSUMER_NAME", DEFAULT_CONSUMER),
+            durable_name,
+            deliver_policy,
         })
     }
 
@@ -51,7 +70,7 @@ impl ConsumerConfig {
                 "Projects committed Cerebro source events into the organizational ledger"
                     .to_owned(),
             ),
-            deliver_policy: DeliverPolicy::New,
+            deliver_policy: self.deliver_policy,
             ack_policy: AckPolicy::Explicit,
             ack_wait: ACK_WAIT,
             max_deliver: -1,
@@ -60,6 +79,18 @@ impl ConsumerConfig {
             ..Default::default()
         }
     }
+}
+
+fn validate_delivery_identity(
+    deliver_policy: DeliverPolicy,
+    durable_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    if deliver_policy != DeliverPolicy::New && durable_name == DEFAULT_CONSUMER {
+        return Err(
+            "replay delivery requires an explicit CEREBRO_ORGANIZATIONAL_CONSUMER_NAME".into(),
+        );
+    }
+    Ok(())
 }
 
 pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn Error>> {
@@ -209,6 +240,17 @@ fn optional(name: &str, default: &str) -> String {
         .unwrap_or_else(|| default.to_owned())
 }
 
+fn required_u64(name: &str) -> Result<u64, Box<dyn Error>> {
+    let value = required(name)?;
+    let parsed = value
+        .parse::<u64>()
+        .map_err(|_| format!("{name} must be an unsigned integer"))?;
+    if parsed == 0 {
+        return Err(format!("{name} must be greater than zero").into());
+    }
+    Ok(parsed)
+}
+
 fn consumer_io(error: impl std::fmt::Display) -> io::Error {
     io::Error::other(error.to_string())
 }
@@ -224,6 +266,7 @@ mod tests {
             stream: DEFAULT_STREAM.to_owned(),
             subject_prefix: DEFAULT_SUBJECT_PREFIX.to_owned(),
             durable_name: DEFAULT_CONSUMER.to_owned(),
+            deliver_policy: DeliverPolicy::New,
         };
         let pull = config.pull_config();
         assert_eq!(pull.durable_name.as_deref(), Some(DEFAULT_CONSUMER));
@@ -257,6 +300,7 @@ mod tests {
             stream: DEFAULT_STREAM.to_owned(),
             subject_prefix: DEFAULT_SUBJECT_PREFIX.to_owned(),
             durable_name: DEFAULT_CONSUMER.to_owned(),
+            deliver_policy: DeliverPolicy::New,
         }
         .pull_config();
         let mut actual = async_nats::jetstream::consumer::Config {
@@ -280,5 +324,39 @@ mod tests {
         assert!(decode_event(b"not-a-source-envelope", "box", "events.box.users").is_err());
         assert_eq!(failure_disposition(false), FailureDisposition::Reject);
         assert_eq!(failure_disposition(true), FailureDisposition::Retry);
+    }
+
+    #[test]
+    fn replay_policies_preserve_an_explicit_start_boundary() {
+        let all = ConsumerConfig {
+            nats_url: "nats://localhost:4222".to_owned(),
+            stream: DEFAULT_STREAM.to_owned(),
+            subject_prefix: DEFAULT_SUBJECT_PREFIX.to_owned(),
+            durable_name: "organizational-graph-bootstrap".to_owned(),
+            deliver_policy: DeliverPolicy::All,
+        }
+        .pull_config();
+        assert_eq!(all.deliver_policy, DeliverPolicy::All);
+
+        let from_sequence = ConsumerConfig {
+            nats_url: "nats://localhost:4222".to_owned(),
+            stream: DEFAULT_STREAM.to_owned(),
+            subject_prefix: DEFAULT_SUBJECT_PREFIX.to_owned(),
+            durable_name: "organizational-graph-replay-42".to_owned(),
+            deliver_policy: DeliverPolicy::ByStartSequence { start_sequence: 42 },
+        }
+        .pull_config();
+        assert_eq!(
+            from_sequence.deliver_policy,
+            DeliverPolicy::ByStartSequence { start_sequence: 42 }
+        );
+        assert!(validate_delivery_identity(DeliverPolicy::All, DEFAULT_CONSUMER).is_err());
+        assert!(
+            validate_delivery_identity(
+                DeliverPolicy::ByStartSequence { start_sequence: 42 },
+                "organizational-graph-replay-42",
+            )
+            .is_ok()
+        );
     }
 }

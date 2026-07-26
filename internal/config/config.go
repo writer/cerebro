@@ -156,6 +156,7 @@ type OrganizationalGraphConfig struct {
 	ProjectionBaseURL string
 	ReadMode          string
 	ShadowPercent     int
+	AuthorityPercent  int
 	SharedSecret      string
 	Timeout           time.Duration
 }
@@ -695,8 +696,10 @@ func Load() (Config, error) {
 	if cfg.OrganizationalGraph.ReadMode == "" {
 		cfg.OrganizationalGraph.ReadMode = "authority"
 	}
-	if cfg.OrganizationalGraph.ReadMode != "authority" && cfg.OrganizationalGraph.ReadMode != "shadow" {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE must be authority or shadow")
+	if cfg.OrganizationalGraph.ReadMode != "authority" &&
+		cfg.OrganizationalGraph.ReadMode != "shadow" &&
+		cfg.OrganizationalGraph.ReadMode != "canary" {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE must be authority, shadow, or canary")
 	}
 	if cfg.OrganizationalGraph.ShadowPercent, err = parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", 0); err != nil {
 		return Config{}, err
@@ -709,6 +712,22 @@ func Load() (Config, error) {
 	}
 	if cfg.OrganizationalGraph.ReadMode == "shadow" && cfg.OrganizationalGraph.ShadowPercent == 0 {
 		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be greater than zero in shadow mode")
+	}
+	if cfg.OrganizationalGraph.ReadMode != "shadow" && cfg.OrganizationalGraph.ShadowPercent != 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be zero unless read mode is shadow")
+	}
+	if cfg.OrganizationalGraph.AuthorityPercent, err = parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.OrganizationalGraph.AuthorityPercent < 0 || cfg.OrganizationalGraph.AuthorityPercent > 100 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT must be between 0 and 100")
+	}
+	if cfg.OrganizationalGraph.ReadMode == "canary" &&
+		(cfg.OrganizationalGraph.AuthorityPercent == 0 || cfg.OrganizationalGraph.AuthorityPercent == 100) {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT must be between 1 and 99 in canary mode")
+	}
+	if cfg.OrganizationalGraph.ReadMode != "canary" && cfg.OrganizationalGraph.AuthorityPercent != 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT must be zero unless read mode is canary")
 	}
 	for _, configured := range []struct {
 		name     string

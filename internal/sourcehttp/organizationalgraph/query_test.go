@@ -3,6 +3,7 @@ package organizationalgraph
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -195,6 +196,112 @@ func TestShadowQueryStoreRequiresCompatibilityAndBoundedSampling(t *testing.T) {
 	if _, err := NewShadowQueryStore(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second, 101); err == nil {
 		t.Fatal("NewShadowQueryStore(101%) error = nil")
 	}
+}
+
+func TestCanaryQueryStoreUsesStableSingleAuthorityAndFailsClosed(t *testing.T) {
+	requests := 0
+	server := newGraphTestServer(t, graphServiceStub{
+		expand: func(_ context.Context, request *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
+			requests++
+			return connect.NewResponse(&cerebrographv1.ExpandResponse{
+				TenantId: request.Msg.GetTenantId(),
+				Root: &cerebrographv1.GraphEntity{
+					EntityId:   "rust-root",
+					AgentKey:   request.Msg.GetRootKey(),
+					EntityKind: "resource",
+					Label:      "Rust",
+				},
+			}), nil
+		},
+	})
+	defer server.Close()
+
+	legacy := &ports.EntityNeighborhood{
+		Root: &ports.NeighborhoodNode{URN: "legacy", Label: "Legacy"},
+	}
+	store, err := NewCanaryQueryStore(
+		queryStoreStub{neighborhood: legacy},
+		server.URL,
+		testSharedSecret,
+		time.Second,
+		50,
+	)
+	if err != nil {
+		t.Fatalf("NewCanaryQueryStore() error = %v", err)
+	}
+	rustRoot := canaryRoot(t, store, true)
+	legacyRoot := canaryRoot(t, store, false)
+
+	rust, err := store.GetEntityNeighborhood(context.Background(), rustRoot, 10)
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhood(Rust) error = %v", err)
+	}
+	if rust.Root == nil || rust.Root.Label != "Rust" || requests != 1 {
+		t.Fatalf("Rust response = %#v, requests = %d", rust, requests)
+	}
+	secondRustRoot := strings.Replace(rustRoot, ":asset", ":asset-2", 1)
+	if _, err := store.GetEntityNeighborhood(context.Background(), secondRustRoot, 10); err != nil {
+		t.Fatalf("GetEntityNeighborhood(second Rust root) error = %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("same Rust tenant changed authority, requests = %d", requests)
+	}
+	gotLegacy, err := store.GetEntityNeighborhood(context.Background(), legacyRoot, 10)
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhood(legacy) error = %v", err)
+	}
+	if gotLegacy != legacy || requests != 2 {
+		t.Fatalf("legacy response = %#v, requests = %d", gotLegacy, requests)
+	}
+	if _, err := store.GetEntityNeighborhoods(
+		context.Background(),
+		[]string{rustRoot, legacyRoot},
+		10,
+	); err == nil {
+		t.Fatal("mixed-tenant canary batch error = nil")
+	}
+
+	failing, err := NewCanaryQueryStore(
+		queryStoreStub{neighborhood: legacy},
+		"http://127.0.0.1:1",
+		testSharedSecret,
+		10*time.Millisecond,
+		50,
+	)
+	if err != nil {
+		t.Fatalf("NewCanaryQueryStore(failing) error = %v", err)
+	}
+	if _, err := failing.GetEntityNeighborhood(
+		context.Background(),
+		canaryRoot(t, failing, true),
+		10,
+	); err == nil {
+		t.Fatal("sampled Rust failure fell back to Go")
+	}
+}
+
+func TestCanaryQueryStoreRequiresCompatibilityAndBoundedSampling(t *testing.T) {
+	if _, err := NewCanaryQueryStore(nil, "http://127.0.0.1:1", testSharedSecret, time.Second, 10); err == nil {
+		t.Fatal("NewCanaryQueryStore(nil) error = nil")
+	}
+	for _, percent := range []int{0, 100, 101} {
+		if _, err := NewCanaryQueryStore(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second, percent); err == nil {
+			t.Fatalf("NewCanaryQueryStore(%d) error = nil", percent)
+		}
+	}
+}
+
+func canaryRoot(t *testing.T, store *QueryStore, wantRust bool) string {
+	t.Helper()
+	for index := 0; index < 10_000; index++ {
+		tenantID := fmt.Sprintf("tenant-%d", index)
+		root := fmt.Sprintf("urn:cerebro:%s:runtime_file:asset", tenantID)
+		if store.sample(tenantID) == wantRust {
+			return root
+		}
+	}
+	t.Fatalf("no canary root found for wantRust=%t", wantRust)
+	return ""
 }
 
 func TestQueryStoreHealthRequiresRustAndChecksCompatibilityWhenPresent(t *testing.T) {

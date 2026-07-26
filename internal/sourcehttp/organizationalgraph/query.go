@@ -12,11 +12,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect"
+	"go.opentelemetry.io/otel/trace"
 
 	cerebrographv1 "github.com/writer/cerebro/gen/cerebro/graph/v1"
 	"github.com/writer/cerebro/gen/cerebro/graph/v1/cerebrographv1connect"
@@ -30,6 +32,14 @@ const (
 	maxBatchRoots    = 100
 )
 
+type readMode uint8
+
+const (
+	readModeAuthority readMode = iota
+	readModeShadow
+	readModeCanary
+)
+
 // QueryStore serves bounded product reads from Rust. When a compatibility
 // reader is present, callers not yet moved from raw Cypher can still use it.
 // Without one, those callers fail explicitly instead of falling back.
@@ -39,8 +49,8 @@ type QueryStore struct {
 	httpClient    *http.Client
 	graph         cerebrographv1connect.OrganizationalGraphServiceClient
 	auth          tenantAuthenticator
-	shadow        bool
-	shadowPercent uint32
+	mode          readMode
+	samplePercent uint32
 }
 
 // ReadinessStore selects the product read authority when configured.
@@ -52,7 +62,19 @@ func ReadinessStore(compatibility, authority ports.GraphStore) ports.GraphStore 
 }
 
 func NewQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration) (*QueryStore, error) {
-	return newQueryStore(compatibility, baseURL, sharedSecret, timeout, false, 0)
+	return newQueryStore(compatibility, baseURL, sharedSecret, timeout, readModeAuthority, 100)
+}
+
+// NewConfiguredQueryStore selects one validated deployment read strategy.
+func NewConfiguredQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode string, shadowPercent, authorityPercent int) (*QueryStore, error) {
+	switch mode {
+	case "shadow":
+		return NewShadowQueryStore(compatibility, baseURL, sharedSecret, timeout, shadowPercent)
+	case "canary":
+		return NewCanaryQueryStore(compatibility, baseURL, sharedSecret, timeout, authorityPercent)
+	default:
+		return NewQueryStore(compatibility, baseURL, sharedSecret, timeout)
+	}
 }
 
 func NewShadowQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, shadowPercent int) (*QueryStore, error) {
@@ -62,10 +84,23 @@ func NewShadowQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSec
 	if shadowPercent <= 0 || shadowPercent > 100 {
 		return nil, errors.New("shadow graph read percent must be between 1 and 100")
 	}
-	return newQueryStore(compatibility, baseURL, sharedSecret, timeout, true, uint32(shadowPercent)) // #nosec G115 -- validated above.
+	return newQueryStore(compatibility, baseURL, sharedSecret, timeout, readModeShadow, uint32(shadowPercent)) // #nosec G115 -- validated above.
 }
 
-func newQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, shadow bool, shadowPercent uint32) (*QueryStore, error) {
+// NewCanaryQueryStore returns Rust responses for one stable sample of typed
+// reads and the compatibility response for the rest. A sampled Rust failure
+// fails closed; it never retries the same request against Go.
+func NewCanaryQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, authorityPercent int) (*QueryStore, error) {
+	if compatibility == nil {
+		return nil, errors.New("canary graph reads require the legacy compatibility store")
+	}
+	if authorityPercent <= 0 || authorityPercent >= 100 {
+		return nil, errors.New("canary graph read percent must be between 1 and 99")
+	}
+	return newQueryStore(compatibility, baseURL, sharedSecret, timeout, readModeCanary, uint32(authorityPercent)) // #nosec G115 -- validated above.
+}
+
+func newQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode readMode, samplePercent uint32) (*QueryStore, error) {
 	baseURL, err := normalizeBaseURL(baseURL)
 	if err != nil {
 		return nil, err
@@ -84,8 +119,8 @@ func newQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret st
 		httpClient:    httpClient,
 		graph:         cerebrographv1connect.NewOrganizationalGraphServiceClient(httpClient, baseURL),
 		auth:          auth,
-		shadow:        shadow,
-		shadowPercent: shadowPercent,
+		mode:          mode,
+		samplePercent: samplePercent,
 	}, nil
 }
 
@@ -95,7 +130,7 @@ func (s *QueryStore) Ping(ctx context.Context) (err error) {
 			return fmt.Errorf("compatibility graph health: %w", err)
 		}
 	}
-	if s.shadow {
+	if s.mode == readModeShadow {
 		started := time.Now()
 		err := s.pingRust(ctx)
 		status := "match"
@@ -135,7 +170,16 @@ func (s *QueryStore) pingRust(ctx context.Context) (err error) {
 }
 
 func (s *QueryStore) GetEntityNeighborhood(ctx context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
-	if !s.shadow {
+	if s.mode == readModeCanary {
+		tenantID := cerebrourn.TenantID(strings.TrimSpace(rootURN))
+		if tenantID == "" {
+			return nil, errors.New("root is not a tenant-scoped Cerebro URN")
+		}
+		if !s.sample(tenantID) {
+			return s.compatibility.GetEntityNeighborhood(ctx, rootURN, limit)
+		}
+	}
+	if s.mode == readModeAuthority || s.mode == readModeCanary {
 		return s.getRustEntityNeighborhood(ctx, rootURN, limit)
 	}
 	legacy, err := s.compatibility.GetEntityNeighborhood(ctx, rootURN, limit)
@@ -180,11 +224,21 @@ func (s *QueryStore) getRustEntityNeighborhood(ctx context.Context, rootURN stri
 }
 
 func (s *QueryStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
-	if !s.shadow {
+	sampleKey := strings.Join(rootURNs, "\x00")
+	if s.mode == readModeCanary {
+		tenantID, err := graphRootsTenant(rootURNs)
+		if err != nil {
+			return nil, err
+		}
+		if !s.sample(tenantID) {
+			return legacyNeighborhoods(ctx, s.compatibility, rootURNs, limit)
+		}
+	}
+	if s.mode == readModeAuthority || s.mode == readModeCanary {
 		return s.getRustEntityNeighborhoods(ctx, rootURNs, limit)
 	}
 	legacy, err := legacyNeighborhoods(ctx, s.compatibility, rootURNs, limit)
-	if err != nil || !s.sample(strings.Join(rootURNs, "\x00")) {
+	if err != nil || !s.sample(sampleKey) {
 		return legacy, err
 	}
 	started := time.Now()
@@ -252,6 +306,25 @@ func (s *QueryStore) getRustEntityNeighborhoods(ctx context.Context, rootURNs []
 	return result, nil
 }
 
+func graphRootsTenant(rootURNs []string) (string, error) {
+	if len(rootURNs) == 0 {
+		return "", nil
+	}
+	tenantID := ""
+	for _, rootURN := range rootURNs {
+		rootTenantID := cerebrourn.TenantID(strings.TrimSpace(rootURN))
+		if rootTenantID == "" {
+			return "", errors.New("root is not a tenant-scoped Cerebro URN")
+		}
+		if tenantID == "" {
+			tenantID = rootTenantID
+		} else if rootTenantID != tenantID {
+			return "", errors.New("graph roots belong to different tenants")
+		}
+	}
+	return tenantID, nil
+}
+
 func legacyNeighborhoods(ctx context.Context, store ports.GraphQueryStore, roots []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
 	if batch, ok := store.(ports.GraphNeighborhoodBatchStore); ok {
 		return batch.GetEntityNeighborhoods(ctx, roots, limit)
@@ -272,13 +345,17 @@ func legacyNeighborhoods(ctx context.Context, store ports.GraphQueryStore, roots
 
 func (s *QueryStore) sample(key string) bool {
 	digest := sha256.Sum256([]byte(key))
-	return binary.BigEndian.Uint32(digest[:4])%100 < s.shadowPercent
+	return binary.BigEndian.Uint32(digest[:4])%100 < s.samplePercent
 }
 
 func (s *QueryStore) recordComparison(ctx context.Context, operation string, legacy, rust any, rustErr error, started time.Time) {
 	status := "match"
+	legacyDigest, legacyShape := comparisonReceipt(legacy)
+	rustDigest, rustShape := comparisonReceipt(rust)
+	errorDigest := ""
 	if rustErr != nil {
 		status = "rust_error"
+		errorDigest = digestString(rustErr.Error())
 	} else {
 		legacyJSON, legacyErr := json.Marshal(legacy)
 		rustJSON, rustMarshalErr := json.Marshal(rust)
@@ -288,11 +365,72 @@ func (s *QueryStore) recordComparison(ctx context.Context, operation string, leg
 			status = "mismatch"
 		}
 	}
+	if status != "match" {
+		traceID := trace.SpanContextFromContext(ctx).TraceID().String()
+		log.Printf(
+			"organizational graph parity operation=%s status=%s trace_id=%s legacy_sha256=%s rust_sha256=%s legacy_shape=%q rust_shape=%q error_sha256=%s",
+			operation,
+			status,
+			traceID,
+			legacyDigest,
+			rustDigest,
+			legacyShape,
+			rustShape,
+			errorDigest,
+		)
+	}
 	observability.RecordOrganizationalGraphShadow(ctx, observability.OrganizationalGraphShadowMetrics{
 		Operation: operation,
 		Status:    status,
 		Duration:  time.Since(started),
 	})
+}
+
+func comparisonReceipt(value any) (string, string) {
+	if value == nil {
+		return "", "nil"
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "", "unencodable"
+	}
+	shape := fmt.Sprintf("type=%T", value)
+	switch typed := value.(type) {
+	case *ports.EntityNeighborhood:
+		if typed == nil {
+			return digestBytes(encoded), "neighborhood:nil"
+		}
+		shape = fmt.Sprintf(
+			"neighborhood:root=%t,neighbors=%d,relations=%d",
+			typed.Root != nil,
+			len(typed.Neighbors),
+			len(typed.Relations),
+		)
+	case map[string]*ports.EntityNeighborhood:
+		neighbors, relations := 0, 0
+		for _, neighborhood := range typed {
+			if neighborhood != nil {
+				neighbors += len(neighborhood.Neighbors)
+				relations += len(neighborhood.Relations)
+			}
+		}
+		shape = fmt.Sprintf(
+			"neighborhood_batch:roots=%d,neighbors=%d,relations=%d",
+			len(typed),
+			neighbors,
+			relations,
+		)
+	}
+	return digestBytes(encoded), shape
+}
+
+func digestString(value string) string {
+	return digestBytes([]byte(value))
+}
+
+func digestBytes(value []byte) string {
+	digest := sha256.Sum256(value)
+	return fmt.Sprintf("%x", digest)
 }
 
 func (s *QueryStore) ExecuteReadCypher(ctx context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {

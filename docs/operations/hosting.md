@@ -271,10 +271,14 @@ Use managed Postgres or an operationally equivalent deployment for shared enviro
 | `CEREBRO_ORGANIZATIONAL_GRAPH_URL` | Legacy combined Rust graph origin. Prefer the separate read and projection origins. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL` | Rust bounded-read origin. It can be enabled without configuring projection writes. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL` | Rust family-authority and projection origin. Keep it unset during read-only staging. |
-| `CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE` | `shadow` keeps Go authoritative and compares sampled Rust reads; `authority` returns Rust reads and fails closed. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE` | `shadow` keeps Go authoritative and compares sampled Rust reads; `canary` returns Rust for a stable sample; `authority` returns Rust for every typed read and fails closed. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT` | Stable sampled-read percentage for shadow mode. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT` | Stable percentage of tenants assigned to Rust authority, from 1 through 99 in canary mode. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET` | Secret used to sign tenant-bound graph requests. Required with any Rust graph origin and must be at least 32 bytes. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT` | Rust graph request timeout. Defaults to `1s`. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_NAME` | Durable JetStream consumer identity. Replay and rebuild modes require a new explicit name. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY` | `new` for forward processing, `all` for a complete retained-history rebuild, or `by_start_sequence` for a fenced handoff. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_START_SEQUENCE` | Positive JetStream stream sequence required by `by_start_sequence`. |
 
 Monitor graph ingest health, query latency, index health, and storage growth. Keep graph credentials scoped to the required database.
 

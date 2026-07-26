@@ -107,24 +107,11 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		if primary, ok := deps.GraphStore.(ports.GraphQueryStore); ok && !isNilInterface(primary) {
 			compatibility = primary
 		}
-		var queryStore ports.GraphQueryStore
-		var err error
-		if cfg.OrganizationalGraph.ReadMode == "shadow" {
-			queryStore, err = organizationalgraph.NewShadowQueryStore(
-				compatibility,
-				readBaseURL,
-				cfg.OrganizationalGraph.SharedSecret,
-				cfg.OrganizationalGraph.Timeout,
-				cfg.OrganizationalGraph.ShadowPercent,
-			)
-		} else {
-			queryStore, err = organizationalgraph.NewQueryStore(
-				compatibility,
-				readBaseURL,
-				cfg.OrganizationalGraph.SharedSecret,
-				cfg.OrganizationalGraph.Timeout,
-			)
-		}
+		queryStore, err := organizationalgraph.NewConfiguredQueryStore(
+			compatibility, readBaseURL, cfg.OrganizationalGraph.SharedSecret,
+			cfg.OrganizationalGraph.Timeout, cfg.OrganizationalGraph.ReadMode,
+			cfg.OrganizationalGraph.ShadowPercent, cfg.OrganizationalGraph.AuthorityPercent,
+		)
 		if err != nil {
 			return fail(fmt.Errorf("open Rust organizational graph reads: %w", err))
 		}

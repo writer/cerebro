@@ -71,8 +71,9 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_ORGANIZATIONAL_GRAPH_URL` | unset | Legacy combined Rust graph origin. Prefer the separate read and projection origins so observing reads cannot activate a writer path. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL` | unset | Rust bounded graph read origin. This does not configure Rust projection writes. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL` | unset | Rust family-authority and projection origin. Leave unset until the Rust writer path is intentionally enabled. |
-| `CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE` | `authority` | `shadow` returns the legacy result and compares sampled Rust reads; `authority` returns the Rust result and fails closed. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE` | `authority` | `shadow` returns the legacy result and compares sampled Rust reads; `canary` returns Rust for a stable sample; `authority` returns the Rust result and fails closed. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT` | `0` | Stable percentage from 1 through 100 of typed reads compared in shadow mode. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT` | `0` | Stable percentage from 1 through 99 of tenants assigned to Rust for typed reads in canary mode. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET` | unset | Shared secret used to sign tenant-bound requests to the Rust organizational graph service. Required with any Rust graph origin; minimum 32 bytes. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT` | `1s` | Timeout for Rust organizational graph reads and projection-authority requests. |
 

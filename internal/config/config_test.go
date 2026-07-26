@@ -59,6 +59,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL", "")
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "")
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", "")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT", "")
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "")
 	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT", "")
 	clearGraphAgentEnv(t)
@@ -219,6 +220,37 @@ func TestLoadRejectsUnsafeRustGraphShadowConfiguration(t *testing.T) {
 				t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
 			}
 			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", value)
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() error = nil")
+			}
+		})
+	}
+}
+
+func TestLoadAcceptsBoundedRustGraphCanaryConfiguration(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "canary")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT", "10")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "test-organizational-graph-secret-32-bytes")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.OrganizationalGraph.ReadMode != "canary" || cfg.OrganizationalGraph.AuthorityPercent != 10 {
+		t.Fatalf("OrganizationalGraph = %#v", cfg.OrganizationalGraph)
+	}
+}
+
+func TestLoadRejectsUnsafeRustGraphCanaryConfiguration(t *testing.T) {
+	for _, value := range []string{"0", "100", "101"} {
+		t.Run(value, func(t *testing.T) {
+			clearDependencyEnv(t)
+			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
+			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "canary")
+			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT", value)
+			t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "test-organizational-graph-secret-32-bytes")
 			if _, err := Load(); err == nil {
 				t.Fatal("Load() error = nil")
 			}
