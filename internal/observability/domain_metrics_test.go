@@ -99,19 +99,49 @@ func TestRecordOrganizationalGraphCanaryRouteMetricsAreLowCardinality(t *testing
 		Authority:         "Rust",
 		Status:            "Success",
 		ConfiguredPercent: 10,
+		Duration:          20 * time.Millisecond,
 	})
 	t.Cleanup(shutdown)
 
 	metrics := collectMetrics(t, reader)
-	metric, ok := metrics["cerebro.organizational_graph.canary.routes"]
-	if !ok {
-		t.Fatalf("canary route metric missing from %#v", metricNames(metrics))
+	for _, name := range []string{
+		"cerebro.organizational_graph.canary.routes",
+		"cerebro.organizational_graph.canary.duration",
+	} {
+		metric, ok := metrics[name]
+		if !ok {
+			t.Fatalf("canary route metric %q missing from %#v", name, metricNames(metrics))
+		}
+		assertNoForbiddenMetricAttributes(t, metric)
+		assertMetricHasAttribute(t, metric, "operation", "expand_batch")
+		assertMetricHasAttribute(t, metric, "authority", "rust")
+		assertMetricHasAttribute(t, metric, "status", "success")
+		assertMetricHasIntAttribute(t, metric, "configured_percent", 10)
 	}
-	assertNoForbiddenMetricAttributes(t, metric)
-	assertMetricHasAttribute(t, metric, "operation", "expand_batch")
-	assertMetricHasAttribute(t, metric, "authority", "rust")
-	assertMetricHasAttribute(t, metric, "status", "success")
-	assertMetricHasIntAttribute(t, metric, "configured_percent", 10)
+}
+
+func TestRecordOrganizationalGraphCanaryVerificationMetricsAreLowCardinality(t *testing.T) {
+	reader, shutdown := installManualMetricReader(t)
+	RecordOrganizationalGraphCanaryVerification(context.Background(), OrganizationalGraphCanaryVerificationMetrics{
+		Operation: "Expand Batch",
+		Status:    "Mismatch",
+		Duration:  20 * time.Millisecond,
+	})
+	t.Cleanup(shutdown)
+
+	metrics := collectMetrics(t, reader)
+	for _, name := range []string{
+		"cerebro.organizational_graph.canary.verifications",
+		"cerebro.organizational_graph.canary.verification.duration",
+	} {
+		metric, ok := metrics[name]
+		if !ok {
+			t.Fatalf("canary verification metric %q missing from %#v", name, metricNames(metrics))
+		}
+		assertNoForbiddenMetricAttributes(t, metric)
+		assertMetricHasAttribute(t, metric, "operation", "expand_batch")
+		assertMetricHasAttribute(t, metric, "status", "mismatch")
+	}
 }
 
 func TestRecordSourceProjectionMetricsAreLowCardinality(t *testing.T) {

@@ -228,6 +228,17 @@ requests. Monitor `cerebro.organizational_graph.canary.routes` by `authority`,
 tenant cohort with actual Go and Rust request volume. These labels are bounded
 and never contain tenant or graph identifiers.
 
+During the first low-volume canary, set
+`CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT=100`. Every selected
+Rust-authority read remains Rust-authoritative and is also compared with Go.
+Mismatch or Go-oracle failure changes only the bounded verification receipt; it
+does not replace the Rust result or retry through Go. Monitor
+`cerebro.organizational_graph.canary.verifications` for `match`, `mismatch`,
+`legacy_error`, and `comparison_error`, and compare
+`cerebro.organizational_graph.canary.duration` by authority before increasing
+the Rust cohort. Reduce the verification percentage independently when the
+duplicate Go load is no longer justified.
+
 The append-log consumer defaults to new events. A rebuild uses
 `CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY=all`, while a fenced handoff
 uses `by_start_sequence` plus

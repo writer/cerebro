@@ -143,6 +143,32 @@ func otelOrganizationalGraphCanaryRoutes() otelmetric.Int64Counter {
 	return instrument
 }
 
+func otelOrganizationalGraphCanaryDuration() otelmetric.Float64Histogram {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Float64Histogram(
+		"cerebro.organizational_graph.canary.duration",
+		otelmetric.WithDescription("Typed organizational graph request latency by stable canary authority."),
+		otelmetric.WithUnit("s"),
+	)
+	return instrument
+}
+
+func otelOrganizationalGraphCanaryVerifications() otelmetric.Int64Counter {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
+		"cerebro.organizational_graph.canary.verifications",
+		otelmetric.WithDescription("Sampled Go and Rust comparisons for Rust-authority canary requests."),
+	)
+	return instrument
+}
+
+func otelOrganizationalGraphCanaryVerificationDuration() otelmetric.Float64Histogram {
+	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Float64Histogram(
+		"cerebro.organizational_graph.canary.verification.duration",
+		otelmetric.WithDescription("Compatibility-side latency for sampled Rust-authority canary verification."),
+		otelmetric.WithUnit("s"),
+	)
+	return instrument
+}
+
 func otelNeo4jOperations() otelmetric.Int64Counter {
 	instrument, _ := otel.Meter("github.com/writer/cerebro/internal/observability").Int64Counter(
 		"cerebro.neo4j.operations",
@@ -491,15 +517,45 @@ type OrganizationalGraphCanaryRouteMetrics struct {
 	Authority         string
 	Status            string
 	ConfiguredPercent int
+	Duration          time.Duration
 }
 
 func RecordOrganizationalGraphCanaryRoute(ctx context.Context, metrics OrganizationalGraphCanaryRouteMetrics) {
-	otelOrganizationalGraphCanaryRoutes().Add(ctx, 1, otelmetric.WithAttributes(
+	attrs := []attribute.KeyValue{
 		attribute.String("operation", boundedMetricValue(metrics.Operation, "unknown")),
 		attribute.String("authority", boundedMetricValue(metrics.Authority, "unknown")),
 		attribute.String("status", boundedMetricValue(metrics.Status, "unknown")),
 		attribute.Int("configured_percent", metrics.ConfiguredPercent),
-	))
+	}
+	otelOrganizationalGraphCanaryRoutes().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
+	if metrics.Duration >= 0 {
+		otelOrganizationalGraphCanaryDuration().Record(
+			ctx,
+			metrics.Duration.Seconds(),
+			otelmetric.WithAttributes(attrs...),
+		)
+	}
+}
+
+type OrganizationalGraphCanaryVerificationMetrics struct {
+	Operation string
+	Status    string
+	Duration  time.Duration
+}
+
+func RecordOrganizationalGraphCanaryVerification(ctx context.Context, metrics OrganizationalGraphCanaryVerificationMetrics) {
+	attrs := []attribute.KeyValue{
+		attribute.String("operation", boundedMetricValue(metrics.Operation, "unknown")),
+		attribute.String("status", boundedMetricValue(metrics.Status, "unknown")),
+	}
+	otelOrganizationalGraphCanaryVerifications().Add(ctx, 1, otelmetric.WithAttributes(attrs...))
+	if metrics.Duration >= 0 {
+		otelOrganizationalGraphCanaryVerificationDuration().Record(
+			ctx,
+			metrics.Duration.Seconds(),
+			otelmetric.WithAttributes(attrs...),
+		)
+	}
 }
 
 func RecordOrchestratorPhase(ctx context.Context, metrics OrchestratorPhaseMetrics) {

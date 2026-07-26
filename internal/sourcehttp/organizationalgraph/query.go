@@ -51,6 +51,7 @@ type QueryStore struct {
 	auth          tenantAuthenticator
 	mode          readMode
 	samplePercent uint32
+	verifyPercent uint32
 }
 
 // ReadinessStore selects the product read authority when configured.
@@ -66,12 +67,12 @@ func NewQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret st
 }
 
 // NewConfiguredQueryStore selects one validated deployment read strategy.
-func NewConfiguredQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode string, shadowPercent, authorityPercent int) (*QueryStore, error) {
+func NewConfiguredQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode string, shadowPercent, authorityPercent, canaryVerifyPercent int) (*QueryStore, error) {
 	switch mode {
 	case "shadow":
 		return NewShadowQueryStore(compatibility, baseURL, sharedSecret, timeout, shadowPercent)
 	case "canary":
-		return NewCanaryQueryStore(compatibility, baseURL, sharedSecret, timeout, authorityPercent)
+		return NewVerifiedCanaryQueryStore(compatibility, baseURL, sharedSecret, timeout, authorityPercent, canaryVerifyPercent)
 	default:
 		return NewQueryStore(compatibility, baseURL, sharedSecret, timeout)
 	}
@@ -91,13 +92,28 @@ func NewShadowQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSec
 // reads and the compatibility response for the rest. A sampled Rust failure
 // fails closed; it never retries the same request against Go.
 func NewCanaryQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, authorityPercent int) (*QueryStore, error) {
+	return NewVerifiedCanaryQueryStore(compatibility, baseURL, sharedSecret, timeout, authorityPercent, 0)
+}
+
+// NewVerifiedCanaryQueryStore also compares a stable sample of Rust-authority
+// reads with the compatibility result. Verification never changes the selected
+// authority or falls back after a Rust failure.
+func NewVerifiedCanaryQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, authorityPercent, verifyPercent int) (*QueryStore, error) {
 	if compatibility == nil {
 		return nil, errors.New("canary graph reads require the legacy compatibility store")
 	}
 	if authorityPercent <= 0 || authorityPercent >= 100 {
 		return nil, errors.New("canary graph read percent must be between 1 and 99")
 	}
-	return newQueryStore(compatibility, baseURL, sharedSecret, timeout, readModeCanary, uint32(authorityPercent)) // #nosec G115 -- validated above.
+	if verifyPercent < 0 || verifyPercent > 100 {
+		return nil, errors.New("canary graph verification percent must be between 0 and 100")
+	}
+	store, err := newQueryStore(compatibility, baseURL, sharedSecret, timeout, readModeCanary, uint32(authorityPercent)) // #nosec G115 -- validated above.
+	if err != nil {
+		return nil, err
+	}
+	store.verifyPercent = uint32(verifyPercent) // #nosec G115 -- validated above.
+	return store, nil
 }
 
 func newQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode readMode, samplePercent uint32) (*QueryStore, error) {
@@ -175,13 +191,19 @@ func (s *QueryStore) GetEntityNeighborhood(ctx context.Context, rootURN string, 
 		if tenantID == "" {
 			return nil, errors.New("root is not a tenant-scoped Cerebro URN")
 		}
+		started := time.Now()
 		if !s.sample(tenantID) {
 			result, err := s.compatibility.GetEntityNeighborhood(ctx, rootURN, limit)
-			s.recordCanaryRoute(ctx, "expand", "go", err)
+			s.recordCanaryRoute(ctx, "expand", "go", err, started)
 			return result, err
 		}
 		result, err := s.getRustEntityNeighborhood(ctx, rootURN, limit)
-		s.recordCanaryRoute(ctx, "expand", "rust", err)
+		if err == nil && s.verifyCanary("expand", rootURN) {
+			verificationStarted := time.Now()
+			legacy, legacyErr := s.compatibility.GetEntityNeighborhood(ctx, rootURN, limit)
+			s.recordCanaryVerification(ctx, "expand", legacy, legacyErr, result, verificationStarted)
+		}
+		s.recordCanaryRoute(ctx, "expand", "rust", err, started)
 		return result, err
 	}
 	if s.mode == readModeAuthority {
@@ -235,13 +257,19 @@ func (s *QueryStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []stri
 		if err != nil {
 			return nil, err
 		}
+		started := time.Now()
 		if !s.sample(tenantID) {
 			result, err := legacyNeighborhoods(ctx, s.compatibility, rootURNs, limit)
-			s.recordCanaryRoute(ctx, "expand_batch", "go", err)
+			s.recordCanaryRoute(ctx, "expand_batch", "go", err, started)
 			return result, err
 		}
 		result, err := s.getRustEntityNeighborhoods(ctx, rootURNs, limit)
-		s.recordCanaryRoute(ctx, "expand_batch", "rust", err)
+		if err == nil && s.verifyCanary("expand_batch", sampleKey) {
+			verificationStarted := time.Now()
+			legacy, legacyErr := legacyNeighborhoods(ctx, s.compatibility, rootURNs, limit)
+			s.recordCanaryVerification(ctx, "expand_batch", legacy, legacyErr, result, verificationStarted)
+		}
+		s.recordCanaryRoute(ctx, "expand_batch", "rust", err, started)
 		return result, err
 	}
 	if s.mode == readModeAuthority {
@@ -354,61 +382,111 @@ func legacyNeighborhoods(ctx context.Context, store ports.GraphQueryStore, roots
 }
 
 func (s *QueryStore) sample(key string) bool {
-	digest := sha256.Sum256([]byte(key))
-	return binary.BigEndian.Uint32(digest[:4])%100 < s.samplePercent
+	return sampleAtPercent(key, s.samplePercent)
 }
 
-func (s *QueryStore) recordCanaryRoute(ctx context.Context, operation, authority string, err error) {
+func (s *QueryStore) verifyCanary(operation, key string) bool {
+	return sampleAtPercent("canary-verify\x00"+operation+"\x00"+key, s.verifyPercent)
+}
+
+func sampleAtPercent(key string, percent uint32) bool {
+	if percent == 0 {
+		return false
+	}
+	if percent >= 100 {
+		return true
+	}
+	digest := sha256.Sum256([]byte(key))
+	return binary.BigEndian.Uint32(digest[:4])%100 < percent
+}
+
+func (s *QueryStore) recordCanaryRoute(ctx context.Context, operation, authority string, err error, started time.Time) {
 	status := "success"
 	if err != nil {
 		status = "error"
+		// #nosec G706 -- operation and authority use closed vocabularies; the
+		// percentage is validated configuration and the error is emitted only
+		// as a locally generated digest.
+		log.Printf(
+			"organizational graph canary route operation=%s authority=%s status=error configured_percent=%d error_sha256=%s",
+			operation,
+			authority,
+			s.samplePercent,
+			digestString(err.Error()),
+		)
 	}
 	observability.RecordOrganizationalGraphCanaryRoute(ctx, observability.OrganizationalGraphCanaryRouteMetrics{
 		Operation:         operation,
 		Authority:         authority,
 		Status:            status,
 		ConfiguredPercent: int(s.samplePercent),
+		Duration:          time.Since(started),
+	})
+}
+
+func (s *QueryStore) recordCanaryVerification(ctx context.Context, operation string, legacy any, legacyErr error, rust any, started time.Time) {
+	status := comparisonStatus(legacy, legacyErr, rust, nil)
+	if status != "match" {
+		logComparisonReceipt(ctx, operation, status, legacy, rust, legacyErr)
+	}
+	observability.RecordOrganizationalGraphCanaryVerification(ctx, observability.OrganizationalGraphCanaryVerificationMetrics{
+		Operation: operation,
+		Status:    status,
+		Duration:  time.Since(started),
 	})
 }
 
 func (s *QueryStore) recordComparison(ctx context.Context, operation string, legacy, rust any, rustErr error, started time.Time) {
-	status := "match"
-	legacyDigest, legacyShape := comparisonReceipt(legacy)
-	rustDigest, rustShape := comparisonReceipt(rust)
-	errorDigest := ""
-	if rustErr != nil {
-		status = "rust_error"
-		errorDigest = digestString(rustErr.Error())
-	} else {
-		legacyJSON, legacyErr := json.Marshal(legacy)
-		rustJSON, rustMarshalErr := json.Marshal(rust)
-		if legacyErr != nil || rustMarshalErr != nil {
-			status = "comparison_error"
-		} else if !bytes.Equal(legacyJSON, rustJSON) {
-			status = "mismatch"
-		}
-	}
+	status := comparisonStatus(legacy, nil, rust, rustErr)
 	if status != "match" {
-		traceID := trace.SpanContextFromContext(ctx).TraceID().String()
-		// #nosec G706 -- operation and status use closed vocabularies; trace IDs
-		// and every receipt value are locally generated hex, counts, or type names.
-		log.Printf(
-			"organizational graph parity operation=%s status=%s trace_id=%s legacy_sha256=%s rust_sha256=%s legacy_shape=%q rust_shape=%q error_sha256=%s",
-			operation,
-			status,
-			traceID,
-			legacyDigest,
-			rustDigest,
-			legacyShape,
-			rustShape,
-			errorDigest,
-		)
+		logComparisonReceipt(ctx, operation, status, legacy, rust, rustErr)
 	}
 	observability.RecordOrganizationalGraphShadow(ctx, observability.OrganizationalGraphShadowMetrics{
 		Operation: operation,
 		Status:    status,
 		Duration:  time.Since(started),
 	})
+}
+
+func comparisonStatus(legacy any, legacyErr error, rust any, rustErr error) string {
+	switch {
+	case rustErr != nil:
+		return "rust_error"
+	case legacyErr != nil:
+		return "legacy_error"
+	}
+	legacyJSON, legacyMarshalErr := json.Marshal(legacy)
+	rustJSON, rustMarshalErr := json.Marshal(rust)
+	if legacyMarshalErr != nil || rustMarshalErr != nil {
+		return "comparison_error"
+	}
+	if !bytes.Equal(legacyJSON, rustJSON) {
+		return "mismatch"
+	}
+	return "match"
+}
+
+func logComparisonReceipt(ctx context.Context, operation, status string, legacy, rust any, comparisonErr error) {
+	legacyDigest, legacyShape := comparisonReceipt(legacy)
+	rustDigest, rustShape := comparisonReceipt(rust)
+	errorDigest := ""
+	if comparisonErr != nil {
+		errorDigest = digestString(comparisonErr.Error())
+	}
+	traceID := trace.SpanContextFromContext(ctx).TraceID().String()
+	// #nosec G706 -- operation and status use closed vocabularies; trace IDs
+	// and every receipt value are locally generated hex, counts, or type names.
+	log.Printf(
+		"organizational graph parity operation=%s status=%s trace_id=%s legacy_sha256=%s rust_sha256=%s legacy_shape=%q rust_shape=%q error_sha256=%s",
+		operation,
+		status,
+		traceID,
+		legacyDigest,
+		rustDigest,
+		legacyShape,
+		rustShape,
+		errorDigest,
+	)
 }
 
 func comparisonReceipt(value any) (string, string) {

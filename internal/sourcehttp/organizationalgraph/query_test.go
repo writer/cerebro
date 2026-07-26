@@ -356,6 +356,82 @@ func TestCanaryQueryStoreRoutesConfiguredTrafficPercentages(t *testing.T) {
 	}
 }
 
+func TestVerifiedCanaryQueryStoreComparesRustAuthorityWithoutChangingResponse(t *testing.T) {
+	server := newGraphTestServer(t, graphServiceStub{
+		expand: func(_ context.Context, request *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
+			return connect.NewResponse(&cerebrographv1.ExpandResponse{
+				TenantId: request.Msg.GetTenantId(),
+				Root: &cerebrographv1.GraphEntity{
+					EntityId:   "rust-root",
+					AgentKey:   request.Msg.GetRootKey(),
+					EntityKind: "resource",
+					Label:      "Rust",
+				},
+			}), nil
+		},
+	})
+	defer server.Close()
+
+	legacy := &countingQueryStoreStub{queryStoreStub: queryStoreStub{
+		neighborhood: &ports.EntityNeighborhood{
+			Root: &ports.NeighborhoodNode{URN: "legacy", Label: "Go"},
+		},
+	}}
+	store, err := NewVerifiedCanaryQueryStore(
+		legacy,
+		server.URL,
+		testSharedSecret,
+		time.Second,
+		50,
+		100,
+	)
+	if err != nil {
+		t.Fatalf("NewVerifiedCanaryQueryStore() error = %v", err)
+	}
+	root := canaryRoot(t, store, true)
+	got, err := store.GetEntityNeighborhood(context.Background(), root, 10)
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhood() error = %v", err)
+	}
+	if got == nil || got.Root == nil || got.Root.Label != "Rust" {
+		t.Fatalf("GetEntityNeighborhood() = %#v, want Rust authority", got)
+	}
+	if legacy.requests != 1 {
+		t.Fatalf("verification requests = %d, want 1", legacy.requests)
+	}
+
+	legacy.err = errors.New("legacy unavailable")
+	got, err = store.GetEntityNeighborhood(context.Background(), root, 10)
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhood(legacy error) error = %v", err)
+	}
+	if got == nil || got.Root == nil || got.Root.Label != "Rust" {
+		t.Fatalf("GetEntityNeighborhood(legacy error) = %#v, want Rust authority", got)
+	}
+	if legacy.requests != 2 {
+		t.Fatalf("verification requests = %d, want 2", legacy.requests)
+	}
+
+	unverified, err := NewVerifiedCanaryQueryStore(
+		legacy,
+		server.URL,
+		testSharedSecret,
+		time.Second,
+		50,
+		0,
+	)
+	if err != nil {
+		t.Fatalf("NewVerifiedCanaryQueryStore(unverified) error = %v", err)
+	}
+	unverifiedRoot := canaryRoot(t, unverified, true)
+	if _, err := unverified.GetEntityNeighborhood(context.Background(), unverifiedRoot, 10); err != nil {
+		t.Fatalf("GetEntityNeighborhood(unverified) error = %v", err)
+	}
+	if legacy.requests != 2 {
+		t.Fatalf("disabled verification requests = %d, want 2", legacy.requests)
+	}
+}
+
 func TestCanarySamplingIsStableNestedAndTracksConfiguredPercent(t *testing.T) {
 	const tenants = 100_000
 	previous := make([]bool, tenants)
@@ -404,6 +480,11 @@ func TestCanaryQueryStoreRequiresCompatibilityAndBoundedSampling(t *testing.T) {
 	for _, percent := range []int{0, 100, 101} {
 		if _, err := NewCanaryQueryStore(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second, percent); err == nil {
 			t.Fatalf("NewCanaryQueryStore(%d) error = nil", percent)
+		}
+	}
+	for _, percent := range []int{-1, 101} {
+		if _, err := NewVerifiedCanaryQueryStore(queryStoreStub{}, "http://127.0.0.1:1", testSharedSecret, time.Second, 10, percent); err == nil {
+			t.Fatalf("NewVerifiedCanaryQueryStore(verify=%d) error = nil", percent)
 		}
 	}
 }
@@ -462,7 +543,7 @@ func TestQueryStoreHealthRequiresRustAndChecksCompatibilityWhenPresent(t *testin
 	}))
 	defer server.Close()
 
-	store, err := NewQueryStore(queryStoreStub{}, server.URL, testSharedSecret, time.Second)
+	store, err := NewQueryStore(queryStoreStub{}, server.URL, testSharedSecret, 5*time.Second)
 	if err != nil {
 		t.Fatalf("NewQueryStore() error = %v", err)
 	}
@@ -473,7 +554,7 @@ func TestQueryStoreHealthRequiresRustAndChecksCompatibilityWhenPresent(t *testin
 		t.Fatalf("health requests = %d, want 1", requests)
 	}
 
-	strictStore, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+	strictStore, err := NewQueryStore(nil, server.URL, testSharedSecret, 5*time.Second)
 	if err != nil {
 		t.Fatalf("NewQueryStore(strict) error = %v", err)
 	}
@@ -604,6 +685,58 @@ func TestQueryStoreBatchesTenantRootsInOneRustRequest(t *testing.T) {
 	}
 	if requests != 1 || len(got) != 2 || got[rootOne].Root.URN != rootOne || got[rootTwo].Root.URN != rootTwo {
 		t.Fatalf("requests = %d, neighborhoods = %#v", requests, got)
+	}
+}
+
+func TestVerifiedCanaryQueryStoreComparesBatchWithoutChangingAuthority(t *testing.T) {
+	server := newGraphTestServer(t, graphServiceStub{
+		expandBatch: func(_ context.Context, request *connect.Request[cerebrographv1.ExpandBatchRequest]) (*connect.Response[cerebrographv1.ExpandBatchResponse], error) {
+			neighborhoods := make(map[string]*cerebrographv1.ExpandResponse, len(request.Msg.GetRootKeys()))
+			for index, root := range request.Msg.GetRootKeys() {
+				neighborhoods[root] = &cerebrographv1.ExpandResponse{
+					TenantId: request.Msg.GetTenantId(),
+					Root: &cerebrographv1.GraphEntity{
+						EntityId:   fmt.Sprintf("rust-root-%d", index),
+						AgentKey:   root,
+						EntityKind: "resource",
+						Label:      "Rust",
+					},
+				}
+			}
+			return connect.NewResponse(&cerebrographv1.ExpandBatchResponse{
+				Neighborhoods: neighborhoods,
+			}), nil
+		},
+	})
+	defer server.Close()
+
+	legacy := &countingQueryStoreStub{queryStoreStub: queryStoreStub{
+		neighborhood: &ports.EntityNeighborhood{
+			Root: &ports.NeighborhoodNode{URN: "legacy", Label: "Go"},
+		},
+	}}
+	store, err := NewVerifiedCanaryQueryStore(
+		legacy,
+		server.URL,
+		testSharedSecret,
+		time.Second,
+		50,
+		100,
+	)
+	if err != nil {
+		t.Fatalf("NewVerifiedCanaryQueryStore() error = %v", err)
+	}
+	first := canaryRoot(t, store, true)
+	second := strings.Replace(first, ":asset", ":asset-2", 1)
+	got, err := store.GetEntityNeighborhoods(context.Background(), []string{first, second}, 10)
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhoods() error = %v", err)
+	}
+	if len(got) != 2 || got[first].Root.Label != "Rust" || got[second].Root.Label != "Rust" {
+		t.Fatalf("GetEntityNeighborhoods() = %#v, want Rust authority", got)
+	}
+	if legacy.requests != 2 {
+		t.Fatalf("batch verification requests = %d, want 2", legacy.requests)
 	}
 }
 

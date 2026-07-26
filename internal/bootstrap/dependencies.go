@@ -111,6 +111,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 			compatibility, readBaseURL, cfg.OrganizationalGraph.SharedSecret,
 			cfg.OrganizationalGraph.Timeout, cfg.OrganizationalGraph.ReadMode,
 			cfg.OrganizationalGraph.ShadowPercent, cfg.OrganizationalGraph.AuthorityPercent,
+			cfg.OrganizationalGraph.CanaryVerifyPercent,
 		)
 		if err != nil {
 			return fail(fmt.Errorf("open Rust organizational graph reads: %w", err))

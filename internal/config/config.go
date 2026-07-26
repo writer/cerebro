@@ -151,14 +151,15 @@ type GraphStoreConfig struct {
 type OrganizationalGraphConfig struct {
 	// BaseURL is the legacy combined endpoint. Prefer separate read and
 	// projection endpoints so pre-cutover reads cannot activate a writer.
-	BaseURL           string
-	ReadBaseURL       string
-	ProjectionBaseURL string
-	ReadMode          string
-	ShadowPercent     int
-	AuthorityPercent  int
-	SharedSecret      string
-	Timeout           time.Duration
+	BaseURL             string
+	ReadBaseURL         string
+	ProjectionBaseURL   string
+	ReadMode            string
+	ShadowPercent       int
+	AuthorityPercent    int
+	CanaryVerifyPercent int
+	SharedSecret        string
+	Timeout             time.Duration
 }
 
 // CacheConfig controls optional shared query/response caching.
@@ -731,6 +732,15 @@ func Load() (Config, error) {
 	}
 	if cfg.OrganizationalGraph.ReadMode != "canary" && cfg.OrganizationalGraph.AuthorityPercent != 0 {
 		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT must be zero unless read mode is canary")
+	}
+	if cfg.OrganizationalGraph.CanaryVerifyPercent, err = parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.OrganizationalGraph.CanaryVerifyPercent < 0 || cfg.OrganizationalGraph.CanaryVerifyPercent > 100 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT must be between 0 and 100")
+	}
+	if cfg.OrganizationalGraph.ReadMode != "canary" && cfg.OrganizationalGraph.CanaryVerifyPercent != 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT must be zero unless read mode is canary")
 	}
 	for _, configured := range []struct {
 		name     string
