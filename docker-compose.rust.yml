@@ -36,7 +36,9 @@ services:
       CEREBRO_API_KEYS: local-dev-key:ephemeral-cerebro:local
       CEREBRO_ORGANIZATIONAL_GRAPH_URL: http://rust-platform:8081
       CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: ephemeral-cerebro-graph-secret-32-bytes
-      CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT: 1s
+      # Keep this topology gate tolerant of a cold Neo4j page cache on shared
+      # hosted runners. Latency regression belongs in the benchmark workflow.
+      CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT: 5s
     depends_on:
       rust-platform:
         condition: service_healthy

@@ -104,23 +104,40 @@ jobs:
           set -euo pipefail
           graph_url='http://127.0.0.1:8080/platform/graph/neighborhood?root_urn=urn%3Acerebro%3Alocal%3Aasset%3Amissing&limit=10'
           graph_status() {
-            curl --max-time 10 --silent --show-error --output response.json \
-              --write-out '%{http_code}' \
+            curl --max-time 10 --silent --show-error --output graph-response.json \
+              --write-out '%{http_code} %{time_total}' \
               --header 'Authorization: Bearer local-dev-key' \
               "${graph_url}"
           }
           readiness_status() {
             curl --max-time 10 --silent --show-error --output readiness.json \
-              --write-out '%{http_code}' \
+              --write-out '%{http_code} %{time_total}' \
               http://127.0.0.1:8080/health
           }
+          assert_status() {
+            local expected="$1"
+            local label="$2"
+            shift 2
+            local receipt
+            receipt="$("$@" || true)"
+            echo "${label}: ${receipt}"
+            if [[ "${receipt%% *}" != "${expected}" ]]; then
+              echo "${label} body:"
+              if [[ "${label}" == graph* ]]; then
+                cat graph-response.json || true
+              else
+                cat readiness.json || true
+              fi
+              return 1
+            fi
+          }
 
-          test "$(readiness_status)" = 200
-          test "$(graph_status)" = 404
+          assert_status 200 readiness-before readiness_status
+          assert_status 404 graph-before graph_status
           rust_container="$(docker compose -f docker-compose.yml -f docker-compose.rust.yml ps -q rust-platform)"
           test -n "${rust_container}"
           docker stop "${rust_container}" >/dev/null
-          test "$(readiness_status || true)" = 503
+          assert_status 503 readiness-without-rust readiness_status
 
           docker start "${rust_container}" >/dev/null
           for attempt in $(seq 1 36); do
@@ -130,8 +147,8 @@ jobs:
             test "${attempt}" -lt 36
             sleep 5
           done
-          test "$(readiness_status)" = 200
-          test "$(graph_status)" = 404
+          assert_status 200 readiness-after-restart readiness_status
+          assert_status 404 graph-after-restart graph_status
 
       - name: Print service logs
         if: always()
