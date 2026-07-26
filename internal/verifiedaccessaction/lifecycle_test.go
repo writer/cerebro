@@ -338,6 +338,7 @@ func proposalInput() ProposalInput {
 	at := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
 	return ProposalInput{
 		TenantID:   "tenant-one",
+		FindingID:  "finding-one",
 		Definition: ActionDefinition{Metadata: graphactions.ActionMetadata{ID: graphactions.ActionIdentityOktaSuspendUser, Provider: graphactions.ProviderAccessApprovals, ProviderAction: graphactions.AccessApprovalsActionSuspend, TargetKind: graphactions.TargetKindOktaUser, Effect: "deny_access", Destructive: true, ReversibleBy: graphactions.ActionIdentityOktaUnsuspendUser}, Version: "2026-07-14"},
 		Binding:    TargetBinding{TargetID: "provider-user-1", SubjectURN: "urn:cerebro:tenant-one:identity:user-1", SubjectRevision: "subject-revision-1", ResourceURN: "urn:cerebro:tenant-one:application:one", ResourceRevision: "resource-revision-1", SourceRuntimeID: "runtime-one", SourceRevision: "source-revision-1"},
 		Parameters: map[string]string{"session_policy": "revoke_active"}, Proposer: Actor{Type: "human", ID: "operator-one"}, IdempotencyKey: "access-revocation-one",

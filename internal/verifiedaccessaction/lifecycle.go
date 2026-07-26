@@ -16,7 +16,7 @@ func Propose(input ProposalInput) (Outcome, error) {
 		return Outcome{}, err
 	}
 	record := Record{
-		SchemaVersion: SchemaVersion, ID: actionID(input), TenantID: clean(input.TenantID), Status: StatusProposed,
+		SchemaVersion: SchemaVersion, ID: actionID(input), TenantID: clean(input.TenantID), FindingID: clean(input.FindingID), Status: StatusProposed,
 		Definition: input.Definition, Binding: input.Binding, Parameters: cloneMap(input.Parameters), Proposer: input.Proposer,
 		IdempotencyKey: clean(input.IdempotencyKey), Rollback: cloneRollback(input.Rollback), Reason: clean(input.Reason), ProposedAt: input.ProposedAt.UTC(),
 	}
@@ -202,7 +202,7 @@ func Reverify(record Record, input VerificationInput) (Outcome, error) {
 
 func validateProposal(input ProposalInput) error {
 	metadata, binding := input.Definition.Metadata, input.Binding
-	if clean(input.TenantID) == "" || clean(input.Definition.Version) == "" || clean(metadata.ID) == "" || clean(metadata.Provider) == "" || clean(metadata.ProviderAction) == "" || clean(metadata.TargetKind) == "" || !metadata.Destructive || (clean(metadata.Effect) != "deny_access" && clean(metadata.Effect) != "remove_privilege") || clean(metadata.ReversibleBy) == "" {
+	if clean(input.TenantID) == "" || clean(input.FindingID) == "" || clean(input.Definition.Version) == "" || clean(metadata.ID) == "" || clean(metadata.Provider) == "" || clean(metadata.ProviderAction) == "" || clean(metadata.TargetKind) == "" || !metadata.Destructive || (clean(metadata.Effect) != "deny_access" && clean(metadata.Effect) != "remove_privilege") || clean(metadata.ReversibleBy) == "" {
 		return fmt.Errorf("%w: action must be a versioned, reversible access denial or privilege removal", ErrInvalid)
 	}
 	if clean(binding.TargetID) == "" || clean(binding.SubjectURN) == "" || clean(binding.SubjectRevision) == "" || clean(binding.ResourceURN) == "" || clean(binding.ResourceRevision) == "" || clean(binding.SourceRuntimeID) == "" || clean(binding.SourceRevision) == "" {
@@ -367,7 +367,7 @@ func digestValue(value any) string {
 }
 
 func actionID(input ProposalInput) string {
-	return "verified-access-action-" + shortDigest(digestValue([]string{clean(input.TenantID), clean(input.Definition.Metadata.ID), clean(input.Definition.Version), clean(input.Binding.SubjectURN), clean(input.Binding.ResourceURN), clean(input.Binding.SourceRevision), clean(input.IdempotencyKey)}))
+	return "verified-access-action-" + shortDigest(digestValue([]string{clean(input.TenantID), clean(input.FindingID), clean(input.Definition.Metadata.ID), clean(input.Definition.Version), clean(input.Binding.SubjectURN), clean(input.Binding.ResourceURN), clean(input.Binding.SourceRevision), clean(input.IdempotencyKey)}))
 }
 
 func shortDigest(value string) string { return strings.TrimPrefix(value, "sha256:")[:32] }

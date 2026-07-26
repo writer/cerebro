@@ -77,6 +77,7 @@ type RollbackPlan struct {
 
 type ProposalInput struct {
 	TenantID       string            `json:"tenant_id"`
+	FindingID      string            `json:"finding_id"`
 	Definition     ActionDefinition  `json:"definition"`
 	Binding        TargetBinding     `json:"binding"`
 	Parameters     map[string]string `json:"parameters"`
@@ -92,6 +93,7 @@ type Record struct {
 	ID                   string                    `json:"id"`
 	Digest               string                    `json:"digest"`
 	TenantID             string                    `json:"tenant_id"`
+	FindingID            string                    `json:"finding_id"`
 	Status               string                    `json:"status"`
 	Definition           ActionDefinition          `json:"definition"`
 	Binding              TargetBinding             `json:"binding"`
