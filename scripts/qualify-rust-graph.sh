@@ -10,7 +10,10 @@ readonly repository_root="${CEREBRO_REPOSITORY_ROOT:-$(pwd)}"
 readonly output_dir="${CEREBRO_QUALIFICATION_OUTPUT:-${repository_root}/.dist/pr-rust-graph}"
 readonly compose_project="${COMPOSE_PROJECT_NAME:-cerebro-rust-graph-${RANDOM}}"
 readonly soak_seconds="${SOAK_SECONDS:-60}"
-readonly graph_secret="ephemeral-cerebro-graph-secret-32-bytes"
+graph_secret="$(openssl rand -hex 32)"
+readonly graph_secret
+readonly auth_header_name="Authorization"
+readonly auth_scheme="Bearer"
 readonly checkpoint="${output_dir}/checkpoint.json"
 readonly organizational_receipt="${output_dir}/organizational-receipt.json"
 readonly qualification_receipt="${output_dir}/receipt.json"
@@ -31,6 +34,7 @@ export COMPOSE_PROJECT_NAME="${compose_project}"
 export CEREBRO_RUST_COMMAND=serve-neo4j-consumer
 export CEREBRO_RUST_READ_MODE=shadow
 export CEREBRO_RUST_SHADOW_PERCENT=100
+export CEREBRO_RUST_GRAPH_SECRET="${graph_secret}"
 
 cleanup() {
   local exit_code=$?
@@ -100,7 +104,7 @@ request_status() {
   local url="$2"
   curl --max-time 10 --silent --show-error --output "${output}" \
     --write-out '%{http_code} %{time_total}' \
-    --header "Authorization: Bearer local-dev-key" \
+    --header "${auth_header_name}: ${auth_scheme} local-dev-key" \
     "${url}"
 }
 
@@ -136,7 +140,7 @@ while ((SECONDS < deadline)); do
     --show-error \
     --output /dev/null \
     --write-out '%{http_code}\n' \
-    --header "Authorization: Bearer local-dev-key" \
+    --header "${auth_header_name}: ${auth_scheme} local-dev-key" \
     "${graph_url}" >>"${output_dir}/shadow-statuses.txt" || true
   request_count=$((request_count + 2))
   sleep 1
