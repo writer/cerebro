@@ -171,6 +171,9 @@ jobs:
           test "$(jq -c '.[0].Config.Cmd' <<<"${config}")" = '["serve-neo4j-consumer"]'
           docker run --rm --entrypoint /bin/sh "${CANDIDATE_IMAGE}" -euc '
             test ! -e /usr/local/bin/cerebro
+            test ! -e /usr/local/go/bin/go
+            test ! -e /usr/bin/go
+            test ! -e /bin/go
             test -x /usr/local/bin/cerebro-platform
             test -x /usr/local/bin/cerebro-event-admission-worker
           '

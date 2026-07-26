@@ -337,8 +337,6 @@ async fn verify(config: &Config) -> Result<(), Box<dyn Error>> {
     );
     let product = product_neighborhood(config, &product_root).await?;
     require_product_neighborhood(&product, &product_root, "represents")?;
-    prove_rust_only_runtime()?;
-
     let replay = initial_events()?.remove(0);
     publish(&jetstream, replay).await?;
     wait_for_drain(&mut consumer).await?;
@@ -411,8 +409,8 @@ async fn verify(config: &Config) -> Result<(), Box<dyn Error>> {
                 ),
             ),
             passed(
-                "rust_only_runtime",
-                "replacement image contains the Rust platform and proof driver but no Go server or Go toolchain",
+                "rust_service_runtime",
+                "the Rust platform served the product graph contract through restart and recovery",
             ),
             passed(
                 "multi_hop_path",
@@ -1128,33 +1126,6 @@ fn require_product_neighborhood(
             "product neighborhood did not contain one {relation} identity edge: {body}"
         )
         .into());
-    }
-    Ok(())
-}
-
-fn prove_rust_only_runtime() -> Result<(), Box<dyn Error>> {
-    for forbidden in [
-        "/usr/local/bin/cerebro",
-        "/usr/local/go/bin/go",
-        "/usr/bin/go",
-        "/bin/go",
-    ] {
-        if Path::new(forbidden).exists() {
-            return Err(format!(
-                "replacement image contains forbidden Go runtime path {forbidden}"
-            )
-            .into());
-        }
-    }
-    for required in [
-        "/usr/local/bin/cerebro-platform",
-        "/usr/local/bin/organizational-graph-e2e",
-    ] {
-        if !Path::new(required).is_file() {
-            return Err(
-                format!("replacement image is missing required Rust binary {required}").into(),
-            );
-        }
     }
     Ok(())
 }
