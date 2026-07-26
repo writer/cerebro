@@ -27,6 +27,7 @@ on:
         type: number
 
 permissions:
+  actions: read
   attestations: read
   contents: read
   packages: read
