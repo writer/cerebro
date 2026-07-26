@@ -27,6 +27,10 @@ pub fn materialize_view(
         row_count,
         state: ViewRefreshState::Current,
         refreshed_at_unix_millis,
-        result_digest: canonical::digest(result)?,
+        result_digest: canonical::digest(&(
+            &definition.view_id,
+            &definition.definition_digest,
+            result,
+        ))?,
     })
 }

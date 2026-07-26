@@ -8,6 +8,7 @@ use crate::canonical;
 
 #[derive(Serialize)]
 struct AssertionMaterial<'a> {
+    assertion_id: &'a cerebro_platform_sdk::AssertionDefinitionId,
     tenant_id: &'a TenantId,
     name: &'a str,
     query: &'a FactQuery,
@@ -21,6 +22,7 @@ pub fn assertion_definition_digest(
     definition: &AssertionDefinition,
 ) -> Result<ContentDigest, SdkError> {
     canonical::digest(&AssertionMaterial {
+        assertion_id: &definition.assertion_id,
         tenant_id: &definition.tenant_id,
         name: &definition.name,
         query: &definition.query,

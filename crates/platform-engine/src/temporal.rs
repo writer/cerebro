@@ -59,7 +59,12 @@ pub fn diff_snapshots(
         .into_iter()
         .filter_map(|key| change_for_key(&key, before.values.get(&key), after.values.get(&key)))
         .collect::<Vec<_>>();
-    let full_digest = canonical::digest(&changes)?;
+    let full_digest = canonical::digest(&(
+        &request.tenant_id,
+        before.revision,
+        after.revision,
+        &changes,
+    ))?;
     let offset = parse_cursor(request.cursor.as_deref(), &full_digest)?;
     if offset > changes.len() {
         return Err(SdkError::Invalid("graph diff cursor"));
@@ -71,7 +76,7 @@ pub fn diff_snapshots(
     let page = changes.drain(offset..offset + page_len).collect::<Vec<_>>();
     let next_offset = offset + page_len;
     let truncated = next_offset < offset + remaining;
-    let next_cursor = truncated.then(|| format!("{next_offset}:{}", &full_digest.as_str()[..16]));
+    let next_cursor = truncated.then(|| format!("{next_offset}:{full_digest}"));
     Ok(GraphDiff {
         tenant_id: request.tenant_id.clone(),
         from_revision: before.revision,
@@ -90,7 +95,7 @@ fn parse_cursor(cursor: Option<&str>, digest: &ContentDigest) -> Result<usize, S
     let (offset, binding) = cursor
         .split_once(':')
         .ok_or(SdkError::Invalid("graph diff cursor"))?;
-    if binding != &digest.as_str()[..16] {
+    if binding != digest.as_str() {
         return Err(SdkError::Invalid("graph diff cursor"));
     }
     offset

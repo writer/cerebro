@@ -11,5 +11,9 @@ cerebro-platform-sdk.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+[[bench]]
+name = "platform_engine"
+harness = false
+
 [lints]
 workspace = true

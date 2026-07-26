@@ -29,6 +29,22 @@ pub fn transition_action(
     expected_version: u64,
     command: ActionCommand,
 ) -> Result<ActionOperation, SdkError> {
+    operation.proposal.validate()?;
+    if operation.version == 0 {
+        return Err(SdkError::OutOfRange("action operation version"));
+    }
+    if matches!(
+        operation.state,
+        ActionState::Claimed
+            | ActionState::Executing
+            | ActionState::OutcomeUnknown
+            | ActionState::Completed
+            | ActionState::Reconciled
+            | ActionState::Verified
+    ) && operation.claimed_by.is_none()
+    {
+        return Err(SdkError::Invalid("action operation claimant"));
+    }
     if operation.version != expected_version {
         return Err(SdkError::Conflict(
             "stale action operation version".to_owned(),
