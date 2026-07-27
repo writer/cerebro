@@ -1978,6 +1978,71 @@ mod tests {
     }
 
     #[test]
+    fn page_token_decode_rejects_unknown_direction_and_trailing_fields() {
+        let invalid_direction = format!(
+            "v2.{}",
+            hex_encode(
+                format!(
+                    "x\0{}\0{}\0{}\0{}",
+                    7,
+                    "2026-07-26T12:00:00Z",
+                    "a".repeat(64),
+                    "urn:cerebro:tenant-a:credential:authority:slot"
+                )
+                .as_bytes()
+            )
+        );
+        assert!(decode_page_token(&invalid_direction).is_err());
+
+        let trailing_field = format!(
+            "v2.{}",
+            hex_encode(
+                format!(
+                    "f\0{}\0{}\0{}\0{}\0extra",
+                    7,
+                    "2026-07-26T12:00:00Z",
+                    "a".repeat(64),
+                    "urn:cerebro:tenant-a:credential:authority:slot"
+                )
+                .as_bytes()
+            )
+        );
+        assert!(decode_page_token(&trailing_field).is_err());
+    }
+
+    #[test]
+    fn bounded_query_rejects_invalid_limit_and_locator_kind_mismatch() {
+        let limit_error = query_records(
+            &tenant(),
+            &LifecycleQuery {
+                limit: Some(MAX_QUERY_LIMIT + 1),
+                ..LifecycleQuery::default()
+            },
+            Vec::new(),
+            "2026-07-26T12:00:00Z",
+        )
+        .unwrap_err();
+        assert!(limit_error.to_string().contains("limit"));
+
+        let locator_error = query_records(
+            &tenant(),
+            &LifecycleQuery {
+                subject_kinds: vec![SubjectKind::Certificate],
+                subject_locator: Some(SubjectLocator {
+                    subject_kind: SubjectKind::Credential,
+                    authority_id: "authority".to_owned(),
+                    stable_locator: "slot".to_owned(),
+                }),
+                ..LifecycleQuery::default()
+            },
+            Vec::new(),
+            "2026-07-26T12:00:00Z",
+        )
+        .unwrap_err();
+        assert!(locator_error.to_string().contains("subject_locator kind"));
+    }
+
+    #[test]
     fn cursor_filter_digest_canonicalizes_set_order_and_duplicates() {
         let first = LifecycleQuery {
             subject_kinds: vec![
