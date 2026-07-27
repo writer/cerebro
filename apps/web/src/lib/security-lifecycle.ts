@@ -64,6 +64,7 @@ export type SecurityLifecycleResponse = {
     matched_findings?: number;
     subject_kind_counts?: Array<{ subject_kind: string; count: number }>;
     state_counts?: Array<{ state: string; count: number }>;
+    policy_state_counts?: Array<{ policy_state: string; count: number }>;
     counts_are_exact?: boolean;
   };
   metadata?: {
@@ -94,6 +95,7 @@ export type SecurityLifecycleSummary = {
 export const lifecycleEnumLabel = (value: string) =>
   value
     .replace(/^SECURITY_LIFECYCLE_SUBJECT_KIND_/, "")
+    .replace(/^SECURITY_LIFECYCLE_POLICY_STATE_/, "")
     .replace(/^SECURITY_LIFECYCLE_STATE_/, "")
     .toLowerCase();
 
@@ -174,20 +176,59 @@ export const lifecycleCompleteness = (response?: SecurityLifecycleResponse | nul
   };
 };
 
+export const lifecycleCoverageReason = (
+  coverage?: NonNullable<SecurityLifecycleResponse["metadata"]>["coverage"],
+) => coverage?.reason
+    ?.replace(/^SECURITY_LIFECYCLE_COVERAGE_REASON_/, "")
+    .toLowerCase();
+
+export const lifecycleCoveragePresentation = (
+  coverage?: NonNullable<SecurityLifecycleResponse["metadata"]>["coverage"],
+) => {
+  const reason = lifecycleCoverageReason(coverage);
+
+  if (reason === "graph_changed") {
+    return {
+      label: "Graph changed during read",
+      detail: "Refresh to load a consistent lifecycle snapshot.",
+    };
+  }
+  if (reason === "scan_limit") {
+    return {
+      label: "Source coverage limited",
+      detail: "The scan limit was reached before every lifecycle entity was evaluated.",
+    };
+  }
+  if (reason === "complete" || coverage?.complete === true) {
+    return {
+      label: "Source coverage complete",
+      detail: "Every lifecycle entity in this graph revision was evaluated.",
+    };
+  }
+  if (coverage?.truncated) {
+    return {
+      label: "Source coverage truncated",
+      detail: "The source scan ended before every lifecycle entity was evaluated.",
+    };
+  }
+  return {
+    label: "Source coverage not reported",
+    detail: undefined,
+  };
+};
+
 export const lifecycleNextPageToken = (response?: SecurityLifecycleResponse | null) =>
   response?.next_page_token || "";
 
 export const lifecyclePreviousPageToken = (response?: SecurityLifecycleResponse | null) =>
   response?.previous_page_token || "";
 
-export const lifecycleAggregateCount = (
-  counts: Array<{ state?: string; subject_kind?: string; count: number }> | undefined,
+export const lifecyclePolicyStateCount = (
+  counts: Array<{ policy_state: string; count: number }> | undefined,
   value: string,
 ) => {
   if (!counts) return undefined;
-  return counts.find((entry) =>
-    lifecycleEnumLabel(entry.state || entry.subject_kind || "") === value,
-  )?.count;
+  return counts.find((entry) => lifecycleEnumLabel(entry.policy_state) === value)?.count;
 };
 
 export const lifecycleActionLabel = (value: string) => {

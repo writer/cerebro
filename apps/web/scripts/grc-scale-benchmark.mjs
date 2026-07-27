@@ -13,7 +13,6 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = process.env.CEREBRO_GRC_SCALE_WEB_ROOT
   ? path.resolve(process.env.CEREBRO_GRC_SCALE_WEB_ROOT)
   : path.resolve(scriptDir, "..");
-const targetWebRoot = webRoot;
 const args = process.argv.slice(2);
 const argSet = new Set(args);
 const quick = argSet.has("--quick");
@@ -163,6 +162,38 @@ const allRouteSpecs = [
         action: async (page) => page.getByRole("button", { name: "Previous page" }).click(),
         readySelector: "text=Page 1",
       },
+      {
+        label: "390px lifecycle cards and detail",
+        action: async (page) => {
+          await page.setViewportSize({ width: 390, height: 844 });
+          await page.goto(`${new URL(page.url()).origin}/security/lifecycle`, { waitUntil: "domcontentloaded" });
+          const mobileRecords = page.locator("[data-lifecycle-mobile-records]");
+          await mobileRecords.waitFor({ state: "visible" });
+          if (!await page.locator("[data-lifecycle-desktop-table]").isHidden()) {
+            throw new Error("desktop lifecycle table remained visible at 390px");
+          }
+          const overflow = await page.evaluate(() => ({
+            viewport: window.innerWidth,
+            content: document.documentElement.scrollWidth,
+          }));
+          if (overflow.content > overflow.viewport) {
+            throw new Error(`lifecycle page overflowed at 390px (${overflow.content}px > ${overflow.viewport}px)`);
+          }
+          const firstCardText = await mobileRecords.locator("article").first().innerText();
+          for (const label of ["Expires", "Owner", "Finding", "Route", "Revision"]) {
+            if (!firstCardText.toLowerCase().includes(label.toLowerCase())) {
+              throw new Error(`mobile lifecycle card omitted ${label}`);
+            }
+          }
+          await mobileRecords.getByRole("button", { name: "Open lifecycle details" }).first().click();
+        },
+        readySelector: '[role="dialog"][aria-modal="true"]',
+        after: async (page) => {
+          await page.keyboard.press("Escape");
+          await page.locator('[role="dialog"]').waitFor({ state: "hidden" });
+          await page.setViewportSize({ width: 1440, height: 1000 });
+        },
+      },
     ],
   },
   {
@@ -259,7 +290,7 @@ async function runScenario(scenario) {
   await listen(currentApiServer, apiPort);
 
   currentWebProcess = spawnLogged(`${scenario.name}-web`, "npm", ["run", "dev", "--", "--hostname", "127.0.0.1", "--port", String(webPort)], {
-    cwd: targetWebRoot,
+    cwd: webRoot,
     env: {
       ...process.env,
       CEREBRO_API_BASE: apiBase,
@@ -356,6 +387,7 @@ async function benchmarkRoutes({ scenario, webBase }) {
           usable_ms: Math.round(performance.now() - interactionStarted),
           dom_nodes: await page.evaluate(() => document.querySelectorAll("*").length),
         });
+        await interaction.after?.(page);
       }
       const routeResult = {
         route: spec.route,
@@ -597,6 +629,10 @@ function createMockApi({ bounded, recordCount: count, stats }) {
           state: `SECURITY_LIFECYCLE_STATE_${state.toUpperCase()}`,
           count: filtered.filter((record) => lifecycleState(record) === state).length,
         }));
+        const policyStateCounts = ["compliant", "expiring", "expired", "unknown"].map((policyState) => ({
+          policy_state: `SECURITY_LIFECYCLE_POLICY_STATE_${policyState.toUpperCase()}`,
+          count: filtered.filter((record) => lifecyclePolicyState(record) === policyState).length,
+        }));
         const subjectKindCounts = ["credential", "certificate"].map((kind) => ({
           subject_kind: `SECURITY_LIFECYCLE_SUBJECT_KIND_${kind.toUpperCase()}`,
           count: filtered.filter((record) => lifecycleKind(record) === kind).length,
@@ -612,10 +648,11 @@ function createMockApi({ bounded, recordCount: count, stats }) {
             matched_findings: filtered.filter((record) => record.findings.length > 0).length,
             subject_kind_counts: subjectKindCounts,
             state_counts: stateCounts,
+            policy_state_counts: policyStateCounts,
             counts_are_exact: true,
           },
           metadata: {
-          page_truncated: offset > 0 || nextOffset < filtered.length,
+            page_truncated: offset > 0 || nextOffset < filtered.length,
             coverage: {
               complete: true,
               truncated: false,
@@ -930,6 +967,7 @@ function makeSecurityLifecycleRecord(index) {
   const kind = index % 2 === 0 ? "credential" : "certificate";
   const states = ["active", "expiring", "expired", "rotated", "revoked", "inactive", "unknown"];
   const state = states[index % states.length];
+  const policyState = ["expiring", "expired", "unknown"].includes(state) ? state : "compliant";
   const findingID = `finding-${index % Math.min(recordCount, 500)}`;
   const subjectID = `urn:cerebro:${tenantID}:${kind}:authority-${index % 12}:slot-${index}`;
   const findingRef = { kind: "finding", id: `urn:cerebro:${tenantID}:finding:${findingID}` };
@@ -952,7 +990,7 @@ function makeSecurityLifecycleRecord(index) {
       policy_id: `${kind}-expiry`,
       policy_version: "1",
       subject_ref: { kind, id: subjectID },
-      state,
+      state: `SECURITY_LIFECYCLE_POLICY_STATE_${policyState.toUpperCase()}`,
       warning_window_days: 30,
       evaluated_at: isoDay(-1 * (index % 30)),
       evidence_claim_refs: [{ kind: "claim", id: `urn:cerebro:${tenantID}:claim:lifecycle-${index}` }],
@@ -983,6 +1021,10 @@ function lifecycleKind(record) {
 
 function lifecycleState(record) {
   return record.observation.state.replace("SECURITY_LIFECYCLE_STATE_", "").toLowerCase();
+}
+
+function lifecyclePolicyState(record) {
+  return record.policy_evaluations[0].state.replace("SECURITY_LIFECYCLE_POLICY_STATE_", "").toLowerCase();
 }
 
 function filterSecurityLifecycle(records, searchParams) {
