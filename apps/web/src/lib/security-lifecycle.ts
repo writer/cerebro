@@ -56,8 +56,32 @@ export type SecurityLifecycleRecord = {
 export type SecurityLifecycleResponse = {
   records: SecurityLifecycleRecord[];
   next_page_token?: string;
+  previous_page_token?: string;
   truncated: boolean;
   as_of: string;
+  aggregates?: {
+    matched_records?: number;
+    matched_findings?: number;
+    subject_kind_counts?: Array<{ subject_kind: string; count: number }>;
+    state_counts?: Array<{ state: string; count: number }>;
+    counts_are_exact?: boolean;
+  };
+  metadata?: {
+    page_truncated?: boolean;
+    coverage?: {
+      complete?: boolean;
+      truncated?: boolean;
+      scanned_entities?: number;
+      lifecycle_entities?: number;
+      graph_revision?: string | number;
+      reason?: string;
+    };
+    freshness?: {
+      as_of?: string;
+      oldest_observed_at?: string;
+      newest_observed_at?: string;
+    };
+  };
 };
 
 export type SecurityLifecycleSummary = {
@@ -113,4 +137,60 @@ export const lifecycleExpiryLabel = (value?: string) => {
     month: "short",
     day: "numeric",
   }).format(parsed);
+};
+
+export const lifecycleTimestampLabel = (value?: string) => {
+  if (!value) return "Not reported";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(parsed);
+};
+
+export const lifecycleFindingID = (ref: SecurityLifecycleResourceRef) => {
+  const raw = ref.id.split(":").at(-1) || ref.id;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+};
+
+export const lifecycleCompleteness = (response?: SecurityLifecycleResponse | null) => {
+  const coverage = response?.metadata?.coverage;
+  const pageTruncated = Boolean(
+    response?.metadata?.page_truncated
+    ?? response?.truncated
+    ?? response?.next_page_token,
+  );
+  return {
+    complete: coverage?.complete,
+    pageTruncated,
+    reason: coverage?.reason,
+    sourceTruncated: Boolean(coverage?.truncated),
+    total: response?.aggregates?.matched_records,
+  };
+};
+
+export const lifecycleNextPageToken = (response?: SecurityLifecycleResponse | null) =>
+  response?.next_page_token || "";
+
+export const lifecyclePreviousPageToken = (response?: SecurityLifecycleResponse | null) =>
+  response?.previous_page_token || "";
+
+export const lifecycleAggregateCount = (
+  counts: Array<{ state?: string; subject_kind?: string; count: number }> | undefined,
+  value: string,
+) => {
+  if (!counts) return undefined;
+  return counts.find((entry) =>
+    lifecycleEnumLabel(entry.state || entry.subject_kind || "") === value,
+  )?.count;
+};
+
+export const lifecycleActionLabel = (value: string) => {
+  const normalized = lifecycleEnumLabel(value).replaceAll("_", " ");
+  return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : "External action";
 };

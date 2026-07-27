@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  lifecycleAggregateCount,
+  lifecycleActionLabel,
+  lifecycleCompleteness,
   lifecycleEffectiveState,
+  lifecycleFindingID,
   lifecycleOwnerLabel,
   summarizeSecurityLifecycle,
   type SecurityLifecycleRecord,
@@ -66,5 +70,49 @@ describe("security lifecycle summaries", () => {
     expect(lifecycleOwnerLabel("urn:cerebro:tenant-a:team:security%")).toBe(
       "security%",
     );
+  });
+
+  it("reads full-population aggregate counts across typed enum keys", () => {
+    expect(lifecycleAggregateCount([
+      { state: "SECURITY_LIFECYCLE_STATE_EXPIRED", count: 8 },
+      { state: "expiring", count: 5 },
+    ], "expired")).toBe(8);
+    expect(lifecycleAggregateCount([{ state: "expiring", count: 5 }], "expiring")).toBe(5);
+    expect(lifecycleAggregateCount(undefined, "expired")).toBeUndefined();
+  });
+
+  it("keeps source coverage separate from page truncation", () => {
+    expect(lifecycleCompleteness({
+      records: [],
+      truncated: false,
+      as_of: "2026-07-26T12:00:00Z",
+      metadata: {
+        page_truncated: true,
+        coverage: { complete: false, truncated: true, reason: "scan in progress" },
+      },
+    })).toEqual({
+      complete: false,
+      pageTruncated: true,
+      reason: "scan in progress",
+      sourceTruncated: true,
+      total: undefined,
+    });
+    expect(lifecycleCompleteness({
+      records: [],
+      truncated: true,
+      as_of: "2026-07-26T12:00:00Z",
+    })).toMatchObject({
+      complete: undefined,
+      pageTruncated: true,
+      sourceTruncated: false,
+    });
+  });
+
+  it("formats provider-neutral action types as operator copy", () => {
+    expect(lifecycleActionLabel("rotate_credential")).toBe("Rotate credential");
+  });
+
+  it("builds finding detail ids from canonical refs", () => {
+    expect(lifecycleFindingID({ kind: "finding", id: "urn:cerebro:tenant:finding:expiry%2Fslot" })).toBe("expiry/slot");
   });
 });
