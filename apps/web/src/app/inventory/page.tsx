@@ -5,9 +5,8 @@ import { useCallback, useMemo, useState } from "react";
 
 import { useApiKey, useCurrentUser } from "@/components/providers";
 import { fetchCerebro } from "@/lib/cerebro-client";
-import { countLabel } from "@/lib/format";
 import AssetReportModal from "@/components/grc/AssetReportModal";
-import { AppliedFilterChips, Badge, ErrorBlock, LoadingBlock, MetricCard, PageHeader, ProgressCard, ResultLimitNotice, RiskBadge } from "@/components/grc/Primitives";
+import { AppliedFilterChips, Badge, ErrorBlock, LoadingBlock, MetricCard, PageHeader, ResultLimitNotice, RiskBadge } from "@/components/grc/Primitives";
 import {
   GRCInventoryAsset,
   GRCInventoryAssetReport,
@@ -26,7 +25,6 @@ import { GRC_WORKLIST_LIMIT, grcBoundedRows } from "@/lib/grc-list";
 import {
   inventoryAccountability,
   inventoryAttr,
-  inventoryIsPublicAsset,
   inventoryMatchesAccountabilityFilter,
   inventoryMatchesOwnerFilter,
   inventoryMatchesReviewFilter,
@@ -42,7 +40,7 @@ import {
   type InventoryReviewFilter,
   type InventoryReviewState,
 } from "@/lib/inventory-review";
-import { inventoryAssetSurface, inventoryRequestSurface } from "@/lib/inventory-surface";
+import { inventoryAssetSurface, inventoryNarrowingFilterCount, inventoryRequestSurface } from "@/lib/inventory-surface";
 import { useQueryParamState } from "@/lib/query-params";
 import { metricDetailForState, metricValueForState, runtimeStateForError, type RuntimeState } from "@/lib/runtime-state";
 
@@ -105,8 +103,10 @@ const regionLabel = (asset: GRCInventoryAsset) => {
 const descriptionLabel = (asset: GRCInventoryAsset) =>
   humanize(inventoryAttr(asset, "resource_type", "asset_type") || asset.entity_type);
 
-const orgLabel = (asset: GRCInventoryAsset) =>
-  inventoryAttr(asset, "org", "owner_login", "account_id", "project_id") || providerLabel(asset);
+const secondaryAssetID = (asset: GRCInventoryAsset) => {
+  const value = shortEntity(inventoryAttr(asset, "resource_id", "id") || asset.urn);
+  return value === (asset.label || shortEntity(asset.urn)) ? "" : value;
+};
 
 const reportStatusCopy = (status?: string) => status ? `Report ${humanize(status)}` : "";
 
@@ -450,73 +450,6 @@ function AccountabilityModal({
   );
 }
 
-function ReviewQueuePanel({
-  assets,
-  onReport,
-  onScopeChange,
-  reportSavingURN,
-  scopeSavingURN,
-}: {
-  assets: GRCInventoryAsset[];
-  onReport: (asset: GRCInventoryAsset) => void;
-  onScopeChange: (asset: GRCInventoryAsset, state: "in_scope" | "out_of_scope") => void;
-  reportSavingURN: string | null;
-  scopeSavingURN: string | null;
-}) {
-  const reviewQueue = assets
-    .filter(inventoryNeedsReview)
-    .slice()
-    .sort(inventoryReviewSort)
-    .slice(0, 6);
-
-  return (
-    <section className="surface-panel overflow-hidden">
-      <div className="flex items-start justify-between gap-3 border-b border-[color:var(--border)] px-4 py-3">
-        <div>
-          <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Needs review</h2>
-          <p className="mt-1 text-[12px] text-[var(--text-muted)]">Reported issues and assets where GRC accountability is required.</p>
-        </div>
-        <Badge value={`${reviewQueue.length} open`} />
-      </div>
-      <div className="divide-y divide-[color:var(--border)]">
-        {reviewQueue.map((asset) => (
-          <div key={asset.urn} className="px-4 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <Link href={`/inventory/${encodeURIComponent(asset.urn)}`} className="block truncate text-[13px] font-semibold text-[var(--text-primary)] hover:text-[var(--primary)]">
-                  {asset.label || shortEntity(asset.urn)}
-                </Link>
-                <div className="mt-1 line-clamp-2 text-[12px] leading-5 text-[var(--text-muted)]">{inventoryReviewDetail(asset)}</div>
-              </div>
-              <RiskBadge score={asset.risk_score} level={asset.risk_level} />
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onReport(asset)}
-                disabled={reportSavingURN === asset.urn}
-                className="secondary-button px-2.5 py-1 text-[12px] disabled:opacity-50"
-              >
-                {reportSavingURN === asset.urn ? "Reporting" : "Report"}
-              </button>
-              <button
-                type="button"
-                onClick={() => onScopeChange(asset, inventoryScopeState(asset) === "out_of_scope" ? "in_scope" : "out_of_scope")}
-                disabled={scopeSavingURN === asset.urn}
-                className="secondary-button px-2.5 py-1 text-[12px] disabled:opacity-50"
-              >
-                {scopeSavingURN === asset.urn ? "Saving" : inventoryScopeState(asset) === "out_of_scope" ? "Scope in" : "Scope out"}
-              </button>
-              <Link href={`/inventory/${encodeURIComponent(asset.urn)}`} className="px-2.5 py-1 text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">Open</Link>
-            </div>
-          </div>
-        ))}
-        {reviewQueue.length === 0 && <div className="px-4 py-8 text-center text-[13px] text-[var(--text-muted)]">No assets need review in this view.</div>}
-      </div>
-    </section>
-  );
-}
-
 export default function InventoryPage() {
   const { apiKey } = useApiKey();
   const { actor } = useCurrentUser();
@@ -530,6 +463,7 @@ export default function InventoryPage() {
   const [ownerFilter, setOwnerFilter] = useQueryParamState("owner");
   const [reviewFilter, setReviewFilter] = useQueryParamState("review_state");
   const [accountabilityFilter, setAccountabilityFilter] = useQueryParamState("accountability_state");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [scopeSavingURN, setScopeSavingURN] = useState<string | null>(null);
   const [scopeError, setScopeError] = useState<string | null>(null);
@@ -609,14 +543,10 @@ export default function InventoryPage() {
   const hasFrameworkFilter = debouncedFramework.length > 0;
   const selectedCategory = categories.find((category) => category.id === categoryID);
   const ownerGroupCount = useMemo(() => new Set(assets.map(inventoryOwnerLabel).filter((owner) => owner !== "Unassigned")).size, [assets]);
-  const providerCount = useMemo(() => new Set(assets.map((asset) => providerLabel(asset))).size, [assets]);
   const hasClientFilters = hasFrameworkFilter || debouncedOwnerFilter.length > 0;
   const outOfScopeCount = hasClientFilters
     ? assets.filter((asset) => inventoryScopeState(asset) === "out_of_scope").length
     : summary?.out_of_scope_assets ?? assets.filter((asset) => inventoryScopeState(asset) === "out_of_scope").length;
-  const publicAssetCount = hasClientFilters
-    ? assets.filter(inventoryIsPublicAsset).length
-    : summary?.public_assets ?? assets.filter(inventoryIsPublicAsset).length;
   const needsReviewCount = hasClientFilters
     ? assets.filter(inventoryNeedsReview).length
     : (summary ? (summary.needs_review_assets ?? 0) + (summary.reported_issue_assets ?? 0) : assets.filter(inventoryNeedsReview).length);
@@ -644,19 +574,6 @@ export default function InventoryPage() {
     if (categories.some((category) => category.id === categoryID) || !categoryID) return categories;
     return [{ id: categoryID, label: humanize(categoryID), entity_types: [], count: assets.length }, ...categories];
   }, [assets.length, categories, categoryID]);
-  const orgGroups = useMemo(() => {
-    const groups = new Map<string, { total: number; accountable: number; needsReview: number; publicAssets: number }>();
-    for (const asset of assets) {
-      const label = orgLabel(asset);
-      const group = groups.get(label) ?? { total: 0, accountable: 0, needsReview: 0, publicAssets: 0 };
-      group.total += 1;
-      if (inventoryAccountability(asset).state === "known") group.accountable += 1;
-      if (inventoryNeedsReview(asset)) group.needsReview += 1;
-      if (inventoryIsPublicAsset(asset)) group.publicAssets += 1;
-      groups.set(label, group);
-    }
-    return [...groups.entries()].sort(([, left], [, right]) => right.needsReview - left.needsReview || right.total - left.total).slice(0, 6);
-  }, [assets]);
   const filterChips = [
     { label: "Records", value: surfaceFilter ? surfaceFilterLabel(surfaceFilter) : "", onClear: () => { setSurfaceFilter(""); setCategoryID(""); setSelectedAssetURNs([]); } },
     { label: "Class", value: selectedCategory?.label || categoryID, onClear: () => setCategoryID("") },
@@ -669,6 +586,18 @@ export default function InventoryPage() {
     { label: "Scope", value: scopeFilter ? inventoryScopeCopy(scopeFilter) : "", onClear: () => setScopeFilter("") },
     { label: "Tenant", value: tenantID, onClear: () => setTenantID("") },
   ];
+  const activeFilterCount = inventoryNarrowingFilterCount({
+    surface: surfaceFilter,
+    tenant: tenantID,
+    category: categoryID,
+    query,
+    framework,
+    owner: ownerFilter,
+    review: reviewFilter,
+    accountability: accountabilityFilter,
+    source: sourceID,
+    scope: scopeFilter,
+  });
   const clearFilters = () => {
     setCategoryID("");
     setQuery("");
@@ -823,21 +752,7 @@ export default function InventoryPage() {
       <PageHeader
         title={selectedCategory?.label || "Inventory"}
         description="Review assets, owners, scope, and supporting records collected from sources."
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={exportAssets} className="secondary-button px-3 py-1.5 text-[13px]">
-              Export loaded CSV
-            </button>
-            {surfaceIsAssets && (
-              <button type="button" onClick={() => setScopeOpen(true)} className="secondary-button px-3 py-1.5 text-[13px]">
-                Configure scope
-              </button>
-            )}
-            <button type="button" onClick={() => { void categoriesQuery.reload(); void assetsQuery.reload(); }} className="primary-button px-3 py-1.5 text-[13px]">
-              Refresh
-            </button>
-          </div>
-        }
+        action={<button type="button" onClick={() => { void categoriesQuery.reload(); void assetsQuery.reload(); }} className="primary-button px-3 py-1.5 text-[13px]">Refresh</button>}
       />
 
       {inventoryError && (
@@ -847,19 +762,35 @@ export default function InventoryPage() {
           recoveryDetail="Inventory data will appear when the API is reachable."
         />
       )}
+      {scopeError && (
+        <ErrorBlock
+          error={scopeError}
+          onRetry={() => { void assetsQuery.reload(); void scopeQuery.reload(); }}
+          recoveryDetail="Scope updates can resume when the API is reachable."
+        />
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)]">
-        <AssetClassRail
-          categories={filteredCategories}
-          heading={surfaceIsAssets ? "Asset classes" : "Record classes"}
-          selectedID={categoryID}
-          total={categories.reduce((sum, item) => sum + item.count, 0)}
-          currentCount={assets.length}
-          onSelect={(id) => { setCategoryID(id); setSelectedAssetURNs([]); }}
-        />
+        <div className="hidden xl:block">
+          <AssetClassRail
+            categories={filteredCategories}
+            heading={surfaceIsAssets ? "Asset classes" : "Record classes"}
+            selectedID={categoryID}
+            total={categories.reduce((sum, item) => sum + item.count, 0)}
+            currentCount={assets.length}
+            onSelect={(id) => { setCategoryID(id); setSelectedAssetURNs([]); }}
+          />
+        </div>
 
         <div className="min-w-0 space-y-6">
-          <div className="surface-panel grid gap-0 divide-y divide-[color:var(--border)] overflow-hidden md:grid-cols-5 md:divide-x md:divide-y-0">
+          <div className="surface-panel flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-[13px] md:hidden">
+            <span className="font-semibold text-[var(--text-primary)]">{metricValueForState({ state: metricState, value: String(assets.length) })} {recordNoun}</span>
+            <span className="text-[var(--text-muted)]">·</span>
+            <span className="text-[var(--text-secondary)]">{metricValueForState({ state: metricState, value: String(needsReviewCount) })} need review</span>
+            <span className="text-[var(--text-muted)]">·</span>
+            <span className="text-[var(--text-secondary)]">{metricValueForState({ state: metricState, value: scopedCoverage })} in scope</span>
+          </div>
+          <div className="surface-panel hidden gap-0 divide-y divide-[color:var(--border)] overflow-hidden md:grid md:grid-cols-5 md:divide-x md:divide-y-0">
             {[
               { label: recordNounTitle, value: String(assets.length), detail: "matching filters" },
               { label: "Needs review", value: String(needsReviewCount), detail: surfaceIsAssets ? `${ownerRequiredCount} owner required` : `${needsReviewCount} reported` },
@@ -876,8 +807,26 @@ export default function InventoryPage() {
           </div>
 
           <div className="surface-panel px-5 py-4">
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-[minmax(0,1fr)_140px_150px_150px_150px_150px_150px_130px]">
-              <label className={labelClass}>Search<input value={query} onChange={(event) => { setQuery(event.target.value); setSelectedAssetURNs([]); }} placeholder="Search..." className={inputClass} /></label>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 md:hidden">
+              <label className={labelClass}>Search<input value={query} onChange={(event) => { setQuery(event.target.value); setSelectedAssetURNs([]); }} placeholder="Search assets" className={inputClass} /></label>
+              <button
+                type="button"
+                aria-expanded={filtersOpen}
+                onClick={() => setFiltersOpen((open) => !open)}
+                className="secondary-button mt-5 px-3 py-1.5 text-[13px]"
+              >
+                Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+              </button>
+              <label className={`${labelClass} col-span-2`}>
+                Class
+                <select value={categoryID} onChange={(event) => { setCategoryID(event.target.value); setSelectedAssetURNs([]); }} className={inputClass}>
+                  <option value="">All classes</option>
+                  {filteredCategories.map((category) => <option key={category.id} value={category.id}>{category.label} ({category.count})</option>)}
+                </select>
+              </label>
+            </div>
+            <div className={`${filtersOpen ? "grid" : "hidden"} mt-3 gap-3 md:mt-0 md:grid md:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-[minmax(0,1fr)_140px_150px_150px_150px_150px_150px_130px]`}>
+              <label className={`${labelClass} hidden md:block`}>Search<input value={query} onChange={(event) => { setQuery(event.target.value); setSelectedAssetURNs([]); }} placeholder="Search..." className={inputClass} /></label>
               <label className={labelClass}>
                 Records
                 <select value={surfaceFilter} onChange={(event) => { setSurfaceFilter(event.target.value); setCategoryID(""); setSelectedAssetURNs([]); }} className={inputClass}>
@@ -919,10 +868,14 @@ export default function InventoryPage() {
                 </select>
               </label>
             </div>
-            <div className="mt-3 max-w-xs">
+            <div className={`${filtersOpen ? "block" : "hidden"} mt-3 max-w-xs md:block`}>
               <label className={labelClass}>Tenant<input value={tenantID} onChange={(event) => { setTenantID(event.target.value); setSelectedAssetURNs([]); }} placeholder="All" className={inputClass} /></label>
             </div>
             <AppliedFilterChips filters={filterChips} onClearAll={clearFilters} />
+            <div className={`${filtersOpen ? "flex" : "hidden"} mt-4 flex-wrap items-center gap-2 border-t border-[color:var(--border)] pt-3 md:flex`}>
+              <button type="button" onClick={exportAssets} className="secondary-button px-3 py-1.5 text-[12px]">Export CSV</button>
+              {surfaceIsAssets && <button type="button" onClick={() => setScopeOpen(true)} className="secondary-button px-3 py-1.5 text-[12px]">Configure scope</button>}
+            </div>
           </div>
 
           {inventoryLoading && <LoadingBlock label="Loading inventory..." />}
@@ -955,8 +908,7 @@ export default function InventoryPage() {
           )}
 
           {!inventoryError && (
-            <div className="grid gap-6 min-[1800px]:grid-cols-[minmax(0,1fr)_340px]">
-              <main className="space-y-4">
+            <main className="space-y-4">
                 {!assetsQuery.loading && !assetsQuery.error && (
                   <div className="surface-panel overflow-hidden">
                     <div className="flex items-center justify-between border-b border-[color:var(--border)] px-4 py-3 md:hidden">
@@ -1016,7 +968,7 @@ export default function InventoryPage() {
                                 <SourceMark asset={asset} />
                                 <div className="min-w-0">
                                   <Link href={`/inventory/${encodeURIComponent(asset.urn)}`} className="block max-w-[26rem] truncate font-medium text-[var(--text-primary)] hover:text-[var(--primary)]">{asset.label || shortEntity(asset.urn)}</Link>
-                                  <div className="truncate font-mono text-[11px] text-[var(--text-muted)]">{shortEntity(inventoryAttr(asset, "resource_id", "id") || asset.urn)}</div>
+                                  {secondaryAssetID(asset) && <div className="truncate font-mono text-[11px] text-[var(--text-muted)]">{secondaryAssetID(asset)}</div>}
                                   <div className="mt-1 text-[11px] text-[var(--text-muted)]">{surfaceFilterLabel(inventoryAssetSurface(asset))} / {descriptionLabel(asset)}</div>
                                 </div>
                               </div>
@@ -1065,7 +1017,6 @@ export default function InventoryPage() {
                                 <button type="button" onClick={() => { setReportAsset(asset); setReportError(null); }} disabled={reportSavingURN === asset.urn} className="secondary-button px-2.5 py-1 text-[12px] disabled:opacity-50">
                                   {reportSavingURN === asset.urn ? "Reporting" : "Report"}
                                 </button>
-                                <Link href={`/inventory/${encodeURIComponent(asset.urn)}`} className="px-2.5 py-1 text-[12px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">Open</Link>
                               </div>
                             </td>
                           </tr>
@@ -1102,61 +1053,7 @@ export default function InventoryPage() {
                     )}
                   </div>
                 )}
-              </main>
-              <aside className="grid gap-4 lg:grid-cols-2 min-[1800px]:block min-[1800px]:space-y-4">
-                {surfaceIsAssets && (
-                  <ReviewQueuePanel
-                    assets={assets}
-                    onReport={(asset) => { setReportAsset(asset); setReportError(null); }}
-                    onScopeChange={(asset, state) => void updateScope(asset, state)}
-                    reportSavingURN={reportSavingURN}
-                    scopeSavingURN={scopeSavingURN}
-                  />
-                )}
-                <section className="surface-panel p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Review posture</h2>
-                      <p className="mt-1 text-[12px] text-[var(--text-muted)]">{surfaceIsAssets ? "Accountability coverage for assets in this view." : "Supporting records stay linked to assets without owner review."}</p>
-                    </div>
-                    <Badge value={countLabel(providerCount, "source")} />
-                  </div>
-                  <div className="mt-4 grid gap-3">
-                    <ProgressCard title="Scoped coverage" percent={hasAssetData ? summary?.scoped_coverage_pct ?? Math.round(((assets.length - outOfScopeCount) / assets.length) * 100) : 0} detail={hasAssetData ? "assets in review" : "no data"} total={summary?.in_scope_assets ?? assets.length} />
-                    <ProgressCard title="Accountable assets" percent={assets.length ? Math.round((accountableCount / assets.length) * 100) : 0} detail="known owner group" total={accountableCount} />
-                    <ProgressCard title="Private posture" percent={assets.length ? Math.round(((assets.length - publicAssetCount) / assets.length) * 100) : 0} detail="not public" total={`${publicAssetCount} public`} />
-                  </div>
-                  {scopeError && (
-                    <div className="mt-4">
-                      <ErrorBlock
-                        error={scopeError}
-                        onRetry={() => { void assetsQuery.reload(); void scopeQuery.reload(); }}
-                        recoveryDetail="Scope updates can resume when the API is reachable."
-                      />
-                    </div>
-                  )}
-                </section>
-              </aside>
-            </div>
-          )}
-
-          {!inventoryError && (
-            <section className="surface-panel p-4">
-              <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">Org parity</h2>
-              <p className="mt-1 text-[12px] text-[var(--text-muted)]">Compare review pressure, accountability coverage, and exposure by organization, account, project, or owner scope.</p>
-              <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                {orgGroups.map(([label, group]) => (
-                  <div key={label} className="rounded-md border border-[color:var(--border)] bg-[var(--surface-muted)] px-3 py-2">
-                    <div className="flex items-center justify-between gap-3 text-[13px]">
-                      <span className="truncate font-medium text-[var(--text-primary)]">{label}</span>
-                      <span className="text-[var(--text-muted)]">{group.accountable}/{group.total} accountable</span>
-                    </div>
-                    <div className="mt-1 text-[12px] text-[var(--text-muted)]">{group.needsReview} need review, {group.publicAssets} public</div>
-                  </div>
-                ))}
-                {orgGroups.length === 0 && <div className="text-[13px] text-[var(--text-muted)]">No org groups found.</div>}
-              </div>
-            </section>
+            </main>
           )}
         </div>
       </div>

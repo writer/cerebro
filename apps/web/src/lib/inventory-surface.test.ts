@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { inventoryAssetSurface, inventoryDefaultSurface, inventoryRequestSurface } from "@/lib/inventory-surface";
+import { inventoryAssetSurface, inventoryDefaultSurface, inventoryNarrowingFilterCount, inventoryRequestSurface } from "@/lib/inventory-surface";
 
 const readProjectFile = (...parts: string[]) => readFileSync(join(process.cwd(), ...parts), "utf8");
 
@@ -20,6 +20,25 @@ describe("inventory surface defaults", () => {
     expect(inventoryAssetSurface()).toBe("asset");
     expect(inventoryAssetSurface({})).toBe("asset");
     expect(inventoryAssetSurface({ surface: "component" })).toBe("component");
+  });
+
+  it("does not count the default asset surface or tenant context as mobile filters", () => {
+    const defaults = {
+      surface: "asset",
+      tenant: "tenant-default",
+      category: "",
+      query: "",
+      framework: "",
+      owner: "",
+      review: "",
+      accountability: "",
+      source: "",
+      scope: "",
+    };
+
+    expect(inventoryNarrowingFilterCount(defaults)).toBe(0);
+    expect(inventoryNarrowingFilterCount({ ...defaults, surface: "", tenant: "" })).toBe(0);
+    expect(inventoryNarrowingFilterCount({ ...defaults, surface: "component", category: "repositories" })).toBe(2);
   });
 
   it("keeps inventory pages on the shared surface helpers", () => {

@@ -2009,9 +2009,8 @@ const entityImpactFixture = (rawURN: string) => {
   });
 };
 
-const auditPacketFixture = (findingID: string) => {
-  const requestedID = safeDecode(findingID);
-  const finding = findings.find((item) => item.id === requestedID);
+const auditPreviewFixture = (findingID: string) => {
+  const finding = findings.find((item) => item.id === safeDecode(findingID));
   if (!finding) return null;
   return {
     id: `packet-${finding.id}`,
@@ -2028,6 +2027,12 @@ const auditPacketFixture = (findingID: string) => {
     },
     generated_at: generatedAt,
   };
+};
+
+const auditPacketFixture = (packetID: string) => {
+  const decodedPacketID = safeDecode(packetID);
+  const finding = findings.find((item) => `packet-${item.id}` === decodedPacketID);
+  return finding ? auditPreviewFixture(finding.id) : null;
 };
 
 const controlPacketFixture = (params?: URLSearchParams) => {
@@ -4550,6 +4555,14 @@ export const cerebroFixtureResponseFor = ({
   const impactMatch = /^grc\/entities\/(.+)\/impact$/.exec(normalizedPath);
   if (impactMatch) {
     return entityImpactFixture(impactMatch[1]);
+  }
+
+  const auditPreviewMatch = /^grc\/findings\/([^/]+)\/audit-preview$/.exec(normalizedPath);
+  if (auditPreviewMatch) {
+    const preview = auditPreviewFixture(auditPreviewMatch[1]);
+    return preview
+      ? jsonFixture(preview)
+      : jsonFixture({ error: `No fixture finding found for ${safeDecode(auditPreviewMatch[1])}`, generated_at: generatedAt }, 404);
   }
 
   const auditPacketMatch = /^grc\/audit-packets\/([^/]+)(?:\/export)?$/.exec(normalizedPath);

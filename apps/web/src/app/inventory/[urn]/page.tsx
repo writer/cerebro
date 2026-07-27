@@ -11,7 +11,6 @@ import GraphViewer from "@/components/grc/LazyGraphViewer";
 import { Badge, EmptyBlock, ErrorBlock, LoadingBlock, MetricCard, PageHeader, Panel, RiskBadge, SeverityDot } from "@/components/grc/Primitives";
 import {
   displayDate,
-  GRCInventoryAction,
   GRCInventoryAsset,
   GRCInventoryAssetDetail,
   GRCInventoryAssetReport,
@@ -55,6 +54,7 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
+  if (!value || value === "—" || value === "Not set") return null;
   return (
     <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 py-2 text-[13px]">
       <dt className="text-[var(--text-muted)]">{label}</dt>
@@ -88,8 +88,6 @@ const surfaceLabel = (asset?: GRCInventoryAsset) => {
   }
 };
 
-const recordNoun = (asset?: GRCInventoryAsset) => inventoryAssetSurface(asset) === "asset" ? "asset" : "record";
-
 const isReviewableAsset = (asset?: GRCInventoryAsset) => inventoryAssetSurface(asset) === "asset";
 
 const reportStatuses = ["submitted", "in_triage", "accepted", "rejected", "resolved"];
@@ -98,40 +96,21 @@ function OverviewPane({ data, setTab }: { data: GRCInventoryAssetDetail; setTab:
   const failing = failingTests(data.tests);
   const criticalHigh = criticalHighVulnerabilities(data.vulnerabilities);
   const publicState = attr(data.asset, "public", "publicly_accessible", "internet_exposed") === "true";
-  const actions = data.actions ?? [];
   const reportCount = data.asset_reports?.length ?? 0;
-  const noun = recordNoun(data.asset);
-  const summary = [
-    publicState ? "is publicly accessible" : "is not publicly accessible",
-    criticalHigh === 0 ? "has no critical or high vulnerabilities" : `has ${criticalHigh} critical or high vulnerabilities`,
-    failing === 0 ? "has no failing tests" : `has ${failing} failing tests`,
-    reportCount === 0 ? "has no curation reports" : `has ${reportCount} curation report${reportCount === 1 ? "" : "s"}`,
-    scopeState(data.asset) === "out_of_scope" ? "is scoped out of compliance review" : "is in scope",
-  ].join(", ");
   return (
     <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="min-w-0 space-y-6">
         <section className="surface-panel overflow-hidden">
           <div className="p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-[var(--text-primary)]">Summary</h2>
+              <h2 className="text-lg font-semibold text-[var(--text-primary)]">Posture</h2>
               <RiskBadge score={data.asset.risk_score} level={data.asset.risk_level} />
             </div>
-            <p className="mt-6 text-[15px] leading-6 text-[var(--text-secondary)]">This {noun} {summary}.</p>
             {data.asset.risk_reasons && data.asset.risk_reasons.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-1.5">
                 {data.asset.risk_reasons.slice(0, 8).map((reason) => <span key={reason} className="rounded-md bg-[var(--surface-muted)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]">{humanize(reason)}</span>)}
               </div>
             )}
-            <div className="mt-6 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">Recommendation</div>
-            <p className="mt-2 text-[14px] leading-6 text-[var(--text-secondary)]">
-              {isReviewableAsset(data.asset)
-                ? "Review accountability, framework coverage, failing tests, vulnerability posture, and adjacent graph relationships before changing scope or remediation priority."
-                : "Review graph relationships and source attributes before changing the related asset review state."}
-            </p>
-          </div>
-          <div className="border-t border-[color:var(--border)] bg-[var(--surface-muted)] px-5 py-3 text-[12px] font-medium text-[var(--text-secondary)]">
-            <span className="mr-2 text-[var(--primary)]">✦</span>Generated summary
           </div>
         </section>
 
@@ -143,7 +122,7 @@ function OverviewPane({ data, setTab }: { data: GRCInventoryAssetDetail; setTab:
           <button type="button" onClick={() => setTab("tests")} className="flex w-full items-center justify-between border-b border-[color:var(--border)] px-5 py-3 text-left hover:bg-[var(--surface-hover)]">
             <div>
               <div className="text-[13px] font-medium text-[var(--text-primary)]">{failing === 0 ? "No failing tests" : `${failing} failing compliance tests`}</div>
-              <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">Review these tests to ensure this asset is compliant</div>
+              {failing > 0 && <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">Review failing tests before changing this asset&apos;s status.</div>}
             </div>
             <Badge value={failing === 0 ? "ok" : "overdue"} />
           </button>
@@ -161,22 +140,6 @@ function OverviewPane({ data, setTab }: { data: GRCInventoryAssetDetail; setTab:
           </button>
         </section>
 
-        <Panel title="Next best actions">
-          <div className="space-y-3">
-            {actions.map((action: GRCInventoryAction) => (
-              <div key={`${action.priority}-${action.title}`} className="rounded-lg border border-[color:var(--border)] bg-[var(--surface-muted)] p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-[13px] font-semibold text-[var(--text-primary)]">{action.title}</div>
-                    <div className="mt-1 text-[12px] leading-5 text-[var(--text-secondary)]">{action.description}</div>
-                  </div>
-                  <Badge value={action.priority} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </Panel>
-
         <Panel title="Relationships" action={<Link href={`/explore?root_urn=${encodeURIComponent(data.asset.urn)}`} className="text-[12px] font-medium text-indigo-600 hover:text-indigo-800">Open graph</Link>}>
           <RelationshipGraph graph={data.graph} />
         </Panel>
@@ -186,10 +149,9 @@ function OverviewPane({ data, setTab }: { data: GRCInventoryAssetDetail; setTab:
         <div className="mb-4 grid gap-3">
           <MetricCard label="Review" value={inventoryReviewLabel(inventoryReviewState(data.asset))} detail={inventoryReviewDetail(data.asset) || "current review state"} intent={inventoryReviewState(data.asset) === "needs_review" || inventoryReviewState(data.asset) === "reported_issue" ? "warning" : "neutral"} />
           <MetricCard label="Accountability" value={inventoryAccountability(data.asset).label} detail={inventoryAccountability(data.asset).principal || (isReviewableAsset(data.asset) ? "derived from inventory evidence" : "owner review not required")} intent={inventoryAccountability(data.asset).state === "required_missing" ? "warning" : "neutral"} />
-          <MetricCard label="Risk score" value={data.asset.risk_score ?? 0} detail={humanize(data.asset.risk_level)} intent={(data.asset.risk_score ?? 0) >= 70 ? "danger" : "neutral"} />
-          <MetricCard label="Scope" value={scopeState(data.asset) === "out_of_scope" ? "Scoped out" : "In"} detail={data.asset.scope_reason || "active inventory state"} intent={scopeState(data.asset) === "out_of_scope" ? "warning" : "success"} />
         </div>
         <dl className="divide-y divide-[color:var(--border)]">
+          <DetailRow label="URN" value={data.asset.urn} />
           <DetailRow label="Surface" value={surfaceLabel(data.asset)} />
           <DetailRow label="Last updated" value={displayDate(attr(data.asset, "updated_at", "last_seen_at", "last_synced_at"))} />
           <DetailRow label="First seen" value={displayDate(attr(data.asset, "created_at", "first_seen_at"))} />
@@ -425,6 +387,7 @@ export default function InventoryAssetPage() {
   );
   const asset = data?.asset;
   const externalURL = attr(asset, "html_url", "url", "web_url", "console_url");
+  const lastRefreshed = attr(asset, "updated_at", "last_seen_at", "last_synced_at");
   const updateScope = async () => {
     if (!asset) return;
     setScopeSaving(true);
@@ -499,7 +462,7 @@ export default function InventoryAssetPage() {
     <div className="space-y-6">
       <PageHeader
         title={asset?.label || shortEntity(urn)}
-        description={`${surfaceLabel(asset)} / ${humanize(asset?.entity_type)}${urn ? ` • ${urn}` : ""}`}
+        description={`${surfaceLabel(asset)} / ${humanize(asset?.entity_type)}`}
         action={
           <div className="flex items-center gap-2">
             {externalURL && <a href={externalURL} target="_blank" rel="noreferrer" className="secondary-button px-3 py-1.5 text-[13px]">Open source</a>}
@@ -518,7 +481,7 @@ export default function InventoryAssetPage() {
         <>
           <div className="mb-2 flex flex-wrap items-center gap-4 text-[12px] text-[var(--text-muted)]">
             <span className="rounded-full bg-[var(--surface-muted)] px-2 py-1 font-medium text-[var(--text-secondary)]">{inventoryAccountability(data.asset).principal || (isReviewableAsset(data.asset) ? attr(data.asset, "owner", "owner_email") || "Unassigned" : "Owner not required")}</span>
-            <span>Last refreshed: {displayDate(attr(asset, "updated_at", "last_seen_at", "last_synced_at"))}</span>
+            {lastRefreshed && <span>Last refreshed {displayDate(lastRefreshed)}</span>}
             <span>{scopeCopy(scopeState(data.asset))}</span>
           </div>
           <div className="overflow-x-auto border-b border-[color:var(--border)]" role="tablist" aria-label="Asset detail sections">

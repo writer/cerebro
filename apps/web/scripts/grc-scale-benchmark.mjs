@@ -573,9 +573,9 @@ function createMockApi({ bounded, recordCount: count, stats }) {
           generated_at: generatedAt,
         });
       }
-      const auditPacketMatch = /^grc\/audit-packets\/([^/]+)$/.exec(normalizedPath);
-      if (auditPacketMatch) {
-        const finding = data.findings.find((item) => item.id === decodeURIComponent(auditPacketMatch[1])) ?? data.findings[0];
+      const auditPreviewMatch = /^grc\/findings\/([^/]+)\/audit-preview$/.exec(normalizedPath);
+      if (auditPreviewMatch) {
+        const finding = data.findings.find((item) => item.id === decodeURIComponent(auditPreviewMatch[1])) ?? data.findings[0];
         const evidence = boundedList(data.evidence, url.searchParams, bounded);
         const resourceURNs = Array.from({ length: recordCount }, (_, index) => `urn:cerebro:${tenantID}:asset:asset-${index}`);
         const sourceCoverageRefs = Array.from({ length: recordCount }, (_, index) => ({
