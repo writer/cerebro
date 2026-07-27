@@ -16,7 +16,9 @@ import (
 	"github.com/writer/cerebro/internal/sourcehttp/organizationalgraph"
 )
 
-type securityLifecycleErrorService struct{}
+type securityLifecycleErrorService struct {
+	cerebrov1connect.UnimplementedSecurityLifecycleServiceHandler
+}
 
 func (securityLifecycleErrorService) ListSecurityLifecycle(
 	_ context.Context,

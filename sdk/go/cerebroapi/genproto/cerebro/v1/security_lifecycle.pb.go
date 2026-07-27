@@ -898,14 +898,16 @@ func (x *SecurityLifecycleVerificationBinding) GetEvidenceClaimRefs() []*Resourc
 
 // SecurityLifecycleRecord is the operator read model for one governed resource.
 type SecurityLifecycleRecord struct {
-	state             protoimpl.MessageState               `protogen:"open.v1"`
-	Observation       *SecurityLifecycleObservation        `protobuf:"bytes,1,opt,name=observation,proto3" json:"observation,omitempty"`
-	PolicyEvaluations []*SecurityLifecyclePolicyEvaluation `protobuf:"bytes,3,rep,name=policy_evaluations,json=policyEvaluations,proto3" json:"policy_evaluations,omitempty"`
-	Findings          []*SecurityLifecycleFindingBinding   `protobuf:"bytes,4,rep,name=findings,proto3" json:"findings,omitempty"`
-	ActionRoutes      []*SecurityLifecycleActionRoute      `protobuf:"bytes,5,rep,name=action_routes,json=actionRoutes,proto3" json:"action_routes,omitempty"`
-	ProjectedAt       *timestamppb.Timestamp               `protobuf:"bytes,6,opt,name=projected_at,json=projectedAt,proto3" json:"projected_at,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state              protoimpl.MessageState               `protogen:"open.v1"`
+	Observation        *SecurityLifecycleObservation        `protobuf:"bytes,1,opt,name=observation,proto3" json:"observation,omitempty"`
+	PolicyEvaluations  []*SecurityLifecyclePolicyEvaluation `protobuf:"bytes,3,rep,name=policy_evaluations,json=policyEvaluations,proto3" json:"policy_evaluations,omitempty"`
+	Findings           []*SecurityLifecycleFindingBinding   `protobuf:"bytes,4,rep,name=findings,proto3" json:"findings,omitempty"`
+	ActionRoutes       []*SecurityLifecycleActionRoute      `protobuf:"bytes,5,rep,name=action_routes,json=actionRoutes,proto3" json:"action_routes,omitempty"`
+	ProjectedAt        *timestamppb.Timestamp               `protobuf:"bytes,6,opt,name=projected_at,json=projectedAt,proto3" json:"projected_at,omitempty"`
+	SourceRuntimeId    string                               `protobuf:"bytes,7,opt,name=source_runtime_id,json=sourceRuntimeId,proto3" json:"source_runtime_id,omitempty"`
+	SourceCollectionId string                               `protobuf:"bytes,8,opt,name=source_collection_id,json=sourceCollectionId,proto3" json:"source_collection_id,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *SecurityLifecycleRecord) Reset() {
@@ -971,6 +973,20 @@ func (x *SecurityLifecycleRecord) GetProjectedAt() *timestamppb.Timestamp {
 		return x.ProjectedAt
 	}
 	return nil
+}
+
+func (x *SecurityLifecycleRecord) GetSourceRuntimeId() string {
+	if x != nil {
+		return x.SourceRuntimeId
+	}
+	return ""
+}
+
+func (x *SecurityLifecycleRecord) GetSourceCollectionId() string {
+	if x != nil {
+		return x.SourceCollectionId
+	}
+	return ""
 }
 
 // SecurityLifecycleQuery is a bounded, tenant-scoped selector for lifecycle
@@ -1684,6 +1700,126 @@ func (x *SecurityLifecycleQueryMetadata) GetPageTruncated() bool {
 	return false
 }
 
+type ResolveSecurityLifecycleFindingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	FindingUrn    string                 `protobuf:"bytes,2,opt,name=finding_urn,json=findingUrn,proto3" json:"finding_urn,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveSecurityLifecycleFindingRequest) Reset() {
+	*x = ResolveSecurityLifecycleFindingRequest{}
+	mi := &file_cerebro_v1_security_lifecycle_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveSecurityLifecycleFindingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveSecurityLifecycleFindingRequest) ProtoMessage() {}
+
+func (x *ResolveSecurityLifecycleFindingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_security_lifecycle_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveSecurityLifecycleFindingRequest.ProtoReflect.Descriptor instead.
+func (*ResolveSecurityLifecycleFindingRequest) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_security_lifecycle_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ResolveSecurityLifecycleFindingRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ResolveSecurityLifecycleFindingRequest) GetFindingUrn() string {
+	if x != nil {
+		return x.FindingUrn
+	}
+	return ""
+}
+
+type ResolveSecurityLifecycleFindingResponse struct {
+	state              protoimpl.MessageState   `protogen:"open.v1"`
+	Record             *SecurityLifecycleRecord `protobuf:"bytes,1,opt,name=record,proto3" json:"record,omitempty"`
+	GraphRevision      uint64                   `protobuf:"varint,2,opt,name=graph_revision,json=graphRevision,proto3" json:"graph_revision,omitempty"`
+	SourceRuntimeId    string                   `protobuf:"bytes,3,opt,name=source_runtime_id,json=sourceRuntimeId,proto3" json:"source_runtime_id,omitempty"`
+	SourceCollectionId string                   `protobuf:"bytes,4,opt,name=source_collection_id,json=sourceCollectionId,proto3" json:"source_collection_id,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *ResolveSecurityLifecycleFindingResponse) Reset() {
+	*x = ResolveSecurityLifecycleFindingResponse{}
+	mi := &file_cerebro_v1_security_lifecycle_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveSecurityLifecycleFindingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveSecurityLifecycleFindingResponse) ProtoMessage() {}
+
+func (x *ResolveSecurityLifecycleFindingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_security_lifecycle_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveSecurityLifecycleFindingResponse.ProtoReflect.Descriptor instead.
+func (*ResolveSecurityLifecycleFindingResponse) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_security_lifecycle_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ResolveSecurityLifecycleFindingResponse) GetRecord() *SecurityLifecycleRecord {
+	if x != nil {
+		return x.Record
+	}
+	return nil
+}
+
+func (x *ResolveSecurityLifecycleFindingResponse) GetGraphRevision() uint64 {
+	if x != nil {
+		return x.GraphRevision
+	}
+	return 0
+}
+
+func (x *ResolveSecurityLifecycleFindingResponse) GetSourceRuntimeId() string {
+	if x != nil {
+		return x.SourceRuntimeId
+	}
+	return ""
+}
+
+func (x *ResolveSecurityLifecycleFindingResponse) GetSourceCollectionId() string {
+	if x != nil {
+		return x.SourceCollectionId
+	}
+	return ""
+}
+
 var File_cerebro_v1_security_lifecycle_proto protoreflect.FileDescriptor
 
 const file_cerebro_v1_security_lifecycle_proto_rawDesc = "" +
@@ -1763,13 +1899,15 @@ const file_cerebro_v1_security_lifecycle_proto_rawDesc = "" +
 	"\x10source_truncated\x18\a \x01(\bR\x0fsourceTruncated\x12;\n" +
 	"\vobserved_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"observedAt\x12G\n" +
-	"\x13evidence_claim_refs\x18\t \x03(\v2\x17.cerebro.v1.ResourceRefR\x11evidenceClaimRefs\"\xa7\x03\n" +
+	"\x13evidence_claim_refs\x18\t \x03(\v2\x17.cerebro.v1.ResourceRefR\x11evidenceClaimRefs\"\x85\x04\n" +
 	"\x17SecurityLifecycleRecord\x12J\n" +
 	"\vobservation\x18\x01 \x01(\v2(.cerebro.v1.SecurityLifecycleObservationR\vobservation\x12\\\n" +
 	"\x12policy_evaluations\x18\x03 \x03(\v2-.cerebro.v1.SecurityLifecyclePolicyEvaluationR\x11policyEvaluations\x12G\n" +
 	"\bfindings\x18\x04 \x03(\v2+.cerebro.v1.SecurityLifecycleFindingBindingR\bfindings\x12M\n" +
 	"\raction_routes\x18\x05 \x03(\v2(.cerebro.v1.SecurityLifecycleActionRouteR\factionRoutes\x12=\n" +
-	"\fprojected_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\vprojectedAtJ\x04\b\x02\x10\x03R\x05links\"\xd2\x03\n" +
+	"\fprojected_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\vprojectedAt\x12*\n" +
+	"\x11source_runtime_id\x18\a \x01(\tR\x0fsourceRuntimeId\x120\n" +
+	"\x14source_collection_id\x18\b \x01(\tR\x12sourceCollectionIdJ\x04\b\x02\x10\x03R\x05links\"\xd2\x03\n" +
 	"\x16SecurityLifecycleQuery\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12M\n" +
 	"\rsubject_kinds\x18\x02 \x03(\x0e2(.cerebro.v1.SecurityLifecycleSubjectKindR\fsubjectKinds\x12:\n" +
@@ -1826,7 +1964,16 @@ const file_cerebro_v1_security_lifecycle_proto_rawDesc = "" +
 	"\x1eSecurityLifecycleQueryMetadata\x12A\n" +
 	"\bcoverage\x18\x01 \x01(\v2%.cerebro.v1.SecurityLifecycleCoverageR\bcoverage\x12D\n" +
 	"\tfreshness\x18\x02 \x01(\v2&.cerebro.v1.SecurityLifecycleFreshnessR\tfreshness\x12%\n" +
-	"\x0epage_truncated\x18\x03 \x01(\bR\rpageTruncated*\xb0\x01\n" +
+	"\x0epage_truncated\x18\x03 \x01(\bR\rpageTruncated\"f\n" +
+	"&ResolveSecurityLifecycleFindingRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1f\n" +
+	"\vfinding_urn\x18\x02 \x01(\tR\n" +
+	"findingUrn\"\xeb\x01\n" +
+	"'ResolveSecurityLifecycleFindingResponse\x12;\n" +
+	"\x06record\x18\x01 \x01(\v2#.cerebro.v1.SecurityLifecycleRecordR\x06record\x12%\n" +
+	"\x0egraph_revision\x18\x02 \x01(\x04R\rgraphRevision\x12*\n" +
+	"\x11source_runtime_id\x18\x03 \x01(\tR\x0fsourceRuntimeId\x120\n" +
+	"\x14source_collection_id\x18\x04 \x01(\tR\x12sourceCollectionId*\xb0\x01\n" +
 	"\x1cSecurityLifecycleSubjectKind\x12/\n" +
 	"+SECURITY_LIFECYCLE_SUBJECT_KIND_UNSPECIFIED\x10\x00\x12.\n" +
 	"*SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL\x10\x01\x12/\n" +
@@ -1850,9 +1997,10 @@ const file_cerebro_v1_security_lifecycle_proto_rawDesc = "" +
 	".SECURITY_LIFECYCLE_COVERAGE_REASON_UNSPECIFIED\x10\x00\x12/\n" +
 	"+SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE\x10\x01\x121\n" +
 	"-SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT\x10\x02\x124\n" +
-	"0SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED\x10\x032\x88\x01\n" +
+	"0SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED\x10\x032\x95\x02\n" +
 	"\x18SecurityLifecycleService\x12l\n" +
-	"\x15ListSecurityLifecycle\x12(.cerebro.v1.ListSecurityLifecycleRequest\x1a).cerebro.v1.ListSecurityLifecycleResponseB\xbc\x01\n" +
+	"\x15ListSecurityLifecycle\x12(.cerebro.v1.ListSecurityLifecycleRequest\x1a).cerebro.v1.ListSecurityLifecycleResponse\x12\x8a\x01\n" +
+	"\x1fResolveSecurityLifecycleFinding\x122.cerebro.v1.ResolveSecurityLifecycleFindingRequest\x1a3.cerebro.v1.ResolveSecurityLifecycleFindingResponseB\xbc\x01\n" +
 	"\x0ecom.cerebro.v1B\x16SecurityLifecycleProtoP\x01ZIgithub.com/writer/cerebro/sdk/go/cerebroapi/genproto/cerebro/v1;cerebrov1\xa2\x02\x03CXX\xaa\x02\n" +
 	"Cerebro.V1\xca\x02\n" +
 	"Cerebro\\V1\xe2\x02\x16Cerebro\\V1\\GPBMetadata\xea\x02\vCerebro::V1b\x06proto3"
@@ -1870,76 +2018,78 @@ func file_cerebro_v1_security_lifecycle_proto_rawDescGZIP() []byte {
 }
 
 var file_cerebro_v1_security_lifecycle_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_cerebro_v1_security_lifecycle_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_cerebro_v1_security_lifecycle_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_cerebro_v1_security_lifecycle_proto_goTypes = []any{
-	(SecurityLifecycleSubjectKind)(0),            // 0: cerebro.v1.SecurityLifecycleSubjectKind
-	(SecurityLifecycleState)(0),                  // 1: cerebro.v1.SecurityLifecycleState
-	(SecurityLifecyclePolicyState)(0),            // 2: cerebro.v1.SecurityLifecyclePolicyState
-	(SecurityLifecycleCoverageReason)(0),         // 3: cerebro.v1.SecurityLifecycleCoverageReason
-	(*ListSecurityLifecycleRequest)(nil),         // 4: cerebro.v1.ListSecurityLifecycleRequest
-	(*ListSecurityLifecycleResponse)(nil),        // 5: cerebro.v1.ListSecurityLifecycleResponse
-	(*SecurityLifecycleObservation)(nil),         // 6: cerebro.v1.SecurityLifecycleObservation
-	(*SecurityLifecyclePolicyEvaluation)(nil),    // 7: cerebro.v1.SecurityLifecyclePolicyEvaluation
-	(*SecurityLifecycleFindingBinding)(nil),      // 8: cerebro.v1.SecurityLifecycleFindingBinding
-	(*SecurityLifecycleActionRoute)(nil),         // 9: cerebro.v1.SecurityLifecycleActionRoute
-	(*SecurityLifecycleVerificationBinding)(nil), // 10: cerebro.v1.SecurityLifecycleVerificationBinding
-	(*SecurityLifecycleRecord)(nil),              // 11: cerebro.v1.SecurityLifecycleRecord
-	(*SecurityLifecycleQuery)(nil),               // 12: cerebro.v1.SecurityLifecycleQuery
-	(*SecurityLifecycleQueryResult)(nil),         // 13: cerebro.v1.SecurityLifecycleQueryResult
-	(*SecurityLifecycleSubjectLocator)(nil),      // 14: cerebro.v1.SecurityLifecycleSubjectLocator
-	(*SecurityLifecycleSubjectKindCount)(nil),    // 15: cerebro.v1.SecurityLifecycleSubjectKindCount
-	(*SecurityLifecycleStateCount)(nil),          // 16: cerebro.v1.SecurityLifecycleStateCount
-	(*SecurityLifecyclePolicyStateCount)(nil),    // 17: cerebro.v1.SecurityLifecyclePolicyStateCount
-	(*SecurityLifecycleAggregates)(nil),          // 18: cerebro.v1.SecurityLifecycleAggregates
-	(*SecurityLifecycleCoverage)(nil),            // 19: cerebro.v1.SecurityLifecycleCoverage
-	(*SecurityLifecycleFreshness)(nil),           // 20: cerebro.v1.SecurityLifecycleFreshness
-	(*SecurityLifecycleQueryMetadata)(nil),       // 21: cerebro.v1.SecurityLifecycleQueryMetadata
-	nil,                                          // 22: cerebro.v1.SecurityLifecycleObservation.AttributesEntry
-	(*ResourceRef)(nil),                          // 23: cerebro.v1.ResourceRef
-	(*timestamppb.Timestamp)(nil),                // 24: google.protobuf.Timestamp
+	(SecurityLifecycleSubjectKind)(0),               // 0: cerebro.v1.SecurityLifecycleSubjectKind
+	(SecurityLifecycleState)(0),                     // 1: cerebro.v1.SecurityLifecycleState
+	(SecurityLifecyclePolicyState)(0),               // 2: cerebro.v1.SecurityLifecyclePolicyState
+	(SecurityLifecycleCoverageReason)(0),            // 3: cerebro.v1.SecurityLifecycleCoverageReason
+	(*ListSecurityLifecycleRequest)(nil),            // 4: cerebro.v1.ListSecurityLifecycleRequest
+	(*ListSecurityLifecycleResponse)(nil),           // 5: cerebro.v1.ListSecurityLifecycleResponse
+	(*SecurityLifecycleObservation)(nil),            // 6: cerebro.v1.SecurityLifecycleObservation
+	(*SecurityLifecyclePolicyEvaluation)(nil),       // 7: cerebro.v1.SecurityLifecyclePolicyEvaluation
+	(*SecurityLifecycleFindingBinding)(nil),         // 8: cerebro.v1.SecurityLifecycleFindingBinding
+	(*SecurityLifecycleActionRoute)(nil),            // 9: cerebro.v1.SecurityLifecycleActionRoute
+	(*SecurityLifecycleVerificationBinding)(nil),    // 10: cerebro.v1.SecurityLifecycleVerificationBinding
+	(*SecurityLifecycleRecord)(nil),                 // 11: cerebro.v1.SecurityLifecycleRecord
+	(*SecurityLifecycleQuery)(nil),                  // 12: cerebro.v1.SecurityLifecycleQuery
+	(*SecurityLifecycleQueryResult)(nil),            // 13: cerebro.v1.SecurityLifecycleQueryResult
+	(*SecurityLifecycleSubjectLocator)(nil),         // 14: cerebro.v1.SecurityLifecycleSubjectLocator
+	(*SecurityLifecycleSubjectKindCount)(nil),       // 15: cerebro.v1.SecurityLifecycleSubjectKindCount
+	(*SecurityLifecycleStateCount)(nil),             // 16: cerebro.v1.SecurityLifecycleStateCount
+	(*SecurityLifecyclePolicyStateCount)(nil),       // 17: cerebro.v1.SecurityLifecyclePolicyStateCount
+	(*SecurityLifecycleAggregates)(nil),             // 18: cerebro.v1.SecurityLifecycleAggregates
+	(*SecurityLifecycleCoverage)(nil),               // 19: cerebro.v1.SecurityLifecycleCoverage
+	(*SecurityLifecycleFreshness)(nil),              // 20: cerebro.v1.SecurityLifecycleFreshness
+	(*SecurityLifecycleQueryMetadata)(nil),          // 21: cerebro.v1.SecurityLifecycleQueryMetadata
+	(*ResolveSecurityLifecycleFindingRequest)(nil),  // 22: cerebro.v1.ResolveSecurityLifecycleFindingRequest
+	(*ResolveSecurityLifecycleFindingResponse)(nil), // 23: cerebro.v1.ResolveSecurityLifecycleFindingResponse
+	nil,                           // 24: cerebro.v1.SecurityLifecycleObservation.AttributesEntry
+	(*ResourceRef)(nil),           // 25: cerebro.v1.ResourceRef
+	(*timestamppb.Timestamp)(nil), // 26: google.protobuf.Timestamp
 }
 var file_cerebro_v1_security_lifecycle_proto_depIdxs = []int32{
 	12, // 0: cerebro.v1.ListSecurityLifecycleRequest.query:type_name -> cerebro.v1.SecurityLifecycleQuery
 	13, // 1: cerebro.v1.ListSecurityLifecycleResponse.result:type_name -> cerebro.v1.SecurityLifecycleQueryResult
-	23, // 2: cerebro.v1.SecurityLifecycleObservation.subject_ref:type_name -> cerebro.v1.ResourceRef
+	25, // 2: cerebro.v1.SecurityLifecycleObservation.subject_ref:type_name -> cerebro.v1.ResourceRef
 	0,  // 3: cerebro.v1.SecurityLifecycleObservation.subject_kind:type_name -> cerebro.v1.SecurityLifecycleSubjectKind
 	1,  // 4: cerebro.v1.SecurityLifecycleObservation.state:type_name -> cerebro.v1.SecurityLifecycleState
-	24, // 5: cerebro.v1.SecurityLifecycleObservation.observed_at:type_name -> google.protobuf.Timestamp
-	24, // 6: cerebro.v1.SecurityLifecycleObservation.issued_at:type_name -> google.protobuf.Timestamp
-	24, // 7: cerebro.v1.SecurityLifecycleObservation.expires_at:type_name -> google.protobuf.Timestamp
-	24, // 8: cerebro.v1.SecurityLifecycleObservation.rotated_at:type_name -> google.protobuf.Timestamp
-	24, // 9: cerebro.v1.SecurityLifecycleObservation.revoked_at:type_name -> google.protobuf.Timestamp
-	23, // 10: cerebro.v1.SecurityLifecycleObservation.scope_refs:type_name -> cerebro.v1.ResourceRef
-	23, // 11: cerebro.v1.SecurityLifecycleObservation.evidence_claim_refs:type_name -> cerebro.v1.ResourceRef
-	22, // 12: cerebro.v1.SecurityLifecycleObservation.attributes:type_name -> cerebro.v1.SecurityLifecycleObservation.AttributesEntry
-	23, // 13: cerebro.v1.SecurityLifecyclePolicyEvaluation.subject_ref:type_name -> cerebro.v1.ResourceRef
-	24, // 14: cerebro.v1.SecurityLifecyclePolicyEvaluation.evaluated_at:type_name -> google.protobuf.Timestamp
-	23, // 15: cerebro.v1.SecurityLifecyclePolicyEvaluation.evidence_claim_refs:type_name -> cerebro.v1.ResourceRef
-	23, // 16: cerebro.v1.SecurityLifecycleFindingBinding.finding_ref:type_name -> cerebro.v1.ResourceRef
-	23, // 17: cerebro.v1.SecurityLifecycleFindingBinding.subject_ref:type_name -> cerebro.v1.ResourceRef
-	23, // 18: cerebro.v1.SecurityLifecycleFindingBinding.evidence_claim_refs:type_name -> cerebro.v1.ResourceRef
-	23, // 19: cerebro.v1.SecurityLifecycleActionRoute.finding_ref:type_name -> cerebro.v1.ResourceRef
-	23, // 20: cerebro.v1.SecurityLifecycleActionRoute.target_ref:type_name -> cerebro.v1.ResourceRef
-	23, // 21: cerebro.v1.SecurityLifecycleActionRoute.action_intent_ref:type_name -> cerebro.v1.ResourceRef
-	23, // 22: cerebro.v1.SecurityLifecycleActionRoute.dispatch_ref:type_name -> cerebro.v1.ResourceRef
-	23, // 23: cerebro.v1.SecurityLifecycleActionRoute.verification_ref:type_name -> cerebro.v1.ResourceRef
-	23, // 24: cerebro.v1.SecurityLifecycleVerificationBinding.finding_ref:type_name -> cerebro.v1.ResourceRef
-	23, // 25: cerebro.v1.SecurityLifecycleVerificationBinding.remediation_outcome_ref:type_name -> cerebro.v1.ResourceRef
-	23, // 26: cerebro.v1.SecurityLifecycleVerificationBinding.observation_event_ref:type_name -> cerebro.v1.ResourceRef
-	23, // 27: cerebro.v1.SecurityLifecycleVerificationBinding.source_runtime_ref:type_name -> cerebro.v1.ResourceRef
-	24, // 28: cerebro.v1.SecurityLifecycleVerificationBinding.observed_at:type_name -> google.protobuf.Timestamp
-	23, // 29: cerebro.v1.SecurityLifecycleVerificationBinding.evidence_claim_refs:type_name -> cerebro.v1.ResourceRef
+	26, // 5: cerebro.v1.SecurityLifecycleObservation.observed_at:type_name -> google.protobuf.Timestamp
+	26, // 6: cerebro.v1.SecurityLifecycleObservation.issued_at:type_name -> google.protobuf.Timestamp
+	26, // 7: cerebro.v1.SecurityLifecycleObservation.expires_at:type_name -> google.protobuf.Timestamp
+	26, // 8: cerebro.v1.SecurityLifecycleObservation.rotated_at:type_name -> google.protobuf.Timestamp
+	26, // 9: cerebro.v1.SecurityLifecycleObservation.revoked_at:type_name -> google.protobuf.Timestamp
+	25, // 10: cerebro.v1.SecurityLifecycleObservation.scope_refs:type_name -> cerebro.v1.ResourceRef
+	25, // 11: cerebro.v1.SecurityLifecycleObservation.evidence_claim_refs:type_name -> cerebro.v1.ResourceRef
+	24, // 12: cerebro.v1.SecurityLifecycleObservation.attributes:type_name -> cerebro.v1.SecurityLifecycleObservation.AttributesEntry
+	25, // 13: cerebro.v1.SecurityLifecyclePolicyEvaluation.subject_ref:type_name -> cerebro.v1.ResourceRef
+	26, // 14: cerebro.v1.SecurityLifecyclePolicyEvaluation.evaluated_at:type_name -> google.protobuf.Timestamp
+	25, // 15: cerebro.v1.SecurityLifecyclePolicyEvaluation.evidence_claim_refs:type_name -> cerebro.v1.ResourceRef
+	25, // 16: cerebro.v1.SecurityLifecycleFindingBinding.finding_ref:type_name -> cerebro.v1.ResourceRef
+	25, // 17: cerebro.v1.SecurityLifecycleFindingBinding.subject_ref:type_name -> cerebro.v1.ResourceRef
+	25, // 18: cerebro.v1.SecurityLifecycleFindingBinding.evidence_claim_refs:type_name -> cerebro.v1.ResourceRef
+	25, // 19: cerebro.v1.SecurityLifecycleActionRoute.finding_ref:type_name -> cerebro.v1.ResourceRef
+	25, // 20: cerebro.v1.SecurityLifecycleActionRoute.target_ref:type_name -> cerebro.v1.ResourceRef
+	25, // 21: cerebro.v1.SecurityLifecycleActionRoute.action_intent_ref:type_name -> cerebro.v1.ResourceRef
+	25, // 22: cerebro.v1.SecurityLifecycleActionRoute.dispatch_ref:type_name -> cerebro.v1.ResourceRef
+	25, // 23: cerebro.v1.SecurityLifecycleActionRoute.verification_ref:type_name -> cerebro.v1.ResourceRef
+	25, // 24: cerebro.v1.SecurityLifecycleVerificationBinding.finding_ref:type_name -> cerebro.v1.ResourceRef
+	25, // 25: cerebro.v1.SecurityLifecycleVerificationBinding.remediation_outcome_ref:type_name -> cerebro.v1.ResourceRef
+	25, // 26: cerebro.v1.SecurityLifecycleVerificationBinding.observation_event_ref:type_name -> cerebro.v1.ResourceRef
+	25, // 27: cerebro.v1.SecurityLifecycleVerificationBinding.source_runtime_ref:type_name -> cerebro.v1.ResourceRef
+	26, // 28: cerebro.v1.SecurityLifecycleVerificationBinding.observed_at:type_name -> google.protobuf.Timestamp
+	25, // 29: cerebro.v1.SecurityLifecycleVerificationBinding.evidence_claim_refs:type_name -> cerebro.v1.ResourceRef
 	6,  // 30: cerebro.v1.SecurityLifecycleRecord.observation:type_name -> cerebro.v1.SecurityLifecycleObservation
 	7,  // 31: cerebro.v1.SecurityLifecycleRecord.policy_evaluations:type_name -> cerebro.v1.SecurityLifecyclePolicyEvaluation
 	8,  // 32: cerebro.v1.SecurityLifecycleRecord.findings:type_name -> cerebro.v1.SecurityLifecycleFindingBinding
 	9,  // 33: cerebro.v1.SecurityLifecycleRecord.action_routes:type_name -> cerebro.v1.SecurityLifecycleActionRoute
-	24, // 34: cerebro.v1.SecurityLifecycleRecord.projected_at:type_name -> google.protobuf.Timestamp
+	26, // 34: cerebro.v1.SecurityLifecycleRecord.projected_at:type_name -> google.protobuf.Timestamp
 	0,  // 35: cerebro.v1.SecurityLifecycleQuery.subject_kinds:type_name -> cerebro.v1.SecurityLifecycleSubjectKind
 	1,  // 36: cerebro.v1.SecurityLifecycleQuery.states:type_name -> cerebro.v1.SecurityLifecycleState
-	24, // 37: cerebro.v1.SecurityLifecycleQuery.expires_before:type_name -> google.protobuf.Timestamp
+	26, // 37: cerebro.v1.SecurityLifecycleQuery.expires_before:type_name -> google.protobuf.Timestamp
 	14, // 38: cerebro.v1.SecurityLifecycleQuery.subject_locator:type_name -> cerebro.v1.SecurityLifecycleSubjectLocator
 	11, // 39: cerebro.v1.SecurityLifecycleQueryResult.records:type_name -> cerebro.v1.SecurityLifecycleRecord
-	24, // 40: cerebro.v1.SecurityLifecycleQueryResult.as_of:type_name -> google.protobuf.Timestamp
+	26, // 40: cerebro.v1.SecurityLifecycleQueryResult.as_of:type_name -> google.protobuf.Timestamp
 	18, // 41: cerebro.v1.SecurityLifecycleQueryResult.aggregates:type_name -> cerebro.v1.SecurityLifecycleAggregates
 	21, // 42: cerebro.v1.SecurityLifecycleQueryResult.metadata:type_name -> cerebro.v1.SecurityLifecycleQueryMetadata
 	0,  // 43: cerebro.v1.SecurityLifecycleSubjectLocator.subject_kind:type_name -> cerebro.v1.SecurityLifecycleSubjectKind
@@ -1950,18 +2100,21 @@ var file_cerebro_v1_security_lifecycle_proto_depIdxs = []int32{
 	16, // 48: cerebro.v1.SecurityLifecycleAggregates.state_counts:type_name -> cerebro.v1.SecurityLifecycleStateCount
 	17, // 49: cerebro.v1.SecurityLifecycleAggregates.policy_state_counts:type_name -> cerebro.v1.SecurityLifecyclePolicyStateCount
 	3,  // 50: cerebro.v1.SecurityLifecycleCoverage.reason:type_name -> cerebro.v1.SecurityLifecycleCoverageReason
-	24, // 51: cerebro.v1.SecurityLifecycleFreshness.as_of:type_name -> google.protobuf.Timestamp
-	24, // 52: cerebro.v1.SecurityLifecycleFreshness.oldest_observed_at:type_name -> google.protobuf.Timestamp
-	24, // 53: cerebro.v1.SecurityLifecycleFreshness.newest_observed_at:type_name -> google.protobuf.Timestamp
+	26, // 51: cerebro.v1.SecurityLifecycleFreshness.as_of:type_name -> google.protobuf.Timestamp
+	26, // 52: cerebro.v1.SecurityLifecycleFreshness.oldest_observed_at:type_name -> google.protobuf.Timestamp
+	26, // 53: cerebro.v1.SecurityLifecycleFreshness.newest_observed_at:type_name -> google.protobuf.Timestamp
 	19, // 54: cerebro.v1.SecurityLifecycleQueryMetadata.coverage:type_name -> cerebro.v1.SecurityLifecycleCoverage
 	20, // 55: cerebro.v1.SecurityLifecycleQueryMetadata.freshness:type_name -> cerebro.v1.SecurityLifecycleFreshness
-	4,  // 56: cerebro.v1.SecurityLifecycleService.ListSecurityLifecycle:input_type -> cerebro.v1.ListSecurityLifecycleRequest
-	5,  // 57: cerebro.v1.SecurityLifecycleService.ListSecurityLifecycle:output_type -> cerebro.v1.ListSecurityLifecycleResponse
-	57, // [57:58] is the sub-list for method output_type
-	56, // [56:57] is the sub-list for method input_type
-	56, // [56:56] is the sub-list for extension type_name
-	56, // [56:56] is the sub-list for extension extendee
-	0,  // [0:56] is the sub-list for field type_name
+	11, // 56: cerebro.v1.ResolveSecurityLifecycleFindingResponse.record:type_name -> cerebro.v1.SecurityLifecycleRecord
+	4,  // 57: cerebro.v1.SecurityLifecycleService.ListSecurityLifecycle:input_type -> cerebro.v1.ListSecurityLifecycleRequest
+	22, // 58: cerebro.v1.SecurityLifecycleService.ResolveSecurityLifecycleFinding:input_type -> cerebro.v1.ResolveSecurityLifecycleFindingRequest
+	5,  // 59: cerebro.v1.SecurityLifecycleService.ListSecurityLifecycle:output_type -> cerebro.v1.ListSecurityLifecycleResponse
+	23, // 60: cerebro.v1.SecurityLifecycleService.ResolveSecurityLifecycleFinding:output_type -> cerebro.v1.ResolveSecurityLifecycleFindingResponse
+	59, // [59:61] is the sub-list for method output_type
+	57, // [57:59] is the sub-list for method input_type
+	57, // [57:57] is the sub-list for extension type_name
+	57, // [57:57] is the sub-list for extension extendee
+	0,  // [0:57] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_security_lifecycle_proto_init() }
@@ -1976,7 +2129,7 @@ func file_cerebro_v1_security_lifecycle_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_v1_security_lifecycle_proto_rawDesc), len(file_cerebro_v1_security_lifecycle_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   19,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

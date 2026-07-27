@@ -7,9 +7,11 @@ use cerebro_agent_context::{
     QueryMatch as ContextQueryMatch, QueryNode as ContextQueryNode,
 };
 use cerebro_organizational_model::{AssertionId, EntityId, TenantId};
+use cerebro_organizational_store::{Neo4jProjector, StoreError};
 use cerebro_security_lifecycle::{
     LifecycleQuery, LifecycleState, ProjectedResource, QueryResult as LifecycleQueryResult,
-    QuerySource, SubjectKind, SubjectLocator, canonical_resource_urn, query_records_with_source,
+    QuerySource, SubjectKind, SubjectLocator, canonical_resource_urn, finalize_indexed_query,
+    prepare_indexed_query, query_records_with_source, resolve_finding_record,
 };
 use cerebro_source_catalog::CatalogSummary;
 use connectrpc::{ConnectError, RequestContext, Response, Router, ServiceRequest, ServiceResult};
@@ -67,11 +69,13 @@ const MAX_SECURITY_LIFECYCLE_SCAN: usize = 500;
 
 pub(crate) fn router(
     graph: Arc<dyn AgentGraph>,
+    lifecycle_projection: Option<Arc<Neo4jProjector>>,
     catalog_summary: Option<CatalogSummary>,
     tenant_auth: TenantRequestAuth,
 ) -> Router {
     let service = Arc::new(GraphRpc {
         graph,
+        lifecycle_projection,
         catalog_summary,
         tenant_auth,
     });
@@ -81,6 +85,7 @@ pub(crate) fn router(
 
 struct GraphRpc {
     graph: Arc<dyn AgentGraph>,
+    lifecycle_projection: Option<Arc<Neo4jProjector>>,
     catalog_summary: Option<CatalogSummary>,
     tenant_auth: TenantRequestAuth,
 }
@@ -130,6 +135,32 @@ impl GraphRpc {
         tenant: &TenantId,
         query: &LifecycleQuery,
     ) -> Result<LifecycleQueryResult, ConnectError> {
+        if let Some(projection) = self.lifecycle_projection.as_ref() {
+            let graph_revision = self.graph_call(self.graph.revision(tenant)).await?;
+            let as_of = OffsetDateTime::now_utc()
+                .format(&Rfc3339)
+                .map_err(|error| {
+                    ConnectError::internal(format!("Cannot format read time: {error}"))
+                })?;
+            let prepared = prepare_indexed_query(tenant, query, &as_of, graph_revision)
+                .map_err(|error| ConnectError::invalid_argument(error.to_string()))?;
+            let indexed = tokio::time::timeout(
+                GRAPH_RPC_TIMEOUT,
+                projection.query_lifecycle(tenant, &prepared),
+            )
+            .await
+            .map_err(|_| {
+                ConnectError::unavailable("Lifecycle projection read exceeded 2 seconds.")
+            })?;
+            match indexed {
+                Ok(page) => {
+                    return finalize_indexed_query(tenant, &prepared, page)
+                        .map_err(|error| ConnectError::internal(error.to_string()));
+                }
+                Err(StoreError::LifecycleProjectionUnavailable { .. }) => {}
+                Err(error) => return Err(ConnectError::unavailable(error.to_string())),
+            }
+        }
         let revision_before = self.graph_call(self.graph.revision(tenant)).await?;
         let (entities, scan_truncated): (Vec<_>, bool) = if let Some(locator) =
             query.subject_locator.as_ref()
@@ -211,6 +242,64 @@ impl SecurityLifecycleService for GraphRpc {
             result: response.into(),
             ..Default::default()
         })
+    }
+
+    async fn resolve_security_lifecycle_finding(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, proto::cerebro::v1::ResolveSecurityLifecycleFindingRequest>,
+    ) -> ServiceResult<proto::cerebro::v1::ResolveSecurityLifecycleFindingResponse> {
+        let owned_request = request.to_owned_message();
+        let tenant = self.authorized_tenant(&context, &owned_request.tenant_id)?;
+        let finding_urn = owned_request.finding_urn.trim();
+        if finding_urn.is_empty() {
+            return Err(ConnectError::invalid_argument("finding_urn is required"));
+        }
+        let expected_prefix = format!("urn:cerebro:{}:finding:", tenant.as_str());
+        if finding_urn.len() > 4_096 || !finding_urn.starts_with(&expected_prefix) {
+            return Err(ConnectError::invalid_argument(
+                "finding_urn must be a bounded finding URN for the requested tenant",
+            ));
+        }
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("Lifecycle finding resolution requires the durable graph.")
+        })?;
+        let resolved = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.resolve_lifecycle_finding(&tenant, finding_urn),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Lifecycle finding resolution exceeded 2 seconds."))?
+        .map_err(|error| match error {
+            StoreError::LifecycleProjectionUnavailable { .. } => {
+                ConnectError::unavailable(error.to_string())
+            }
+            StoreError::Conflict(message) => ConnectError::unavailable(message),
+            _ => ConnectError::unavailable(error.to_string()),
+        })?;
+        let resolved =
+            resolved.ok_or_else(|| ConnectError::not_found("Lifecycle finding was not found."))?;
+        let as_of = OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .map_err(|error| ConnectError::internal(format!("Cannot format read time: {error}")))?;
+        let record = resolve_finding_record(
+            &tenant,
+            finding_urn,
+            resolved.resource,
+            &as_of,
+            resolved.graph_revision,
+        )
+        .map_err(|error| ConnectError::internal(error.to_string()))?
+        .ok_or_else(|| ConnectError::not_found("Lifecycle finding is no longer open."))?;
+        Response::ok(
+            proto::cerebro::v1::ResolveSecurityLifecycleFindingResponse {
+                record: lifecycle_record(record)?.into(),
+                graph_revision: resolved.graph_revision,
+                source_runtime_id: resolved.source_runtime_id,
+                source_collection_id: resolved.source_collection_id,
+                ..Default::default()
+            },
+        )
     }
 }
 
@@ -597,36 +686,7 @@ fn lifecycle_query_result(
         .and_then(serde_json::Value::as_array_mut)
         .ok_or_else(|| ConnectError::internal("Lifecycle result has no records array"))?;
     for record in records {
-        let observation = record
-            .get_mut("observation")
-            .and_then(serde_json::Value::as_object_mut)
-            .ok_or_else(|| ConnectError::internal("Lifecycle record has no observation"))?;
-        let subject_kind = match observation
-            .get("subject_kind")
-            .and_then(serde_json::Value::as_str)
-        {
-            Some("credential") => "SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL",
-            Some("certificate") => "SECURITY_LIFECYCLE_SUBJECT_KIND_CERTIFICATE",
-            _ => return Err(ConnectError::internal("Lifecycle subject kind is invalid")),
-        };
-        let state = match observation.get("state").and_then(serde_json::Value::as_str) {
-            Some("active") => "SECURITY_LIFECYCLE_STATE_ACTIVE",
-            Some("expiring") => "SECURITY_LIFECYCLE_STATE_EXPIRING",
-            Some("expired") => "SECURITY_LIFECYCLE_STATE_EXPIRED",
-            Some("rotated") => "SECURITY_LIFECYCLE_STATE_ROTATED",
-            Some("revoked") => "SECURITY_LIFECYCLE_STATE_REVOKED",
-            Some("inactive") => "SECURITY_LIFECYCLE_STATE_INACTIVE",
-            Some("unknown") => "SECURITY_LIFECYCLE_STATE_UNKNOWN",
-            _ => return Err(ConnectError::internal("Lifecycle state is invalid")),
-        };
-        observation.insert(
-            "subject_kind".to_owned(),
-            serde_json::Value::String(subject_kind.to_owned()),
-        );
-        observation.insert(
-            "state".to_owned(),
-            serde_json::Value::String(state.to_owned()),
-        );
+        normalize_lifecycle_record(record)?;
     }
     let aggregates = value
         .get_mut("aggregates")
@@ -731,6 +791,51 @@ fn lifecycle_query_result(
     *reason = serde_json::Value::String(reason_name.to_owned());
     serde_json::from_value(value)
         .map_err(|error| ConnectError::internal(format!("Cannot encode lifecycle result: {error}")))
+}
+
+fn lifecycle_record(
+    record: cerebro_security_lifecycle::LifecycleRecord,
+) -> Result<proto::cerebro::v1::SecurityLifecycleRecord, ConnectError> {
+    let mut value = serde_json::to_value(record).map_err(|error| {
+        ConnectError::internal(format!("Cannot encode lifecycle record: {error}"))
+    })?;
+    normalize_lifecycle_record(&mut value)?;
+    serde_json::from_value(value)
+        .map_err(|error| ConnectError::internal(format!("Cannot encode lifecycle record: {error}")))
+}
+
+fn normalize_lifecycle_record(record: &mut serde_json::Value) -> Result<(), ConnectError> {
+    let observation = record
+        .get_mut("observation")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| ConnectError::internal("Lifecycle record has no observation"))?;
+    let subject_kind = match observation
+        .get("subject_kind")
+        .and_then(serde_json::Value::as_str)
+    {
+        Some("credential") => "SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL",
+        Some("certificate") => "SECURITY_LIFECYCLE_SUBJECT_KIND_CERTIFICATE",
+        _ => return Err(ConnectError::internal("Lifecycle subject kind is invalid")),
+    };
+    let state = match observation.get("state").and_then(serde_json::Value::as_str) {
+        Some("active") => "SECURITY_LIFECYCLE_STATE_ACTIVE",
+        Some("expiring") => "SECURITY_LIFECYCLE_STATE_EXPIRING",
+        Some("expired") => "SECURITY_LIFECYCLE_STATE_EXPIRED",
+        Some("rotated") => "SECURITY_LIFECYCLE_STATE_ROTATED",
+        Some("revoked") => "SECURITY_LIFECYCLE_STATE_REVOKED",
+        Some("inactive") => "SECURITY_LIFECYCLE_STATE_INACTIVE",
+        Some("unknown") => "SECURITY_LIFECYCLE_STATE_UNKNOWN",
+        _ => return Err(ConnectError::internal("Lifecycle state is invalid")),
+    };
+    observation.insert(
+        "subject_kind".to_owned(),
+        serde_json::Value::String(subject_kind.to_owned()),
+    );
+    observation.insert(
+        "state".to_owned(),
+        serde_json::Value::String(state.to_owned()),
+    );
+    Ok(())
 }
 
 fn graph_entity(entity: ContextEntity) -> GraphEntity {
@@ -889,6 +994,8 @@ mod tests {
                 findings: Vec::new(),
                 action_routes: Vec::new(),
                 projected_at: "2026-07-26T12:00:00Z".to_owned(),
+                source_runtime_id: "lifecycle-test".to_owned(),
+                source_collection_id: "runtime:lifecycle-test:collection-1".to_owned(),
             }],
             next_page_token: Some("v1.616263".to_owned()),
             previous_page_token: Some("v2.previous".to_owned()),
