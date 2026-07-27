@@ -159,6 +159,12 @@ describe("product UI contract", () => {
     expect(lifecycleSource).toContain("data-lifecycle-desktop-table");
     expect(lifecycleSource).toContain("hidden overflow-auto md:block");
     expect(lifecycleSource).toContain("Open lifecycle details");
+    expect(lifecycleSource).toContain("opaque finding references");
+    expect(lifecycleSource).toContain("opaque claim references");
+    expect(lifecycleSource).toContain('label="Finding reference"');
+    expect(lifecycleSource).toContain('label="Evidence claim reference"');
+    expect(lifecycleSource).not.toContain("/findings/");
+    expect(lifecycleSource).not.toContain("/evidence?finding_id=");
     expect(lifecycleSource).toContain("aggregates?.policy_state_counts");
     expect(lifecycleSource).not.toContain("aggregates?.state_counts");
     expect(lifecycleSource).toContain('coverageReason === "graph_changed"');

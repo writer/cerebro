@@ -232,42 +232,6 @@ const findings = [
   },
 ];
 
-const lifecycleFinding = {
-  id: "deploy-signing-expiry",
-  title: "Deployment signing credential expires soon",
-  severity: "HIGH",
-  status: "open",
-  summary: "The deployment signing credential expires on August 1, 2026.",
-  tenant_id: tenantID,
-  runtime_id: "demo-security-lifecycle-runtime",
-  source_id: "security-lifecycle",
-  entity: lifecycleSubjectURN,
-  resource_urns: [lifecycleSubjectURN],
-  rule_id: "credential.expiry",
-  policy_id: "credential-expiry",
-  policy_name: "Credential expiry",
-  controls: [],
-  attributes: {
-    owner: "security-platform",
-    source: "security-lifecycle",
-    expires_at: "2026-08-01T12:00:00Z",
-    evidence_claim_urn: lifecycleEvidenceClaimURN,
-  },
-  risk_score: 76,
-  likelihood_score: 72,
-  impact_score: 80,
-  confidence_score: 96,
-  likelihood_level: "high",
-  impact_level: "high",
-  risk_reasons: ["Credential expires inside the policy warning window"],
-  evidence_count: 1,
-  owner: "Security platform",
-  sla_status: "due_soon",
-  due_at: "2026-08-01T12:00:00Z",
-  first_observed_at: "2026-07-26T12:00:00Z",
-  last_observed_at: "2026-07-26T12:00:00Z",
-};
-
 const controls = [
   {
     framework_name: "SOC 2",
@@ -366,18 +330,6 @@ const evidence: GRCEvidence[] = [
     created_at: "2026-01-15T11:55:00.000Z",
   },
 ];
-
-const lifecycleEvidence: GRCEvidence = {
-  id: "deploy-signing-expiry",
-  runtime_id: "demo-security-lifecycle-runtime",
-  rule_id: "credential.expiry",
-  finding_id: "deploy-signing-expiry",
-  finding_title: "Deployment signing credential expires soon",
-  run_id: "demo-run-security-lifecycle",
-  event_ids: ["deploy-signing-expiry"],
-  graph_root_urns: [lifecycleSubjectURN],
-  created_at: "2026-07-26T12:00:00Z",
-};
 
 const connectors = [
   {
@@ -2059,15 +2011,12 @@ const entityImpactFixture = (rawURN: string) => {
 
 const auditPacketFixture = (findingID: string) => {
   const requestedID = safeDecode(findingID);
-  const finding = requestedID === lifecycleFinding.id
-    ? lifecycleFinding
-    : findings.find((item) => item.id === requestedID) ?? findings[0];
+  const finding = findings.find((item) => item.id === requestedID);
+  if (!finding) return null;
   return {
     id: `packet-${finding.id}`,
     finding,
-    evidence: finding.id === lifecycleFinding.id
-      ? [lifecycleEvidence]
-      : evidence.filter((item) => item.finding_id === finding.id),
+    evidence: evidence.filter((item) => item.finding_id === finding.id),
     graph,
     controls: finding.controls,
     recommended_action: "Validate owner, review evidence freshness, and document the remediation outcome.",
@@ -4605,10 +4554,14 @@ export const cerebroFixtureResponseFor = ({
 
   const auditPacketMatch = /^grc\/audit-packets\/([^/]+)(?:\/export)?$/.exec(normalizedPath);
   if (auditPacketMatch) {
+    const packet = auditPacketFixture(auditPacketMatch[1]);
+    if (!packet) {
+      return jsonFixture({ error: "Audit packet not found" }, 404);
+    }
     if (normalizedPath.endsWith("/export")) {
       return textFixture(`# Audit Packet\n\nFixture audit packet for ${safeDecode(auditPacketMatch[1])}.\n`, "text/markdown; charset=utf-8");
     }
-    return jsonFixture(auditPacketFixture(auditPacketMatch[1]));
+    return jsonFixture(packet);
   }
 
   if (normalizedPath === "grc/control-packets") {

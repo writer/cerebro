@@ -6,7 +6,6 @@ import {
   lifecycleCoveragePresentation,
   lifecycleCoverageReason,
   lifecycleEffectiveState,
-  lifecycleFindingID,
   lifecycleOwnerLabel,
   lifecyclePolicyStateCount,
   summarizeSecurityLifecycle,
@@ -142,7 +141,4 @@ describe("security lifecycle summaries", () => {
     expect(lifecycleActionLabel("rotate_credential")).toBe("Rotate credential");
   });
 
-  it("builds finding detail ids from canonical refs", () => {
-    expect(lifecycleFindingID({ kind: "finding", id: "urn:cerebro:tenant:finding:expiry%2Fslot" })).toBe("expiry/slot");
-  });
 });

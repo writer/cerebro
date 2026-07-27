@@ -15,7 +15,6 @@ import {
   lifecycleEffectiveState,
   lifecycleEnumLabel,
   lifecycleExpiryLabel,
-  lifecycleFindingID,
   lifecycleNextPageToken,
   lifecycleOwnerLabel,
   lifecyclePolicyStateCount,
@@ -152,17 +151,12 @@ function LifecycleDrawer({
 
           <Panel title={`Evidence (${evidence.length})`}>
             {evidence.length > 0 ? (
-              <div className="space-y-3">
+              <div>
+                <p className="mb-3 text-[12px] leading-5 text-[var(--text-muted)]">
+                  The lifecycle read returned these opaque claim references. It does not assert that an evidence-register record exists.
+                </p>
                 {evidence.map((reference) => (
-                  <div key={reference.id} className="rounded-md border border-[color:var(--border)] bg-[var(--surface-muted)] p-3">
-                    <div className={monoClass}>{reference.id}</div>
-                    <Link
-                      className="mt-2 inline-block text-[12px] font-medium text-[var(--primary)] hover:text-[var(--primary-hover)]"
-                      href={finding ? `/evidence?finding_id=${encodeURIComponent(lifecycleFindingID(finding.finding_ref))}` : "/evidence"}
-                    >
-                      Open evidence register
-                    </Link>
-                  </div>
+                  <ReferenceValue key={reference.id} label="Evidence claim reference" reference={reference} />
                 ))}
               </div>
             ) : (
@@ -172,23 +166,21 @@ function LifecycleDrawer({
 
           <Panel title={`Findings (${record.findings?.length ?? 0})`}>
             {(record.findings ?? []).length > 0 ? (
-              <div className="space-y-3">
-                {(record.findings ?? []).map((binding) => {
-                  const findingID = lifecycleFindingID(binding.finding_ref);
-                  return (
-                    <Link
-                      key={binding.finding_ref.id}
-                      href={`/findings/${encodeURIComponent(findingID)}`}
-                      className="block rounded-md border border-[color:var(--border)] p-3 transition hover:border-[color:var(--ring)]"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-medium text-[13px] text-[var(--text-primary)]">{findingID}</span>
-                        <Badge value={binding.status} />
-                      </div>
-                      <div className="mt-1 text-[12px] text-[var(--text-muted)]">{lifecycleEnumLabel(binding.finding_kind)}</div>
-                    </Link>
-                  );
-                })}
+              <div>
+                <p className="mb-3 text-[12px] leading-5 text-[var(--text-muted)]">
+                  The lifecycle projection returned opaque finding references. It does not assert that a GRC finding detail record exists.
+                </p>
+                {(record.findings ?? []).map((binding) => (
+                  <div key={binding.finding_ref.id} className="rounded-md border border-[color:var(--border)] p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[12px] text-[var(--text-muted)]">{lifecycleEnumLabel(binding.finding_kind)}</span>
+                      <Badge value={binding.status} />
+                    </div>
+                    <div className="mt-3">
+                      <ReferenceValue label="Finding reference" reference={binding.finding_ref} />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="text-[13px] text-[var(--text-muted)]">No finding is bound to this observation.</div>
@@ -451,9 +443,7 @@ export default function SecurityLifecyclePage() {
                         <dt className={labelClass}>Finding</dt>
                         <dd className="mt-1">
                           {finding ? (
-                            <Link href={`/findings/${encodeURIComponent(lifecycleFindingID(finding.finding_ref))}`} className="inline-block">
-                              <Badge value={finding.status} />
-                            </Link>
+                            <Badge value={finding.status} />
                           ) : <span className="text-[var(--text-muted)]">No finding</span>}
                         </dd>
                       </div>
@@ -517,9 +507,7 @@ export default function SecurityLifecyclePage() {
                         <td className="px-3 py-3 text-[var(--text-secondary)]">{lifecycleOwnerLabel(observation.owner_urn)}</td>
                         <td className="px-3 py-3">
                           {finding ? (
-                            <Link href={`/findings/${encodeURIComponent(lifecycleFindingID(finding.finding_ref))}`} className="inline-block">
-                              <Badge value={finding.status} />
-                            </Link>
+                            <Badge value={finding.status} />
                           ) : <span className="text-[var(--text-muted)]">No finding</span>}
                         </td>
                         <td className="px-3 py-3 text-[var(--text-secondary)]">

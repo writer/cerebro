@@ -151,15 +151,6 @@ export const lifecycleTimestampLabel = (value?: string) => {
   }).format(parsed);
 };
 
-export const lifecycleFindingID = (ref: SecurityLifecycleResourceRef) => {
-  const raw = ref.id.split(":").at(-1) || ref.id;
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    return raw;
-  }
-};
-
 export const lifecycleCompleteness = (response?: SecurityLifecycleResponse | null) => {
   const coverage = response?.metadata?.coverage;
   const pageTruncated = Boolean(
