@@ -86,6 +86,18 @@ describe("cerebro fixture proxy responses", () => {
     expect(payload.findings).toMatchObject([{ id: "demo-finding-high" }]);
   });
 
+  it("uses operator-readable plural labels for inventory categories", () => {
+    withFixtureMode();
+    const response = cerebroFixtureResponseFor({ method: "GET", path: "grc/inventory/categories" });
+    const payload = parseFixture(response!) as { categories: Array<{ id: string; label: string }> };
+
+    expect(payload.categories).toContainEqual(expect.objectContaining({
+      id: "repository",
+      label: "Repositories",
+    }));
+    expect(payload.categories.some((category) => category.label.includes("Repositorys"))).toBe(false);
+  });
+
   it("returns and filters vendor fixtures", () => {
     withFixtureMode();
     const response = cerebroFixtureResponseFor({ method: "GET", path: "grc/vendors" });
