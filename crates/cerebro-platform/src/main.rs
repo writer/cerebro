@@ -29,6 +29,11 @@ use cerebro_organizational_model::{
 use cerebro_organizational_store::{
     DurableGraphStore, Neo4jProjector, PostgresLedger, ProjectionAuthority, StoreError,
 };
+use cerebro_security_lifecycle::{
+    CERTIFICATE_EVENT_KIND, CREDENTIAL_EVENT_KIND, LifecycleQuery, LifecycleState,
+    ProjectedResource, SubjectKind, decode_protobuf_observation, project_observation,
+    query_records,
+};
 use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
     CatalogGraphMapper, CollectionRequest, CommittedSourceEvent, CommittedSourceInput, GraphMapper,
@@ -37,12 +42,14 @@ use cerebro_source_runtime_next::{
 use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::sync::Mutex;
 
 const TENANT_AUTH_HEADER: &str = "x-cerebro-tenant";
 const TENANT_AUTH_CONTEXT: &[u8] = b"cerebro-organizational-graph/tenant/v1\0";
 const MAX_LEGACY_DELTA_RECORDS: usize = 100_000;
 const MIN_SHARED_SECRET_BYTES: usize = 32;
+const MAX_SECURITY_LIFECYCLE_SCAN: usize = 500;
 
 #[derive(Clone)]
 struct AppState {
@@ -285,6 +292,12 @@ impl ProjectionRuntime {
             .record_source_event(&event)
             .await
             .map_err(ProjectionFailure::Store)?;
+        if matches!(
+            event.event_kind(),
+            CREDENTIAL_EVENT_KIND | CERTIFICATE_EVENT_KIND
+        ) {
+            return self.project_security_lifecycle(event).await;
+        }
         let authority = self
             .authority
             .projection_authority(
@@ -437,6 +450,68 @@ impl ProjectionRuntime {
             manifest_digest,
         })
     }
+
+    async fn project_security_lifecycle(
+        &self,
+        event: CommittedSourceEvent,
+    ) -> Result<ProjectEventResponse, ProjectionFailure> {
+        let tenant_id = event.tenant_id().clone();
+        let collection_id = event
+            .collection_id()
+            .map_err(|error| ProjectionFailure::Invalid(error.to_string()))?;
+        if let Some(receipt) = self
+            .store
+            .lock()
+            .await
+            .resume_collection(&tenant_id, collection_id.as_str())
+            .await
+            .map_err(ProjectionFailure::Store)?
+        {
+            return Ok(ProjectEventResponse {
+                authority: ProjectionAuthority::Rust,
+                projected: true,
+                graph_revision: Some(receipt.graph_revision),
+                entities_upserted: receipt.entities_upserted,
+                assertions_upserted: receipt.assertions_upserted,
+            });
+        }
+        let observation = decode_protobuf_observation(
+            event.raw_payload(),
+            &tenant_id,
+            event.observed_at_unix_ms(),
+        )
+        .map_err(|error| ProjectionFailure::Invalid(error.to_string()))?;
+        let observation_id = event.observation_id().clone();
+        let provider_kind = format!(
+            "security.lifecycle.{}",
+            match event.event_kind() {
+                CREDENTIAL_EVENT_KIND => "credential",
+                CERTIFICATE_EVENT_KIND => "certificate",
+                _ => unreachable!("caller checks the portable lifecycle kind"),
+            }
+        );
+        let provider_id = observation.subject_ref.id.clone();
+        let batch = event
+            .into_batch(provider_kind, provider_id)
+            .map_err(|error| ProjectionFailure::Invalid(error.to_string()))?;
+        let delta =
+            project_observation(batch.scope.receipt().clone(), observation_id, &observation)
+                .map_err(|error| ProjectionFailure::Invalid(error.to_string()))?;
+        let receipt = self
+            .store
+            .lock()
+            .await
+            .apply(&batch, delta)
+            .await
+            .map_err(ProjectionFailure::Store)?;
+        Ok(ProjectEventResponse {
+            authority: ProjectionAuthority::Rust,
+            projected: true,
+            graph_revision: Some(receipt.graph_revision),
+            entities_upserted: receipt.entities_upserted,
+            assertions_upserted: receipt.assertions_upserted,
+        })
+    }
 }
 
 #[derive(Serialize)]
@@ -454,6 +529,38 @@ struct ErrorResponse {
 #[derive(Deserialize)]
 struct TenantQuery {
     tenant_id: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct HttpLifecycleQuery {
+    #[serde(default)]
+    subject_kind: Option<SubjectKind>,
+    #[serde(default)]
+    state: Option<LifecycleState>,
+    #[serde(default)]
+    owner_urn: Option<String>,
+    #[serde(default)]
+    expires_before: Option<String>,
+    #[serde(default)]
+    findings_only: bool,
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    page_token: Option<String>,
+}
+
+impl From<HttpLifecycleQuery> for LifecycleQuery {
+    fn from(value: HttpLifecycleQuery) -> Self {
+        Self {
+            subject_kinds: value.subject_kind.into_iter().collect(),
+            states: value.state.into_iter().collect(),
+            owner_urns: value.owner_urn.into_iter().collect(),
+            expires_before: value.expires_before,
+            findings_only: value.findings_only,
+            limit: value.limit,
+            page_token: value.page_token,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -878,6 +985,7 @@ fn router_with_backend(
         .route("/v1/graph/expand", post(expand))
         .route("/v1/graph/expand-batch", post(expand_batch))
         .route("/v1/graph/paths", post(find_paths))
+        .route("/v1/security/lifecycle", get(security_lifecycle))
         .route("/v1/projections/events", post(project_event))
         .route(
             "/v1/projections/legacy-deltas",
@@ -1289,6 +1397,38 @@ async fn search(
         .await
         .map(Json)
         .map_err(context_error)
+}
+
+async fn security_lifecycle(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Query(query): Query<HttpLifecycleQuery>,
+) -> Result<Json<cerebro_security_lifecycle::QueryResult>, (StatusCode, Json<ErrorResponse>)> {
+    let tenant_id = authenticated.0;
+    let resource_kinds = vec!["resource".to_owned()];
+    let entities = state
+        .graph
+        .search(&tenant_id, "", &resource_kinds, MAX_SECURITY_LIFECYCLE_SCAN)
+        .await
+        .map_err(context_error)?
+        .into_iter()
+        .map(|entity| ProjectedResource {
+            agent_key: entity.agent_key,
+            label: entity.label,
+            properties: entity.properties,
+        })
+        .collect();
+    let as_of = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .map_err(|error| {
+            service_unavailable(
+                "clock_format_failed",
+                format!("Cannot format read time: {error}"),
+            )
+        })?;
+    query_records(&tenant_id, &query.into(), entities, &as_of)
+        .map(Json)
+        .map_err(|error| bad_request("invalid_security_lifecycle_query", error.to_string()))
 }
 
 async fn explain_assertion(

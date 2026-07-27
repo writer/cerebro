@@ -430,6 +430,7 @@ dependencies = [
  "cerebro-organizational-graph",
  "cerebro-organizational-model",
  "cerebro-organizational-store",
+ "cerebro-security-lifecycle",
  "cerebro-source-catalog",
  "cerebro-source-runtime-next",
  "connectrpc",
@@ -441,6 +442,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "time",
  "tokio",
  "tokio-postgres",
  "tower",
@@ -466,6 +468,19 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+]
+
+[[package]]
+name = "cerebro-security-lifecycle"
+version = "0.1.0"
+dependencies = [
+ "cerebro-organizational-model",
+ "prost",
+ "prost-types",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "time",
 ]
 
 [[package]]

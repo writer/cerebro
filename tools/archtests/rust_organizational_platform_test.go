@@ -57,6 +57,9 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 			if err != nil {
 				return err
 			}
+			if entry.IsDir() && entry.Name() == "generated" {
+				return filepath.SkipDir
+			}
 			if entry.IsDir() || filepath.Ext(path) != ".rs" {
 				return nil
 			}

@@ -1,0 +1,4 @@
+name: Cerebro CodeQL configuration
+
+paths-ignore:
+  - sdk/python/cerebro/**/*_pb2.py

@@ -58,6 +58,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerKnowledgeRoutes(mux)
 	app.registerAuditEventRoutes(mux)
 	app.registerGraphRoutes(mux)
+	registerHTTPRoute(mux, "GET /v1/security/lifecycle", routeSurfacePlatformHTTP, app.handleListSecurityLifecycle)
 	app.registerJobRoutes(mux)
 	registerHTTPRoute(mux, "POST /platform/append-log/dead-letters/{deadLetterID}/force-purge", routeSurfacePlatformHTTP, deadletteradmin.NewHandler(app.deps.StateStore, hasAuthContext, authorizeJobAdmin, authorizeTenantID, customDashboardActorID).ForcePurge)
 	app.registerRuntimeResponseRoutes(mux)

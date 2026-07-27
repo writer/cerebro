@@ -8,6 +8,7 @@ members = [
     "crates/organizational-store",
     "crates/platform-engine",
     "crates/platform-sdk",
+    "crates/security-lifecycle",
     "crates/source-catalog",
     "crates/security-path-kernel",
     "crates/source-runtime-next",
@@ -40,6 +41,7 @@ cerebro-organizational-model = { version = "0.1.0", path = "crates/organizationa
 cerebro-organizational-store = { version = "0.1.0", path = "crates/organizational-store" }
 cerebro-platform-engine = { version = "0.1.0", path = "crates/platform-engine" }
 cerebro-platform-sdk = { version = "0.1.0", path = "crates/platform-sdk" }
+cerebro-security-lifecycle = { version = "0.1.0", path = "crates/security-lifecycle" }
 cerebro-source-catalog = { version = "0.1.0", path = "crates/source-catalog" }
 cerebro-source-runtime-next = { version = "0.1.0", path = "crates/source-runtime-next" }
 cerebro-wasm-guest = { version = "0.1.0", path = "internal/wasmguest" }
@@ -62,7 +64,7 @@ reqwest = { version = "0.13.4", default-features = false, features = ["json", "r
 tokio = { version = "1.53.1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync"] }
 tokio-postgres = { version = "0.7.18", features = ["with-serde_json-1"] }
 tower = "0.5.3"
-time = { version = "0.3.53", features = ["parsing"] }
+time = { version = "0.3.53", features = ["formatting", "parsing"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

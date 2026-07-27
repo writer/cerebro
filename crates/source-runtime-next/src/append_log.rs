@@ -14,6 +14,10 @@ use sha2::{Digest, Sha256};
 use crate::{CollectedBatch, CollectedScope, SourceRecord};
 
 const SOURCE_RUNTIME_ID_ATTRIBUTE: &str = "source_runtime_id";
+const CREDENTIAL_EVENT_KIND: &str = "security.credential.lifecycle";
+const CERTIFICATE_EVENT_KIND: &str = "security.certificate.lifecycle";
+const CREDENTIAL_SCHEMA_REF: &str = "cerebro/security/credential-lifecycle/v1";
+const CERTIFICATE_SCHEMA_REF: &str = "cerebro/security/certificate-lifecycle/v1";
 
 #[derive(Clone, PartialEq, Message)]
 struct CommittedSourceWire {
@@ -73,8 +77,10 @@ impl Error for AppendLogDecodeError {}
 /// A source event that came from the canonical append-log protobuf envelope.
 ///
 /// Callers cannot construct this value directly. Tenant, runtime, observation,
-/// family, timestamp, and JSON payload validation happen before it crosses the
-/// Rust graph boundary.
+/// family, timestamp, and payload validation happen before it crosses the Rust
+/// graph boundary. Catalog source events carry JSON; portable security
+/// lifecycle events retain their protobuf payload for the sealed lifecycle
+/// projector.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CommittedSourceEvent {
     tenant_id: TenantId,
@@ -87,6 +93,7 @@ pub struct CommittedSourceEvent {
     observed_at_unix_ms: i64,
     attributes: BTreeMap<String, String>,
     payload: serde_json::Value,
+    raw_payload: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -127,6 +134,7 @@ impl CommittedSourceEvent {
             observed_at_unix_ms: input.observed_at_unix_ms,
             attributes: input.attributes,
             payload: input.payload,
+            raw_payload: Vec::new(),
         })
     }
 
@@ -144,9 +152,21 @@ impl CommittedSourceEvent {
         }
         let kind = wire.kind.trim();
         let source_prefix = format!("{source_id}.");
-        if !kind.starts_with(&source_prefix) || kind.len() == source_prefix.len() {
+        let portable_lifecycle = match kind {
+            CREDENTIAL_EVENT_KIND => wire.schema_ref.trim() == CREDENTIAL_SCHEMA_REF,
+            CERTIFICATE_EVENT_KIND => wire.schema_ref.trim() == CERTIFICATE_SCHEMA_REF,
+            _ => false,
+        };
+        if !portable_lifecycle
+            && (!kind.starts_with(&source_prefix) || kind.len() == source_prefix.len())
+        {
             return Err(AppendLogDecodeError::Missing(
                 "a source-owned kind in source.family form",
+            ));
+        }
+        if matches!(kind, CREDENTIAL_EVENT_KIND | CERTIFICATE_EVENT_KIND) && !portable_lifecycle {
+            return Err(AppendLogDecodeError::Missing(
+                "the matching security lifecycle schema_ref",
             ));
         }
         let tenant = required(&wire.tenant_id, "tenant_id")?;
@@ -160,7 +180,7 @@ impl CommittedSourceEvent {
             .occurred_at
             .ok_or(AppendLogDecodeError::Missing("occurred_at"))?;
         let observed_at_unix_ms = timestamp_millis(occurred_at)?;
-        let payload = if wire.payload.is_empty() {
+        let payload = if portable_lifecycle || wire.payload.is_empty() {
             serde_json::Value::Object(serde_json::Map::new())
         } else {
             serde_json::from_slice(&wire.payload)
@@ -175,12 +195,17 @@ impl CommittedSourceEvent {
             source_runtime_id,
             observation_id,
             source_id,
-            family_id: kind[source_prefix.len()..].to_owned(),
+            family_id: if portable_lifecycle {
+                kind.to_owned()
+            } else {
+                kind[source_prefix.len()..].to_owned()
+            },
             event_kind: kind.to_owned(),
             schema_ref: wire.schema_ref.trim().to_owned(),
             observed_at_unix_ms,
             attributes: wire.attributes.into_iter().collect(),
             payload,
+            raw_payload: wire.payload,
         }))
     }
 
@@ -257,6 +282,18 @@ impl CommittedSourceEvent {
         let payload = canonical_payload_bytes(&self.payload);
         hash_field(&mut hasher, &payload);
         finish_digest(hasher)
+    }
+
+    pub fn raw_payload(&self) -> &[u8] {
+        &self.raw_payload
+    }
+
+    pub fn is_portable_security_lifecycle(&self) -> bool {
+        matches!(
+            (self.event_kind.as_str(), self.schema_ref.as_str()),
+            (CREDENTIAL_EVENT_KIND, CREDENTIAL_SCHEMA_REF)
+                | (CERTIFICATE_EVENT_KIND, CERTIFICATE_SCHEMA_REF)
+        )
     }
 
     pub fn collection_id(&self) -> Result<CollectionId, AppendLogDecodeError> {
@@ -427,6 +464,32 @@ mod tests {
     fn source_kind_must_belong_to_the_declared_source() {
         let mut wire = source_wire();
         wire.kind = "github.repositories".to_owned();
+        assert!(matches!(
+            CommittedSourceEvent::decode(&encode(wire)),
+            Err(AppendLogDecodeError::Missing(_))
+        ));
+    }
+
+    #[test]
+    fn portable_security_lifecycle_event_keeps_its_protobuf_payload() {
+        let mut wire = source_wire();
+        wire.kind = CREDENTIAL_EVENT_KIND.to_owned();
+        wire.schema_ref = CREDENTIAL_SCHEMA_REF.to_owned();
+        wire.payload = vec![0x0a, 0x00];
+        let event = CommittedSourceEvent::decode(&encode(wire))
+            .unwrap()
+            .unwrap();
+        assert_eq!(event.event_kind(), CREDENTIAL_EVENT_KIND);
+        assert_eq!(event.schema_ref(), CREDENTIAL_SCHEMA_REF);
+        assert_eq!(event.family_id(), CREDENTIAL_EVENT_KIND);
+        assert_eq!(event.raw_payload(), &[0x0a, 0x00]);
+    }
+
+    #[test]
+    fn portable_security_lifecycle_event_requires_the_exact_schema() {
+        let mut wire = source_wire();
+        wire.kind = CERTIFICATE_EVENT_KIND.to_owned();
+        wire.schema_ref = CREDENTIAL_SCHEMA_REF.to_owned();
         assert!(matches!(
             CommittedSourceEvent::decode(&encode(wire)),
             Err(AppendLogDecodeError::Missing(_))
