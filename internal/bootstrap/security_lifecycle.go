@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -63,7 +64,11 @@ func (a *App) handleListSecurityLifecycle(w http.ResponseWriter, r *http.Request
 	}
 	result, err := a.deps.SecurityLifecycleQueries.ListSecurityLifecycle(r.Context(), query)
 	if err != nil {
-		http.Error(w, "security lifecycle read failed", http.StatusBadGateway)
+		status := http.StatusBadGateway
+		if connect.CodeOf(err) == connect.CodeInvalidArgument {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, "security lifecycle read failed", status)
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, result)

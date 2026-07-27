@@ -4155,26 +4155,6 @@ pub struct SecurityLifecycleFindingBinding {
         deserialize_with = "::buffa::json_helpers::null_as_default"
     )]
     pub evidence_claim_refs: ::buffa::alloc::vec::Vec<ResourceRef>,
-    /// Field 6: `due_at`
-    #[serde(
-        rename = "dueAt",
-        alias = "due_at",
-        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
-    )]
-    pub due_at: ::buffa::MessageField<
-        ::buffa_types::google::protobuf::Timestamp,
-        ::buffa::Inline<::buffa_types::google::protobuf::Timestamp>,
-    >,
-    /// Field 7: `remediation_outcome_ref`
-    #[serde(
-        rename = "remediationOutcomeRef",
-        alias = "remediation_outcome_ref",
-        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
-    )]
-    pub remediation_outcome_ref: ::buffa::MessageField<
-        ResourceRef,
-        ::buffa::Inline<ResourceRef>,
-    >,
     #[serde(skip)]
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
@@ -4187,8 +4167,6 @@ impl ::core::fmt::Debug for SecurityLifecycleFindingBinding {
             .field("finding_kind", &self.finding_kind)
             .field("status", &self.status)
             .field("evidence_claim_refs", &self.evidence_claim_refs)
-            .field("due_at", &self.due_at)
-            .field("remediation_outcome_ref", &self.remediation_outcome_ref)
             .finish()
     }
 }
@@ -4249,22 +4227,6 @@ impl ::buffa::Message for SecurityLifecycleFindingBinding {
                 += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
                     + inner_size as u64;
         }
-        if self.due_at.is_set() {
-            let __slot = __cache.reserve();
-            let inner_size = self.due_at.compute_size(__cache);
-            __cache.set(__slot, inner_size);
-            size
-                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
-                    + inner_size as u64;
-        }
-        if self.remediation_outcome_ref.is_set() {
-            let __slot = __cache.reserve();
-            let inner_size = self.remediation_outcome_ref.compute_size(__cache);
-            __cache.set(__slot, inner_size);
-            size
-                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
-                    + inner_size as u64;
-        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -4304,22 +4266,6 @@ impl ::buffa::Message for SecurityLifecycleFindingBinding {
                 buf,
             );
             v.write_to(__cache, buf);
-        }
-        if self.due_at.is_set() {
-            ::buffa::types::put_len_delimited_header(
-                6u32,
-                u64::from(__cache.consume_next()),
-                buf,
-            );
-            self.due_at.write_to(__cache, buf);
-        }
-        if self.remediation_outcome_ref.is_set() {
-            ::buffa::types::put_len_delimited_header(
-                7u32,
-                u64::from(__cache.consume_next()),
-                buf,
-            );
-            self.remediation_outcome_ref.write_to(__cache, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -4382,28 +4328,6 @@ impl ::buffa::Message for SecurityLifecycleFindingBinding {
                 ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
                 self.evidence_claim_refs.push(elem);
             }
-            6u32 => {
-                ::buffa::encoding::check_wire_type(
-                    tag,
-                    ::buffa::encoding::WireType::LengthDelimited,
-                )?;
-                ::buffa::Message::merge_length_delimited(
-                    self.due_at.get_or_insert_default(),
-                    buf,
-                    ctx,
-                )?;
-            }
-            7u32 => {
-                ::buffa::encoding::check_wire_type(
-                    tag,
-                    ::buffa::encoding::WireType::LengthDelimited,
-                )?;
-                ::buffa::Message::merge_length_delimited(
-                    self.remediation_outcome_ref.get_or_insert_default(),
-                    buf,
-                    ctx,
-                )?;
-            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -4417,8 +4341,6 @@ impl ::buffa::Message for SecurityLifecycleFindingBinding {
         self.finding_kind.clear();
         self.status.clear();
         self.evidence_claim_refs.clear();
-        self.due_at = ::buffa::MessageField::none();
-        self.remediation_outcome_ref = ::buffa::MessageField::none();
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -12789,14 +12711,6 @@ pub mod __buffa {
                 'a,
                 super::super::__buffa::view::ResourceRefView<'a>,
             >,
-            /// Field 6: `due_at`
-            pub due_at: ::buffa::MessageFieldView<
-                ::buffa_types::google::protobuf::__buffa::view::TimestampView<'a>,
-            >,
-            /// Field 7: `remediation_outcome_ref`
-            pub remediation_outcome_ref: ::buffa::MessageFieldView<
-                super::super::__buffa::view::ResourceRefView<'a>,
-            >,
             pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
         }
         impl<'a> ::buffa::MessageView<'a> for SecurityLifecycleFindingBindingView<'a> {
@@ -12895,56 +12809,6 @@ pub mod __buffa {
                         )?;
                         view.status = ::buffa::types::borrow_str(&mut cur)?;
                     }
-                    6u32 => {
-                        ::buffa::encoding::check_wire_type(
-                            tag,
-                            ::buffa::encoding::WireType::LengthDelimited,
-                        )?;
-                        let __sub_ctx = ctx.descend()?;
-                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
-                        match view.due_at.as_mut() {
-                            Some(existing) => {
-                                ::buffa::MessageView::merge_into_view(
-                                    existing,
-                                    sub,
-                                    __sub_ctx,
-                                )?
-                            }
-                            None => {
-                                view.due_at = ::buffa::MessageFieldView::set(
-                                    <::buffa_types::google::protobuf::__buffa::view::TimestampView as ::buffa::MessageView>::decode_view_ctx(
-                                        sub,
-                                        __sub_ctx,
-                                    )?,
-                                );
-                            }
-                        }
-                    }
-                    7u32 => {
-                        ::buffa::encoding::check_wire_type(
-                            tag,
-                            ::buffa::encoding::WireType::LengthDelimited,
-                        )?;
-                        let __sub_ctx = ctx.descend()?;
-                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
-                        match view.remediation_outcome_ref.as_mut() {
-                            Some(existing) => {
-                                ::buffa::MessageView::merge_into_view(
-                                    existing,
-                                    sub,
-                                    __sub_ctx,
-                                )?
-                            }
-                            None => {
-                                view.remediation_outcome_ref = ::buffa::MessageFieldView::set(
-                                    <super::super::__buffa::view::ResourceRefView as ::buffa::MessageView>::decode_view_ctx(
-                                        sub,
-                                        __sub_ctx,
-                                    )?,
-                                );
-                            }
-                        }
-                    }
                     5u32 => {
                         ::buffa::encoding::check_wire_type(
                             tag,
@@ -13019,27 +12883,6 @@ pub mod __buffa {
                         .iter()
                         .map(|v| v.to_owned_from_source(__buffa_src))
                         .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
-                    due_at: match self.due_at.as_option() {
-                        Some(v) => {
-                            ::buffa::MessageField::<
-                                ::buffa_types::google::protobuf::Timestamp,
-                                ::buffa::Inline<::buffa_types::google::protobuf::Timestamp>,
-                            >::some(v.to_owned_from_source(__buffa_src)?)
-                        }
-                        None => ::buffa::MessageField::none(),
-                    },
-                    remediation_outcome_ref: match self
-                        .remediation_outcome_ref
-                        .as_option()
-                    {
-                        Some(v) => {
-                            ::buffa::MessageField::<
-                                super::super::ResourceRef,
-                                ::buffa::Inline<super::super::ResourceRef>,
-                            >::some(v.to_owned_from_source(__buffa_src)?)
-                        }
-                        None => ::buffa::MessageField::none(),
-                    },
                     __buffa_unknown_fields: self
                         .__buffa_unknown_fields
                         .to_owned()?
@@ -13089,22 +12932,6 @@ pub mod __buffa {
                         += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
                             + inner_size as u64;
                 }
-                if self.due_at.is_set() {
-                    let __slot = __cache.reserve();
-                    let inner_size = self.due_at.compute_size(__cache);
-                    __cache.set(__slot, inner_size);
-                    size
-                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
-                            + inner_size as u64;
-                }
-                if self.remediation_outcome_ref.is_set() {
-                    let __slot = __cache.reserve();
-                    let inner_size = self.remediation_outcome_ref.compute_size(__cache);
-                    __cache.set(__slot, inner_size);
-                    size
-                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
-                            + inner_size as u64;
-                }
                 size += self.__buffa_unknown_fields.encoded_len() as u64;
                 ::buffa::saturate_size(size)
             }
@@ -13145,22 +12972,6 @@ pub mod __buffa {
                         buf,
                     );
                     v.write_to(__cache, buf);
-                }
-                if self.due_at.is_set() {
-                    ::buffa::types::put_len_delimited_header(
-                        6u32,
-                        u64::from(__cache.consume_next()),
-                        buf,
-                    );
-                    self.due_at.write_to(__cache, buf);
-                }
-                if self.remediation_outcome_ref.is_set() {
-                    ::buffa::types::put_len_delimited_header(
-                        7u32,
-                        u64::from(__cache.consume_next()),
-                        buf,
-                    );
-                    self.remediation_outcome_ref.write_to(__cache, buf);
                 }
                 self.__buffa_unknown_fields.write_to(buf);
             }
@@ -13211,19 +13022,6 @@ pub mod __buffa {
                             "evidenceClaimRefs",
                             &*self.evidence_claim_refs,
                         )?;
-                }
-                {
-                    if let ::core::option::Option::Some(__v) = self.due_at.as_option() {
-                        __map.serialize_entry("dueAt", __v)?;
-                    }
-                }
-                {
-                    if let ::core::option::Option::Some(__v) = self
-                        .remediation_outcome_ref
-                        .as_option()
-                    {
-                        __map.serialize_entry("remediationOutcomeRef", __v)?;
-                    }
                 }
                 __map.end()
             }
@@ -13363,24 +13161,6 @@ pub mod __buffa {
                 super::super::__buffa::view::ResourceRefView<'_>,
             > {
                 &self.0.reborrow().evidence_claim_refs
-            }
-            /// Field 6: `due_at`
-            #[must_use]
-            pub fn due_at(
-                &self,
-            ) -> &::buffa::MessageFieldView<
-                ::buffa_types::google::protobuf::__buffa::view::TimestampView<'_>,
-            > {
-                &self.0.reborrow().due_at
-            }
-            /// Field 7: `remediation_outcome_ref`
-            #[must_use]
-            pub fn remediation_outcome_ref(
-                &self,
-            ) -> &::buffa::MessageFieldView<
-                super::super::__buffa::view::ResourceRefView<'_>,
-            > {
-                &self.0.reborrow().remediation_outcome_ref
             }
         }
         impl ::core::convert::From<

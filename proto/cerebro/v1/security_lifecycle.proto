@@ -93,8 +93,8 @@ message SecurityLifecycleFindingBinding {
   string finding_kind = 3;
   string status = 4;
   repeated ResourceRef evidence_claim_refs = 5;
-  google.protobuf.Timestamp due_at = 6;
-  ResourceRef remediation_outcome_ref = 7;
+  reserved 6, 7;
+  reserved "due_at", "remediation_outcome_ref";
 }
 
 // SecurityLifecycleActionRoute is an authorization-safe route to an external

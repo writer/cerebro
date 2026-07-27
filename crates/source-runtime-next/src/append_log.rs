@@ -288,6 +288,14 @@ impl CommittedSourceEvent {
         &self.raw_payload
     }
 
+    pub fn is_portable_security_lifecycle(&self) -> bool {
+        matches!(
+            (self.event_kind.as_str(), self.schema_ref.as_str()),
+            (CREDENTIAL_EVENT_KIND, CREDENTIAL_SCHEMA_REF)
+                | (CERTIFICATE_EVENT_KIND, CERTIFICATE_SCHEMA_REF)
+        )
+    }
+
     pub fn collection_id(&self) -> Result<CollectionId, AppendLogDecodeError> {
         CollectionId::parse(format!("event:{}", self.observation_id)).map_err(model_error)
     }

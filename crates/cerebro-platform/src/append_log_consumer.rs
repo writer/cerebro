@@ -118,8 +118,18 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
             message.double_ack().await.map_err(consumer_io)?;
             continue;
         };
-        let event = match decode_event(&message.message.payload, subject_source, &subject) {
-            Ok(event) => event,
+        let event = match decode_event(
+            &message.message.payload,
+            subject_source,
+            &subject,
+            &config.subject_prefix,
+            runtime.catalog.get(subject_source).is_some(),
+        ) {
+            Ok(Some(event)) => event,
+            Ok(None) => {
+                message.double_ack().await.map_err(consumer_io)?;
+                continue;
+            }
             Err(error) => {
                 eprintln!("organizational append-log message rejected: {error}");
                 message.double_ack().await.map_err(consumer_io)?;
@@ -165,9 +175,23 @@ fn decode_event(
     payload: &[u8],
     subject_source: &str,
     subject: &str,
-) -> Result<CommittedSourceEvent, String> {
+    subject_prefix: &str,
+    catalog_source_known: bool,
+) -> Result<Option<CommittedSourceEvent>, String> {
     match CommittedSourceEvent::decode(payload) {
-        Ok(Some(event)) if event.source_id() == subject_source => Ok(event),
+        Ok(Some(event))
+            if event.is_portable_security_lifecycle()
+                && subject == format!("{subject_prefix}.{}", event.event_kind()) =>
+        {
+            Ok(Some(event))
+        }
+        Ok(Some(event)) if event.is_portable_security_lifecycle() => Err(format!(
+            "append-log lifecycle event {} must use subject {subject_prefix}.{}",
+            event.event_kind(),
+            event.event_kind()
+        )),
+        Ok(Some(_)) if !catalog_source_known => Ok(None),
+        Ok(Some(event)) if event.source_id() == subject_source => Ok(Some(event)),
         Ok(Some(event)) => Err(format!(
             "append-log subject source {subject_source} does not match envelope source {}",
             event.source_id()
@@ -259,6 +283,46 @@ fn consumer_io(error: impl std::fmt::Display) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use prost::Message;
+    use prost_types::Timestamp;
+    use std::collections::HashMap;
+
+    #[derive(Clone, PartialEq, Message)]
+    struct EventWire {
+        #[prost(string, tag = "1")]
+        id: String,
+        #[prost(string, tag = "2")]
+        tenant_id: String,
+        #[prost(string, tag = "3")]
+        source_id: String,
+        #[prost(string, tag = "4")]
+        kind: String,
+        #[prost(message, optional, tag = "5")]
+        occurred_at: Option<Timestamp>,
+        #[prost(string, tag = "6")]
+        schema_ref: String,
+        #[prost(bytes = "vec", tag = "7")]
+        payload: Vec<u8>,
+        #[prost(map = "string, string", tag = "8")]
+        attributes: HashMap<String, String>,
+    }
+
+    fn encoded_event(source_id: &str, kind: &str, schema_ref: &str, payload: Vec<u8>) -> Vec<u8> {
+        EventWire {
+            id: "event-1".to_owned(),
+            tenant_id: "tenant-a".to_owned(),
+            source_id: source_id.to_owned(),
+            kind: kind.to_owned(),
+            occurred_at: Some(Timestamp {
+                seconds: 1_720_000_000,
+                nanos: 0,
+            }),
+            schema_ref: schema_ref.to_owned(),
+            payload,
+            attributes: HashMap::from([("source_runtime_id".to_owned(), "runtime-a".to_owned())]),
+        }
+        .encode_to_vec()
+    }
 
     #[test]
     fn consumer_starts_at_new_events_and_never_exhausts_delivery() {
@@ -322,9 +386,65 @@ mod tests {
 
     #[test]
     fn poison_messages_are_rejected_while_transient_failures_are_retried() {
-        assert!(decode_event(b"not-a-source-envelope", "box", "events.box.users").is_err());
+        assert!(
+            decode_event(
+                b"not-a-source-envelope",
+                "box",
+                "events.box.users",
+                "events",
+                true
+            )
+            .is_err()
+        );
         assert_eq!(failure_disposition(false), FailureDisposition::Reject);
         assert_eq!(failure_disposition(true), FailureDisposition::Retry);
+    }
+
+    #[test]
+    fn exact_lifecycle_contract_bypasses_catalog_while_unknown_sources_do_not() {
+        let lifecycle = encoded_event(
+            "expiry_tracker",
+            "security.credential.lifecycle",
+            "cerebro/security/credential-lifecycle/v1",
+            vec![0x0a, 0x00],
+        );
+        let admitted = decode_event(
+            &lifecycle,
+            "security",
+            "events.security.credential.lifecycle",
+            "events",
+            false,
+        )
+        .unwrap();
+        assert!(admitted.is_some());
+        assert!(
+            decode_event(
+                &lifecycle,
+                "security",
+                "events.security.lifecycle",
+                "events",
+                false,
+            )
+            .is_err()
+        );
+
+        let unknown = encoded_event(
+            "unknown",
+            "unknown.assets",
+            "unknown/assets/v1",
+            br#"{"id":"asset-1"}"#.to_vec(),
+        );
+        assert!(
+            decode_event(
+                &unknown,
+                "unknown",
+                "events.unknown.assets",
+                "events",
+                false,
+            )
+            .unwrap()
+            .is_none()
+        );
     }
 
     #[test]

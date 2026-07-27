@@ -9,6 +9,7 @@ import {
   lifecycleEnumLabel,
   lifecycleExpiryLabel,
   lifecycleOwnerLabel,
+  summarizeSecurityLifecycle,
   type SecurityLifecycleResponse,
 } from "@/lib/security-lifecycle";
 
@@ -28,17 +29,7 @@ export default function SecurityLifecyclePage() {
   });
   const query = useGRCQuery<SecurityLifecycleResponse>(path);
   const records = useMemo(() => query.data?.records ?? [], [query.data?.records]);
-  const summary = useMemo(() => records.reduce(
-    (result, record) => {
-      const current = lifecycleEnumLabel(record.observation.state);
-      if (current === "expired") result.expired += 1;
-      if (current === "expiring") result.expiring += 1;
-      if ((record.findings?.length ?? 0) > 0) result.findings += 1;
-      if (!record.observation.owner_urn) result.ownerRequired += 1;
-      return result;
-    },
-    { expired: 0, expiring: 0, findings: 0, ownerRequired: 0 },
-  ), [records]);
+  const summary = useMemo(() => summarizeSecurityLifecycle(records), [records]);
 
   const resetPage = () => setPageToken("");
 

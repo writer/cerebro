@@ -25,17 +25,25 @@ export type SecurityLifecycleRecord = {
     attributes?: Record<string, string>;
   };
   policy_evaluations?: Array<{
+    policy_id: string;
+    policy_version: string;
+    subject_ref: SecurityLifecycleResourceRef;
     state: string;
     warning_window_days: number;
     seconds_until_expiry?: string | number;
     evaluated_at: string;
+    evidence_claim_refs?: SecurityLifecycleResourceRef[];
   }>;
   findings?: Array<{
     finding_ref: SecurityLifecycleResourceRef;
+    subject_ref: SecurityLifecycleResourceRef;
     finding_kind: string;
     status: string;
+    evidence_claim_refs?: SecurityLifecycleResourceRef[];
   }>;
   action_routes?: Array<{
+    finding_ref: SecurityLifecycleResourceRef;
+    target_ref: SecurityLifecycleResourceRef;
     action_type: string;
     approval_required: boolean;
     action_intent_ref: SecurityLifecycleResourceRef;
@@ -52,6 +60,13 @@ export type SecurityLifecycleResponse = {
   as_of: string;
 };
 
+export type SecurityLifecycleSummary = {
+  expired: number;
+  expiring: number;
+  findings: number;
+  ownerRequired: number;
+};
+
 export const lifecycleEnumLabel = (value: string) =>
   value
     .replace(/^SECURITY_LIFECYCLE_SUBJECT_KIND_/, "")
@@ -63,6 +78,26 @@ export const lifecycleOwnerLabel = (owner?: string) => {
   const parts = owner.split(":");
   return decodeURIComponent(parts.at(-1) || owner);
 };
+
+export const lifecycleEffectiveState = (record: SecurityLifecycleRecord) =>
+  lifecycleEnumLabel(
+    record.policy_evaluations?.[0]?.state || record.observation.state,
+  );
+
+export const summarizeSecurityLifecycle = (
+  records: SecurityLifecycleRecord[],
+): SecurityLifecycleSummary =>
+  records.reduce(
+    (result, record) => {
+      const current = lifecycleEffectiveState(record);
+      if (current === "expired") result.expired += 1;
+      if (current === "expiring") result.expiring += 1;
+      if ((record.findings?.length ?? 0) > 0) result.findings += 1;
+      if (!record.observation.owner_urn) result.ownerRequired += 1;
+      return result;
+    },
+    { expired: 0, expiring: 0, findings: 0, ownerRequired: 0 },
+  );
 
 export const lifecycleExpiryLabel = (value?: string) => {
   if (!value) return "No expiry recorded";

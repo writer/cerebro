@@ -582,7 +582,8 @@ pub fn evaluate(
             {
                 "expiring"
             }
-            _ => "compliant",
+            Some(_) => "compliant",
+            None => "unknown",
         },
         LifecycleState::Unknown => "unknown",
     };
@@ -1194,6 +1195,20 @@ mod tests {
     }
 
     #[test]
+    fn active_observation_without_expiry_is_unknown() {
+        let evaluation = evaluate(
+            &observation(LifecycleState::Active, "key-1", None),
+            "2026-07-26T12:00:00Z",
+            30,
+        )
+        .unwrap();
+
+        assert_eq!(evaluation.state, "unknown");
+        assert_eq!(evaluation.seconds_until_expiry, None);
+        assert!(!evaluation.has_finding());
+    }
+
+    #[test]
     fn provider_success_cannot_close_without_fresh_complete_observation() {
         let expectation = VerificationExpectation {
             tenant_id: tenant(),
@@ -1224,10 +1239,10 @@ mod tests {
             revision: None,
             state: None,
         };
-        let observation = observation(LifecycleState::Rotated, "key-2", None);
+        let rotated_observation = observation(LifecycleState::Rotated, "key-2", None);
         assert_eq!(
             bind_verification(
-                &observation,
+                &rotated_observation,
                 event_ref.clone(),
                 expectation.source_runtime_ref.clone(),
                 &expectation,
@@ -1241,7 +1256,7 @@ mod tests {
         );
         assert_eq!(
             bind_verification(
-                &observation,
+                &rotated_observation,
                 event_ref,
                 expectation.source_runtime_ref.clone(),
                 &expectation,
@@ -1253,6 +1268,26 @@ mod tests {
             .result,
             "verified_closed"
         );
+        let unknown_expiry = observation(LifecycleState::Active, "key-3", None);
+        assert_eq!(
+            bind_verification(
+                &unknown_expiry,
+                ResourceRef {
+                    kind: "event".to_owned(),
+                    id: "urn:cerebro:tenant-a:event:observation-unknown".to_owned(),
+                    revision: None,
+                    state: None,
+                },
+                expectation.source_runtime_ref.clone(),
+                &expectation,
+                true,
+                false,
+                30,
+            )
+            .unwrap()
+            .result,
+            "verification_pending"
+        );
         let foreign_runtime = ResourceRef {
             kind: "source_runtime".to_owned(),
             id: "urn:cerebro:tenant-a:source_runtime:other".to_owned(),
@@ -1261,7 +1296,7 @@ mod tests {
         };
         assert!(
             bind_verification(
-                &observation,
+                &rotated_observation,
                 ResourceRef {
                     kind: "event".to_owned(),
                     id: "urn:cerebro:tenant-a:event:observation-3".to_owned(),

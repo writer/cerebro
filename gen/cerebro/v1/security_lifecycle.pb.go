@@ -507,16 +507,14 @@ func (x *SecurityLifecyclePolicyEvaluation) GetEvidenceClaimRefs() []*ResourceRe
 // SecurityLifecycleFindingBinding connects a durable Cerebro finding to the
 // exact governed resource and evidence used to open or resolve it.
 type SecurityLifecycleFindingBinding struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	FindingRef            *ResourceRef           `protobuf:"bytes,1,opt,name=finding_ref,json=findingRef,proto3" json:"finding_ref,omitempty"`
-	SubjectRef            *ResourceRef           `protobuf:"bytes,2,opt,name=subject_ref,json=subjectRef,proto3" json:"subject_ref,omitempty"`
-	FindingKind           string                 `protobuf:"bytes,3,opt,name=finding_kind,json=findingKind,proto3" json:"finding_kind,omitempty"`
-	Status                string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
-	EvidenceClaimRefs     []*ResourceRef         `protobuf:"bytes,5,rep,name=evidence_claim_refs,json=evidenceClaimRefs,proto3" json:"evidence_claim_refs,omitempty"`
-	DueAt                 *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=due_at,json=dueAt,proto3" json:"due_at,omitempty"`
-	RemediationOutcomeRef *ResourceRef           `protobuf:"bytes,7,opt,name=remediation_outcome_ref,json=remediationOutcomeRef,proto3" json:"remediation_outcome_ref,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	FindingRef        *ResourceRef           `protobuf:"bytes,1,opt,name=finding_ref,json=findingRef,proto3" json:"finding_ref,omitempty"`
+	SubjectRef        *ResourceRef           `protobuf:"bytes,2,opt,name=subject_ref,json=subjectRef,proto3" json:"subject_ref,omitempty"`
+	FindingKind       string                 `protobuf:"bytes,3,opt,name=finding_kind,json=findingKind,proto3" json:"finding_kind,omitempty"`
+	Status            string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	EvidenceClaimRefs []*ResourceRef         `protobuf:"bytes,5,rep,name=evidence_claim_refs,json=evidenceClaimRefs,proto3" json:"evidence_claim_refs,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *SecurityLifecycleFindingBinding) Reset() {
@@ -580,20 +578,6 @@ func (x *SecurityLifecycleFindingBinding) GetStatus() string {
 func (x *SecurityLifecycleFindingBinding) GetEvidenceClaimRefs() []*ResourceRef {
 	if x != nil {
 		return x.EvidenceClaimRefs
-	}
-	return nil
-}
-
-func (x *SecurityLifecycleFindingBinding) GetDueAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.DueAt
-	}
-	return nil
-}
-
-func (x *SecurityLifecycleFindingBinding) GetRemediationOutcomeRef() *ResourceRef {
-	if x != nil {
-		return x.RemediationOutcomeRef
 	}
 	return nil
 }
@@ -1098,7 +1082,7 @@ const file_cerebro_v1_security_lifecycle_proto_rawDesc = "" +
 	"\x13warning_window_days\x18\x05 \x01(\rR\x11warningWindowDays\x120\n" +
 	"\x14seconds_until_expiry\x18\x06 \x01(\x03R\x12secondsUntilExpiry\x12=\n" +
 	"\fevaluated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\vevaluatedAt\x12G\n" +
-	"\x13evidence_claim_refs\x18\b \x03(\v2\x17.cerebro.v1.ResourceRefR\x11evidenceClaimRefs\"\x9d\x03\n" +
+	"\x13evidence_claim_refs\x18\b \x03(\v2\x17.cerebro.v1.ResourceRefR\x11evidenceClaimRefs\"\xc6\x02\n" +
 	"\x1fSecurityLifecycleFindingBinding\x128\n" +
 	"\vfinding_ref\x18\x01 \x01(\v2\x17.cerebro.v1.ResourceRefR\n" +
 	"findingRef\x128\n" +
@@ -1106,9 +1090,7 @@ const file_cerebro_v1_security_lifecycle_proto_rawDesc = "" +
 	"subjectRef\x12!\n" +
 	"\ffinding_kind\x18\x03 \x01(\tR\vfindingKind\x12\x16\n" +
 	"\x06status\x18\x04 \x01(\tR\x06status\x12G\n" +
-	"\x13evidence_claim_refs\x18\x05 \x03(\v2\x17.cerebro.v1.ResourceRefR\x11evidenceClaimRefs\x121\n" +
-	"\x06due_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x05dueAt\x12O\n" +
-	"\x17remediation_outcome_ref\x18\a \x01(\v2\x17.cerebro.v1.ResourceRefR\x15remediationOutcomeRef\"\xa3\x03\n" +
+	"\x13evidence_claim_refs\x18\x05 \x03(\v2\x17.cerebro.v1.ResourceRefR\x11evidenceClaimRefsJ\x04\b\x06\x10\aJ\x04\b\a\x10\bR\x06due_atR\x17remediation_outcome_ref\"\xa3\x03\n" +
 	"\x1cSecurityLifecycleActionRoute\x128\n" +
 	"\vfinding_ref\x18\x01 \x01(\v2\x17.cerebro.v1.ResourceRefR\n" +
 	"findingRef\x126\n" +
@@ -1221,36 +1203,34 @@ var file_cerebro_v1_security_lifecycle_proto_depIdxs = []int32{
 	13, // 16: cerebro.v1.SecurityLifecycleFindingBinding.finding_ref:type_name -> cerebro.v1.ResourceRef
 	13, // 17: cerebro.v1.SecurityLifecycleFindingBinding.subject_ref:type_name -> cerebro.v1.ResourceRef
 	13, // 18: cerebro.v1.SecurityLifecycleFindingBinding.evidence_claim_refs:type_name -> cerebro.v1.ResourceRef
-	14, // 19: cerebro.v1.SecurityLifecycleFindingBinding.due_at:type_name -> google.protobuf.Timestamp
-	13, // 20: cerebro.v1.SecurityLifecycleFindingBinding.remediation_outcome_ref:type_name -> cerebro.v1.ResourceRef
-	13, // 21: cerebro.v1.SecurityLifecycleActionRoute.finding_ref:type_name -> cerebro.v1.ResourceRef
-	13, // 22: cerebro.v1.SecurityLifecycleActionRoute.target_ref:type_name -> cerebro.v1.ResourceRef
-	13, // 23: cerebro.v1.SecurityLifecycleActionRoute.action_intent_ref:type_name -> cerebro.v1.ResourceRef
-	13, // 24: cerebro.v1.SecurityLifecycleActionRoute.dispatch_ref:type_name -> cerebro.v1.ResourceRef
-	13, // 25: cerebro.v1.SecurityLifecycleActionRoute.verification_ref:type_name -> cerebro.v1.ResourceRef
-	13, // 26: cerebro.v1.SecurityLifecycleVerificationBinding.finding_ref:type_name -> cerebro.v1.ResourceRef
-	13, // 27: cerebro.v1.SecurityLifecycleVerificationBinding.remediation_outcome_ref:type_name -> cerebro.v1.ResourceRef
-	13, // 28: cerebro.v1.SecurityLifecycleVerificationBinding.observation_event_ref:type_name -> cerebro.v1.ResourceRef
-	13, // 29: cerebro.v1.SecurityLifecycleVerificationBinding.source_runtime_ref:type_name -> cerebro.v1.ResourceRef
-	14, // 30: cerebro.v1.SecurityLifecycleVerificationBinding.observed_at:type_name -> google.protobuf.Timestamp
-	13, // 31: cerebro.v1.SecurityLifecycleVerificationBinding.evidence_claim_refs:type_name -> cerebro.v1.ResourceRef
-	4,  // 32: cerebro.v1.SecurityLifecycleRecord.observation:type_name -> cerebro.v1.SecurityLifecycleObservation
-	5,  // 33: cerebro.v1.SecurityLifecycleRecord.policy_evaluations:type_name -> cerebro.v1.SecurityLifecyclePolicyEvaluation
-	6,  // 34: cerebro.v1.SecurityLifecycleRecord.findings:type_name -> cerebro.v1.SecurityLifecycleFindingBinding
-	7,  // 35: cerebro.v1.SecurityLifecycleRecord.action_routes:type_name -> cerebro.v1.SecurityLifecycleActionRoute
-	14, // 36: cerebro.v1.SecurityLifecycleRecord.projected_at:type_name -> google.protobuf.Timestamp
-	0,  // 37: cerebro.v1.SecurityLifecycleQuery.subject_kinds:type_name -> cerebro.v1.SecurityLifecycleSubjectKind
-	1,  // 38: cerebro.v1.SecurityLifecycleQuery.states:type_name -> cerebro.v1.SecurityLifecycleState
-	14, // 39: cerebro.v1.SecurityLifecycleQuery.expires_before:type_name -> google.protobuf.Timestamp
-	9,  // 40: cerebro.v1.SecurityLifecycleQueryResult.records:type_name -> cerebro.v1.SecurityLifecycleRecord
-	14, // 41: cerebro.v1.SecurityLifecycleQueryResult.as_of:type_name -> google.protobuf.Timestamp
-	2,  // 42: cerebro.v1.SecurityLifecycleService.ListSecurityLifecycle:input_type -> cerebro.v1.ListSecurityLifecycleRequest
-	3,  // 43: cerebro.v1.SecurityLifecycleService.ListSecurityLifecycle:output_type -> cerebro.v1.ListSecurityLifecycleResponse
-	43, // [43:44] is the sub-list for method output_type
-	42, // [42:43] is the sub-list for method input_type
-	42, // [42:42] is the sub-list for extension type_name
-	42, // [42:42] is the sub-list for extension extendee
-	0,  // [0:42] is the sub-list for field type_name
+	13, // 19: cerebro.v1.SecurityLifecycleActionRoute.finding_ref:type_name -> cerebro.v1.ResourceRef
+	13, // 20: cerebro.v1.SecurityLifecycleActionRoute.target_ref:type_name -> cerebro.v1.ResourceRef
+	13, // 21: cerebro.v1.SecurityLifecycleActionRoute.action_intent_ref:type_name -> cerebro.v1.ResourceRef
+	13, // 22: cerebro.v1.SecurityLifecycleActionRoute.dispatch_ref:type_name -> cerebro.v1.ResourceRef
+	13, // 23: cerebro.v1.SecurityLifecycleActionRoute.verification_ref:type_name -> cerebro.v1.ResourceRef
+	13, // 24: cerebro.v1.SecurityLifecycleVerificationBinding.finding_ref:type_name -> cerebro.v1.ResourceRef
+	13, // 25: cerebro.v1.SecurityLifecycleVerificationBinding.remediation_outcome_ref:type_name -> cerebro.v1.ResourceRef
+	13, // 26: cerebro.v1.SecurityLifecycleVerificationBinding.observation_event_ref:type_name -> cerebro.v1.ResourceRef
+	13, // 27: cerebro.v1.SecurityLifecycleVerificationBinding.source_runtime_ref:type_name -> cerebro.v1.ResourceRef
+	14, // 28: cerebro.v1.SecurityLifecycleVerificationBinding.observed_at:type_name -> google.protobuf.Timestamp
+	13, // 29: cerebro.v1.SecurityLifecycleVerificationBinding.evidence_claim_refs:type_name -> cerebro.v1.ResourceRef
+	4,  // 30: cerebro.v1.SecurityLifecycleRecord.observation:type_name -> cerebro.v1.SecurityLifecycleObservation
+	5,  // 31: cerebro.v1.SecurityLifecycleRecord.policy_evaluations:type_name -> cerebro.v1.SecurityLifecyclePolicyEvaluation
+	6,  // 32: cerebro.v1.SecurityLifecycleRecord.findings:type_name -> cerebro.v1.SecurityLifecycleFindingBinding
+	7,  // 33: cerebro.v1.SecurityLifecycleRecord.action_routes:type_name -> cerebro.v1.SecurityLifecycleActionRoute
+	14, // 34: cerebro.v1.SecurityLifecycleRecord.projected_at:type_name -> google.protobuf.Timestamp
+	0,  // 35: cerebro.v1.SecurityLifecycleQuery.subject_kinds:type_name -> cerebro.v1.SecurityLifecycleSubjectKind
+	1,  // 36: cerebro.v1.SecurityLifecycleQuery.states:type_name -> cerebro.v1.SecurityLifecycleState
+	14, // 37: cerebro.v1.SecurityLifecycleQuery.expires_before:type_name -> google.protobuf.Timestamp
+	9,  // 38: cerebro.v1.SecurityLifecycleQueryResult.records:type_name -> cerebro.v1.SecurityLifecycleRecord
+	14, // 39: cerebro.v1.SecurityLifecycleQueryResult.as_of:type_name -> google.protobuf.Timestamp
+	2,  // 40: cerebro.v1.SecurityLifecycleService.ListSecurityLifecycle:input_type -> cerebro.v1.ListSecurityLifecycleRequest
+	3,  // 41: cerebro.v1.SecurityLifecycleService.ListSecurityLifecycle:output_type -> cerebro.v1.ListSecurityLifecycleResponse
+	41, // [41:42] is the sub-list for method output_type
+	40, // [40:41] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_security_lifecycle_proto_init() }
