@@ -113,7 +113,7 @@ export default function SecurityLifecyclePage() {
                     const finding = record.findings?.[0];
                     const action = record.action_routes?.[0];
                     return (
-                      <tr key={`${observation.subject_ref.id}:${observation.subject_ref.revision ?? ""}`} className="align-top">
+                      <tr key={`${observation.subject_ref.id}:${observation.subject_ref.revision ?? observation.observed_at}`} className="align-top">
                         <td className="px-3 py-3">
                           <div className="font-semibold text-[var(--text-primary)]">{observation.display_name}</div>
                           <div className="mt-1 text-[11px] text-[var(--text-muted)]">{observation.provider} / {observation.authority_id}</div>

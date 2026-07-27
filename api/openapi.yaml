@@ -35,30 +35,42 @@ paths:
       parameters:
         - name: subject_kind
           in: query
-          description: Select credential or certificate records.
+          description: Select one or more credential or certificate record kinds.
+          style: form
+          explode: true
           schema:
-            type: string
-            enum:
-              - credential
-              - certificate
+            type: array
+            items:
+              type: string
+              enum:
+                - credential
+                - certificate
         - name: state
           in: query
-          description: Select an observed lifecycle state.
+          description: Select one or more observed lifecycle states.
+          style: form
+          explode: true
           schema:
-            type: string
-            enum:
-              - active
-              - expiring
-              - expired
-              - rotated
-              - revoked
-              - inactive
-              - unknown
+            type: array
+            items:
+              type: string
+              enum:
+                - active
+                - expiring
+                - expired
+                - rotated
+                - revoked
+                - inactive
+                - unknown
         - name: owner_urn
           in: query
-          description: Select records owned by a canonical tenant-scoped URN.
+          description: Select records owned by one or more canonical tenant-scoped URNs.
+          style: form
+          explode: true
           schema:
-            type: string
+            type: array
+            items:
+              type: string
         - name: expires_before
           in: query
           schema:
