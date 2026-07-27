@@ -2088,6 +2088,51 @@ mod tests {
         }
     }
 
+    fn indexed_aggregates(matched_records: u64) -> LifecycleAggregates {
+        LifecycleAggregates {
+            counts_are_exact: true,
+            matched_records,
+            matched_findings: matched_records,
+            subject_kind_counts: vec![
+                SubjectKindCount {
+                    subject_kind: SubjectKind::Credential,
+                    count: matched_records,
+                },
+                SubjectKindCount {
+                    subject_kind: SubjectKind::Certificate,
+                    count: 0,
+                },
+            ],
+            state_counts: [
+                LifecycleState::Active,
+                LifecycleState::Expiring,
+                LifecycleState::Expired,
+                LifecycleState::Rotated,
+                LifecycleState::Revoked,
+                LifecycleState::Inactive,
+                LifecycleState::Unknown,
+            ]
+            .into_iter()
+            .map(|state| StateCount {
+                count: u64::from(state == LifecycleState::Expired) * matched_records,
+                state,
+            })
+            .collect(),
+            policy_state_counts: [
+                PolicyState::Compliant,
+                PolicyState::Expiring,
+                PolicyState::Expired,
+                PolicyState::Unknown,
+            ]
+            .into_iter()
+            .map(|policy_state| PolicyStateCount {
+                count: u64::from(policy_state == PolicyState::Expired) * matched_records,
+                policy_state,
+            })
+            .collect(),
+        }
+    }
+
     #[test]
     fn graph_projection_skips_incomplete_lifecycle_shaped_entities() {
         let incomplete = ProjectedResource {
@@ -2741,6 +2786,344 @@ mod tests {
     }
 
     #[test]
+    fn indexed_prepare_and_finalize_preserve_filters_cursors_and_provenance() {
+        let owner = "urn:cerebro:tenant-a:team:security".to_owned();
+        let locator = SubjectLocator {
+            subject_kind: SubjectKind::Credential,
+            authority_id: "aws/production".to_owned(),
+            stable_locator: "deploy/signing".to_owned(),
+        };
+        let query = LifecycleQuery {
+            subject_kinds: vec![SubjectKind::Credential, SubjectKind::Credential],
+            states: vec![LifecycleState::Expired, LifecycleState::Expired],
+            owner_urns: vec![owner.clone(), owner.clone()],
+            expires_before: Some("2026-08-01T12:00:00Z".to_owned()),
+            findings_only: true,
+            subject_locator: Some(locator),
+            limit: Some(1),
+            ..LifecycleQuery::default()
+        };
+        let prepared =
+            prepare_indexed_query(&tenant(), &query, "2026-07-26T12:00:00Z", 18).unwrap();
+
+        assert_eq!(prepared.limit(), 1);
+        assert_eq!(prepared.subject_kinds(), &[SubjectKind::Credential]);
+        assert_eq!(prepared.states(), &[LifecycleState::Expired]);
+        assert_eq!(prepared.owner_urns(), &[owner]);
+        assert_eq!(
+            prepared.expires_before_unix_ms(),
+            Some(timestamp_millis_from_rfc3339("2026-08-01T12:00:00Z").unwrap())
+        );
+        assert!(prepared.findings_only());
+        assert_eq!(
+            prepared.locator_urn(),
+            Some(
+                canonical_resource_urn(
+                    "tenant-a",
+                    SubjectKind::Credential,
+                    "aws/production",
+                    "deploy/signing"
+                )
+                .unwrap()
+                .as_str()
+            )
+        );
+        assert_eq!(prepared.direction(), KeysetDirection::Forward);
+        assert_eq!(prepared.cursor_subject_urn(), None);
+        assert_eq!(prepared.graph_revision(), 18);
+        assert_eq!(prepared.effective_as_of(), "2026-07-26T12:00:00Z");
+        assert_eq!(
+            prepared.effective_as_of_unix_ms(),
+            timestamp_millis_from_rfc3339("2026-07-26T12:00:00Z").unwrap()
+        );
+        assert!(prepared.warning_cutoff_unix_ms() > prepared.effective_as_of_unix_ms());
+
+        let mut resource = projected(observation(
+            LifecycleState::Expired,
+            "material-1",
+            Some("2026-07-01T12:00:00Z"),
+        ));
+        resource
+            .properties
+            .insert("source_runtime_id".to_owned(), "expiry-tracker".to_owned());
+        resource.properties.insert(
+            "source_collection_id".to_owned(),
+            "runtime-collection-1".to_owned(),
+        );
+        let result = finalize_indexed_query(
+            &tenant(),
+            &prepared,
+            IndexedLifecyclePage {
+                resources: vec![resource],
+                aggregates: indexed_aggregates(3),
+                lifecycle_entities: 8,
+                oldest_observed_at: Some("2026-07-20T12:00:00Z".to_owned()),
+                newest_observed_at: Some("2026-07-26T12:00:00Z".to_owned()),
+                has_previous: true,
+                has_next: true,
+                graph_revision: 18,
+                graph_changed: false,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.records[0].source_runtime_id, "expiry-tracker");
+        assert_eq!(
+            result.records[0].source_collection_id,
+            "runtime-collection-1"
+        );
+        assert!(result.metadata.coverage.complete);
+        assert!(!result.metadata.coverage.truncated);
+        assert!(result.metadata.page_truncated);
+        assert!(result.truncated);
+        assert_eq!(result.metadata.coverage.lifecycle_entities, 8);
+        let mut backward_query = query.clone();
+        backward_query.page_token = result.previous_page_token;
+        let backward =
+            prepare_indexed_query(&tenant(), &backward_query, "2026-07-26T12:01:00Z", 18).unwrap();
+        assert_eq!(backward.direction(), KeysetDirection::Backward);
+        assert_eq!(
+            backward.cursor_subject_urn(),
+            Some(result.records[0].observation.subject_ref.id.as_str())
+        );
+
+        let mut forward_query = query;
+        forward_query.page_token = result.next_page_token;
+        let forward =
+            prepare_indexed_query(&tenant(), &forward_query, "2026-07-26T12:01:00Z", 18).unwrap();
+        assert_eq!(forward.direction(), KeysetDirection::Forward);
+    }
+
+    #[test]
+    fn indexed_prepare_rejects_unbounded_invalid_and_stale_inputs() {
+        for query in [
+            LifecycleQuery {
+                subject_kinds: vec![SubjectKind::Credential; MAX_QUERY_FILTER_VALUES + 1],
+                ..LifecycleQuery::default()
+            },
+            LifecycleQuery {
+                states: vec![LifecycleState::Active; MAX_QUERY_FILTER_VALUES + 1],
+                ..LifecycleQuery::default()
+            },
+            LifecycleQuery {
+                owner_urns: vec![
+                    "urn:cerebro:tenant-a:team:security".to_owned();
+                    MAX_QUERY_FILTER_VALUES + 1
+                ],
+                ..LifecycleQuery::default()
+            },
+        ] {
+            assert!(prepare_indexed_query(&tenant(), &query, "2026-07-26T12:00:00Z", 18).is_err());
+        }
+        for query in [
+            LifecycleQuery {
+                limit: Some(0),
+                ..LifecycleQuery::default()
+            },
+            LifecycleQuery {
+                expires_before: Some("not-a-time".to_owned()),
+                ..LifecycleQuery::default()
+            },
+            LifecycleQuery {
+                owner_urns: vec!["urn:cerebro:tenant-b:team:security".to_owned()],
+                ..LifecycleQuery::default()
+            },
+            LifecycleQuery {
+                subject_kinds: vec![SubjectKind::Certificate],
+                subject_locator: Some(SubjectLocator {
+                    subject_kind: SubjectKind::Credential,
+                    authority_id: "aws/production".to_owned(),
+                    stable_locator: "deploy/signing".to_owned(),
+                }),
+                ..LifecycleQuery::default()
+            },
+        ] {
+            assert!(prepare_indexed_query(&tenant(), &query, "2026-07-26T12:00:00Z", 18).is_err());
+        }
+        assert!(
+            prepare_indexed_query(&tenant(), &LifecycleQuery::default(), "not-a-time", 18).is_err()
+        );
+
+        let base = LifecycleQuery {
+            limit: Some(1),
+            ..LifecycleQuery::default()
+        };
+        let token = encode_page_token(&PageCursor {
+            direction: CursorDirection::Forward,
+            graph_revision: 18,
+            as_of: "2026-07-26T12:00:00Z".to_owned(),
+            filter_digest: query_filter_digest(&base, 1, None),
+            subject_urn: canonical_resource_urn(
+                "tenant-a",
+                SubjectKind::Credential,
+                "aws/production",
+                "deploy/signing",
+            )
+            .unwrap(),
+        });
+        let with_token = LifecycleQuery {
+            page_token: Some(token.clone()),
+            ..base.clone()
+        };
+        assert!(prepare_indexed_query(&tenant(), &with_token, "2026-07-26T12:00:00Z", 19).is_err());
+        let mismatched = LifecycleQuery {
+            findings_only: true,
+            page_token: Some(token),
+            ..base
+        };
+        assert!(prepare_indexed_query(&tenant(), &mismatched, "2026-07-26T12:00:00Z", 18).is_err());
+
+        for cursor_as_of in ["2026-07-26T11:40:00Z", "2026-07-26T12:01:00Z"] {
+            let query = LifecycleQuery {
+                limit: Some(1),
+                page_token: Some(encode_page_token(&PageCursor {
+                    direction: CursorDirection::Forward,
+                    graph_revision: 18,
+                    as_of: cursor_as_of.to_owned(),
+                    filter_digest: query_filter_digest(
+                        &LifecycleQuery {
+                            limit: Some(1),
+                            ..LifecycleQuery::default()
+                        },
+                        1,
+                        None,
+                    ),
+                    subject_urn: canonical_resource_urn(
+                        "tenant-a",
+                        SubjectKind::Credential,
+                        "aws/production",
+                        "deploy/signing",
+                    )
+                    .unwrap(),
+                })),
+                ..LifecycleQuery::default()
+            };
+            assert!(prepare_indexed_query(&tenant(), &query, "2026-07-26T12:00:00Z", 18).is_err());
+        }
+    }
+
+    #[test]
+    fn indexed_finalize_rejects_invalid_pages_and_duplicate_identity() {
+        let prepared = prepare_indexed_query(
+            &tenant(),
+            &LifecycleQuery {
+                limit: Some(1),
+                ..LifecycleQuery::default()
+            },
+            "2026-07-26T12:00:00Z",
+            18,
+        )
+        .unwrap();
+        let resource = projected(observation(
+            LifecycleState::Expired,
+            "material-1",
+            Some("2026-07-01T12:00:00Z"),
+        ));
+        let page = |resources| IndexedLifecyclePage {
+            resources,
+            aggregates: indexed_aggregates(1),
+            lifecycle_entities: 1,
+            oldest_observed_at: None,
+            newest_observed_at: None,
+            has_previous: false,
+            has_next: false,
+            graph_revision: 18,
+            graph_changed: false,
+        };
+        assert!(
+            finalize_indexed_query(&tenant(), &prepared, page(vec![resource.clone(); 2])).is_err()
+        );
+        assert!(
+            finalize_indexed_query(
+                &tenant(),
+                &prepared,
+                page(vec![ProjectedResource {
+                    agent_key: "unrelated".to_owned(),
+                    label: "Unrelated".to_owned(),
+                    properties: BTreeMap::new(),
+                }])
+            )
+            .is_err()
+        );
+
+        let prepared_two = prepare_indexed_query(
+            &tenant(),
+            &LifecycleQuery {
+                limit: Some(2),
+                ..LifecycleQuery::default()
+            },
+            "2026-07-26T12:00:00Z",
+            18,
+        )
+        .unwrap();
+        assert!(
+            finalize_indexed_query(
+                &tenant(),
+                &prepared_two,
+                page(vec![resource.clone(), resource])
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn finding_resolver_returns_only_the_matching_current_open_finding() {
+        let expired = observation(
+            LifecycleState::Expired,
+            "material-1",
+            Some("2026-07-01T12:00:00Z"),
+        );
+        let finding_urn = canonical_finding_urn("tenant-a", &expired.subject_ref.id).unwrap();
+        let record = resolve_finding_record(
+            &tenant(),
+            &finding_urn,
+            projected(expired.clone()),
+            "2026-07-26T12:00:00Z",
+            18,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(record.findings[0].finding_ref.id, finding_urn);
+
+        let compliant = observation(
+            LifecycleState::Active,
+            "material-2",
+            Some("2027-07-01T12:00:00Z"),
+        );
+        assert!(
+            resolve_finding_record(
+                &tenant(),
+                &canonical_finding_urn("tenant-a", &compliant.subject_ref.id).unwrap(),
+                projected(compliant.clone()),
+                "2026-07-26T12:00:00Z",
+                18,
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            resolve_finding_record(
+                &tenant(),
+                "urn:cerebro:tenant-a:finding:security-lifecycle:wrong",
+                projected(expired),
+                "2026-07-26T12:00:00Z",
+                18,
+            )
+            .is_err()
+        );
+        assert!(
+            resolve_finding_record(
+                &tenant(),
+                "urn:cerebro:tenant-b:finding:security-lifecycle:wrong",
+                projected(compliant),
+                "2026-07-26T12:00:00Z",
+                18,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn indexed_revision_mismatch_is_truncated_and_not_continuable() {
         let resource = projected(observation(
             LifecycleState::Expired,
@@ -3005,5 +3388,76 @@ mod tests {
                     == Some(&"expiry-tracker".to_owned())
                 && !entity.properties().contains_key("source_collection_id")
         }));
+    }
+
+    #[test]
+    fn explicit_source_collection_provenance_projects_without_receipt_fallback() {
+        let mut value = observation(
+            LifecycleState::Expired,
+            "material-1",
+            Some("2026-07-01T12:00:00Z"),
+        );
+        value.attributes.insert(
+            "source_collection_id".to_owned(),
+            "runtime-collection-1".to_owned(),
+        );
+        let receipt = cerebro_organizational_model::CollectionReceipt::incremental(
+            tenant(),
+            cerebro_organizational_model::SourceRuntimeId::parse("expiry-tracker").unwrap(),
+            cerebro_organizational_model::CollectionId::parse("event:observation-1").unwrap(),
+            CREDENTIAL_EVENT_KIND,
+            timestamp_millis_from_rfc3339("2026-07-26T12:00:00Z").unwrap(),
+        )
+        .unwrap();
+        let delta = project_observation(
+            receipt,
+            cerebro_organizational_model::ObservationId::parse("observation-1").unwrap(),
+            &value,
+        )
+        .unwrap();
+
+        assert_eq!(delta.entities().len(), 2);
+        for entity in delta.entities() {
+            assert_eq!(
+                entity.properties().get("source_runtime_id"),
+                Some(&"expiry-tracker".to_owned())
+            );
+            assert_eq!(
+                entity.properties().get("source_collection_id"),
+                Some(&"runtime-collection-1".to_owned())
+            );
+            assert_ne!(
+                entity.properties().get("source_collection_id"),
+                Some(&"event:observation-1".to_owned())
+            );
+        }
+    }
+
+    #[test]
+    fn indexed_public_helpers_cover_supported_states_and_time_bounds() {
+        let instant = "2026-07-26T12:00:00Z";
+        let millis = timestamp_millis_from_rfc3339(instant).unwrap();
+        assert_eq!(rfc3339_from_timestamp_millis(millis).unwrap(), instant);
+        assert!(timestamp_millis_from_rfc3339("not-a-time").is_err());
+        assert!(rfc3339_from_timestamp_millis(i64::MAX).is_err());
+
+        for (state, name) in [
+            (LifecycleState::Active, "active"),
+            (LifecycleState::Expiring, "expiring"),
+            (LifecycleState::Expired, "expired"),
+            (LifecycleState::Rotated, "rotated"),
+            (LifecycleState::Revoked, "revoked"),
+            (LifecycleState::Inactive, "inactive"),
+            (LifecycleState::Unknown, "unknown"),
+        ] {
+            assert_eq!(lifecycle_state_name(state), name);
+            assert_eq!(parse_state(name), Some(state));
+        }
+        assert_eq!(parse_state("unsupported"), None);
+        assert_eq!(
+            parse_subject_kind("certificate"),
+            Some(SubjectKind::Certificate)
+        );
+        assert_eq!(parse_subject_kind("unsupported"), None);
     }
 }
