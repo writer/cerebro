@@ -201,6 +201,7 @@ fn bounded_operation(path: &str) -> &'static str {
         "/v1/projections/events" => "project_event",
         "/v1/projections/legacy-deltas" => "record_legacy_projection",
         "/v1/projections/collections" => "record_source_collection",
+        _ if path.starts_with("/v1/projections/collections/") => "get_source_collection",
         "/v1/projections/authority" => "projection_authority",
         _ if path.starts_with("/v1/entities/") => "get_entity",
         _ if path.starts_with("/v1/assertions/") => "explain_assertion",
@@ -460,6 +461,24 @@ impl ProjectionRuntime {
         })
     }
 
+    async fn source_collection(
+        &self,
+        tenant_id: &TenantId,
+        source_runtime_id: &SourceRuntimeId,
+        collection_id: &CollectionId,
+    ) -> Result<Option<SourceCollectionRequest>, StoreError> {
+        self.authority
+            .source_collection_manifest(
+                tenant_id.as_str(),
+                source_runtime_id.as_str(),
+                collection_id.as_str(),
+            )
+            .await?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(StoreError::from)
+    }
+
     async fn project_security_lifecycle(
         &self,
         event: CommittedSourceEvent,
@@ -538,6 +557,12 @@ struct ErrorResponse {
 #[derive(Deserialize)]
 struct TenantQuery {
     tenant_id: String,
+}
+
+#[derive(Deserialize)]
+struct SourceCollectionQuery {
+    tenant_id: String,
+    source_runtime_id: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -1064,6 +1089,10 @@ fn router_with_backend(
             "/v1/projections/collections",
             post(record_source_collection),
         )
+        .route(
+            "/v1/projections/collections/{collection_id}",
+            get(get_source_collection),
+        )
         .route("/v1/projections/authority", get(projection_authority))
         .route_layer(middleware::from_fn_with_state(
             tenant_auth,
@@ -1229,6 +1258,37 @@ async fn record_source_collection(
         .await
         .map(Json)
         .map_err(store_error)
+}
+
+async fn get_source_collection(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Path(collection_id): Path<String>,
+    Query(query): Query<SourceCollectionQuery>,
+) -> Result<Json<SourceCollectionRequest>, (StatusCode, Json<ErrorResponse>)> {
+    let runtime = state.projection.ok_or_else(|| {
+        service_unavailable(
+            "projection_runtime_unavailable",
+            "The organizational projection runtime is not configured.",
+        )
+    })?;
+    let tenant_id = authorized_tenant(&authenticated, query.tenant_id)?;
+    let source_runtime_id = SourceRuntimeId::parse(query.source_runtime_id).map_err(model_error)?;
+    let collection_id = CollectionId::parse(collection_id).map_err(model_error)?;
+    runtime
+        .source_collection(&tenant_id, &source_runtime_id, &collection_id)
+        .await
+        .map_err(store_error)?
+        .map(Json)
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: "source_collection_not_found",
+                    message: "The source collection receipt was not found.".to_owned(),
+                }),
+            )
+        })
 }
 
 fn validate_source_collection(

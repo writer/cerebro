@@ -262,6 +262,8 @@ BEGIN
 END $$;
 "#;
 
+const SOURCE_COLLECTION_MANIFEST_QUERY: &str = "SELECT manifest_json FROM organizational_source_collection_receipts WHERE tenant_id = $1 AND source_runtime_id = $2 AND collection_id = $3";
+
 const IDENTITY_CLAIM_REPLACEMENT_QUERY: &str = r#"
 SELECT assertion_id
 FROM organizational_assertions
@@ -702,6 +704,25 @@ impl PostgresLedger {
             collection_id: collection_id.to_owned(),
             manifest_digest: manifest_digest.to_owned(),
         })
+    }
+
+    pub async fn source_collection_manifest(
+        &self,
+        tenant_id: &str,
+        source_runtime_id: &str,
+        collection_id: &str,
+    ) -> Result<Option<Value>, StoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let row = transaction
+            .query_opt(
+                SOURCE_COLLECTION_MANIFEST_QUERY,
+                &[&tenant_id, &source_runtime_id, &collection_id],
+            )
+            .await?;
+        transaction.commit().await?;
+        Ok(row.map(|row| row.get("manifest_json")))
     }
 
     pub async fn record_parity(&self, receipt: &ParityReceipt) -> Result<(), StoreError> {
@@ -1821,6 +1842,20 @@ mod tests {
             assert!(
                 IDENTITY_CLAIM_REPLACEMENT_QUERY.contains(required),
                 "claim replacement query missing {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn source_collection_manifest_lookup_requires_exact_provenance_tuple() {
+        for required in [
+            "tenant_id = $1",
+            "source_runtime_id = $2",
+            "collection_id = $3",
+        ] {
+            assert!(
+                SOURCE_COLLECTION_MANIFEST_QUERY.contains(required),
+                "source collection lookup omitted {required}"
             );
         }
     }

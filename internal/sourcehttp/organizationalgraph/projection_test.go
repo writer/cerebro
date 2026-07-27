@@ -206,6 +206,118 @@ func TestAppendLogProjectorRecordsCollectionManifest(t *testing.T) {
 	}
 }
 
+func TestProjectionClientReadsExactSourceCollectionManifest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet ||
+			r.URL.Path != "/v1/projections/collections/collection-verified" ||
+			r.URL.Query().Get("tenant_id") != "tenant-a" ||
+			r.URL.Query().Get("source_runtime_id") != "box-runtime" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get(tenantAuthHeader) != "tenant-a" {
+			t.Fatalf("tenant authentication header = %q, want tenant-a", r.Header.Get(tenantAuthHeader))
+		}
+		_ = json.NewEncoder(w).Encode(sourceCollectionManifestResponse{
+			CollectionID:          "collection-verified",
+			TenantID:              "tenant-a",
+			SourceID:              "box",
+			SourceRuntimeID:       "box-runtime",
+			StartedAtUnixMS:       100,
+			CompletedAtUnixMS:     200,
+			Status:                "complete",
+			IncompletenessReasons: []string{},
+			ExpectedFamilyIDs:     []string{"content_assets"},
+			ObservedFamilyIDs:     []string{"content_assets"},
+			PagesRead:             1,
+			RecordsScanned:        1,
+			RecordsAccepted:       1,
+		})
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	manifest, err := client.GetSourceCollection(context.Background(), "tenant-a", "box-runtime", "collection-verified")
+	if err != nil {
+		t.Fatalf("GetSourceCollection() error = %v", err)
+	}
+	if manifest.CollectionID != "collection-verified" ||
+		manifest.TenantID != "tenant-a" ||
+		manifest.RuntimeID != "box-runtime" ||
+		manifest.Status != "complete" ||
+		manifest.CompletedAtUnixMS != 200 {
+		t.Fatalf("GetSourceCollection() = %#v", manifest)
+	}
+}
+
+func TestProjectionClientReportsMissingSourceCollection(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	_, err = client.GetSourceCollection(context.Background(), "tenant-a", "box-runtime", "collection-missing")
+	if !errors.Is(err, ErrSourceCollectionNotFound) {
+		t.Fatalf("GetSourceCollection() error = %v, want ErrSourceCollectionNotFound", err)
+	}
+}
+
+func TestProjectionClientScopesSourceCollectionLookupByTenantAndRuntime(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("tenant_id") != "tenant-a" ||
+			r.URL.Query().Get("source_runtime_id") != "runtime-a" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(sourceCollectionManifestResponse{
+			CollectionID:    "collection-shared",
+			TenantID:        "tenant-a",
+			SourceRuntimeID: "runtime-a",
+			Status:          "complete",
+		})
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	for _, scope := range []struct {
+		tenantID string
+		runtime  string
+	}{
+		{tenantID: "tenant-b", runtime: "runtime-a"},
+		{tenantID: "tenant-a", runtime: "runtime-b"},
+	} {
+		_, err := client.GetSourceCollection(context.Background(), scope.tenantID, scope.runtime, "collection-shared")
+		if !errors.Is(err, ErrSourceCollectionNotFound) {
+			t.Fatalf("GetSourceCollection(%q, %q) error = %v, want ErrSourceCollectionNotFound", scope.tenantID, scope.runtime, err)
+		}
+	}
+}
+
+func TestProjectionClientRejectsMismatchedSourceCollectionProvenance(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(sourceCollectionManifestResponse{
+			CollectionID:    "collection-verified",
+			TenantID:        "tenant-a",
+			SourceRuntimeID: "other-runtime",
+			Status:          "complete",
+		})
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	_, err = client.GetSourceCollection(context.Background(), "tenant-a", "box-runtime", "collection-verified")
+	if err == nil || !strings.Contains(err.Error(), "provenance does not match") {
+		t.Fatalf("GetSourceCollection() error = %v, want provenance mismatch", err)
+	}
+}
+
 func TestLegacyWriteGuardSuppressesGoAfterPromotion(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(authorityResponse{Authority: projectionAuthorityRust})

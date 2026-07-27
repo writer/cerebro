@@ -10,7 +10,12 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-const EventAttributeSourceRuntimeID = "source_runtime_id"
+const (
+	EventAttributeSourceRuntimeID = "source_runtime_id"
+	// EventAttributeSourceCollectionID joins every normalized event from one
+	// sync to the final durable SourceCollectionManifest for that exact sync.
+	EventAttributeSourceCollectionID = "source_collection_id"
+)
 const EventAttributeJobID = "job_id"
 
 var ErrAppendLogDeadLetterNotFound = errors.New("append log dead letter not found")
