@@ -216,8 +216,9 @@ var errTenantScopedFingerprintBackfillRetry = errors.New("retry tenant-scoped fi
 // A resolved row reopens in place on a fresh open emit only when it was auto-resolved by the
 // lifecycle (TTL expiry, a remediation counter-event, or a later verified observation) or when the rule opts into TTL reopen
 // via $37; analyst/manual resolutions keep their stored status so deliberate closures are not
-// reverted. The 'closed_by_counter_event' literal must stay in sync with
-// workflowevents.FindingStatusReasonClosedByCounterEvent.
+// reverted. The auto-resolution reason literals must stay in sync with
+// workflowevents.FindingStatusReasonClosedByCounterEvent and
+// workflowevents.FindingStatusReasonVerifiedObservation.
 const upsertFindingStatement = `
 INSERT INTO findings (
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,

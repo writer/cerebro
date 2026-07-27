@@ -78,6 +78,40 @@ type SecurityLifecycleClosureObservation struct {
 	EvidenceClaimRefs               []string
 }
 
+// SecurityLifecycleFindingLocator is the stable exact-subject selector stored
+// with a projected lifecycle finding.
+type SecurityLifecycleFindingLocator struct {
+	SubjectURN       string
+	SubjectKind      string
+	AuthorityID      string
+	StableLocator    string
+	SourceRuntimeID  string
+	SourceCollection string
+	PolicyID         string
+}
+
+// SecurityLifecycleLocatorForFinding returns the exact selector and
+// provenance stored by this bridge without exposing its storage keys.
+func SecurityLifecycleLocatorForFinding(finding *ports.FindingRecord) (SecurityLifecycleFindingLocator, bool) {
+	if finding == nil || strings.TrimSpace(finding.RuleID) != securityLifecycleFindingRuleID {
+		return SecurityLifecycleFindingLocator{}, false
+	}
+	locator := SecurityLifecycleFindingLocator{
+		SubjectURN:       firstString(finding.ResourceURNs),
+		SubjectKind:      strings.TrimSpace(finding.Attributes[securityLifecycleAttributeSubjectKind]),
+		AuthorityID:      strings.TrimSpace(finding.Attributes[securityLifecycleAttributeAuthorityID]),
+		StableLocator:    strings.TrimSpace(finding.Attributes[securityLifecycleAttributeStableLocator]),
+		SourceRuntimeID:  strings.TrimSpace(finding.RuntimeID),
+		SourceCollection: strings.TrimSpace(finding.Attributes[securityLifecycleAttributeCollectionID]),
+		PolicyID:         strings.TrimSpace(finding.PolicyID),
+	}
+	if locator.SubjectURN == "" || locator.SubjectKind == "" || locator.AuthorityID == "" ||
+		locator.StableLocator == "" || locator.SourceRuntimeID == "" || locator.PolicyID == "" {
+		return SecurityLifecycleFindingLocator{}, false
+	}
+	return locator, true
+}
+
 // RecordSecurityLifecycleFinding projects one currently-open Rust lifecycle
 // finding into the existing FindingRecord and FindingEvidence authorities.
 func (s *Service) RecordSecurityLifecycleFinding(ctx context.Context, observation SecurityLifecycleFindingObservation) (*ports.FindingRecord, error) {
@@ -335,4 +369,13 @@ func securityLifecycleDigest(values ...string) string {
 		_, _ = hash.Write([]byte{0})
 	}
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func firstString(values []string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }

@@ -101,6 +101,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 			return fail(fmt.Errorf("open Rust organizational graph projection: %w", err))
 		}
 		deps.OrganizationalProjector = projectionClient
+		deps.SourceCollectionReceipts = projectionClient
 	}
 	if readBaseURL != "" {
 		var compatibility ports.GraphQueryStore

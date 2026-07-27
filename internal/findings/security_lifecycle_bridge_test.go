@@ -96,6 +96,14 @@ func TestSecurityLifecycleFindingBridgeRequiresRealRuntimeAndVerifiedClosure(t *
 	if got := store.findings[findingURN].Status; got != findingStatusOpen {
 		t.Fatalf("status after incomplete observation = %q, want open", got)
 	}
+	missingProvenance := incomplete
+	missingProvenance.SourceCollectionID = ""
+	missingProvenance.CollectionReceiptID = ""
+	missingProvenance.CollectionReceiptStatus = "complete"
+	missingProvenance.CollectionIncompletenessReasons = nil
+	if _, err := service.ResolveSecurityLifecycleFindingAfterObservation(context.Background(), missingProvenance); err == nil {
+		t.Fatal("ResolveSecurityLifecycleFindingAfterObservation(missing collection provenance) succeeded, want pending refusal")
+	}
 
 	verifiedAt := openedAt.Add(15 * time.Minute)
 	staleFreshness := SecurityLifecycleClosureObservation{
