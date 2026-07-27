@@ -16,7 +16,10 @@ pub use parity::{
     MismatchSide, ParityError, ParityReceipt, ParityStatus, SemanticFact, SemanticFactKind,
     SemanticMismatch, SemanticSnapshot,
 };
-pub use postgres::{POSTGRES_SCHEMA, PostgresLedger};
+pub use postgres::{
+    LegacyProjectionReceipt, POSTGRES_SCHEMA, PostgresLedger, SourceCollectionReceipt,
+    SourceEventReceipt,
+};
 
 use std::{error::Error, fmt};
 

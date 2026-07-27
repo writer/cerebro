@@ -9,6 +9,7 @@ use cerebro_organizational_model::{
 };
 use prost::Message;
 use prost_types::Timestamp;
+use sha2::{Digest, Sha256};
 
 use crate::{CollectedBatch, CollectedScope, SourceRecord};
 
@@ -81,12 +82,54 @@ pub struct CommittedSourceEvent {
     observation_id: ObservationId,
     source_id: String,
     family_id: String,
+    event_kind: String,
+    schema_ref: String,
     observed_at_unix_ms: i64,
     attributes: BTreeMap<String, String>,
     payload: serde_json::Value,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommittedSourceInput {
+    pub tenant_id: TenantId,
+    pub source_runtime_id: SourceRuntimeId,
+    pub observation_id: ObservationId,
+    pub source_id: String,
+    pub family_id: String,
+    pub event_kind: String,
+    pub schema_ref: String,
+    pub observed_at_unix_ms: i64,
+    pub attributes: BTreeMap<String, String>,
+    pub payload: serde_json::Value,
+}
+
 impl CommittedSourceEvent {
+    pub fn from_input(input: CommittedSourceInput) -> Result<Self, AppendLogDecodeError> {
+        let source_id = required(&input.source_id, "source_id")?.to_owned();
+        let family_id = required(&input.family_id, "family_id")?.to_owned();
+        let event_kind = required(&input.event_kind, "event_kind")?.to_owned();
+        if event_kind != format!("{source_id}.{family_id}") {
+            return Err(AppendLogDecodeError::Missing(
+                "a source-owned kind in source.family form",
+            ));
+        }
+        if input.observed_at_unix_ms <= 0 {
+            return Err(AppendLogDecodeError::InvalidTimestamp);
+        }
+        Ok(Self {
+            tenant_id: input.tenant_id,
+            source_runtime_id: input.source_runtime_id,
+            observation_id: input.observation_id,
+            source_id,
+            family_id,
+            event_kind,
+            schema_ref: input.schema_ref.trim().to_owned(),
+            observed_at_unix_ms: input.observed_at_unix_ms,
+            attributes: input.attributes,
+            payload: input.payload,
+        })
+    }
+
     /// Decode a canonical append-log envelope.
     ///
     /// `Ok(None)` means the envelope is not a connector source event. Once an
@@ -133,6 +176,8 @@ impl CommittedSourceEvent {
             observation_id,
             source_id,
             family_id: kind[source_prefix.len()..].to_owned(),
+            event_kind: kind.to_owned(),
+            schema_ref: wire.schema_ref.trim().to_owned(),
             observed_at_unix_ms,
             attributes: wire.attributes.into_iter().collect(),
             payload,
@@ -159,6 +204,14 @@ impl CommittedSourceEvent {
         &self.family_id
     }
 
+    pub fn event_kind(&self) -> &str {
+        &self.event_kind
+    }
+
+    pub fn schema_ref(&self) -> &str {
+        &self.schema_ref
+    }
+
     pub fn observed_at_unix_ms(&self) -> i64 {
         self.observed_at_unix_ms
     }
@@ -169,6 +222,41 @@ impl CommittedSourceEvent {
 
     pub fn payload(&self) -> &serde_json::Value {
         &self.payload
+    }
+
+    pub fn record_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hash_field(&mut hasher, self.tenant_id.as_str().as_bytes());
+        hash_field(&mut hasher, self.source_runtime_id.as_str().as_bytes());
+        hash_field(&mut hasher, self.observation_id.as_str().as_bytes());
+        hash_field(&mut hasher, self.source_id.as_bytes());
+        hash_field(&mut hasher, self.family_id.as_bytes());
+        hash_field(&mut hasher, self.event_kind.as_bytes());
+        hash_field(&mut hasher, self.schema_ref.as_bytes());
+        hash_field(&mut hasher, self.observed_at_unix_ms.to_string().as_bytes());
+        for (key, value) in &self.attributes {
+            hash_field(&mut hasher, key.as_bytes());
+            hash_field(&mut hasher, value.as_bytes());
+        }
+        let payload = canonical_payload_bytes(&self.payload);
+        hash_field(&mut hasher, &payload);
+        finish_digest(hasher)
+    }
+
+    pub fn attributes_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        for (key, value) in &self.attributes {
+            hash_field(&mut hasher, key.as_bytes());
+            hash_field(&mut hasher, value.as_bytes());
+        }
+        finish_digest(hasher)
+    }
+
+    pub fn payload_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        let payload = canonical_payload_bytes(&self.payload);
+        hash_field(&mut hasher, &payload);
+        finish_digest(hasher)
     }
 
     pub fn collection_id(&self) -> Result<CollectionId, AppendLogDecodeError> {
@@ -202,6 +290,43 @@ impl CommittedSourceEvent {
             next_cursor: None,
         })
     }
+}
+
+fn hash_field(hasher: &mut Sha256, value: &[u8]) {
+    hasher.update(value.len().to_be_bytes());
+    hasher.update(value);
+}
+
+fn canonical_payload_bytes(value: &serde_json::Value) -> Vec<u8> {
+    fn canonicalize(value: &serde_json::Value) -> serde_json::Value {
+        match value {
+            serde_json::Value::Array(values) => {
+                serde_json::Value::Array(values.iter().map(canonicalize).collect())
+            }
+            serde_json::Value::Object(values) => {
+                let mut keys = values.keys().collect::<Vec<_>>();
+                keys.sort_unstable();
+                let mut canonical = serde_json::Map::new();
+                for key in keys {
+                    canonical.insert(key.clone(), canonicalize(&values[key]));
+                }
+                serde_json::Value::Object(canonical)
+            }
+            scalar => scalar.clone(),
+        }
+    }
+
+    serde_json::to_vec(&canonicalize(value)).expect("validated JSON payload must serialize")
+}
+
+fn finish_digest(hasher: Sha256) -> String {
+    let digest = hasher.finalize();
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    output
 }
 
 fn required<'a>(value: &'a str, field: &'static str) -> Result<&'a str, AppendLogDecodeError> {
@@ -266,6 +391,8 @@ mod tests {
         assert_eq!(event.observation_id().as_str(), "event-1");
         assert_eq!(event.source_id(), "box");
         assert_eq!(event.family_id(), "content_assets");
+        assert_eq!(event.event_kind(), "box.content_assets");
+        assert_eq!(event.schema_ref(), "box/content_assets/v1");
         assert_eq!(event.collection_id().unwrap().as_str(), "event:event-1");
         assert_eq!(event.observed_at_unix_ms(), 1_720_000_000_123);
         assert_eq!(event.attributes()["provider_id"], "file-1");
@@ -367,6 +494,57 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(event.payload(), &serde_json::json!({}));
+    }
+
+    #[test]
+    fn record_digest_is_stable_across_attribute_and_payload_key_order() {
+        let mut wire = source_wire();
+        wire.payload = br#"{"nested":{"z":1,"a":2},"id":"file-1","name":"board.pdf"}"#.to_vec();
+        let first = CommittedSourceEvent::decode(&encode(wire))
+            .unwrap()
+            .unwrap();
+        let input = CommittedSourceInput {
+            tenant_id: TenantId::parse("tenant-a").unwrap(),
+            source_runtime_id: SourceRuntimeId::parse("box-prod").unwrap(),
+            observation_id: ObservationId::parse("event-1").unwrap(),
+            source_id: "box".to_owned(),
+            family_id: "content_assets".to_owned(),
+            event_kind: "box.content_assets".to_owned(),
+            schema_ref: "box/content_assets/v1".to_owned(),
+            observed_at_unix_ms: 1_720_000_000_123,
+            attributes: BTreeMap::from([
+                ("provider_id".to_owned(), "file-1".to_owned()),
+                ("source_runtime_id".to_owned(), "box-prod".to_owned()),
+            ]),
+            payload: serde_json::json!({
+                "name": "board.pdf",
+                "id": "file-1",
+                "nested": {"a": 2, "z": 1}
+            }),
+        };
+        let second = CommittedSourceEvent::from_input(input).unwrap();
+        assert_eq!(first.record_digest(), second.record_digest());
+        assert_eq!(first.payload_digest(), second.payload_digest());
+    }
+
+    #[test]
+    fn direct_input_cannot_change_source_family_ownership() {
+        let input = CommittedSourceInput {
+            tenant_id: TenantId::parse("tenant-a").unwrap(),
+            source_runtime_id: SourceRuntimeId::parse("box-prod").unwrap(),
+            observation_id: ObservationId::parse("event-1").unwrap(),
+            source_id: "box".to_owned(),
+            family_id: "content_assets".to_owned(),
+            event_kind: "github.repositories".to_owned(),
+            schema_ref: "box/content_assets/v1".to_owned(),
+            observed_at_unix_ms: 1_720_000_000_123,
+            attributes: BTreeMap::new(),
+            payload: serde_json::json!({}),
+        };
+        assert!(matches!(
+            CommittedSourceEvent::from_input(input),
+            Err(AppendLogDecodeError::Missing(_))
+        ));
     }
 
     #[test]

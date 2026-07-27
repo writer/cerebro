@@ -118,6 +118,17 @@ type ProjectionResult struct {
 	LinksDeleted      uint32
 }
 
+// SourceProjectionDelta preserves the exact normalized compatibility output
+// produced for one append-log event while Rust assumes projection authority
+// one source family at a time.
+type SourceProjectionDelta struct {
+	Entities          []*ProjectedEntity
+	Links             []*ProjectedLink
+	EntityRetractions []string
+	LinkRetractions   []*ProjectedLink
+	CleanupRequests   []ProjectionCleanupRequest
+}
+
 // ProjectionCleanupRequest scopes opportunistic graph cleanup to one tenant/source/runtime boundary.
 type ProjectionCleanupRequest struct {
 	TenantID     string
@@ -263,4 +274,12 @@ type ProjectionAssertionMigrator interface {
 // SourceProjector materializes source events into current-state and graph stores.
 type SourceProjector interface {
 	Project(context.Context, *cerebrov1.EventEnvelope) (ProjectionResult, error)
+}
+
+// SourceProjectorWithDelta returns the compatibility records written for an
+// event. Callers use this optional interface to retain existing source coverage
+// without teaching the Rust authority every Go projector at once.
+type SourceProjectorWithDelta interface {
+	SourceProjector
+	ProjectWithDelta(context.Context, *cerebrov1.EventEnvelope) (ProjectionResult, SourceProjectionDelta, error)
 }
