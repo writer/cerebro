@@ -306,10 +306,10 @@ impl Observation {
         else {
             return Ok(None);
         };
-        let Some(state) = properties
-            .get("lifecycle_state")
-            .and_then(|value| parse_state(value))
-        else {
+        let Some(state_value) = properties.get("lifecycle_state") else {
+            return Ok(None);
+        };
+        let Some(state) = parse_state(state_value) else {
             return Err(LifecycleError::Invalid("lifecycle_state"));
         };
         let required = |key: &'static str| {
@@ -317,7 +317,14 @@ impl Observation {
                 .get(key)
                 .cloned()
                 .filter(|value| !value.trim().is_empty())
-                .ok_or(LifecycleError::Invalid(key))
+        };
+        let (Some(provider), Some(authority_id), Some(stable_locator), Some(observed_at)) = (
+            required("provider"),
+            required("authority_id"),
+            required("stable_locator"),
+            required("observed_at"),
+        ) else {
+            return Ok(None);
         };
         let subject_id = properties
             .get("resource_urn")
@@ -331,12 +338,12 @@ impl Observation {
                 state: Some(state_name(state).to_owned()),
             },
             subject_kind,
-            provider: required("provider")?,
-            authority_id: required("authority_id")?,
-            stable_locator: required("stable_locator")?,
+            provider,
+            authority_id,
+            stable_locator,
             display_name: entity.label,
             state,
-            observed_at: required("observed_at")?,
+            observed_at,
             issued_at: properties.get("issued_at").cloned(),
             expires_at: properties.get("expires_at").cloned(),
             rotated_at: properties.get("rotated_at").cloned(),
@@ -1119,6 +1126,17 @@ mod tests {
             label: observation.display_name.clone(),
             properties: projection_properties(&observation),
         }
+    }
+
+    #[test]
+    fn graph_projection_skips_incomplete_lifecycle_shaped_entities() {
+        let incomplete = ProjectedResource {
+            agent_key: "urn:cerebro:tenant-a:resource:unrelated".to_owned(),
+            label: "Unrelated resource".to_owned(),
+            properties: BTreeMap::from([("subject_kind".to_owned(), "credential".to_owned())]),
+        };
+
+        assert_eq!(Observation::from_graph(incomplete).unwrap(), None);
     }
 
     #[test]

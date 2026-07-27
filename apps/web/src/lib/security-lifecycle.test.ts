@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   lifecycleEffectiveState,
+  lifecycleOwnerLabel,
   summarizeSecurityLifecycle,
   type SecurityLifecycleRecord,
 } from "./security-lifecycle";
@@ -56,5 +57,14 @@ describe("security lifecycle summaries", () => {
     expect(
       lifecycleEffectiveState(record("SECURITY_LIFECYCLE_STATE_EXPIRED")),
     ).toBe("expired");
+  });
+
+  it("keeps malformed owner identifiers readable", () => {
+    expect(lifecycleOwnerLabel("urn:cerebro:tenant-a:team:security%ZZ")).toBe(
+      "security%ZZ",
+    );
+    expect(lifecycleOwnerLabel("urn:cerebro:tenant-a:team:security%")).toBe(
+      "security%",
+    );
   });
 });

@@ -307,9 +307,10 @@ library response; catalog assembly, runtime state, and credential-store behavior
 stay behind the registry, catalog, and store boundaries.
 
 Credential and certificate lifecycle policy, pagination, findings, and
-verification remain Rust-owned. The bootstrap budget includes the five-line
-transport mapping that preserves an invalid Connect lifecycle selector as HTTP
-400 while reporting an unavailable upstream authority as HTTP 502.
+verification remain Rust-owned. The bootstrap budget includes only strict HTTP
+selector parsing and transport mapping that preserves an invalid lifecycle
+selector as HTTP 400 while reporting an unavailable upstream authority as HTTP
+502.
 
 ## Postgres migrations
 

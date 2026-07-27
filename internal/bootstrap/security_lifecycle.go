@@ -21,9 +21,14 @@ func (a *App) handleListSecurityLifecycle(w http.ResponseWriter, r *http.Request
 		http.Error(w, "tenant is not authorized", http.StatusForbidden)
 		return
 	}
+	findingsOnly, err := boolQueryParam(r, "findings_only")
+	if err != nil {
+		http.Error(w, "findings_only must be a boolean", http.StatusBadRequest)
+		return
+	}
 	query := &cerebrov1.SecurityLifecycleQuery{
 		TenantId:     tenantID,
-		FindingsOnly: queryBool(r, "findings_only"),
+		FindingsOnly: findingsOnly,
 		PageToken:    strings.TrimSpace(r.URL.Query().Get("page_token")),
 		OwnerUrns:    trimmedQueryValues(r, "owner_urn"),
 	}
@@ -72,11 +77,6 @@ func (a *App) handleListSecurityLifecycle(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, result)
-}
-
-func queryBool(r *http.Request, name string) bool {
-	value := strings.TrimSpace(r.URL.Query().Get(name))
-	return value == "true" || value == "1"
 }
 
 func trimmedQueryValues(r *http.Request, name string) []string {

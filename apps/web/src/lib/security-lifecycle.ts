@@ -76,7 +76,12 @@ export const lifecycleEnumLabel = (value: string) =>
 export const lifecycleOwnerLabel = (owner?: string) => {
   if (!owner) return "Owner required";
   const parts = owner.split(":");
-  return decodeURIComponent(parts.at(-1) || owner);
+  const label = parts.at(-1) || owner;
+  try {
+    return decodeURIComponent(label);
+  } catch {
+    return label;
+  }
 };
 
 export const lifecycleEffectiveState = (record: SecurityLifecycleRecord) =>

@@ -6,7 +6,7 @@ import { Badge, EmptyBlock, ErrorBlock, LoadingBlock, MetricCard, PageHeader, Pa
 import { withQuery } from "@/lib/cerebro-data";
 import { useGRCQuery } from "@/lib/grc-client";
 import {
-  lifecycleEnumLabel,
+  lifecycleEffectiveState,
   lifecycleExpiryLabel,
   lifecycleOwnerLabel,
   summarizeSecurityLifecycle,
@@ -119,7 +119,7 @@ export default function SecurityLifecyclePage() {
                           <div className="mt-1 text-[11px] text-[var(--text-muted)]">{observation.provider} / {observation.authority_id}</div>
                           <div className="mt-1 max-w-[24rem] truncate font-mono text-[10px] text-[var(--text-muted)]" title={observation.subject_ref.id}>{observation.subject_ref.id}</div>
                         </td>
-                        <td className="px-3 py-3"><Badge value={lifecycleEnumLabel(observation.state)} /></td>
+                        <td className="px-3 py-3"><Badge value={lifecycleEffectiveState(record)} /></td>
                         <td className="px-3 py-3 text-[var(--text-secondary)]">{lifecycleExpiryLabel(observation.expires_at)}</td>
                         <td className="px-3 py-3 text-[var(--text-secondary)]">{lifecycleOwnerLabel(observation.owner_urn)}</td>
                         <td className="px-3 py-3">

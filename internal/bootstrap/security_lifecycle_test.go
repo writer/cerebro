@@ -65,6 +65,11 @@ func TestSecurityLifecycleHandlerPreservesClientAndBackendErrors(t *testing.T) {
 			status: http.StatusBadRequest,
 		},
 		{
+			name:   "invalid findings only",
+			query:  "?findings_only=ture",
+			status: http.StatusBadRequest,
+		},
+		{
 			name:   "backend failure",
 			status: http.StatusBadGateway,
 		},

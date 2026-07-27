@@ -1405,9 +1405,10 @@ async fn security_lifecycle(
     Query(query): Query<HttpLifecycleQuery>,
 ) -> Result<Json<cerebro_security_lifecycle::QueryResult>, (StatusCode, Json<ErrorResponse>)> {
     let tenant_id = authenticated.0;
+    let resource_kinds = vec!["resource".to_owned()];
     let entities = state
         .graph
-        .search(&tenant_id, "", &[], MAX_SECURITY_LIFECYCLE_SCAN)
+        .search(&tenant_id, "", &resource_kinds, MAX_SECURITY_LIFECYCLE_SCAN)
         .await
         .map_err(context_error)?
         .into_iter()
