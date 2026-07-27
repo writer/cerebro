@@ -706,7 +706,7 @@ export default function GraphViewer({
           </div>
           <div
             ref={containerRef}
-            className="h-[640px] min-w-[640px] bg-[var(--surface)]"
+            className="h-[480px] w-full min-w-0 bg-[var(--surface)] md:h-[640px]"
             role="img"
             aria-label={`Impact graph with ${view.nodes.length} nodes and ${view.edges.length} edges`}
           />

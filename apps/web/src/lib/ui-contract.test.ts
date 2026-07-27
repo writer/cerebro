@@ -134,6 +134,14 @@ describe("product UI contract", () => {
     expect(inventorySource).toContain("AppliedFilterChips");
     expect(inventorySource).toContain("metricValueForState");
     expect(inventorySource).toContain("metricDetailForState");
+    expect(inventorySource).toContain('data-testid="inventory-results"');
+    expect(inventorySource).toContain('data-label="Accountability"');
+    expect(inventorySource).toContain("Select page");
+
+    const inventoryDetailSource = readProjectFile("src/app/inventory/[urn]/page.tsx");
+    expect(inventoryDetailSource).toContain('role="tablist"');
+    expect(inventoryDetailSource).toContain("min-w-max");
+    expect(inventoryDetailSource).toContain("Load relationships");
 
     const reportsSource = readProjectFile("src/app/reports/page.tsx");
     expect(reportsSource).toContain("AppliedFilterChips");

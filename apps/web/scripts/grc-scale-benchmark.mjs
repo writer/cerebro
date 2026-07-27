@@ -10,7 +10,9 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const webRoot = path.resolve(scriptDir, "..");
+const webRoot = process.env.CEREBRO_GRC_SCALE_WEB_ROOT
+  ? path.resolve(process.env.CEREBRO_GRC_SCALE_WEB_ROOT)
+  : path.resolve(scriptDir, "..");
 const args = process.argv.slice(2);
 const argSet = new Set(args);
 const quick = argSet.has("--quick");
@@ -35,7 +37,7 @@ let workDir;
 let currentWebProcess = null;
 let currentApiServer = null;
 
-const routeSpecs = [
+const allRouteSpecs = [
   {
     route: "/vendors",
     label: "Vendors",
@@ -123,6 +125,26 @@ const routeSpecs = [
     filterText: "asset 12",
   },
   {
+    route: `/inventory/${encodeURIComponent(`urn:cerebro:${tenantID}:aws.ec2.instance:asset-0`)}`,
+    label: "Inventory Detail",
+    readySelector: "text=Relationships",
+    interactions: [
+      {
+        label: "load relationships",
+        action: async (page) => {
+          const loadButton = page.getByRole("button", { name: "Load relationships" });
+          if (await loadButton.count()) await loadButton.click();
+        },
+        readySelector: '[role="img"][aria-label*="Impact graph"]',
+      },
+      {
+        label: "open reports",
+        action: async (page) => page.locator("button").filter({ hasText: /^Reports \(/ }).click(),
+        readySelector: "text=No data quality or curation reports",
+      },
+    ],
+  },
+  {
     route: `/impact?root_urn=${encodeURIComponent(impactRootURN)}`,
     label: "Impact Map",
     readySelector: 'input[placeholder="Search graph"]',
@@ -172,6 +194,9 @@ const routeSpecs = [
     filterText: "soc 2",
   },
 ];
+const routeSpecs = argSet.has("--inventory-only")
+  ? allRouteSpecs.filter((spec) => spec.label.startsWith("Inventory"))
+  : allRouteSpecs;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const step = (message) => console.log(`\n[grc-scale] ${message}`);
@@ -260,6 +285,7 @@ async function benchmarkRoutes({ scenario, webBase }) {
     const page = await context.newPage();
     const results = [];
     for (const spec of routeSpecs) {
+      await page.evaluate(() => performance.clearResourceTimings());
       const pageErrors = [];
       page.on("pageerror", (error) => pageErrors.push(error.message));
       page.on("console", (message) => {
@@ -280,6 +306,18 @@ async function benchmarkRoutes({ scenario, webBase }) {
       }
 
       const domNodes = await page.evaluate(() => document.querySelectorAll("*").length);
+      const resourceCosts = await page.evaluate(() => {
+        const entries = performance.getEntriesByType("resource");
+        const apiEntries = entries.filter((entry) => entry.name.includes("/api/cerebro"));
+        const scriptEntries = entries.filter((entry) => entry.initiatorType === "script");
+        return {
+          api_response_ms: apiEntries.length
+            ? Math.round(Math.max(...apiEntries.map((entry) => entry.responseEnd - entry.requestStart)))
+            : null,
+          js_decoded_kb: Math.round(scriptEntries.reduce((total, entry) => total + entry.decodedBodySize, 0) / 1024),
+          js_transfer_kb: Math.round(scriptEntries.reduce((total, entry) => total + entry.transferSize, 0) / 1024),
+        };
+      });
       const filterMs = await benchmarkFilter(page, spec);
       const interactions = [];
       for (const interaction of spec.interactions ?? []) {
@@ -297,13 +335,14 @@ async function benchmarkRoutes({ scenario, webBase }) {
         label: spec.label,
         usable_ms: usableMs,
         dom_nodes: domNodes,
+        ...resourceCosts,
         filter_ms: filterMs,
         interactions,
         passed: routePasses({ usableMs, domNodes, filterMs, interactions }),
       };
       results.push(routeResult);
       console.log(
-        `[grc-scale] ${scenario.name} ${spec.label}: usable ${usableMs}ms, dom ${domNodes}, filter ${formatDurationMs(filterMs)}`,
+        `[grc-scale] ${scenario.name} ${spec.label}: usable ${usableMs}ms, api ${formatDurationMs(resourceCosts.api_response_ms)}, dom ${domNodes}, js ${resourceCosts.js_decoded_kb}KB decoded, filter ${formatDurationMs(filterMs)}`,
       );
     }
     return results;
@@ -335,7 +374,7 @@ function printSummary(results) {
     for (const route of result.routes) {
       const status = route.passed ? "pass" : result.name === "stress" && !failOnStress ? "advisory" : "fail";
       console.log(
-        `[grc-scale] ${result.name.padEnd(7)} ${status.padEnd(8)} ${route.label.padEnd(16)} usable=${route.usable_ms}ms dom=${route.dom_nodes} filter=${formatDurationMs(route.filter_ms)}`,
+        `[grc-scale] ${result.name.padEnd(7)} ${status.padEnd(8)} ${route.label.padEnd(16)} usable=${route.usable_ms}ms api=${formatDurationMs(route.api_response_ms)} dom=${route.dom_nodes} js=${route.js_decoded_kb}KB filter=${formatDurationMs(route.filter_ms)}`,
       );
       if (!route.passed && (result.name !== "stress" || failOnStress)) {
         failed.push(`${result.name} ${route.label}`);
@@ -511,6 +550,11 @@ function createMockApi({ bounded, recordCount: count, stats }) {
           generated_at: generatedAt,
         });
       }
+      if (normalizedPath === "grc/inventory/assets/detail") {
+        const requestedURN = url.searchParams.get("urn")?.trim();
+        const asset = data.inventoryAssets.find((item) => item.urn === requestedURN) ?? data.inventoryAssets[0];
+        return sendJSON(response, stats, normalizedPath, inventoryAssetDetail(asset));
+      }
       if (/^grc\/entities\/[^/]+\/impact$/.test(normalizedPath)) {
         return sendJSON(response, stats, normalizedPath, entityImpactFixture(data, url.searchParams, bounded));
       }
@@ -548,6 +592,47 @@ function makeScaleData(count) {
   const identityOrganizations = Array.from({ length: count }, (_, index) => makeIdentityOrganization(index));
   const identityUsers = Array.from({ length: count }, (_, index) => makeIdentityUser(index));
   return { vendors, vendorDiscoveries, evidence, findings, policies, documents, riskRegister, governanceGaps, workQueue, documentWorkQueue, inventoryAssets, connectors, connectorRuntimes, connectorDefinitions, identityOrganizations, identityUsers };
+}
+
+function inventoryAssetDetail(asset) {
+  const neighbors = Array.from({ length: Math.min(recordCount, 120) }, (_, index) => {
+    const related = makeInventoryAsset(index + 1);
+    return {
+      urn: related.urn,
+      entity_type: related.entity_type,
+      label: related.label,
+      attributes: related.attributes,
+    };
+  });
+  return {
+    asset,
+    graph: {
+      root: { urn: asset.urn, entity_type: asset.entity_type, label: asset.label, attributes: asset.attributes },
+      neighbors,
+      relations: neighbors.map((neighbor, index) => ({
+        from_urn: asset.urn,
+        relation: index % 2 === 0 ? "depends_on" : "connected_to",
+        to_urn: neighbor.urn,
+      })),
+    },
+    findings: [],
+    evidence: [],
+    controls: [],
+    tests: [
+      { name: "Owner attestation", owner: asset.attributes?.owner || "Platform", status: "passing", due_at: isoDay(30), control_id: "CC6.1", framework: "SOC 2" },
+    ],
+    vulnerabilities: [
+      { id: "scale-vulnerability", title: "Scale benchmark vulnerability", severity: "medium", status: "open", source_id: asset.source_id },
+    ],
+    asset_reports: [],
+    timeline: [
+      { at: isoDay(-1), kind: "evidence", title: "Asset observed", description: "Deterministic scale benchmark event.", status: "observed" },
+    ],
+    actions: [
+      { title: "Review owner", description: "Confirm the current accountability owner.", priority: "medium", href: "/inventory" },
+    ],
+    generated_at: generatedAt,
+  };
 }
 
 function makeIdentityOrganization(index) {

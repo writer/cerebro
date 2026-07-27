@@ -1675,8 +1675,18 @@ const unassignedAssetCount = (items: typeof assets) => items.filter((asset) => a
 
 const inventoryCategoryID = (entityType: string) => entityType.replace(/\./g, "-");
 
-const inventoryCategoryLabel = (entityType: string) =>
-  `${entityType.replace(/[._-]/g, " ").split(" ").filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ")}s`;
+const pluralizeInventoryNoun = (noun: string) => {
+  if (/[^aeiou]y$/i.test(noun)) return `${noun.slice(0, -1)}ies`;
+  if (/(?:s|x|z|ch|sh)$/i.test(noun)) return `${noun}es`;
+  return `${noun}s`;
+};
+
+const inventoryCategoryLabel = (entityType: string) => {
+  const words = entityType.replace(/[._-]/g, " ").split(" ").filter(Boolean);
+  const titleWords = words.map((part) => part.charAt(0).toUpperCase() + part.slice(1));
+  const noun = titleWords.pop();
+  return noun ? [...titleWords, pluralizeInventoryNoun(noun)].join(" ") : "Records";
+};
 
 const inventorySummary = (items = assets) => ({
   total_assets: items.length,
