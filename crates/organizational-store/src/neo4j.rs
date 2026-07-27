@@ -57,6 +57,40 @@ FOREACH (_ IN CASE WHEN row.lifecycle_finding THEN [] ELSE [1] END |
 SET entity.lifecycle_finding_urn = CASE WHEN row.lifecycle_finding THEN row.lifecycle_finding_urn ELSE null END
 "#;
 
+const REBUILD_LIFECYCLE_ENTITY_QUERY: &str = r#"
+MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id})
+WHERE revision.graph_revision = $graph_revision
+WITH revision
+UNWIND $rows AS row
+MATCH (entity:OrganizationalEntity {
+  tenant_id: $tenant_id,
+  entity_id: row.entity_id
+})
+WHERE coalesce(entity.graph_revision, 0) = row.source_graph_revision
+SET entity.lifecycle_subject_urn = CASE WHEN row.lifecycle_subject THEN row.lifecycle_subject_urn ELSE null END,
+    entity.lifecycle_subject_kind = CASE WHEN row.lifecycle_subject THEN row.lifecycle_subject_kind ELSE null END,
+    entity.lifecycle_observed_state = CASE WHEN row.lifecycle_subject THEN row.lifecycle_observed_state ELSE null END,
+    entity.lifecycle_owner_urn = CASE WHEN row.lifecycle_owner_urn = '' THEN null ELSE row.lifecycle_owner_urn END,
+    entity.lifecycle_observed_at_unix_ms = CASE WHEN row.lifecycle_subject THEN row.lifecycle_observed_at_unix_ms ELSE null END,
+    entity.lifecycle_expires_at_unix_ms = CASE WHEN row.lifecycle_expires_at_unix_ms < 0 THEN null ELSE row.lifecycle_expires_at_unix_ms END,
+    entity.lifecycle_source_runtime_id = CASE WHEN row.lifecycle_projected AND row.lifecycle_source_runtime_id <> '' THEN row.lifecycle_source_runtime_id ELSE null END,
+    entity.lifecycle_source_collection_id = CASE WHEN row.lifecycle_projected AND row.lifecycle_source_collection_id <> '' THEN row.lifecycle_source_collection_id ELSE null END
+FOREACH (_ IN CASE WHEN row.lifecycle_subject THEN [1] ELSE [] END |
+  SET entity:SecurityLifecycleSubject
+)
+FOREACH (_ IN CASE WHEN row.lifecycle_subject THEN [] ELSE [1] END |
+  REMOVE entity:SecurityLifecycleSubject
+)
+FOREACH (_ IN CASE WHEN row.lifecycle_finding THEN [1] ELSE [] END |
+  SET entity:SecurityLifecycleFinding
+)
+FOREACH (_ IN CASE WHEN row.lifecycle_finding THEN [] ELSE [1] END |
+  REMOVE entity:SecurityLifecycleFinding
+)
+SET entity.lifecycle_finding_urn = CASE WHEN row.lifecycle_finding THEN row.lifecycle_finding_urn ELSE null END
+RETURN count(entity) AS rebuilt
+"#;
+
 const ASSERTION_QUERY: &str = r#"
 UNWIND $rows AS row
 MATCH (source:OrganizationalEntity {
@@ -712,7 +746,7 @@ LIMIT $row_limit
                 .graph
                 .execute(
                     query(
-                        "MATCH (entity:OrganizationalEntity {tenant_id: $tenant_id}) WHERE entity.entity_kind IN ['resource', 'finding'] AND entity.entity_id > $after_entity_id RETURN entity.entity_id AS entity_id, entity.entity_kind AS entity_kind, entity.authority_json AS authority_json, entity.label AS label, entity.properties_json AS properties_json, entity.external_id AS external_id ORDER BY entity.entity_id LIMIT $limit",
+                        "MATCH (entity:OrganizationalEntity {tenant_id: $tenant_id}) WHERE entity.entity_kind IN ['resource', 'finding'] AND entity.entity_id > $after_entity_id RETURN entity.entity_id AS entity_id, entity.entity_kind AS entity_kind, entity.authority_json AS authority_json, entity.label AS label, entity.properties_json AS properties_json, entity.external_id AS external_id, coalesce(entity.graph_revision, 0) AS source_graph_revision ORDER BY entity.entity_id LIMIT $limit",
                     )
                     .param("tenant_id", tenant_id.as_str())
                     .param("after_entity_id", after_entity_id.clone())
@@ -725,29 +759,33 @@ LIMIT $row_limit
                     .get("entity_id")
                     .map_err(|error| StoreError::Conflict(error.to_string()))?;
                 after_entity_id = entity_id.clone();
-                entities.push(ProjectionEntity {
-                    entity_id,
-                    entity_kind: row
-                        .get("entity_kind")
-                        .map_err(|error| StoreError::Conflict(error.to_string()))?,
-                    authority_json: row
-                        .get("authority_json")
-                        .map_err(|error| StoreError::Conflict(error.to_string()))?,
-                    label: row
-                        .get("label")
-                        .map_err(|error| StoreError::Conflict(error.to_string()))?,
-                    properties_json: row
-                        .get("properties_json")
-                        .map_err(|error| StoreError::Conflict(error.to_string()))?,
-                    external_id: Some(
-                        row.get("external_id")
+                entities.push((
+                    ProjectionEntity {
+                        entity_id,
+                        entity_kind: row
+                            .get("entity_kind")
                             .map_err(|error| StoreError::Conflict(error.to_string()))?,
-                    ),
-                    lifecycle: None,
-                    lifecycle_finding_urn: None,
-                    lifecycle_source_runtime_id: None,
-                    lifecycle_source_collection_id: None,
-                });
+                        authority_json: row
+                            .get("authority_json")
+                            .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                        label: row
+                            .get("label")
+                            .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                        properties_json: row
+                            .get("properties_json")
+                            .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                        external_id: Some(
+                            row.get("external_id")
+                                .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                        ),
+                        lifecycle: None,
+                        lifecycle_finding_urn: None,
+                        lifecycle_source_runtime_id: None,
+                        lifecycle_source_collection_id: None,
+                    },
+                    row.get::<i64>("source_graph_revision")
+                        .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                ));
             }
             if entities.is_empty() {
                 break;
@@ -755,17 +793,42 @@ LIMIT $row_limit
             let row_count = entities.len();
             let entity_rows = entities
                 .iter()
-                .map(|entity| refreshed_entity_row(tenant_id, entity))
+                .map(|(entity, source_graph_revision)| {
+                    let mut row = refreshed_entity_row(tenant_id, entity)?;
+                    row.put(
+                        "source_graph_revision".into(),
+                        (*source_graph_revision).into(),
+                    );
+                    Ok(row)
+                })
                 .collect::<Result<Vec<_>, StoreError>>()?;
             let mut transaction = self.graph.start_txn().await?;
-            transaction
-                .run(
-                    query(ENTITY_QUERY)
+            let mut rebuilt_rows = transaction
+                .execute(
+                    query(REBUILD_LIFECYCLE_ENTITY_QUERY)
                         .param("tenant_id", tenant_id.as_str())
                         .param("graph_revision", graph_revision)
                         .param("rows", rows(entity_rows)),
                 )
                 .await?;
+            let rebuilt_batch = rebuilt_rows
+                .next(transaction.handle())
+                .await?
+                .map(|row| {
+                    row.get::<i64>("rebuilt")
+                        .map_err(|error| StoreError::Conflict(error.to_string()))
+                })
+                .transpose()?
+                .and_then(|count| usize::try_from(count).ok())
+                .unwrap_or(0);
+            drop(rebuilt_rows);
+            if rebuilt_batch != row_count {
+                transaction.rollback().await?;
+                return Err(StoreError::Conflict(
+                    "graph revision or entity changed during lifecycle projection rebuild"
+                        .to_owned(),
+                ));
+            }
             transaction.commit().await?;
             rebuilt = rebuilt.saturating_add(row_count);
             if row_count < batch_size {
@@ -1891,6 +1954,8 @@ fn map<const N: usize>(values: [(&str, BoltType); N]) -> BoltMap {
 
 #[cfg(test)]
 mod tests {
+    use std::{env, error::Error};
+
     use cerebro_agent_context::{FactQuery, QueryAbsentEdge, QueryDirection, QueryEdge, QueryNode};
 
     use super::*;
@@ -1906,12 +1971,146 @@ mod tests {
             assert!(query.contains("$graph_revision"));
             assert!(!query.contains("row.graph_revision"));
         }
+        assert!(
+            REBUILD_LIFECYCLE_ENTITY_QUERY
+                .contains("WHERE revision.graph_revision = $graph_revision")
+        );
+        assert!(
+            REBUILD_LIFECYCLE_ENTITY_QUERY
+                .contains("coalesce(entity.graph_revision, 0) = row.source_graph_revision")
+        );
+        assert!(REBUILD_LIFECYCLE_ENTITY_QUERY.contains("RETURN count(entity) AS rebuilt"));
+        assert!(!REBUILD_LIFECYCLE_ENTITY_QUERY.contains("entity.properties_json ="));
+        assert!(!REBUILD_LIFECYCLE_ENTITY_QUERY.contains("entity.label ="));
+        assert!(!REBUILD_LIFECYCLE_ENTITY_QUERY.contains("entity.authority_json ="));
         assert!(ASSERTION_QUERY.contains("ORGANIZATIONAL_RELATION"));
         assert!(
             NEO4J_SCHEMA
                 .iter()
                 .any(|statement| statement.contains("IS UNIQUE"))
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a disposable Neo4j instance"]
+    async fn lifecycle_rebuild_batch_rejects_revision_drift_without_base_overwrite()
+    -> Result<(), Box<dyn Error>> {
+        let graph = Graph::new(
+            env::var("CEREBRO_TEST_NEO4J_URI")?,
+            env::var("CEREBRO_TEST_NEO4J_USERNAME")?,
+            env::var("CEREBRO_TEST_NEO4J_PASSWORD")?,
+        )
+        .await?;
+        let tenant_id = format!("tenant-lifecycle-rebuild-race-{}", std::process::id());
+        graph
+            .run(
+                query(
+                    "CREATE (:OrganizationalGraphRevision {tenant_id: $tenant_id, graph_revision: 1}) CREATE (:OrganizationalEntity {tenant_id: $tenant_id, entity_id: 'resource-1', entity_kind: 'resource', authority_json: '{\"current\":false}', label: 'Old label', properties_json: '{\"current\":false}', external_id: 'resource-1', graph_revision: 1})",
+                )
+                .param("tenant_id", tenant_id.clone()),
+            )
+            .await?;
+        graph
+            .run(
+                query(
+                    "MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id}) SET revision.graph_revision = 2 WITH revision MATCH (entity:OrganizationalEntity {tenant_id: $tenant_id, entity_id: 'resource-1'}) SET entity.graph_revision = 2, entity.authority_json = '{\"current\":true}', entity.label = 'Current label', entity.properties_json = '{\"current\":true}'",
+                )
+                .param("tenant_id", tenant_id.clone()),
+            )
+            .await?;
+
+        let rebuild_row = || {
+            map([
+                ("entity_id", "resource-1".into()),
+                ("source_graph_revision", 1_i64.into()),
+                ("lifecycle_subject", false.into()),
+                ("lifecycle_subject_urn", "".into()),
+                ("lifecycle_subject_kind", "".into()),
+                ("lifecycle_observed_state", "".into()),
+                ("lifecycle_owner_urn", "".into()),
+                ("lifecycle_observed_at_unix_ms", (-1_i64).into()),
+                ("lifecycle_expires_at_unix_ms", (-1_i64).into()),
+                ("lifecycle_projected", false.into()),
+                ("lifecycle_source_runtime_id", "".into()),
+                ("lifecycle_source_collection_id", "".into()),
+                ("lifecycle_finding", false.into()),
+                ("lifecycle_finding_urn", "".into()),
+            ])
+        };
+        let mut transaction = graph.start_txn().await?;
+        let mut result = transaction
+            .execute(
+                query(REBUILD_LIFECYCLE_ENTITY_QUERY)
+                    .param("tenant_id", tenant_id.clone())
+                    .param("graph_revision", 1_i64)
+                    .param("rows", rows(vec![rebuild_row()])),
+            )
+            .await?;
+        let rebuilt = result
+            .next(transaction.handle())
+            .await?
+            .expect("aggregate row")
+            .get::<i64>("rebuilt")?;
+        assert_eq!(
+            rebuilt, 0,
+            "a changed tenant revision must prevent the batch from matching"
+        );
+        drop(result);
+        transaction.rollback().await?;
+
+        graph
+            .run(
+                query(
+                    "MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id}) SET revision.graph_revision = 1",
+                )
+                .param("tenant_id", tenant_id.clone()),
+            )
+            .await?;
+        let mut transaction = graph.start_txn().await?;
+        let mut result = transaction
+            .execute(
+                query(REBUILD_LIFECYCLE_ENTITY_QUERY)
+                    .param("tenant_id", tenant_id.clone())
+                    .param("graph_revision", 1_i64)
+                    .param("rows", rows(vec![rebuild_row()])),
+            )
+            .await?;
+        let rebuilt = result
+            .next(transaction.handle())
+            .await?
+            .expect("aggregate row")
+            .get::<i64>("rebuilt")?;
+        assert_eq!(rebuilt, 0, "a changed entity revision must reject the row");
+        drop(result);
+        transaction.rollback().await?;
+
+        let mut result = graph
+            .execute(
+                query(
+                    "MATCH (entity:OrganizationalEntity {tenant_id: $tenant_id, entity_id: 'resource-1'}) RETURN entity.graph_revision AS graph_revision, entity.authority_json AS authority_json, entity.label AS label, entity.properties_json AS properties_json, entity:SecurityLifecycleSubject AS lifecycle_subject",
+                )
+                .param("tenant_id", tenant_id.clone()),
+            )
+            .await?;
+        let entity = result.next().await?.expect("current entity");
+        assert_eq!(entity.get::<i64>("graph_revision")?, 2);
+        assert_eq!(
+            entity.get::<String>("authority_json")?,
+            "{\"current\":true}"
+        );
+        assert_eq!(entity.get::<String>("label")?, "Current label");
+        assert_eq!(
+            entity.get::<String>("properties_json")?,
+            "{\"current\":true}"
+        );
+        assert!(!entity.get::<bool>("lifecycle_subject")?);
+        graph
+            .run(
+                query("MATCH (node {tenant_id: $tenant_id}) DETACH DELETE node")
+                    .param("tenant_id", tenant_id),
+            )
+            .await?;
+        Ok(())
     }
 
     #[test]
