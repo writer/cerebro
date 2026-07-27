@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,6 +12,11 @@ import (
 	"github.com/writer/cerebro/internal/securitylifecyclehttp"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+type securityLifecycleQueryReader interface {
+	ListSecurityLifecycle(context.Context, *cerebrov1.SecurityLifecycleQuery) (*cerebrov1.SecurityLifecycleQueryResult, error)
+	ResolveSecurityLifecycleFinding(context.Context, string, string) (*cerebrov1.ResolveSecurityLifecycleFindingResponse, error)
+}
 
 func (a *App) handleListSecurityLifecycle(w http.ResponseWriter, r *http.Request) {
 	if a.deps.SecurityLifecycleQueries == nil {

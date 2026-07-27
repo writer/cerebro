@@ -1376,6 +1376,9 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
 		t.Fatalf("appended event source_runtime_id = %q, want %q", got, "writer-github")
 	}
+	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceCollectionID]; got == "" {
+		t.Fatal("appended event source_collection_id is empty")
+	}
 	if got := log.events[0].GetAttributes()["trace_id"]; got != "" {
 		t.Fatalf("appended event trace_id = %q, want omitted", got)
 	}
@@ -1394,6 +1397,64 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	}
 	if store.putCount != 1 {
 		t.Fatalf("PutSourceRuntime calls = %d, want 1", store.putCount)
+	}
+}
+
+func TestMaterializeEventPinsSyncCollectionProvenance(t *testing.T) {
+	t.Parallel()
+
+	started := time.Date(2026, 7, 27, 10, 30, 0, 0, time.UTC)
+	collectionID := sourceRuntimeCollectionID("runtime-authority", started)
+	event := &cerebrov1.EventEnvelope{
+		Attributes: map[string]string{
+			ports.EventAttributeSourceRuntimeID:    "provider-runtime",
+			ports.EventAttributeSourceCollectionID: "provider-collection",
+		},
+	}
+	materialized := materializeEvent(&cerebrov1.SourceRuntime{
+		Id:       "runtime-authority",
+		TenantId: "tenant-a",
+	}, collectionID, event)
+	if got := materialized.GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "runtime-authority" {
+		t.Fatalf("source_runtime_id = %q, want runtime authority", got)
+	}
+	if got := materialized.GetAttributes()[ports.EventAttributeSourceCollectionID]; got != sourceRuntimeCollectionID("runtime-authority", started) {
+		t.Fatalf("source_collection_id = %q, want runtime-owned collection id %q", got, collectionID)
+	}
+	if got := event.GetAttributes()[ports.EventAttributeSourceCollectionID]; got != "provider-collection" {
+		t.Fatalf("input source_collection_id mutated to %q", got)
+	}
+}
+
+func TestSyncRuntimeOverwritesProviderSourceCollectionIDBeforePersistence(t *testing.T) {
+	event := runtimeTestEvent("spoofed-collection-event", "reserved_collection", "reserved_collection.event")
+	event.Attributes[ports.EventAttributeSourceCollectionID] = "provider-controlled-collection"
+	source := admissionTestSource{id: "reserved_collection", events: []*cerebrov1.EventEnvelope{event}}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"runtime-authority": {
+			Id:       "runtime-authority",
+			SourceId: source.id,
+			TenantId: "writer",
+		},
+	}}
+	log := &appendLog{}
+	projector := &projector{}
+	service := New(registry, store, log, projector)
+
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-authority"}); err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if len(log.events) != 1 || len(projector.manifests) != 1 {
+		t.Fatalf("persisted events/manifests = %d/%d, want 1/1", len(log.events), len(projector.manifests))
+	}
+	got := log.events[0].GetAttributes()[ports.EventAttributeSourceCollectionID]
+	want := projector.manifests[0].CollectionID
+	if got != want || got == "provider-controlled-collection" {
+		t.Fatalf("persisted source_collection_id = %q, want runtime-owned manifest %q", got, want)
 	}
 }
 
@@ -1570,6 +1631,9 @@ func TestSyncRuntimeUsesPageLedgerWhenStoreSupportsIt(t *testing.T) {
 		len(manifest.ObservedFamilyIDs) != 1 ||
 		manifest.ObservedFamilyIDs[0] != "pull_request" {
 		t.Fatalf("collection manifest = %#v", manifest)
+	}
+	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceCollectionID]; got != manifest.CollectionID {
+		t.Fatalf("appended event source_collection_id = %q, want final manifest %q", got, manifest.CollectionID)
 	}
 	if len(store.attempts) != 1 {
 		t.Fatalf("ledger attempts = %d, want 1", len(store.attempts))

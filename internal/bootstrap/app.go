@@ -77,7 +77,8 @@ type Dependencies struct {
 	StateStore                  ports.StateStore
 	GraphStore                  ports.GraphStore
 	GraphQueries                ports.GraphQueryStore
-	SecurityLifecycleQueries    *organizationalgraph.QueryStore
+	SecurityLifecycleQueries    securityLifecycleQueryReader
+	SourceCollectionReceipts    ports.SourceCollectionReader
 	OrganizationalProjector     *organizationalgraph.ProjectionClient
 	GraphAgentLLM               graphagent.LLMClient
 	QueryCache                  querycache.Cache

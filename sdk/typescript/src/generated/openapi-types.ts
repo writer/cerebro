@@ -5031,6 +5031,14 @@ export type SecurityLifecycleAggregates = {
   subject_kind_counts: ({ count?: number; subject_kind?: "SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL" | "SECURITY_LIFECYCLE_SUBJECT_KIND_CERTIFICATE" })[];
 };
 
+export type SecurityLifecycleFindingReconcileResponse = {
+  audit_preview_url: string;
+  finding_id: string;
+  reason?: string;
+  status: "open" | "resolved";
+  verification: string;
+};
+
 export type SecurityLifecycleQueryMetadata = {
   coverage: { complete?: boolean; graph_revision?: number; lifecycle_entities?: number; reason?: "SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE" | "SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT" | "SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED"; scanned_entities?: number; truncated?: boolean };
   freshness: { as_of?: string; newest_observed_at?: string; oldest_observed_at?: string };

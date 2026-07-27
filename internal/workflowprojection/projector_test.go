@@ -613,6 +613,18 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	}
 }
 
+func TestFindingURNPreservesCanonicalFindingIdentity(t *testing.T) {
+	t.Parallel()
+
+	const canonical = "urn:cerebro:writer:finding:lifecycle-expiry-1"
+	if got := findingURN("writer", canonical); got != canonical {
+		t.Fatalf("findingURN(canonical) = %q, want %q", got, canonical)
+	}
+	if got := findingURN("writer", "finding-1"); got != "urn:cerebro:writer:finding:finding-1" {
+		t.Fatalf("findingURN(local id) = %q, want canonical local finding urn", got)
+	}
+}
+
 func TestProjectFindingRecordedLinksPrimaryResourceWhenResourceURNsEmpty(t *testing.T) {
 	graph := &projectionRecorder{}
 	service := New(graph)

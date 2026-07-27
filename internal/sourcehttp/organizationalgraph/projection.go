@@ -23,6 +23,11 @@ const (
 	projectionAuthorityRust   = "rust"
 )
 
+var (
+	ErrSourceCollectionNotFound           = errors.New("source collection receipt not found")
+	ErrSourceCollectionProvenanceMismatch = errors.New("source collection receipt provenance mismatch")
+)
+
 // ProjectionClient talks only to the Rust projection authority boundary.
 type ProjectionClient struct {
 	baseURL string
@@ -163,6 +168,8 @@ type sourceCollectionResponse struct {
 	ManifestDigest string `json:"manifest_digest"`
 }
 
+type sourceCollectionManifestResponse = sourceCollectionRequest
+
 type authorityResponse struct {
 	Authority string `json:"authority"`
 }
@@ -302,6 +309,79 @@ func (c *ProjectionClient) recordSourceCollection(ctx context.Context, manifest 
 		return errors.New("rust source collection receipt was not committed")
 	}
 	return nil
+}
+
+// GetSourceCollection loads one exact final collection manifest from the Rust
+// projection ledger. It does not infer completeness from graph coverage.
+func (c *ProjectionClient) GetSourceCollection(ctx context.Context, tenantID, runtimeID, collectionID string) (manifest ports.SourceCollectionManifest, err error) {
+	tenantID = strings.TrimSpace(tenantID)
+	runtimeID = strings.TrimSpace(runtimeID)
+	collectionID = strings.TrimSpace(collectionID)
+	if tenantID == "" || runtimeID == "" || collectionID == "" {
+		return manifest, errors.New("tenant id, source runtime id, and source collection id are required")
+	}
+	query := url.Values{
+		"tenant_id":         {tenantID},
+		"source_runtime_id": {runtimeID},
+	}
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		c.baseURL+"/v1/projections/collections/"+url.PathEscape(collectionID)+"?"+query.Encode(),
+		nil,
+	)
+	if err != nil {
+		return manifest, fmt.Errorf("build Rust source collection read: %w", err)
+	}
+	if err := c.auth.authorize(request, tenantID); err != nil {
+		return manifest, err
+	}
+	// #nosec G704 -- NewProjectionClient validates and freezes the HTTP(S)
+	// origin; the collection ID is one escaped path segment.
+	response, err := c.client.Do(request)
+	if err != nil {
+		return manifest, fmt.Errorf("call Rust projection: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, response.Body.Close())
+	}()
+	if response.StatusCode == http.StatusNotFound {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
+		return manifest, ErrSourceCollectionNotFound
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
+		return manifest, fmt.Errorf("rust projection returned %s", response.Status)
+	}
+	var decoded sourceCollectionManifestResponse
+	decoder := json.NewDecoder(io.LimitReader(response.Body, maxResponseBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return manifest, fmt.Errorf("decode Rust source collection response: %w", err)
+	}
+	if strings.TrimSpace(decoded.TenantID) != tenantID ||
+		strings.TrimSpace(decoded.SourceRuntimeID) != runtimeID ||
+		strings.TrimSpace(decoded.CollectionID) != collectionID {
+		return manifest, fmt.Errorf("%w: response does not match the requested tenant, runtime, and collection", ErrSourceCollectionProvenanceMismatch)
+	}
+	return ports.SourceCollectionManifest{
+		CollectionID:          decoded.CollectionID,
+		TenantID:              decoded.TenantID,
+		SourceID:              decoded.SourceID,
+		RuntimeID:             decoded.SourceRuntimeID,
+		StartedAtUnixMS:       decoded.StartedAtUnixMS,
+		CompletedAtUnixMS:     decoded.CompletedAtUnixMS,
+		Status:                decoded.Status,
+		IncompletenessReasons: append([]string(nil), decoded.IncompletenessReasons...),
+		ExpectedFamilyIDs:     append([]string(nil), decoded.ExpectedFamilyIDs...),
+		ObservedFamilyIDs:     append([]string(nil), decoded.ObservedFamilyIDs...),
+		PagesRead:             decoded.PagesRead,
+		RecordsScanned:        decoded.RecordsScanned,
+		RecordsAccepted:       decoded.RecordsAccepted,
+		RecordsRejected:       decoded.RecordsRejected,
+		EntitiesProjected:     decoded.EntitiesProjected,
+		LinksProjected:        decoded.LinksProjected,
+	}, nil
 }
 
 func (c *ProjectionClient) authority(ctx context.Context, event *cerebrov1.EventEnvelope) (string, error) {
