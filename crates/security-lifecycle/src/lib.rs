@@ -330,6 +330,9 @@ impl Observation {
             .get("resource_urn")
             .cloned()
             .unwrap_or(entity.agent_key);
+        let scope_refs = graph_json_property(&properties, "scope_refs")?;
+        let evidence_claim_refs = graph_json_property(&properties, "evidence_claim_refs")?;
+        let attributes = graph_json_property(&properties, "attributes")?;
         Ok(Some(Self {
             subject_ref: ResourceRef {
                 kind: subject_kind.as_str().to_owned(),
@@ -349,9 +352,9 @@ impl Observation {
             rotated_at: properties.get("rotated_at").cloned(),
             revoked_at: properties.get("revoked_at").cloned(),
             owner_urn: properties.get("owner_urn").cloned(),
-            scope_refs: Vec::new(),
-            evidence_claim_refs: Vec::new(),
-            attributes: BTreeMap::new(),
+            scope_refs,
+            evidence_claim_refs,
+            attributes,
         }))
     }
 }
@@ -450,7 +453,7 @@ pub fn project_observation(
         observation.display_name.clone(),
     )
     .map_err(model_error)?;
-    for (key, value) in projection_properties(observation) {
+    for (key, value) in projection_properties(observation)? {
         subject = subject.with_property(key, value).map_err(model_error)?;
     }
     let observation_ref =
@@ -508,7 +511,9 @@ pub fn project_observation(
     Ok(builder.build())
 }
 
-fn projection_properties(observation: &Observation) -> BTreeMap<String, String> {
+fn projection_properties(
+    observation: &Observation,
+) -> Result<BTreeMap<String, String>, LifecycleError> {
     let mut properties = BTreeMap::from([
         (
             "resource_urn".to_owned(),
@@ -545,7 +550,48 @@ fn projection_properties(observation: &Observation) -> BTreeMap<String, String> 
             properties.insert(key.to_owned(), value.clone());
         }
     }
+    if !observation.scope_refs.is_empty() {
+        insert_graph_json_property(&mut properties, "scope_refs", &observation.scope_refs)?;
+    }
+    if !observation.evidence_claim_refs.is_empty() {
+        insert_graph_json_property(
+            &mut properties,
+            "evidence_claim_refs",
+            &observation.evidence_claim_refs,
+        )?;
+    }
+    if !observation.attributes.is_empty() {
+        insert_graph_json_property(&mut properties, "attributes", &observation.attributes)?;
+    }
+    Ok(properties)
+}
+
+fn insert_graph_json_property(
+    properties: &mut BTreeMap<String, String>,
+    key: &'static str,
+    value: &impl Serialize,
+) -> Result<(), LifecycleError> {
+    let encoded = serde_json::to_string(value)
+        .map_err(|error| LifecycleError::InvalidValue(format!("invalid {key}: {error}")))?;
+    properties.insert(key.to_owned(), encoded);
+    Ok(())
+}
+
+fn graph_json_property<T>(
+    properties: &BTreeMap<String, String>,
+    key: &'static str,
+) -> Result<T, LifecycleError>
+where
+    T: for<'de> Deserialize<'de> + Default,
+{
     properties
+        .get(key)
+        .map(|value| {
+            serde_json::from_str(value)
+                .map_err(|error| LifecycleError::InvalidValue(format!("invalid {key}: {error}")))
+        })
+        .transpose()
+        .map(Option::unwrap_or_default)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -1124,7 +1170,7 @@ mod tests {
         ProjectedResource {
             agent_key: observation.subject_ref.id.clone(),
             label: observation.display_name.clone(),
-            properties: projection_properties(&observation),
+            properties: projection_properties(&observation).unwrap(),
         }
     }
 
@@ -1137,6 +1183,32 @@ mod tests {
         };
 
         assert_eq!(Observation::from_graph(incomplete).unwrap(), None);
+    }
+
+    #[test]
+    fn graph_projection_round_trips_references_and_allowed_metadata() {
+        let mut original = observation(
+            LifecycleState::Active,
+            "key-1",
+            Some("2026-08-01T12:00:00Z"),
+        );
+        original.scope_refs.push(ResourceRef {
+            kind: "scope".to_owned(),
+            id: "urn:cerebro:tenant-a:scope:production".to_owned(),
+            revision: Some("scope-v2".to_owned()),
+            state: Some("active".to_owned()),
+        });
+        original
+            .attributes
+            .insert("environment".to_owned(), "production".to_owned());
+
+        let restored = Observation::from_graph(projected(original.clone()))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(restored.scope_refs, original.scope_refs);
+        assert_eq!(restored.evidence_claim_refs, original.evidence_claim_refs);
+        assert_eq!(restored.attributes, original.attributes);
     }
 
     #[test]
