@@ -34,6 +34,9 @@ const installedAppURN = `urn:cerebro:${tenantID}:sentinelone_installed_app:agent
 const emailAliasURN = `urn:cerebro:${tenantID}:identifier:email:platform-admin@example.com`;
 const coreSsoVendorURN = `urn:cerebro:${tenantID}:vendor:core-sso`;
 const paymentsProcessorVendorURN = `urn:cerebro:${tenantID}:vendor:payments-processor`;
+const lifecycleSubjectURN = `urn:cerebro:${tenantID}:credential:aws%2Fproduction:deploy%2Fsigning`;
+const lifecycleFindingURN = `urn:cerebro:${tenantID}:finding:deploy-signing-expiry`;
+const lifecycleEvidenceClaimURN = `urn:cerebro:${tenantID}:claim:deploy-signing-expiry`;
 
 const vendorDiscoverySourceLabels: Record<string, string> = {
   aws: "AWS",
@@ -229,6 +232,42 @@ const findings = [
   },
 ];
 
+const lifecycleFinding = {
+  id: "deploy-signing-expiry",
+  title: "Deployment signing credential expires soon",
+  severity: "HIGH",
+  status: "open",
+  summary: "The deployment signing credential expires on August 1, 2026.",
+  tenant_id: tenantID,
+  runtime_id: "demo-security-lifecycle-runtime",
+  source_id: "security-lifecycle",
+  entity: lifecycleSubjectURN,
+  resource_urns: [lifecycleSubjectURN],
+  rule_id: "credential.expiry",
+  policy_id: "credential-expiry",
+  policy_name: "Credential expiry",
+  controls: [],
+  attributes: {
+    owner: "security-platform",
+    source: "security-lifecycle",
+    expires_at: "2026-08-01T12:00:00Z",
+    evidence_claim_urn: lifecycleEvidenceClaimURN,
+  },
+  risk_score: 76,
+  likelihood_score: 72,
+  impact_score: 80,
+  confidence_score: 96,
+  likelihood_level: "high",
+  impact_level: "high",
+  risk_reasons: ["Credential expires inside the policy warning window"],
+  evidence_count: 1,
+  owner: "Security platform",
+  sla_status: "due_soon",
+  due_at: "2026-08-01T12:00:00Z",
+  first_observed_at: "2026-07-26T12:00:00Z",
+  last_observed_at: "2026-07-26T12:00:00Z",
+};
+
 const controls = [
   {
     framework_name: "SOC 2",
@@ -327,6 +366,18 @@ const evidence: GRCEvidence[] = [
     created_at: "2026-01-15T11:55:00.000Z",
   },
 ];
+
+const lifecycleEvidence: GRCEvidence = {
+  id: "deploy-signing-expiry",
+  runtime_id: "demo-security-lifecycle-runtime",
+  rule_id: "credential.expiry",
+  finding_id: "deploy-signing-expiry",
+  finding_title: "Deployment signing credential expires soon",
+  run_id: "demo-run-security-lifecycle",
+  event_ids: ["deploy-signing-expiry"],
+  graph_root_urns: [lifecycleSubjectURN],
+  created_at: "2026-07-26T12:00:00Z",
+};
 
 const connectors = [
   {
@@ -2007,11 +2058,16 @@ const entityImpactFixture = (rawURN: string) => {
 };
 
 const auditPacketFixture = (findingID: string) => {
-  const finding = findings.find((item) => item.id === safeDecode(findingID)) ?? findings[0];
+  const requestedID = safeDecode(findingID);
+  const finding = requestedID === lifecycleFinding.id
+    ? lifecycleFinding
+    : findings.find((item) => item.id === requestedID) ?? findings[0];
   return {
     id: `packet-${finding.id}`,
     finding,
-    evidence: evidence.filter((item) => item.finding_id === finding.id),
+    evidence: finding.id === lifecycleFinding.id
+      ? [lifecycleEvidence]
+      : evidence.filter((item) => item.finding_id === finding.id),
     graph,
     controls: finding.controls,
     recommended_action: "Validate owner, review evidence freshness, and document the remediation outcome.",
@@ -4374,7 +4430,7 @@ export const cerebroFixtureResponseFor = ({
     const lifecycleRecords = [
       {
         observation: {
-          subject_ref: { kind: "credential", id: `urn:cerebro:${tenantID}:credential:aws%2Fproduction:deploy%2Fsigning`, revision: "key-2026-07" },
+          subject_ref: { kind: "credential", id: lifecycleSubjectURN, revision: "key-2026-07" },
           subject_kind: "SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL",
           provider: "aws",
           authority_id: "aws/production",
@@ -4384,27 +4440,27 @@ export const cerebroFixtureResponseFor = ({
           observed_at: "2026-07-26T12:00:00Z",
           expires_at: "2026-08-01T12:00:00Z",
           owner_urn: `urn:cerebro:${tenantID}:team:security-platform`,
-          evidence_claim_refs: [{ kind: "claim", id: `urn:cerebro:${tenantID}:claim:deploy-signing-expiry` }],
+          evidence_claim_refs: [{ kind: "claim", id: lifecycleEvidenceClaimURN }],
         },
         policy_evaluations: [{
           policy_id: "credential-expiry",
           policy_version: "1",
-          subject_ref: { kind: "credential", id: `urn:cerebro:${tenantID}:credential:aws%2Fproduction:deploy%2Fsigning`, revision: "key-2026-07" },
+          subject_ref: { kind: "credential", id: lifecycleSubjectURN, revision: "key-2026-07" },
           state: "expiring",
           warning_window_days: 30,
           evaluated_at: "2026-07-26T12:00:00Z",
-          evidence_claim_refs: [{ kind: "claim", id: `urn:cerebro:${tenantID}:claim:deploy-signing-expiry` }],
+          evidence_claim_refs: [{ kind: "claim", id: lifecycleEvidenceClaimURN }],
         }],
         findings: [{
-          finding_ref: { kind: "finding", id: `urn:cerebro:${tenantID}:finding:deploy-signing-expiry` },
-          subject_ref: { kind: "credential", id: `urn:cerebro:${tenantID}:credential:aws%2Fproduction:deploy%2Fsigning`, revision: "key-2026-07" },
+          finding_ref: { kind: "finding", id: lifecycleFindingURN },
+          subject_ref: { kind: "credential", id: lifecycleSubjectURN, revision: "key-2026-07" },
           finding_kind: "credential_expiry",
           status: "open",
-          evidence_claim_refs: [{ kind: "claim", id: `urn:cerebro:${tenantID}:claim:deploy-signing-expiry` }],
+          evidence_claim_refs: [{ kind: "claim", id: lifecycleEvidenceClaimURN }],
         }],
         action_routes: [{
-          finding_ref: { kind: "finding", id: `urn:cerebro:${tenantID}:finding:deploy-signing-expiry` },
-          target_ref: { kind: "credential", id: `urn:cerebro:${tenantID}:credential:aws%2Fproduction:deploy%2Fsigning`, revision: "key-2026-07" },
+          finding_ref: { kind: "finding", id: lifecycleFindingURN },
+          target_ref: { kind: "credential", id: lifecycleSubjectURN, revision: "key-2026-07" },
           action_type: "rotate_credential",
           approval_required: true,
           action_intent_ref: { kind: "action_intent", id: `urn:cerebro:${tenantID}:action_intent:deploy-signing` },

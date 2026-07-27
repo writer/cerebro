@@ -83,7 +83,36 @@ describe("cerebro fixture proxy responses", () => {
       searchParams: new URLSearchParams("severity=high"),
     });
     const payload = parseFixture(response!);
-    expect(payload.findings).toMatchObject([{ id: "demo-finding-high" }]);
+    expect(payload.findings).toContainEqual(expect.objectContaining({ id: "demo-finding-high" }));
+  });
+
+  it("resolves lifecycle finding links to matching subject, policy, and evidence", () => {
+    withFixtureMode();
+    const lifecycle = parseFixture(cerebroFixtureResponseFor({
+      method: "GET",
+      path: "v1/security/lifecycle",
+    })!);
+    const packet = parseFixture(cerebroFixtureResponseFor({
+      method: "GET",
+      path: "grc/audit-packets/deploy-signing-expiry",
+    })!);
+    const lifecycleRecord = lifecycle.records[0];
+
+    expect(packet.finding).toMatchObject({
+      id: "deploy-signing-expiry",
+      title: "Deployment signing credential expires soon",
+      entity: lifecycleRecord.observation.subject_ref.id,
+      resource_urns: [lifecycleRecord.observation.subject_ref.id],
+      rule_id: "credential.expiry",
+      policy_id: lifecycleRecord.policy_evaluations[0].policy_id,
+    });
+    expect(packet.evidence).toMatchObject([{
+      id: "deploy-signing-expiry",
+      finding_id: "deploy-signing-expiry",
+      rule_id: "credential.expiry",
+      graph_root_urns: [lifecycleRecord.observation.subject_ref.id],
+    }]);
+    expect(lifecycleRecord.findings[0].evidence_claim_refs[0].id).toContain(packet.evidence[0].id);
   });
 
   it("uses operator-readable plural labels for inventory categories", () => {
