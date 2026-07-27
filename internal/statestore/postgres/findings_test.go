@@ -1088,6 +1088,44 @@ func TestUpsertFinding_ReopensTTLResolvedOnOpenEmit(t *testing.T) {
 	}
 }
 
+func TestUpsertFinding_ReopensVerifiedObservationResolvedOnOpenEmit(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+	ensureTombstoneSchema(t, ctx, store)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	fp := fmt.Sprintf("fp-verified-observation-%d", now.UnixNano())
+	baseID := fmt.Sprintf("finding-verified-observation-%d", now.UnixNano())
+
+	open := newUpsertFinding(baseID, fp, "open", now.Add(-time.Hour))
+	open.RuleID = "security-lifecycle-expiry"
+	if _, err := store.UpsertFinding(ctx, open); err != nil {
+		t.Fatalf("seed finding: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx,
+		`UPDATE findings SET status = 'resolved', status_reason = 'verified_by_fresh_complete_observation', status_updated_at = $2 WHERE id = $1`,
+		baseID, now.Add(-30*time.Minute)); err != nil {
+		t.Fatalf("verified observation resolve: %v", err)
+	}
+
+	reemit := newUpsertFinding(baseID, fp, "open", now)
+	reemit.RuleID = "security-lifecycle-expiry"
+	reopened, err := store.UpsertFinding(ctx, reemit)
+	if err != nil {
+		t.Fatalf("verified-observation reopen upsert: %v", err)
+	}
+	if reopened.Status != "open" {
+		t.Fatalf("post-emit status = %q, want open", reopened.Status)
+	}
+	if reopened.StatusReason != "" {
+		t.Fatalf("post-emit status_reason = %q, want empty after reopen", reopened.StatusReason)
+	}
+	if reopened.ID != baseID {
+		t.Fatalf("post-emit id = %q, want %q", reopened.ID, baseID)
+	}
+}
+
 func TestUpsertFinding_ReopensTTLEvidenceRuleResolvedOnOpenEmit(t *testing.T) {
 	ctx := context.Background()
 	store := tombstoneStoreFromEnv(t)

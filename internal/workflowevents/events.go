@@ -40,9 +40,11 @@ const DecisionTrustAuthenticatedPacket = "authenticated_packet_workflow"
 const (
 	FindingStatusReasonNoLongerEmitted      = "No longer emitted by latest rule evaluation."
 	FindingStatusReasonClosedByCounterEvent = "closed_by_counter_event"
+	FindingStatusReasonVerifiedObservation  = "verified_by_fresh_complete_observation"
 	FindingStatusReasonTTLExpired           = "ttl_expired"
 	FindingStatusSourceManual               = "manual"
 	FindingStatusSourceStaleEvaluation      = "stale_rule_evaluation"
+	FindingStatusSourceVerifiedObservation  = "verified_observation"
 )
 
 const (

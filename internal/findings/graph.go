@@ -500,7 +500,13 @@ func findingWorkflowEventScopeValid(tenantID string, sourceID string, finding *p
 }
 
 func findingGraphFindingURN(tenantID string, finding *ports.FindingRecord) string {
-	return fmt.Sprintf("urn:cerebro:%s:finding:%s", strings.TrimSpace(tenantID), strings.TrimSpace(finding.ID))
+	tenantID = strings.TrimSpace(tenantID)
+	findingID := strings.TrimSpace(finding.ID)
+	canonicalPrefix := fmt.Sprintf("urn:cerebro:%s:finding:", tenantID)
+	if strings.HasPrefix(findingID, canonicalPrefix) {
+		return findingID
+	}
+	return canonicalPrefix + findingID
 }
 
 func findingGraphTicketURN(tenantID string, ticketURL string) string {
