@@ -5,7 +5,14 @@ mod cutover_command;
 mod parity_command;
 mod rpc;
 
-use std::{collections::BTreeMap, env, error::Error, path::PathBuf, sync::Arc, time::Instant};
+use std::{
+    collections::BTreeMap,
+    env,
+    error::Error,
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use axum::{
     Extension, Json, Router,
@@ -32,7 +39,8 @@ use cerebro_organizational_store::{
 use cerebro_security_lifecycle::{
     CERTIFICATE_EVENT_KIND, CREDENTIAL_EVENT_KIND, LifecycleQuery, LifecycleState,
     ProjectedResource, QuerySource, SubjectKind, SubjectLocator, canonical_resource_urn,
-    decode_protobuf_observation, project_observation, query_records_with_source,
+    decode_protobuf_observation, finalize_indexed_query, prepare_indexed_query,
+    project_observation, query_records_with_source,
 };
 use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
@@ -54,6 +62,7 @@ const MAX_SECURITY_LIFECYCLE_SCAN: usize = 500;
 #[derive(Clone)]
 struct AppState {
     graph: Arc<dyn AgentGraph>,
+    lifecycle_projection: Option<Arc<Neo4jProjector>>,
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
     metrics: PlatformMetrics,
@@ -805,6 +814,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("serve-neo4j-consumer") => serve_neo4j_consumer().await,
         Some("consume-append-log") => consume_append_log().await,
         Some("migrate-stores") => migrate_stores().await,
+        Some("rebuild-lifecycle-projection") => rebuild_lifecycle_projection().await,
         Some("sync-source") => sync_source().await,
         Some("catalog-summary") => catalog_summary(),
         Some("compare-projection") => parity_command::compare_projection().await,
@@ -813,7 +823,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("show-authority") => cutover_command::show_authority().await,
         Some("--help" | "-h") => {
             println!(
-                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-neo4j|serve-neo4j-consumer|consume-append-log|migrate-stores|sync-source|catalog-summary|compare-projection|evaluate-family|promote-family|show-authority>"
+                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-neo4j|serve-neo4j-consumer|consume-append-log|migrate-stores|rebuild-lifecycle-projection|sync-source|catalog-summary|compare-projection|evaluate-family|promote-family|show-authority>"
             );
             Ok(())
         }
@@ -822,7 +832,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 async fn serve_memory(graph: OrganizationalGraph) -> Result<(), Box<dyn Error>> {
-    serve(Arc::new(MemoryAgentGraph::new(graph)), None).await
+    serve(Arc::new(MemoryAgentGraph::new(graph)), None, None).await
 }
 
 async fn serve_neo4j_readonly() -> Result<(), Box<dyn Error>> {
@@ -832,17 +842,29 @@ async fn serve_neo4j_readonly() -> Result<(), Box<dyn Error>> {
         &required_env("CEREBRO_NEO4J_PASSWORD")?,
     )
     .await?;
-    serve(Arc::new(graph), None).await
+    let lifecycle_projection = Arc::new(graph.clone());
+    serve(Arc::new(graph), Some(lifecycle_projection), None).await
 }
 
 async fn serve_neo4j() -> Result<(), Box<dyn Error>> {
     let (graph, projection) = neo4j_runtime().await?;
-    serve(Arc::new(graph), Some(projection)).await
+    let lifecycle_projection = Arc::new(graph.clone());
+    serve(
+        Arc::new(graph),
+        Some(lifecycle_projection),
+        Some(projection),
+    )
+    .await
 }
 
 async fn serve_neo4j_consumer() -> Result<(), Box<dyn Error>> {
     let (graph, projection) = neo4j_runtime().await?;
-    let server = serve(Arc::new(graph), Some(projection.clone()));
+    let lifecycle_projection = Arc::new(graph.clone());
+    let server = serve(
+        Arc::new(graph),
+        Some(lifecycle_projection),
+        Some(projection.clone()),
+    );
     let consumer = append_log_consumer::run(projection);
     tokio::select! {
         result = server => result,
@@ -880,6 +902,23 @@ async fn migrate_stores() -> Result<(), Box<dyn Error>> {
     let graph = connect_neo4j().await?;
     graph.migrate().await?;
     println!("organizational stores migrated");
+    Ok(())
+}
+
+async fn rebuild_lifecycle_projection() -> Result<(), Box<dyn Error>> {
+    let tenant_id = TenantId::parse(required_env("CEREBRO_TENANT_ID")?)?;
+    let graph = connect_neo4j().await?;
+    graph.migrate().await?;
+    let rebuilt = graph
+        .rebuild_lifecycle_projection(&tenant_id, 1_000)
+        .await?;
+    println!(
+        "{}",
+        serde_json::json!({
+            "tenant_id": tenant_id.as_str(),
+            "entities_rebuilt": rebuilt,
+        })
+    );
     Ok(())
 }
 
@@ -956,6 +995,7 @@ fn resolved_auth(model: &AuthModel) -> Result<ResolvedAuth, Box<dyn Error>> {
 
 async fn serve(
     graph: Arc<dyn AgentGraph>,
+    lifecycle_projection: Option<Arc<Neo4jProjector>>,
     projection: Option<Arc<ProjectionRuntime>>,
 ) -> Result<(), Box<dyn Error>> {
     let bind = env::var("CEREBRO_RUST_BIND").unwrap_or_else(|_| "127.0.0.1:8080".to_owned());
@@ -966,7 +1006,13 @@ async fn serve(
     println!("cerebro Rust platform listening on {bind}");
     axum::serve(
         listener,
-        router_with_backend(graph, load_catalog_summary().ok(), projection, tenant_auth),
+        router_with_backend(
+            graph,
+            lifecycle_projection,
+            load_catalog_summary().ok(),
+            projection,
+            tenant_auth,
+        ),
     )
     .await?;
     Ok(())
@@ -978,18 +1024,25 @@ fn router(graph: OrganizationalGraph) -> Router {
         Arc::new(MemoryAgentGraph::new(graph)),
         None,
         None,
+        None,
         TenantRequestAuth::new("test-organizational-graph-secret-32-bytes".to_owned()).unwrap(),
     )
 }
 
 fn router_with_backend(
     graph: Arc<dyn AgentGraph>,
+    lifecycle_projection: Option<Arc<Neo4jProjector>>,
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
     tenant_auth: TenantRequestAuth,
 ) -> Router {
     let platform_metrics = PlatformMetrics::default();
-    let connect = rpc::router(graph.clone(), catalog_summary.clone(), tenant_auth.clone());
+    let connect = rpc::router(
+        graph.clone(),
+        lifecycle_projection.clone(),
+        catalog_summary.clone(),
+        tenant_auth.clone(),
+    );
     let protected = Router::new()
         .route(
             "/platform/graph/neighborhood",
@@ -1025,6 +1078,7 @@ fn router_with_backend(
         .fallback_service(connect.into_axum_service())
         .with_state(AppState {
             graph,
+            lifecycle_projection,
             catalog_summary,
             projection,
             metrics: platform_metrics.clone(),
@@ -1430,6 +1484,45 @@ async fn security_lifecycle(
         ));
     }
     let lifecycle_query: LifecycleQuery = query.into();
+    if let Some(projection) = state.lifecycle_projection.as_ref() {
+        let graph_revision = state
+            .graph
+            .revision(&tenant_id)
+            .await
+            .map_err(context_error)?;
+        let as_of = OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .map_err(|error| {
+                service_unavailable(
+                    "clock_format_failed",
+                    format!("Cannot format read time: {error}"),
+                )
+            })?;
+        let prepared = prepare_indexed_query(&tenant_id, &lifecycle_query, &as_of, graph_revision)
+            .map_err(|error| bad_request("invalid_security_lifecycle_query", error.to_string()))?;
+        let indexed = tokio::time::timeout(
+            Duration::from_secs(2),
+            projection.query_lifecycle(&tenant_id, &prepared),
+        )
+        .await
+        .map_err(|_| {
+            service_unavailable(
+                "lifecycle_projection_timeout",
+                "The lifecycle projection read exceeded 2 seconds.",
+            )
+        })?;
+        match indexed {
+            Ok(page) => {
+                return finalize_indexed_query(&tenant_id, &prepared, page)
+                    .map(Json)
+                    .map_err(|error| {
+                        service_unavailable("lifecycle_projection_invalid", error.to_string())
+                    });
+            }
+            Err(StoreError::LifecycleProjectionUnavailable { .. }) => {}
+            Err(error) => return Err(store_error(error)),
+        }
+    }
     let revision_before = state
         .graph
         .revision(&tenant_id)
@@ -2569,6 +2662,7 @@ mod tests {
             Arc::new(UnavailableGraph),
             None,
             None,
+            None,
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
         );
         let response = app
@@ -2914,6 +3008,7 @@ mod tests {
             Arc::new(UnavailableGraph),
             None,
             None,
+            None,
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
         );
         let liveness = app
@@ -3042,7 +3137,13 @@ mod tests {
             store: Mutex::new(DurableGraphStore::new(store_ledger, graph.clone())),
         });
         let tenant_auth = TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap();
-        let app = router_with_backend(Arc::new(graph.clone()), None, Some(runtime), tenant_auth);
+        let app = router_with_backend(
+            Arc::new(graph.clone()),
+            None,
+            None,
+            Some(runtime),
+            tenant_auth,
+        );
         let resource_urn = format!("urn:cerebro:{tenant_id}:runtime_file:asset-1");
         let response = app
             .oneshot(

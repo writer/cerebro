@@ -397,6 +397,7 @@ dependencies = [
  "cerebro-agent-context",
  "cerebro-organizational-graph",
  "cerebro-organizational-model",
+ "cerebro-security-lifecycle",
  "cerebro-source-catalog",
  "cerebro-source-runtime-next",
  "native-tls",

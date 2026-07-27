@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cerebro_organizational_graph::GraphWriteReceipt;
 use cerebro_organizational_model::{
@@ -414,6 +414,24 @@ pub(crate) struct ProjectionEntity {
     pub properties_json: String,
     #[serde(default)]
     pub external_id: Option<String>,
+    #[serde(default)]
+    pub lifecycle: Option<LifecycleProjectionEntity>,
+    #[serde(default)]
+    pub lifecycle_finding_urn: Option<String>,
+    #[serde(default)]
+    pub lifecycle_source_runtime_id: Option<String>,
+    #[serde(default)]
+    pub lifecycle_source_collection_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct LifecycleProjectionEntity {
+    pub subject_urn: String,
+    pub subject_kind: String,
+    pub observed_state: String,
+    pub owner_urn: Option<String>,
+    pub observed_at_unix_ms: i64,
+    pub expires_at_unix_ms: Option<i64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1575,13 +1593,36 @@ pub(crate) fn projection_commit(
             let agent_key = entity.agent_key();
             let mut properties = entity.properties().clone();
             properties.insert("entity_urn".to_owned(), agent_key.clone());
+            let entity_kind = enum_name(entity.kind())?;
+            let lifecycle = lifecycle_projection(
+                delta.collection().tenant_id(),
+                &agent_key,
+                entity.label(),
+                &properties,
+            )?;
+            let lifecycle_finding_urn = lifecycle_finding_projection(
+                delta.collection().tenant_id(),
+                &entity_kind,
+                &properties,
+            )?;
+            let lifecycle_source_runtime_id = (lifecycle.is_some()
+                || lifecycle_finding_urn.is_some())
+            .then(|| delta.collection().source_runtime_id().as_str().to_owned());
+            let lifecycle_source_collection_id = (lifecycle.is_some()
+                || lifecycle_finding_urn.is_some())
+            .then(|| properties.get("source_collection_id").cloned())
+            .flatten();
             Ok(ProjectionEntity {
                 entity_id: entity.id().as_str().to_owned(),
-                entity_kind: enum_name(entity.kind())?,
+                entity_kind,
                 authority_json: serde_json::to_string(entity.authority())?,
                 label: entity.label().to_owned(),
                 properties_json: serde_json::to_string(&properties)?,
                 external_id: Some(agent_key),
+                lifecycle,
+                lifecycle_finding_urn,
+                lifecycle_source_runtime_id,
+                lifecycle_source_collection_id,
             })
         })
         .collect::<Result<_, StoreError>>()?;
@@ -1630,6 +1671,75 @@ pub(crate) fn projection_commit(
         assertions,
         retractions,
     })
+}
+
+pub(crate) fn lifecycle_projection(
+    tenant_id: &TenantId,
+    agent_key: &str,
+    label: &str,
+    properties: &BTreeMap<String, String>,
+) -> Result<Option<LifecycleProjectionEntity>, StoreError> {
+    let resource = cerebro_security_lifecycle::ProjectedResource {
+        agent_key: agent_key.to_owned(),
+        label: label.to_owned(),
+        properties: properties.clone(),
+    };
+    let Some(observation) = cerebro_security_lifecycle::Observation::from_graph(resource)
+        .map_err(|error| StoreError::Conflict(format!("invalid lifecycle projection: {error}")))?
+    else {
+        return Ok(None);
+    };
+    observation
+        .validate(tenant_id)
+        .map_err(|error| StoreError::Conflict(format!("invalid lifecycle projection: {error}")))?;
+    Ok(Some(LifecycleProjectionEntity {
+        subject_urn: observation.subject_ref.id,
+        subject_kind: observation.subject_kind.as_str().to_owned(),
+        observed_state: cerebro_security_lifecycle::lifecycle_state_name(observation.state)
+            .to_owned(),
+        owner_urn: observation.owner_urn,
+        observed_at_unix_ms: cerebro_security_lifecycle::timestamp_millis_from_rfc3339(
+            &observation.observed_at,
+        )
+        .map_err(|error| StoreError::Conflict(format!("invalid lifecycle projection: {error}")))?,
+        expires_at_unix_ms: observation
+            .expires_at
+            .as_deref()
+            .map(cerebro_security_lifecycle::timestamp_millis_from_rfc3339)
+            .transpose()
+            .map_err(|error| {
+                StoreError::Conflict(format!("invalid lifecycle projection: {error}"))
+            })?,
+    }))
+}
+
+pub(crate) fn lifecycle_finding_projection(
+    tenant_id: &TenantId,
+    entity_kind: &str,
+    properties: &BTreeMap<String, String>,
+) -> Result<Option<String>, StoreError> {
+    if entity_kind != "finding"
+        || properties.get("policy_id").map(String::as_str)
+            != Some(cerebro_security_lifecycle::EXPIRY_POLICY_ID)
+        || properties.get("status").map(String::as_str) != Some("open")
+    {
+        return Ok(None);
+    }
+    let finding_urn = properties
+        .get("resource_urn")
+        .ok_or_else(|| StoreError::Conflict("lifecycle finding has no stable URN".to_owned()))?;
+    let subject_urn = properties
+        .get("subject_urn")
+        .ok_or_else(|| StoreError::Conflict("lifecycle finding has no subject URN".to_owned()))?;
+    let expected =
+        cerebro_security_lifecycle::canonical_finding_urn(tenant_id.as_str(), subject_urn)
+            .map_err(|error| StoreError::Conflict(format!("invalid lifecycle finding: {error}")))?;
+    if finding_urn != &expected {
+        return Err(StoreError::Conflict(
+            "lifecycle finding stable URN does not match its subject".to_owned(),
+        ));
+    }
+    Ok(Some(finding_urn.clone()))
 }
 
 fn enum_name<T: Serialize>(value: &T) -> Result<String, StoreError> {

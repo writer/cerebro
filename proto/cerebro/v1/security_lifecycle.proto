@@ -11,6 +11,7 @@ import "google/protobuf/timestamp.proto";
 // organizational platform.
 service SecurityLifecycleService {
   rpc ListSecurityLifecycle(ListSecurityLifecycleRequest) returns (ListSecurityLifecycleResponse);
+  rpc ResolveSecurityLifecycleFinding(ResolveSecurityLifecycleFindingRequest) returns (ResolveSecurityLifecycleFindingResponse);
 }
 
 message ListSecurityLifecycleRequest {
@@ -143,6 +144,8 @@ message SecurityLifecycleRecord {
   repeated SecurityLifecycleFindingBinding findings = 4;
   repeated SecurityLifecycleActionRoute action_routes = 5;
   google.protobuf.Timestamp projected_at = 6;
+  string source_runtime_id = 7;
+  string source_collection_id = 8;
 }
 
 // SecurityLifecycleQuery is a bounded, tenant-scoped selector for lifecycle
@@ -230,4 +233,16 @@ message SecurityLifecycleQueryMetadata {
   SecurityLifecycleCoverage coverage = 1;
   SecurityLifecycleFreshness freshness = 2;
   bool page_truncated = 3;
+}
+
+message ResolveSecurityLifecycleFindingRequest {
+  string tenant_id = 1;
+  string finding_urn = 2;
+}
+
+message ResolveSecurityLifecycleFindingResponse {
+  SecurityLifecycleRecord record = 1;
+  uint64 graph_revision = 2;
+  string source_runtime_id = 3;
+  string source_collection_id = 4;
 }

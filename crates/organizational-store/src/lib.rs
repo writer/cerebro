@@ -11,7 +11,7 @@ pub use cutover::{
     CutoverDecision, CutoverGate, CutoverPolicy, ProjectionAuthority, ProjectionAuthorityRecord,
     ProjectionPromotionRequest,
 };
-pub use neo4j::Neo4jProjector;
+pub use neo4j::{Neo4jProjector, ResolvedLifecycleFinding};
 pub use parity::{
     MismatchSide, ParityError, ParityReceipt, ParityStatus, SemanticFact, SemanticFactKind,
     SemanticMismatch, SemanticSnapshot,
@@ -34,6 +34,10 @@ pub enum StoreError {
     Neo4j(::neo4rs::Error),
     Serialization(serde_json::Error),
     Conflict(String),
+    LifecycleProjectionUnavailable {
+        graph_revision: u64,
+        projection_revision: Option<u64>,
+    },
     ProjectionPending {
         receipt: GraphWriteReceipt,
         message: String,
@@ -47,6 +51,16 @@ impl fmt::Display for StoreError {
             Self::Neo4j(error) => write!(formatter, "organizational projection failed: {error}"),
             Self::Serialization(error) => write!(formatter, "serialize graph commit: {error}"),
             Self::Conflict(message) => formatter.write_str(message),
+            Self::LifecycleProjectionUnavailable {
+                graph_revision,
+                projection_revision,
+            } => write!(
+                formatter,
+                "lifecycle projection is not ready at graph revision {graph_revision} (projection revision: {})",
+                projection_revision
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "none".to_owned())
+            ),
             Self::ProjectionPending { receipt, message } => write!(
                 formatter,
                 "ledger revision {} committed but graph projection is pending: {message}",
@@ -62,7 +76,10 @@ impl StoreError {
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
-            Self::Postgres(_) | Self::Neo4j(_) | Self::ProjectionPending { .. }
+            Self::Postgres(_)
+                | Self::Neo4j(_)
+                | Self::LifecycleProjectionUnavailable { .. }
+                | Self::ProjectionPending { .. }
         )
     }
 }
