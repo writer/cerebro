@@ -15,7 +15,7 @@ use cerebro_organizational_model::{
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 pub const CREDENTIAL_EVENT_KIND: &str = "security.credential.lifecycle";
 pub const CERTIFICATE_EVENT_KIND: &str = "security.certificate.lifecycle";
@@ -26,6 +26,9 @@ pub const EXPIRY_POLICY_VERSION: &str = "1";
 pub const DEFAULT_WARNING_WINDOW_DAYS: u32 = 30;
 pub const DEFAULT_QUERY_LIMIT: usize = 100;
 pub const MAX_QUERY_LIMIT: usize = 500;
+const MAX_CURSOR_AGE: Duration = Duration::minutes(15);
+const MAX_CURSOR_SUBJECT_URN_BYTES: usize = 2_048;
+const MAX_PAGE_TOKEN_CHARS: usize = 4_608;
 
 #[derive(Clone, PartialEq, Message)]
 struct WireResourceRef {
@@ -799,6 +802,15 @@ pub struct LifecycleQuery {
     pub limit: Option<usize>,
     #[serde(default)]
     pub page_token: Option<String>,
+    #[serde(default)]
+    pub subject_locator: Option<SubjectLocator>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct SubjectLocator {
+    pub subject_kind: SubjectKind,
+    pub authority_id: String,
+    pub stable_locator: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -815,8 +827,112 @@ pub struct QueryResult {
     pub records: Vec<LifecycleRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_page_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_page_token: Option<String>,
     pub truncated: bool,
     pub as_of: String,
+    pub aggregates: LifecycleAggregates,
+    pub metadata: QueryMetadata,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct SubjectKindCount {
+    pub subject_kind: SubjectKind,
+    pub count: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct StateCount {
+    pub state: LifecycleState,
+    pub count: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PolicyState {
+    Compliant,
+    Expiring,
+    Expired,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct PolicyStateCount {
+    pub policy_state: PolicyState,
+    pub count: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct LifecycleAggregates {
+    pub counts_are_exact: bool,
+    pub matched_records: u64,
+    pub matched_findings: u64,
+    pub subject_kind_counts: Vec<SubjectKindCount>,
+    pub state_counts: Vec<StateCount>,
+    pub policy_state_counts: Vec<PolicyStateCount>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CoverageReason {
+    Complete,
+    ScanLimit,
+    GraphChanged,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct QueryCoverage {
+    pub complete: bool,
+    pub truncated: bool,
+    pub scanned_entities: u64,
+    pub lifecycle_entities: u64,
+    pub graph_revision: u64,
+    pub reason: CoverageReason,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct QueryFreshness {
+    pub as_of: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oldest_observed_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub newest_observed_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct QueryMetadata {
+    pub coverage: QueryCoverage,
+    pub freshness: QueryFreshness,
+    pub page_truncated: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct QuerySource {
+    pub scanned_entities: usize,
+    pub truncated: bool,
+    pub graph_revision: u64,
+    pub graph_changed: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Candidate {
+    observation: Observation,
+    evaluation: PolicyEvaluation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CursorDirection {
+    Forward,
+    Backward,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PageCursor {
+    direction: CursorDirection,
+    graph_revision: u64,
+    as_of: String,
+    filter_digest: String,
+    subject_urn: String,
 }
 
 pub fn query_records(
@@ -825,30 +941,109 @@ pub fn query_records(
     entities: Vec<ProjectedResource>,
     as_of: &str,
 ) -> Result<QueryResult, LifecycleError> {
+    let source = QuerySource {
+        scanned_entities: entities.len(),
+        ..QuerySource::default()
+    };
+    query_records_with_source(tenant_id, query, entities, as_of, source)
+}
+
+pub fn query_records_with_source(
+    tenant_id: &TenantId,
+    query: &LifecycleQuery,
+    entities: Vec<ProjectedResource>,
+    as_of: &str,
+    source: QuerySource,
+) -> Result<QueryResult, LifecycleError> {
     let limit = query.limit.unwrap_or(DEFAULT_QUERY_LIMIT);
     if limit == 0 || limit > MAX_QUERY_LIMIT {
         return Err(LifecycleError::InvalidValue(format!(
             "limit must be between 1 and {MAX_QUERY_LIMIT}"
         )));
     }
-    parse_time(as_of, "as_of")?;
-    if let Some(cutoff) = query.expires_before.as_deref() {
-        parse_time(cutoff, "expires_before")?;
-    }
+    let requested_as_of = parse_time(as_of, "as_of")?;
+    let expires_before = query
+        .expires_before
+        .as_deref()
+        .map(|cutoff| parse_time(cutoff, "expires_before"))
+        .transpose()?;
     for owner in &query.owner_urns {
         require_tenant_urn(tenant_id.as_str(), owner)?;
     }
-    let page_anchor = query
+    let locator_urn = query
+        .subject_locator
+        .as_ref()
+        .map(|locator| {
+            if !query.subject_kinds.is_empty()
+                && !query.subject_kinds.contains(&locator.subject_kind)
+            {
+                return Err(LifecycleError::InvalidValue(
+                    "subject_locator kind does not match subject_kinds".to_owned(),
+                ));
+            }
+            canonical_resource_urn(
+                tenant_id.as_str(),
+                locator.subject_kind,
+                &locator.authority_id,
+                &locator.stable_locator,
+            )
+        })
+        .transpose()?;
+    let filter_digest = query_filter_digest(query, limit, locator_urn.as_deref());
+    let page_cursor = query
         .page_token
         .as_deref()
         .map(decode_page_token)
         .transpose()?;
-    let mut records = Vec::new();
+    if let Some(cursor) = page_cursor.as_ref() {
+        if cursor.graph_revision != source.graph_revision {
+            return Err(LifecycleError::InvalidValue(
+                "page_token graph revision is stale".to_owned(),
+            ));
+        }
+        if cursor.filter_digest != filter_digest {
+            return Err(LifecycleError::InvalidValue(
+                "page_token does not match lifecycle filters".to_owned(),
+            ));
+        }
+    }
+    let effective_as_of = page_cursor
+        .as_ref()
+        .map(|cursor| cursor.as_of.as_str())
+        .unwrap_or(as_of);
+    let effective_as_of_time = page_cursor
+        .as_ref()
+        .map(|cursor| parse_time(&cursor.as_of, "page_token as_of"))
+        .transpose()?
+        .unwrap_or(requested_as_of);
+    if effective_as_of_time > requested_as_of
+        || requested_as_of - effective_as_of_time > MAX_CURSOR_AGE
+    {
+        return Err(LifecycleError::InvalidValue(
+            "page_token evaluation time is expired or in the future".to_owned(),
+        ));
+    }
+
+    let mut candidates = Vec::new();
+    let mut lifecycle_entities = 0_u64;
+    let mut matched_findings = 0_u64;
+    let mut subject_kind_counts = [0_u64; 2];
+    let mut state_counts = [0_u64; 7];
+    let mut policy_state_counts = [0_u64; 4];
+    let mut oldest_observed_at: Option<OffsetDateTime> = None;
+    let mut newest_observed_at: Option<OffsetDateTime> = None;
     for entity in entities {
         let Some(observation) = Observation::from_graph(entity)? else {
             continue;
         };
+        lifecycle_entities = lifecycle_entities.saturating_add(1);
         observation.validate(tenant_id)?;
+        if locator_urn
+            .as_deref()
+            .is_some_and(|subject_urn| observation.subject_ref.id != subject_urn)
+        {
+            continue;
+        }
         if (!query.subject_kinds.is_empty()
             && !query.subject_kinds.contains(&observation.subject_kind))
             || (!query.states.is_empty() && !query.states.contains(&observation.state))
@@ -857,8 +1052,7 @@ pub fn query_records(
                     .owner_urn
                     .as_ref()
                     .is_none_or(|owner| !query.owner_urns.contains(owner)))
-            || query.expires_before.as_deref().is_some_and(|cutoff| {
-                let cutoff = parse_time(cutoff, "expires_before").expect("query validated");
+            || expires_before.is_some_and(|cutoff| {
                 observation
                     .expires_at
                     .as_deref()
@@ -868,108 +1062,393 @@ pub fn query_records(
         {
             continue;
         }
-        let evaluation = evaluate(&observation, as_of, DEFAULT_WARNING_WINDOW_DAYS)?;
+        let evaluation = evaluate(&observation, effective_as_of, DEFAULT_WARNING_WINDOW_DAYS)?;
         if query.findings_only && !evaluation.has_finding() {
             continue;
         }
-        let mut findings = Vec::new();
-        let mut action_routes = Vec::new();
+        let observed_at = parse_time(&observation.observed_at, "observed_at")?;
+        oldest_observed_at =
+            Some(oldest_observed_at.map_or(observed_at, |current| current.min(observed_at)));
+        newest_observed_at =
+            Some(newest_observed_at.map_or(observed_at, |current| current.max(observed_at)));
+        subject_kind_counts[subject_kind_index(observation.subject_kind)] =
+            subject_kind_counts[subject_kind_index(observation.subject_kind)].saturating_add(1);
+        state_counts[state_index(observation.state)] =
+            state_counts[state_index(observation.state)].saturating_add(1);
+        let policy_state = policy_state(&evaluation)?;
+        policy_state_counts[policy_state_index(policy_state)] =
+            policy_state_counts[policy_state_index(policy_state)].saturating_add(1);
         if evaluation.has_finding() {
-            let finding_ref = ResourceRef {
-                kind: "finding".to_owned(),
-                id: canonical_finding_urn(tenant_id.as_str(), &observation.subject_ref.id)?,
-                revision: observation.subject_ref.revision.clone(),
-                state: Some("open".to_owned()),
-            };
-            findings.push(FindingBinding {
-                finding_ref: finding_ref.clone(),
-                subject_ref: observation.subject_ref.clone(),
-                finding_kind: format!("{}_expiry", observation.subject_kind.as_str()),
-                status: "open".to_owned(),
-                evidence_claim_refs: observation.evidence_claim_refs.clone(),
-            });
-            action_routes.push(action_route(tenant_id, finding_ref, &observation, true)?);
+            matched_findings = matched_findings.saturating_add(1);
         }
-        records.push(LifecycleRecord {
+        candidates.push(Candidate {
             observation,
-            policy_evaluations: vec![evaluation],
-            findings,
-            action_routes,
-            projected_at: as_of.to_owned(),
+            evaluation,
         });
     }
-    records.sort_by(|left, right| {
+    candidates.sort_unstable_by(|left, right| {
         left.observation
             .subject_ref
             .id
             .cmp(&right.observation.subject_ref.id)
-            .then_with(|| {
-                left.observation
-                    .subject_ref
-                    .revision
-                    .cmp(&right.observation.subject_ref.revision)
-            })
     });
-    if let Some((anchor_id, anchor_revision)) = page_anchor.as_ref() {
-        records.retain(|record| {
-            (
-                record.observation.subject_ref.id.as_str(),
-                record.observation.subject_ref.revision.as_deref(),
-            ) > (anchor_id.as_str(), anchor_revision.as_deref())
-        });
+    if candidates
+        .windows(2)
+        .any(|pair| pair[0].observation.subject_ref.id == pair[1].observation.subject_ref.id)
+    {
+        return Err(LifecycleError::InvalidValue(
+            "duplicate stable lifecycle subject identity".to_owned(),
+        ));
     }
-    let truncated = records.len() > limit;
-    records.truncate(limit);
-    let next_page_token = truncated.then(|| records.last()).flatten().map(|record| {
-        encode_page_token(
-            &record.observation.subject_ref.id,
-            record.observation.subject_ref.revision.as_deref(),
-        )
-    });
+    let matched_records = u64::try_from(candidates.len())
+        .map_err(|_| LifecycleError::InvalidValue("matched record count exceeds u64".to_owned()))?;
+    let (start, end) = page_bounds(&candidates, page_cursor.as_ref(), limit);
+    let has_previous = start > 0;
+    let has_next = end < candidates.len();
+    let records = candidates
+        .drain(start..end)
+        .map(|candidate| lifecycle_record(tenant_id, candidate, effective_as_of))
+        .collect::<Result<Vec<_>, _>>()?;
+    let previous_page_token = (!source.graph_changed && has_previous)
+        .then(|| records.first())
+        .flatten()
+        .map(|record| {
+            encode_page_token(&PageCursor {
+                direction: CursorDirection::Backward,
+                graph_revision: source.graph_revision,
+                as_of: effective_as_of.to_owned(),
+                filter_digest: filter_digest.clone(),
+                subject_urn: record.observation.subject_ref.id.clone(),
+            })
+        });
+    let next_page_token = (!source.graph_changed && has_next)
+        .then(|| records.last())
+        .flatten()
+        .map(|record| {
+            encode_page_token(&PageCursor {
+                direction: CursorDirection::Forward,
+                graph_revision: source.graph_revision,
+                as_of: effective_as_of.to_owned(),
+                filter_digest: filter_digest.clone(),
+                subject_urn: record.observation.subject_ref.id.clone(),
+            })
+        });
+    let page_truncated = has_previous || has_next;
+    let coverage_reason = if source.graph_changed {
+        CoverageReason::GraphChanged
+    } else if source.truncated {
+        CoverageReason::ScanLimit
+    } else {
+        CoverageReason::Complete
+    };
+    let coverage_complete = coverage_reason == CoverageReason::Complete;
     Ok(QueryResult {
         records,
         next_page_token,
-        truncated,
-        as_of: as_of.to_owned(),
+        previous_page_token,
+        truncated: page_truncated || !coverage_complete,
+        as_of: effective_as_of.to_owned(),
+        aggregates: LifecycleAggregates {
+            counts_are_exact: coverage_complete,
+            matched_records,
+            matched_findings,
+            subject_kind_counts: [SubjectKind::Credential, SubjectKind::Certificate]
+                .into_iter()
+                .enumerate()
+                .map(|(index, subject_kind)| SubjectKindCount {
+                    subject_kind,
+                    count: subject_kind_counts[index],
+                })
+                .collect(),
+            state_counts: [
+                LifecycleState::Active,
+                LifecycleState::Expiring,
+                LifecycleState::Expired,
+                LifecycleState::Rotated,
+                LifecycleState::Revoked,
+                LifecycleState::Inactive,
+                LifecycleState::Unknown,
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(index, state)| StateCount {
+                state,
+                count: state_counts[index],
+            })
+            .collect(),
+            policy_state_counts: [
+                PolicyState::Compliant,
+                PolicyState::Expiring,
+                PolicyState::Expired,
+                PolicyState::Unknown,
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(index, policy_state)| PolicyStateCount {
+                policy_state,
+                count: policy_state_counts[index],
+            })
+            .collect(),
+        },
+        metadata: QueryMetadata {
+            coverage: QueryCoverage {
+                complete: coverage_complete,
+                truncated: source.truncated,
+                scanned_entities: u64::try_from(source.scanned_entities).map_err(|_| {
+                    LifecycleError::InvalidValue("scanned entity count exceeds u64".to_owned())
+                })?,
+                lifecycle_entities,
+                graph_revision: source.graph_revision,
+                reason: coverage_reason,
+            },
+            freshness: QueryFreshness {
+                as_of: effective_as_of_time
+                    .format(&Rfc3339)
+                    .map_err(|_| LifecycleError::Invalid("as_of"))?,
+                oldest_observed_at: format_optional_time(oldest_observed_at)?,
+                newest_observed_at: format_optional_time(newest_observed_at)?,
+            },
+            page_truncated,
+        },
     })
 }
 
-fn encode_page_token(subject_urn: &str, revision: Option<&str>) -> String {
-    let raw = format!("{subject_urn}\0{}", revision.unwrap_or_default());
+fn lifecycle_record(
+    tenant_id: &TenantId,
+    candidate: Candidate,
+    as_of: &str,
+) -> Result<LifecycleRecord, LifecycleError> {
+    let mut findings = Vec::new();
+    let mut action_routes = Vec::new();
+    if candidate.evaluation.has_finding() {
+        let finding_ref = ResourceRef {
+            kind: "finding".to_owned(),
+            id: canonical_finding_urn(tenant_id.as_str(), &candidate.observation.subject_ref.id)?,
+            revision: candidate.observation.subject_ref.revision.clone(),
+            state: Some("open".to_owned()),
+        };
+        findings.push(FindingBinding {
+            finding_ref: finding_ref.clone(),
+            subject_ref: candidate.observation.subject_ref.clone(),
+            finding_kind: format!("{}_expiry", candidate.observation.subject_kind.as_str()),
+            status: "open".to_owned(),
+            evidence_claim_refs: candidate.observation.evidence_claim_refs.clone(),
+        });
+        action_routes.push(action_route(
+            tenant_id,
+            finding_ref,
+            &candidate.observation,
+            true,
+        )?);
+    }
+    Ok(LifecycleRecord {
+        observation: candidate.observation,
+        policy_evaluations: vec![candidate.evaluation],
+        findings,
+        action_routes,
+        projected_at: as_of.to_owned(),
+    })
+}
+
+fn page_bounds(
+    candidates: &[Candidate],
+    cursor: Option<&PageCursor>,
+    limit: usize,
+) -> (usize, usize) {
+    match cursor {
+        None => (0, candidates.len().min(limit)),
+        Some(cursor) => {
+            let position = candidates.partition_point(|candidate| {
+                candidate.observation.subject_ref.id.as_str() < cursor.subject_urn.as_str()
+            });
+            match cursor.direction {
+                CursorDirection::Forward => {
+                    let start = if candidates[position..].first().is_some_and(|candidate| {
+                        candidate.observation.subject_ref.id == cursor.subject_urn
+                    }) {
+                        position.saturating_add(1)
+                    } else {
+                        position
+                    };
+                    (start, start.saturating_add(limit).min(candidates.len()))
+                }
+                CursorDirection::Backward => {
+                    let end = position;
+                    (end.saturating_sub(limit), end)
+                }
+            }
+        }
+    }
+}
+
+fn query_filter_digest(query: &LifecycleQuery, limit: usize, locator_urn: Option<&str>) -> String {
+    let subject_kinds = canonical_filter_values(
+        query
+            .subject_kinds
+            .iter()
+            .map(|kind| kind.as_str())
+            .collect(),
+    );
+    let states = canonical_filter_values(
+        query
+            .states
+            .iter()
+            .map(|state| state_name(*state))
+            .collect(),
+    );
+    let owners = canonical_filter_values(query.owner_urns.iter().map(String::as_str).collect());
+    let raw = format!(
+        "{subject_kinds}\0{states}\0{}\0{}\0{}\0{limit}\0{}",
+        owners,
+        query.expires_before.as_deref().unwrap_or_default(),
+        query.findings_only,
+        locator_urn.unwrap_or_default(),
+    );
+    hex_encode(&Sha256::digest(raw.as_bytes()))
+}
+
+fn canonical_filter_values(mut values: Vec<&str>) -> String {
+    values.sort_unstable();
+    values.dedup();
+    values.join(",")
+}
+
+fn encode_page_token(cursor: &PageCursor) -> String {
+    let direction = match cursor.direction {
+        CursorDirection::Forward => "f",
+        CursorDirection::Backward => "b",
+    };
+    let raw = format!(
+        "{direction}\0{}\0{}\0{}\0{}",
+        cursor.graph_revision, cursor.as_of, cursor.filter_digest, cursor.subject_urn
+    );
     let mut encoded = String::with_capacity(3 + raw.len() * 2);
-    encoded.push_str("v1.");
-    for byte in raw.as_bytes() {
+    encoded.push_str("v2.");
+    encoded.push_str(&hex_encode(raw.as_bytes()));
+    encoded
+}
+
+fn decode_page_token(token: &str) -> Result<PageCursor, LifecycleError> {
+    if token.len() > MAX_PAGE_TOKEN_CHARS {
+        return Err(LifecycleError::InvalidValue(
+            "page_token exceeds maximum length".to_owned(),
+        ));
+    }
+    let encoded = token
+        .strip_prefix("v2.")
+        .filter(|encoded| !encoded.is_empty() && encoded.len() % 2 == 0)
+        .ok_or_else(|| LifecycleError::InvalidValue("invalid page_token".to_owned()))?;
+    let bytes = hex_decode(encoded)?;
+    let raw = String::from_utf8(bytes)
+        .map_err(|_| LifecycleError::InvalidValue("invalid page_token".to_owned()))?;
+    let mut parts = raw.split('\0');
+    let direction = match parts.next() {
+        Some("f") => CursorDirection::Forward,
+        Some("b") => CursorDirection::Backward,
+        _ => {
+            return Err(LifecycleError::InvalidValue(
+                "invalid page_token".to_owned(),
+            ));
+        }
+    };
+    let graph_revision = parts
+        .next()
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or_else(|| LifecycleError::InvalidValue("invalid page_token".to_owned()))?;
+    let as_of = parts
+        .next()
+        .filter(|value| parse_time(value, "page_token as_of").is_ok())
+        .ok_or_else(|| LifecycleError::InvalidValue("invalid page_token".to_owned()))?;
+    let filter_digest = parts
+        .next()
+        .filter(|value| value.len() == 64)
+        .ok_or_else(|| LifecycleError::InvalidValue("invalid page_token".to_owned()))?;
+    let subject_urn = parts
+        .next()
+        .filter(|value| !value.is_empty() && value.len() <= MAX_CURSOR_SUBJECT_URN_BYTES)
+        .ok_or_else(|| LifecycleError::InvalidValue("invalid page_token".to_owned()))?;
+    if parts.next().is_some() {
+        return Err(LifecycleError::InvalidValue(
+            "invalid page_token".to_owned(),
+        ));
+    }
+    Ok(PageCursor {
+        direction,
+        graph_revision,
+        as_of: as_of.to_owned(),
+        filter_digest: filter_digest.to_owned(),
+        subject_urn: subject_urn.to_owned(),
+    })
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
         use std::fmt::Write as _;
         write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
     }
     encoded
 }
 
-fn decode_page_token(token: &str) -> Result<(String, Option<String>), LifecycleError> {
-    let encoded = token
-        .strip_prefix("v1.")
-        .filter(|encoded| !encoded.is_empty() && encoded.len() % 2 == 0)
-        .ok_or_else(|| LifecycleError::InvalidValue("invalid page_token".to_owned()))?;
-    let bytes = encoded
+fn hex_decode(encoded: &str) -> Result<Vec<u8>, LifecycleError> {
+    encoded
         .as_bytes()
         .chunks_exact(2)
         .map(|pair| {
-            let value = std::str::from_utf8(pair)
+            std::str::from_utf8(pair)
                 .ok()
-                .and_then(|value| u8::from_str_radix(value, 16).ok());
-            value.ok_or_else(|| LifecycleError::InvalidValue("invalid page_token".to_owned()))
+                .and_then(|value| u8::from_str_radix(value, 16).ok())
+                .ok_or_else(|| LifecycleError::InvalidValue("invalid page_token".to_owned()))
         })
-        .collect::<Result<Vec<_>, _>>()?;
-    let raw = String::from_utf8(bytes)
-        .map_err(|_| LifecycleError::InvalidValue("invalid page_token".to_owned()))?;
-    let (subject_urn, revision) = raw
-        .split_once('\0')
-        .filter(|(subject_urn, _)| !subject_urn.is_empty())
-        .ok_or_else(|| LifecycleError::InvalidValue("invalid page_token".to_owned()))?;
-    Ok((
-        subject_urn.to_owned(),
-        (!revision.is_empty()).then(|| revision.to_owned()),
-    ))
+        .collect()
+}
+
+fn subject_kind_index(kind: SubjectKind) -> usize {
+    match kind {
+        SubjectKind::Credential => 0,
+        SubjectKind::Certificate => 1,
+    }
+}
+
+fn state_index(state: LifecycleState) -> usize {
+    match state {
+        LifecycleState::Active => 0,
+        LifecycleState::Expiring => 1,
+        LifecycleState::Expired => 2,
+        LifecycleState::Rotated => 3,
+        LifecycleState::Revoked => 4,
+        LifecycleState::Inactive => 5,
+        LifecycleState::Unknown => 6,
+    }
+}
+
+fn policy_state(evaluation: &PolicyEvaluation) -> Result<PolicyState, LifecycleError> {
+    match evaluation.state {
+        "compliant" => Ok(PolicyState::Compliant),
+        "expiring" => Ok(PolicyState::Expiring),
+        "expired" => Ok(PolicyState::Expired),
+        "unknown" => Ok(PolicyState::Unknown),
+        _ => Err(LifecycleError::Invalid("policy evaluation state")),
+    }
+}
+
+fn policy_state_index(state: PolicyState) -> usize {
+    match state {
+        PolicyState::Compliant => 0,
+        PolicyState::Expiring => 1,
+        PolicyState::Expired => 2,
+        PolicyState::Unknown => 3,
+    }
+}
+
+fn format_optional_time(value: Option<OffsetDateTime>) -> Result<Option<String>, LifecycleError> {
+    value
+        .map(|value| {
+            value
+                .format(&Rfc3339)
+                .map_err(|_| LifecycleError::Invalid("observed_at"))
+        })
+        .transpose()
 }
 
 pub fn canonical_resource_urn(
@@ -987,13 +1466,19 @@ pub fn canonical_resource_urn(
             return Err(LifecycleError::Invalid(field));
         }
     }
-    Ok(format!(
+    let urn = format!(
         "urn:cerebro:{}:{}:{}:{}",
         encode_segment(tenant_id),
         kind.as_str(),
         encode_segment(authority_id),
         encode_segment(stable_locator)
-    ))
+    );
+    if urn.len() > MAX_CURSOR_SUBJECT_URN_BYTES {
+        return Err(LifecycleError::InvalidValue(
+            "canonical resource URN exceeds maximum length".to_owned(),
+        ));
+    }
+    Ok(urn)
 }
 
 pub fn canonical_finding_urn(tenant_id: &str, finding_id: &str) -> Result<String, LifecycleError> {
@@ -1471,18 +1956,63 @@ mod tests {
     #[test]
     fn lifecycle_page_token_round_trips_stable_subject_urn() {
         let subject = "urn:cerebro:tenant-a:credential:aws%2Fproduction:deploy%2Fsigning";
-        let token = encode_page_token(subject, Some("key-2026-07"));
+        let cursor = PageCursor {
+            direction: CursorDirection::Forward,
+            graph_revision: 42,
+            as_of: "2026-07-26T12:00:00Z".to_owned(),
+            filter_digest: "a".repeat(64),
+            subject_urn: subject.to_owned(),
+        };
+        let token = encode_page_token(&cursor);
 
         assert_ne!(token, subject);
-        assert_eq!(
-            decode_page_token(&token).unwrap(),
-            (subject.to_owned(), Some("key-2026-07".to_owned()))
-        );
+        assert_eq!(decode_page_token(&token).unwrap(), cursor);
         assert!(decode_page_token("v1.not-hex").is_err());
     }
 
     #[test]
-    fn bounded_query_filters_and_resumes_with_a_composite_cursor() {
+    fn page_token_decode_rejects_oversized_input_before_hex_allocation() {
+        let oversized = format!("v2.{}", "aa".repeat(MAX_PAGE_TOKEN_CHARS));
+        let error = decode_page_token(&oversized).unwrap_err();
+        assert!(error.to_string().contains("maximum length"));
+    }
+
+    #[test]
+    fn cursor_filter_digest_canonicalizes_set_order_and_duplicates() {
+        let first = LifecycleQuery {
+            subject_kinds: vec![
+                SubjectKind::Certificate,
+                SubjectKind::Credential,
+                SubjectKind::Certificate,
+            ],
+            states: vec![
+                LifecycleState::Expired,
+                LifecycleState::Active,
+                LifecycleState::Expired,
+            ],
+            owner_urns: vec![
+                "urn:cerebro:tenant-a:team:z".to_owned(),
+                "urn:cerebro:tenant-a:team:a".to_owned(),
+            ],
+            ..LifecycleQuery::default()
+        };
+        let second = LifecycleQuery {
+            subject_kinds: vec![SubjectKind::Credential, SubjectKind::Certificate],
+            states: vec![LifecycleState::Active, LifecycleState::Expired],
+            owner_urns: vec![
+                "urn:cerebro:tenant-a:team:a".to_owned(),
+                "urn:cerebro:tenant-a:team:z".to_owned(),
+            ],
+            ..LifecycleQuery::default()
+        };
+        assert_eq!(
+            query_filter_digest(&first, DEFAULT_QUERY_LIMIT, None),
+            query_filter_digest(&second, DEFAULT_QUERY_LIMIT, None)
+        );
+    }
+
+    #[test]
+    fn bounded_query_filters_and_navigates_both_directions() {
         let mut first = observation(
             LifecycleState::Active,
             "key-1",
@@ -1527,23 +2057,307 @@ mod tests {
         assert!(first_page.truncated);
         assert_eq!(first_page.records.len(), 1);
 
+        let filter = LifecycleQuery {
+            subject_kinds: vec![SubjectKind::Credential],
+            owner_urns: vec!["urn:cerebro:tenant-a:team:security".to_owned()],
+            findings_only: true,
+            limit: Some(1),
+            ..LifecycleQuery::default()
+        };
         let second_page = query_records(
             &tenant(),
             &LifecycleQuery {
-                states: vec![LifecycleState::Expired],
-                expires_before: Some("2026-07-15T12:00:00Z".to_owned()),
                 page_token: first_page.next_page_token,
-                ..LifecycleQuery::default()
+                ..filter.clone()
             },
-            entities,
+            entities.clone(),
             "2026-07-26T12:00:00Z",
         )
         .unwrap();
-        assert!(!second_page.truncated);
+        assert!(second_page.truncated);
         assert_eq!(second_page.records.len(), 1);
         assert_eq!(
             second_page.records[0].observation.state,
             LifecycleState::Expired
+        );
+        let previous_page = query_records(
+            &tenant(),
+            &LifecycleQuery {
+                page_token: second_page.previous_page_token,
+                ..filter
+            },
+            entities,
+            "2026-07-26T12:05:00Z",
+        )
+        .unwrap();
+        assert_eq!(
+            previous_page.records[0].observation.subject_ref.id,
+            first_page.records[0].observation.subject_ref.id
+        );
+        assert_eq!(previous_page.as_of, first_page.as_of);
+    }
+
+    #[test]
+    fn page_cursor_binds_filters_and_graph_revision() {
+        let entity = projected(observation(
+            LifecycleState::Expired,
+            "key-1",
+            Some("2026-07-01T12:00:00Z"),
+        ));
+        let source = QuerySource {
+            scanned_entities: 1,
+            graph_revision: 7,
+            ..QuerySource::default()
+        };
+        let first = query_records_with_source(
+            &tenant(),
+            &LifecycleQuery {
+                limit: Some(1),
+                ..LifecycleQuery::default()
+            },
+            vec![
+                entity.clone(),
+                projected({
+                    let mut other = observation(
+                        LifecycleState::Expired,
+                        "key-2",
+                        Some("2026-07-01T12:00:00Z"),
+                    );
+                    other.stable_locator = "other".to_owned();
+                    other.subject_ref.id = canonical_resource_urn(
+                        "tenant-a",
+                        other.subject_kind,
+                        &other.authority_id,
+                        &other.stable_locator,
+                    )
+                    .unwrap();
+                    other
+                }),
+            ],
+            "2026-07-26T12:00:00Z",
+            source,
+        )
+        .unwrap();
+        let token = first.next_page_token.unwrap();
+        let filter_error = query_records_with_source(
+            &tenant(),
+            &LifecycleQuery {
+                findings_only: true,
+                limit: Some(1),
+                page_token: Some(token.clone()),
+                ..LifecycleQuery::default()
+            },
+            vec![entity.clone()],
+            "2026-07-26T12:00:00Z",
+            source,
+        )
+        .unwrap_err();
+        assert!(filter_error.to_string().contains("filters"));
+        let revision_error = query_records_with_source(
+            &tenant(),
+            &LifecycleQuery {
+                limit: Some(1),
+                page_token: Some(token),
+                ..LifecycleQuery::default()
+            },
+            vec![entity],
+            "2026-07-26T12:00:00Z",
+            QuerySource {
+                graph_revision: 8,
+                ..source
+            },
+        )
+        .unwrap_err();
+        assert!(revision_error.to_string().contains("revision"));
+    }
+
+    #[test]
+    fn source_coverage_and_page_truncation_are_independent() {
+        let result = query_records_with_source(
+            &tenant(),
+            &LifecycleQuery::default(),
+            vec![projected(observation(
+                LifecycleState::Active,
+                "key-1",
+                Some("2027-07-01T12:00:00Z"),
+            ))],
+            "2026-07-26T12:00:00Z",
+            QuerySource {
+                scanned_entities: 10_000,
+                truncated: true,
+                graph_revision: 9,
+                graph_changed: false,
+            },
+        )
+        .unwrap();
+        assert!(!result.metadata.page_truncated);
+        assert!(!result.metadata.coverage.complete);
+        assert!(result.metadata.coverage.truncated);
+        assert!(!result.aggregates.counts_are_exact);
+        assert!(result.truncated);
+    }
+
+    #[test]
+    fn graph_changed_results_are_incomplete_and_not_continuable() {
+        let mut second = observation(
+            LifecycleState::Active,
+            "material-2",
+            Some("2027-07-01T12:00:00Z"),
+        );
+        second.stable_locator = "second".to_owned();
+        second.subject_ref.id = canonical_resource_urn(
+            "tenant-a",
+            second.subject_kind,
+            &second.authority_id,
+            &second.stable_locator,
+        )
+        .unwrap();
+        let result = query_records_with_source(
+            &tenant(),
+            &LifecycleQuery {
+                limit: Some(1),
+                ..LifecycleQuery::default()
+            },
+            vec![
+                projected(observation(
+                    LifecycleState::Active,
+                    "material-1",
+                    Some("2027-07-01T12:00:00Z"),
+                )),
+                projected(second),
+            ],
+            "2026-07-26T12:00:00Z",
+            QuerySource {
+                scanned_entities: 2,
+                graph_revision: 18,
+                graph_changed: true,
+                ..QuerySource::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.metadata.coverage.reason,
+            CoverageReason::GraphChanged
+        );
+        assert!(!result.metadata.coverage.complete);
+        assert!(result.metadata.page_truncated);
+        assert!(result.next_page_token.is_none());
+        assert!(result.previous_page_token.is_none());
+    }
+
+    #[test]
+    fn aggregates_cover_the_filtered_population_not_only_the_page() {
+        let mut observations = Vec::new();
+        for (locator, state, revision) in [
+            ("a", LifecycleState::Expired, "material-1"),
+            ("b", LifecycleState::Expiring, "material-2"),
+            ("c", LifecycleState::Active, "material-3"),
+            ("d", LifecycleState::Active, "material-4"),
+        ] {
+            let mut value = observation(
+                state,
+                revision,
+                Some(if locator == "c" {
+                    "2027-07-01T12:00:00Z"
+                } else {
+                    "2026-07-01T12:00:00Z"
+                }),
+            );
+            value.stable_locator = locator.to_owned();
+            value.subject_ref.id = canonical_resource_urn(
+                "tenant-a",
+                value.subject_kind,
+                &value.authority_id,
+                &value.stable_locator,
+            )
+            .unwrap();
+            observations.push(projected(value));
+        }
+        let result = query_records_with_source(
+            &tenant(),
+            &LifecycleQuery {
+                findings_only: true,
+                limit: Some(1),
+                ..LifecycleQuery::default()
+            },
+            observations,
+            "2026-07-26T12:00:00Z",
+            QuerySource {
+                scanned_entities: 4,
+                graph_revision: 11,
+                ..QuerySource::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.records.len(), 1);
+        assert_eq!(result.aggregates.matched_records, 3);
+        assert_eq!(result.aggregates.matched_findings, 3);
+        assert!(result.aggregates.counts_are_exact);
+        assert!(result.metadata.page_truncated);
+        assert_eq!(
+            result
+                .aggregates
+                .state_counts
+                .iter()
+                .find(|count| count.state == LifecycleState::Active)
+                .map(|count| count.count),
+            Some(1)
+        );
+        assert_eq!(
+            result
+                .aggregates
+                .policy_state_counts
+                .iter()
+                .find(|count| count.policy_state == PolicyState::Expired)
+                .map(|count| count.count),
+            Some(2)
+        );
+        assert_eq!(
+            result.metadata.freshness.oldest_observed_at.as_deref(),
+            Some("2026-07-26T12:00:00Z")
+        );
+    }
+
+    #[test]
+    fn subject_locator_uses_authority_and_stable_slot_not_material_revision() {
+        let mut value = observation(
+            LifecycleState::Active,
+            "material-2026-08",
+            Some("2027-07-01T12:00:00Z"),
+        );
+        value.stable_locator = "direct/slot".to_owned();
+        value.subject_ref.id = canonical_resource_urn(
+            "tenant-a",
+            value.subject_kind,
+            &value.authority_id,
+            &value.stable_locator,
+        )
+        .unwrap();
+        let result = query_records(
+            &tenant(),
+            &LifecycleQuery {
+                subject_locator: Some(SubjectLocator {
+                    subject_kind: SubjectKind::Credential,
+                    authority_id: value.authority_id.clone(),
+                    stable_locator: value.stable_locator.clone(),
+                }),
+                ..LifecycleQuery::default()
+            },
+            vec![projected(value)],
+            "2026-07-26T12:00:00Z",
+        )
+        .unwrap();
+
+        assert_eq!(result.records.len(), 1);
+        assert_eq!(
+            result.records[0]
+                .observation
+                .subject_ref
+                .revision
+                .as_deref(),
+            Some("material-2026-08")
         );
     }
 

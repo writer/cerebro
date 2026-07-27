@@ -5022,6 +5022,21 @@ export type RuntimeResponseExecuteRequest = {
   trusted_scope?: boolean;
 };
 
+export type SecurityLifecycleAggregates = {
+  counts_are_exact: boolean;
+  matched_findings: number;
+  matched_records: number;
+  policy_state_counts: ({ count?: number; policy_state?: "SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT" | "SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING" | "SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED" | "SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN" })[];
+  state_counts: ({ count?: number; state?: "SECURITY_LIFECYCLE_STATE_ACTIVE" | "SECURITY_LIFECYCLE_STATE_EXPIRING" | "SECURITY_LIFECYCLE_STATE_EXPIRED" | "SECURITY_LIFECYCLE_STATE_ROTATED" | "SECURITY_LIFECYCLE_STATE_REVOKED" | "SECURITY_LIFECYCLE_STATE_INACTIVE" | "SECURITY_LIFECYCLE_STATE_UNKNOWN" })[];
+  subject_kind_counts: ({ count?: number; subject_kind?: "SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL" | "SECURITY_LIFECYCLE_SUBJECT_KIND_CERTIFICATE" })[];
+};
+
+export type SecurityLifecycleQueryMetadata = {
+  coverage: { complete?: boolean; graph_revision?: number; lifecycle_entities?: number; reason?: "SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE" | "SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT" | "SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED"; scanned_entities?: number; truncated?: boolean };
+  freshness: { as_of?: string; newest_observed_at?: string; oldest_observed_at?: string };
+  page_truncated: boolean;
+};
+
 export type SourceCDKPromotionPlan = {
   blockers?: string[];
   checklist: SourceCDKPromotionPlanStep[];

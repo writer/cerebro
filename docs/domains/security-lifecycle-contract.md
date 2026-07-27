@@ -51,7 +51,32 @@ authority.
 
 ## Operator reads
 
-`SecurityLifecycleQuery` is tenant scoped and capped at 500 records. Operators can filter by credential or certificate, current lifecycle state, owner, expiry cutoff, and finding presence. `SecurityLifecycleRecord` carries the observation, policy evaluations, findings, action routes, and projection time. The read service rechecks tenant scope after loading records.
+`SecurityLifecycleQuery` is tenant scoped and caps each page at 500 records. Operators can filter by credential or certificate, current lifecycle state, owner, expiry cutoff, and finding presence. A subject locator lookup derives the canonical URN from subject kind, authority, and stable locator; material revisions are never lookup identity. `SecurityLifecycleRecord` carries the observation, policy evaluations, findings, action routes, and projection time.
+
+Query results include filtered aggregate counts, coverage, freshness, and
+separate page/source truncation state. Aggregate counts describe the covered
+filtered population, not the returned page. Observed `state_counts` preserve
+provider state and filter semantics. Effective `policy_state_counts` report
+compliant, expiring, expired, or unknown posture after expiry policy
+evaluation; an active provider record can therefore count as policy-expired.
+`counts_are_exact` is false when the bounded graph read cannot prove full
+coverage. `coverage.complete` is also false if the graph revision changes
+during the read. The oldest and newest observation timestamps report freshness
+without inventing a source SLA.
+
+Forward and backward page tokens order records by canonical subject URN only.
+Tokens bind the filter, evaluation time, and graph revision. They are rejected
+after a graph revision or filter change instead of silently mixing snapshots.
+Material revision changes therefore do not move the stable subject to another
+page. Tokens expire after 15 minutes, oversized tokens are rejected before
+decode, and reads spanning a graph revision change do not issue continuation
+tokens.
+
+The general graph scan remains capped and reports incomplete coverage when it
+reaches that cap. Raising that scan bound is not the scale architecture. A
+durable lifecycle-specific indexed graph query must provide grouped filtered
+counts and stable-identity keyset pages before the endpoint can claim
+100,000-subject readiness.
 
 `cerebro-platform` owns the authenticated Rust HTTP adapter and reads through
 the bounded `AgentGraph` capability. Stable identity, metadata admission,

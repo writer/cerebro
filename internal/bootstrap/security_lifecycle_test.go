@@ -76,6 +76,16 @@ func TestSecurityLifecycleHandlerPreservesClientAndBackendErrors(t *testing.T) {
 			status: http.StatusBadRequest,
 		},
 		{
+			name:   "incomplete subject locator",
+			query:  "?subject_kind=credential&authority_id=authority-a",
+			status: http.StatusBadRequest,
+		},
+		{
+			name:   "ambiguous subject locator kind",
+			query:  "?subject_kind=credential&subject_kind=certificate&authority_id=authority-a&stable_locator=slot-a",
+			status: http.StatusBadRequest,
+		},
+		{
 			name:   "graph unavailable",
 			query:  "?page_token=unavailable",
 			status: http.StatusServiceUnavailable,

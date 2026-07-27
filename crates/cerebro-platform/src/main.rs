@@ -31,8 +31,8 @@ use cerebro_organizational_store::{
 };
 use cerebro_security_lifecycle::{
     CERTIFICATE_EVENT_KIND, CREDENTIAL_EVENT_KIND, LifecycleQuery, LifecycleState,
-    ProjectedResource, SubjectKind, decode_protobuf_observation, project_observation,
-    query_records,
+    ProjectedResource, QuerySource, SubjectKind, SubjectLocator, canonical_resource_urn,
+    decode_protobuf_observation, project_observation, query_records_with_source,
 };
 use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
@@ -547,10 +547,25 @@ struct HttpLifecycleQuery {
     limit: Option<usize>,
     #[serde(default)]
     page_token: Option<String>,
+    #[serde(default)]
+    authority_id: Option<String>,
+    #[serde(default)]
+    stable_locator: Option<String>,
 }
 
 impl From<HttpLifecycleQuery> for LifecycleQuery {
     fn from(value: HttpLifecycleQuery) -> Self {
+        let subject_locator =
+            value
+                .authority_id
+                .zip(value.stable_locator)
+                .map(|(authority_id, stable_locator)| SubjectLocator {
+                    subject_kind: value
+                        .subject_kind
+                        .expect("subject locator validated before conversion"),
+                    authority_id,
+                    stable_locator,
+                });
         Self {
             subject_kinds: value.subject_kind.into_iter().collect(),
             states: value.state.into_iter().collect(),
@@ -559,6 +574,7 @@ impl From<HttpLifecycleQuery> for LifecycleQuery {
             findings_only: value.findings_only,
             limit: value.limit,
             page_token: value.page_token,
+            subject_locator,
         }
     }
 }
@@ -1405,12 +1421,46 @@ async fn security_lifecycle(
     Query(query): Query<HttpLifecycleQuery>,
 ) -> Result<Json<cerebro_security_lifecycle::QueryResult>, (StatusCode, Json<ErrorResponse>)> {
     let tenant_id = authenticated.0;
-    let resource_kinds = vec!["resource".to_owned()];
-    let entities = state
+    if query.authority_id.is_some() != query.stable_locator.is_some()
+        || (query.authority_id.is_some() && query.subject_kind.is_none())
+    {
+        return Err(bad_request(
+            "invalid_security_lifecycle_locator",
+            "authority_id, stable_locator, and subject_kind are required together.",
+        ));
+    }
+    let lifecycle_query: LifecycleQuery = query.into();
+    let revision_before = state
         .graph
-        .search(&tenant_id, "", &resource_kinds, MAX_SECURITY_LIFECYCLE_SCAN)
+        .revision(&tenant_id)
         .await
-        .map_err(context_error)?
+        .map_err(context_error)?;
+    let (entities, scan_truncated) = if let Some(locator) = lifecycle_query.subject_locator.as_ref()
+    {
+        let subject_urn = canonical_resource_urn(
+            tenant_id.as_str(),
+            locator.subject_kind,
+            &locator.authority_id,
+            &locator.stable_locator,
+        )
+        .map_err(|error| bad_request("invalid_security_lifecycle_locator", error.to_string()))?;
+        match state.graph.resolve(&tenant_id, &subject_urn).await {
+            Ok(entity) => (vec![entity], false),
+            Err(ContextError::EntityNotFound) => (Vec::new(), false),
+            Err(error) => return Err(context_error(error)),
+        }
+    } else {
+        let resource_kinds = vec!["resource".to_owned()];
+        let entities = state
+            .graph
+            .search(&tenant_id, "", &resource_kinds, MAX_SECURITY_LIFECYCLE_SCAN)
+            .await
+            .map_err(context_error)?;
+        let scan_truncated = entities.len() == MAX_SECURITY_LIFECYCLE_SCAN;
+        (entities, scan_truncated)
+    };
+    let scanned_entities = entities.len();
+    let entities = entities
         .into_iter()
         .map(|entity| ProjectedResource {
             agent_key: entity.agent_key,
@@ -1418,6 +1468,11 @@ async fn security_lifecycle(
             properties: entity.properties,
         })
         .collect();
+    let revision_after = state
+        .graph
+        .revision(&tenant_id)
+        .await
+        .map_err(context_error)?;
     let as_of = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|error| {
@@ -1426,9 +1481,20 @@ async fn security_lifecycle(
                 format!("Cannot format read time: {error}"),
             )
         })?;
-    query_records(&tenant_id, &query.into(), entities, &as_of)
-        .map(Json)
-        .map_err(|error| bad_request("invalid_security_lifecycle_query", error.to_string()))
+    query_records_with_source(
+        &tenant_id,
+        &lifecycle_query,
+        entities,
+        &as_of,
+        QuerySource {
+            scanned_entities,
+            truncated: scan_truncated,
+            graph_revision: revision_after,
+            graph_changed: revision_before != revision_after,
+        },
+    )
+    .map(Json)
+    .map_err(|error| bad_request("invalid_security_lifecycle_query", error.to_string()))
 }
 
 async fn explain_assertion(
