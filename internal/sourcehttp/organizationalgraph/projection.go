@@ -23,7 +23,10 @@ const (
 	projectionAuthorityRust   = "rust"
 )
 
-var ErrSourceCollectionNotFound = errors.New("source collection receipt not found")
+var (
+	ErrSourceCollectionNotFound           = errors.New("source collection receipt not found")
+	ErrSourceCollectionProvenanceMismatch = errors.New("source collection receipt provenance mismatch")
+)
 
 // ProjectionClient talks only to the Rust projection authority boundary.
 type ProjectionClient struct {
@@ -359,7 +362,7 @@ func (c *ProjectionClient) GetSourceCollection(ctx context.Context, tenantID, ru
 	if strings.TrimSpace(decoded.TenantID) != tenantID ||
 		strings.TrimSpace(decoded.SourceRuntimeID) != runtimeID ||
 		strings.TrimSpace(decoded.CollectionID) != collectionID {
-		return manifest, errors.New("rust source collection response provenance does not match the requested tenant, runtime, and collection")
+		return manifest, fmt.Errorf("%w: response does not match the requested tenant, runtime, and collection", ErrSourceCollectionProvenanceMismatch)
 	}
 	return ports.SourceCollectionManifest{
 		CollectionID:          decoded.CollectionID,

@@ -13,6 +13,7 @@ import (
 	"connectrpc.com/connect"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securitylifecyclefindings"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -115,7 +116,7 @@ func TestSecurityLifecycleFindingReconcileUsesDurableFindingAndAuditAuthorities(
 		SourceCollectionReceipts: receipt,
 	}}
 
-	first := reconcileLifecycleFinding(t, app, findingURN)
+	first := reconcileLifecycleFinding(t, app)
 	if first.code != http.StatusOK || first.body.Status != "open" || first.body.FindingID != findingURN {
 		t.Fatalf("first reconcile = %#v", first)
 	}
@@ -137,7 +138,7 @@ func TestSecurityLifecycleFindingReconcileUsesDurableFindingAndAuditAuthorities(
 		t.Fatalf("audit preview finding/runtime = %q/%q", preview.Finding.ID, preview.FindingRecord.RuntimeID)
 	}
 
-	second := reconcileLifecycleFinding(t, app, findingURN)
+	second := reconcileLifecycleFinding(t, app)
 	if second.code != http.StatusOK || second.body.Status != "open" {
 		t.Fatalf("provider-success reconcile = %#v", second)
 	}
@@ -145,14 +146,14 @@ func TestSecurityLifecycleFindingReconcileUsesDurableFindingAndAuditAuthorities(
 		t.Fatalf("finding after provider success = %#v, want stable open finding", got)
 	}
 
-	incomplete := reconcileLifecycleFinding(t, app, findingURN)
+	incomplete := reconcileLifecycleFinding(t, app)
 	if incomplete.code != http.StatusAccepted ||
 		incomplete.body.Verification != "collection_incomplete" ||
 		store.findings[findingURN].Status != "open" {
 		t.Fatalf("incomplete reconcile = %#v finding=%#v", incomplete, store.findings[findingURN])
 	}
 
-	verified := reconcileLifecycleFinding(t, app, findingURN)
+	verified := reconcileLifecycleFinding(t, app)
 	if verified.code != http.StatusOK ||
 		verified.body.Status != "resolved" ||
 		verified.body.Verification != "verified_closed" {
@@ -208,22 +209,22 @@ func TestLifecycleOpenObservationRequiresMatchingResolverProvenanceAliases(t *te
 		time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC),
 		"urn:cerebro:tenant-a:evidence:open",
 	)
-	observation, err := lifecycleOpenObservation("tenant-a", findingURN, response)
+	observation, err := securitylifecyclefindings.ObservationFromResolved("tenant-a", findingURN, response)
 	if err != nil {
-		t.Fatalf("lifecycleOpenObservation(pending collection) error = %v", err)
+		t.Fatalf("ObservationFromResolved(pending collection) error = %v", err)
 	}
 	if observation.SourceCollectionID != "" {
 		t.Fatalf("pending source collection = %q, want empty", observation.SourceCollectionID)
 	}
 
 	response.SourceRuntimeId = "other-runtime"
-	if _, err := lifecycleOpenObservation("tenant-a", findingURN, response); err == nil {
-		t.Fatal("lifecycleOpenObservation(runtime alias mismatch) succeeded")
+	if _, err := securitylifecyclefindings.ObservationFromResolved("tenant-a", findingURN, response); err == nil {
+		t.Fatal("ObservationFromResolved(runtime alias mismatch) succeeded")
 	}
 	response.SourceRuntimeId = response.GetRecord().GetSourceRuntimeId()
 	response.SourceCollectionId = "other-collection"
-	if _, err := lifecycleOpenObservation("tenant-a", findingURN, response); err == nil {
-		t.Fatal("lifecycleOpenObservation(collection alias mismatch) succeeded")
+	if _, err := securitylifecyclefindings.ObservationFromResolved("tenant-a", findingURN, response); err == nil {
+		t.Fatal("ObservationFromResolved(collection alias mismatch) succeeded")
 	}
 }
 
@@ -248,9 +249,12 @@ type lifecycleReconcileResult struct {
 	body securityLifecycleReconcileResponse
 }
 
-func reconcileLifecycleFinding(t *testing.T, app *App, findingID string) lifecycleReconcileResult {
+func reconcileLifecycleFinding(t *testing.T, app *App) lifecycleReconcileResult {
 	t.Helper()
-	const tenantID = "tenant-a"
+	const (
+		tenantID  = "tenant-a"
+		findingID = "urn:cerebro:tenant-a:finding:urn%3Acerebro%3Atenant-a%3Acredential%3Aauthority-a%3Adeploy-signing"
+	)
 	body, err := json.Marshal(securityLifecycleReconcileRequest{TenantID: tenantID})
 	if err != nil {
 		t.Fatalf("marshal reconcile request: %v", err)

@@ -2,7 +2,7 @@ package findings
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"testing"
 	"time"
 
@@ -37,7 +37,7 @@ func TestSecurityLifecycleFindingBridgeRequiresRealRuntimeAndVerifiedClosure(t *
 	).WithAppendLog(appendLog)
 
 	withoutRuntime := lifecycleOpenObservation(tenantID, "", findingURN, subjectURN, openedAt)
-	if _, err := service.RecordSecurityLifecycleFinding(context.Background(), withoutRuntime); err == nil || !strings.Contains(err.Error(), "source runtime id is required") {
+	if _, err := service.RecordSecurityLifecycleFinding(context.Background(), withoutRuntime); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("RecordSecurityLifecycleFinding() without runtime error = %v, want source runtime requirement", err)
 	}
 

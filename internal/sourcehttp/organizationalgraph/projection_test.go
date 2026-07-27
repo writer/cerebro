@@ -313,7 +313,7 @@ func TestProjectionClientRejectsMismatchedSourceCollectionProvenance(t *testing.
 		t.Fatalf("NewProjectionClient() error = %v", err)
 	}
 	_, err = client.GetSourceCollection(context.Background(), "tenant-a", "box-runtime", "collection-verified")
-	if err == nil || !strings.Contains(err.Error(), "provenance does not match") {
+	if !errors.Is(err, ErrSourceCollectionProvenanceMismatch) {
 		t.Fatalf("GetSourceCollection() error = %v, want provenance mismatch", err)
 	}
 }
