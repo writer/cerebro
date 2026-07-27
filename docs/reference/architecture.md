@@ -308,9 +308,9 @@ stay behind the registry, catalog, and store boundaries.
 
 Credential and certificate lifecycle policy, pagination, findings, and
 verification remain Rust-owned. The bootstrap budget includes only strict HTTP
-selector parsing and transport mapping that preserves an invalid lifecycle
-selector as HTTP 400 while reporting an unavailable upstream authority as HTTP
-502.
+selector parsing and transport mapping that preserves invalid lifecycle
+selectors as HTTP 400, reports an unavailable graph authority as HTTP 503, and
+keeps unexpected upstream failures distinct as HTTP 502.
 
 ## Postgres migrations
 

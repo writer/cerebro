@@ -172,7 +172,7 @@ import (
 // Security lifecycle reads add only route/auth/dependency wiring and bounded
 // HTTP request/response mapping over the generated Connect client. Identity,
 // policy, pagination, finding, and verification behavior remain Rust-owned.
-const bootstrapProductionGoLineBudget = 29731
+const bootstrapProductionGoLineBudget = 29734
 
 type bootstrapFileLineCount struct {
 	path  string

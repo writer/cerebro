@@ -70,8 +70,11 @@ func (a *App) handleListSecurityLifecycle(w http.ResponseWriter, r *http.Request
 	result, err := a.deps.SecurityLifecycleQueries.ListSecurityLifecycle(r.Context(), query)
 	if err != nil {
 		status := http.StatusBadGateway
-		if connect.CodeOf(err) == connect.CodeInvalidArgument {
+		switch connect.CodeOf(err) {
+		case connect.CodeInvalidArgument:
 			status = http.StatusBadRequest
+		case connect.CodeUnavailable:
+			status = http.StatusServiceUnavailable
 		}
 		http.Error(w, "security lifecycle read failed", status)
 		return

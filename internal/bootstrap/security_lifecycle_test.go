@@ -23,6 +23,12 @@ func (securityLifecycleErrorService) ListSecurityLifecycle(
 	request *connect.Request[cerebrov1.ListSecurityLifecycleRequest],
 ) (*connect.Response[cerebrov1.ListSecurityLifecycleResponse], error) {
 	query := request.Msg.GetQuery()
+	if query.GetPageToken() == "unavailable" {
+		return nil, connect.NewError(
+			connect.CodeUnavailable,
+			errors.New("graph read is unavailable"),
+		)
+	}
 	if query.GetPageToken() != "" || len(query.GetOwnerUrns()) > 0 {
 		return nil, connect.NewError(
 			connect.CodeInvalidArgument,
@@ -68,6 +74,11 @@ func TestSecurityLifecycleHandlerPreservesClientAndBackendErrors(t *testing.T) {
 			name:   "invalid findings only",
 			query:  "?findings_only=ture",
 			status: http.StatusBadRequest,
+		},
+		{
+			name:   "graph unavailable",
+			query:  "?page_token=unavailable",
+			status: http.StatusServiceUnavailable,
 		},
 		{
 			name:   "backend failure",
