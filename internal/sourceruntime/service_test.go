@@ -1583,6 +1583,44 @@ func TestSyncRuntimeUsesPageLedgerWhenStoreSupportsIt(t *testing.T) {
 	}
 }
 
+func TestSyncRuntimeManifestFailurePreservesCompletedRuntimeProgress(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {
+				Id:       "writer-github",
+				SourceId: "github",
+				Config:   map[string]string{"token": "test"},
+			},
+		},
+	}
+	log := &appendLog{}
+	manifestFailure := errors.New("manifest unavailable")
+	projector := &projector{
+		manifestErr: manifestFailure,
+		result:      ports.ProjectionResult{EntitiesProjected: 1, LinksProjected: 2},
+	}
+	service := New(registry, store, log, projector)
+
+	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-github"})
+	if !errors.Is(err, manifestFailure) {
+		t.Fatalf("Sync() error = %v, want %v", err, manifestFailure)
+	}
+	stored := store.runtimes["writer-github"]
+	if got := stored.GetConfig()[runtimeStatusConfigKey]; got != "completed" {
+		t.Fatalf("runtime status after manifest failure = %q, want completed", got)
+	}
+	if store.putCount != 1 {
+		t.Fatalf("PutSourceRuntime calls = %d, want only the completed page commit", store.putCount)
+	}
+	if len(log.events) != 1 || len(projector.events) != 1 {
+		t.Fatalf("append/project counts = %d/%d, want 1/1", len(log.events), len(projector.events))
+	}
+}
+
 func TestSyncRuntimeTelemetryClassifiesErrorsWithoutRawSecret(t *testing.T) {
 	secretErr := errors.New("upstream failed credential=fake-sensitive-value")
 	registry, err := sourcecdk.NewRegistry(failingSource{err: secretErr})

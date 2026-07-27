@@ -305,6 +305,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		eventContracts         []sourcecdk.EventContract
 		contractConfigured     bool
 		runtimeLoadedForRun    bool
+		runtimeSyncCompleted   bool
 		eventsAppended         uint32
 		pagesRead              uint32
 		recordsScanned         uint32
@@ -323,7 +324,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			status = "failed"
 			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: sourceRuntimeTelemetryErrorKind(err)})
 			telemetry.IncrementMain(ctx, "source_runtime.sync.error.count", 1)
-			if runtimeLoadedForRun {
+			if runtimeLoadedForRun && !runtimeSyncCompleted {
 				_ = s.recordRuntimeSyncFailure(context.WithoutCancel(ctx), runtime, err, contractConfigured)
 			}
 		}
@@ -661,6 +662,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		cursor = cloneCursor(pull.NextCursor)
 	}
+	runtimeSyncCompleted = true
 	status = "completed"
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "pages_read", Value: pagesRead})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_scanned", Value: recordsScanned})
