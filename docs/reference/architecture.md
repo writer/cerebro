@@ -303,11 +303,20 @@ provider receipt; the runtime performs the GET, revalidates every dispatch
 binding, and commits the observation itself. Execution authority does not grant
 reconciliation authority.
 
+The provider-receipt commit also creates a tenant-scoped reconciliation job in
+the same PostgreSQL transaction. A signed call to
+`POST /v1/action-reconciliation-runs` does not name an Action. Rust claims at
+most ten due jobs using expiring leases and `SKIP LOCKED`, performs each
+provider read, and owns the next poll time. Transient provider failures return
+the job to the durable schedule; terminal provider status retires the polling
+job. A terminal provider status remains evidence only: it does not manufacture
+an observed effect or complete the Action.
+
 This code path does not by itself prove deployment cutover. Until deployment
 receipts show the Rust handler serves Action execution traffic,
 `internal/graphactions` remains a legacy provider network path. Rust provider
-reconciliation scheduling, first-party device mutation, independent effect
-observation, and removal of the Go route remain separate boundaries.
+reconciliation wake-up deployment, first-party device mutation, independent
+effect observation, and removal of the Go route remain separate boundaries.
 
 A2A discovery, outbound event subscription metadata, and public idempotency
 semantics also live in `internal/agentplatform`. The bootstrap budget includes
