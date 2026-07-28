@@ -1171,6 +1171,7 @@ mod tests {
         );
         for source_id in [
             "akeneo",
+            "anchore",
             "apacta",
             "appwrite",
             "azure_openai",
@@ -1191,13 +1192,11 @@ mod tests {
                 "{source_id} has verified parameterized provider paths"
             );
         }
-        for source_id in ["airtable", "anchore"] {
-            assert_eq!(
-                catalog.get(source_id).unwrap().authority(),
-                CollectionAuthority::ShadowOnly,
-                "{source_id} has an unresolved request scope"
-            );
-        }
+        assert_eq!(
+            catalog.get("airtable").unwrap().authority(),
+            CollectionAuthority::ShadowOnly,
+            "airtable has an unresolved request scope"
+        );
         assert_eq!(
             catalog.get("agiloft").unwrap().authority(),
             CollectionAuthority::ShadowOnly
@@ -1271,6 +1270,32 @@ mod tests {
             family.config_attributes().get("service"),
             family.path_parameters().get("service")
         );
+    }
+
+    #[test]
+    fn scalar_config_fields_bind_every_anchore_path_parameter() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("anchore").unwrap();
+        assert_eq!(source.authority(), CollectionAuthority::Authoritative);
+        for family in source.families() {
+            assert_eq!(
+                family.path_parameters().get("app_id"),
+                Some(&PathParameterBinding::ScalarConfig {
+                    field: "app_id".to_owned()
+                })
+            );
+            assert_eq!(
+                family.path_parameters().get("version_id"),
+                Some(&PathParameterBinding::ScalarConfig {
+                    field: "version_id".to_owned()
+                })
+            );
+        }
     }
 
     #[test]

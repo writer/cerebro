@@ -1880,6 +1880,97 @@ mod tests {
         assert_eq!(scopes[1].record_attributes["service"], "postgres");
     }
 
+    #[tokio::test]
+    async fn scalar_path_scope_executes_anchore_collection_and_graph_mapping() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /apps/app%2Fone/versions/version%20one/assets?"));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("\r\nauthorization: basic ")
+            );
+            let body = r#"{"items":[{"id":"asset-1","name":"Image One","type":"container"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("anchore").unwrap().clone();
+        let mut connector = HttpSourceConnector::new(
+            source.clone(),
+            "assets",
+            &format!("http://{address}"),
+            BTreeMap::from([
+                ("app_id".to_owned(), "app/one".to_owned()),
+                ("version_id".to_owned(), "version one".to_owned()),
+            ]),
+            ResolvedAuth::Basic {
+                username: "user".to_owned(),
+                password: "password".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("anchore-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].fields["app_id"], "app/one");
+        assert_eq!(batch.records[0].fields["version_id"], "version one");
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+        assert_eq!(delta.entities().len(), 1);
+    }
+
+    #[test]
+    fn scalar_path_scope_rejects_missing_required_config() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let connector = HttpSourceConnector::new(
+            catalog.get("anchore").unwrap().clone(),
+            "assets",
+            "https://api.example.test",
+            BTreeMap::from([("app_id".to_owned(), "app-one".to_owned())]),
+            ResolvedAuth::Basic {
+                username: "user".to_owned(),
+                password: "password".to_owned(),
+            },
+        )
+        .unwrap();
+        let error = connector.request_scopes().err().unwrap();
+        assert_eq!(
+            error.to_string(),
+            "request config version_id is required"
+        );
+    }
+
     #[test]
     fn csv_fanout_rejects_empty_and_oversized_scope_sets() {
         let root = repository_root();
