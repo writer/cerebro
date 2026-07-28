@@ -52,6 +52,17 @@ class ChangedChecksTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn("graph-action-check", self.command_names([path]))
 
+    def test_rust_workspace_paths_select_policy_catalog_check(self):
+        for path in (
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+            "crates/policy-catalog/src/lib.rs",
+            "tools/policycataloggen/src/main.rs",
+        ):
+            with self.subTest(path=path):
+                self.assertIn("policy-catalog-check", self.command_names([path]))
+
     def test_rust_dependency_policy_paths_select_deny(self):
         for path in ("Cargo.toml", "Cargo.lock", "deny.toml"):
             with self.subTest(path=path):
