@@ -412,11 +412,6 @@ impl PostgresActionLedger {
             .and_then(Value::as_str)
             .ok_or_else(|| ActionStoreError::Corrupt("command has no stable kind".to_owned()))?
             .to_owned();
-        if !command_actor_matches(actor_id, &command) {
-            return Err(ActionStoreError::Conflict(
-                "authenticated actor does not match the Action command receipt".to_owned(),
-            ));
-        }
         if command_observed_at(&command)
             .is_some_and(|observed_at| observed_at == 0 || observed_at > committed_at_unix_ms)
         {
@@ -442,6 +437,11 @@ impl PostgresActionLedger {
         if committed_at_unix_ms < current.updated_at_unix_ms {
             return Err(ActionStoreError::Conflict(
                 "Action commit time predates the current version".to_owned(),
+            ));
+        }
+        if !command_actor_matches(actor_id, current.operation.claimed_by.as_ref(), &command) {
+            return Err(ActionStoreError::Conflict(
+                "authenticated actor does not own the Action command".to_owned(),
             ));
         }
         let next = transition_action(&current.operation, expected_version, command)?;
@@ -680,21 +680,27 @@ fn digest_json(value: &Value) -> Result<ContentDigest, ActionStoreError> {
     Ok(ContentDigest::of_bytes(encoded))
 }
 
-fn command_actor_matches(actor_id: &ActorId, command: &ActionCommand) -> bool {
+fn command_actor_matches(
+    actor_id: &ActorId,
+    claimed_by: Option<&cerebro_platform_sdk::OpaqueId>,
+    command: &ActionCommand,
+) -> bool {
+    let owns_claim = || claimed_by.is_some_and(|worker_id| worker_id.as_str() == actor_id.as_str());
     match command {
         ActionCommand::RecordApproval { receipt } => receipt.decided_by == *actor_id,
         ActionCommand::Claim { worker_id, .. } => worker_id.as_str() == actor_id.as_str(),
         ActionCommand::Complete {
             executor_actor_id, ..
-        }
-        | ActionCommand::Reconcile {
+        } => owns_claim() && executor_actor_id == actor_id,
+        // Reconciliation is the recovery path after an original claimant has
+        // lost execution authority, so its signed executor may differ.
+        ActionCommand::Reconcile {
             executor_actor_id, ..
         } => executor_actor_id == actor_id,
         ActionCommand::Verify { receipt } => receipt.receipt.verifier_actor_id == *actor_id,
+        ActionCommand::StartExecution | ActionCommand::MarkOutcomeUnknown => owns_claim(),
         ActionCommand::RecordSimulation
         | ActionCommand::RequestApproval
-        | ActionCommand::StartExecution
-        | ActionCommand::MarkOutcomeUnknown
         | ActionCommand::RejectVerification
         | ActionCommand::Fail
         | ActionCommand::RollBack => true,
@@ -887,10 +893,12 @@ mod tests {
         let other = ActorId::parse("operator:other").unwrap();
         assert!(command_actor_matches(
             &actor,
+            None,
             &ActionCommand::RecordSimulation
         ));
         assert!(command_actor_matches(
             &actor,
+            None,
             &ActionCommand::Claim {
                 worker_id: cerebro_platform_sdk::OpaqueId::parse(actor.as_str()).unwrap(),
                 claimed_at_unix_ms: 10,
@@ -898,13 +906,31 @@ mod tests {
         ));
         assert!(!command_actor_matches(
             &other,
+            None,
             &ActionCommand::Claim {
                 worker_id: cerebro_platform_sdk::OpaqueId::parse(actor.as_str()).unwrap(),
                 claimed_at_unix_ms: 10,
             }
         ));
+        let claim = cerebro_platform_sdk::OpaqueId::parse(actor.as_str()).unwrap();
         assert!(command_actor_matches(
             &actor,
+            Some(&claim),
+            &ActionCommand::StartExecution
+        ));
+        assert!(!command_actor_matches(
+            &other,
+            Some(&claim),
+            &ActionCommand::StartExecution
+        ));
+        assert!(!command_actor_matches(
+            &actor,
+            None,
+            &ActionCommand::MarkOutcomeUnknown
+        ));
+        assert!(command_actor_matches(
+            &actor,
+            Some(&claim),
             &ActionCommand::Complete {
                 external_receipt_ref: cerebro_platform_sdk::OpaqueId::parse("receipt:one").unwrap(),
                 observed_effect_digest: ContentDigest::of_bytes("effect"),
@@ -914,10 +940,21 @@ mod tests {
         ));
         assert!(!command_actor_matches(
             &other,
+            Some(&claim),
             &ActionCommand::Complete {
                 external_receipt_ref: cerebro_platform_sdk::OpaqueId::parse("receipt:one").unwrap(),
                 observed_effect_digest: ContentDigest::of_bytes("effect"),
                 executor_actor_id: actor,
+                executed_at_unix_ms: 11,
+            }
+        ));
+        assert!(!command_actor_matches(
+            &other,
+            Some(&claim),
+            &ActionCommand::Complete {
+                external_receipt_ref: cerebro_platform_sdk::OpaqueId::parse("receipt:two").unwrap(),
+                observed_effect_digest: ContentDigest::of_bytes("effect"),
+                executor_actor_id: other.clone(),
                 executed_at_unix_ms: 11,
             }
         ));
