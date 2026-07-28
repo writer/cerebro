@@ -2,8 +2,8 @@ use serde::Serialize;
 use std::collections::BTreeSet;
 
 use crate::{
-    ActionOperationId, ContentDigest, GraphRevision, OpaqueId, SdkError, TenantId,
-    VerificationReceipt,
+    ActionOperationId, ActorId, ContentDigest, DecisionReceipt, GraphRevision, OpaqueId, SdkError,
+    TenantId, VerificationReceipt,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -12,6 +12,7 @@ pub enum ActionState {
     Proposed,
     Simulated,
     WaitingForApproval,
+    Approved,
     Claimed,
     Executing,
     OutcomeUnknown,
@@ -42,13 +43,21 @@ pub struct ActionEffect {
 pub struct ActionProposal {
     pub operation_id: ActionOperationId,
     pub tenant_id: TenantId,
+    pub finding_id: OpaqueId,
+    pub finding_revision_digest: ContentDigest,
+    pub finding_validation_receipt_digest: ContentDigest,
     pub graph_revision: GraphRevision,
     pub action_kind: String,
+    pub action_definition_digest: ContentDigest,
     pub target_id: OpaqueId,
     pub expected_effects: Vec<ActionEffect>,
     pub rollback_ref: OpaqueId,
     pub idempotency_key: OpaqueId,
     pub simulation_digest: ContentDigest,
+    pub verification_plan_digest: ContentDigest,
+    pub proposed_by: ActorId,
+    pub proposed_at_unix_ms: u64,
+    pub proposal_expires_at_unix_ms: u64,
     pub proposal_digest: ContentDigest,
 }
 
@@ -62,6 +71,11 @@ impl ActionProposal {
         }
         if self.expected_effects.is_empty() || self.expected_effects.len() > 100 {
             return Err(SdkError::OutOfRange("action expected effects"));
+        }
+        if self.proposed_at_unix_ms == 0
+            || self.proposal_expires_at_unix_ms <= self.proposed_at_unix_ms
+        {
+            return Err(SdkError::OutOfRange("action proposal validity"));
         }
         let mut effects = BTreeSet::new();
         for effect in &self.expected_effects {
@@ -90,10 +104,23 @@ pub struct ActionOperation {
     pub proposal: ActionProposal,
     pub state: ActionState,
     pub version: u64,
+    pub approval_receipt: Option<DecisionReceipt>,
     pub claimed_by: Option<OpaqueId>,
+    pub claimed_at_unix_ms: Option<u64>,
+    pub executor_actor_id: Option<ActorId>,
+    pub executed_at_unix_ms: Option<u64>,
     pub external_receipt_ref: Option<OpaqueId>,
     pub observed_effect_digest: Option<ContentDigest>,
     pub verification_state: VerificationState,
+    pub verification_receipt: Option<ActionVerificationReceipt>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ActionVerificationReceipt {
+    pub operation_id: ActionOperationId,
+    pub proposal_digest: ContentDigest,
+    pub observed_effect_digest: ContentDigest,
+    pub receipt: VerificationReceipt,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -102,5 +129,5 @@ pub struct ActionReceipt {
     pub state: ActionState,
     pub version: u64,
     pub execution_receipt_digest: ContentDigest,
-    pub verification_receipt: Option<VerificationReceipt>,
+    pub verification_receipt: Option<ActionVerificationReceipt>,
 }
