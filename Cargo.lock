@@ -471,6 +471,7 @@ dependencies = [
  "buffa",
  "buffa-types",
  "cerebro-action-catalog",
+ "cerebro-action-provider",
  "cerebro-action-store",
  "cerebro-agent-context",
  "cerebro-organizational-graph",
