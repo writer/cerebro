@@ -17,7 +17,9 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use cerebro_action_catalog::{definitions as action_definitions, validate_proposal};
+use cerebro_action_catalog::{
+    ActionCatalogError, definitions as action_definitions, validate_proposal,
+};
 use cerebro_action_store::{ActionEvent, ActionPage, ActionStoreError, PostgresActionLedger};
 use cerebro_agent_context::{
     AgentContext, AgentGraph, ContextEntity, ContextError, GraphPath, MemoryAgentGraph,
@@ -1854,8 +1856,7 @@ async fn propose_action(
             "The Action proposal tenant and proposer must match the signed identity.",
         ));
     }
-    validate_proposal(&proposal)
-        .map_err(|error| bad_request("invalid_action_definition", error.to_string()))?;
+    validate_proposal(&proposal).map_err(action_catalog_error)?;
     let committed_at = current_unix_millis()?;
     action_authority(&state)?
         .propose(proposal, committed_at)
@@ -2399,6 +2400,15 @@ fn action_store_error(error: ActionStoreError) -> (StatusCode, Json<ErrorRespons
             "invalid_action_page_token",
             "The Action page token is invalid.",
         ),
+    }
+}
+
+fn action_catalog_error(error: ActionCatalogError) -> (StatusCode, Json<ErrorResponse>) {
+    match error {
+        ActionCatalogError::InvalidProposal(error) => {
+            bad_request("invalid_action", error.to_string())
+        }
+        error => bad_request("invalid_action_definition", error.to_string()),
     }
 }
 
@@ -3651,6 +3661,18 @@ mod tests {
         };
         let identity = action_identity("tenant:http:one", "actor:http:one");
         let definition = cerebro_action_catalog::lookup("endpoint.cerebro.revoke_device").unwrap();
+
+        let mut malformed = action_proposal("tenant:http:one", "actor:http:one");
+        malformed.proposed_at_unix_ms = 0;
+        let error = propose_action(
+            State(state.clone()),
+            Extension(identity.clone()),
+            Json(malformed),
+        )
+        .await
+        .expect_err("malformed proposal must fail before catalog classification");
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert_eq!(error.1.0.code, "invalid_action");
 
         let mut unknown = action_proposal("tenant:http:one", "actor:http:one");
         unknown.action_kind = "endpoint.attacker.erase_device".to_owned();

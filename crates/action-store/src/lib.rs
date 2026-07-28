@@ -175,6 +175,7 @@ impl From<ActionCatalogError> for ActionStoreError {
             ActionCatalogError::InvalidProposal(SdkError::Conflict(message)) => {
                 Self::Conflict(message)
             }
+            ActionCatalogError::InvalidProposal(error) => Self::Invalid(error),
             other => Self::Catalog(other),
         }
     }
@@ -879,13 +880,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_validation_preserves_proposal_conflicts() {
-        let error = ActionStoreError::from(ActionCatalogError::InvalidProposal(
+    fn catalog_validation_preserves_proposal_error_classes() {
+        let conflict = ActionStoreError::from(ActionCatalogError::InvalidProposal(
             SdkError::Conflict("duplicate action expected effect".to_owned()),
         ));
         assert!(
-            matches!(error, ActionStoreError::Conflict(message) if message == "duplicate action expected effect")
+            matches!(conflict, ActionStoreError::Conflict(message) if message == "duplicate action expected effect")
         );
+
+        let invalid = ActionStoreError::from(ActionCatalogError::InvalidProposal(
+            SdkError::Invalid("action proposal digest"),
+        ));
+        assert!(matches!(
+            invalid,
+            ActionStoreError::Invalid(SdkError::Invalid("action proposal digest"))
+        ));
     }
 
     #[test]
