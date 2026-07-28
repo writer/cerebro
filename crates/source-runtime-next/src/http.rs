@@ -184,6 +184,7 @@ impl HttpSourceConnector {
                 ))
             })?;
         validate_auth(source.auth(), &auth)?;
+        let base_url = family.base_url().unwrap_or(base_url);
         let mut base_url = Url::parse(base_url)
             .map_err(|error| HttpConnectorError::InvalidUrl(error.to_string()))?;
         if base_url.scheme() != "https" && !is_loopback(&base_url) {
@@ -486,8 +487,10 @@ impl SourceConnector for HttpSourceConnector {
                 let selected_count = selected.len();
                 for value in selected {
                     validate_record_scope(self.family.id(), &value, &record_attributes)?;
-                    let provider_id =
-                        scalar_at(&value, self.family.id_field()).ok_or_else(|| {
+                    let scalar_record = scalar(&value);
+                    let provider_id = scalar_at(&value, self.family.id_field())
+                        .or_else(|| scalar_record.clone())
+                        .ok_or_else(|| {
                             HttpConnectorError::InvalidResponse(format!(
                                 "family {} record is missing {}",
                                 self.family.id(),
@@ -495,6 +498,9 @@ impl SourceConnector for HttpSourceConnector {
                             ))
                         })?;
                     let mut fields = flatten_scalars(&value);
+                    if let Some(value) = scalar_record {
+                        fields.insert(self.family.id_field().to_owned(), value);
+                    }
                     fields.extend(record_attributes.clone());
                     records.push(SourceRecord {
                         observation_id: observation_id(
@@ -2005,6 +2011,105 @@ mod tests {
             .map(&batch)
             .unwrap();
         assert_eq!(delta.entities().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn required_query_scope_executes_scalar_slack_memberships() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /conversations.members?"));
+            assert!(request.contains("channel=C1"));
+            assert!(request.contains("authorization: Bearer token"));
+            let body = r#"{"members":["U1","U2"],"response_metadata":{"next_cursor":""}}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("slack").unwrap().clone();
+        let mut connector = HttpSourceConnector::new(
+            source.clone(),
+            "channel_member",
+            &format!("http://{address}"),
+            BTreeMap::from([("channel_id".to_owned(), "C1".to_owned())]),
+            ResolvedAuth::Bearer {
+                token: "token".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("slack-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(batch.records.len(), 2);
+        assert_eq!(batch.records[0].provider_id, "U1");
+        assert_eq!(batch.records[0].fields["user_id"], "U1");
+        assert_eq!(batch.records[0].fields["channel_id"], "C1");
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+        assert_eq!(delta.entities().len(), 3);
+        assert_eq!(delta.assertions().len(), 2);
+    }
+
+    #[test]
+    fn required_query_scope_rejects_missing_config_and_honors_family_base_url() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("slack").unwrap().clone();
+        let connector = HttpSourceConnector::new(
+            source.clone(),
+            "channel_member",
+            "https://slack.com/api",
+            BTreeMap::new(),
+            ResolvedAuth::Bearer {
+                token: "token".to_owned(),
+            },
+        )
+        .unwrap();
+        let error = connector.request_scopes().err().unwrap();
+        assert_eq!(error.to_string(), "request config channel_id is required");
+
+        let audit = HttpSourceConnector::new(
+            source,
+            "audit_log",
+            "https://slack.com/api",
+            BTreeMap::new(),
+            ResolvedAuth::Bearer {
+                token: "token".to_owned(),
+            },
+        )
+        .unwrap();
+        let scopes = audit.request_scopes().unwrap();
+        assert_eq!(
+            scopes[0].url.as_str(),
+            "https://api.slack.com/audit/v1/logs"
+        );
     }
 
     #[test]

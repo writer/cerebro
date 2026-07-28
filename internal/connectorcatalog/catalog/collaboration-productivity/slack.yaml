@@ -32,6 +32,15 @@ entries:
         - help: Slack Audit Logs API host. Keep the default unless using a test endpoint.
           key: audit_log_base_url
           label: Audit Logs API host
+        - help: Optional Unix timestamp upper bound for team access log entries.
+          key: before
+          label: Access logs before
+        - help: Channel identifier required when collecting channel memberships.
+          key: channel_id
+          label: Channel ID
+        - help: User group identifier required when collecting user group memberships.
+          key: usergroup_id
+          label: User group ID
       description: Collects Slack workspaces, users, channels, user groups, memberships, team access logs, and Enterprise Grid audit logs and projects them into the Cerebro graph for inventory, access review, membership review, login review, and collaboration audit context.
       display_name: Slack
       id: builtin_catalog-slack
@@ -230,7 +239,7 @@ entries:
             required_payload_fields: [channel_id, user_id]
             schema_ref: slack/channel_member/v1
             urn_kind: slack_channel_member
-          config_query:
+          required_config_query:
             channel: channel_id
           id: channel_member
           id_field: user_id
@@ -268,7 +277,7 @@ entries:
             required_payload_fields: [usergroup_id, user_id]
             schema_ref: slack/user_group_member/v1
             urn_kind: slack_user_group_member
-          config_query:
+          required_config_query:
             usergroup: usergroup_id
           id: user_group_member
           id_field: user_id

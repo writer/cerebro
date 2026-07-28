@@ -329,6 +329,7 @@ type ResourceFamily struct {
 	StaticQuery           map[string]string       `json:"static_query,omitempty"`
 	StaticHeaders         map[string]string       `json:"static_headers,omitempty"`
 	ConfigQuery           map[string]string       `json:"config_query,omitempty"`
+	RequiredConfigQuery   map[string]string       `json:"required_config_query,omitempty"`
 	Pagination            *PaginationSpec         `json:"pagination,omitempty"`
 	Incremental           *IncrementalSpec        `json:"incremental,omitempty"`
 	Config                *FamilyConfigSpec       `json:"config,omitempty"`
@@ -934,6 +935,20 @@ func validateFamilyIntegrationFields(family ResourceFamily, configFields map[str
 			}
 		}
 	}
+	validateFamilyConfigMap(family.ID, "required_config_query", family.RequiredConfigQuery, add)
+	for queryParam, configField := range family.RequiredConfigQuery {
+		if _, ok := configFields[configField]; !ok {
+			add(blocking("required_config_query_field_"+family.ID+"_"+normalizeDefinitionID(queryParam), "Required query config", "Required query bindings must reference fields declared in definition.config_fields."))
+		}
+		_, topLevelOptional := family.ConfigQuery[queryParam]
+		nestedOptional := false
+		if family.Config != nil {
+			_, nestedOptional = family.Config.ConfigQuery[queryParam]
+		}
+		if topLevelOptional || nestedOptional {
+			add(blocking("query_binding_"+family.ID+"_"+normalizeDefinitionID(queryParam), "Query binding", "A query parameter cannot use both optional and required config bindings."))
+		}
+	}
 	validateFamilyConfigMap(family.ID, "static_headers", family.StaticHeaders, add)
 	if family.Pagination != nil {
 		if _, ok := paginationTypes[family.Pagination.Type]; !ok {
@@ -1223,6 +1238,7 @@ func normalizeResourceFamilies(families []ResourceFamily) []ResourceFamily {
 		family.StaticQuery = normalizeStringMap(family.StaticQuery)
 		family.StaticHeaders = normalizeStringMap(family.StaticHeaders)
 		family.ConfigQuery = normalizeStringMap(family.ConfigQuery)
+		family.RequiredConfigQuery = normalizeStringMap(family.RequiredConfigQuery)
 		family.Pagination = normalizePaginationSpec(family.Pagination)
 		family.Incremental = normalizeIncrementalSpec(family.Incremental)
 		family.Config = normalizeFamilyConfigSpec(family.Config)

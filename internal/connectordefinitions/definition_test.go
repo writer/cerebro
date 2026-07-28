@@ -701,6 +701,33 @@ func TestValidateBlocksAmbiguousPathParameterBinding(t *testing.T) {
 	}
 }
 
+func TestValidateBlocksAmbiguousOrUndeclaredRequiredQueryBinding(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID:     "tenant-a",
+		SourceID:     "example",
+		Auth:         AuthSpec{Model: "none"},
+		ConfigFields: []Field{{Key: "scope"}},
+		ResourceFamilies: []ResourceFamily{{
+			ID:                  "users",
+			Path:                "/v1/users",
+			IDField:             "id",
+			ConfigQuery:         map[string]string{"scope": "scope"},
+			RequiredConfigQuery: map[string]string{"scope": "scope", "tenant": "tenant_id"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	for _, want := range []string{
+		"query_binding_users_scope",
+		"required_config_query_field_users_tenant",
+	} {
+		if !hasBlockingCheck(definition.Validation.Checks, want) {
+			t.Fatalf("validation checks = %#v, want blocker %q", definition.Validation.Checks, want)
+		}
+	}
+}
+
 func TestValidateBlocksUnsafeProjectionRelationships(t *testing.T) {
 	definition, err := Normalize(Definition{
 		TenantID: "tenant-a",
@@ -999,6 +1026,7 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 			Incremental: &IncrementalSpec{
 				CursorField: "updated_at",
 			},
+			RequiredConfigQuery: map[string]string{" region ": " region ", "": "ignored"},
 			Config: &FamilyConfigSpec{
 				StaticQuery:      map[string]string{"include": "members", "empty": ""},
 				ConfigQuery:      map[string]string{"scope[]": "scopes"},
@@ -1044,6 +1072,9 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 	}
 	if family.Read.PathParamConfig["region_id"] != "region" || len(family.Read.PathParamConfig) != 1 {
 		t.Fatalf("path param config = %#v, want region_id->region", family.Read.PathParamConfig)
+	}
+	if family.RequiredConfigQuery["region"] != "region" || len(family.RequiredConfigQuery) != 1 {
+		t.Fatalf("required config query = %#v, want region->region", family.RequiredConfigQuery)
 	}
 	if family.Pagination == nil || len(family.Pagination.NextCursorKeys) != 1 || family.Pagination.NextCursorKeys[0] != "next_cursor" || family.Pagination.HasMoreKey != "has_more" {
 		t.Fatalf("pagination = %#v, want next cursor and has_more metadata", family.Pagination)

@@ -829,7 +829,7 @@ func pathParamsForResource(resource connectordefinitions.ResourceFamily) []strin
 func familyConfig(resource connectordefinitions.ResourceFamily) familyConfigData {
 	config := familyConfigData{
 		StaticQuery:   cloneStringMap(resource.StaticQuery),
-		ConfigQuery:   cloneStringMap(resource.ConfigQuery),
+		ConfigQuery:   mergeStringMaps(resource.ConfigQuery, resource.RequiredConfigQuery),
 		StaticHeaders: cloneStringMap(resource.StaticHeaders),
 	}
 	if resource.Read != nil {

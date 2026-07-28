@@ -227,6 +227,7 @@ pub struct CompiledFamily {
     id: String,
     method: HttpMethod,
     path: String,
+    base_url: Option<String>,
     record_selector: String,
     id_field: String,
     name_field: Option<String>,
@@ -251,6 +252,10 @@ impl CompiledFamily {
 
     pub fn path(&self) -> &str {
         &self.path
+    }
+
+    pub fn base_url(&self) -> Option<&str> {
+        self.base_url.as_deref()
     }
 
     pub fn record_selector(&self) -> &str {
@@ -473,6 +478,8 @@ struct FamilyWire {
     #[serde(default)]
     config_query: BTreeMap<String, String>,
     #[serde(default)]
+    required_config_query: BTreeMap<String, String>,
+    #[serde(default)]
     config: Option<FamilyConfigWire>,
     #[serde(default)]
     read: Option<FamilyReadWire>,
@@ -482,6 +489,8 @@ struct FamilyWire {
 
 #[derive(Default, Deserialize)]
 struct FamilyConfigWire {
+    #[serde(default)]
+    base_url: String,
     #[serde(default)]
     config_query: BTreeMap<String, String>,
     #[serde(default)]
@@ -718,13 +727,13 @@ fn compile_family(
         })
         .collect::<BTreeMap<_, _>>();
     let path_parameters_configured = path_parameters.len() == path_parameter_names.len();
-    let mut config_query_wire = family
+    let mut optional_config_query_wire = family
         .config
         .as_ref()
         .map(|config| config.config_query.clone())
         .unwrap_or_default();
     for (parameter, field) in &family.config_query {
-        if config_query_wire
+        if optional_config_query_wire
             .insert(parameter.clone(), field.clone())
             .is_some_and(|existing| existing != *field)
         {
@@ -737,14 +746,34 @@ fn compile_family(
             );
         }
     }
-    let config_query = config_query_wire
+    if let Some(parameter) = family
+        .required_config_query
+        .keys()
+        .find(|parameter| optional_config_query_wire.contains_key(*parameter))
+    {
+        return invalid(
+            path,
+            &format!(
+                "family {} query parameter {parameter} has both optional and required config bindings",
+                family.id
+            ),
+        );
+    }
+    let mut config_query = optional_config_query_wire
         .iter()
         .filter_map(|(query_parameter, config_field)| {
             config_query_binding(config_field, config_fields)
                 .map(|binding| (query_parameter.clone(), binding))
         })
         .collect::<BTreeMap<_, _>>();
-    let config_query_configured = config_query.len() == config_query_wire.len();
+    config_query.extend(family.required_config_query.iter().filter_map(
+        |(query_parameter, config_field)| {
+            config_binding(config_field, config_fields)
+                .map(|binding| (query_parameter.clone(), binding))
+        },
+    ));
+    let config_query_configured =
+        config_query.len() == optional_config_query_wire.len() + family.required_config_query.len();
     let config_attributes_wire = family
         .config
         .as_ref()
@@ -760,7 +789,10 @@ fn compile_family(
         })
         .collect::<BTreeMap<_, _>>();
     let config_attributes_configured = config_attributes.len() == config_attributes_wire.len();
-    for (query_parameter, config_field) in &config_query_wire {
+    for (query_parameter, config_field) in optional_config_query_wire
+        .iter()
+        .chain(family.required_config_query.iter())
+    {
         if let Some(binding) = config_query.get(query_parameter) {
             config_attributes
                 .entry(config_field.clone())
@@ -793,27 +825,39 @@ fn compile_family(
     } else {
         "$[*]".to_owned()
     };
-    let provider_contract_verified = canonical_path_template(&family.path).is_some_and(|path| {
-        verified.contains(&(
-            family.id.clone(),
-            match method {
-                HttpMethod::Get => "GET".to_owned(),
-                HttpMethod::Post => "POST".to_owned(),
-            },
-            path,
-        ))
-    });
+    let configured_base_url = family
+        .config
+        .as_ref()
+        .map(|config| config.base_url.trim())
+        .unwrap_or_default();
+    let base_url = (!configured_base_url.is_empty())
+        .then(|| static_https_base_url(configured_base_url))
+        .flatten();
+    let base_url_configured = configured_base_url.is_empty() || base_url.is_some();
+    let provider_contract_verified = provider_request_path(base_url.as_deref(), &family.path)
+        .is_some_and(|path| {
+            verified.contains(&(
+                family.id.clone(),
+                match method {
+                    HttpMethod::Get => "GET".to_owned(),
+                    HttpMethod::Post => "POST".to_owned(),
+                },
+                path,
+            ))
+        });
     Ok(CompiledFamily {
         authoritative: generic_runtime_supported
             && provider_contract_verified
             && path_parameters_configured
             && config_query_configured
-            && config_attributes_configured,
+            && config_attributes_configured
+            && base_url_configured,
         projection_authoritative: provider_contract_verified
             && projection_class.can_be_authoritative(),
         id: nonempty(path, "family id", family.id)?,
         method,
         path: family.path,
+        base_url,
         record_selector,
         id_field: nonempty(path, "family id_field", family.id_field)?,
         name_field: optional(family.name_field),
@@ -967,6 +1011,14 @@ fn verified_families(proof: Option<&ProofManifestWire>) -> BTreeSet<(String, Str
 }
 
 fn canonical_path_template(path: &str) -> Option<String> {
+    let absolute_path;
+    let path = if let Some(rest) = path.strip_prefix("https://") {
+        let (_, provider_path) = rest.split_once('/').unwrap_or((rest, ""));
+        absolute_path = format!("/{provider_path}");
+        absolute_path.as_str()
+    } else {
+        path
+    };
     let (path, query) = path
         .split_once('?')
         .map_or((path, None), |(path, query)| (path, Some(query)));
@@ -995,6 +1047,40 @@ fn canonical_path_template(path: &str) -> Option<String> {
         canonical.push_str(query);
     }
     Some(canonical)
+}
+
+fn static_https_base_url(value: &str) -> Option<String> {
+    let value = value.trim();
+    let rest = value.strip_prefix("https://")?;
+    if rest.is_empty()
+        || rest
+            .chars()
+            .any(|character| matches!(character, '{' | '}' | '?' | '#' | '\\'))
+        || rest.split('/').next().is_some_and(|authority| {
+            authority.is_empty()
+                || authority.contains('@')
+                || authority.chars().any(char::is_whitespace)
+        })
+    {
+        return None;
+    }
+    Some(format!("{}/", value.trim_end_matches('/')))
+}
+
+fn provider_request_path(base_url: Option<&str>, family_path: &str) -> Option<String> {
+    let Some(base_url) = base_url else {
+        return canonical_path_template(family_path);
+    };
+    let rest = base_url.strip_prefix("https://")?;
+    let (_, base_path) = rest.split_once('/').unwrap_or((rest, ""));
+    let base_path = base_path.trim_matches('/');
+    let family_path = family_path.trim_start_matches('/');
+    let path = if base_path.is_empty() {
+        format!("/{family_path}")
+    } else {
+        format!("/{base_path}/{family_path}")
+    };
+    canonical_path_template(&path)
 }
 
 fn path_parameter(segment: &str) -> Option<&str> {
@@ -1185,9 +1271,9 @@ mod tests {
             summary.sources,
             summary.authoritative_sources + summary.shadow_only_sources
         );
-        assert_eq!(summary.authoritative_sources, 48);
-        assert_eq!(summary.authoritative_families, 333);
-        assert_eq!(summary.shadow_only_sources, 746);
+        assert_eq!(summary.authoritative_sources, 49);
+        assert_eq!(summary.authoritative_families, 337);
+        assert_eq!(summary.shadow_only_sources, 745);
     }
 
     #[test]
@@ -1226,6 +1312,7 @@ mod tests {
             "jira",
             "onelogin",
             "qdrant_cloud",
+            "slack",
             "snyk",
         ] {
             assert_eq!(
@@ -1264,22 +1351,37 @@ mod tests {
     }
 
     #[test]
-    fn undeclared_query_scope_cannot_become_collection_authority() {
+    fn required_query_scope_is_declared_and_fail_closed() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
             root.join("internal/connectorcatalog/catalog"),
             root.join("sources"),
         )
         .unwrap();
-        let family = catalog
-            .get("slack")
-            .unwrap()
+        let source = catalog.get("slack").unwrap();
+        let shadow_families = source
+            .families()
+            .iter()
+            .filter(|family| !family.is_authoritative())
+            .map(CompiledFamily::id)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            source.authority(),
+            CollectionAuthority::Authoritative,
+            "shadow families: {shadow_families:?}"
+        );
+        let family = source
             .families()
             .iter()
             .find(|family| family.id() == "channel_member")
             .unwrap();
-        assert!(!family.is_authoritative());
-        assert!(family.config_query().is_empty());
+        assert!(family.is_authoritative());
+        assert_eq!(
+            family.config_query().get("channel"),
+            Some(&PathParameterBinding::ScalarConfig {
+                field: "channel_id".to_owned()
+            })
+        );
     }
 
     #[test]
@@ -1409,6 +1511,7 @@ mod tests {
             name_field: String::new(),
             static_query: BTreeMap::new(),
             config_query: BTreeMap::new(),
+            required_config_query: BTreeMap::new(),
             config: None,
             read: Some(FamilyReadWire {
                 path_param_config: BTreeMap::from([(
@@ -1441,5 +1544,63 @@ mod tests {
                 .to_string()
                 .contains("has both scalar config and fanout bindings")
         );
+    }
+
+    #[test]
+    fn optional_and_required_query_bindings_cannot_claim_the_same_parameter() {
+        let family = FamilyWire {
+            id: "members".to_owned(),
+            method: "GET".to_owned(),
+            path: "/v1/members".to_owned(),
+            record_selector: "$.items[*]".to_owned(),
+            list_key: String::new(),
+            id_field: "id".to_owned(),
+            name_field: String::new(),
+            static_query: BTreeMap::new(),
+            config_query: BTreeMap::from([("scope".to_owned(), "scope".to_owned())]),
+            required_config_query: BTreeMap::from([("scope".to_owned(), "scope".to_owned())]),
+            config: None,
+            read: None,
+            pagination: None,
+            projection: Some(ProjectionWire {
+                template: "identity_user".to_owned(),
+                fields: BTreeMap::from([("user_id".to_owned(), "id".to_owned())]),
+                static_fields: BTreeMap::new(),
+            }),
+        };
+        let config_fields = BTreeSet::from(["scope"]);
+        let error = compile_family(
+            Path::new("conflicting.yaml"),
+            family,
+            &BTreeSet::new(),
+            true,
+            &config_fields,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("has both optional and required config bindings")
+        );
+    }
+
+    #[test]
+    fn static_family_base_urls_are_https_and_path_preserving() {
+        assert_eq!(
+            static_https_base_url("https://api.example.test/audit/v1"),
+            Some("https://api.example.test/audit/v1/".to_owned())
+        );
+        assert_eq!(
+            provider_request_path(Some("https://api.example.test/audit/v1/"), "/events"),
+            Some("/audit/v1/events".to_owned())
+        );
+        for invalid in [
+            "http://api.example.test",
+            "https://${config.host}",
+            "https://user@api.example.test",
+            "https://api.example.test/path?scope=all",
+        ] {
+            assert_eq!(static_https_base_url(invalid), None, "{invalid}");
+        }
     }
 }
