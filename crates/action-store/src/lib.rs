@@ -150,9 +150,6 @@ CREATE TABLE IF NOT EXISTS action_operation_events (
   FOREIGN KEY (tenant_id, operation_id)
     REFERENCES action_operations (tenant_id, operation_id)
     DEFERRABLE INITIALLY DEFERRED,
-  FOREIGN KEY (tenant_id, operation_id, operation_version)
-    REFERENCES action_operation_events (tenant_id, operation_id, version)
-    DEFERRABLE INITIALLY DEFERRED,
   CHECK ((version = 1 AND event_kind = 'proposed' AND command_digest IS NULL AND command_json IS NULL)
     OR (version > 1 AND event_kind <> 'proposed' AND command_digest IS NOT NULL AND command_json IS NOT NULL)),
   CHECK ((operation_json->'proposal'->>'tenant_id') IS NOT DISTINCT FROM tenant_id),
@@ -181,6 +178,9 @@ CREATE TABLE IF NOT EXISTS action_dispatches (
   UNIQUE (tenant_id, dispatch_digest),
   FOREIGN KEY (tenant_id, operation_id)
     REFERENCES action_operations (tenant_id, operation_id)
+    DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (tenant_id, operation_id, operation_version)
+    REFERENCES action_operation_events (tenant_id, operation_id, version)
     DEFERRABLE INITIALLY DEFERRED,
   CHECK ((dispatch_json->>'tenant_id') IS NOT DISTINCT FROM tenant_id),
   CHECK ((dispatch_json->>'operation_id') IS NOT DISTINCT FROM operation_id),
@@ -1555,6 +1555,26 @@ mod tests {
         assert!(!POSTGRES_SCHEMA.contains("DELETE FROM finding_validation_receipts"));
         assert!(!POSTGRES_SCHEMA.contains("UPDATE action_dispatches"));
         assert!(!POSTGRES_SCHEMA.contains("DELETE FROM action_dispatches"));
+        let event_table = POSTGRES_SCHEMA
+            .find("CREATE TABLE IF NOT EXISTS action_operation_events")
+            .expect("event table");
+        let dispatch_table = POSTGRES_SCHEMA
+            .find("CREATE TABLE IF NOT EXISTS action_dispatches")
+            .expect("dispatch table");
+        let dispatch_indexes = POSTGRES_SCHEMA
+            .find("CREATE INDEX IF NOT EXISTS action_operation_events_committed_idx")
+            .expect("indexes after dispatch table");
+        assert!(
+            !POSTGRES_SCHEMA[event_table..dispatch_table].contains(
+                "FOREIGN KEY (tenant_id, operation_id, operation_version)"
+            ),
+            "the event table cannot reference a dispatch-only column"
+        );
+        assert!(
+            POSTGRES_SCHEMA[dispatch_table..dispatch_indexes]
+                .contains("FOREIGN KEY (tenant_id, operation_id, operation_version)"),
+            "the immutable dispatch must reference its exact start-execution event"
+        );
     }
 
     #[test]
