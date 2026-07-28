@@ -55,6 +55,13 @@ semantics.
 - Temporal queries reconstruct bounded history from the ledger and log. They
   do not make Neo4j authoritative.
 - Simulations are read-only. Mutations use governed Action contracts.
+- An Action proposal binds the validated finding revision, action-definition
+  revision, target, simulation, rollback, and verification plan. A worker can
+  claim it only after an independent decision receipt approves that exact
+  proposal digest.
+- Provider completion is not verification. The verified transition requires a
+  receipt bound to the operation, proposal, observed effect, and executor, with
+  a different verifier, a fresh source revision, and evidence.
 - Subscriptions use durable cursors and typed filters. They do not expose
   arbitrary Cypher.
 - Analysis plugins remain first-party, release-provenanced, zero-import,
