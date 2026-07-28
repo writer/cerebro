@@ -50,6 +50,7 @@ connectrpc = { git = "https://github.com/connectrpc/connect-rust.git", rev = "8b
 libc = "0.2.180"
 futures-util = "0.3.31"
 hmac = "0.13.0"
+jsonwebtoken = { version = "11.0.0", default-features = false, features = ["aws_lc_rs"] }
 prost = "0.14.4"
 prost-types = "0.14.4"
 regex = { version = "1.12.3", default-features = false, features = ["perf", "std"] }

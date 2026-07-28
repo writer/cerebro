@@ -4,12 +4,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DELETE, GET, PATCH, POST, PUT } from "./route";
 
 const originalFixtureMode = process.env.CEREBRO_WEB_FIXTURE_MODE;
+const originalAuthorityMode = process.env.CEREBRO_AUTHORITY_MODE;
 const originalIdentityRequired = process.env.CEREBRO_IDENTITY_REQUIRED;
 const originalLocalIdentityFallback = process.env.CEREBRO_LOCAL_IDENTITY_FALLBACK;
 
 afterEach(() => {
   if (originalFixtureMode === undefined) delete process.env.CEREBRO_WEB_FIXTURE_MODE;
   else process.env.CEREBRO_WEB_FIXTURE_MODE = originalFixtureMode;
+  if (originalAuthorityMode === undefined) delete process.env.CEREBRO_AUTHORITY_MODE;
+  else process.env.CEREBRO_AUTHORITY_MODE = originalAuthorityMode;
   if (originalIdentityRequired === undefined) delete process.env.CEREBRO_IDENTITY_REQUIRED;
   else process.env.CEREBRO_IDENTITY_REQUIRED = originalIdentityRequired;
   if (originalLocalIdentityFallback === undefined) delete process.env.CEREBRO_LOCAL_IDENTITY_FALLBACK;
@@ -62,6 +65,32 @@ describe("Cerebro proxy route", () => {
     expect(firstResponse.headers.get("x-cerebro-web-trace-id")).toMatch(/^[0-9a-f]{32}$/);
     expect(secondResponse.headers.get("x-cerebro-web-trace-id")).toMatch(/^[0-9a-f]{32}$/);
     await expect(secondResponse.json()).resolves.toMatchObject({ error: "Unable to reach Cerebro API" });
+  });
+
+  it("relays signed Rust-authority reads without deriving or stamping identity", async () => {
+    process.env.CEREBRO_AUTHORITY_MODE = "rust";
+    process.env.CEREBRO_IDENTITY_REQUIRED = "true";
+    process.env.CEREBRO_LOCAL_IDENTITY_FALLBACK = "false";
+    let upstreamHeaders = new Headers();
+    vi.stubGlobal("fetch", vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
+      upstreamHeaders = new Headers(init?.headers);
+      return new Response(JSON.stringify({ records: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }));
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/cerebro/v1/security/lifecycle", {
+        headers: { authorization: "Bearer signed-browser-token" },
+      }),
+      { params: Promise.resolve({ path: ["v1", "security", "lifecycle"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(upstreamHeaders.get("authorization")).toBe("Bearer signed-browser-token");
+    expect(upstreamHeaders.get("x-cerebro-user-id")).toBeNull();
+    expect(upstreamHeaders.get("x-cerebro-user-subject")).toBeNull();
   });
 
   it.each([

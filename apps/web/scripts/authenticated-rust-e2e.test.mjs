@@ -30,12 +30,14 @@ describe("authenticated Rust web integration helpers", () => {
         {
           HOME: "/tmp/home",
           PATH: "/bin",
+          CEREBRO_API_KEY: "legacy-go-key",
+          CEREBRO_HTTP_ADDR: "127.0.0.1:8000",
           UNRELATED_SECRET: "must-not-cross-process-boundary",
         },
-        { CEREBRO_HTTP_ADDR: "127.0.0.1:8000" },
+        { CEREBRO_RUST_BIND: "127.0.0.1:8001" },
       ),
     ).toEqual({
-      CEREBRO_HTTP_ADDR: "127.0.0.1:8000",
+      CEREBRO_RUST_BIND: "127.0.0.1:8001",
       HOME: "/tmp/home",
       PATH: "/bin",
     });
@@ -62,7 +64,9 @@ describe("authenticated Rust web integration helpers", () => {
     expect(payload).toMatchObject({
       aud: "cerebro-local-web",
       iss: "http://127.0.0.1:41111",
+      scope: "cerebro:read identity:read",
       sub: "rust-e2e-user",
+      tenant_id: "tenant-demo",
     });
     expect(valid).toBe(true);
   });

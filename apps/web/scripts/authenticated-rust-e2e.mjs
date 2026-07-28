@@ -29,7 +29,7 @@ const expect = (condition, message) => {
 const base64UrlJSON = (value) =>
   Buffer.from(JSON.stringify(value)).toString("base64url");
 
-export function signedBearerToken(privateKey, issuer, now = Date.now()) {
+export function signedBearerToken(privateKey, issuer, now = Date.now(), claims = {}) {
   const issuedAt = Math.floor(now / 1000);
   const input = [
     base64UrlJSON({ alg: "RS256", kid: keyID, typ: "JWT" }),
@@ -40,7 +40,10 @@ export function signedBearerToken(privateKey, issuer, now = Date.now()) {
       iat: issuedAt,
       iss: issuer,
       name: "Rust E2E",
+      scope: "cerebro:read identity:read",
       sub: "rust-e2e-user",
+      tenant_id: tenantID,
+      ...claims,
     }),
   ].join(".");
   const signature = createSign("RSA-SHA256")
@@ -329,55 +332,31 @@ export async function runAuthenticatedRustE2E(options = {}) {
   let jwks;
   let failed = true;
   try {
-    const [rustPort, apiPort, webPort] = await Promise.all([
-      reserveLoopbackPort(),
+    const [rustPort, webPort] = await Promise.all([
       reserveLoopbackPort(),
       reserveLoopbackPort(),
     ]);
-    expect(new Set([rustPort, apiPort, webPort]).size === 3, "Reserved ports collided");
+    expect(rustPort !== webPort, "Reserved ports collided");
 
-    const apiBinary = path.join(
-      workDir,
-      process.platform === "win32" ? "cerebro.exe" : "cerebro",
+    await run(
+      "cargo",
+      ["build", "--locked", "-p", "cerebro-platform"],
+      { cwd: repositoryRoot },
+      deadlineAt,
     );
-    await Promise.all([
-      run(
-        "go",
-        ["build", "-o", apiBinary, "./cmd/cerebro"],
-        { cwd: repositoryRoot },
-        deadlineAt,
-      ),
-      run(
-        "cargo",
-        [
-          "build",
-          "--locked",
-          "-p",
-          "cerebro-platform",
-          "-p",
-          "cerebro-sourceruntime-eventadmission",
-        ],
-        { cwd: repositoryRoot },
-        deadlineAt,
-      ),
-    ]);
 
     const sharedSecret = `rust-e2e-${randomBytes(32).toString("base64url")}`;
-    const apiKey = `web-e2e-${randomBytes(24).toString("base64url")}`;
     const rustBinary = path.join(
       repositoryRoot,
       "target",
       "debug",
       process.platform === "win32" ? "cerebro-platform.exe" : "cerebro-platform",
     );
-    const workerBinary = path.join(
-      repositoryRoot,
-      "target",
-      "debug",
-      process.platform === "win32"
-        ? "cerebro-event-admission-worker.exe"
-        : "cerebro-event-admission-worker",
-    );
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+    });
+    jwks = await startJwksServer(publicKey.export({ format: "jwk" }));
+    const bearer = signedBearerToken(privateKey, jwks.issuer);
 
     const rust = startLogged(
       "rust-platform",
@@ -387,6 +366,9 @@ export async function runAuthenticatedRustE2E(options = {}) {
         cwd: repositoryRoot,
         env: portableEnvironment(process.env, {
           CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: sharedSecret,
+          CEREBRO_IDENTITY_AUDIENCE: audience,
+          CEREBRO_IDENTITY_ISSUER: jwks.issuer,
+          CEREBRO_IDENTITY_JWKS_URL: `${jwks.issuer}/jwks`,
           CEREBRO_RUST_BIND: `127.0.0.1:${rustPort}`,
         }),
       },
@@ -400,48 +382,104 @@ export async function runAuthenticatedRustE2E(options = {}) {
       deadlineAt,
     );
 
-    const api = startLogged(
-      "go-api",
-      apiBinary,
-      ["serve"],
-      {
-        cwd: repositoryRoot,
-        env: portableEnvironment(process.env, {
-          CEREBRO_API_KEYS: `${apiKey}:web-e2e:${tenantID}`,
-          CEREBRO_EVENT_ADMISSION_WORKER: workerBinary,
-          CEREBRO_HTTP_ADDR: `127.0.0.1:${apiPort}`,
-          CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE: "authority",
-          CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL: `http://127.0.0.1:${rustPort}`,
-          CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: sharedSecret,
-        }),
-      },
-      logDir,
-    );
-    processes.push(api);
-    await waitFor(
-      "Go API",
-      async () => (await request(`http://127.0.0.1:${apiPort}/health`)).status === 200,
-      api,
-      deadlineAt,
-    );
-
     const unauthorized = await request(
-      `http://127.0.0.1:${apiPort}/v1/security/lifecycle?limit=100`,
+      `http://127.0.0.1:${rustPort}/v1/security/lifecycle?limit=100`,
     );
-    expect(unauthorized.status === 401, `Go API accepted an unauthenticated read (${unauthorized.status})`);
+    expect(unauthorized.status === 401, `Rust accepted an unauthenticated read (${unauthorized.status})`);
     const directLifecycle = await request(
-      `http://127.0.0.1:${apiPort}/v1/security/lifecycle?limit=100`,
-      { headers: { "x-cerebro-api-key": apiKey } },
+      `http://127.0.0.1:${rustPort}/v1/security/lifecycle?limit=100`,
+      { headers: { authorization: `Bearer ${bearer}` } },
     );
-    expect(directLifecycle.status === 200, `Go-to-Rust lifecycle read returned ${directLifecycle.status}`);
+    expect(directLifecycle.status === 200, `Rust lifecycle read returned ${directLifecycle.status}`);
     const directPayload = JSON.parse(directLifecycle.body);
     expect(typeof directPayload.as_of === "string", "Lifecycle response did not come from the Rust contract");
 
-    const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+    const directIdentity = await request(`http://127.0.0.1:${rustPort}/v1/me`, {
+      headers: { authorization: `Bearer ${bearer}` },
+    });
+    expect(directIdentity.status === 200, `Rust identity read returned ${directIdentity.status}`);
+    expect(
+      JSON.parse(directIdentity.body).user?.actorId === "rust-e2e-user",
+      "Rust did not derive the actor from the signed subject",
+    );
+
+    const missingScope = signedBearerToken(privateKey, jwks.issuer, Date.now(), {
+      scope: "identity:read",
+    });
+    expect(
+      (
+        await request(
+          `http://127.0.0.1:${rustPort}/v1/security/lifecycle?limit=100`,
+          { headers: { authorization: `Bearer ${missingScope}` } },
+        )
+      ).status === 403,
+      "Rust accepted a lifecycle read without cerebro:read",
+    );
+    const wrongAudience = signedBearerToken(privateKey, jwks.issuer, Date.now(), {
+      aud: "not-cerebro",
+    });
+    expect(
+      (
+        await request(`http://127.0.0.1:${rustPort}/v1/me`, {
+          headers: { authorization: `Bearer ${wrongAudience}` },
+        })
+      ).status === 401,
+      "Rust accepted a token for another audience",
+    );
+    const expired = signedBearerToken(privateKey, jwks.issuer, Date.now(), {
+      exp: Math.floor(Date.now() / 1000) - 60,
+    });
+    expect(
+      (
+        await request(`http://127.0.0.1:${rustPort}/v1/me`, {
+          headers: { authorization: `Bearer ${expired}` },
+        })
+      ).status === 401,
+      "Rust accepted an expired token",
+    );
+    const wrongIssuer = signedBearerToken(privateKey, "https://wrong-issuer.example");
+    expect(
+      (
+        await request(`http://127.0.0.1:${rustPort}/v1/me`, {
+          headers: { authorization: `Bearer ${wrongIssuer}` },
+        })
+      ).status === 401,
+      "Rust accepted a token from another issuer",
+    );
+    const missingTenant = signedBearerToken(privateKey, jwks.issuer, Date.now(), {
+      tenant_id: undefined,
+    });
+    expect(
+      (
+        await request(`http://127.0.0.1:${rustPort}/v1/me`, {
+          headers: { authorization: `Bearer ${missingTenant}` },
+        })
+      ).status === 401,
+      "Rust accepted a token without a tenant",
+    );
+    const missingIdentityScope = signedBearerToken(privateKey, jwks.issuer, Date.now(), {
+      scope: "cerebro:read",
+    });
+    expect(
+      (
+        await request(`http://127.0.0.1:${rustPort}/v1/me`, {
+          headers: { authorization: `Bearer ${missingIdentityScope}` },
+        })
+      ).status === 403,
+      "Rust accepted an identity read without identity:read",
+    );
+    const { privateKey: untrustedPrivateKey } = generateKeyPairSync("rsa", {
       modulusLength: 2048,
     });
-    jwks = await startJwksServer(publicKey.export({ format: "jwk" }));
-    const bearer = signedBearerToken(privateKey, jwks.issuer);
+    const invalidSignature = signedBearerToken(untrustedPrivateKey, jwks.issuer);
+    expect(
+      (
+        await request(`http://127.0.0.1:${rustPort}/v1/me`, {
+          headers: { authorization: `Bearer ${invalidSignature}` },
+        })
+      ).status === 401,
+      "Rust accepted a bearer signed by an untrusted key",
+    );
 
     const web = startLogged(
       "web",
@@ -450,15 +488,9 @@ export async function runAuthenticatedRustE2E(options = {}) {
       {
         cwd: webRoot,
         env: portableEnvironment(process.env, {
-          CEREBRO_API_BASE: `http://127.0.0.1:${apiPort}`,
-          CEREBRO_API_KEY: apiKey,
-          CEREBRO_FORWARD_AUTH_HEADERS: "false",
-          CEREBRO_IDENTITY_AUDIENCE: audience,
-          CEREBRO_IDENTITY_ISSUER: jwks.issuer,
-          CEREBRO_IDENTITY_JWKS_URL: `${jwks.issuer}/jwks`,
-          CEREBRO_IDENTITY_PROFILE: "oidc-bearer",
-          CEREBRO_IDENTITY_REQUIRED: "true",
-          CEREBRO_LOCAL_IDENTITY_FALLBACK: "false",
+          CEREBRO_API_BASE: `http://127.0.0.1:${rustPort}`,
+          CEREBRO_AUTHORITY_MODE: "rust",
+          CEREBRO_FORWARD_AUTH_HEADERS: "true",
           CEREBRO_PROXY_CACHE_TTL_MS: "0",
           NEXT_PUBLIC_CEREBRO_API_BASE: "/api/cerebro",
         }),
@@ -495,7 +527,7 @@ export async function runAuthenticatedRustE2E(options = {}) {
 
     const metricsBefore = await request(`http://127.0.0.1:${rustPort}/metrics`);
     const beforeCount = lifecycleSuccesses(metricsBefore.body);
-    expect(beforeCount >= 1, "Direct Go-to-Rust lifecycle read was not recorded");
+    expect(beforeCount >= 1, "Direct Rust lifecycle read was not recorded");
 
     const { chromium } = await import("@playwright/test");
     browser = await withDeadline(chromium.launch({ headless: true }), deadlineAt, "Chromium launch");
@@ -562,7 +594,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   runAuthenticatedRustE2E(parseArgs(process.argv.slice(2)))
     .then((result) => {
       console.log(
-        `[e2e:rust-auth:local] passed signed browser identity -> authenticated Go API -> Rust lifecycle (${result.identityConfidence}, ${result.lifecycleRequests} Rust reads)`,
+        `[e2e:rust-auth:local] passed signed browser identity -> Next relay -> Rust auth and lifecycle (${result.identityConfidence}, ${result.lifecycleRequests} Rust reads)`,
       );
     })
     .catch((error) => {
