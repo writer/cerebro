@@ -469,11 +469,11 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
         _ if path.starts_with("/v1/finding-validations/") => "cerebro:read",
         "/v1/action-dispatches" => "cerebro:actions:read",
         _ if path.starts_with("/v1/action-dispatches/") => "cerebro:actions:read",
-        "/v1/action-reconciliation-runs" => "cerebro:actions:write",
+        "/v1/action-reconciliation-runs" => ACTION_RECONCILE_SCOPE,
         "/v1/actions" if method == Method::GET => "cerebro:actions:read",
         "/v1/actions" => "cerebro:actions:write",
         _ if path.starts_with("/v1/actions/") && path.ends_with("/provider-observation") => {
-            "cerebro:actions:write"
+            ACTION_RECONCILE_SCOPE
         }
         _ if path.starts_with("/v1/actions/") && path.ends_with("/commands") => {
             "cerebro:actions:write"
@@ -2357,6 +2357,8 @@ async fn observe_action_provider_route(
             "The Action has no provider receipt to observe.",
         )
     })?;
+    let previous_observation =
+        require_provider_observation_time(operation.provider_observed_at_unix_ms)?;
     let dispatch = authority
         .get_dispatch(&identity.tenant, &operation_id)
         .await
@@ -2365,12 +2367,6 @@ async fn observe_action_provider_route(
         .observe(&dispatch, external_id)
         .await
         .map_err(action_provider_error)?;
-    let previous_observation = operation.provider_observed_at_unix_ms.ok_or_else(|| {
-        service_unavailable(
-            "action_provider_receipt_unavailable",
-            "The Action provider receipt has no authority observation time.",
-        )
-    })?;
     let observed_at = next_provider_observation_time(previous_observation, current_unix_millis()?)
         .ok_or_else(|| {
             service_unavailable(
@@ -2394,6 +2390,17 @@ async fn observe_action_provider_route(
 
 fn next_provider_observation_time(previous: u64, current: u64) -> Option<u64> {
     previous.checked_add(1).map(|minimum| current.max(minimum))
+}
+
+fn require_provider_observation_time(
+    previous: Option<u64>,
+) -> Result<u64, (StatusCode, Json<ErrorResponse>)> {
+    previous.ok_or_else(|| {
+        bad_request(
+            "action_not_observable",
+            "The Action was not dispatched through the observable provider path.",
+        )
+    })
 }
 
 fn action_clock_overflow() -> (StatusCode, Json<ErrorResponse>) {
@@ -4170,11 +4177,11 @@ mod tests {
                 &Method::POST,
                 "/v1/actions/operation:one/provider-observation"
             ),
-            "cerebro:actions:write"
+            ACTION_RECONCILE_SCOPE
         );
         assert_eq!(
             oidc_scope_for_route(&Method::POST, "/v1/action-reconciliation-runs"),
-            "cerebro:actions:write"
+            ACTION_RECONCILE_SCOPE
         );
     }
 
@@ -4251,6 +4258,11 @@ mod tests {
         assert_eq!(next_provider_observation_time(42, 41), Some(43));
         assert_eq!(next_provider_observation_time(42, 44), Some(44));
         assert_eq!(next_provider_observation_time(u64::MAX, u64::MAX), None);
+
+        let error = require_provider_observation_time(None)
+            .expect_err("legacy Action must not be treated as retryable provider work");
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert_eq!(error.1.0.code, "action_not_observable");
     }
 
     #[tokio::test]

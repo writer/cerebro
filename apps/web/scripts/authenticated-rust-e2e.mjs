@@ -170,7 +170,7 @@ async function withDeadline(promise, deadlineAt, label) {
   }
 }
 
-async function run(command, args, options, deadlineAt) {
+export async function run(command, args, options, deadlineAt) {
   const child = spawn(command, args, {
     cwd: options.cwd,
     env: options.env ?? portableEnvironment(),
@@ -178,7 +178,11 @@ async function run(command, args, options, deadlineAt) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   const output = [];
-  child.stdout.on("data", (chunk) => output.push(chunk));
+  const stdout = [];
+  child.stdout.on("data", (chunk) => {
+    stdout.push(chunk);
+    output.push(chunk);
+  });
   child.stderr.on("data", (chunk) => output.push(chunk));
   try {
     return await withDeadline(
@@ -186,7 +190,8 @@ async function run(command, args, options, deadlineAt) {
         child.once("error", reject);
         child.once("exit", (code, signal) => {
           if (code === 0) {
-            resolve(Buffer.concat(output).toString("utf8"));
+            const chunks = options.capture === "stdout" ? stdout : output;
+            resolve(Buffer.concat(chunks).toString("utf8"));
           } else {
             reject(
               new Error(
@@ -553,7 +558,7 @@ async function executeSignedActionLifecycle({
   );
   const reconcilerBearer = token(
     "reconciler:rust-e2e",
-    "cerebro:actions:write cerebro:actions:reconcile",
+    "cerebro:actions:reconcile",
   );
   const actionURL = `${webBase}/api/cerebro/v1/actions/${encodeURIComponent(fixture.operation_id)}`;
   const commandURL = `${actionURL}/commands`;
@@ -776,7 +781,11 @@ export async function runAuthenticatedRustE2E(options = {}) {
           "--example",
           "action_authority_e2e_fixture",
         ],
-        { cwd: repositoryRoot, env: portableEnvironment() },
+        {
+          cwd: repositoryRoot,
+          env: portableEnvironment(),
+          capture: "stdout",
+        },
         deadlineAt,
       ),
     );
