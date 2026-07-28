@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{Error, Result};
 
-pub const DEFAULT_CATALOG_PATH: &str = "internal/graphactions/action_catalog.yaml";
+pub const DEFAULT_CATALOG_PATH: &str = "crates/action-catalog/action_catalog.yaml";
 pub const DEFAULT_OUTPUT_PATH: &str = "internal/graphactions/registry_gen.go";
 pub const DEFAULT_RUST_OUTPUT_PATH: &str = "crates/action-catalog/src/generated.rs";
 pub const MAX_GENERATED_FILE_BYTES: usize = 4 << 20;
