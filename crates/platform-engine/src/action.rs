@@ -1,6 +1,6 @@
 use cerebro_platform_sdk::{
     ActionOperation, ActionState, ActionVerificationReceipt, ActorId, ContentDigest,
-    DecisionReceipt, OpaqueId, SdkError, VerificationState,
+    DecisionReceipt, MAX_ACTION_CLAIM_LEASE_MS, OpaqueId, SdkError, VerificationState,
 };
 use serde::Serialize;
 
@@ -15,8 +15,22 @@ pub enum ActionCommand {
     Claim {
         worker_id: OpaqueId,
         claimed_at_unix_ms: u64,
+        claim_expires_at_unix_ms: u64,
     },
-    StartExecution,
+    /// Extends the dispatch lease before execution starts. Once execution
+    /// starts, uncertain outcomes must use reconciliation instead of takeover.
+    RenewClaim {
+        renewed_at_unix_ms: u64,
+        claim_expires_at_unix_ms: u64,
+    },
+    /// Returns an unstarted Action to the approved queue after its dispatch
+    /// lease expires so another executor can claim it.
+    ReleaseExpiredClaim {
+        observed_at_unix_ms: u64,
+    },
+    StartExecution {
+        started_at_unix_ms: u64,
+    },
     MarkOutcomeUnknown,
     Complete {
         external_receipt_ref: OpaqueId,
@@ -65,6 +79,7 @@ pub fn transition_action(
             ActionCommand::Claim {
                 worker_id,
                 claimed_at_unix_ms,
+                claim_expires_at_unix_ms,
             },
         ) => {
             let approval = operation
@@ -73,14 +88,67 @@ pub fn transition_action(
                 .ok_or(SdkError::Invalid("action approval receipt"))?;
             if claimed_at_unix_ms < approval.decided_at_unix_ms
                 || claimed_at_unix_ms >= operation.proposal.proposal_expires_at_unix_ms
+                || claim_expires_at_unix_ms <= claimed_at_unix_ms
+                || claim_expires_at_unix_ms > operation.proposal.proposal_expires_at_unix_ms
+                || claim_expires_at_unix_ms - claimed_at_unix_ms > MAX_ACTION_CLAIM_LEASE_MS
             {
                 return Err(SdkError::Invalid("action execution claim"));
             }
             next.state = ActionState::Claimed;
             next.claimed_by = Some(worker_id);
             next.claimed_at_unix_ms = Some(claimed_at_unix_ms);
+            next.claim_expires_at_unix_ms = Some(claim_expires_at_unix_ms);
         }
-        (ActionState::Claimed, ActionCommand::StartExecution) => {
+        (
+            ActionState::Claimed,
+            ActionCommand::RenewClaim {
+                renewed_at_unix_ms,
+                claim_expires_at_unix_ms,
+            },
+        ) => {
+            let current_expiry = operation
+                .claim_expires_at_unix_ms
+                .ok_or(SdkError::Invalid("action execution claim"))?;
+            if renewed_at_unix_ms < operation.claimed_at_unix_ms.unwrap_or(u64::MAX)
+                || renewed_at_unix_ms >= current_expiry
+                || claim_expires_at_unix_ms <= current_expiry
+                || claim_expires_at_unix_ms <= renewed_at_unix_ms
+                || claim_expires_at_unix_ms > operation.proposal.proposal_expires_at_unix_ms
+                || claim_expires_at_unix_ms - renewed_at_unix_ms > MAX_ACTION_CLAIM_LEASE_MS
+            {
+                return Err(SdkError::Invalid("action claim renewal"));
+            }
+            next.claim_expires_at_unix_ms = Some(claim_expires_at_unix_ms);
+        }
+        (
+            ActionState::Claimed,
+            ActionCommand::ReleaseExpiredClaim {
+                observed_at_unix_ms,
+            },
+        ) => {
+            if operation
+                .claim_expires_at_unix_ms
+                .is_none_or(|claim_expires_at| observed_at_unix_ms < claim_expires_at)
+            {
+                return Err(SdkError::Conflict(
+                    "action execution claim has not expired".to_owned(),
+                ));
+            }
+            next.state = ActionState::Approved;
+            next.claimed_by = None;
+            next.claimed_at_unix_ms = None;
+            next.claim_expires_at_unix_ms = None;
+        }
+        (ActionState::Claimed, ActionCommand::StartExecution { started_at_unix_ms }) => {
+            if started_at_unix_ms < operation.claimed_at_unix_ms.unwrap_or(u64::MAX)
+                || operation
+                    .claim_expires_at_unix_ms
+                    .is_none_or(|claim_expires_at| started_at_unix_ms >= claim_expires_at)
+            {
+                return Err(SdkError::Conflict(
+                    "action execution claim expired before execution started".to_owned(),
+                ));
+            }
             next.state = ActionState::Executing;
         }
         (ActionState::Executing, ActionCommand::MarkOutcomeUnknown) => {

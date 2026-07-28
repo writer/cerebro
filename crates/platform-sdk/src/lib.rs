@@ -26,7 +26,7 @@ mod view;
 
 pub use action::{
     ActionEffect, ActionOperation, ActionProposal, ActionReceipt, ActionState,
-    ActionVerificationReceipt, VerificationState,
+    ActionVerificationReceipt, MAX_ACTION_CLAIM_LEASE_MS, VerificationState,
 };
 pub use assertion::{
     AssertionCondition, AssertionDefinition, AssertionEvaluation, AssertionState, EvaluationTrigger,

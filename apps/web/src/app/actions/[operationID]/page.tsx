@@ -90,6 +90,7 @@ export default function ActionDetailPage() {
           <dl>
             <DetailRow label="Claimed by" value={action.claimed_by || "Not claimed"} mono={Boolean(action.claimed_by)} />
             <DetailRow label="Claimed" value={actionTimeLabel(action.claimed_at_unix_ms)} />
+            <DetailRow label="Claim expires" value={actionTimeLabel(action.claim_expires_at_unix_ms)} />
             <DetailRow label="Executor" value={action.executor_actor_id || "No executor receipt"} mono={Boolean(action.executor_actor_id)} />
             <DetailRow label="Executed" value={actionTimeLabel(action.executed_at_unix_ms)} />
             <DetailRow label="External receipt" value={action.external_receipt_ref || "Not recorded"} mono={Boolean(action.external_receipt_ref)} />

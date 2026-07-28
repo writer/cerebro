@@ -188,6 +188,7 @@ fn action_transitions_are_optimistic_and_fail_closed() {
         approval_receipt: None,
         claimed_by: None,
         claimed_at_unix_ms: None,
+        claim_expires_at_unix_ms: None,
         executor_actor_id: None,
         executed_at_unix_ms: None,
         external_receipt_ref: None,
@@ -209,6 +210,7 @@ fn action_transitions_are_optimistic_and_fail_closed() {
             ActionCommand::Claim {
                 worker_id: OpaqueId::parse("worker:one").expect("valid worker"),
                 claimed_at_unix_ms: 11,
+                claim_expires_at_unix_ms: 20,
             },
         )
         .is_err()
@@ -233,11 +235,97 @@ fn action_transitions_are_optimistic_and_fail_closed() {
         ActionCommand::Claim {
             worker_id: OpaqueId::parse("worker:one").expect("valid worker"),
             claimed_at_unix_ms: 11,
+            claim_expires_at_unix_ms: 20,
         },
     )
     .expect("transition");
-    let executing =
-        transition_action(&claimed, 5, ActionCommand::StartExecution).expect("transition");
+    assert!(
+        transition_action(
+            &claimed,
+            5,
+            ActionCommand::StartExecution {
+                started_at_unix_ms: 20,
+            },
+        )
+        .is_err(),
+        "a worker cannot start execution at the exclusive lease deadline"
+    );
+    assert!(
+        transition_action(
+            &claimed,
+            5,
+            ActionCommand::ReleaseExpiredClaim {
+                observed_at_unix_ms: 19,
+            },
+        )
+        .is_err(),
+        "a live claim cannot be taken over"
+    );
+    let released = transition_action(
+        &claimed,
+        5,
+        ActionCommand::ReleaseExpiredClaim {
+            observed_at_unix_ms: 20,
+        },
+    )
+    .expect("expired claim release");
+    assert_eq!(released.state, ActionState::Approved);
+    assert!(released.claimed_by.is_none());
+    assert!(released.claim_expires_at_unix_ms.is_none());
+    let reclaimed = transition_action(
+        &released,
+        6,
+        ActionCommand::Claim {
+            worker_id: OpaqueId::parse("worker:recovery").expect("valid worker"),
+            claimed_at_unix_ms: 21,
+            claim_expires_at_unix_ms: 30,
+        },
+    )
+    .expect("reclaim after expiry");
+    assert_eq!(
+        reclaimed.claimed_by.as_ref().map(OpaqueId::as_str),
+        Some("worker:recovery")
+    );
+    assert!(
+        transition_action(
+            &claimed,
+            5,
+            ActionCommand::RenewClaim {
+                renewed_at_unix_ms: 20,
+                claim_expires_at_unix_ms: 30,
+            },
+        )
+        .is_err(),
+        "an expired claim cannot be renewed"
+    );
+    let renewed = transition_action(
+        &claimed,
+        5,
+        ActionCommand::RenewClaim {
+            renewed_at_unix_ms: 15,
+            claim_expires_at_unix_ms: 25,
+        },
+    )
+    .expect("claim renewal");
+    assert_eq!(renewed.claim_expires_at_unix_ms, Some(25));
+    assert!(
+        transition_action(
+            &renewed,
+            6,
+            ActionCommand::StartExecution {
+                started_at_unix_ms: 24,
+            },
+        )
+        .is_ok()
+    );
+    let executing = transition_action(
+        &claimed,
+        5,
+        ActionCommand::StartExecution {
+            started_at_unix_ms: 12,
+        },
+    )
+    .expect("transition");
     let completed = transition_action(
         &executing,
         6,
@@ -261,7 +349,16 @@ fn action_transitions_are_optimistic_and_fail_closed() {
     assert_eq!(verified.verification_state, VerificationState::Verified);
     assert_eq!(verified.version, 8);
     assert!(verified.verification_receipt.is_some());
-    assert!(transition_action(&verified, 8, ActionCommand::StartExecution).is_err());
+    assert!(
+        transition_action(
+            &verified,
+            8,
+            ActionCommand::StartExecution {
+                started_at_unix_ms: 13,
+            },
+        )
+        .is_err()
+    );
 
     let uncertain =
         transition_action(&executing, 6, ActionCommand::MarkOutcomeUnknown).expect("transition");
@@ -319,6 +416,7 @@ fn action_authority_rejects_forged_approval_and_verification_receipts() {
         approval_receipt: None,
         claimed_by: None,
         claimed_at_unix_ms: None,
+        claim_expires_at_unix_ms: None,
         executor_actor_id: None,
         executed_at_unix_ms: None,
         external_receipt_ref: None,
@@ -417,6 +515,7 @@ fn action_authority_rejects_forged_approval_and_verification_receipts() {
             ActionCommand::Claim {
                 worker_id: OpaqueId::parse("worker:expired").expect("valid worker"),
                 claimed_at_unix_ms: approved.proposal.proposal_expires_at_unix_ms,
+                claim_expires_at_unix_ms: approved.proposal.proposal_expires_at_unix_ms,
             },
         )
         .is_err()
@@ -427,11 +526,18 @@ fn action_authority_rejects_forged_approval_and_verification_receipts() {
         ActionCommand::Claim {
             worker_id: OpaqueId::parse("worker:receipt-check").expect("valid worker"),
             claimed_at_unix_ms: 11,
+            claim_expires_at_unix_ms: 20,
         },
     )
     .expect("claim");
-    let executing =
-        transition_action(&claimed, 5, ActionCommand::StartExecution).expect("execution");
+    let executing = transition_action(
+        &claimed,
+        5,
+        ActionCommand::StartExecution {
+            started_at_unix_ms: 12,
+        },
+    )
+    .expect("execution");
     let completed = transition_action(
         &executing,
         6,

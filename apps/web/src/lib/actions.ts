@@ -48,6 +48,7 @@ export type ActionOperation = {
   } | null;
   claimed_by?: string | null;
   claimed_at_unix_ms?: number | null;
+  claim_expires_at_unix_ms?: number | null;
   executor_actor_id?: string | null;
   executed_at_unix_ms?: number | null;
   external_receipt_ref?: string | null;
