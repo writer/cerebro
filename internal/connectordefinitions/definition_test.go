@@ -708,11 +708,13 @@ func TestValidateBlocksAmbiguousOrUndeclaredRequiredQueryBinding(t *testing.T) {
 		Auth:         AuthSpec{Model: "none"},
 		ConfigFields: []Field{{Key: "scope"}},
 		ResourceFamilies: []ResourceFamily{{
-			ID:                  "users",
-			Path:                "/v1/users",
-			IDField:             "id",
-			ConfigQuery:         map[string]string{"scope": "scope"},
-			RequiredConfigQuery: map[string]string{"scope": "scope", "tenant": "tenant_id"},
+			ID:          "users",
+			Path:        "/v1/users",
+			IDField:     "id",
+			ConfigQuery: map[string]string{"scope": "scope"},
+			Config: &FamilyConfigSpec{
+				RequiredConfigQuery: map[string]string{"scope": "scope", "tenant": "tenant_id"},
+			},
 		}},
 	})
 	if err != nil {
@@ -1026,11 +1028,11 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 			Incremental: &IncrementalSpec{
 				CursorField: "updated_at",
 			},
-			RequiredConfigQuery: map[string]string{" region ": " region ", "": "ignored"},
 			Config: &FamilyConfigSpec{
-				StaticQuery:      map[string]string{"include": "members", "empty": ""},
-				ConfigQuery:      map[string]string{"scope[]": "scopes"},
-				ConfigAttributes: map[string]string{"account_label": "account_label"},
+				StaticQuery:         map[string]string{"include": "members", "empty": ""},
+				ConfigQuery:         map[string]string{"scope[]": "scopes"},
+				RequiredConfigQuery: map[string]string{" region ": " region ", "": "ignored"},
+				ConfigAttributes:    map[string]string{"account_label": "account_label"},
 			},
 			Projection: &ProjectionSpec{
 				Template: "identity_user",
@@ -1073,8 +1075,8 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 	if family.Read.PathParamConfig["region_id"] != "region" || len(family.Read.PathParamConfig) != 1 {
 		t.Fatalf("path param config = %#v, want region_id->region", family.Read.PathParamConfig)
 	}
-	if family.RequiredConfigQuery["region"] != "region" || len(family.RequiredConfigQuery) != 1 {
-		t.Fatalf("required config query = %#v, want region->region", family.RequiredConfigQuery)
+	if family.Config.RequiredConfigQuery["region"] != "region" || len(family.Config.RequiredConfigQuery) != 1 {
+		t.Fatalf("required config query = %#v, want region->region", family.Config.RequiredConfigQuery)
 	}
 	if family.Pagination == nil || len(family.Pagination.NextCursorKeys) != 1 || family.Pagination.NextCursorKeys[0] != "next_cursor" || family.Pagination.HasMoreKey != "has_more" {
 		t.Fatalf("pagination = %#v, want next cursor and has_more metadata", family.Pagination)

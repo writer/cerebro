@@ -329,7 +329,6 @@ type ResourceFamily struct {
 	StaticQuery           map[string]string       `json:"static_query,omitempty"`
 	StaticHeaders         map[string]string       `json:"static_headers,omitempty"`
 	ConfigQuery           map[string]string       `json:"config_query,omitempty"`
-	RequiredConfigQuery   map[string]string       `json:"required_config_query,omitempty"`
 	Pagination            *PaginationSpec         `json:"pagination,omitempty"`
 	Incremental           *IncrementalSpec        `json:"incremental,omitempty"`
 	Config                *FamilyConfigSpec       `json:"config,omitempty"`
@@ -354,15 +353,16 @@ type ResourceReadSpec struct {
 
 // FamilyConfigSpec binds static and runtime config values into a resource-family request.
 type FamilyConfigSpec struct {
-	BaseURL          string            `json:"base_url,omitempty"`
-	AuthModel        string            `json:"auth_model,omitempty"`
-	StaticQuery      map[string]string `json:"static_query,omitempty"`
-	ConfigQuery      map[string]string `json:"config_query,omitempty"`
-	ConfigAttributes map[string]string `json:"config_attributes,omitempty"`
-	IDTemplate       string            `json:"id_template,omitempty"`
-	EncodeURNID      bool              `json:"encode_urn_id,omitempty"`
-	ResourceURNKind  string            `json:"resource_urn_kind,omitempty"`
-	IdentityKeys     []string          `json:"identity_keys,omitempty"`
+	BaseURL             string            `json:"base_url,omitempty"`
+	AuthModel           string            `json:"auth_model,omitempty"`
+	StaticQuery         map[string]string `json:"static_query,omitempty"`
+	ConfigQuery         map[string]string `json:"config_query,omitempty"`
+	RequiredConfigQuery map[string]string `json:"required_config_query,omitempty"`
+	ConfigAttributes    map[string]string `json:"config_attributes,omitempty"`
+	IDTemplate          string            `json:"id_template,omitempty"`
+	EncodeURNID         bool              `json:"encode_urn_id,omitempty"`
+	ResourceURNKind     string            `json:"resource_urn_kind,omitempty"`
+	IdentityKeys        []string          `json:"identity_keys,omitempty"`
 }
 
 // ScopeOption exposes a resource family as a selectable scope option in the UI.
@@ -928,25 +928,22 @@ func validateFamilyIntegrationFields(family ResourceFamily, configFields map[str
 	if family.Config != nil {
 		validateFamilyConfigMap(family.ID, "static_query", family.Config.StaticQuery, add)
 		validateFamilyConfigMap(family.ID, "config_query", family.Config.ConfigQuery, add)
+		validateFamilyConfigMap(family.ID, "required_config_query", family.Config.RequiredConfigQuery, add)
 		validateFamilyConfigMap(family.ID, "config_attributes", family.Config.ConfigAttributes, add)
 		for _, key := range family.Config.IdentityKeys {
 			if strings.TrimSpace(key) == "" {
 				add(blocking("identity_keys_"+family.ID, "Identity keys", "Identity keys must not contain empty values."))
 			}
 		}
-	}
-	validateFamilyConfigMap(family.ID, "required_config_query", family.RequiredConfigQuery, add)
-	for queryParam, configField := range family.RequiredConfigQuery {
-		if _, ok := configFields[configField]; !ok {
-			add(blocking("required_config_query_field_"+family.ID+"_"+normalizeDefinitionID(queryParam), "Required query config", "Required query bindings must reference fields declared in definition.config_fields."))
-		}
-		_, topLevelOptional := family.ConfigQuery[queryParam]
-		nestedOptional := false
-		if family.Config != nil {
-			_, nestedOptional = family.Config.ConfigQuery[queryParam]
-		}
-		if topLevelOptional || nestedOptional {
-			add(blocking("query_binding_"+family.ID+"_"+normalizeDefinitionID(queryParam), "Query binding", "A query parameter cannot use both optional and required config bindings."))
+		for queryParam, configField := range family.Config.RequiredConfigQuery {
+			if _, ok := configFields[configField]; !ok {
+				add(blocking("required_config_query_field_"+family.ID+"_"+normalizeDefinitionID(queryParam), "Required query config", "Required query bindings must reference fields declared in definition.config_fields."))
+			}
+			_, topLevelOptional := family.ConfigQuery[queryParam]
+			_, nestedOptional := family.Config.ConfigQuery[queryParam]
+			if topLevelOptional || nestedOptional {
+				add(blocking("query_binding_"+family.ID+"_"+normalizeDefinitionID(queryParam), "Query binding", "A query parameter cannot use both optional and required config bindings."))
+			}
 		}
 	}
 	validateFamilyConfigMap(family.ID, "static_headers", family.StaticHeaders, add)
@@ -1238,7 +1235,6 @@ func normalizeResourceFamilies(families []ResourceFamily) []ResourceFamily {
 		family.StaticQuery = normalizeStringMap(family.StaticQuery)
 		family.StaticHeaders = normalizeStringMap(family.StaticHeaders)
 		family.ConfigQuery = normalizeStringMap(family.ConfigQuery)
-		family.RequiredConfigQuery = normalizeStringMap(family.RequiredConfigQuery)
 		family.Pagination = normalizePaginationSpec(family.Pagination)
 		family.Incremental = normalizeIncrementalSpec(family.Incremental)
 		family.Config = normalizeFamilyConfigSpec(family.Config)
@@ -1405,11 +1401,12 @@ func normalizeFamilyConfigSpec(config *FamilyConfigSpec) *FamilyConfigSpec {
 	next.AuthModel = strings.TrimSpace(next.AuthModel)
 	next.StaticQuery = normalizeStringMap(next.StaticQuery)
 	next.ConfigQuery = normalizeStringMap(next.ConfigQuery)
+	next.RequiredConfigQuery = normalizeStringMap(next.RequiredConfigQuery)
 	next.ConfigAttributes = normalizeStringMap(next.ConfigAttributes)
 	next.IDTemplate = strings.TrimSpace(next.IDTemplate)
 	next.ResourceURNKind = strings.TrimSpace(next.ResourceURNKind)
 	next.IdentityKeys = normalizeStringList(next.IdentityKeys)
-	if next.BaseURL == "" && next.AuthModel == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.ConfigAttributes) == 0 && next.IDTemplate == "" && !next.EncodeURNID && next.ResourceURNKind == "" && len(next.IdentityKeys) == 0 {
+	if next.BaseURL == "" && next.AuthModel == "" && len(next.StaticQuery) == 0 && len(next.ConfigQuery) == 0 && len(next.RequiredConfigQuery) == 0 && len(next.ConfigAttributes) == 0 && next.IDTemplate == "" && !next.EncodeURNID && next.ResourceURNKind == "" && len(next.IdentityKeys) == 0 {
 		return nil
 	}
 	return &next

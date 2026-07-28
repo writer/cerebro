@@ -829,7 +829,7 @@ func pathParamsForResource(resource connectordefinitions.ResourceFamily) []strin
 func familyConfig(resource connectordefinitions.ResourceFamily) familyConfigData {
 	config := familyConfigData{
 		StaticQuery:   cloneStringMap(resource.StaticQuery),
-		ConfigQuery:   mergeStringMaps(resource.ConfigQuery, resource.RequiredConfigQuery),
+		ConfigQuery:   cloneStringMap(resource.ConfigQuery),
 		StaticHeaders: cloneStringMap(resource.StaticHeaders),
 	}
 	if resource.Read != nil {
@@ -843,7 +843,10 @@ func familyConfig(resource connectordefinitions.ResourceFamily) familyConfigData
 	}
 	config.BaseURL = strings.TrimSpace(resource.Config.BaseURL)
 	config.StaticQuery = mergeStringMaps(config.StaticQuery, resource.Config.StaticQuery)
-	config.ConfigQuery = mergeStringMaps(config.ConfigQuery, resource.Config.ConfigQuery)
+	config.ConfigQuery = mergeStringMaps(
+		config.ConfigQuery,
+		mergeStringMaps(resource.Config.ConfigQuery, resource.Config.RequiredConfigQuery),
+	)
 	config.ConfigAttributes = cloneStringMap(resource.Config.ConfigAttributes)
 	config.IdentityKeys = append([]string(nil), resource.Config.IdentityKeys...)
 	return config

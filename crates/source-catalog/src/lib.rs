@@ -478,8 +478,6 @@ struct FamilyWire {
     #[serde(default)]
     config_query: BTreeMap<String, String>,
     #[serde(default)]
-    required_config_query: BTreeMap<String, String>,
-    #[serde(default)]
     config: Option<FamilyConfigWire>,
     #[serde(default)]
     read: Option<FamilyReadWire>,
@@ -493,6 +491,8 @@ struct FamilyConfigWire {
     base_url: String,
     #[serde(default)]
     config_query: BTreeMap<String, String>,
+    #[serde(default)]
+    required_config_query: BTreeMap<String, String>,
     #[serde(default)]
     config_attributes: BTreeMap<String, String>,
 }
@@ -746,8 +746,12 @@ fn compile_family(
             );
         }
     }
-    if let Some(parameter) = family
-        .required_config_query
+    let required_config_query_wire = family
+        .config
+        .as_ref()
+        .map(|config| config.required_config_query.clone())
+        .unwrap_or_default();
+    if let Some(parameter) = required_config_query_wire
         .keys()
         .find(|parameter| optional_config_query_wire.contains_key(*parameter))
     {
@@ -766,14 +770,14 @@ fn compile_family(
                 .map(|binding| (query_parameter.clone(), binding))
         })
         .collect::<BTreeMap<_, _>>();
-    config_query.extend(family.required_config_query.iter().filter_map(
+    config_query.extend(required_config_query_wire.iter().filter_map(
         |(query_parameter, config_field)| {
             config_binding(config_field, config_fields)
                 .map(|binding| (query_parameter.clone(), binding))
         },
     ));
     let config_query_configured =
-        config_query.len() == optional_config_query_wire.len() + family.required_config_query.len();
+        config_query.len() == optional_config_query_wire.len() + required_config_query_wire.len();
     let config_attributes_wire = family
         .config
         .as_ref()
@@ -791,7 +795,7 @@ fn compile_family(
     let config_attributes_configured = config_attributes.len() == config_attributes_wire.len();
     for (query_parameter, config_field) in optional_config_query_wire
         .iter()
-        .chain(family.required_config_query.iter())
+        .chain(required_config_query_wire.iter())
     {
         if let Some(binding) = config_query.get(query_parameter) {
             config_attributes
@@ -1511,7 +1515,6 @@ mod tests {
             name_field: String::new(),
             static_query: BTreeMap::new(),
             config_query: BTreeMap::new(),
-            required_config_query: BTreeMap::new(),
             config: None,
             read: Some(FamilyReadWire {
                 path_param_config: BTreeMap::from([(
@@ -1558,8 +1561,10 @@ mod tests {
             name_field: String::new(),
             static_query: BTreeMap::new(),
             config_query: BTreeMap::from([("scope".to_owned(), "scope".to_owned())]),
-            required_config_query: BTreeMap::from([("scope".to_owned(), "scope".to_owned())]),
-            config: None,
+            config: Some(FamilyConfigWire {
+                required_config_query: BTreeMap::from([("scope".to_owned(), "scope".to_owned())]),
+                ..Default::default()
+            }),
             read: None,
             pagination: None,
             projection: Some(ProjectionWire {

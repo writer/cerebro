@@ -239,8 +239,9 @@ entries:
             required_payload_fields: [channel_id, user_id]
             schema_ref: slack/channel_member/v1
             urn_kind: slack_channel_member
-          required_config_query:
-            channel: channel_id
+          config:
+            required_config_query:
+              channel: channel_id
           id: channel_member
           id_field: user_id
           label: Channel members
@@ -277,8 +278,9 @@ entries:
             required_payload_fields: [usergroup_id, user_id]
             schema_ref: slack/user_group_member/v1
             urn_kind: slack_user_group_member
-          required_config_query:
-            usergroup: usergroup_id
+          config:
+            required_config_query:
+              usergroup: usergroup_id
           id: user_group_member
           id_field: user_id
           label: User group members
