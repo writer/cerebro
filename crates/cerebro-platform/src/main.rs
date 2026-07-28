@@ -1266,12 +1266,12 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
         .get(&source_id)
         .ok_or_else(|| format!("source {source_id} is not in the catalog"))?
         .clone();
-    let auth = resolved_auth(source.auth())?;
-    let config = env::var("CEREBRO_SOURCE_CONFIG_JSON")
+    let mut config = env::var("CEREBRO_SOURCE_CONFIG_JSON")
         .ok()
         .map(|value| serde_json::from_str::<BTreeMap<String, String>>(&value))
         .transpose()?
         .unwrap_or_default();
+    let auth = resolved_auth(source.auth(), &mut config)?;
     let connector = HttpSourceConnector::new(
         source.clone(),
         &family_id,
@@ -1308,7 +1308,10 @@ async fn connect_neo4j() -> Result<Neo4jProjector, Box<dyn Error>> {
     .await?)
 }
 
-fn resolved_auth(model: &AuthModel) -> Result<ResolvedAuth, Box<dyn Error>> {
+fn resolved_auth(
+    model: &AuthModel,
+    config: &mut BTreeMap<String, String>,
+) -> Result<ResolvedAuth, Box<dyn Error>> {
     Ok(match model {
         AuthModel::None => ResolvedAuth::None,
         AuthModel::Basic => ResolvedAuth::Basic {
@@ -1319,13 +1322,43 @@ fn resolved_auth(model: &AuthModel) -> Result<ResolvedAuth, Box<dyn Error>> {
             name: required_env("CEREBRO_SOURCE_AUTH_HEADER")?,
             value: required_env("CEREBRO_SOURCE_AUTH_VALUE")?,
         },
-        AuthModel::DuoHmac | AuthModel::DuoHmacV5 | AuthModel::Signature | AuthModel::AwsSigV4 => {
+        AuthModel::AwsSigV4 => ResolvedAuth::AwsSigV4 {
+            access_key_id: take_required_config(config, "access_key")?,
+            secret_access_key: take_required_config(config, "secret_key")?,
+            session_token: remove_nonempty(config, "session_token"),
+            region: required_config(config, "region")?,
+            service: required_config(config, "service")?,
+        },
+        AuthModel::DuoHmac | AuthModel::DuoHmacV5 | AuthModel::Signature => {
             return Err("source auth requires a bespoke Rust connector".into());
         }
         _ => ResolvedAuth::Bearer {
             token: required_env("CEREBRO_SOURCE_TOKEN")?,
         },
     })
+}
+
+fn required_config(config: &BTreeMap<String, String>, key: &str) -> Result<String, Box<dyn Error>> {
+    config
+        .get(key)
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("CEREBRO_SOURCE_CONFIG_JSON.{key} is required").into())
+}
+
+fn take_required_config(
+    config: &mut BTreeMap<String, String>,
+    key: &str,
+) -> Result<String, Box<dyn Error>> {
+    remove_nonempty(config, key)
+        .ok_or_else(|| format!("CEREBRO_SOURCE_CONFIG_JSON.{key} is required").into())
+}
+
+fn remove_nonempty(config: &mut BTreeMap<String, String>, key: &str) -> Option<String> {
+    config
+        .remove(key)
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
 }
 
 async fn serve(
@@ -2483,6 +2516,39 @@ mod tests {
     use super::*;
 
     const TEST_SHARED_SECRET: &str = "test-organizational-graph-secret-32-bytes";
+
+    #[test]
+    fn aws_sigv4_resolution_scrubs_secrets_but_preserves_runtime_config() {
+        let mut config = BTreeMap::from([
+            ("access_key".to_owned(), "access-example".to_owned()),
+            ("secret_key".to_owned(), "secret-example".to_owned()),
+            ("session_token".to_owned(), "session-example".to_owned()),
+            ("region".to_owned(), "us-east-1".to_owned()),
+            ("service".to_owned(), "bedrock".to_owned()),
+            ("account".to_owned(), "account-a".to_owned()),
+        ]);
+        let auth = resolved_auth(&AuthModel::AwsSigV4, &mut config).unwrap();
+        assert!(matches!(
+            auth,
+            ResolvedAuth::AwsSigV4 {
+                ref access_key_id,
+                ref secret_access_key,
+                session_token: Some(ref session_token),
+                ref region,
+                ref service,
+            } if access_key_id == "access-example"
+                && secret_access_key == "secret-example"
+                && session_token == "session-example"
+                && region == "us-east-1"
+                && service == "bedrock"
+        ));
+        for secret_key in ["access_key", "secret_key", "session_token"] {
+            assert!(!config.contains_key(secret_key));
+        }
+        assert_eq!(config.get("region").map(String::as_str), Some("us-east-1"));
+        assert_eq!(config.get("service").map(String::as_str), Some("bedrock"));
+        assert_eq!(config.get("account").map(String::as_str), Some("account-a"));
+    }
 
     struct UnavailableGraph;
     struct UnreachableActionAuthority;
