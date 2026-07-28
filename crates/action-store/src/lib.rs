@@ -1565,9 +1565,8 @@ mod tests {
             .find("CREATE INDEX IF NOT EXISTS action_operation_events_committed_idx")
             .expect("indexes after dispatch table");
         assert!(
-            !POSTGRES_SCHEMA[event_table..dispatch_table].contains(
-                "FOREIGN KEY (tenant_id, operation_id, operation_version)"
-            ),
+            !POSTGRES_SCHEMA[event_table..dispatch_table]
+                .contains("FOREIGN KEY (tenant_id, operation_id, operation_version)"),
             "the event table cannot reference a dispatch-only column"
         );
         assert!(
