@@ -31,10 +31,20 @@ RUN --mount=type=cache,id=cerebro-rust-only-cargo-registry,target=/usr/local/car
       -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker \
       -p cerebro-platform --bin cerebro-platform \
       -p cerebro-platform --example organizational_graph_e2e && \
+    cargo test --locked --release -p cerebro-action-store --test live_ledger --no-run && \
+    action_ledger_test="" && \
+    for candidate in /app/target/release/deps/live_ledger-*; do \
+      if [ -f "${candidate}" ] && [ -x "${candidate}" ]; then \
+        action_ledger_test="${candidate}"; \
+        break; \
+      fi; \
+    done && \
+    test -n "${action_ledger_test}" && \
     install -Dm0755 /app/target/release/cerebro-event-admission-worker /out/cerebro-event-admission-worker && \
     install -Dm0755 /app/target/release/cerebro-platform /out/cerebro-platform && \
     install -Dm0755 /app/target/release/examples/organizational_graph_e2e \
-      /out/organizational-graph-e2e
+      /out/organizational-graph-e2e && \
+    install -Dm0755 "${action_ledger_test}" /out/action-ledger-live-test
 
 FROM alpine:3.24 AS organizational-catalog
 COPY --from=source /src/internal/connectorcatalog/catalog /app/internal/connectorcatalog/catalog
@@ -68,6 +78,7 @@ CMD ["serve-neo4j-consumer"]
 
 FROM runtime AS replacement-test-runtime
 COPY --from=builder --chmod=0755 /out/organizational-graph-e2e /usr/local/bin/organizational-graph-e2e
+COPY --from=builder --chmod=0755 /out/action-ledger-live-test /usr/local/bin/action-ledger-live-test
 
 # Keep the default production image free of replacement-test tooling.
 FROM runtime AS final
