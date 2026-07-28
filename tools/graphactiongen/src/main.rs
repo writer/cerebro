@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 
 use cerebro_graphactiongen::{
-    DEFAULT_CATALOG_PATH, DEFAULT_OUTPUT_PATH, ensure_supported_platform, generate, generate_rust,
-    read_generated_file, write_generated_file,
+    DEFAULT_CATALOG_PATH, DEFAULT_OUTPUT_PATH, DEFAULT_RUST_OUTPUT_PATH, ensure_supported_platform,
+    generate, generate_rust, read_generated_file, write_generated_file,
 };
 use std::env;
 use std::error::Error as StdError;
@@ -112,7 +112,7 @@ fn run(options: &Options) -> Result<(), CliError> {
 fn parse_args(args: impl Iterator<Item = String>) -> Result<ParseResult, CliError> {
     let mut root = PathBuf::from(".");
     let mut catalog = PathBuf::from(DEFAULT_CATALOG_PATH);
-    let mut output = PathBuf::from(DEFAULT_OUTPUT_PATH);
+    let mut output = None;
     let mut format = OutputFormat::Go;
     let mut mode = None;
     let mut args = args.peekable();
@@ -120,7 +120,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<ParseResult, CliErro
         match argument.as_str() {
             "--root" => root = PathBuf::from(value(&mut args, "--root")?),
             "--catalog" => catalog = PathBuf::from(value(&mut args, "--catalog")?),
-            "--output" => output = PathBuf::from(value(&mut args, "--output")?),
+            "--output" => output = Some(PathBuf::from(value(&mut args, "--output")?)),
             "--format" => {
                 format = match value(&mut args, "--format")?.as_str() {
                     "go" => OutputFormat::Go,
@@ -134,6 +134,12 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<ParseResult, CliErro
             _ => return Err(CliError::UnknownArgument(argument)),
         }
     }
+    let output = output.unwrap_or_else(|| {
+        PathBuf::from(match format {
+            OutputFormat::Go => DEFAULT_OUTPUT_PATH,
+            OutputFormat::Rust => DEFAULT_RUST_OUTPUT_PATH,
+        })
+    });
     Ok(ParseResult::Run(Options {
         root,
         catalog,
@@ -228,5 +234,6 @@ mod tests {
             panic!("valid arguments should parse");
         };
         assert_eq!(options.format, OutputFormat::Rust);
+        assert_eq!(options.output, PathBuf::from(DEFAULT_RUST_OUTPUT_PATH));
     }
 }

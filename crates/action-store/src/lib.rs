@@ -171,7 +171,12 @@ impl From<SdkError> for ActionStoreError {
 
 impl From<ActionCatalogError> for ActionStoreError {
     fn from(value: ActionCatalogError) -> Self {
-        Self::Catalog(value)
+        match value {
+            ActionCatalogError::InvalidProposal(SdkError::Conflict(message)) => {
+                Self::Conflict(message)
+            }
+            other => Self::Catalog(other),
+        }
     }
 }
 
@@ -872,6 +877,16 @@ async fn set_tenant(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn catalog_validation_preserves_proposal_conflicts() {
+        let error = ActionStoreError::from(ActionCatalogError::InvalidProposal(
+            SdkError::Conflict("duplicate action expected effect".to_owned()),
+        ));
+        assert!(
+            matches!(error, ActionStoreError::Conflict(message) if message == "duplicate action expected effect")
+        );
+    }
 
     #[test]
     fn schema_enforces_tenant_isolation_idempotency_and_append_only_versions() {
