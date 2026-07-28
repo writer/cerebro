@@ -8,6 +8,7 @@ on:
       - "Makefile"
       - "Cargo.lock"
       - "Cargo.toml"
+      - "crates/action-store/**"
       - "crates/agent-context/**"
       - "crates/cerebro-platform/**"
       - "crates/organizational-graph/**"
@@ -74,6 +75,18 @@ jobs:
             nats --server nats://cerebro-rust-graph-nats:4222 stream add CEREBRO_EVENTS \
               --subjects "events.>" --storage file --retention limits --discard old \
               --replicas 1 --dupe-window 2m --defaults
+
+      - name: Prove the durable Rust Action ledger
+        env:
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          docker run --rm --network cerebro-rust-graph-replacement \
+            -e 'CEREBRO_TEST_POSTGRES_DSN=postgres://cerebro:cerebro@cerebro-rust-graph-postgres:5432/cerebro?sslmode=disable' \
+            --entrypoint /usr/local/bin/action-ledger-live-test \
+            "cerebro-rust-graph-replacement:${CANDIDATE_SHA}" \
+            --ignored --exact durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only \
+            --nocapture
 
       - name: Start the Rust graph service
         env:

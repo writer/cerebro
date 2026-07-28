@@ -12,12 +12,12 @@ use async_trait::async_trait;
 use axum::{
     Extension, Json, Router,
     extract::{Path, Query, Request, State},
-    http::{StatusCode, header::AUTHORIZATION},
+    http::{Method, StatusCode, header::AUTHORIZATION},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use cerebro_action_store::{ActionEvent, ActionStoreError, PostgresActionLedger};
+use cerebro_action_store::{ActionEvent, ActionPage, ActionStoreError, PostgresActionLedger};
 use cerebro_agent_context::{
     AgentContext, AgentGraph, ContextEntity, ContextError, GraphPath, MemoryAgentGraph,
     Neighborhood,
@@ -59,6 +59,11 @@ const TENANT_AUTH_CONTEXT: &[u8] = b"cerebro-organizational-graph/tenant/v1\0";
 const MAX_LEGACY_DELTA_RECORDS: usize = 100_000;
 const MIN_SHARED_SECRET_BYTES: usize = 32;
 const MAX_SECURITY_LIFECYCLE_SCAN: usize = 500;
+const ACTION_PROPOSE_SCOPE: &str = "cerebro:actions:propose";
+const ACTION_SIMULATE_SCOPE: &str = "cerebro:actions:simulate";
+const ACTION_APPROVE_SCOPE: &str = "cerebro:actions:approve";
+const ACTION_EXECUTE_SCOPE: &str = "cerebro:actions:execute";
+const ACTION_VERIFY_SCOPE: &str = "cerebro:actions:verify";
 
 #[derive(Clone)]
 struct AppState {
@@ -84,6 +89,13 @@ trait ActionAuthority: Send + Sync {
         tenant_id: &TenantId,
         operation_id: &ActionOperationId,
     ) -> Result<ActionOperation, ActionStoreError>;
+
+    async fn list(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+        page_token: Option<&str>,
+    ) -> Result<ActionPage, ActionStoreError>;
 
     async fn transition(
         &self,
@@ -122,6 +134,15 @@ impl ActionAuthority for PostgresActionLedger {
         operation_id: &ActionOperationId,
     ) -> Result<ActionOperation, ActionStoreError> {
         self.get(tenant_id, operation_id).await
+    }
+
+    async fn list(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+        page_token: Option<&str>,
+    ) -> Result<ActionPage, ActionStoreError> {
+        self.list(tenant_id, limit, page_token).await
     }
 
     async fn transition(
@@ -290,7 +311,7 @@ async fn authenticate_oidc(
             ));
         }
     };
-    let required_scope = oidc_scope_for_route(request.uri().path());
+    let required_scope = oidc_scope_for_route(request.method(), request.uri().path());
     if !identity.has_scope(required_scope) {
         return Err((
             StatusCode::FORBIDDEN,
@@ -307,9 +328,10 @@ async fn authenticate_oidc(
     Ok(next.run(request).await)
 }
 
-fn oidc_scope_for_route(path: &str) -> &'static str {
+fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
     match path {
         "/v1/me" => "identity:read",
+        "/v1/actions" if method == Method::GET => "cerebro:actions:read",
         "/v1/actions" => "cerebro:actions:write",
         _ if path.starts_with("/v1/actions/") && path.ends_with("/commands") => {
             "cerebro:actions:write"
@@ -327,7 +349,7 @@ async fn record_request(
     request: Request,
     next: Next,
 ) -> Response {
-    let operation = bounded_operation(request.uri().path());
+    let operation = bounded_operation(request.method(), request.uri().path());
     let started = Instant::now();
     let response = next.run(request).await;
     metrics
@@ -340,7 +362,7 @@ async fn record_request(
     response
 }
 
-fn bounded_operation(path: &str) -> &'static str {
+fn bounded_operation(method: &Method, path: &str) -> &'static str {
     match path {
         "/healthz" => "healthz",
         "/readyz" => "readyz",
@@ -353,6 +375,7 @@ fn bounded_operation(path: &str) -> &'static str {
         "/v1/graph/expand-batch" => "expand_batch",
         "/v1/graph/paths" => "paths",
         "/v1/security/lifecycle" => "security_lifecycle",
+        "/v1/actions" if method == Method::GET => "list_actions",
         "/v1/actions" => "propose_action",
         "/v1/projections/events" => "project_event",
         "/v1/projections/legacy-deltas" => "record_legacy_projection",
@@ -701,6 +724,15 @@ struct TenantQuery {
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActionListQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    page_token: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
 struct HttpLifecycleQuery {
     #[serde(default)]
     subject_kind: Option<SubjectKind>,
@@ -856,6 +888,22 @@ struct HttpVerificationReceipt {
 }
 
 impl HttpActionCommand {
+    fn required_scope(&self) -> &'static str {
+        match self {
+            Self::RecordSimulation {} => ACTION_SIMULATE_SCOPE,
+            Self::RequestApproval {} => ACTION_PROPOSE_SCOPE,
+            Self::RecordApproval { .. } => ACTION_APPROVE_SCOPE,
+            Self::Claim { .. }
+            | Self::StartExecution {}
+            | Self::MarkOutcomeUnknown {}
+            | Self::Complete { .. }
+            | Self::Reconcile { .. }
+            | Self::Fail {}
+            | Self::RollBack {} => ACTION_EXECUTE_SCOPE,
+            Self::Verify { .. } | Self::RejectVerification {} => ACTION_VERIFY_SCOPE,
+        }
+    }
+
     fn into_domain(self) -> Result<ActionCommand, String> {
         Ok(match self {
             Self::RecordSimulation {} => ActionCommand::RecordSimulation,
@@ -1363,7 +1411,7 @@ fn router_with_backend(
     let protected = if let Some(oidc) = oidc {
         protected
             .route("/v1/me", get(current_user))
-            .route("/v1/actions", post(propose_action))
+            .route("/v1/actions", get(list_actions).post(propose_action))
             .route("/v1/actions/{operation_id}", get(get_action))
             .route(
                 "/v1/actions/{operation_id}/history",
@@ -1763,6 +1811,7 @@ async fn propose_action(
     Extension(identity): Extension<AuthenticatedIdentity>,
     Json(proposal): Json<ActionProposal>,
 ) -> Result<Json<ActionOperation>, (StatusCode, Json<ErrorResponse>)> {
+    require_action_scope(&identity, ACTION_PROPOSE_SCOPE)?;
     let actor_id = authenticated_action_actor(&identity)?;
     if proposal.tenant_id != identity.tenant || proposal.proposed_by != actor_id {
         return Err(permission_denied(
@@ -1772,6 +1821,25 @@ async fn propose_action(
     let committed_at = current_unix_millis()?;
     action_authority(&state)?
         .propose(proposal, committed_at)
+        .await
+        .map(Json)
+        .map_err(action_store_error)
+}
+
+async fn list_actions(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Query(query): Query<ActionListQuery>,
+) -> Result<Json<ActionPage>, (StatusCode, Json<ErrorResponse>)> {
+    let limit = query.limit.unwrap_or(25);
+    if !(1..=100).contains(&limit) {
+        return Err(bad_request(
+            "invalid_action_query",
+            "limit must be between 1 and 100.",
+        ));
+    }
+    action_authority(&state)?
+        .list(&identity.tenant, limit, query.page_token.as_deref())
         .await
         .map(Json)
         .map_err(action_store_error)
@@ -1813,6 +1881,7 @@ async fn transition_action_route(
 ) -> Result<Json<ActionOperation>, (StatusCode, Json<ErrorResponse>)> {
     let operation_id = ActionOperationId::parse(operation_id)
         .map_err(|error| bad_request("invalid_action_operation_id", error.to_string()))?;
+    require_action_scope(&identity, request.command.required_scope())?;
     let actor_id = authenticated_action_actor(&identity)?;
     let command = request
         .command
@@ -1850,6 +1919,19 @@ fn authenticated_action_actor(
     ActorId::parse(identity.actor_id.clone()).map_err(|_| {
         permission_denied("The signed identity does not contain a valid Action actor ID.")
     })
+}
+
+fn require_action_scope(
+    identity: &AuthenticatedIdentity,
+    required_scope: &'static str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if identity.has_scope(required_scope) {
+        Ok(())
+    } else {
+        Err(permission_denied(format!(
+            "The signed identity does not grant {required_scope}."
+        )))
+    }
 }
 
 fn current_unix_millis() -> Result<u64, (StatusCode, Json<ErrorResponse>)> {
@@ -2272,6 +2354,10 @@ fn action_store_error(error: ActionStoreError) -> (StatusCode, Json<ErrorRespons
                 "The stored Action failed authority validation.",
             )
         }
+        ActionStoreError::InvalidPageToken => bad_request(
+            "invalid_action_page_token",
+            "The Action page token is invalid.",
+        ),
     }
 }
 
@@ -2476,6 +2562,15 @@ mod tests {
             panic!("spoofed request reached the Action authority")
         }
 
+        async fn list(
+            &self,
+            _tenant_id: &TenantId,
+            _limit: usize,
+            _page_token: Option<&str>,
+        ) -> Result<ActionPage, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
         async fn transition(
             &self,
             _tenant_id: &TenantId,
@@ -2597,7 +2692,10 @@ mod tests {
             subject: actor_id.to_owned(),
             groups: Vec::new(),
             roles: Vec::new(),
-            scopes: BTreeSet::from(["cerebro:actions:write".to_owned()]),
+            scopes: BTreeSet::from([
+                "cerebro:actions:write".to_owned(),
+                ACTION_PROPOSE_SCOPE.to_owned(),
+            ]),
             issuer: "https://identity.example".to_owned(),
             audience: "cerebro".to_owned(),
             key_id: "key-one".to_owned(),
@@ -3258,38 +3356,62 @@ mod tests {
     #[test]
     fn lifecycle_requests_have_a_bounded_metrics_operation() {
         assert_eq!(
-            bounded_operation("/v1/security/lifecycle"),
+            bounded_operation(&Method::GET, "/v1/security/lifecycle"),
             "security_lifecycle"
         );
         assert_eq!(
-            bounded_operation("/cerebro.v1.SecurityLifecycleService/ListSecurityLifecycle"),
+            bounded_operation(
+                &Method::POST,
+                "/cerebro.v1.SecurityLifecycleService/ListSecurityLifecycle"
+            ),
             "security_lifecycle"
+        );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/actions"),
+            "list_actions"
+        );
+        assert_eq!(
+            bounded_operation(&Method::POST, "/v1/actions"),
+            "propose_action"
         );
     }
 
     #[test]
     fn oidc_authorization_scopes_cover_reads_identity_and_mutations() {
-        assert_eq!(oidc_scope_for_route("/v1/me"), "identity:read");
         assert_eq!(
-            oidc_scope_for_route("/v1/security/lifecycle"),
+            oidc_scope_for_route(&Method::GET, "/v1/me"),
+            "identity:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/security/lifecycle"),
             "cerebro:read"
         );
-        assert_eq!(oidc_scope_for_route("/v1/graph/search"), "cerebro:read");
         assert_eq!(
-            oidc_scope_for_route("/v1/projections/events"),
+            oidc_scope_for_route(&Method::POST, "/v1/graph/search"),
+            "cerebro:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/projections/events"),
             "cerebro:write"
         );
-        assert_eq!(oidc_scope_for_route("/v1/actions"), "cerebro:actions:write");
         assert_eq!(
-            oidc_scope_for_route("/v1/actions/operation:one"),
+            oidc_scope_for_route(&Method::GET, "/v1/actions"),
             "cerebro:actions:read"
         );
         assert_eq!(
-            oidc_scope_for_route("/v1/actions/operation:one/history"),
+            oidc_scope_for_route(&Method::POST, "/v1/actions"),
+            "cerebro:actions:write"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/actions/operation:one"),
             "cerebro:actions:read"
         );
         assert_eq!(
-            oidc_scope_for_route("/v1/actions/operation:one/commands"),
+            oidc_scope_for_route(&Method::GET, "/v1/actions/operation:one/history"),
+            "cerebro:actions:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/actions/operation:one/commands"),
             "cerebro:actions:write"
         );
     }
@@ -3330,6 +3452,84 @@ mod tests {
             request.command.into_domain().unwrap(),
             ActionCommand::RecordSimulation
         ));
+    }
+
+    #[tokio::test]
+    async fn action_queue_rejects_unknown_and_unbounded_queries_before_storage() {
+        assert!(
+            serde_json::from_value::<ActionListQuery>(serde_json::json!({
+                "limit": 25,
+                "tenant_id": "tenant:http:other"
+            }))
+            .is_err()
+        );
+
+        let (graph, _, _) = demo_graph().unwrap();
+        let state = AppState {
+            actions: Some(Arc::new(UnreachableActionAuthority)),
+            graph: Arc::new(MemoryAgentGraph::new(graph)),
+            catalog_summary: None,
+            projection: None,
+            metrics: PlatformMetrics::default(),
+        };
+        for limit in [0, 101, usize::MAX] {
+            let error = list_actions(
+                State(state.clone()),
+                Extension(action_identity("tenant:http:one", "actor:http:one")),
+                Query(ActionListQuery {
+                    limit: Some(limit),
+                    page_token: None,
+                }),
+            )
+            .await
+            .expect_err("unbounded query must fail before storage");
+            assert_eq!(error.0, StatusCode::BAD_REQUEST);
+            assert_eq!(error.1.0.code, "invalid_action_query");
+        }
+    }
+
+    #[tokio::test]
+    async fn action_commands_require_separate_signed_authority_scopes() {
+        assert_eq!(
+            HttpActionCommand::RecordSimulation {}.required_scope(),
+            ACTION_SIMULATE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::RequestApproval {}.required_scope(),
+            ACTION_PROPOSE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::StartExecution {}.required_scope(),
+            ACTION_EXECUTE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::RejectVerification {}.required_scope(),
+            ACTION_VERIFY_SCOPE
+        );
+
+        let (graph, _, _) = demo_graph().unwrap();
+        let state = AppState {
+            actions: Some(Arc::new(UnreachableActionAuthority)),
+            graph: Arc::new(MemoryAgentGraph::new(graph)),
+            catalog_summary: None,
+            projection: None,
+            metrics: PlatformMetrics::default(),
+        };
+        let mut identity = action_identity("tenant:http:one", "actor:http:one");
+        identity.scopes = BTreeSet::from(["cerebro:actions:write".to_owned()]);
+        let error = transition_action_route(
+            State(state),
+            Extension(identity),
+            Path("operation:http:one".to_owned()),
+            Json(ActionTransitionRequest {
+                expected_version: 1,
+                command: HttpActionCommand::StartExecution {},
+            }),
+        )
+        .await
+        .expect_err("broad write scope must not grant execution authority");
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(error.1.0.code, "permission_denied");
     }
 
     #[tokio::test]

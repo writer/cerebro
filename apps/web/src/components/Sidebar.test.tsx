@@ -47,10 +47,10 @@ describe("isSidebarLinkActive", () => {
     ]);
   });
 
-  it("keeps issues, Compliance, and Ask in the visible sidebar", () => {
+  it("keeps issues, Actions, Compliance, and Ask in the visible sidebar", () => {
     const sidebarHrefs = sidebarNavLinks.map((link) => link.href);
 
-    expect(sidebarPrimaryLinks.map((link) => link.href)).toEqual(["/", "/risk-inbox"]);
+    expect(sidebarPrimaryLinks.map((link) => link.href)).toEqual(["/", "/risk-inbox", "/actions"]);
     expect(sidebarHrefs).toContain("/grc");
     expect(sidebarSupportLinks.map((link) => link.href)).toEqual(["/ask"]);
     expect(hasSidebarIcon("/grc")).toBe(true);
