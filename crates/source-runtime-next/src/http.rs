@@ -1945,6 +1945,68 @@ mod tests {
         assert_eq!(delta.entities().len(), 1);
     }
 
+    #[tokio::test]
+    async fn explicit_scalar_path_binding_executes_airtable_collection() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /v0/meta/enterpriseAccounts/enterprise%2Fone/users?"));
+            assert!(request.contains("authorization: Bearer token"));
+            let body = r#"{"users":[{"id":"user-1","name":"User One","email":"user@example.test","state":"active"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("airtable").unwrap().clone();
+        let mut connector = HttpSourceConnector::new(
+            source.clone(),
+            "users",
+            &format!("http://{address}"),
+            BTreeMap::from([(
+                "enterprise_account_id".to_owned(),
+                "enterprise/one".to_owned(),
+            )]),
+            ResolvedAuth::Bearer {
+                token: "token".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("airtable-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(
+            batch.records[0].fields["enterpriseAccountId"],
+            "enterprise/one"
+        );
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+        assert_eq!(delta.entities().len(), 1);
+    }
+
     #[test]
     fn scalar_path_scope_rejects_missing_required_config() {
         let root = repository_root();
@@ -1965,10 +2027,7 @@ mod tests {
         )
         .unwrap();
         let error = connector.request_scopes().err().unwrap();
-        assert_eq!(
-            error.to_string(),
-            "request config version_id is required"
-        );
+        assert_eq!(error.to_string(), "request config version_id is required");
     }
 
     #[test]

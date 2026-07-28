@@ -36,17 +36,18 @@ const (
 var (
 	ErrInvalidDefinition = errors.New("invalid connector definition")
 
-	idPattern           = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
-	entityTypePattern   = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
-	definitionIDRun     = regexp.MustCompile(`[^a-z0-9_-]+`)
-	templateVar         = regexp.MustCompile(`\$\{([a-z]+)\.([a-z][a-z0-9_-]*)\}`)
-	statusIdentifier    = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
-	stageOrder          = []string{StageDraft, StageSandbox, StagePilot, StageApproved, StageCertified}
-	supportedMethods    = map[string]struct{}{"GET": {}, "POST": {}}
-	paginationTypes     = map[string]struct{}{"": {}, "none": {}, "cursor": {}, "page": {}, "offset": {}, "link": {}, "next_url": {}}
-	incrementalStates   = map[string]struct{}{"": {}, "high_watermark": {}, "opaque_cursor": {}}
-	ingestModes         = map[string]struct{}{IngestModePull: {}, IngestModeDeposit: {}}
-	projectionRelations = map[string]struct{}{
+	idPattern            = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+	pathParameterPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
+	entityTypePattern    = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
+	definitionIDRun      = regexp.MustCompile(`[^a-z0-9_-]+`)
+	templateVar          = regexp.MustCompile(`\$\{([a-z]+)\.([a-z][a-z0-9_-]*)\}`)
+	statusIdentifier     = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	stageOrder           = []string{StageDraft, StageSandbox, StagePilot, StageApproved, StageCertified}
+	supportedMethods     = map[string]struct{}{"GET": {}, "POST": {}}
+	paginationTypes      = map[string]struct{}{"": {}, "none": {}, "cursor": {}, "page": {}, "offset": {}, "link": {}, "next_url": {}}
+	incrementalStates    = map[string]struct{}{"": {}, "high_watermark": {}, "opaque_cursor": {}}
+	ingestModes          = map[string]struct{}{IngestModePull: {}, IngestModeDeposit: {}}
+	projectionRelations  = map[string]struct{}{
 		"attached_to": {},
 		"belongs_to":  {},
 		"contains":    {},
@@ -343,6 +344,7 @@ type ResourceReadSpec struct {
 	DetailPath            string            `json:"detail_path,omitempty"`
 	AllowBareDetailRecord bool              `json:"allow_bare_detail_record,omitempty"`
 	PathParams            []string          `json:"path_params,omitempty"`
+	PathParamConfig       map[string]string `json:"path_param_config,omitempty"`
 	PathParamFanout       map[string]string `json:"path_param_fanout,omitempty"`
 	MapRecords            map[string]string `json:"map_records,omitempty"`
 	Singleton             bool              `json:"singleton,omitempty"`
@@ -881,13 +883,28 @@ func validateFamilyIntegrationFields(family ResourceFamily, configFields map[str
 			add(blocking("detail_path_"+family.ID, "Detail path", "Detail paths must be relative API paths such as /v1/assets/{id}."))
 		}
 		for _, param := range family.Read.PathParams {
-			if !idPattern.MatchString(strings.TrimSpace(param)) {
-				add(blocking("path_param_"+family.ID+"_"+normalizeDefinitionID(param), "Path parameter", "Path parameters must be lowercase identifiers."))
+			if !pathParameterPattern.MatchString(strings.TrimSpace(param)) {
+				add(blocking("path_param_"+family.ID+"_"+normalizeDefinitionID(param), "Path parameter", "Path parameters must be provider-safe identifiers."))
 			}
 		}
 		pathParams := map[string]struct{}{}
 		for _, param := range family.Read.PathParams {
 			pathParams[strings.TrimSpace(param)] = struct{}{}
+		}
+		for param, configField := range family.Read.PathParamConfig {
+			param = strings.TrimSpace(param)
+			configField = strings.TrimSpace(configField)
+			if _, ok := pathParams[param]; !ok {
+				add(blocking("path_param_config_"+family.ID+"_"+normalizeDefinitionID(param), "Path parameter config", "Config bindings must reference a declared path parameter."))
+			}
+			if !idPattern.MatchString(configField) {
+				add(blocking("path_param_config_field_"+family.ID+"_"+normalizeDefinitionID(param), "Path parameter config", "Config bindings must reference lowercase config field identifiers."))
+			} else if _, ok := configFields[configField]; !ok {
+				add(blocking("path_param_config_declared_"+family.ID+"_"+normalizeDefinitionID(param), "Path parameter config", "Config bindings must reference fields declared in definition.config_fields."))
+			}
+			if _, ok := family.Read.PathParamFanout[param]; ok {
+				add(blocking("path_param_binding_"+family.ID+"_"+normalizeDefinitionID(param), "Path parameter binding", "A path parameter cannot use both scalar config and fanout bindings."))
+			}
 		}
 		for param, configField := range family.Read.PathParamFanout {
 			param = strings.TrimSpace(param)
@@ -1354,9 +1371,10 @@ func normalizeResourceReadSpec(read *ResourceReadSpec) *ResourceReadSpec {
 	next := *read
 	next.DetailPath = strings.TrimSpace(next.DetailPath)
 	next.PathParams = normalizeOrderedStringList(next.PathParams)
+	next.PathParamConfig = normalizeStringMap(next.PathParamConfig)
 	next.PathParamFanout = normalizeStringMap(next.PathParamFanout)
 	next.MapRecords = normalizeStringMap(next.MapRecords)
-	if next.DetailPath == "" && len(next.PathParams) == 0 && len(next.PathParamFanout) == 0 && len(next.MapRecords) == 0 && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
+	if next.DetailPath == "" && len(next.PathParams) == 0 && len(next.PathParamConfig) == 0 && len(next.PathParamFanout) == 0 && len(next.MapRecords) == 0 && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
 		return nil
 	}
 	return &next

@@ -10,6 +10,11 @@ entries:
       categories:
         - saas
         - collaboration
+      config_fields:
+        - help: Airtable enterprise account identifier used to scope users and audit events.
+          key: enterprise_account_id
+          label: Enterprise account ID
+          required: true
       description: Collects enterprise users, bases, and audit log events from Airtable and maps them into the Cerebro graph as users, assets, and audit events for workspace, base, and collaboration context.
       display_name: Airtable
       id: builtin-airtable
@@ -43,6 +48,11 @@ entries:
               status: status|state|lifecycle_state
               user_id: id
             template: identity_user
+          read:
+            path_param_config:
+              enterpriseAccountId: enterprise_account_id
+            path_params:
+              - enterpriseAccountId
           record_selector: $.users[*]
         - coverage:
             - control_domains:
@@ -114,6 +124,11 @@ entries:
               event_type: action
               id: id
             template: audit_event
+          read:
+            path_param_config:
+              enterpriseAccountId: enterprise_account_id
+            path_params:
+              - enterpriseAccountId
           record_selector: $.events[*]
       schema_version: cerebro.integration/v1
       source_id: airtable

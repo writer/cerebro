@@ -491,6 +491,8 @@ struct FamilyConfigWire {
 #[derive(Default, Deserialize)]
 struct FamilyReadWire {
     #[serde(default)]
+    path_param_config: BTreeMap<String, String>,
+    #[serde(default)]
     path_param_fanout: BTreeMap<String, String>,
 }
 
@@ -652,6 +654,24 @@ fn compile_family(
         .map(|read| &read.path_param_fanout)
         .cloned()
         .unwrap_or_default();
+    let explicit_path_config = family
+        .read
+        .as_ref()
+        .map(|read| &read.path_param_config)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(parameter) = explicit_path_config
+        .keys()
+        .find(|parameter| !path_parameter_names.contains(parameter.as_str()))
+    {
+        return invalid(
+            path,
+            &format!(
+                "family {} config binding references unknown path parameter {parameter}",
+                family.id
+            ),
+        );
+    }
     if let Some(parameter) = explicit_path_fanout
         .keys()
         .find(|parameter| !path_parameter_names.contains(parameter.as_str()))
@@ -664,10 +684,28 @@ fn compile_family(
             ),
         );
     }
+    if let Some(parameter) = explicit_path_config
+        .keys()
+        .find(|parameter| explicit_path_fanout.contains_key(*parameter))
+    {
+        return invalid(
+            path,
+            &format!(
+                "family {} path parameter {parameter} has both scalar config and fanout bindings",
+                family.id
+            ),
+        );
+    }
     let path_parameters = path_parameter_names
         .iter()
         .filter_map(|parameter| {
-            let binding = if let Some(field) = explicit_path_fanout.get(*parameter) {
+            let binding = if let Some(field) = explicit_path_config.get(*parameter) {
+                config_fields
+                    .contains(field.as_str())
+                    .then(|| PathParameterBinding::ScalarConfig {
+                        field: field.clone(),
+                    })
+            } else if let Some(field) = explicit_path_fanout.get(*parameter) {
                 config_fields
                     .contains(field.as_str())
                     .then(|| PathParameterBinding::CsvFanout {
@@ -1147,6 +1185,9 @@ mod tests {
             summary.sources,
             summary.authoritative_sources + summary.shadow_only_sources
         );
+        assert_eq!(summary.authoritative_sources, 48);
+        assert_eq!(summary.authoritative_families, 333);
+        assert_eq!(summary.shadow_only_sources, 746);
     }
 
     #[test]
@@ -1170,6 +1211,7 @@ mod tests {
             CollectionAuthority::Authoritative
         );
         for source_id in [
+            "airtable",
             "akeneo",
             "anchore",
             "apacta",
@@ -1192,11 +1234,6 @@ mod tests {
                 "{source_id} has verified parameterized provider paths"
             );
         }
-        assert_eq!(
-            catalog.get("airtable").unwrap().authority(),
-            CollectionAuthority::ShadowOnly,
-            "airtable has an unresolved request scope"
-        );
         assert_eq!(
             catalog.get("agiloft").unwrap().authority(),
             CollectionAuthority::ShadowOnly
@@ -1299,6 +1336,31 @@ mod tests {
     }
 
     #[test]
+    fn explicit_scalar_binding_maps_airtable_provider_slot_to_runtime_config() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("airtable").unwrap();
+        assert_eq!(source.authority(), CollectionAuthority::Authoritative);
+        for family_id in ["users", "audit_events"] {
+            let family = source
+                .families()
+                .iter()
+                .find(|family| family.id() == family_id)
+                .unwrap();
+            assert_eq!(
+                family.path_parameters().get("enterpriseAccountId"),
+                Some(&PathParameterBinding::ScalarConfig {
+                    field: "enterprise_account_id".to_owned()
+                })
+            );
+        }
+    }
+
+    #[test]
     fn bespoke_collection_does_not_block_a_verified_native_projection() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
@@ -1333,5 +1395,51 @@ mod tests {
         );
         assert_eq!(canonical_path_template("/accounts/prefix-{id}/users"), None);
         assert_eq!(canonical_path_template("/accounts/${config.id/users"), None);
+    }
+
+    #[test]
+    fn scalar_and_fanout_bindings_cannot_claim_the_same_path_parameter() {
+        let family = FamilyWire {
+            id: "users".to_owned(),
+            method: "GET".to_owned(),
+            path: "/v1/accounts/{account_id}/users".to_owned(),
+            record_selector: "$.items[*]".to_owned(),
+            list_key: String::new(),
+            id_field: "id".to_owned(),
+            name_field: String::new(),
+            static_query: BTreeMap::new(),
+            config_query: BTreeMap::new(),
+            config: None,
+            read: Some(FamilyReadWire {
+                path_param_config: BTreeMap::from([(
+                    "account_id".to_owned(),
+                    "account_id".to_owned(),
+                )]),
+                path_param_fanout: BTreeMap::from([(
+                    "account_id".to_owned(),
+                    "account_ids".to_owned(),
+                )]),
+            }),
+            pagination: None,
+            projection: Some(ProjectionWire {
+                template: "identity_user".to_owned(),
+                fields: BTreeMap::from([("user_id".to_owned(), "id".to_owned())]),
+                static_fields: BTreeMap::new(),
+            }),
+        };
+        let config_fields = BTreeSet::from(["account_id", "account_ids"]);
+        let error = compile_family(
+            Path::new("conflicting.yaml"),
+            family,
+            &BTreeSet::new(),
+            true,
+            &config_fields,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("has both scalar config and fanout bindings")
+        );
     }
 }
