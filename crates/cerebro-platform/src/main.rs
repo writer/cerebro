@@ -189,6 +189,7 @@ fn bounded_operation(path: &str) -> &'static str {
         "/v1/graph/expand" => "expand",
         "/v1/graph/expand-batch" => "expand_batch",
         "/v1/graph/paths" => "paths",
+        "/v1/security/lifecycle" => "security_lifecycle",
         "/v1/projections/events" => "project_event",
         "/v1/projections/legacy-deltas" => "record_legacy_projection",
         "/v1/projections/collections" => "record_source_collection",
@@ -196,6 +197,7 @@ fn bounded_operation(path: &str) -> &'static str {
         _ if path.starts_with("/v1/entities/") => "get_entity",
         _ if path.starts_with("/v1/assertions/") => "explain_assertion",
         _ if path.starts_with("/cerebro.graph.v1.OrganizationalGraphService/") => "connect_rpc",
+        _ if path.starts_with("/cerebro.v1.SecurityLifecycleService/") => "security_lifecycle",
         _ => "other",
     }
 }
@@ -2609,6 +2611,18 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn lifecycle_requests_have_a_bounded_metrics_operation() {
+        assert_eq!(
+            bounded_operation("/v1/security/lifecycle"),
+            "security_lifecycle"
+        );
+        assert_eq!(
+            bounded_operation("/cerebro.v1.SecurityLifecycleService/ListSecurityLifecycle"),
+            "security_lifecycle"
+        );
     }
 
     #[tokio::test]

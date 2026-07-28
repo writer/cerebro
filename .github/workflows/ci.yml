@@ -95,7 +95,7 @@ jobs:
 
   web-integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     needs: ci-scope
     if: needs.ci-scope.outputs.web_integration == 'true'
     steps:
@@ -123,12 +123,17 @@ jobs:
       - name: Validate real-service web integration
         run: npm run e2e:grc:local --workspace @writer/cerebro-web -- --browser --timeout-ms 900000 --artifact-dir "${RUNNER_TEMP}/cerebro-grc-e2e"
 
+      - name: Validate authenticated web-to-Rust integration
+        run: npm run e2e:rust-auth:local --workspace @writer/cerebro-web -- --timeout-ms 600000 --artifact-dir "${RUNNER_TEMP}/cerebro-rust-auth-e2e"
+
       - name: Upload failed integration artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cerebro-grc-e2e-artifacts
-          path: ${{ runner.temp }}/cerebro-grc-e2e
+          path: |
+            ${{ runner.temp }}/cerebro-grc-e2e
+            ${{ runner.temp }}/cerebro-rust-auth-e2e
           if-no-files-found: ignore
           retention-days: 7
 
