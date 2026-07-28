@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo } from "react";
 
-import { Badge, ErrorBlock, LoadingBlock, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
+import { Badge, EmptyBlock, ErrorBlock, LoadingBlock, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
 import { actionStateLabel, actionTimeLabel, type ActionEvent, type ActionOperation } from "@/lib/actions";
 import { useGRCQuery } from "@/lib/grc-client";
 
@@ -25,18 +25,16 @@ export default function ActionDetailPage() {
   const historyQuery = useGRCQuery<ActionEvent[]>(operationID ? `/v1/actions/${encodedOperationID}/history` : null);
   const action = actionQuery.data;
   const history = useMemo(() => historyQuery.data ?? [], [historyQuery.data]);
-  const error = actionQuery.error || historyQuery.error;
 
-  if ((actionQuery.loading || historyQuery.loading) && !action) {
+  if (actionQuery.loading && !action) {
     return <LoadingBlock label="Loading Action authority records..." />;
   }
-  if (error || !action) {
+  if (actionQuery.error || !action) {
     return (
       <ErrorBlock
-        error={error || "The Action was not returned by the Rust authority."}
+        error={actionQuery.error || "The Action was not returned by the Rust authority."}
         onRetry={() => {
           void actionQuery.reload();
-          void historyQuery.reload();
         }}
         recoveryDetail="Confirm the operation ID and signed tenant identity, then try again."
       />
@@ -115,33 +113,58 @@ export default function ActionDetailPage() {
       <div className="mt-4">
         <Panel
           title="Authority history"
-          action={<span className="text-[11px] text-[var(--text-muted)]">{history.length} committed versions</span>}
+          action={
+            <span className="text-[11px] text-[var(--text-muted)]">
+              {historyQuery.loading && history.length === 0
+                ? "Loading committed versions"
+                : historyQuery.error
+                  ? "History unavailable"
+                  : `${history.length} committed versions`}
+            </span>
+          }
         >
-          <div className="overflow-auto">
-            <table className="w-full min-w-[900px] text-left text-[12px]">
-              <thead className="border-b border-[color:var(--border)] bg-[var(--surface-muted)] text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
-                <tr>
-                  <th className="px-3 py-2 font-semibold">Version</th>
-                  <th className="px-3 py-2 font-semibold">Event</th>
-                  <th className="px-3 py-2 font-semibold">State</th>
-                  <th className="px-3 py-2 font-semibold">Actor</th>
-                  <th className="px-3 py-2 font-semibold">Committed</th>
-                  <th className="px-3 py-2 font-semibold">Operation digest</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[color:var(--border)]">
-                {history.map((event) => (
-                  <tr key={`${event.operation.version}:${event.operation_digest}`}>
-                    <td className="px-3 py-3 text-[var(--text-secondary)]">{event.operation.version}</td>
-                    <td className="px-3 py-3"><Badge value={event.event_kind} /></td>
-                    <td className="px-3 py-3"><Badge value={event.operation.state} /></td>
-                    <td className="px-3 py-3 font-mono text-[11px] text-[var(--text-secondary)]">{event.actor_id}</td>
-                    <td className="px-3 py-3 text-[var(--text-secondary)]">{actionTimeLabel(event.committed_at_unix_ms)}</td>
-                    <td className="max-w-[18rem] truncate px-3 py-3 font-mono text-[10px] text-[var(--text-muted)]" title={event.operation_digest}>{event.operation_digest}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            {historyQuery.error && (
+              <ErrorBlock
+                error={historyQuery.error}
+                onRetry={() => {
+                  void historyQuery.reload();
+                }}
+                recoveryDetail="The Action record is available. Retry loading its committed history."
+              />
+            )}
+            {historyQuery.loading && history.length === 0 ? (
+              <LoadingBlock label="Loading committed Action history..." />
+            ) : history.length === 0 && !historyQuery.error ? (
+              <EmptyBlock label="No committed Action history was returned." />
+            ) : history.length > 0 ? (
+              <div className="overflow-auto">
+                <table className="w-full min-w-[900px] text-left text-[12px]">
+                  <thead className="border-b border-[color:var(--border)] bg-[var(--surface-muted)] text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Version</th>
+                      <th className="px-3 py-2 font-semibold">Event</th>
+                      <th className="px-3 py-2 font-semibold">State</th>
+                      <th className="px-3 py-2 font-semibold">Actor</th>
+                      <th className="px-3 py-2 font-semibold">Committed</th>
+                      <th className="px-3 py-2 font-semibold">Operation digest</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[color:var(--border)]">
+                    {history.map((event) => (
+                      <tr key={`${event.operation.version}:${event.operation_digest}`}>
+                        <td className="px-3 py-3 text-[var(--text-secondary)]">{event.operation.version}</td>
+                        <td className="px-3 py-3"><Badge value={event.event_kind} /></td>
+                        <td className="px-3 py-3"><Badge value={event.operation.state} /></td>
+                        <td className="px-3 py-3 font-mono text-[11px] text-[var(--text-secondary)]">{event.actor_id}</td>
+                        <td className="px-3 py-3 text-[var(--text-secondary)]">{actionTimeLabel(event.committed_at_unix_ms)}</td>
+                        <td className="max-w-[18rem] truncate px-3 py-3 font-mono text-[10px] text-[var(--text-muted)]" title={event.operation_digest}>{event.operation_digest}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
           </div>
         </Panel>
       </div>
