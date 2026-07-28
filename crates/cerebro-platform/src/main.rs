@@ -59,6 +59,11 @@ const TENANT_AUTH_CONTEXT: &[u8] = b"cerebro-organizational-graph/tenant/v1\0";
 const MAX_LEGACY_DELTA_RECORDS: usize = 100_000;
 const MIN_SHARED_SECRET_BYTES: usize = 32;
 const MAX_SECURITY_LIFECYCLE_SCAN: usize = 500;
+const ACTION_PROPOSE_SCOPE: &str = "cerebro:actions:propose";
+const ACTION_SIMULATE_SCOPE: &str = "cerebro:actions:simulate";
+const ACTION_APPROVE_SCOPE: &str = "cerebro:actions:approve";
+const ACTION_EXECUTE_SCOPE: &str = "cerebro:actions:execute";
+const ACTION_VERIFY_SCOPE: &str = "cerebro:actions:verify";
 
 #[derive(Clone)]
 struct AppState {
@@ -856,6 +861,22 @@ struct HttpVerificationReceipt {
 }
 
 impl HttpActionCommand {
+    fn required_scope(&self) -> &'static str {
+        match self {
+            Self::RecordSimulation {} => ACTION_SIMULATE_SCOPE,
+            Self::RequestApproval {} => ACTION_PROPOSE_SCOPE,
+            Self::RecordApproval { .. } => ACTION_APPROVE_SCOPE,
+            Self::Claim { .. }
+            | Self::StartExecution {}
+            | Self::MarkOutcomeUnknown {}
+            | Self::Complete { .. }
+            | Self::Reconcile { .. }
+            | Self::Fail {}
+            | Self::RollBack {} => ACTION_EXECUTE_SCOPE,
+            Self::Verify { .. } | Self::RejectVerification {} => ACTION_VERIFY_SCOPE,
+        }
+    }
+
     fn into_domain(self) -> Result<ActionCommand, String> {
         Ok(match self {
             Self::RecordSimulation {} => ActionCommand::RecordSimulation,
@@ -1763,6 +1784,7 @@ async fn propose_action(
     Extension(identity): Extension<AuthenticatedIdentity>,
     Json(proposal): Json<ActionProposal>,
 ) -> Result<Json<ActionOperation>, (StatusCode, Json<ErrorResponse>)> {
+    require_action_scope(&identity, ACTION_PROPOSE_SCOPE)?;
     let actor_id = authenticated_action_actor(&identity)?;
     if proposal.tenant_id != identity.tenant || proposal.proposed_by != actor_id {
         return Err(permission_denied(
@@ -1813,6 +1835,7 @@ async fn transition_action_route(
 ) -> Result<Json<ActionOperation>, (StatusCode, Json<ErrorResponse>)> {
     let operation_id = ActionOperationId::parse(operation_id)
         .map_err(|error| bad_request("invalid_action_operation_id", error.to_string()))?;
+    require_action_scope(&identity, request.command.required_scope())?;
     let actor_id = authenticated_action_actor(&identity)?;
     let command = request
         .command
@@ -1850,6 +1873,19 @@ fn authenticated_action_actor(
     ActorId::parse(identity.actor_id.clone()).map_err(|_| {
         permission_denied("The signed identity does not contain a valid Action actor ID.")
     })
+}
+
+fn require_action_scope(
+    identity: &AuthenticatedIdentity,
+    required_scope: &'static str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if identity.has_scope(required_scope) {
+        Ok(())
+    } else {
+        Err(permission_denied(format!(
+            "The signed identity does not grant {required_scope}."
+        )))
+    }
 }
 
 fn current_unix_millis() -> Result<u64, (StatusCode, Json<ErrorResponse>)> {
@@ -2597,7 +2633,10 @@ mod tests {
             subject: actor_id.to_owned(),
             groups: Vec::new(),
             roles: Vec::new(),
-            scopes: BTreeSet::from(["cerebro:actions:write".to_owned()]),
+            scopes: BTreeSet::from([
+                "cerebro:actions:write".to_owned(),
+                ACTION_PROPOSE_SCOPE.to_owned(),
+            ]),
             issuer: "https://identity.example".to_owned(),
             audience: "cerebro".to_owned(),
             key_id: "key-one".to_owned(),
@@ -3330,6 +3369,50 @@ mod tests {
             request.command.into_domain().unwrap(),
             ActionCommand::RecordSimulation
         ));
+    }
+
+    #[tokio::test]
+    async fn action_commands_require_separate_signed_authority_scopes() {
+        assert_eq!(
+            HttpActionCommand::RecordSimulation {}.required_scope(),
+            ACTION_SIMULATE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::RequestApproval {}.required_scope(),
+            ACTION_PROPOSE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::StartExecution {}.required_scope(),
+            ACTION_EXECUTE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::RejectVerification {}.required_scope(),
+            ACTION_VERIFY_SCOPE
+        );
+
+        let (graph, _, _) = demo_graph().unwrap();
+        let state = AppState {
+            actions: Some(Arc::new(UnreachableActionAuthority)),
+            graph: Arc::new(MemoryAgentGraph::new(graph)),
+            catalog_summary: None,
+            projection: None,
+            metrics: PlatformMetrics::default(),
+        };
+        let mut identity = action_identity("tenant:http:one", "actor:http:one");
+        identity.scopes = BTreeSet::from(["cerebro:actions:write".to_owned()]);
+        let error = transition_action_route(
+            State(state),
+            Extension(identity),
+            Path("operation:http:one".to_owned()),
+            Json(ActionTransitionRequest {
+                expected_version: 1,
+                command: HttpActionCommand::StartExecution {},
+            }),
+        )
+        .await
+        .expect_err("broad write scope must not grant execution authority");
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(error.1.0.code, "permission_denied");
     }
 
     #[tokio::test]
