@@ -472,7 +472,7 @@ impl ActionDispatch {
         Ok(dispatch)
     }
 
-    fn computed_digest(&self) -> Result<ContentDigest, ActionStoreError> {
+    pub fn computed_digest(&self) -> Result<ContentDigest, ActionStoreError> {
         #[derive(Serialize)]
         struct DigestMaterial<'a> {
             schema: &'static str,
@@ -520,7 +520,7 @@ impl ActionDispatch {
         Ok(ContentDigest::of_bytes(serde_json::to_vec(&material)?))
     }
 
-    fn validate(&self) -> Result<(), ActionStoreError> {
+    pub fn validate(&self) -> Result<(), ActionStoreError> {
         if self.operation_version <= 1
             || self.requested_at_unix_ms == 0
             || TenantId::parse(self.tenant_id.clone()).is_err()

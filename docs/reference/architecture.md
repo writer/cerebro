@@ -281,12 +281,20 @@ verification receipt against a newer source revision. A request with no
 trustworthy provider receipt moves through `outcome_unknown` and reconciliation
 instead of being replayed as new work.
 
-Provider network and first-party mutation adapters have not moved to Rust yet.
-Until they do, `internal/graphactions` is a legacy adapter behind the Rust
-dispatch record, not the Action lifecycle authority. Completing that cutover
-requires Rust provider clients, retry and timeout classification, outcome
-reconciliation, effect observation, and deployment receipts proving the
-provider calls no longer enter the Go runtime.
+Rust includes a bounded access-approvals provider client that derives its exact
+request from a validated `ActionDispatch`, disables redirects, never retries a
+mutation, content-digests request and response bytes, and classifies ambiguous
+submission separately from definitive rejection. Provider responses must echo
+the tenant, finding, target, action, and idempotency bindings before they can
+become a lifecycle observation. The client does not manufacture effect evidence
+or a completion command.
+
+No deployed Rust worker invokes that client yet, and first-party mutation
+adapters have not moved to Rust. Until deployment cutover,
+`internal/graphactions` remains the legacy provider network path behind the Rust
+dispatch record, not the Action lifecycle authority. Completing the cutover
+requires a durable Rust worker, reconciliation scheduling, effect observation,
+and deployment receipts proving provider calls no longer enter the Go runtime.
 
 A2A discovery, outbound event subscription metadata, and public idempotency
 semantics also live in `internal/agentplatform`. The bootstrap budget includes

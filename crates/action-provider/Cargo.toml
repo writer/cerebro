@@ -1,0 +1,23 @@
+[package]
+name = "cerebro-action-provider"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+cerebro-action-store.workspace = true
+cerebro-platform-engine.workspace = true
+cerebro-platform-sdk.workspace = true
+futures-util.workspace = true
+reqwest = { workspace = true, features = ["stream"] }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+cerebro-action-catalog.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
