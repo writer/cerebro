@@ -269,14 +269,14 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     ledger.propose(other_tenant_proposal.clone(), 42).await?;
 
     let first_page = ledger.list(&tenant, 1, None).await?;
-    assert_eq!(
-        first_page.actions,
-        vec![ledger.get(&tenant, &second.operation_id).await?]
-    );
+    assert_eq!(first_page.actions, vec![running]);
     let second_page = ledger
         .list(&tenant, 1, first_page.next_page_token.as_deref())
         .await?;
-    assert_eq!(second_page.actions, vec![running]);
+    assert_eq!(
+        second_page.actions,
+        vec![ledger.get(&tenant, &second.operation_id).await?]
+    );
     assert!(second_page.next_page_token.is_none());
     assert_eq!(
         ledger.list(&other_tenant, 10, None).await?.actions,
