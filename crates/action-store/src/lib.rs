@@ -1,0 +1,627 @@
+#![forbid(unsafe_code)]
+
+//! Authoritative, tenant-scoped persistence for Action operations.
+//!
+//! The ledger stores the current validated operation and an append-only copy
+//! of every committed version. State transitions remain owned by
+//! `cerebro-platform-engine`; this crate makes them atomic and durable.
+
+use std::{error::Error, fmt};
+
+use cerebro_platform_engine::{ActionCommand, transition_action};
+use cerebro_platform_sdk::{
+    ActionOperation, ActionOperationId, ActionProposal, ActionState, ContentDigest, SdkError,
+    TenantId, VerificationState,
+};
+use serde_json::Value;
+use tokio::sync::Mutex;
+use tokio_postgres::{Client, Row, Transaction};
+
+pub const POSTGRES_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS action_operations (
+  tenant_id TEXT NOT NULL CHECK (char_length(tenant_id) BETWEEN 1 AND 256),
+  operation_id TEXT NOT NULL CHECK (char_length(operation_id) BETWEEN 1 AND 256),
+  idempotency_key TEXT NOT NULL CHECK (char_length(idempotency_key) BETWEEN 1 AND 256),
+  proposal_digest TEXT NOT NULL CHECK (proposal_digest ~ '^[0-9a-f]{64}$'),
+  state TEXT NOT NULL CHECK (state IN (
+    'proposed',
+    'simulated',
+    'waiting_for_approval',
+    'approved',
+    'claimed',
+    'executing',
+    'outcome_unknown',
+    'completed',
+    'reconciled',
+    'verified',
+    'failed',
+    'rolled_back'
+  )),
+  version BIGINT NOT NULL CHECK (version > 0),
+  operation_json JSONB NOT NULL CHECK (jsonb_typeof(operation_json) = 'object'),
+  created_at_unix_ms BIGINT NOT NULL CHECK (created_at_unix_ms > 0),
+  updated_at_unix_ms BIGINT NOT NULL CHECK (updated_at_unix_ms >= created_at_unix_ms),
+  PRIMARY KEY (tenant_id, operation_id),
+  UNIQUE (tenant_id, idempotency_key),
+  CHECK ((operation_json->'proposal'->>'tenant_id') IS NOT DISTINCT FROM tenant_id),
+  CHECK ((operation_json->'proposal'->>'operation_id') IS NOT DISTINCT FROM operation_id),
+  CHECK ((operation_json->'proposal'->>'idempotency_key') IS NOT DISTINCT FROM idempotency_key),
+  CHECK ((operation_json->'proposal'->>'proposal_digest') IS NOT DISTINCT FROM proposal_digest),
+  CHECK ((operation_json->>'version')::BIGINT IS NOT DISTINCT FROM version),
+  CHECK ((operation_json->>'state') IS NOT DISTINCT FROM state)
+);
+CREATE TABLE IF NOT EXISTS action_operation_events (
+  tenant_id TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  version BIGINT NOT NULL CHECK (version > 0),
+  event_kind TEXT NOT NULL CHECK (char_length(event_kind) BETWEEN 1 AND 64),
+  command_digest TEXT CHECK (command_digest IS NULL OR command_digest ~ '^[0-9a-f]{64}$'),
+  operation_digest TEXT NOT NULL CHECK (operation_digest ~ '^[0-9a-f]{64}$'),
+  command_json JSONB CHECK (command_json IS NULL OR jsonb_typeof(command_json) = 'object'),
+  operation_json JSONB NOT NULL CHECK (jsonb_typeof(operation_json) = 'object'),
+  committed_at_unix_ms BIGINT NOT NULL CHECK (committed_at_unix_ms > 0),
+  PRIMARY KEY (tenant_id, operation_id, version),
+  FOREIGN KEY (tenant_id, operation_id)
+    REFERENCES action_operations (tenant_id, operation_id)
+    DEFERRABLE INITIALLY DEFERRED,
+  CHECK ((version = 1 AND event_kind = 'proposed' AND command_digest IS NULL AND command_json IS NULL)
+    OR (version > 1 AND event_kind <> 'proposed' AND command_digest IS NOT NULL AND command_json IS NOT NULL)),
+  CHECK ((operation_json->'proposal'->>'tenant_id') IS NOT DISTINCT FROM tenant_id),
+  CHECK ((operation_json->'proposal'->>'operation_id') IS NOT DISTINCT FROM operation_id),
+  CHECK ((operation_json->>'version')::BIGINT IS NOT DISTINCT FROM version)
+);
+CREATE INDEX IF NOT EXISTS action_operation_events_committed_idx
+  ON action_operation_events (tenant_id, committed_at_unix_ms DESC);
+CREATE OR REPLACE FUNCTION reject_action_operation_event_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'Action operation events are append-only';
+END;
+$$ LANGUAGE plpgsql;
+DO $$
+BEGIN
+  CREATE TRIGGER action_operation_events_append_only
+    BEFORE UPDATE OR DELETE ON action_operation_events
+    FOR EACH ROW EXECUTE FUNCTION reject_action_operation_event_mutation();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+ALTER TABLE action_operations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE action_operations FORCE ROW LEVEL SECURITY;
+ALTER TABLE action_operation_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE action_operation_events FORCE ROW LEVEL SECURITY;
+DO $$
+DECLARE table_name TEXT;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY[
+    'action_operations',
+    'action_operation_events'
+  ] LOOP
+    BEGIN
+      EXECUTE format(
+        'CREATE POLICY tenant_isolation ON %I USING (tenant_id = current_setting(''cerebro.tenant_id'', true)) WITH CHECK (tenant_id = current_setting(''cerebro.tenant_id'', true))',
+        table_name
+      );
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+  END LOOP;
+END $$;
+"#;
+
+#[derive(Debug)]
+pub enum ActionStoreError {
+    Postgres(tokio_postgres::Error),
+    Serialization(serde_json::Error),
+    Invalid(SdkError),
+    Conflict(String),
+    NotFound(String),
+    Corrupt(String),
+    OutOfRange(&'static str),
+}
+
+impl fmt::Display for ActionStoreError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Postgres(error) => write!(formatter, "Action ledger failed: {error}"),
+            Self::Serialization(error) => {
+                write!(formatter, "Action ledger serialization failed: {error}")
+            }
+            Self::Invalid(error) => write!(formatter, "Action is invalid: {error}"),
+            Self::Conflict(message) => write!(formatter, "Action ledger conflict: {message}"),
+            Self::NotFound(message) => write!(formatter, "Action was not found: {message}"),
+            Self::Corrupt(message) => {
+                write!(formatter, "Action ledger record is corrupt: {message}")
+            }
+            Self::OutOfRange(field) => write!(formatter, "{field} is outside its storage range"),
+        }
+    }
+}
+
+impl Error for ActionStoreError {}
+
+impl From<tokio_postgres::Error> for ActionStoreError {
+    fn from(value: tokio_postgres::Error) -> Self {
+        Self::Postgres(value)
+    }
+}
+
+impl From<serde_json::Error> for ActionStoreError {
+    fn from(value: serde_json::Error) -> Self {
+        Self::Serialization(value)
+    }
+}
+
+impl From<SdkError> for ActionStoreError {
+    fn from(value: SdkError) -> Self {
+        match value {
+            SdkError::Conflict(message) => Self::Conflict(message),
+            other => Self::Invalid(other),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActionEvent {
+    pub event_kind: String,
+    pub command_digest: Option<ContentDigest>,
+    pub operation_digest: ContentDigest,
+    pub committed_at_unix_ms: u64,
+    pub operation: ActionOperation,
+}
+
+pub struct PostgresActionLedger {
+    client: Mutex<Client>,
+}
+
+struct CurrentAction {
+    operation: ActionOperation,
+    updated_at_unix_ms: u64,
+}
+
+impl PostgresActionLedger {
+    /// Connection credentials and TLS policy are constructed by the platform.
+    pub fn from_client(client: Client) -> Self {
+        Self {
+            client: Mutex::new(client),
+        }
+    }
+
+    pub async fn migrate(&self) -> Result<(), ActionStoreError> {
+        self.client
+            .lock()
+            .await
+            .batch_execute(POSTGRES_SCHEMA)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn propose(
+        &self,
+        proposal: ActionProposal,
+        committed_at_unix_ms: u64,
+    ) -> Result<ActionOperation, ActionStoreError> {
+        proposal.validate()?;
+        let committed_at = storage_i64(committed_at_unix_ms, "Action commit time")?;
+        let operation = ActionOperation {
+            proposal,
+            state: ActionState::Proposed,
+            version: 1,
+            approval_receipt: None,
+            claimed_by: None,
+            claimed_at_unix_ms: None,
+            executor_actor_id: None,
+            executed_at_unix_ms: None,
+            external_receipt_ref: None,
+            observed_effect_digest: None,
+            verification_state: VerificationState::Pending,
+            verification_receipt: None,
+        };
+        operation.validate()?;
+        let operation_json = serde_json::to_value(&operation)?;
+        let operation_digest = digest_json(&operation_json)?;
+        let tenant_id = operation.proposal.tenant_id.as_str();
+        let operation_id = operation.proposal.operation_id.as_str();
+        let idempotency_key = operation.proposal.idempotency_key.as_str();
+        let proposal_digest = operation.proposal.proposal_digest.as_str();
+
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let existing =
+            select_proposal_aliases(&transaction, tenant_id, operation_id, idempotency_key).await?;
+        if !existing.is_empty() {
+            let stored =
+                exact_proposal_replay(existing, operation_id, idempotency_key, proposal_digest)?;
+            transaction.commit().await?;
+            return Ok(stored);
+        }
+
+        let inserted = transaction
+            .query_opt(
+                "INSERT INTO action_operations (tenant_id, operation_id, idempotency_key, proposal_digest, state, version, operation_json, created_at_unix_ms, updated_at_unix_ms) VALUES ($1, $2, $3, $4, 'proposed', 1, $5, $6, $6) ON CONFLICT DO NOTHING RETURNING operation_id",
+                &[
+                    &tenant_id,
+                    &operation_id,
+                    &idempotency_key,
+                    &proposal_digest,
+                    &operation_json,
+                    &committed_at,
+                ],
+            )
+            .await?;
+        if inserted.is_none() {
+            let existing =
+                select_proposal_aliases(&transaction, tenant_id, operation_id, idempotency_key)
+                    .await?;
+            let stored =
+                exact_proposal_replay(existing, operation_id, idempotency_key, proposal_digest)?;
+            transaction.commit().await?;
+            return Ok(stored);
+        }
+        transaction
+            .execute(
+                "INSERT INTO action_operation_events (tenant_id, operation_id, version, event_kind, command_digest, operation_digest, command_json, operation_json, committed_at_unix_ms) VALUES ($1, $2, 1, 'proposed', NULL, $3, NULL, $4, $5)",
+                &[
+                    &tenant_id,
+                    &operation_id,
+                    &operation_digest.as_str(),
+                    &operation_json,
+                    &committed_at,
+                ],
+            )
+            .await?;
+        transaction.commit().await?;
+        Ok(operation)
+    }
+
+    pub async fn get(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+    ) -> Result<ActionOperation, ActionStoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let row = transaction
+            .query_opt(
+                "SELECT operation_id, idempotency_key, proposal_digest, state, version, operation_json, created_at_unix_ms, updated_at_unix_ms FROM action_operations WHERE tenant_id = $1 AND operation_id = $2",
+                &[&tenant_id.as_str(), &operation_id.as_str()],
+            )
+            .await?;
+        let operation = row
+            .as_ref()
+            .map(validate_current_row)
+            .transpose()?
+            .ok_or_else(|| ActionStoreError::NotFound(operation_id.to_string()))?;
+        transaction.commit().await?;
+        Ok(operation.operation)
+    }
+
+    pub async fn transition(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+        expected_version: u64,
+        command: ActionCommand,
+        committed_at_unix_ms: u64,
+    ) -> Result<ActionOperation, ActionStoreError> {
+        let expected_version_i64 = storage_i64(expected_version, "Action expected version")?;
+        let committed_at = storage_i64(committed_at_unix_ms, "Action commit time")?;
+        let command_json = serde_json::to_value(&command)?;
+        let command_digest = digest_json(&command_json)?;
+        let event_kind = command_json
+            .get("command")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ActionStoreError::Corrupt("command has no stable kind".to_owned()))?
+            .to_owned();
+
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let row = transaction
+            .query_opt(
+                "SELECT operation_id, idempotency_key, proposal_digest, state, version, operation_json, created_at_unix_ms, updated_at_unix_ms FROM action_operations WHERE tenant_id = $1 AND operation_id = $2 FOR UPDATE",
+                &[&tenant_id.as_str(), &operation_id.as_str()],
+            )
+            .await?;
+        let current = row
+            .as_ref()
+            .map(validate_current_row)
+            .transpose()?
+            .ok_or_else(|| ActionStoreError::NotFound(operation_id.to_string()))?;
+        if committed_at_unix_ms < current.updated_at_unix_ms {
+            return Err(ActionStoreError::Conflict(
+                "Action commit time predates the current version".to_owned(),
+            ));
+        }
+        let next = transition_action(&current.operation, expected_version, command)?;
+        next.validate()?;
+        let next_version = storage_i64(next.version, "Action operation version")?;
+        let next_json = serde_json::to_value(&next)?;
+        let operation_digest = digest_json(&next_json)?;
+        let state = enum_name(&next.state)?;
+        let updated = transaction
+            .execute(
+                "UPDATE action_operations SET state = $1, version = $2, operation_json = $3, updated_at_unix_ms = $4 WHERE tenant_id = $5 AND operation_id = $6 AND version = $7",
+                &[
+                    &state,
+                    &next_version,
+                    &next_json,
+                    &committed_at,
+                    &tenant_id.as_str(),
+                    &operation_id.as_str(),
+                    &expected_version_i64,
+                ],
+            )
+            .await?;
+        if updated != 1 {
+            return Err(ActionStoreError::Conflict(
+                "stale Action operation version".to_owned(),
+            ));
+        }
+        transaction
+            .execute(
+                "INSERT INTO action_operation_events (tenant_id, operation_id, version, event_kind, command_digest, operation_digest, command_json, operation_json, committed_at_unix_ms) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                &[
+                    &tenant_id.as_str(),
+                    &operation_id.as_str(),
+                    &next_version,
+                    &event_kind,
+                    &command_digest.as_str(),
+                    &operation_digest.as_str(),
+                    &command_json,
+                    &next_json,
+                    &committed_at,
+                ],
+            )
+            .await?;
+        transaction.commit().await?;
+        Ok(next)
+    }
+
+    pub async fn history(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+    ) -> Result<Vec<ActionEvent>, ActionStoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let current = transaction
+            .query_opt(
+                "SELECT operation_id, idempotency_key, proposal_digest, state, version, operation_json, created_at_unix_ms, updated_at_unix_ms FROM action_operations WHERE tenant_id = $1 AND operation_id = $2 FOR SHARE",
+                &[&tenant_id.as_str(), &operation_id.as_str()],
+            )
+            .await?
+            .as_ref()
+            .map(validate_current_row)
+            .transpose()?
+            .ok_or_else(|| ActionStoreError::NotFound(operation_id.to_string()))?;
+        let rows = transaction
+            .query(
+                "SELECT version, event_kind, command_digest, operation_digest, command_json, operation_json, committed_at_unix_ms FROM action_operation_events WHERE tenant_id = $1 AND operation_id = $2 ORDER BY version",
+                &[&tenant_id.as_str(), &operation_id.as_str()],
+            )
+            .await?;
+        if rows.is_empty() {
+            return Err(ActionStoreError::NotFound(operation_id.to_string()));
+        }
+        let mut events = Vec::with_capacity(rows.len());
+        let mut previous_committed_at = 0;
+        for (index, row) in rows.iter().enumerate() {
+            let version: i64 = row.get(0);
+            let expected_version = i64::try_from(index + 1)
+                .map_err(|_| ActionStoreError::OutOfRange("Action event version"))?;
+            if version != expected_version {
+                return Err(ActionStoreError::Corrupt(format!(
+                    "Action event history skips version {}",
+                    index + 1
+                )));
+            }
+            let command_json: Option<Value> = row.get(4);
+            let operation_json: Value = row.get(5);
+            let operation = decode_operation(operation_json.clone())?;
+            if operation.version != u64::try_from(version).unwrap_or_default() {
+                return Err(ActionStoreError::Corrupt(
+                    "Action event version does not match its record".to_owned(),
+                ));
+            }
+            let stored_operation_digest: String = row.get(3);
+            let operation_digest = ContentDigest::parse(stored_operation_digest)
+                .map_err(|error| ActionStoreError::Corrupt(error.to_string()))?;
+            if operation_digest != digest_json(&operation_json)? {
+                return Err(ActionStoreError::Corrupt(
+                    "Action event operation digest does not match".to_owned(),
+                ));
+            }
+            let command_digest = row
+                .get::<_, Option<String>>(2)
+                .map(ContentDigest::parse)
+                .transpose()
+                .map_err(|error| ActionStoreError::Corrupt(error.to_string()))?;
+            let event_kind: String = row.get(1);
+            match (&command_json, &command_digest) {
+                (None, None) if version == 1 && event_kind == "proposed" => {}
+                (Some(command), Some(digest))
+                    if version > 1
+                        && digest_json(command)? == *digest
+                        && command.get("command").and_then(Value::as_str)
+                            == Some(event_kind.as_str()) => {}
+                _ => {
+                    return Err(ActionStoreError::Corrupt(
+                        "Action event command does not match its receipt".to_owned(),
+                    ));
+                }
+            }
+            let committed_at: i64 = row.get(6);
+            let committed_at = u64::try_from(committed_at).map_err(|_| {
+                ActionStoreError::Corrupt("Action event commit time is invalid".to_owned())
+            })?;
+            if committed_at < previous_committed_at {
+                return Err(ActionStoreError::Corrupt(
+                    "Action event commit time moves backwards".to_owned(),
+                ));
+            }
+            previous_committed_at = committed_at;
+            events.push(ActionEvent {
+                event_kind,
+                command_digest,
+                operation_digest,
+                committed_at_unix_ms: committed_at,
+                operation,
+            });
+        }
+        if events
+            .last()
+            .is_none_or(|event| event.operation != current.operation)
+        {
+            return Err(ActionStoreError::Corrupt(
+                "Action current version does not match its event history".to_owned(),
+            ));
+        }
+        transaction.commit().await?;
+        Ok(events)
+    }
+}
+
+async fn select_proposal_aliases(
+    transaction: &Transaction<'_>,
+    tenant_id: &str,
+    operation_id: &str,
+    idempotency_key: &str,
+) -> Result<Vec<Row>, ActionStoreError> {
+    Ok(transaction
+        .query(
+            "SELECT operation_id, idempotency_key, proposal_digest, state, version, operation_json, created_at_unix_ms, updated_at_unix_ms FROM action_operations WHERE tenant_id = $1 AND (operation_id = $2 OR idempotency_key = $3) FOR UPDATE",
+            &[&tenant_id, &operation_id, &idempotency_key],
+        )
+        .await?)
+}
+
+fn exact_proposal_replay(
+    rows: Vec<Row>,
+    operation_id: &str,
+    idempotency_key: &str,
+    proposal_digest: &str,
+) -> Result<ActionOperation, ActionStoreError> {
+    if rows.len() != 1 {
+        return Err(ActionStoreError::Conflict(
+            "operation ID and idempotency key resolve to different Actions".to_owned(),
+        ));
+    }
+    let row = &rows[0];
+    let stored = validate_current_row(row)?;
+    if stored.operation.proposal.operation_id.as_str() != operation_id
+        || stored.operation.proposal.idempotency_key.as_str() != idempotency_key
+        || stored.operation.proposal.proposal_digest.as_str() != proposal_digest
+    {
+        return Err(ActionStoreError::Conflict(
+            "operation ID or idempotency key was reused for different Action content".to_owned(),
+        ));
+    }
+    Ok(stored.operation)
+}
+
+fn validate_current_row(row: &Row) -> Result<CurrentAction, ActionStoreError> {
+    let operation_id: String = row.get(0);
+    let idempotency_key: String = row.get(1);
+    let proposal_digest: String = row.get(2);
+    let state: String = row.get(3);
+    let version: i64 = row.get(4);
+    let operation = decode_operation(row.get(5))?;
+    let created_at: i64 = row.get(6);
+    let updated_at: i64 = row.get(7);
+    let created_at = u64::try_from(created_at)
+        .map_err(|_| ActionStoreError::Corrupt("Action creation time is invalid".to_owned()))?;
+    let updated_at = u64::try_from(updated_at)
+        .map_err(|_| ActionStoreError::Corrupt("Action update time is invalid".to_owned()))?;
+    if operation.proposal.operation_id.as_str() != operation_id
+        || operation.proposal.idempotency_key.as_str() != idempotency_key
+        || operation.proposal.proposal_digest.as_str() != proposal_digest
+        || enum_name(&operation.state)? != state
+        || i64::try_from(operation.version).ok() != Some(version)
+    {
+        return Err(ActionStoreError::Corrupt(
+            "Action columns do not match the stored operation".to_owned(),
+        ));
+    }
+    if created_at == 0 || updated_at < created_at {
+        return Err(ActionStoreError::Corrupt(
+            "Action ledger timestamps are invalid".to_owned(),
+        ));
+    }
+    Ok(CurrentAction {
+        operation,
+        updated_at_unix_ms: updated_at,
+    })
+}
+
+fn decode_operation(value: Value) -> Result<ActionOperation, ActionStoreError> {
+    serde_json::from_value(value)
+        .map_err(|error| ActionStoreError::Corrupt(format!("invalid Action operation: {error}")))
+}
+
+fn digest_json(value: &Value) -> Result<ContentDigest, ActionStoreError> {
+    let encoded = serde_json::to_vec(value)?;
+    Ok(ContentDigest::of_bytes(encoded))
+}
+
+fn enum_name<T: serde::Serialize>(value: &T) -> Result<String, ActionStoreError> {
+    match serde_json::to_value(value)? {
+        Value::String(value) => Ok(value),
+        _ => Err(ActionStoreError::Corrupt(
+            "Action enum has no stable storage name".to_owned(),
+        )),
+    }
+}
+
+fn storage_i64(value: u64, field: &'static str) -> Result<i64, ActionStoreError> {
+    if value == 0 {
+        return Err(ActionStoreError::OutOfRange(field));
+    }
+    i64::try_from(value).map_err(|_| ActionStoreError::OutOfRange(field))
+}
+
+async fn set_tenant(
+    transaction: &Transaction<'_>,
+    tenant_id: &str,
+) -> Result<(), tokio_postgres::Error> {
+    transaction
+        .query_one(
+            "SELECT set_config('cerebro.tenant_id', $1, true)",
+            &[&tenant_id],
+        )
+        .await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schema_enforces_tenant_isolation_idempotency_and_append_only_versions() {
+        for required in [
+            "PRIMARY KEY (tenant_id, operation_id)",
+            "UNIQUE (tenant_id, idempotency_key)",
+            "PRIMARY KEY (tenant_id, operation_id, version)",
+            "FORCE ROW LEVEL SECURITY",
+            "current_setting(''cerebro.tenant_id'', true)",
+            "(operation_json->'proposal'->>'tenant_id') IS NOT DISTINCT FROM tenant_id",
+            "(operation_json->'proposal'->>'proposal_digest') IS NOT DISTINCT FROM proposal_digest",
+            "version > 1 AND event_kind <> 'proposed'",
+            "CREATE TRIGGER action_operation_events_append_only",
+            "BEFORE UPDATE OR DELETE ON action_operation_events",
+        ] {
+            assert!(POSTGRES_SCHEMA.contains(required), "missing {required}");
+        }
+        assert!(!POSTGRES_SCHEMA.contains("UPDATE action_operation_events"));
+        assert!(!POSTGRES_SCHEMA.contains("DELETE FROM action_operation_events"));
+    }
+
+    #[test]
+    fn storage_bounds_reject_zero_and_values_postgres_cannot_represent() {
+        assert!(storage_i64(0, "test").is_err());
+        assert!(storage_i64(u64::MAX, "test").is_err());
+        assert_eq!(storage_i64(i64::MAX as u64, "test").unwrap(), i64::MAX);
+    }
+}
