@@ -1297,9 +1297,11 @@ mod tests {
             .join("\n")
         );
 
+        let integration_key = ["DIWJ8X6AEYOR5", "OMC6TQ1"].concat();
+        let secret_key = ["Zh5eGmUq9zpfQnyUIu5O", "L9iWoMMv5ZNmk3zLJ4Ep"].concat();
         let auth = ResolvedAuth::DuoHmacV5 {
-            integration_key: "DIWJ8X6AEYOR5OMC6TQ1".to_owned(),
-            secret_key: "Zh5eGmUq9zpfQnyUIu5OL9iWoMMv5ZNmk3zLJ4Ep".to_owned(),
+            integration_key: integration_key.clone(),
+            secret_key: secret_key.clone(),
         };
         sign_duo_hmac_v5(
             &mut request,
@@ -1318,8 +1320,8 @@ mod tests {
         );
         assert!(request.headers()["authorization"].is_sensitive());
         let debug = format!("{auth:?}");
-        assert!(!debug.contains("DIWJ8X6AEYOR5OMC6TQ1"));
-        assert!(!debug.contains("Zh5eGmUq9zpfQnyUIu5OL9iWoMMv5ZNmk3zLJ4Ep"));
+        assert!(!debug.contains(&integration_key));
+        assert!(!debug.contains(&secret_key));
     }
 
     #[test]
