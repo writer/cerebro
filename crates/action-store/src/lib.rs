@@ -13,6 +13,8 @@ use cerebro_platform_sdk::{
     ActionOperation, ActionOperationId, ActionProposal, ActionState, ActorId, ContentDigest,
     SdkError, TenantId, VerificationState,
 };
+use postgres_native_tls::MakeTlsConnector;
+use serde::Serialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_postgres::{Client, Row, Transaction};
@@ -160,7 +162,7 @@ impl From<SdkError> for ActionStoreError {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ActionEvent {
     pub actor_id: ActorId,
     pub event_kind: String,
@@ -187,6 +189,22 @@ impl PostgresActionLedger {
         }
     }
 
+    pub async fn connect_tls(connection_string: &str) -> Result<Self, ActionStoreError> {
+        let tls = native_tls::TlsConnector::builder()
+            .build()
+            .map_err(|error| {
+                ActionStoreError::Conflict(format!("build PostgreSQL TLS: {error}"))
+            })?;
+        let (client, connection) =
+            tokio_postgres::connect(connection_string, MakeTlsConnector::new(tls)).await?;
+        tokio::spawn(async move {
+            if let Err(error) = connection.await {
+                eprintln!("Action PostgreSQL connection closed: {error}");
+            }
+        });
+        Ok(Self::from_client(client))
+    }
+
     pub async fn migrate(&self) -> Result<(), ActionStoreError> {
         self.client
             .lock()
@@ -196,12 +214,26 @@ impl PostgresActionLedger {
         Ok(())
     }
 
+    pub async fn health(&self) -> Result<(), ActionStoreError> {
+        self.client.lock().await.simple_query("SELECT 1").await?;
+        Ok(())
+    }
+
     pub async fn propose(
         &self,
         proposal: ActionProposal,
         committed_at_unix_ms: u64,
     ) -> Result<ActionOperation, ActionStoreError> {
         proposal.validate()?;
+        if !proposal_valid_at(
+            proposal.proposed_at_unix_ms,
+            proposal.proposal_expires_at_unix_ms,
+            committed_at_unix_ms,
+        ) {
+            return Err(ActionStoreError::Conflict(
+                "Action proposal is not valid at the authority commit time".to_owned(),
+            ));
+        }
         let committed_at = storage_i64(committed_at_unix_ms, "Action commit time")?;
         let operation = ActionOperation {
             proposal,
@@ -320,6 +352,13 @@ impl PostgresActionLedger {
         if !command_actor_matches(actor_id, &command) {
             return Err(ActionStoreError::Conflict(
                 "authenticated actor does not match the Action command receipt".to_owned(),
+            ));
+        }
+        if command_observed_at(&command)
+            .is_some_and(|observed_at| observed_at == 0 || observed_at > committed_at_unix_ms)
+        {
+            return Err(ActionStoreError::Conflict(
+                "Action command receipt time exceeds the authority commit time".to_owned(),
             ));
         }
 
@@ -599,6 +638,40 @@ fn command_actor_matches(actor_id: &ActorId, command: &ActionCommand) -> bool {
     }
 }
 
+fn proposal_valid_at(
+    proposed_at_unix_ms: u64,
+    proposal_expires_at_unix_ms: u64,
+    committed_at_unix_ms: u64,
+) -> bool {
+    committed_at_unix_ms >= proposed_at_unix_ms
+        && committed_at_unix_ms < proposal_expires_at_unix_ms
+}
+
+fn command_observed_at(command: &ActionCommand) -> Option<u64> {
+    match command {
+        ActionCommand::RecordApproval { receipt } => Some(receipt.decided_at_unix_ms),
+        ActionCommand::Claim {
+            claimed_at_unix_ms, ..
+        } => Some(*claimed_at_unix_ms),
+        ActionCommand::Complete {
+            executed_at_unix_ms,
+            ..
+        }
+        | ActionCommand::Reconcile {
+            executed_at_unix_ms,
+            ..
+        } => Some(*executed_at_unix_ms),
+        ActionCommand::Verify { receipt } => Some(receipt.receipt.verified_at_unix_ms),
+        ActionCommand::RecordSimulation
+        | ActionCommand::RequestApproval
+        | ActionCommand::StartExecution
+        | ActionCommand::MarkOutcomeUnknown
+        | ActionCommand::RejectVerification
+        | ActionCommand::Fail
+        | ActionCommand::RollBack => None,
+    }
+}
+
 fn enum_name<T: serde::Serialize>(value: &T) -> Result<String, ActionStoreError> {
     match serde_json::to_value(value)? {
         Value::String(value) => Ok(value),
@@ -658,6 +731,23 @@ mod tests {
         assert!(storage_i64(0, "test").is_err());
         assert!(storage_i64(u64::MAX, "test").is_err());
         assert_eq!(storage_i64(i64::MAX as u64, "test").unwrap(), i64::MAX);
+    }
+
+    #[test]
+    fn authority_time_rejects_future_or_expired_evidence() {
+        assert!(!proposal_valid_at(10, 20, 9));
+        assert!(proposal_valid_at(10, 20, 10));
+        assert!(proposal_valid_at(10, 20, 19));
+        assert!(!proposal_valid_at(10, 20, 20));
+
+        assert_eq!(
+            command_observed_at(&ActionCommand::Claim {
+                worker_id: cerebro_platform_sdk::OpaqueId::parse("worker:one").unwrap(),
+                claimed_at_unix_ms: 21,
+            }),
+            Some(21)
+        );
+        assert_eq!(command_observed_at(&ActionCommand::StartExecution), None);
     }
 
     #[test]

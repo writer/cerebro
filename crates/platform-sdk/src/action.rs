@@ -328,6 +328,7 @@ pub(crate) fn verification_confirms(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StoredActionEffect {
     target_id: String,
     effect_kind: String,
@@ -335,6 +336,7 @@ struct StoredActionEffect {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StoredActionProposal {
     operation_id: String,
     tenant_id: String,
@@ -357,6 +359,7 @@ struct StoredActionProposal {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StoredDecisionReceipt {
     decision_id: String,
     proposal_digest: String,
@@ -366,6 +369,7 @@ struct StoredDecisionReceipt {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StoredVerificationReceipt {
     verification_id: String,
     executor_actor_id: String,
@@ -378,6 +382,7 @@ struct StoredVerificationReceipt {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StoredActionVerificationReceipt {
     operation_id: String,
     proposal_digest: String,
@@ -386,6 +391,7 @@ struct StoredActionVerificationReceipt {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StoredActionOperation {
     proposal: StoredActionProposal,
     state: ActionState,
@@ -542,6 +548,17 @@ impl<'de> Deserialize<'de> for ActionOperation {
     }
 }
 
+impl<'de> Deserialize<'de> for ActionProposal {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        StoredActionProposal::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -554,6 +571,14 @@ mod tests {
             serde_json::from_value::<ActionOperation>(value.clone()).expect("decode operation"),
             initial_operation
         );
+        assert_eq!(
+            serde_json::from_value::<ActionProposal>(value["proposal"].clone())
+                .expect("decode proposal"),
+            initial_operation.proposal
+        );
+        let mut proposal_with_unknown_field = value["proposal"].clone();
+        proposal_with_unknown_field["requested_role"] = serde_json::json!("admin");
+        assert!(serde_json::from_value::<ActionProposal>(proposal_with_unknown_field).is_err());
 
         for (field, tampered) in [
             ("tenant", set(&value, &["proposal", "tenant_id"], " tenant")),
