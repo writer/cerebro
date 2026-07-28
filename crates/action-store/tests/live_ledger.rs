@@ -1,5 +1,6 @@
 use std::{env, error::Error};
 
+use cerebro_action_catalog::lookup;
 use cerebro_action_store::{ActionStoreError, PostgresActionLedger};
 use cerebro_platform_engine::ActionCommand;
 use cerebro_platform_sdk::{
@@ -166,6 +167,7 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
 }
 
 fn proposal(operation_id: &str, idempotency_key: &str) -> ActionProposal {
+    let definition = lookup("endpoint.cerebro.revoke_device").expect("generated Action definition");
     let mut proposal = ActionProposal {
         operation_id: ActionOperationId::parse(operation_id).expect("valid operation"),
         tenant_id: TenantId::parse("tenant:live:one").expect("valid tenant"),
@@ -173,12 +175,13 @@ fn proposal(operation_id: &str, idempotency_key: &str) -> ActionProposal {
         finding_revision_digest: ContentDigest::of_bytes("finding-revision"),
         finding_validation_receipt_digest: ContentDigest::of_bytes("finding-validation"),
         graph_revision: GraphRevision::new(1).expect("valid graph revision"),
-        action_kind: "revoke_access".to_owned(),
-        action_definition_digest: ContentDigest::of_bytes("action-definition"),
+        action_kind: definition.id.to_owned(),
+        action_definition_digest: ContentDigest::parse(definition.definition_digest)
+            .expect("generated definition digest"),
         target_id: OpaqueId::parse("grant:live:one").expect("valid target"),
         expected_effects: vec![ActionEffect {
             target_id: OpaqueId::parse("grant:live:one").expect("valid target"),
-            effect_kind: "access_removed".to_owned(),
+            effect_kind: definition.effect.to_owned(),
             expected_state_digest: ContentDigest::of_bytes("expected"),
         }],
         rollback_ref: OpaqueId::parse("rollback:live:one").expect("valid rollback"),

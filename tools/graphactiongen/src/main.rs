@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use cerebro_graphactiongen::{
-    DEFAULT_CATALOG_PATH, DEFAULT_OUTPUT_PATH, ensure_supported_platform, generate,
+    DEFAULT_CATALOG_PATH, DEFAULT_OUTPUT_PATH, ensure_supported_platform, generate, generate_rust,
     read_generated_file, write_generated_file,
 };
 use std::env;
@@ -9,8 +9,7 @@ use std::error::Error as StdError;
 use std::fmt;
 use std::path::PathBuf;
 
-const USAGE: &str =
-    "usage: graphactiongen [--root PATH] [--catalog PATH] [--output PATH] (--write|--check)";
+const USAGE: &str = "usage: graphactiongen [--root PATH] [--catalog PATH] [--output PATH] [--format go|rust] (--write|--check)";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Mode {
@@ -18,11 +17,18 @@ enum Mode {
     Check,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OutputFormat {
+    Go,
+    Rust,
+}
+
 #[derive(Debug, Eq, PartialEq)]
 struct Options {
     root: PathBuf,
     catalog: PathBuf,
     output: PathBuf,
+    format: OutputFormat,
     mode: Mode,
 }
 
@@ -81,8 +87,11 @@ fn main() {
 
 fn run(options: &Options) -> Result<(), CliError> {
     ensure_supported_platform().map_err(|error| CliError::Operation(error.to_string()))?;
-    let content = generate(&options.root, &options.catalog)
-        .map_err(|error| CliError::Operation(error.to_string()))?;
+    let content = match options.format {
+        OutputFormat::Go => generate(&options.root, &options.catalog),
+        OutputFormat::Rust => generate_rust(&options.root, &options.catalog),
+    }
+    .map_err(|error| CliError::Operation(error.to_string()))?;
     let output_path = options.root.join(&options.output);
     match options.mode {
         Mode::Write => write_generated_file(&output_path, &content).map_err(|error| {
@@ -104,6 +113,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<ParseResult, CliErro
     let mut root = PathBuf::from(".");
     let mut catalog = PathBuf::from(DEFAULT_CATALOG_PATH);
     let mut output = PathBuf::from(DEFAULT_OUTPUT_PATH);
+    let mut format = OutputFormat::Go;
     let mut mode = None;
     let mut args = args.peekable();
     while let Some(argument) = args.next() {
@@ -111,6 +121,13 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<ParseResult, CliErro
             "--root" => root = PathBuf::from(value(&mut args, "--root")?),
             "--catalog" => catalog = PathBuf::from(value(&mut args, "--catalog")?),
             "--output" => output = PathBuf::from(value(&mut args, "--output")?),
+            "--format" => {
+                format = match value(&mut args, "--format")?.as_str() {
+                    "go" => OutputFormat::Go,
+                    "rust" => OutputFormat::Rust,
+                    value => return Err(CliError::UnknownArgument(value.to_owned())),
+                }
+            }
             "--write" => set_mode(&mut mode, Mode::Write)?,
             "--check" => set_mode(&mut mode, Mode::Check)?,
             "-h" | "--help" => return Ok(ParseResult::Help),
@@ -121,6 +138,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<ParseResult, CliErro
         root,
         catalog,
         output,
+        format,
         mode: mode.ok_or(CliError::MissingMode)?,
     }))
 }
@@ -200,6 +218,15 @@ mod tests {
         assert_eq!(options.root, PathBuf::from("repo"));
         assert_eq!(options.catalog, PathBuf::from("catalog.yaml"));
         assert_eq!(options.output, PathBuf::from("registry.go"));
+        assert_eq!(options.format, OutputFormat::Go);
         assert_eq!(options.mode, Mode::Write);
+    }
+
+    #[test]
+    fn parses_rust_output_format() {
+        let Ok(ParseResult::Run(options)) = parse(&["--format", "rust", "--check"]) else {
+            panic!("valid arguments should parse");
+        };
+        assert_eq!(options.format, OutputFormat::Rust);
     }
 }

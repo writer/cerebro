@@ -328,9 +328,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cerebro-action-catalog"
+version = "0.1.0"
+dependencies = [
+ "cerebro-platform-sdk",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+]
+
+[[package]]
 name = "cerebro-action-store"
 version = "0.1.0"
 dependencies = [
+ "cerebro-action-catalog",
  "cerebro-platform-engine",
  "cerebro-platform-sdk",
  "native-tls",
@@ -364,6 +375,7 @@ dependencies = [
 name = "cerebro-graphactiongen"
 version = "0.1.0"
 dependencies = [
+ "cerebro-action-catalog",
  "libc",
  "serde",
  "serde-saphyr",
@@ -441,6 +453,7 @@ dependencies = [
  "axum",
  "buffa",
  "buffa-types",
+ "cerebro-action-catalog",
  "cerebro-action-store",
  "cerebro-agent-context",
  "cerebro-organizational-graph",

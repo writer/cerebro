@@ -17,6 +17,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use cerebro_action_catalog::{definitions as action_definitions, validate_proposal};
 use cerebro_action_store::{ActionEvent, ActionPage, ActionStoreError, PostgresActionLedger};
 use cerebro_agent_context::{
     AgentContext, AgentGraph, ContextEntity, ContextError, GraphPath, MemoryAgentGraph,
@@ -368,6 +369,7 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/readyz" => "readyz",
         "/metrics" => "metrics",
         "/v1/me" => "current_user",
+        "/v1/action-definitions" => "action_definitions",
         "/v1/sources/summary" => "source_summary",
         "/platform/graph/neighborhood" => "neighborhood",
         "/v1/graph/search" => "search",
@@ -1439,6 +1441,7 @@ fn router_with_backend(
     let protected = if let Some(oidc) = oidc {
         protected
             .route("/v1/me", get(current_user))
+            .route("/v1/action-definitions", get(list_action_definitions))
             .route("/v1/actions", get(list_actions).post(propose_action))
             .route("/v1/actions/{operation_id}", get(get_action))
             .route(
@@ -1834,6 +1837,11 @@ async fn current_user(
     Json(identity.current_user_response())
 }
 
+async fn list_action_definitions()
+-> Json<&'static [cerebro_action_catalog::ActionDefinition<'static>]> {
+    Json(action_definitions())
+}
+
 async fn propose_action(
     State(state): State<AppState>,
     Extension(identity): Extension<AuthenticatedIdentity>,
@@ -1846,6 +1854,8 @@ async fn propose_action(
             "The Action proposal tenant and proposer must match the signed identity.",
         ));
     }
+    validate_proposal(&proposal)
+        .map_err(|error| bad_request("invalid_action_definition", error.to_string()))?;
     let committed_at = current_unix_millis()?;
     action_authority(&state)?
         .propose(proposal, committed_at)
@@ -2360,6 +2370,9 @@ fn action_store_error(error: ActionStoreError) -> (StatusCode, Json<ErrorRespons
             }),
         ),
         ActionStoreError::Invalid(error) => bad_request("invalid_action", error.to_string()),
+        ActionStoreError::Catalog(error) => {
+            bad_request("invalid_action_definition", error.to_string())
+        }
         ActionStoreError::OutOfRange(field) => bad_request("invalid_action", field),
         ActionStoreError::Postgres(error) => {
             eprintln!("Action PostgreSQL unavailable: {error}");
@@ -2731,6 +2744,7 @@ mod tests {
     }
 
     fn action_proposal(tenant_id: &str, proposed_by: &str) -> ActionProposal {
+        let definition = cerebro_action_catalog::lookup("endpoint.cerebro.revoke_device").unwrap();
         let mut proposal = ActionProposal {
             operation_id: ActionOperationId::parse("operation:http:one").unwrap(),
             tenant_id: TenantId::parse(tenant_id).unwrap(),
@@ -2738,12 +2752,12 @@ mod tests {
             finding_revision_digest: ContentDigest::of_bytes("finding-revision"),
             finding_validation_receipt_digest: ContentDigest::of_bytes("finding-validation"),
             graph_revision: GraphRevision::new(1).unwrap(),
-            action_kind: "revoke_access".to_owned(),
-            action_definition_digest: ContentDigest::of_bytes("action-definition"),
+            action_kind: definition.id.to_owned(),
+            action_definition_digest: ContentDigest::parse(definition.definition_digest).unwrap(),
             target_id: OpaqueId::parse("grant:http:one").unwrap(),
             expected_effects: vec![ActionEffect {
                 target_id: OpaqueId::parse("grant:http:one").unwrap(),
-                effect_kind: "access_removed".to_owned(),
+                effect_kind: definition.effect.to_owned(),
                 expected_state_digest: ContentDigest::of_bytes("expected"),
             }],
             rollback_ref: OpaqueId::parse("rollback:http:one").unwrap(),
@@ -3415,6 +3429,10 @@ mod tests {
             "cerebro:read"
         );
         assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/action-definitions"),
+            "cerebro:read"
+        );
+        assert_eq!(
             oidc_scope_for_route(&Method::POST, "/v1/graph/search"),
             "cerebro:read"
         );
@@ -3619,6 +3637,51 @@ mod tests {
             assert_eq!(error.0, StatusCode::FORBIDDEN);
             assert_eq!(error.1.0.code, "permission_denied");
         }
+    }
+
+    #[tokio::test]
+    async fn action_proposals_reject_unregistered_or_tampered_definitions_before_storage() {
+        let (graph, _, _) = demo_graph().unwrap();
+        let state = AppState {
+            actions: Some(Arc::new(UnreachableActionAuthority)),
+            graph: Arc::new(MemoryAgentGraph::new(graph)),
+            catalog_summary: None,
+            projection: None,
+            metrics: PlatformMetrics::default(),
+        };
+        let identity = action_identity("tenant:http:one", "actor:http:one");
+        let definition = cerebro_action_catalog::lookup("endpoint.cerebro.revoke_device").unwrap();
+
+        let mut unknown = action_proposal("tenant:http:one", "actor:http:one");
+        unknown.action_kind = "endpoint.attacker.erase_device".to_owned();
+        unknown.bind_computed_digest().unwrap();
+
+        let mut wrong_digest = action_proposal("tenant:http:one", "actor:http:one");
+        wrong_digest.action_definition_digest = ContentDigest::of_bytes("attacker definition");
+        wrong_digest.bind_computed_digest().unwrap();
+
+        let mut wrong_effect = action_proposal("tenant:http:one", "actor:http:one");
+        wrong_effect.expected_effects[0].effect_kind = "grant_device_access".to_owned();
+        wrong_effect.bind_computed_digest().unwrap();
+
+        let mut wrong_target = action_proposal("tenant:http:one", "actor:http:one");
+        wrong_target.expected_effects[0].target_id = OpaqueId::parse("device:http:other").unwrap();
+        wrong_target.bind_computed_digest().unwrap();
+
+        for proposal in [unknown, wrong_digest, wrong_effect, wrong_target] {
+            let error = propose_action(
+                State(state.clone()),
+                Extension(identity.clone()),
+                Json(proposal),
+            )
+            .await
+            .expect_err("tampered definition must fail before storage");
+            assert_eq!(error.0, StatusCode::BAD_REQUEST);
+            assert_eq!(error.1.0.code, "invalid_action_definition");
+        }
+
+        let definitions = list_action_definitions().await.0;
+        assert!(definitions.iter().any(|candidate| candidate == definition));
     }
 
     #[tokio::test]

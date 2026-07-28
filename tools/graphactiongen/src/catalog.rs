@@ -1,3 +1,4 @@
+use cerebro_action_catalog::ActionDefinition;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 
@@ -98,6 +99,21 @@ pub fn validate_catalog(catalog: &ActionCatalog) -> Result<()> {
         }
     }
     Ok(())
+}
+
+pub fn definition_digest(action: &ActionCatalogEntry) -> Result<String> {
+    ActionDefinition {
+        id: &action.id,
+        provider: &action.provider,
+        provider_action: &action.provider_action,
+        target_kind: &action.target_kind,
+        effect: &action.effect,
+        destructive: action.destructive,
+        reversible_by: &action.reversible_by,
+        definition_digest: "",
+    }
+    .computed_digest()
+    .map_err(crate::Error::Json)
 }
 
 fn insert_consistent<'a>(

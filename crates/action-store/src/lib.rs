@@ -8,6 +8,7 @@
 
 use std::{error::Error, fmt};
 
+use cerebro_action_catalog::{ActionCatalogError, validate_proposal};
 use cerebro_platform_engine::{ActionCommand, transition_action};
 use cerebro_platform_sdk::{
     ActionOperation, ActionOperationId, ActionProposal, ActionState, ActorId, ContentDigest,
@@ -117,6 +118,7 @@ pub enum ActionStoreError {
     Postgres(tokio_postgres::Error),
     Serialization(serde_json::Error),
     Invalid(SdkError),
+    Catalog(ActionCatalogError),
     Conflict(String),
     NotFound(String),
     Corrupt(String),
@@ -132,6 +134,7 @@ impl fmt::Display for ActionStoreError {
                 write!(formatter, "Action ledger serialization failed: {error}")
             }
             Self::Invalid(error) => write!(formatter, "Action is invalid: {error}"),
+            Self::Catalog(error) => write!(formatter, "Action definition is invalid: {error}"),
             Self::Conflict(message) => write!(formatter, "Action ledger conflict: {message}"),
             Self::NotFound(message) => write!(formatter, "Action was not found: {message}"),
             Self::Corrupt(message) => {
@@ -163,6 +166,12 @@ impl From<SdkError> for ActionStoreError {
             SdkError::Conflict(message) => Self::Conflict(message),
             other => Self::Invalid(other),
         }
+    }
+}
+
+impl From<ActionCatalogError> for ActionStoreError {
+    fn from(value: ActionCatalogError) -> Self {
+        Self::Catalog(value)
     }
 }
 
@@ -234,7 +243,7 @@ impl PostgresActionLedger {
         proposal: ActionProposal,
         committed_at_unix_ms: u64,
     ) -> Result<ActionOperation, ActionStoreError> {
-        proposal.validate()?;
+        validate_proposal(&proposal)?;
         if !proposal_valid_at(
             proposal.proposed_at_unix_ms,
             proposal.proposal_expires_at_unix_ms,

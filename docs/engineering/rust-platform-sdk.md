@@ -61,6 +61,12 @@ semantics.
   proposal digest. The SDK computes that versioned digest from every
   execution-relevant proposal field and rejects any record whose stored digest
   no longer matches.
+- `cerebro-action-catalog` is the closed runtime registry for new proposals.
+  It is generated from `internal/graphactions/action_catalog.yaml`, assigns a
+  content digest to every provider operation, and rejects unknown Action kinds,
+  altered definition digests, mismatched effects, and effects aimed at a
+  different target. Historical ledger rows keep their committed definition
+  digest even after the active catalog changes.
 - Provider completion is not verification. The verified transition requires a
   receipt bound to the operation, proposal, observed effect, and executor, with
   a different verifier, a fresh source revision, and evidence.

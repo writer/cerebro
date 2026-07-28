@@ -156,11 +156,12 @@
     {
       "id": "graph-actions",
       "title": "Graph Action Registry",
-      "summary": "Keeps graph action catalog definitions and generated Go registry wiring aligned.",
+      "summary": "Keeps graph action catalog definitions and generated Go and Rust registries aligned.",
       "change_reason": "graph action catalog, generated registry, or provider action metadata changed",
       "triggers": [
         "internal/graphactions/action_catalog.yaml",
         "internal/graphactions/registry_gen.go",
+        "crates/action-catalog/src/generated.rs",
         "tools/graphactiongen/**"
       ],
       "generator": {
@@ -184,7 +185,8 @@
         }
       ],
       "outputs": [
-        "internal/graphactions/registry_gen.go"
+        "internal/graphactions/registry_gen.go",
+        "crates/action-catalog/src/generated.rs"
       ],
       "ci_jobs": [
         "graph-actions"

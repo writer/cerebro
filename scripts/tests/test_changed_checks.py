@@ -42,7 +42,13 @@ class ChangedChecksTests(unittest.TestCase):
         self.assertIn("python-script-tests", names)
 
     def test_rust_workspace_paths_select_graph_action_check(self):
-        for path in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "tools/graphactiongen/src/lib.rs"):
+        for path in (
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+            "crates/action-catalog/src/lib.rs",
+            "tools/graphactiongen/src/lib.rs",
+        ):
             with self.subTest(path=path):
                 self.assertIn("graph-action-check", self.command_names([path]))
 

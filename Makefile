@@ -498,6 +498,7 @@ connector-import-promote: ## Append supported candidate connector definitions in
 
 graph-action-generate: ## Regenerate graph action registry from the action catalog.
 	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --write
+	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --format rust --output crates/action-catalog/src/generated.rs --write
 
 rust-fmt-check: ## Verify Rust source formatting.
 	$(CARGO) fmt --all -- --check
@@ -577,6 +578,7 @@ rust-security-path-fuzz-smoke: ## Run a bounded security path kernel fuzz sessio
 
 graph-action-check: rust-fmt-check rust-clippy rust-test rust-doc-check ## Verify generated graph action registry is current.
 	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --check
+	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --format rust --output crates/action-catalog/src/generated.rs --check
 
 graphagent-static-validator-generate: ## Rebuild the embedded static Cypher validator.
 	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate graphagent-static-validator
