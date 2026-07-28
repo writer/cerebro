@@ -9,3 +9,4 @@ export * from "./security-operations.js";
 export * from "./tools.js";
 export * from "./types.js";
 export * from "./runtime/archetype-workspace.js";
+export * from "./runtime/computer-sandbox-gateway.js";

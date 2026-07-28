@@ -227,6 +227,31 @@ scanner or authorization decision.
 
 The host owns source calls, persistence, probe scheduling, and policy values. This module does not poll sources, create a store, or choose deployment behavior.
 
+## Computer sandboxes
+
+`src/computer` lets the companion use an isolated, expiring browser or desktop
+through a host-owned provider adapter. Providers advertise portable
+capabilities and supported action kinds, so a host can register several managed
+sandbox, container, or VM implementations without changing agent behavior.
+Selection rejects stale or incompatible providers, honors an explicit host
+preference when present, and otherwise produces one deterministic order.
+
+Session requests contain only image, identity, and network-policy references
+plus explicit HTTPS origins. Routes, credentials, cookies, provider account
+identifiers, and deployment configuration never enter the portable contract.
+An adapter may fail over only after the current provider proves that no session
+was created. An unknown create result must reconcile with that same provider
+before another provider is tried.
+
+Every computer action is bound to one exact, unexpired tool-authority decision.
+Observation and navigation use read authority. Focus and scroll use proposal
+authority; downloads require receipts. Typing, uploads, activation, submission,
+and session closure are external effects that require actuation authority and
+reconciliation before retry. Screenshots, accessibility trees, page content,
+and files remain behind bounded content references. The host owns sandbox
+provisioning, short-lived identity, egress enforcement, encrypted evidence
+storage, durable receipts, and provider-specific reconciliation.
+
 ## Durable answer watches
 
 `src/watch` binds a watch to one read-only, server-resolved target recorded with

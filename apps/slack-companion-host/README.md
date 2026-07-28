@@ -48,3 +48,35 @@ the assignment.
 Do not configure a static Slack-to-user map for this path. Okta and Archetype
 source errors fail closed, and the runtime never substitutes local identity or
 finding data.
+## Computer sandbox gateways
+
+The host adapter accepts one or more private computer sandbox gateways through
+`CEREBRO_COMPUTER_SANDBOX_GATEWAYS_JSON`. Each entry contains only routing
+metadata:
+
+```json
+[
+  {
+    "base_url": "https://sandbox-gateway.example.internal",
+    "provider_id": "interactive-primary",
+    "timeout_ms": 30000,
+    "token_env": "CEREBRO_COMPUTER_SANDBOX_TOKEN_INTERACTIVE_PRIMARY"
+  }
+]
+```
+
+The referenced token environment variables must be injected separately by the
+deployment. Provider credentials, account identifiers, provider payloads, and
+raw screenshots or files must not be included in the JSON binding.
+
+The gateway implements the versioned routes under
+`/v1/computer-sandbox`. It advertises only capabilities and actions that its
+current provider adapter can execute. The portable coordinator selects a
+compatible provider deterministically and fails over only after a gateway
+proves that no session was created. An unknown create or action result must be
+reconciled with the same gateway before retry.
+
+Loading gateway configuration does not register model tools by itself. The
+agent runtime composition must create the coordinator with
+`createComputerSandboxRuntime` and register the portable computer tool catalog
+through its host-owned tool registry.
