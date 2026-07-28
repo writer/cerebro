@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeSet,
     env,
+    net::IpAddr,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -238,11 +239,11 @@ impl OidcAuthenticator {
         if last_refresh.elapsed() < MIN_JWKS_REFRESH_INTERVAL {
             return Ok(());
         }
-        *last_refresh = Instant::now();
         let keys = fetch_keys(&self.client, &self.jwks_url)
             .await
             .map_err(AuthenticationError::Unavailable)?;
         *self.keys.write().await = keys;
+        *last_refresh = Instant::now();
         Ok(())
     }
 
@@ -387,7 +388,13 @@ fn validate_jwks_url(url: &Url) -> Result<(), String> {
     if url.scheme() == "https" {
         return Ok(());
     }
-    let loopback = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
+    let loopback = url.host_str().is_some_and(|host| {
+        host == "localhost"
+            || host
+                .trim_matches(['[', ']'])
+                .parse::<IpAddr>()
+                .is_ok_and(|address| address.is_loopback())
+    });
     if url.scheme() == "http" && loopback {
         return Ok(());
     }
@@ -463,7 +470,34 @@ mod tests {
     fn jwks_url_requires_https_outside_loopback() {
         assert!(validate_jwks_url(&Url::parse("https://issuer.example/jwks").unwrap()).is_ok());
         assert!(validate_jwks_url(&Url::parse("http://127.0.0.1:3000/jwks").unwrap()).is_ok());
+        assert!(validate_jwks_url(&Url::parse("http://127.0.0.2:3000/jwks").unwrap()).is_ok());
+        assert!(validate_jwks_url(&Url::parse("http://[::1]:3000/jwks").unwrap()).is_ok());
+        assert!(validate_jwks_url(&Url::parse("http://[2001:db8::1]:3000/jwks").unwrap()).is_err());
         assert!(validate_jwks_url(&Url::parse("http://issuer.example/jwks").unwrap()).is_err());
+    }
+
+    #[tokio::test]
+    async fn failed_jwks_refresh_remains_immediately_retryable() {
+        let failed_refresh_at = Instant::now() - MIN_JWKS_REFRESH_INTERVAL;
+        let authenticator = OidcAuthenticator {
+            audience: Arc::from("cerebro"),
+            issuer: Arc::from("https://issuer.example"),
+            jwks_url: Url::parse("http://127.0.0.1:1/jwks").unwrap(),
+            client: Client::builder()
+                .connect_timeout(Duration::from_millis(100))
+                .timeout(Duration::from_millis(100))
+                .redirect(Policy::none())
+                .build()
+                .unwrap(),
+            keys: Arc::new(RwLock::new(serde_json::from_str(r#"{"keys":[]}"#).unwrap())),
+            last_refresh: Arc::new(Mutex::new(failed_refresh_at)),
+        };
+
+        assert!(matches!(
+            authenticator.refresh().await,
+            Err(AuthenticationError::Unavailable(_))
+        ));
+        assert_eq!(*authenticator.last_refresh.lock().await, failed_refresh_at);
     }
 
     #[test]
