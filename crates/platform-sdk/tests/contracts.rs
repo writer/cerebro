@@ -225,7 +225,7 @@ fn action_proposals_reject_duplicate_or_untyped_effects() {
         effect_kind: "access_removed".to_owned(),
         expected_state_digest: digest("expected"),
     };
-    let proposal = ActionProposal {
+    let mut proposal = ActionProposal {
         operation_id: ActionOperationId::parse("operation:one").expect("valid operation"),
         tenant_id: tenant(),
         finding_id: OpaqueId::parse("finding:one").expect("valid finding"),
@@ -245,9 +245,30 @@ fn action_proposals_reject_duplicate_or_untyped_effects() {
         proposal_expires_at_unix_ms: 100,
         proposal_digest: digest("proposal"),
     };
+    proposal
+        .bind_computed_digest()
+        .expect("bind action proposal digest");
     assert!(proposal.validate().is_err());
 
-    let invalid_kind = ActionProposal {
+    let mut valid = ActionProposal {
+        expected_effects: vec![ActionEffect {
+            target_id: OpaqueId::parse("grant:one").expect("valid target"),
+            effect_kind: "access_removed".to_owned(),
+            expected_state_digest: digest("expected"),
+        }],
+        ..proposal.clone()
+    };
+    valid
+        .bind_computed_digest()
+        .expect("bind action proposal digest");
+    assert!(valid.validate().is_ok());
+    valid.target_id = OpaqueId::parse("grant:changed").expect("valid target");
+    assert_eq!(
+        valid.validate(),
+        Err(SdkError::Invalid("action proposal digest"))
+    );
+
+    let mut invalid_kind = ActionProposal {
         expected_effects: vec![ActionEffect {
             target_id: OpaqueId::parse("grant:one").expect("valid target"),
             effect_kind: "Access removed".to_owned(),
@@ -255,6 +276,9 @@ fn action_proposals_reject_duplicate_or_untyped_effects() {
         }],
         ..proposal
     };
+    invalid_kind
+        .bind_computed_digest()
+        .expect("bind action proposal digest");
     assert!(invalid_kind.validate().is_err());
 }
 

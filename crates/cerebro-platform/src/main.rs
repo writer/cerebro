@@ -2,19 +2,22 @@
 
 mod append_log_consumer;
 mod cutover_command;
+mod oidc;
 mod parity_command;
 mod rpc;
 
 use std::{collections::BTreeMap, env, error::Error, path::PathBuf, sync::Arc, time::Instant};
 
+use async_trait::async_trait;
 use axum::{
     Extension, Json, Router,
     extract::{Path, Query, Request, State},
-    http::{StatusCode, header::AUTHORIZATION},
+    http::{Method, StatusCode, header::AUTHORIZATION},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use cerebro_action_store::{ActionEvent, ActionPage, ActionStoreError, PostgresActionLedger};
 use cerebro_agent_context::{
     AgentContext, AgentGraph, ContextEntity, ContextError, GraphPath, MemoryAgentGraph,
     Neighborhood,
@@ -29,6 +32,11 @@ use cerebro_organizational_model::{
 use cerebro_organizational_store::{
     DurableGraphStore, Neo4jProjector, PostgresLedger, ProjectionAuthority, StoreError,
 };
+use cerebro_platform_engine::ActionCommand;
+use cerebro_platform_sdk::{
+    ActionOperation, ActionOperationId, ActionProposal, ActionVerificationReceipt, ActorId,
+    ContentDigest, DecisionId, DecisionReceipt, OpaqueId, VerificationId, VerificationReceipt,
+};
 use cerebro_security_lifecycle::{
     CERTIFICATE_EVENT_KIND, CREDENTIAL_EVENT_KIND, LifecycleQuery, LifecycleState,
     ProjectedResource, SubjectKind, decode_protobuf_observation, project_observation,
@@ -40,6 +48,7 @@ use cerebro_source_runtime_next::{
     GraphSink, HttpSourceConnector, ResolvedAuth, SourceRuntime,
 };
 use hmac::{Hmac, KeyInit, Mac};
+use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
@@ -50,13 +59,119 @@ const TENANT_AUTH_CONTEXT: &[u8] = b"cerebro-organizational-graph/tenant/v1\0";
 const MAX_LEGACY_DELTA_RECORDS: usize = 100_000;
 const MIN_SHARED_SECRET_BYTES: usize = 32;
 const MAX_SECURITY_LIFECYCLE_SCAN: usize = 500;
+const ACTION_PROPOSE_SCOPE: &str = "cerebro:actions:propose";
+const ACTION_SIMULATE_SCOPE: &str = "cerebro:actions:simulate";
+const ACTION_APPROVE_SCOPE: &str = "cerebro:actions:approve";
+const ACTION_EXECUTE_SCOPE: &str = "cerebro:actions:execute";
+const ACTION_VERIFY_SCOPE: &str = "cerebro:actions:verify";
 
 #[derive(Clone)]
 struct AppState {
+    actions: Option<Arc<dyn ActionAuthority>>,
     graph: Arc<dyn AgentGraph>,
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
     metrics: PlatformMetrics,
+}
+
+#[async_trait]
+trait ActionAuthority: Send + Sync {
+    async fn health(&self) -> Result<(), ActionStoreError>;
+
+    async fn propose(
+        &self,
+        proposal: ActionProposal,
+        committed_at_unix_ms: u64,
+    ) -> Result<ActionOperation, ActionStoreError>;
+
+    async fn get(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+    ) -> Result<ActionOperation, ActionStoreError>;
+
+    async fn list(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+        page_token: Option<&str>,
+    ) -> Result<ActionPage, ActionStoreError>;
+
+    async fn transition(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+        actor_id: &ActorId,
+        expected_version: u64,
+        command: ActionCommand,
+        committed_at_unix_ms: u64,
+    ) -> Result<ActionOperation, ActionStoreError>;
+
+    async fn history(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+    ) -> Result<Vec<ActionEvent>, ActionStoreError>;
+}
+
+#[async_trait]
+impl ActionAuthority for PostgresActionLedger {
+    async fn health(&self) -> Result<(), ActionStoreError> {
+        self.health().await
+    }
+
+    async fn propose(
+        &self,
+        proposal: ActionProposal,
+        committed_at_unix_ms: u64,
+    ) -> Result<ActionOperation, ActionStoreError> {
+        self.propose(proposal, committed_at_unix_ms).await
+    }
+
+    async fn get(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+    ) -> Result<ActionOperation, ActionStoreError> {
+        self.get(tenant_id, operation_id).await
+    }
+
+    async fn list(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+        page_token: Option<&str>,
+    ) -> Result<ActionPage, ActionStoreError> {
+        self.list(tenant_id, limit, page_token).await
+    }
+
+    async fn transition(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+        actor_id: &ActorId,
+        expected_version: u64,
+        command: ActionCommand,
+        committed_at_unix_ms: u64,
+    ) -> Result<ActionOperation, ActionStoreError> {
+        self.transition(
+            tenant_id,
+            operation_id,
+            actor_id,
+            expected_version,
+            command,
+            committed_at_unix_ms,
+        )
+        .await
+    }
+
+    async fn history(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+    ) -> Result<Vec<ActionEvent>, ActionStoreError> {
+        self.history(tenant_id, operation_id).await
+    }
 }
 
 #[derive(Clone, Default)]
@@ -160,12 +275,81 @@ async fn authenticate_tenant(
     Ok(next.run(request).await)
 }
 
+async fn authenticate_oidc(
+    State(auth): State<OidcAuthenticator>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    let bearer = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "));
+    let identity = match bearer {
+        Some(bearer) => auth.authenticate(bearer).await,
+        None => Err(AuthenticationError::Invalid),
+    };
+    let identity = match identity {
+        Ok(identity) => identity,
+        Err(AuthenticationError::Invalid) => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    code: "authentication_required",
+                    message: "A valid signed browser identity is required.".to_owned(),
+                }),
+            ));
+        }
+        Err(AuthenticationError::Unavailable(message)) => {
+            eprintln!("OIDC verification unavailable: {message}");
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    code: "identity_verification_unavailable",
+                    message: "Identity verification is temporarily unavailable.".to_owned(),
+                }),
+            ));
+        }
+    };
+    let required_scope = oidc_scope_for_route(request.method(), request.uri().path());
+    if !identity.has_scope(required_scope) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                code: "permission_denied",
+                message: format!("The signed identity does not grant {required_scope}."),
+            }),
+        ));
+    }
+    request
+        .extensions_mut()
+        .insert(AuthenticatedTenant(identity.tenant.clone()));
+    request.extensions_mut().insert(identity);
+    Ok(next.run(request).await)
+}
+
+fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
+    match path {
+        "/v1/me" => "identity:read",
+        "/v1/actions" if method == Method::GET => "cerebro:actions:read",
+        "/v1/actions" => "cerebro:actions:write",
+        _ if path.starts_with("/v1/actions/") && path.ends_with("/commands") => {
+            "cerebro:actions:write"
+        }
+        _ if path.starts_with("/v1/actions/") => "cerebro:actions:read",
+        "/v1/projections/events"
+        | "/v1/projections/legacy-deltas"
+        | "/v1/projections/collections" => "cerebro:write",
+        _ => "cerebro:read",
+    }
+}
+
 async fn record_request(
     State(metrics): State<PlatformMetrics>,
     request: Request,
     next: Next,
 ) -> Response {
-    let operation = bounded_operation(request.uri().path());
+    let operation = bounded_operation(request.method(), request.uri().path());
     let started = Instant::now();
     let response = next.run(request).await;
     metrics
@@ -178,24 +362,32 @@ async fn record_request(
     response
 }
 
-fn bounded_operation(path: &str) -> &'static str {
+fn bounded_operation(method: &Method, path: &str) -> &'static str {
     match path {
         "/healthz" => "healthz",
         "/readyz" => "readyz",
         "/metrics" => "metrics",
+        "/v1/me" => "current_user",
         "/v1/sources/summary" => "source_summary",
         "/platform/graph/neighborhood" => "neighborhood",
         "/v1/graph/search" => "search",
         "/v1/graph/expand" => "expand",
         "/v1/graph/expand-batch" => "expand_batch",
         "/v1/graph/paths" => "paths",
+        "/v1/security/lifecycle" => "security_lifecycle",
+        "/v1/actions" if method == Method::GET => "list_actions",
+        "/v1/actions" => "propose_action",
         "/v1/projections/events" => "project_event",
         "/v1/projections/legacy-deltas" => "record_legacy_projection",
         "/v1/projections/collections" => "record_source_collection",
         "/v1/projections/authority" => "projection_authority",
         _ if path.starts_with("/v1/entities/") => "get_entity",
         _ if path.starts_with("/v1/assertions/") => "explain_assertion",
+        _ if path.starts_with("/v1/actions/") && path.ends_with("/history") => "action_history",
+        _ if path.starts_with("/v1/actions/") && path.ends_with("/commands") => "transition_action",
+        _ if path.starts_with("/v1/actions/") => "get_action",
         _ if path.starts_with("/cerebro.graph.v1.OrganizationalGraphService/") => "connect_rpc",
+        _ if path.starts_with("/cerebro.v1.SecurityLifecycleService/") => "security_lifecycle",
         _ => "other",
     }
 }
@@ -532,6 +724,15 @@ struct TenantQuery {
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActionListQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    page_token: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
 struct HttpLifecycleQuery {
     #[serde(default)]
     subject_kind: Option<SubjectKind>,
@@ -612,6 +813,190 @@ struct PathsResponse {
 struct ProductNeighborhoodQuery {
     root_urn: String,
     limit: Option<u32>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActionTransitionRequest {
+    expected_version: u64,
+    command: HttpActionCommand,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
+enum HttpActionCommand {
+    RecordSimulation {},
+    RequestApproval {},
+    RecordApproval {
+        receipt: HttpDecisionReceipt,
+    },
+    Claim {
+        worker_id: String,
+        claimed_at_unix_ms: u64,
+    },
+    StartExecution {},
+    MarkOutcomeUnknown {},
+    Complete {
+        external_receipt_ref: String,
+        observed_effect_digest: String,
+        executor_actor_id: String,
+        executed_at_unix_ms: u64,
+    },
+    Reconcile {
+        observed_effect_digest: String,
+        executor_actor_id: String,
+        executed_at_unix_ms: u64,
+    },
+    Verify {
+        receipt: HttpActionVerificationReceipt,
+    },
+    RejectVerification {},
+    Fail {},
+    RollBack {},
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HttpDecisionReceipt {
+    decision_id: String,
+    proposal_digest: String,
+    approved: bool,
+    decided_by: String,
+    decided_at_unix_ms: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HttpActionVerificationReceipt {
+    operation_id: String,
+    proposal_digest: String,
+    observed_effect_digest: String,
+    receipt: HttpVerificationReceipt,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HttpVerificationReceipt {
+    verification_id: String,
+    executor_actor_id: String,
+    verifier_actor_id: String,
+    previous_source_revision: String,
+    observed_source_revision: String,
+    effective: bool,
+    evidence_urns: Vec<String>,
+    verified_at_unix_ms: u64,
+}
+
+impl HttpActionCommand {
+    fn required_scope(&self) -> &'static str {
+        match self {
+            Self::RecordSimulation {} => ACTION_SIMULATE_SCOPE,
+            Self::RequestApproval {} => ACTION_PROPOSE_SCOPE,
+            Self::RecordApproval { .. } => ACTION_APPROVE_SCOPE,
+            Self::Claim { .. }
+            | Self::StartExecution {}
+            | Self::MarkOutcomeUnknown {}
+            | Self::Complete { .. }
+            | Self::Reconcile { .. }
+            | Self::Fail {}
+            | Self::RollBack {} => ACTION_EXECUTE_SCOPE,
+            Self::Verify { .. } | Self::RejectVerification {} => ACTION_VERIFY_SCOPE,
+        }
+    }
+
+    fn into_domain(self) -> Result<ActionCommand, String> {
+        Ok(match self {
+            Self::RecordSimulation {} => ActionCommand::RecordSimulation,
+            Self::RequestApproval {} => ActionCommand::RequestApproval,
+            Self::RecordApproval { receipt } => ActionCommand::RecordApproval {
+                receipt: receipt.into_domain()?,
+            },
+            Self::Claim {
+                worker_id,
+                claimed_at_unix_ms,
+            } => ActionCommand::Claim {
+                worker_id: OpaqueId::parse(worker_id).map_err(|error| error.to_string())?,
+                claimed_at_unix_ms,
+            },
+            Self::StartExecution {} => ActionCommand::StartExecution,
+            Self::MarkOutcomeUnknown {} => ActionCommand::MarkOutcomeUnknown,
+            Self::Complete {
+                external_receipt_ref,
+                observed_effect_digest,
+                executor_actor_id,
+                executed_at_unix_ms,
+            } => ActionCommand::Complete {
+                external_receipt_ref: OpaqueId::parse(external_receipt_ref)
+                    .map_err(|error| error.to_string())?,
+                observed_effect_digest: ContentDigest::parse(observed_effect_digest)
+                    .map_err(|error| error.to_string())?,
+                executor_actor_id: parse_action_actor(executor_actor_id)?,
+                executed_at_unix_ms,
+            },
+            Self::Reconcile {
+                observed_effect_digest,
+                executor_actor_id,
+                executed_at_unix_ms,
+            } => ActionCommand::Reconcile {
+                observed_effect_digest: ContentDigest::parse(observed_effect_digest)
+                    .map_err(|error| error.to_string())?,
+                executor_actor_id: parse_action_actor(executor_actor_id)?,
+                executed_at_unix_ms,
+            },
+            Self::Verify { receipt } => ActionCommand::Verify {
+                receipt: receipt.into_domain()?,
+            },
+            Self::RejectVerification {} => ActionCommand::RejectVerification,
+            Self::Fail {} => ActionCommand::Fail,
+            Self::RollBack {} => ActionCommand::RollBack,
+        })
+    }
+}
+
+impl HttpDecisionReceipt {
+    fn into_domain(self) -> Result<DecisionReceipt, String> {
+        Ok(DecisionReceipt {
+            decision_id: DecisionId::parse(self.decision_id).map_err(|error| error.to_string())?,
+            proposal_digest: self.proposal_digest,
+            approved: self.approved,
+            decided_by: parse_action_actor(self.decided_by)?,
+            decided_at_unix_ms: self.decided_at_unix_ms,
+        })
+    }
+}
+
+impl HttpActionVerificationReceipt {
+    fn into_domain(self) -> Result<ActionVerificationReceipt, String> {
+        Ok(ActionVerificationReceipt {
+            operation_id: ActionOperationId::parse(self.operation_id)
+                .map_err(|error| error.to_string())?,
+            proposal_digest: ContentDigest::parse(self.proposal_digest)
+                .map_err(|error| error.to_string())?,
+            observed_effect_digest: ContentDigest::parse(self.observed_effect_digest)
+                .map_err(|error| error.to_string())?,
+            receipt: self.receipt.into_domain()?,
+        })
+    }
+}
+
+impl HttpVerificationReceipt {
+    fn into_domain(self) -> Result<VerificationReceipt, String> {
+        Ok(VerificationReceipt {
+            verification_id: VerificationId::parse(self.verification_id)
+                .map_err(|error| error.to_string())?,
+            executor_actor_id: parse_action_actor(self.executor_actor_id)?,
+            verifier_actor_id: parse_action_actor(self.verifier_actor_id)?,
+            previous_source_revision: self.previous_source_revision,
+            observed_source_revision: self.observed_source_revision,
+            effective: self.effective,
+            evidence_urns: self.evidence_urns,
+            verified_at_unix_ms: self.verified_at_unix_ms,
+        })
+    }
+}
+
+fn parse_action_actor(value: String) -> Result<ActorId, String> {
+    ActorId::parse(value).map_err(|error| error.to_string())
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
@@ -946,11 +1331,34 @@ async fn serve(
     let tenant_auth =
         TenantRequestAuth::new(required_env("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET")?)
             .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidInput, message))?;
+    let oidc = match OidcAuthenticator::from_env()
+        .await
+        .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidInput, message))?
+    {
+        OidcConfiguration::Disabled => None,
+        OidcConfiguration::Configured(authenticator) => Some(authenticator),
+    };
+    let actions: Option<Arc<dyn ActionAuthority>> = match env::var("CEREBRO_POSTGRES_DSN") {
+        Ok(connection_string) => {
+            let ledger = PostgresActionLedger::connect_tls(&connection_string).await?;
+            ledger.migrate().await?;
+            Some(Arc::new(ledger))
+        }
+        Err(env::VarError::NotPresent) => None,
+        Err(error) => return Err(error.into()),
+    };
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     println!("cerebro Rust platform listening on {bind}");
     axum::serve(
         listener,
-        router_with_backend(graph, load_catalog_summary().ok(), projection, tenant_auth),
+        router_with_backend(
+            graph,
+            load_catalog_summary().ok(),
+            projection,
+            actions,
+            tenant_auth,
+            oidc,
+        ),
     )
     .await?;
     Ok(())
@@ -962,7 +1370,9 @@ fn router(graph: OrganizationalGraph) -> Router {
         Arc::new(MemoryAgentGraph::new(graph)),
         None,
         None,
+        None,
         TenantRequestAuth::new("test-organizational-graph-secret-32-bytes".to_owned()).unwrap(),
+        None,
     )
 }
 
@@ -970,7 +1380,9 @@ fn router_with_backend(
     graph: Arc<dyn AgentGraph>,
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
+    actions: Option<Arc<dyn ActionAuthority>>,
     tenant_auth: TenantRequestAuth,
+    oidc: Option<OidcAuthenticator>,
 ) -> Router {
     let platform_metrics = PlatformMetrics::default();
     let connect = rpc::router(graph.clone(), catalog_summary.clone(), tenant_auth.clone());
@@ -995,11 +1407,27 @@ fn router_with_backend(
             "/v1/projections/collections",
             post(record_source_collection),
         )
-        .route("/v1/projections/authority", get(projection_authority))
-        .route_layer(middleware::from_fn_with_state(
+        .route("/v1/projections/authority", get(projection_authority));
+    let protected = if let Some(oidc) = oidc {
+        protected
+            .route("/v1/me", get(current_user))
+            .route("/v1/actions", get(list_actions).post(propose_action))
+            .route("/v1/actions/{operation_id}", get(get_action))
+            .route(
+                "/v1/actions/{operation_id}/history",
+                get(get_action_history),
+            )
+            .route(
+                "/v1/actions/{operation_id}/commands",
+                post(transition_action_route),
+            )
+            .route_layer(middleware::from_fn_with_state(oidc, authenticate_oidc))
+    } else {
+        protected.route_layer(middleware::from_fn_with_state(
             tenant_auth,
             authenticate_tenant,
-        ));
+        ))
+    };
     Router::new()
         .route("/healthz", get(health))
         .route("/readyz", get(readiness))
@@ -1008,6 +1436,7 @@ fn router_with_backend(
         .merge(protected)
         .fallback_service(connect.into_axum_service())
         .with_state(AppState {
+            actions,
             graph,
             catalog_summary,
             projection,
@@ -1351,6 +1780,9 @@ async fn readiness(
     State(state): State<AppState>,
 ) -> Result<Json<HealthResponse>, (StatusCode, Json<ErrorResponse>)> {
     state.graph.health().await.map_err(context_error)?;
+    if let Some(actions) = state.actions.as_ref() {
+        actions.health().await.map_err(action_store_error)?;
+    }
     Ok(health().await)
 }
 
@@ -1364,6 +1796,150 @@ async fn source_summary(
                 code: "source_catalog_unavailable",
                 message: "The source catalog is not loaded.".to_owned(),
             }),
+        )
+    })
+}
+
+async fn current_user(
+    Extension(identity): Extension<AuthenticatedIdentity>,
+) -> Json<oidc::CurrentUserResponse> {
+    Json(identity.current_user_response())
+}
+
+async fn propose_action(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Json(proposal): Json<ActionProposal>,
+) -> Result<Json<ActionOperation>, (StatusCode, Json<ErrorResponse>)> {
+    require_action_scope(&identity, ACTION_PROPOSE_SCOPE)?;
+    let actor_id = authenticated_action_actor(&identity)?;
+    if proposal.tenant_id != identity.tenant || proposal.proposed_by != actor_id {
+        return Err(permission_denied(
+            "The Action proposal tenant and proposer must match the signed identity.",
+        ));
+    }
+    let committed_at = current_unix_millis()?;
+    action_authority(&state)?
+        .propose(proposal, committed_at)
+        .await
+        .map(Json)
+        .map_err(action_store_error)
+}
+
+async fn list_actions(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Query(query): Query<ActionListQuery>,
+) -> Result<Json<ActionPage>, (StatusCode, Json<ErrorResponse>)> {
+    let limit = query.limit.unwrap_or(25);
+    if !(1..=100).contains(&limit) {
+        return Err(bad_request(
+            "invalid_action_query",
+            "limit must be between 1 and 100.",
+        ));
+    }
+    action_authority(&state)?
+        .list(&identity.tenant, limit, query.page_token.as_deref())
+        .await
+        .map(Json)
+        .map_err(action_store_error)
+}
+
+async fn get_action(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Path(operation_id): Path<String>,
+) -> Result<Json<ActionOperation>, (StatusCode, Json<ErrorResponse>)> {
+    let operation_id = ActionOperationId::parse(operation_id)
+        .map_err(|error| bad_request("invalid_action_operation_id", error.to_string()))?;
+    action_authority(&state)?
+        .get(&identity.tenant, &operation_id)
+        .await
+        .map(Json)
+        .map_err(action_store_error)
+}
+
+async fn get_action_history(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Path(operation_id): Path<String>,
+) -> Result<Json<Vec<ActionEvent>>, (StatusCode, Json<ErrorResponse>)> {
+    let operation_id = ActionOperationId::parse(operation_id)
+        .map_err(|error| bad_request("invalid_action_operation_id", error.to_string()))?;
+    action_authority(&state)?
+        .history(&identity.tenant, &operation_id)
+        .await
+        .map(Json)
+        .map_err(action_store_error)
+}
+
+async fn transition_action_route(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Path(operation_id): Path<String>,
+    Json(request): Json<ActionTransitionRequest>,
+) -> Result<Json<ActionOperation>, (StatusCode, Json<ErrorResponse>)> {
+    let operation_id = ActionOperationId::parse(operation_id)
+        .map_err(|error| bad_request("invalid_action_operation_id", error.to_string()))?;
+    require_action_scope(&identity, request.command.required_scope())?;
+    let actor_id = authenticated_action_actor(&identity)?;
+    let command = request
+        .command
+        .into_domain()
+        .map_err(|error| bad_request("invalid_action_command", error))?;
+    let committed_at = current_unix_millis()?;
+    action_authority(&state)?
+        .transition(
+            &identity.tenant,
+            &operation_id,
+            &actor_id,
+            request.expected_version,
+            command,
+            committed_at,
+        )
+        .await
+        .map(Json)
+        .map_err(action_store_error)
+}
+
+fn action_authority(
+    state: &AppState,
+) -> Result<&Arc<dyn ActionAuthority>, (StatusCode, Json<ErrorResponse>)> {
+    state.actions.as_ref().ok_or_else(|| {
+        service_unavailable(
+            "action_authority_unavailable",
+            "The Rust Action ledger is not configured.",
+        )
+    })
+}
+
+fn authenticated_action_actor(
+    identity: &AuthenticatedIdentity,
+) -> Result<ActorId, (StatusCode, Json<ErrorResponse>)> {
+    ActorId::parse(identity.actor_id.clone()).map_err(|_| {
+        permission_denied("The signed identity does not contain a valid Action actor ID.")
+    })
+}
+
+fn require_action_scope(
+    identity: &AuthenticatedIdentity,
+    required_scope: &'static str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if identity.has_scope(required_scope) {
+        Ok(())
+    } else {
+        Err(permission_denied(format!(
+            "The signed identity does not grant {required_scope}."
+        )))
+    }
+}
+
+fn current_unix_millis() -> Result<u64, (StatusCode, Json<ErrorResponse>)> {
+    let millis = OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
+    u64::try_from(millis).map_err(|_| {
+        service_unavailable(
+            "action_clock_unavailable",
+            "The current Action commit time is unavailable.",
         )
     })
 }
@@ -1739,6 +2315,62 @@ fn store_error(error: StoreError) -> (StatusCode, Json<ErrorResponse>) {
     service_unavailable("projection_store_unavailable", error.to_string())
 }
 
+fn action_store_error(error: ActionStoreError) -> (StatusCode, Json<ErrorResponse>) {
+    match error {
+        ActionStoreError::Conflict(message) => (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: "action_conflict",
+                message,
+            }),
+        ),
+        ActionStoreError::NotFound(message) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: "action_not_found",
+                message,
+            }),
+        ),
+        ActionStoreError::Invalid(error) => bad_request("invalid_action", error.to_string()),
+        ActionStoreError::OutOfRange(field) => bad_request("invalid_action", field),
+        ActionStoreError::Postgres(error) => {
+            eprintln!("Action PostgreSQL unavailable: {error}");
+            service_unavailable(
+                "action_authority_unavailable",
+                "The Rust Action ledger is temporarily unavailable.",
+            )
+        }
+        ActionStoreError::Serialization(error) => {
+            eprintln!("Action serialization failed: {error}");
+            service_unavailable(
+                "action_authority_unavailable",
+                "The Rust Action ledger is temporarily unavailable.",
+            )
+        }
+        ActionStoreError::Corrupt(message) => {
+            eprintln!("Action ledger corruption detected: {message}");
+            service_unavailable(
+                "action_authority_invalid",
+                "The stored Action failed authority validation.",
+            )
+        }
+        ActionStoreError::InvalidPageToken => bad_request(
+            "invalid_action_page_token",
+            "The Action page token is invalid.",
+        ),
+    }
+}
+
+fn permission_denied(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::FORBIDDEN,
+        Json(ErrorResponse {
+            code: "permission_denied",
+            message: message.into(),
+        }),
+    )
+}
+
 fn service_unavailable(
     code: &'static str,
     message: impl Into<String>,
@@ -1887,7 +2519,10 @@ fn demo_graph() -> Result<(OrganizationalGraph, TenantId, EntityId), Box<dyn Err
 
 #[cfg(test)]
 mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{
+        collections::BTreeSet,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use async_trait::async_trait;
     use axum::{
@@ -1895,6 +2530,7 @@ mod tests {
         http::{Request, StatusCode},
     };
     use cerebro_agent_context::ContextEdge;
+    use cerebro_platform_sdk::{ActionEffect, GraphRevision};
     use tower::ServiceExt;
 
     use super::*;
@@ -1902,6 +2538,59 @@ mod tests {
     const TEST_SHARED_SECRET: &str = "test-organizational-graph-secret-32-bytes";
 
     struct UnavailableGraph;
+    struct UnreachableActionAuthority;
+
+    #[async_trait]
+    impl ActionAuthority for UnreachableActionAuthority {
+        async fn health(&self) -> Result<(), ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn propose(
+            &self,
+            _proposal: ActionProposal,
+            _committed_at_unix_ms: u64,
+        ) -> Result<ActionOperation, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn get(
+            &self,
+            _tenant_id: &TenantId,
+            _operation_id: &ActionOperationId,
+        ) -> Result<ActionOperation, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn list(
+            &self,
+            _tenant_id: &TenantId,
+            _limit: usize,
+            _page_token: Option<&str>,
+        ) -> Result<ActionPage, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn transition(
+            &self,
+            _tenant_id: &TenantId,
+            _operation_id: &ActionOperationId,
+            _actor_id: &ActorId,
+            _expected_version: u64,
+            _command: ActionCommand,
+            _committed_at_unix_ms: u64,
+        ) -> Result<ActionOperation, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn history(
+            &self,
+            _tenant_id: &TenantId,
+            _operation_id: &ActionOperationId,
+        ) -> Result<Vec<ActionEvent>, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+    }
 
     fn unavailable() -> ContextError {
         ContextError::BackendUnavailable("test backend is unavailable".to_owned())
@@ -1989,6 +2678,57 @@ mod tests {
         let auth = TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap();
         request = request.header(TENANT_AUTH_HEADER, tenant);
         request.header(AUTHORIZATION, format!("Bearer {}", auth.token(&tenant_id)))
+    }
+
+    fn action_identity(tenant_id: &str, actor_id: &str) -> AuthenticatedIdentity {
+        AuthenticatedIdentity {
+            tenant: TenantId::parse(tenant_id).unwrap(),
+            actor_id: actor_id.to_owned(),
+            actor_label: actor_id.to_owned(),
+            display_name: actor_id.to_owned(),
+            initials: "AT".to_owned(),
+            email: None,
+            username: None,
+            subject: actor_id.to_owned(),
+            groups: Vec::new(),
+            roles: Vec::new(),
+            scopes: BTreeSet::from([
+                "cerebro:actions:write".to_owned(),
+                ACTION_PROPOSE_SCOPE.to_owned(),
+            ]),
+            issuer: "https://identity.example".to_owned(),
+            audience: "cerebro".to_owned(),
+            key_id: "key-one".to_owned(),
+        }
+    }
+
+    fn action_proposal(tenant_id: &str, proposed_by: &str) -> ActionProposal {
+        let mut proposal = ActionProposal {
+            operation_id: ActionOperationId::parse("operation:http:one").unwrap(),
+            tenant_id: TenantId::parse(tenant_id).unwrap(),
+            finding_id: OpaqueId::parse("finding:http:one").unwrap(),
+            finding_revision_digest: ContentDigest::of_bytes("finding-revision"),
+            finding_validation_receipt_digest: ContentDigest::of_bytes("finding-validation"),
+            graph_revision: GraphRevision::new(1).unwrap(),
+            action_kind: "revoke_access".to_owned(),
+            action_definition_digest: ContentDigest::of_bytes("action-definition"),
+            target_id: OpaqueId::parse("grant:http:one").unwrap(),
+            expected_effects: vec![ActionEffect {
+                target_id: OpaqueId::parse("grant:http:one").unwrap(),
+                effect_kind: "access_removed".to_owned(),
+                expected_state_digest: ContentDigest::of_bytes("expected"),
+            }],
+            rollback_ref: OpaqueId::parse("rollback:http:one").unwrap(),
+            idempotency_key: OpaqueId::parse("idempotency:http:one").unwrap(),
+            simulation_digest: ContentDigest::of_bytes("simulation"),
+            verification_plan_digest: ContentDigest::of_bytes("verification-plan"),
+            proposed_by: ActorId::parse(proposed_by).unwrap(),
+            proposed_at_unix_ms: 1,
+            proposal_expires_at_unix_ms: u64::MAX,
+            proposal_digest: ContentDigest::of_bytes("placeholder"),
+        };
+        proposal.bind_computed_digest().unwrap();
+        proposal
     }
 
     fn context_entity(
@@ -2503,7 +3243,9 @@ mod tests {
             Arc::new(UnavailableGraph),
             None,
             None,
+            None,
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
+            None,
         );
         let response = app
             .clone()
@@ -2609,6 +3351,231 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn lifecycle_requests_have_a_bounded_metrics_operation() {
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/security/lifecycle"),
+            "security_lifecycle"
+        );
+        assert_eq!(
+            bounded_operation(
+                &Method::POST,
+                "/cerebro.v1.SecurityLifecycleService/ListSecurityLifecycle"
+            ),
+            "security_lifecycle"
+        );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/actions"),
+            "list_actions"
+        );
+        assert_eq!(
+            bounded_operation(&Method::POST, "/v1/actions"),
+            "propose_action"
+        );
+    }
+
+    #[test]
+    fn oidc_authorization_scopes_cover_reads_identity_and_mutations() {
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/me"),
+            "identity:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/security/lifecycle"),
+            "cerebro:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/graph/search"),
+            "cerebro:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/projections/events"),
+            "cerebro:write"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/actions"),
+            "cerebro:actions:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/actions"),
+            "cerebro:actions:write"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/actions/operation:one"),
+            "cerebro:actions:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/actions/operation:one/history"),
+            "cerebro:actions:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/actions/operation:one/commands"),
+            "cerebro:actions:write"
+        );
+    }
+
+    #[test]
+    fn action_commands_reject_unknown_fields_and_unvalidated_values() {
+        let unknown = serde_json::json!({
+            "expected_version": 1,
+            "command": {
+                "command": "record_simulation",
+                "actor_id": "attacker"
+            }
+        });
+        assert!(serde_json::from_value::<ActionTransitionRequest>(unknown).is_err());
+
+        let invalid = serde_json::json!({
+            "expected_version": 1,
+            "command": {
+                "command": "complete",
+                "external_receipt_ref": "receipt:one",
+                "observed_effect_digest": "not-a-digest",
+                "executor_actor_id": "executor:one",
+                "executed_at_unix_ms": 10
+            }
+        });
+        let request =
+            serde_json::from_value::<ActionTransitionRequest>(invalid).expect("request shape");
+        assert!(request.command.into_domain().is_err());
+
+        let valid = serde_json::json!({
+            "expected_version": 1,
+            "command": {"command": "record_simulation"}
+        });
+        let request =
+            serde_json::from_value::<ActionTransitionRequest>(valid).expect("valid command");
+        assert_eq!(request.expected_version, 1);
+        assert!(matches!(
+            request.command.into_domain().unwrap(),
+            ActionCommand::RecordSimulation
+        ));
+    }
+
+    #[tokio::test]
+    async fn action_queue_rejects_unknown_and_unbounded_queries_before_storage() {
+        assert!(
+            serde_json::from_value::<ActionListQuery>(serde_json::json!({
+                "limit": 25,
+                "tenant_id": "tenant:http:other"
+            }))
+            .is_err()
+        );
+
+        let (graph, _, _) = demo_graph().unwrap();
+        let state = AppState {
+            actions: Some(Arc::new(UnreachableActionAuthority)),
+            graph: Arc::new(MemoryAgentGraph::new(graph)),
+            catalog_summary: None,
+            projection: None,
+            metrics: PlatformMetrics::default(),
+        };
+        for limit in [0, 101, usize::MAX] {
+            let error = list_actions(
+                State(state.clone()),
+                Extension(action_identity("tenant:http:one", "actor:http:one")),
+                Query(ActionListQuery {
+                    limit: Some(limit),
+                    page_token: None,
+                }),
+            )
+            .await
+            .expect_err("unbounded query must fail before storage");
+            assert_eq!(error.0, StatusCode::BAD_REQUEST);
+            assert_eq!(error.1.0.code, "invalid_action_query");
+        }
+    }
+
+    #[tokio::test]
+    async fn action_commands_require_separate_signed_authority_scopes() {
+        assert_eq!(
+            HttpActionCommand::RecordSimulation {}.required_scope(),
+            ACTION_SIMULATE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::RequestApproval {}.required_scope(),
+            ACTION_PROPOSE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::StartExecution {}.required_scope(),
+            ACTION_EXECUTE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::RejectVerification {}.required_scope(),
+            ACTION_VERIFY_SCOPE
+        );
+
+        let (graph, _, _) = demo_graph().unwrap();
+        let state = AppState {
+            actions: Some(Arc::new(UnreachableActionAuthority)),
+            graph: Arc::new(MemoryAgentGraph::new(graph)),
+            catalog_summary: None,
+            projection: None,
+            metrics: PlatformMetrics::default(),
+        };
+        let mut identity = action_identity("tenant:http:one", "actor:http:one");
+        identity.scopes = BTreeSet::from(["cerebro:actions:write".to_owned()]);
+        let error = transition_action_route(
+            State(state),
+            Extension(identity),
+            Path("operation:http:one".to_owned()),
+            Json(ActionTransitionRequest {
+                expected_version: 1,
+                command: HttpActionCommand::StartExecution {},
+            }),
+        )
+        .await
+        .expect_err("broad write scope must not grant execution authority");
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(error.1.0.code, "permission_denied");
+    }
+
+    #[tokio::test]
+    async fn action_proposals_reject_spoofed_tenants_and_actors_before_storage() {
+        let (graph, _, _) = demo_graph().unwrap();
+        let state = AppState {
+            actions: Some(Arc::new(UnreachableActionAuthority)),
+            graph: Arc::new(MemoryAgentGraph::new(graph)),
+            catalog_summary: None,
+            projection: None,
+            metrics: PlatformMetrics::default(),
+        };
+        let identity = action_identity("tenant:http:one", "actor:http:one");
+
+        for proposal in [
+            action_proposal("tenant:http:other", "actor:http:one"),
+            action_proposal("tenant:http:one", "actor:http:other"),
+        ] {
+            let error = propose_action(
+                State(state.clone()),
+                Extension(identity.clone()),
+                Json(proposal),
+            )
+            .await
+            .expect_err("spoofed proposal must fail");
+            assert_eq!(error.0, StatusCode::FORBIDDEN);
+            assert_eq!(error.1.0.code, "permission_denied");
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_tenant_auth_does_not_expose_action_authority() {
+        let (graph, _, _) = demo_graph().unwrap();
+        let app = router(graph);
+        let response = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/v1/actions")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
@@ -2848,7 +3815,9 @@ mod tests {
             Arc::new(UnavailableGraph),
             None,
             None,
+            None,
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
+            None,
         );
         let liveness = app
             .clone()
@@ -2976,7 +3945,14 @@ mod tests {
             store: Mutex::new(DurableGraphStore::new(store_ledger, graph.clone())),
         });
         let tenant_auth = TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap();
-        let app = router_with_backend(Arc::new(graph.clone()), None, Some(runtime), tenant_auth);
+        let app = router_with_backend(
+            Arc::new(graph.clone()),
+            None,
+            Some(runtime),
+            None,
+            tenant_auth,
+            None,
+        );
         let resource_urn = format!("urn:cerebro:{tenant_id}:runtime_file:asset-1");
         let response = app
             .oneshot(
