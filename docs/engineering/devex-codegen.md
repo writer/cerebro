@@ -74,7 +74,7 @@ Keeps graph action catalog definitions and generated Go and Rust registries alig
 - Generator: `graph-action-generate` -> `make graph-action-generate`
 - Checks:
   - `graph-action-check` -> `make graph-action-check`
-- Triggers: `internal/graphactions/action_catalog.yaml`, `internal/graphactions/registry_gen.go`, `crates/action-catalog/src/generated.rs`, `tools/graphactiongen/**`
+- Triggers: `crates/action-catalog/action_catalog.yaml`, `internal/graphactions/registry_gen.go`, `crates/action-catalog/src/generated.rs`, `tools/graphactiongen/**`
 - Outputs: `internal/graphactions/registry_gen.go`, `crates/action-catalog/src/generated.rs`
 - CI jobs: `graph-actions`
 

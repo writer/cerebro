@@ -13,6 +13,7 @@ async-trait.workspace = true
 buffa.workspace = true
 buffa-types.workspace = true
 cerebro-action-catalog.workspace = true
+cerebro-action-provider.workspace = true
 cerebro-action-store.workspace = true
 cerebro-agent-context.workspace = true
 cerebro-organizational-graph.workspace = true

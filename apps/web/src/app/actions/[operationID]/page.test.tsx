@@ -120,6 +120,26 @@ describe("Action detail page", () => {
     expect(mocks.actionReload).not.toHaveBeenCalled();
   });
 
+  it("decodes a route segment before constructing authority paths", async () => {
+    mocks.useParams.mockReturnValue({
+      operationID: "operation%3Arust-action-e2e",
+    });
+
+    await act(async () => {
+      root.render(<ActionDetailPage />);
+    });
+
+    expect(mocks.useGRCQuery).toHaveBeenCalledWith(
+      "/v1/actions/operation%3Arust-action-e2e",
+    );
+    expect(mocks.useGRCQuery).toHaveBeenCalledWith(
+      "/v1/actions/operation%3Arust-action-e2e/history",
+    );
+    expect(mocks.useGRCQuery).not.toHaveBeenCalledWith(
+      expect.stringContaining("%253A"),
+    );
+  });
+
   it("shows provider acceptance without claiming the effect completed", async () => {
     const dispatched: ActionOperation = {
       ...action,

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/action-catalog",
+    "crates/action-provider",
     "crates/action-store",
     "crates/agent-context",
     "crates/cerebro-platform",
@@ -40,6 +41,7 @@ buffa = { version = "=0.9.1", features = ["json"] }
 buffa-types = { version = "=0.9.1", features = ["json"] }
 cerebro-agent-context = { version = "0.1.0", path = "crates/agent-context" }
 cerebro-action-catalog = { version = "0.1.0", path = "crates/action-catalog" }
+cerebro-action-provider = { version = "0.1.0", path = "crates/action-provider" }
 cerebro-action-store = { version = "0.1.0", path = "crates/action-store" }
 cerebro-control-kernel = { version = "0.1.0", path = "crates/control-kernel" }
 cerebro-organizational-graph = { version = "0.1.0", path = "crates/organizational-graph" }

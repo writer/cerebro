@@ -41,6 +41,7 @@ pub enum ActionCommand {
     ObserveProviderReceipt {
         provider_receipt_digest: ContentDigest,
         provider_status: String,
+        reconciler_actor_id: ActorId,
         observed_at_unix_ms: u64,
     },
     MarkOutcomeUnknown,
@@ -190,6 +191,7 @@ pub fn transition_action(
                 provider_receipt_digest,
                 provider_status,
                 observed_at_unix_ms,
+                ..
             },
         ) => {
             if operation

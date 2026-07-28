@@ -338,6 +338,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cerebro-action-provider"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "cerebro-action-catalog",
+ "cerebro-action-store",
+ "cerebro-platform-engine",
+ "cerebro-platform-sdk",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "cerebro-action-store"
 version = "0.1.0"
 dependencies = [
@@ -455,6 +471,7 @@ dependencies = [
  "buffa",
  "buffa-types",
  "cerebro-action-catalog",
+ "cerebro-action-provider",
  "cerebro-action-store",
  "cerebro-agent-context",
  "cerebro-organizational-graph",

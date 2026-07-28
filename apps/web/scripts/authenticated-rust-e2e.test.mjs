@@ -64,7 +64,7 @@ describe("authenticated Rust web integration helpers", () => {
     expect(payload).toMatchObject({
       aud: "cerebro-local-web",
       iss: "http://127.0.0.1:41111",
-      scope: "cerebro:read identity:read",
+      scope: "cerebro:read cerebro:actions:read identity:read",
       sub: "rust-e2e-user",
       tenant_id: "tenant-demo",
     });
