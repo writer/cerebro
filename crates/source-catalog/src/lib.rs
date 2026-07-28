@@ -474,6 +474,8 @@ struct FamilyWire {
     config_query: BTreeMap<String, String>,
     #[serde(default)]
     config: Option<FamilyConfigWire>,
+    #[serde(default)]
+    read: Option<FamilyReadWire>,
     pagination: Option<PaginationWire>,
     projection: Option<ProjectionWire>,
 }
@@ -484,6 +486,12 @@ struct FamilyConfigWire {
     config_query: BTreeMap<String, String>,
     #[serde(default)]
     config_attributes: BTreeMap<String, String>,
+}
+
+#[derive(Default, Deserialize)]
+struct FamilyReadWire {
+    #[serde(default)]
+    path_param_fanout: BTreeMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -638,11 +646,37 @@ fn compile_family(
         .split('/')
         .filter_map(path_parameter)
         .collect::<BTreeSet<_>>();
+    let explicit_path_fanout = family
+        .read
+        .as_ref()
+        .map(|read| &read.path_param_fanout)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(parameter) = explicit_path_fanout
+        .keys()
+        .find(|parameter| !path_parameter_names.contains(parameter.as_str()))
+    {
+        return invalid(
+            path,
+            &format!(
+                "family {} fanout binding references unknown path parameter {parameter}",
+                family.id
+            ),
+        );
+    }
     let path_parameters = path_parameter_names
         .iter()
         .filter_map(|parameter| {
-            config_binding(parameter, config_fields)
-                .map(|binding| ((*parameter).to_owned(), binding))
+            let binding = if let Some(field) = explicit_path_fanout.get(*parameter) {
+                config_fields
+                    .contains(field.as_str())
+                    .then(|| PathParameterBinding::CsvFanout {
+                        field: field.clone(),
+                    })
+            } else {
+                config_binding(parameter, config_fields)
+            };
+            binding.map(|binding| ((*parameter).to_owned(), binding))
         })
         .collect::<BTreeMap<_, _>>();
     let path_parameters_configured = path_parameters.len() == path_parameter_names.len();
@@ -682,7 +716,9 @@ fn compile_family(
     let mut config_attributes = config_attributes_wire
         .iter()
         .filter_map(|(attribute, config_field)| {
-            config_binding(config_field, config_fields).map(|binding| (attribute.clone(), binding))
+            config_binding(config_field, config_fields)
+                .or_else(|| path_parameters.get(config_field).cloned())
+                .map(|binding| (attribute.clone(), binding))
         })
         .collect::<BTreeMap<_, _>>();
     let config_attributes_configured = config_attributes.len() == config_attributes_wire.len();
@@ -1142,6 +1178,7 @@ mod tests {
             "box",
             "cloudflare_workers_ai",
             "elevenlabs",
+            "fivetran",
             "google_vertex_ai",
             "jira",
             "onelogin",
@@ -1154,7 +1191,7 @@ mod tests {
                 "{source_id} has verified parameterized provider paths"
             );
         }
-        for source_id in ["airtable", "anchore", "fivetran"] {
+        for source_id in ["airtable", "anchore"] {
             assert_eq!(
                 catalog.get(source_id).unwrap().authority(),
                 CollectionAuthority::ShadowOnly,
@@ -1207,6 +1244,33 @@ mod tests {
             .unwrap();
         assert!(!family.is_authoritative());
         assert!(family.config_query().is_empty());
+    }
+
+    #[test]
+    fn explicit_fanout_binding_maps_a_provider_slot_to_its_configured_list() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let family = catalog
+            .get("fivetran")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "connector_metadata_details")
+            .unwrap();
+        assert_eq!(
+            family.path_parameters().get("service"),
+            Some(&PathParameterBinding::CsvFanout {
+                field: "connector_services".to_owned()
+            })
+        );
+        assert_eq!(
+            family.config_attributes().get("service"),
+            family.path_parameters().get("service")
+        );
     }
 
     #[test]

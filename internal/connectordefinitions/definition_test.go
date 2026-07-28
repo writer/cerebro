@@ -634,6 +634,10 @@ func TestValidateBlocksUnsafeDeclarativeRuntimeFields(t *testing.T) {
 			Read: &ResourceReadSpec{
 				DetailPath: "//evil.example/users/{id}",
 				PathParams: []string{"account id", "AccountID"},
+				PathParamFanout: map[string]string{
+					"missing_id": "account_ids",
+					"AccountID":  "bad config",
+				},
 			},
 			Pagination: &PaginationSpec{
 				Type:     "graphql",
@@ -651,6 +655,9 @@ func TestValidateBlocksUnsafeDeclarativeRuntimeFields(t *testing.T) {
 		"detail_path_users",
 		"path_param_users_account-id",
 		"path_param_users_accountid",
+		"path_param_fanout_users_missing_id",
+		"path_param_fanout_field_users_missing_id",
+		"path_param_fanout_config_users_accountid",
 		"pagination_users",
 		"pagination_page_size_users",
 		"incremental_users",
@@ -909,6 +916,7 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 		SourceID:      "example",
 		DisplayName:   "Example",
 		Categories:    []string{"identity", "identity", "audit"},
+		ConfigFields:  []Field{{Key: "account_ids"}},
 		//nolint:gosec // Test auth descriptor only; no credential value is stored.
 		Auth: AuthSpec{
 			Model:            "oauth_authorization_code",
@@ -940,6 +948,7 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 				DetailPath:            "/v1/users/{id}",
 				AllowBareDetailRecord: true,
 				PathParams:            []string{"account_id", "account_id"},
+				PathParamFanout:       map[string]string{" account_id ": " account_ids ", "": "ignored"},
 				MapRecords:            map[string]string{"": "ignored", "members": "items"},
 			},
 			IDField: "id",
@@ -996,6 +1005,9 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 	}
 	if family.Read.MapRecords["members"] != "items" || len(family.Read.MapRecords) != 1 {
 		t.Fatalf("map records = %#v, want members->items", family.Read.MapRecords)
+	}
+	if family.Read.PathParamFanout["account_id"] != "account_ids" || len(family.Read.PathParamFanout) != 1 {
+		t.Fatalf("path param fanout = %#v, want account_id->account_ids", family.Read.PathParamFanout)
 	}
 	if family.Pagination == nil || len(family.Pagination.NextCursorKeys) != 1 || family.Pagination.NextCursorKeys[0] != "next_cursor" || family.Pagination.HasMoreKey != "has_more" {
 		t.Fatalf("pagination = %#v, want next cursor and has_more metadata", family.Pagination)

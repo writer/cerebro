@@ -1845,6 +1845,42 @@ mod tests {
     }
 
     #[test]
+    fn explicit_fanout_binding_drives_runtime_paths_and_record_scope() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let connector = HttpSourceConnector::new(
+            catalog.get("fivetran").unwrap().clone(),
+            "connector_metadata_details",
+            "https://api.example.test",
+            BTreeMap::from([(
+                "connector_services".to_owned(),
+                "snowflake,postgres".to_owned(),
+            )]),
+            ResolvedAuth::Basic {
+                username: "key".to_owned(),
+                password: "secret".to_owned(),
+            },
+        )
+        .unwrap();
+        let scopes = connector.request_scopes().unwrap();
+        assert_eq!(scopes.len(), 2);
+        assert_eq!(
+            scopes[0].url.path(),
+            "/v1/metadata/connector-types/snowflake"
+        );
+        assert_eq!(
+            scopes[1].url.path(),
+            "/v1/metadata/connector-types/postgres"
+        );
+        assert_eq!(scopes[0].record_attributes["service"], "snowflake");
+        assert_eq!(scopes[1].record_attributes["service"], "postgres");
+    }
+
+    #[test]
     fn csv_fanout_rejects_empty_and_oversized_scope_sets() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
