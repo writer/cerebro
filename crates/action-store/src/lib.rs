@@ -12,7 +12,7 @@ use cerebro_action_catalog::{ActionCatalogError, validate_proposal};
 use cerebro_platform_engine::{ActionCommand, transition_action};
 use cerebro_platform_sdk::{
     ActionOperation, ActionOperationId, ActionProposal, ActionState, ActorId, ContentDigest,
-    SdkError, TenantId, VerificationState,
+    FindingValidationReceipt, SdkError, TenantId, VerificationState,
 };
 use postgres_native_tls::MakeTlsConnector;
 use serde::Serialize;
@@ -21,11 +21,38 @@ use tokio::sync::Mutex;
 use tokio_postgres::{Client, Row, Transaction};
 
 pub const POSTGRES_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS finding_validation_receipts (
+  tenant_id TEXT NOT NULL CHECK (char_length(tenant_id) BETWEEN 1 AND 256),
+  receipt_digest TEXT NOT NULL CHECK (receipt_digest ~ '^[0-9a-f]{64}$'),
+  finding_id TEXT NOT NULL CHECK (char_length(finding_id) BETWEEN 1 AND 256),
+  finding_revision_digest TEXT NOT NULL CHECK (finding_revision_digest ~ '^[0-9a-f]{64}$'),
+  graph_revision BIGINT NOT NULL CHECK (graph_revision > 0),
+  decision TEXT NOT NULL CHECK (decision IN ('confirmed', 'rejected')),
+  validated_by TEXT NOT NULL CHECK (char_length(validated_by) BETWEEN 1 AND 256),
+  receipt_json JSONB NOT NULL CHECK (jsonb_typeof(receipt_json) = 'object'),
+  validated_at_unix_ms BIGINT NOT NULL CHECK (validated_at_unix_ms > 0),
+  expires_at_unix_ms BIGINT NOT NULL CHECK (expires_at_unix_ms > validated_at_unix_ms),
+  committed_at_unix_ms BIGINT NOT NULL CHECK (
+    committed_at_unix_ms >= validated_at_unix_ms
+    AND committed_at_unix_ms < expires_at_unix_ms
+  ),
+  PRIMARY KEY (tenant_id, receipt_digest),
+  CHECK ((receipt_json->>'tenant_id') IS NOT DISTINCT FROM tenant_id),
+  CHECK ((receipt_json->>'receipt_digest') IS NOT DISTINCT FROM receipt_digest),
+  CHECK ((receipt_json->>'finding_id') IS NOT DISTINCT FROM finding_id),
+  CHECK ((receipt_json->>'finding_revision_digest') IS NOT DISTINCT FROM finding_revision_digest),
+  CHECK ((receipt_json->>'graph_revision')::BIGINT IS NOT DISTINCT FROM graph_revision),
+  CHECK ((receipt_json->>'decision') IS NOT DISTINCT FROM decision),
+  CHECK ((receipt_json->>'validated_by') IS NOT DISTINCT FROM validated_by),
+  CHECK ((receipt_json->>'validated_at_unix_ms')::BIGINT IS NOT DISTINCT FROM validated_at_unix_ms),
+  CHECK ((receipt_json->>'expires_at_unix_ms')::BIGINT IS NOT DISTINCT FROM expires_at_unix_ms)
+);
 CREATE TABLE IF NOT EXISTS action_operations (
   tenant_id TEXT NOT NULL CHECK (char_length(tenant_id) BETWEEN 1 AND 256),
   operation_id TEXT NOT NULL CHECK (char_length(operation_id) BETWEEN 1 AND 256),
   idempotency_key TEXT NOT NULL CHECK (char_length(idempotency_key) BETWEEN 1 AND 256),
   proposal_digest TEXT NOT NULL CHECK (proposal_digest ~ '^[0-9a-f]{64}$'),
+  finding_validation_receipt_digest TEXT,
   state TEXT NOT NULL CHECK (state IN (
     'proposed',
     'simulated',
@@ -53,6 +80,38 @@ CREATE TABLE IF NOT EXISTS action_operations (
   CHECK ((operation_json->>'version')::BIGINT IS NOT DISTINCT FROM version),
   CHECK ((operation_json->>'state') IS NOT DISTINCT FROM state)
 );
+ALTER TABLE action_operations
+  ADD COLUMN IF NOT EXISTS finding_validation_receipt_digest TEXT;
+DO $$
+BEGIN
+  ALTER TABLE action_operations
+    ADD CONSTRAINT action_operations_finding_validation_digest_format
+    CHECK (
+      finding_validation_receipt_digest IS NULL
+      OR finding_validation_receipt_digest ~ '^[0-9a-f]{64}$'
+    ) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE action_operations
+    ADD CONSTRAINT action_operations_finding_validation_json
+    CHECK (
+      finding_validation_receipt_digest IS NULL
+      OR (operation_json->'proposal'->>'finding_validation_receipt_digest')
+        IS NOT DISTINCT FROM finding_validation_receipt_digest
+    ) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE action_operations
+    ADD CONSTRAINT action_operations_finding_validation_receipt_fk
+    FOREIGN KEY (tenant_id, finding_validation_receipt_digest)
+    REFERENCES finding_validation_receipts (tenant_id, receipt_digest)
+    NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 CREATE TABLE IF NOT EXISTS action_operation_events (
   tenant_id TEXT NOT NULL,
   operation_id TEXT NOT NULL,
@@ -78,6 +137,21 @@ CREATE INDEX IF NOT EXISTS action_operation_events_committed_idx
   ON action_operation_events (tenant_id, committed_at_unix_ms DESC);
 CREATE INDEX IF NOT EXISTS action_operations_queue_idx
   ON action_operations (tenant_id, updated_at_unix_ms DESC, operation_id);
+CREATE INDEX IF NOT EXISTS finding_validation_receipts_finding_idx
+  ON finding_validation_receipts (tenant_id, finding_id, validated_at_unix_ms DESC);
+CREATE OR REPLACE FUNCTION reject_finding_validation_receipt_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'Finding validation receipts are append-only';
+END;
+$$ LANGUAGE plpgsql;
+DO $$
+BEGIN
+  CREATE TRIGGER finding_validation_receipts_append_only
+    BEFORE UPDATE OR DELETE ON finding_validation_receipts
+    FOR EACH ROW EXECUTE FUNCTION reject_finding_validation_receipt_mutation();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 CREATE OR REPLACE FUNCTION reject_action_operation_event_mutation()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -91,6 +165,8 @@ BEGIN
     FOR EACH ROW EXECUTE FUNCTION reject_action_operation_event_mutation();
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+ALTER TABLE finding_validation_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE finding_validation_receipts FORCE ROW LEVEL SECURITY;
 ALTER TABLE action_operations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE action_operations FORCE ROW LEVEL SECURITY;
 ALTER TABLE action_operation_events ENABLE ROW LEVEL SECURITY;
@@ -99,6 +175,7 @@ DO $$
 DECLARE table_name TEXT;
 BEGIN
   FOREACH table_name IN ARRAY ARRAY[
+    'finding_validation_receipts',
     'action_operations',
     'action_operation_events'
   ] LOOP
@@ -244,6 +321,80 @@ impl PostgresActionLedger {
         Ok(())
     }
 
+    pub async fn record_finding_validation(
+        &self,
+        receipt: FindingValidationReceipt,
+        committed_at_unix_ms: u64,
+    ) -> Result<FindingValidationReceipt, ActionStoreError> {
+        receipt.validate()?;
+        if committed_at_unix_ms < receipt.validated_at_unix_ms
+            || committed_at_unix_ms >= receipt.expires_at_unix_ms
+        {
+            return Err(ActionStoreError::Conflict(
+                "Finding validation receipt is not current at authority commit time".to_owned(),
+            ));
+        }
+        let graph_revision = storage_i64(receipt.graph_revision.get(), "Finding graph revision")?;
+        let validated_at = storage_i64(receipt.validated_at_unix_ms, "Finding validation time")?;
+        let expires_at = storage_i64(receipt.expires_at_unix_ms, "Finding validation expiry")?;
+        let committed_at = storage_i64(committed_at_unix_ms, "Finding validation commit time")?;
+        let receipt_json = serde_json::to_value(&receipt)?;
+        let tenant_id = receipt.tenant_id.as_str();
+        let receipt_digest = receipt.receipt_digest.as_str();
+
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let inserted = transaction
+            .execute(
+                "INSERT INTO finding_validation_receipts (tenant_id, receipt_digest, finding_id, finding_revision_digest, graph_revision, decision, validated_by, receipt_json, validated_at_unix_ms, expires_at_unix_ms, committed_at_unix_ms) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT DO NOTHING",
+                &[
+                    &tenant_id,
+                    &receipt_digest,
+                    &receipt.finding_id.as_str(),
+                    &receipt.finding_revision_digest.as_str(),
+                    &graph_revision,
+                    &finding_validation_decision(&receipt),
+                    &receipt.validated_by.as_str(),
+                    &receipt_json,
+                    &validated_at,
+                    &expires_at,
+                    &committed_at,
+                ],
+            )
+            .await?;
+        let stored = select_finding_validation(&transaction, tenant_id, receipt_digest)
+            .await?
+            .ok_or_else(|| {
+                ActionStoreError::Conflict(
+                    "Finding validation receipt was not committed".to_owned(),
+                )
+            })?;
+        if inserted == 0 && stored != receipt {
+            return Err(ActionStoreError::Conflict(
+                "Finding validation receipt digest already stores different content".to_owned(),
+            ));
+        }
+        transaction.commit().await?;
+        Ok(stored)
+    }
+
+    pub async fn get_finding_validation(
+        &self,
+        tenant_id: &TenantId,
+        receipt_digest: &ContentDigest,
+    ) -> Result<FindingValidationReceipt, ActionStoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let receipt =
+            select_finding_validation(&transaction, tenant_id.as_str(), receipt_digest.as_str())
+                .await?
+                .ok_or_else(|| ActionStoreError::NotFound(receipt_digest.to_string()))?;
+        transaction.commit().await?;
+        Ok(receipt)
+    }
+
     pub async fn propose(
         &self,
         proposal: ActionProposal,
@@ -286,6 +437,21 @@ impl PostgresActionLedger {
         let mut client = self.client.lock().await;
         let transaction = client.transaction().await?;
         set_tenant(&transaction, tenant_id).await?;
+        let validation = select_finding_validation(
+            &transaction,
+            tenant_id,
+            operation
+                .proposal
+                .finding_validation_receipt_digest
+                .as_str(),
+        )
+        .await?
+        .ok_or_else(|| {
+            ActionStoreError::Conflict(
+                "The Action proposal has no committed finding validation receipt".to_owned(),
+            )
+        })?;
+        validation.authorizes_action(&operation.proposal, committed_at_unix_ms)?;
         let existing =
             select_proposal_aliases(&transaction, tenant_id, operation_id, idempotency_key).await?;
         if !existing.is_empty() {
@@ -297,12 +463,16 @@ impl PostgresActionLedger {
 
         let inserted = transaction
             .query_opt(
-                "INSERT INTO action_operations (tenant_id, operation_id, idempotency_key, proposal_digest, state, version, operation_json, created_at_unix_ms, updated_at_unix_ms) VALUES ($1, $2, $3, $4, 'proposed', 1, $5, $6, $6) ON CONFLICT DO NOTHING RETURNING operation_id",
+                "INSERT INTO action_operations (tenant_id, operation_id, idempotency_key, proposal_digest, finding_validation_receipt_digest, state, version, operation_json, created_at_unix_ms, updated_at_unix_ms) VALUES ($1, $2, $3, $4, $5, 'proposed', 1, $6, $7, $7) ON CONFLICT DO NOTHING RETURNING operation_id",
                 &[
                     &tenant_id,
                     &operation_id,
                     &idempotency_key,
                     &proposal_digest,
+                    &operation
+                        .proposal
+                        .finding_validation_receipt_digest
+                        .as_str(),
                     &operation_json,
                     &committed_at,
                 ],
@@ -706,6 +876,35 @@ fn digest_json(value: &Value) -> Result<ContentDigest, ActionStoreError> {
     Ok(ContentDigest::of_bytes(encoded))
 }
 
+fn finding_validation_decision(receipt: &FindingValidationReceipt) -> &'static str {
+    match receipt.decision {
+        cerebro_platform_sdk::FindingValidationDecision::Confirmed => "confirmed",
+        cerebro_platform_sdk::FindingValidationDecision::Rejected => "rejected",
+    }
+}
+
+async fn select_finding_validation(
+    transaction: &Transaction<'_>,
+    tenant_id: &str,
+    receipt_digest: &str,
+) -> Result<Option<FindingValidationReceipt>, ActionStoreError> {
+    transaction
+        .query_opt(
+            "SELECT receipt_json FROM finding_validation_receipts WHERE tenant_id = $1 AND receipt_digest = $2 FOR SHARE",
+            &[&tenant_id, &receipt_digest],
+        )
+        .await?
+        .map(|row| {
+            let value: Value = row.get("receipt_json");
+            serde_json::from_value(value).map_err(|error| {
+                ActionStoreError::Corrupt(format!(
+                    "finding validation receipt {receipt_digest}: {error}"
+                ))
+            })
+        })
+        .transpose()
+}
+
 fn command_actor_matches(
     actor_id: &ActorId,
     claimed_by: Option<&cerebro_platform_sdk::OpaqueId>,
@@ -900,6 +1099,9 @@ mod tests {
     #[test]
     fn schema_enforces_tenant_isolation_idempotency_and_append_only_versions() {
         for required in [
+            "PRIMARY KEY (tenant_id, receipt_digest)",
+            "action_operations_finding_validation_receipt_fk",
+            "FOREIGN KEY (tenant_id, finding_validation_receipt_digest)",
             "PRIMARY KEY (tenant_id, operation_id)",
             "UNIQUE (tenant_id, idempotency_key)",
             "PRIMARY KEY (tenant_id, operation_id, version)",
@@ -910,13 +1112,18 @@ mod tests {
             "(operation_json->'proposal'->>'proposal_digest') IS NOT DISTINCT FROM proposal_digest",
             "version > 1 AND event_kind <> 'proposed'",
             "CREATE TRIGGER action_operation_events_append_only",
+            "CREATE TRIGGER finding_validation_receipts_append_only",
             "BEFORE UPDATE OR DELETE ON action_operation_events",
+            "BEFORE UPDATE OR DELETE ON finding_validation_receipts",
+            "finding_validation_receipts_finding_idx",
             "action_operations_queue_idx",
         ] {
             assert!(POSTGRES_SCHEMA.contains(required), "missing {required}");
         }
         assert!(!POSTGRES_SCHEMA.contains("UPDATE action_operation_events"));
         assert!(!POSTGRES_SCHEMA.contains("DELETE FROM action_operation_events"));
+        assert!(!POSTGRES_SCHEMA.contains("UPDATE finding_validation_receipts"));
+        assert!(!POSTGRES_SCHEMA.contains("DELETE FROM finding_validation_receipts"));
     }
 
     #[test]

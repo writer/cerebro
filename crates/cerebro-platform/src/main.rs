@@ -38,7 +38,8 @@ use cerebro_organizational_store::{
 use cerebro_platform_engine::ActionCommand;
 use cerebro_platform_sdk::{
     ActionOperation, ActionOperationId, ActionProposal, ActionVerificationReceipt, ActorId,
-    ContentDigest, DecisionId, DecisionReceipt, OpaqueId, VerificationId, VerificationReceipt,
+    ContentDigest, DecisionId, DecisionReceipt, FindingValidationReceipt, OpaqueId, VerificationId,
+    VerificationReceipt,
 };
 use cerebro_security_lifecycle::{
     CERTIFICATE_EVENT_KIND, CREDENTIAL_EVENT_KIND, LifecycleQuery, LifecycleState,
@@ -67,6 +68,7 @@ const ACTION_SIMULATE_SCOPE: &str = "cerebro:actions:simulate";
 const ACTION_APPROVE_SCOPE: &str = "cerebro:actions:approve";
 const ACTION_EXECUTE_SCOPE: &str = "cerebro:actions:execute";
 const ACTION_VERIFY_SCOPE: &str = "cerebro:actions:verify";
+const FINDING_VALIDATE_SCOPE: &str = "cerebro:findings:validate";
 
 #[derive(Clone)]
 struct AppState {
@@ -80,6 +82,18 @@ struct AppState {
 #[async_trait]
 trait ActionAuthority: Send + Sync {
     async fn health(&self) -> Result<(), ActionStoreError>;
+
+    async fn record_finding_validation(
+        &self,
+        receipt: FindingValidationReceipt,
+        committed_at_unix_ms: u64,
+    ) -> Result<FindingValidationReceipt, ActionStoreError>;
+
+    async fn get_finding_validation(
+        &self,
+        tenant_id: &TenantId,
+        receipt_digest: &ContentDigest,
+    ) -> Result<FindingValidationReceipt, ActionStoreError>;
 
     async fn propose(
         &self,
@@ -121,6 +135,23 @@ trait ActionAuthority: Send + Sync {
 impl ActionAuthority for PostgresActionLedger {
     async fn health(&self) -> Result<(), ActionStoreError> {
         self.health().await
+    }
+
+    async fn record_finding_validation(
+        &self,
+        receipt: FindingValidationReceipt,
+        committed_at_unix_ms: u64,
+    ) -> Result<FindingValidationReceipt, ActionStoreError> {
+        self.record_finding_validation(receipt, committed_at_unix_ms)
+            .await
+    }
+
+    async fn get_finding_validation(
+        &self,
+        tenant_id: &TenantId,
+        receipt_digest: &ContentDigest,
+    ) -> Result<FindingValidationReceipt, ActionStoreError> {
+        self.get_finding_validation(tenant_id, receipt_digest).await
     }
 
     async fn propose(
@@ -334,6 +365,8 @@ async fn authenticate_oidc(
 fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
     match path {
         "/v1/me" => "identity:read",
+        "/v1/finding-validations" => "cerebro:write",
+        _ if path.starts_with("/v1/finding-validations/") => "cerebro:read",
         "/v1/actions" if method == Method::GET => "cerebro:actions:read",
         "/v1/actions" => "cerebro:actions:write",
         _ if path.starts_with("/v1/actions/") && path.ends_with("/commands") => {
@@ -371,6 +404,7 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/readyz" => "readyz",
         "/metrics" => "metrics",
         "/v1/me" => "current_user",
+        "/v1/finding-validations" => "record_finding_validation",
         "/v1/action-definitions" => "action_definitions",
         "/v1/sources/summary" => "source_summary",
         "/platform/graph/neighborhood" => "neighborhood",
@@ -386,6 +420,7 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/projections/collections" => "record_source_collection",
         "/v1/projections/authority" => "projection_authority",
         _ if path.starts_with("/v1/entities/") => "get_entity",
+        _ if path.starts_with("/v1/finding-validations/") => "get_finding_validation",
         _ if path.starts_with("/v1/assertions/") => "explain_assertion",
         _ if path.starts_with("/v1/actions/") && path.ends_with("/history") => "action_history",
         _ if path.starts_with("/v1/actions/") && path.ends_with("/commands") => "transition_action",
@@ -1443,6 +1478,11 @@ fn router_with_backend(
     let protected = if let Some(oidc) = oidc {
         protected
             .route("/v1/me", get(current_user))
+            .route("/v1/finding-validations", post(record_finding_validation))
+            .route(
+                "/v1/finding-validations/{receipt_digest}",
+                get(get_finding_validation),
+            )
             .route("/v1/action-definitions", get(list_action_definitions))
             .route("/v1/actions", get(list_actions).post(propose_action))
             .route("/v1/actions/{operation_id}", get(get_action))
@@ -1842,6 +1882,40 @@ async fn current_user(
 async fn list_action_definitions()
 -> Json<&'static [cerebro_action_catalog::ActionDefinition<'static>]> {
     Json(action_definitions())
+}
+
+async fn record_finding_validation(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Json(receipt): Json<FindingValidationReceipt>,
+) -> Result<Json<FindingValidationReceipt>, (StatusCode, Json<ErrorResponse>)> {
+    require_action_scope(&identity, FINDING_VALIDATE_SCOPE)?;
+    let actor_id = authenticated_action_actor(&identity)?;
+    if receipt.tenant_id != identity.tenant || receipt.validated_by != actor_id {
+        return Err(permission_denied(
+            "The finding validation tenant and validator must match the signed identity.",
+        ));
+    }
+    let committed_at = current_unix_millis()?;
+    action_authority(&state)?
+        .record_finding_validation(receipt, committed_at)
+        .await
+        .map(Json)
+        .map_err(finding_validation_store_error)
+}
+
+async fn get_finding_validation(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Path(receipt_digest): Path<String>,
+) -> Result<Json<FindingValidationReceipt>, (StatusCode, Json<ErrorResponse>)> {
+    let receipt_digest = ContentDigest::parse(receipt_digest)
+        .map_err(|error| bad_request("invalid_finding_validation_digest", error.to_string()))?;
+    action_authority(&state)?
+        .get_finding_validation(&identity.tenant, &receipt_digest)
+        .await
+        .map(Json)
+        .map_err(finding_validation_store_error)
 }
 
 async fn propose_action(
@@ -2412,6 +2486,26 @@ fn action_catalog_error(error: ActionCatalogError) -> (StatusCode, Json<ErrorRes
     }
 }
 
+fn finding_validation_store_error(error: ActionStoreError) -> (StatusCode, Json<ErrorResponse>) {
+    match error {
+        ActionStoreError::Conflict(message) => (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: "finding_validation_conflict",
+                message,
+            }),
+        ),
+        ActionStoreError::NotFound(message) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: "finding_validation_not_found",
+                message,
+            }),
+        ),
+        other => action_store_error(other),
+    }
+}
+
 fn permission_denied(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::FORBIDDEN,
@@ -2597,6 +2691,22 @@ mod tests {
             panic!("spoofed request reached the Action authority")
         }
 
+        async fn record_finding_validation(
+            &self,
+            _receipt: FindingValidationReceipt,
+            _committed_at_unix_ms: u64,
+        ) -> Result<FindingValidationReceipt, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn get_finding_validation(
+            &self,
+            _tenant_id: &TenantId,
+            _receipt_digest: &ContentDigest,
+        ) -> Result<FindingValidationReceipt, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
         async fn propose(
             &self,
             _proposal: ActionProposal,
@@ -2746,6 +2856,7 @@ mod tests {
             scopes: BTreeSet::from([
                 "cerebro:actions:write".to_owned(),
                 ACTION_PROPOSE_SCOPE.to_owned(),
+                FINDING_VALIDATE_SCOPE.to_owned(),
             ]),
             issuer: "https://identity.example".to_owned(),
             audience: "cerebro".to_owned(),
@@ -2781,6 +2892,24 @@ mod tests {
         };
         proposal.bind_computed_digest().unwrap();
         proposal
+    }
+
+    fn finding_validation(tenant_id: &str, validated_by: &str) -> FindingValidationReceipt {
+        let mut receipt = FindingValidationReceipt {
+            tenant_id: TenantId::parse(tenant_id).unwrap(),
+            finding_id: OpaqueId::parse("finding:http:one").unwrap(),
+            finding_revision_digest: ContentDigest::of_bytes("finding-revision"),
+            graph_revision: GraphRevision::new(1).unwrap(),
+            policy_definition_digest: ContentDigest::of_bytes("policy-definition"),
+            decision: cerebro_platform_sdk::FindingValidationDecision::Confirmed,
+            evidence_digests: vec![ContentDigest::of_bytes("finding-evidence")],
+            validated_by: ActorId::parse(validated_by).unwrap(),
+            validated_at_unix_ms: 1,
+            expires_at_unix_ms: u64::MAX,
+            receipt_digest: ContentDigest::of_bytes("placeholder"),
+        };
+        receipt.bind_computed_digest().unwrap();
+        receipt
     }
 
     fn context_entity(
@@ -3443,6 +3572,17 @@ mod tests {
             "cerebro:read"
         );
         assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/finding-validations"),
+            "cerebro:write"
+        );
+        assert_eq!(
+            oidc_scope_for_route(
+                &Method::GET,
+                "/v1/finding-validations/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ),
+            "cerebro:read"
+        );
+        assert_eq!(
             oidc_scope_for_route(&Method::POST, "/v1/graph/search"),
             "cerebro:read"
         );
@@ -3704,6 +3844,44 @@ mod tests {
 
         let definitions = list_action_definitions().await.0;
         assert!(definitions.iter().any(|candidate| candidate == definition));
+    }
+
+    #[tokio::test]
+    async fn finding_validation_rejects_spoofed_identity_before_storage() {
+        let (graph, _, _) = demo_graph().unwrap();
+        let state = AppState {
+            actions: Some(Arc::new(UnreachableActionAuthority)),
+            graph: Arc::new(MemoryAgentGraph::new(graph)),
+            catalog_summary: None,
+            projection: None,
+            metrics: PlatformMetrics::default(),
+        };
+        let identity = action_identity("tenant:http:one", "validator:http:one");
+
+        for receipt in [
+            finding_validation("tenant:http:other", "validator:http:one"),
+            finding_validation("tenant:http:one", "validator:http:other"),
+        ] {
+            let error = record_finding_validation(
+                State(state.clone()),
+                Extension(identity.clone()),
+                Json(receipt),
+            )
+            .await
+            .expect_err("spoofed validation must fail before storage");
+            assert_eq!(error.0, StatusCode::FORBIDDEN);
+            assert_eq!(error.1.0.code, "permission_denied");
+        }
+
+        let error = get_finding_validation(
+            State(state),
+            Extension(identity),
+            Path("not-a-digest".to_owned()),
+        )
+        .await
+        .expect_err("invalid digest must fail before storage");
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert_eq!(error.1.0.code, "invalid_finding_validation_digest");
     }
 
     #[tokio::test]

@@ -5,7 +5,7 @@ use cerebro_action_store::{ActionStoreError, PostgresActionLedger};
 use cerebro_platform_engine::ActionCommand;
 use cerebro_platform_sdk::{
     ActionEffect, ActionOperationId, ActionProposal, ActionState, ActorId, ContentDigest,
-    GraphRevision, OpaqueId, TenantId,
+    FindingValidationDecision, FindingValidationReceipt, GraphRevision, OpaqueId, TenantId,
 };
 use tokio_postgres::NoTls;
 
@@ -21,7 +21,20 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     let ledger = PostgresActionLedger::from_client(client);
     ledger.migrate().await?;
 
-    let initial_proposal = proposal("operation:live:one", "idempotency:live:one");
+    let validation = finding_validation("tenant:live:one");
+    assert_eq!(
+        ledger
+            .record_finding_validation(validation.clone(), 5)
+            .await?,
+        validation
+    );
+    assert_eq!(
+        ledger
+            .record_finding_validation(validation.clone(), 6)
+            .await?,
+        validation
+    );
+    let initial_proposal = proposal("operation:live:one", "idempotency:live:one", &validation);
     let tenant = initial_proposal.tenant_id.clone();
     let operation_id = initial_proposal.operation_id.clone();
     let proposed = ledger.propose(initial_proposal.clone(), 10).await?;
@@ -29,7 +42,7 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     assert_eq!(proposed.version, 1);
     assert_eq!(ledger.propose(initial_proposal, 11).await?, proposed);
 
-    let mut conflicting = proposal("operation:live:two", "idempotency:live:one");
+    let mut conflicting = proposal("operation:live:two", "idempotency:live:one", &validation);
     conflicting
         .bind_computed_digest()
         .expect("bind conflicting proposal");
@@ -106,13 +119,21 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     assert!(history[0].command_digest.is_none());
     assert!(history[1].command_digest.is_some());
 
-    let second = proposal("operation:live:second", "idempotency:live:second");
+    let second = proposal(
+        "operation:live:second",
+        "idempotency:live:second",
+        &validation,
+    );
     ledger.propose(second.clone(), 40).await?;
-    let mut other_tenant_proposal = proposal("operation:live:other", "idempotency:live:other");
-    other_tenant_proposal.tenant_id = other_tenant.clone();
-    other_tenant_proposal
-        .bind_computed_digest()
-        .expect("bind other tenant proposal");
+    let other_validation = finding_validation(other_tenant.as_str());
+    ledger
+        .record_finding_validation(other_validation.clone(), 6)
+        .await?;
+    let other_tenant_proposal = proposal(
+        "operation:live:other",
+        "idempotency:live:other",
+        &other_validation,
+    );
     ledger.propose(other_tenant_proposal.clone(), 41).await?;
 
     let first_page = ledger.list(&tenant, 1, None).await?;
@@ -144,14 +165,35 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
             .await
             .expect("PostgreSQL mutation test connection");
     });
-    let mutation = mutation_client.transaction().await?;
-    mutation
+    let receipt_mutation = mutation_client.transaction().await?;
+    receipt_mutation
         .query_one(
             "SELECT set_config('cerebro.tenant_id', $1, true)",
             &[&tenant.as_str()],
         )
         .await?;
-    let error = mutation
+    let error = receipt_mutation
+        .execute(
+            "UPDATE finding_validation_receipts SET expires_at_unix_ms = 900 WHERE tenant_id = $1 AND receipt_digest = $2",
+            &[&tenant.as_str(), &validation.receipt_digest.as_str()],
+        )
+        .await
+        .expect_err("finding validation receipt mutation must fail");
+    assert!(
+        error
+            .as_db_error()
+            .is_some_and(|error| error.message().contains("append-only"))
+    );
+    receipt_mutation.rollback().await?;
+
+    let event_mutation = mutation_client.transaction().await?;
+    event_mutation
+        .query_one(
+            "SELECT set_config('cerebro.tenant_id', $1, true)",
+            &[&tenant.as_str()],
+        )
+        .await?;
+    let error = event_mutation
         .execute(
             "UPDATE action_operation_events SET committed_at_unix_ms = 40 WHERE tenant_id = $1 AND operation_id = $2 AND version = 2",
             &[&tenant.as_str(), &operation_id.as_str()],
@@ -166,15 +208,39 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     Ok(())
 }
 
-fn proposal(operation_id: &str, idempotency_key: &str) -> ActionProposal {
+fn finding_validation(tenant_id: &str) -> FindingValidationReceipt {
+    let mut receipt = FindingValidationReceipt {
+        tenant_id: TenantId::parse(tenant_id).expect("valid tenant"),
+        finding_id: OpaqueId::parse("finding:live:one").expect("valid finding"),
+        finding_revision_digest: ContentDigest::of_bytes("finding-revision"),
+        graph_revision: GraphRevision::new(1).expect("valid graph revision"),
+        policy_definition_digest: ContentDigest::of_bytes("policy-definition"),
+        decision: FindingValidationDecision::Confirmed,
+        evidence_digests: vec![ContentDigest::of_bytes("finding-evidence")],
+        validated_by: ActorId::parse("validator:live:one").expect("valid validator"),
+        validated_at_unix_ms: 5,
+        expires_at_unix_ms: 1_000,
+        receipt_digest: ContentDigest::of_bytes("placeholder"),
+    };
+    receipt
+        .bind_computed_digest()
+        .expect("bind finding validation digest");
+    receipt
+}
+
+fn proposal(
+    operation_id: &str,
+    idempotency_key: &str,
+    validation: &FindingValidationReceipt,
+) -> ActionProposal {
     let definition = lookup("endpoint.cerebro.revoke_device").expect("generated Action definition");
     let mut proposal = ActionProposal {
         operation_id: ActionOperationId::parse(operation_id).expect("valid operation"),
-        tenant_id: TenantId::parse("tenant:live:one").expect("valid tenant"),
-        finding_id: OpaqueId::parse("finding:live:one").expect("valid finding"),
-        finding_revision_digest: ContentDigest::of_bytes("finding-revision"),
-        finding_validation_receipt_digest: ContentDigest::of_bytes("finding-validation"),
-        graph_revision: GraphRevision::new(1).expect("valid graph revision"),
+        tenant_id: validation.tenant_id.clone(),
+        finding_id: validation.finding_id.clone(),
+        finding_revision_digest: validation.finding_revision_digest.clone(),
+        finding_validation_receipt_digest: validation.receipt_digest.clone(),
+        graph_revision: validation.graph_revision,
         action_kind: definition.id.to_owned(),
         action_definition_digest: ContentDigest::parse(definition.definition_digest)
             .expect("generated definition digest"),
@@ -189,7 +255,7 @@ fn proposal(operation_id: &str, idempotency_key: &str) -> ActionProposal {
         simulation_digest: ContentDigest::of_bytes("simulation"),
         verification_plan_digest: ContentDigest::of_bytes("verification-plan"),
         proposed_by: ActorId::parse("proposer:live:one").expect("valid actor"),
-        proposed_at_unix_ms: 1,
+        proposed_at_unix_ms: 10,
         proposal_expires_at_unix_ms: 1_000,
         proposal_digest: ContentDigest::of_bytes("placeholder"),
     };
