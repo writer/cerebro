@@ -49,9 +49,8 @@ use cerebro_organizational_store::{
 };
 use cerebro_platform_engine::ActionCommand;
 use cerebro_platform_sdk::{
-    ActionOperation, ActionOperationId, ActionProposal, ActionVerificationReceipt, ActorId,
-    ContentDigest, DecisionId, DecisionReceipt, FindingValidationReceipt, OpaqueId, VerificationId,
-    VerificationReceipt,
+    ActionOperation, ActionOperationId, ActionProposal, ActorId, ContentDigest, DecisionId,
+    DecisionReceipt, FindingValidationReceipt, OpaqueId,
 };
 use cerebro_policy_catalog::{definitions as policy_definitions, validate_finding_receipt};
 use cerebro_security_lifecycle::{
@@ -81,7 +80,6 @@ const ACTION_SIMULATE_SCOPE: &str = "cerebro:actions:simulate";
 const ACTION_APPROVE_SCOPE: &str = "cerebro:actions:approve";
 const ACTION_EXECUTE_SCOPE: &str = "cerebro:actions:execute";
 const ACTION_RECONCILE_SCOPE: &str = "cerebro:actions:reconcile";
-const ACTION_VERIFY_SCOPE: &str = "cerebro:actions:verify";
 const FINDING_VALIDATE_SCOPE: &str = "cerebro:findings:validate";
 const ACTION_RECONCILIATION_BATCH_LIMIT: usize = 10;
 const ACTION_RECONCILIATION_LEASE_MS: u64 = 2 * 60 * 1_000;
@@ -1011,12 +1009,7 @@ enum HttpActionCommand {
     StartExecution {
         started_at_unix_ms: u64,
     },
-    Verify {
-        receipt: HttpActionVerificationReceipt,
-    },
-    RejectVerification {},
     Fail {},
-    RollBack {},
 }
 
 #[derive(Deserialize)]
@@ -1029,28 +1022,6 @@ struct HttpDecisionReceipt {
     decided_at_unix_ms: u64,
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct HttpActionVerificationReceipt {
-    operation_id: String,
-    proposal_digest: String,
-    observed_effect_digest: String,
-    receipt: HttpVerificationReceipt,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct HttpVerificationReceipt {
-    verification_id: String,
-    executor_actor_id: String,
-    verifier_actor_id: String,
-    previous_source_revision: String,
-    observed_source_revision: String,
-    effective: bool,
-    evidence_urns: Vec<String>,
-    verified_at_unix_ms: u64,
-}
-
 impl HttpActionCommand {
     fn required_scope(&self) -> &'static str {
         match self {
@@ -1061,9 +1032,7 @@ impl HttpActionCommand {
             | Self::RenewClaim { .. }
             | Self::ReleaseExpiredClaim { .. }
             | Self::StartExecution { .. }
-            | Self::Fail {}
-            | Self::RollBack {} => ACTION_EXECUTE_SCOPE,
-            Self::Verify { .. } | Self::RejectVerification {} => ACTION_VERIFY_SCOPE,
+            | Self::Fail {} => ACTION_EXECUTE_SCOPE,
         }
     }
 
@@ -1098,12 +1067,7 @@ impl HttpActionCommand {
             Self::StartExecution { started_at_unix_ms } => {
                 ActionCommand::StartExecution { started_at_unix_ms }
             }
-            Self::Verify { receipt } => ActionCommand::Verify {
-                receipt: receipt.into_domain()?,
-            },
-            Self::RejectVerification {} => ActionCommand::RejectVerification,
             Self::Fail {} => ActionCommand::Fail,
-            Self::RollBack {} => ActionCommand::RollBack,
         })
     }
 }
@@ -1116,36 +1080,6 @@ impl HttpDecisionReceipt {
             approved: self.approved,
             decided_by: parse_action_actor(self.decided_by)?,
             decided_at_unix_ms: self.decided_at_unix_ms,
-        })
-    }
-}
-
-impl HttpActionVerificationReceipt {
-    fn into_domain(self) -> Result<ActionVerificationReceipt, String> {
-        Ok(ActionVerificationReceipt {
-            operation_id: ActionOperationId::parse(self.operation_id)
-                .map_err(|error| error.to_string())?,
-            proposal_digest: ContentDigest::parse(self.proposal_digest)
-                .map_err(|error| error.to_string())?,
-            observed_effect_digest: ContentDigest::parse(self.observed_effect_digest)
-                .map_err(|error| error.to_string())?,
-            receipt: self.receipt.into_domain()?,
-        })
-    }
-}
-
-impl HttpVerificationReceipt {
-    fn into_domain(self) -> Result<VerificationReceipt, String> {
-        Ok(VerificationReceipt {
-            verification_id: VerificationId::parse(self.verification_id)
-                .map_err(|error| error.to_string())?,
-            executor_actor_id: parse_action_actor(self.executor_actor_id)?,
-            verifier_actor_id: parse_action_actor(self.verifier_actor_id)?,
-            previous_source_revision: self.previous_source_revision,
-            observed_source_revision: self.observed_source_revision,
-            effective: self.effective,
-            evidence_urns: self.evidence_urns,
-            verified_at_unix_ms: self.verified_at_unix_ms,
         })
     }
 }
@@ -4363,10 +4297,30 @@ mod tests {
                 "executor_actor_id": "worker:one",
                 "executed_at_unix_ms": 12
             }),
+            serde_json::json!({
+                "command": "verify",
+                "receipt": {
+                    "operation_id": "operation:one",
+                    "proposal_digest": ContentDigest::of_bytes("proposal"),
+                    "observed_effect_digest": ContentDigest::of_bytes("effect"),
+                    "receipt": {
+                        "verification_id": "verification:one",
+                        "executor_actor_id": "worker:one",
+                        "verifier_actor_id": "verifier:one",
+                        "previous_source_revision": "source:one",
+                        "observed_source_revision": "source:two",
+                        "effective": true,
+                        "evidence_urns": ["urn:cerebro:tenant:observation:one"],
+                        "verified_at_unix_ms": 13
+                    }
+                }
+            }),
+            serde_json::json!({"command": "reject_verification"}),
+            serde_json::json!({"command": "roll_back"}),
         ] {
             assert!(
                 serde_json::from_value::<HttpActionCommand>(internal_command).is_err(),
-                "provider receipts and effect completion are internal Rust authority commands"
+                "provider receipts, effect completion, and verification are internal Rust authority commands"
             );
         }
         assert_eq!(
@@ -4384,11 +4338,6 @@ mod tests {
             .required_scope(),
             ACTION_EXECUTE_SCOPE
         );
-        assert_eq!(
-            HttpActionCommand::RejectVerification {}.required_scope(),
-            ACTION_VERIFY_SCOPE
-        );
-
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
             access_approvals: None,
