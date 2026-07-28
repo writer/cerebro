@@ -105,6 +105,38 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     assert!(history[0].command_digest.is_none());
     assert!(history[1].command_digest.is_some());
 
+    let second = proposal("operation:live:second", "idempotency:live:second");
+    ledger.propose(second.clone(), 40).await?;
+    let mut other_tenant_proposal = proposal("operation:live:other", "idempotency:live:other");
+    other_tenant_proposal.tenant_id = other_tenant.clone();
+    other_tenant_proposal
+        .bind_computed_digest()
+        .expect("bind other tenant proposal");
+    ledger.propose(other_tenant_proposal.clone(), 41).await?;
+
+    let first_page = ledger.list(&tenant, 1, None).await?;
+    assert_eq!(
+        first_page.actions,
+        vec![ledger.get(&tenant, &second.operation_id).await?]
+    );
+    let second_page = ledger
+        .list(&tenant, 1, first_page.next_page_token.as_deref())
+        .await?;
+    assert_eq!(second_page.actions, vec![waiting]);
+    assert!(second_page.next_page_token.is_none());
+    assert_eq!(
+        ledger.list(&other_tenant, 10, None).await?.actions,
+        vec![
+            ledger
+                .get(&other_tenant, &other_tenant_proposal.operation_id)
+                .await?
+        ]
+    );
+    assert!(matches!(
+        ledger.list(&tenant, 10, Some("v1.invalid")).await,
+        Err(ActionStoreError::InvalidPageToken)
+    ));
+
     let (mut mutation_client, mutation_connection) = tokio_postgres::connect(&dsn, NoTls).await?;
     tokio::spawn(async move {
         mutation_connection
