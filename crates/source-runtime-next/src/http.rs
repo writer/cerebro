@@ -186,8 +186,13 @@ impl HttpSourceConnector {
     fn request_url(&self) -> Result<Url, HttpConnectorError> {
         let mut path = self.family.path().to_owned();
         for (key, value) in &self.config {
-            path = path.replace(&format!("{{{key}}}"), value);
-            path = path.replace(&format!("${{config.{key}}}"), value);
+            let direct = format!("{{{key}}}");
+            let configured = format!("${{config.{key}}}");
+            if path.contains(&direct) || path.contains(&configured) {
+                let encoded = encode_path_parameter(key, value)?;
+                path = path.replace(&direct, &encoded);
+                path = path.replace(&configured, &encoded);
+            }
         }
         if path.contains('{') || path.contains("${") {
             return Err(HttpConnectorError::InvalidConfiguration(format!(
@@ -199,6 +204,26 @@ impl HttpSourceConnector {
             .join(path.trim_start_matches('/'))
             .map_err(|error| HttpConnectorError::InvalidUrl(error.to_string()))
     }
+}
+
+fn encode_path_parameter(key: &str, value: &str) -> Result<String, HttpConnectorError> {
+    if value.is_empty() {
+        return Err(HttpConnectorError::InvalidConfiguration(format!(
+            "path parameter {key} is required"
+        )));
+    }
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('%');
+            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        }
+    }
+    Ok(encoded)
 }
 
 #[async_trait]
@@ -1105,6 +1130,36 @@ mod tests {
                 Some("configured")
             );
         }
+    }
+
+    #[test]
+    fn dynamic_catalog_path_values_cannot_expand_provider_scope() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let connector = HttpSourceConnector::new(
+            catalog.get("telnyx").unwrap().clone(),
+            "wireless_connectivity_log",
+            "https://api.example.test/v2",
+            BTreeMap::from([(
+                "sim_card_id".to_owned(),
+                "../other?scope=expanded#fragment".to_owned(),
+            )]),
+            ResolvedAuth::Bearer {
+                token: "token".to_owned(),
+            },
+        )
+        .unwrap();
+        let url = connector.request_url().unwrap();
+        assert_eq!(
+            url.as_str(),
+            "https://api.example.test/v2/sim_cards/%2E%2E%2Fother%3Fscope%3Dexpanded%23fragment/wireless_connectivity_logs"
+        );
+        assert!(url.query().is_none());
+        assert!(url.fragment().is_none());
     }
 
     #[test]

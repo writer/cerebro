@@ -408,7 +408,14 @@ struct DefinitionWire {
     display_name: String,
     auth: AuthWire,
     #[serde(default)]
+    config_fields: Vec<ConfigFieldWire>,
+    #[serde(default)]
     resource_families: Vec<FamilyWire>,
+}
+
+#[derive(Deserialize)]
+struct ConfigFieldWire {
+    key: String,
 }
 
 #[derive(Deserialize)]
@@ -517,6 +524,12 @@ fn compile_source(
             message: format!("unsupported auth model {}", entry.definition.auth.model),
         }
     })?;
+    let config_fields = entry
+        .definition
+        .config_fields
+        .iter()
+        .map(|field| field.key.as_str())
+        .collect::<BTreeSet<_>>();
     let generic_runtime_supported = classifier_supported && auth.supports_generic_runtime();
     let verified_families = verified_families(proofs.get(&id));
     let mut family_ids = BTreeSet::new();
@@ -530,6 +543,7 @@ fn compile_source(
             family,
             &verified_families,
             generic_runtime_supported,
+            &config_fields,
         )?);
     }
     if families.is_empty() {
@@ -555,6 +569,7 @@ fn compile_family(
     family: FamilyWire,
     verified: &BTreeSet<(String, String, String)>,
     generic_runtime_supported: bool,
+    config_fields: &BTreeSet<&str>,
 ) -> Result<CompiledFamily, CatalogError> {
     let method = match family.method.trim() {
         "" | "GET" => HttpMethod::Get,
@@ -572,6 +587,13 @@ fn compile_family(
             &format!("family {} path must start with /", family.id),
         );
     }
+    let path_parameters_configured = family
+        .path
+        .split_once('?')
+        .map_or(family.path.as_str(), |(path, _)| path)
+        .split('/')
+        .filter_map(path_parameter)
+        .all(|parameter| config_fields.contains(parameter));
     let projection = family.projection.ok_or_else(|| CatalogError::Invalid {
         path: path.to_path_buf(),
         message: format!("family {} requires a projection", family.id),
@@ -598,16 +620,20 @@ fn compile_family(
     } else {
         "$[*]".to_owned()
     };
-    let provider_contract_verified = verified.contains(&(
-        family.id.clone(),
-        match method {
-            HttpMethod::Get => "GET".to_owned(),
-            HttpMethod::Post => "POST".to_owned(),
-        },
-        family.path.clone(),
-    ));
+    let provider_contract_verified = canonical_path_template(&family.path).is_some_and(|path| {
+        verified.contains(&(
+            family.id.clone(),
+            match method {
+                HttpMethod::Get => "GET".to_owned(),
+                HttpMethod::Post => "POST".to_owned(),
+            },
+            path,
+        ))
+    });
     Ok(CompiledFamily {
-        authoritative: generic_runtime_supported && provider_contract_verified,
+        authoritative: generic_runtime_supported
+            && provider_contract_verified
+            && path_parameters_configured,
         projection_authoritative: provider_contract_verified
             && projection_class.can_be_authoritative(),
         id: nonempty(path, "family id", family.id)?,
@@ -719,18 +745,67 @@ fn verified_families(proof: Option<&ProofManifestWire>) -> BTreeSet<(String, Str
                 && !family.path.is_empty()
                 && (family.method.is_empty() || family.method == "GET" || family.method == "POST")
         })
-        .map(|family| {
-            (
-                family.id.clone(),
-                if family.method.is_empty() {
-                    "GET".to_owned()
-                } else {
-                    family.method.clone()
-                },
-                family.path.clone(),
-            )
+        .filter_map(|family| {
+            canonical_path_template(&family.path).map(|path| {
+                (
+                    family.id.clone(),
+                    if family.method.is_empty() {
+                        "GET".to_owned()
+                    } else {
+                        family.method.clone()
+                    },
+                    path,
+                )
+            })
         })
         .collect()
+}
+
+fn canonical_path_template(path: &str) -> Option<String> {
+    let (path, query) = path
+        .split_once('?')
+        .map_or((path, None), |(path, query)| (path, Some(query)));
+    if !path.starts_with('/') {
+        return None;
+    }
+    let mut canonical = String::with_capacity(path.len());
+    for (index, segment) in path.split('/').enumerate() {
+        if index > 0 {
+            canonical.push('/');
+        }
+        if path_parameter(segment).is_some() {
+            canonical.push_str("{}");
+        } else {
+            if segment.contains('{') || segment.contains('}') {
+                return None;
+            }
+            canonical.push_str(segment);
+        }
+    }
+    if let Some(query) = query {
+        if query.contains('{') || query.contains('}') {
+            return None;
+        }
+        canonical.push('?');
+        canonical.push_str(query);
+    }
+    Some(canonical)
+}
+
+fn path_parameter(segment: &str) -> Option<&str> {
+    let parameter = segment
+        .strip_prefix("${config.")
+        .and_then(|value| value.strip_suffix('}'))
+        .or_else(|| {
+            segment
+                .strip_prefix('{')
+                .and_then(|value| value.strip_suffix('}'))
+        })?;
+    (!parameter.is_empty()
+        && parameter
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')))
+    .then_some(parameter)
 }
 
 fn load_proofs(root: &Path) -> Result<BTreeMap<String, ProofManifestWire>, CatalogError> {
@@ -916,10 +991,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            catalog.get("box").unwrap().authority(),
-            CollectionAuthority::Authoritative
-        );
-        assert_eq!(
             catalog.get("aws_bedrock").unwrap().authority(),
             CollectionAuthority::Authoritative
         );
@@ -927,6 +998,36 @@ mod tests {
             catalog.get("duo").unwrap().authority(),
             CollectionAuthority::Authoritative
         );
+        assert_eq!(
+            catalog.get("telnyx").unwrap().authority(),
+            CollectionAuthority::Authoritative
+        );
+        for source_id in [
+            "akeneo",
+            "apacta",
+            "appwrite",
+            "azure_openai",
+            "beezup",
+            "cloudflare_workers_ai",
+            "elevenlabs",
+            "google_vertex_ai",
+            "onelogin",
+            "qdrant_cloud",
+            "snyk",
+        ] {
+            assert_eq!(
+                catalog.get(source_id).unwrap().authority(),
+                CollectionAuthority::Authoritative,
+                "{source_id} has verified parameterized provider paths"
+            );
+        }
+        for source_id in ["airtable", "anchore", "box", "fivetran", "jira"] {
+            assert_eq!(
+                catalog.get(source_id).unwrap().authority(),
+                CollectionAuthority::ShadowOnly,
+                "{source_id} has a path parameter without a matching runtime config field"
+            );
+        }
         assert_eq!(
             catalog.get("agiloft").unwrap().authority(),
             CollectionAuthority::ShadowOnly
@@ -950,5 +1051,23 @@ mod tests {
             .unwrap();
         assert!(!grants.is_authoritative());
         assert!(grants.is_projection_authoritative());
+    }
+
+    #[test]
+    fn provider_path_templates_match_slots_but_not_literal_scope() {
+        assert_eq!(
+            canonical_path_template("/sim_cards/{id}/wireless_connectivity_logs"),
+            Some("/sim_cards/{}/wireless_connectivity_logs".to_owned())
+        );
+        assert_eq!(
+            canonical_path_template("/sim_cards/${config.sim_card_id}/wireless_connectivity_logs"),
+            Some("/sim_cards/{}/wireless_connectivity_logs".to_owned())
+        );
+        assert_ne!(
+            canonical_path_template("/accounts/{id}/users"),
+            canonical_path_template("/organizations/{id}/users")
+        );
+        assert_eq!(canonical_path_template("/accounts/prefix-{id}/users"), None);
+        assert_eq!(canonical_path_template("/accounts/${config.id/users"), None);
     }
 }
