@@ -247,7 +247,8 @@ mapping, tenant-authorized finding lookup, and service dependency wiring. Action
 target selection, provider request shaping, idempotency, provider dispatch, and
 external reference mapping stay behind `internal/graphactions` and
 `internal/graphactionapi`. Supported actions are cataloged in
-`internal/graphactions/action_catalog.yaml` and generated into the registry with
+`crates/action-catalog/action_catalog.yaml` and generated into the Rust authority
+and retiring Go compatibility registry with
 `make graph-action-generate`. The generated registry also exposes serializable
 action metadata plus action id, provider id, and target-kind lists so API
 schemas, agent tools, and future codegen can consume the same provider-neutral
@@ -289,12 +290,21 @@ the tenant, finding, target, action, and idempotency bindings before they can
 become a lifecycle observation. The client does not manufacture effect evidence
 or a completion command.
 
-No deployed Rust worker invokes that client yet, and first-party mutation
-adapters have not moved to Rust. Until deployment cutover,
-`internal/graphactions` remains the legacy provider network path behind the Rust
-dispatch record, not the Action lifecycle authority. Completing the cutover
-requires a durable Rust worker, reconciliation scheduling, effect observation,
-and deployment receipts proving provider calls no longer enter the Go runtime.
+When access-approvals is configured, the Rust Action command handler commits the
+start-execution transition and immutable dispatch before it submits that exact
+dispatch through the Rust client. A bound provider receipt becomes a second
+durable Rust transition. Any unsuccessful or unbound response moves the Action
+to `outcome_unknown`; the handler does not retry the mutation. Provider receipt,
+outcome, completion, and reconciliation commands are not accepted from the
+public HTTP command schema. A signed execution principal can ask the Rust
+runtime to refresh an existing provider receipt; the runtime performs the GET,
+revalidates every dispatch binding, and commits the observation itself.
+
+This code path does not by itself prove deployment cutover. Until deployment
+receipts show the Rust handler serves Action execution traffic,
+`internal/graphactions` remains a legacy provider network path. Rust provider
+reconciliation scheduling, first-party device mutation, independent effect
+observation, and removal of the Go route remain separate boundaries.
 
 A2A discovery, outbound event subscription metadata, and public idempotency
 semantics also live in `internal/agentplatform`. The bootstrap budget includes

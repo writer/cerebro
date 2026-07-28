@@ -5,9 +5,10 @@ import {
   createSign,
   generateKeyPairSync,
   randomBytes,
+  randomUUID,
 } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
@@ -21,6 +22,7 @@ const defaultTimeoutMs = 10 * 60_000;
 const audience = "cerebro-local-web";
 const tenantID = "tenant-demo";
 const keyID = "local-e2e-key";
+const postgresImage = "postgres:16-alpine";
 
 const expect = (condition, message) => {
   if (!condition) throw new Error(message);
@@ -40,7 +42,7 @@ export function signedBearerToken(privateKey, issuer, now = Date.now(), claims =
       iat: issuedAt,
       iss: issuer,
       name: "Rust E2E",
-      scope: "cerebro:read identity:read",
+      scope: "cerebro:read cerebro:actions:read identity:read",
       sub: "rust-e2e-user",
       tenant_id: tenantID,
       ...claims,
@@ -116,6 +118,8 @@ export function portableEnvironment(source = process.env, additions = {}) {
     "CI",
     "NO_COLOR",
     "TERM",
+    "DOCKER_HOST",
+    "DOCKER_CONTEXT",
   ];
   return {
     ...Object.fromEntries(
@@ -182,7 +186,7 @@ async function run(command, args, options, deadlineAt) {
         child.once("error", reject);
         child.once("exit", (code, signal) => {
           if (code === 0) {
-            resolve();
+            resolve(Buffer.concat(output).toString("utf8"));
           } else {
             reject(
               new Error(
@@ -318,6 +322,369 @@ async function startJwksServer(publicJwk) {
   };
 }
 
+function dockerLoopbackPort(output) {
+  const lines = output.trim().split(/\r?\n/).filter(Boolean);
+  expect(lines.length === 1, "Docker returned an unexpected Postgres port mapping");
+  const match = /^127\.0\.0\.1:(\d+)$/.exec(lines[0]);
+  expect(match, "Docker did not publish Postgres on loopback");
+  const port = Number.parseInt(match[1], 10);
+  expect(
+    Number.isSafeInteger(port) && port > 0 && port <= 65_535,
+    "Docker returned an invalid Postgres port",
+  );
+  return port;
+}
+
+async function startPostgres(containerName, deadlineAt) {
+  await run(
+    "docker",
+    [
+      "run",
+      "--rm",
+      "--name",
+      containerName,
+      "-e",
+      "POSTGRES_HOST_AUTH_METHOD=trust",
+      "-e",
+      "POSTGRES_DB=cerebro",
+      "-p",
+      "127.0.0.1::5432",
+      "-d",
+      postgresImage,
+    ],
+    { cwd: repositoryRoot, env: portableEnvironment() },
+    deadlineAt,
+  );
+  const port = dockerLoopbackPort(
+    await run(
+      "docker",
+      ["port", containerName, "5432/tcp"],
+      { cwd: repositoryRoot, env: portableEnvironment() },
+      deadlineAt,
+    ),
+  );
+  await waitFor(
+    "Postgres",
+    async () => {
+      await run(
+        "docker",
+        ["exec", containerName, "pg_isready", "-U", "postgres", "-d", "cerebro"],
+        { cwd: repositoryRoot, env: portableEnvironment() },
+        deadlineAt,
+      );
+      return true;
+    },
+    undefined,
+    deadlineAt,
+  );
+  const postgresDSN =
+    `postgres://postgres@127.0.0.1:${port}/cerebro?sslmode=disable`;
+  await waitFor(
+    "Postgres host connection",
+    async () => {
+      await run(
+        "cargo",
+        [
+          "run",
+          "--quiet",
+          "--locked",
+          "-p",
+          "cerebro-platform",
+          "--example",
+          "action_authority_e2e_fixture",
+          "--",
+          "--probe-postgres",
+        ],
+        {
+          cwd: repositoryRoot,
+          env: portableEnvironment(process.env, {
+            CEREBRO_POSTGRES_DSN: postgresDSN,
+          }),
+        },
+        deadlineAt,
+      );
+      return true;
+    },
+    undefined,
+    deadlineAt,
+  );
+  return postgresDSN;
+}
+
+async function startAccessApprovalsProvider(bearerToken) {
+  let providerStatus = "queued";
+  const requests = [];
+  const server = http.createServer((request, response) => {
+    const reject = (status, message) => {
+      response.writeHead(status, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: message }));
+    };
+    if (request.headers.authorization !== `Bearer ${bearerToken}`) {
+      reject(401, "missing provider identity");
+      return;
+    }
+    if (request.method === "POST" && request.url === "/admin/okta-jail/suspend") {
+      const chunks = [];
+      let size = 0;
+      request.on("data", (chunk) => {
+        size += chunk.length;
+        if (size <= 64 * 1_024) chunks.push(chunk);
+      });
+      request.on("end", () => {
+        if (size > 64 * 1_024) {
+          reject(413, "request too large");
+          return;
+        }
+        let payload;
+        try {
+          payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        } catch {
+          reject(400, "invalid JSON");
+          return;
+        }
+        requests.push(payload);
+        response.writeHead(201, { "content-type": "application/json" });
+        response.end(JSON.stringify(providerReceipt(payload, providerStatus)));
+      });
+      return;
+    }
+    if (
+      request.method === "GET" &&
+      request.url === "/admin/okta-jail/actions/provider-action:rust-e2e"
+    ) {
+      const payload = requests[0];
+      if (!payload) {
+        reject(404, "provider action not found");
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(providerReceipt(payload, providerStatus)));
+      return;
+    }
+    reject(404, "route not found");
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  expect(port > 0, "Access-approvals provider did not bind a loopback port");
+  return {
+    baseURL: `http://127.0.0.1:${port}`,
+    dispatchCount: () => requests.length,
+    requests,
+    markSucceeded: () => {
+      providerStatus = "succeeded";
+    },
+    stop: () =>
+      new Promise((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      ),
+  };
+}
+
+function providerReceipt(request, status) {
+  const timestamp = Math.floor(Date.now() / 1_000);
+  return {
+    id: "provider-action:rust-e2e",
+    action: "suspend",
+    status,
+    target: request.email_or_user_id,
+    idempotency_key: request.idempotency_key,
+    tenant_id: request.tenant_id,
+    finding_id: request.finding_id,
+    updated_at_unix: timestamp,
+    ...(status === "succeeded" ? { completed_at_unix: timestamp } : {}),
+  };
+}
+
+async function postJSON(url, bearer, payload) {
+  return request(url, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${bearer}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+function parsedJSON(response, label) {
+  try {
+    return JSON.parse(response.body);
+  } catch {
+    throw new Error(`${label} returned non-JSON status ${response.status}: ${response.body.slice(0, 500)}`);
+  }
+}
+
+async function executeSignedActionLifecycle({
+  webBase,
+  privateKey,
+  issuer,
+  readBearer,
+  fixture,
+  provider,
+}) {
+  const token = (subject, scope) =>
+    signedBearerToken(privateKey, issuer, Date.now(), { scope, sub: subject });
+  const validatorBearer = token(
+    fixture.finding_validation.validated_by,
+    "cerebro:write cerebro:findings:validate",
+  );
+  const proposerBearer = token(
+    fixture.proposal.proposed_by,
+    "cerebro:actions:write cerebro:actions:propose",
+  );
+  const simulatorBearer = token(
+    "simulator:rust-e2e",
+    "cerebro:actions:write cerebro:actions:simulate",
+  );
+  const approverBearer = token(
+    fixture.approver_id,
+    "cerebro:actions:write cerebro:actions:approve",
+  );
+  const workerBearer = token(
+    fixture.worker_id,
+    "cerebro:read cerebro:actions:write identity:read cerebro:actions:execute",
+  );
+  const actionURL = `${webBase}/api/cerebro/v1/actions/${encodeURIComponent(fixture.operation_id)}`;
+  const commandURL = `${actionURL}/commands`;
+
+  let response = await postJSON(
+    `${webBase}/api/cerebro/v1/finding-validations`,
+    validatorBearer,
+    fixture.finding_validation,
+  );
+  expect(response.status === 200, `Finding validation returned ${response.status}: ${response.body}`);
+
+  response = await postJSON(`${webBase}/api/cerebro/v1/actions`, proposerBearer, fixture.proposal);
+  expect(response.status === 200, `Action proposal returned ${response.status}: ${response.body}`);
+  let operation = parsedJSON(response, "Action proposal");
+  expect(operation.state === "proposed" && operation.version === 1, "Rust did not persist the proposed Action");
+
+  const transition = async (bearer, command) => {
+    const result = await postJSON(commandURL, bearer, {
+      expected_version: operation.version,
+      command,
+    });
+    expect(result.status === 200, `Action ${command.command} returned ${result.status}: ${result.body}`);
+    operation = parsedJSON(result, `Action ${command.command}`);
+    return operation;
+  };
+
+  await transition(simulatorBearer, { command: "record_simulation" });
+  await transition(proposerBearer, { command: "request_approval" });
+  await transition(approverBearer, {
+    command: "record_approval",
+    receipt: {
+      decision_id: fixture.decision_id,
+      proposal_digest: fixture.proposal.proposal_digest,
+      approved: true,
+      decided_by: fixture.approver_id,
+      decided_at_unix_ms: Date.now(),
+    },
+  });
+  const claimedAt = Date.now();
+  await transition(workerBearer, {
+    command: "claim",
+    worker_id: fixture.worker_id,
+    claimed_at_unix_ms: claimedAt,
+    claim_expires_at_unix_ms: Math.min(
+      claimedAt + fixture.max_claim_lease_ms,
+      fixture.proposal.proposal_expires_at_unix_ms,
+    ),
+  });
+  expect(operation.state === "claimed" && operation.version === 5, "Rust did not persist the Action claim");
+
+  response = await request(commandURL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      expected_version: operation.version,
+      command: { command: "start_execution", started_at_unix_ms: Date.now() },
+    }),
+  });
+  expect(response.status === 401, `Next/Rust accepted an unauthenticated Action mutation (${response.status})`);
+
+  response = await postJSON(commandURL, readBearer, {
+    expected_version: operation.version,
+    command: { command: "start_execution", started_at_unix_ms: Date.now() },
+  });
+  expect(response.status === 403, `Rust accepted Action execution without cerebro:actions:execute (${response.status})`);
+
+  response = await postJSON(commandURL, workerBearer, {
+    expected_version: operation.version,
+    command: {
+      command: "record_provider_receipt",
+      external_receipt_ref: "forged",
+      provider_status: "succeeded",
+    },
+  });
+  expect(
+    response.status >= 400 && response.status < 500,
+    `Rust accepted a caller-supplied provider receipt (${response.status})`,
+  );
+  expect(provider.dispatchCount() === 0, "Rejected Action commands reached the provider");
+
+  await transition(workerBearer, {
+    command: "start_execution",
+    started_at_unix_ms: Date.now(),
+  });
+  expect(operation.state === "dispatched", `Provider acceptance produced ${operation.state}`);
+  expect(operation.version === 7, `Provider dispatch committed version ${operation.version}`);
+  expect(operation.provider_status === "queued", "Rust did not persist the queued provider status");
+  expect(
+    operation.external_receipt_ref === "provider-action:rust-e2e",
+    "Rust did not persist the bound provider receipt",
+  );
+  expect(provider.dispatchCount() === 1, `Rust submitted ${provider.dispatchCount()} provider mutations`);
+  expect(
+    provider.requests[0]?.tenant_id === tenantID &&
+      provider.requests[0]?.finding_id === fixture.proposal.finding_id &&
+      provider.requests[0]?.email_or_user_id === fixture.proposal.target_id &&
+      provider.requests[0]?.idempotency_key === fixture.proposal.idempotency_key,
+    "Rust provider submission was not bound to the durable dispatch",
+  );
+
+  provider.markSucceeded();
+  response = await postJSON(`${actionURL}/provider-observation`, workerBearer, {});
+  expect(response.status === 200, `Provider observation returned ${response.status}: ${response.body}`);
+  operation = parsedJSON(response, "Provider observation");
+  expect(operation.state === "dispatched", "Provider success completed the Action without effect evidence");
+  expect(operation.provider_status === "succeeded", "Rust did not persist the provider observation");
+  expect(operation.version === 8, `Provider observation committed version ${operation.version}`);
+  expect(operation.observed_effect_digest === null, "Provider status manufactured an observed effect");
+  expect(operation.executed_at_unix_ms === null, "Provider status manufactured execution completion");
+  expect(provider.dispatchCount() === 1, "Provider observation retried the mutation");
+
+  response = await request(actionURL, {
+    headers: { authorization: `Bearer ${workerBearer}` },
+  });
+  expect(
+    response.status === 403,
+    `Rust accepted an Action read from the executor (${response.status})`,
+  );
+  response = await request(actionURL, {
+    headers: { authorization: `Bearer ${readBearer}` },
+  });
+  expect(response.status === 200, `Durable Action read returned ${response.status}`);
+  expect(parsedJSON(response, "Durable Action read").version === 8, "Rust did not return the latest durable Action version");
+
+  response = await request(`${actionURL}/history`, {
+    headers: { authorization: `Bearer ${readBearer}` },
+  });
+  expect(response.status === 200, `Durable Action history returned ${response.status}`);
+  const history = parsedJSON(response, "Durable Action history");
+  expect(history.length === 8, `Rust returned ${history.length} committed Action versions`);
+  expect(
+    history.at(-1)?.event_kind === "observe_provider_receipt",
+    "Rust history did not end at the provider observation",
+  );
+
+  return { operation, workerBearer };
+}
+
 export async function runAuthenticatedRustE2E(options = {}) {
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs;
   const deadlineAt = Date.now() + timeoutMs;
@@ -330,6 +697,9 @@ export async function runAuthenticatedRustE2E(options = {}) {
   const processes = [];
   let browser;
   let jwks;
+  let provider;
+  const postgresContainer = `cerebro-rust-action-e2e-${process.pid}-${randomUUID()}`;
+  let postgresStarted = false;
   let failed = true;
   try {
     const [rustPort, webPort] = await Promise.all([
@@ -344,8 +714,34 @@ export async function runAuthenticatedRustE2E(options = {}) {
       { cwd: repositoryRoot },
       deadlineAt,
     );
+    const fixture = JSON.parse(
+      await run(
+        "cargo",
+        [
+          "run",
+          "--quiet",
+          "--locked",
+          "-p",
+          "cerebro-platform",
+          "--example",
+          "action_authority_e2e_fixture",
+        ],
+        { cwd: repositoryRoot, env: portableEnvironment() },
+        deadlineAt,
+      ),
+    );
+    await run(
+      "docker",
+      ["--version"],
+      { cwd: repositoryRoot, env: portableEnvironment() },
+      deadlineAt,
+    );
+    postgresStarted = true;
+    const postgresDSN = await startPostgres(postgresContainer, deadlineAt);
 
     const sharedSecret = `rust-e2e-${randomBytes(32).toString("base64url")}`;
+    const providerBearer = `provider-e2e-${randomBytes(32).toString("base64url")}`;
+    provider = await startAccessApprovalsProvider(providerBearer);
     const rustBinary = path.join(
       repositoryRoot,
       "target",
@@ -369,6 +765,10 @@ export async function runAuthenticatedRustE2E(options = {}) {
           CEREBRO_IDENTITY_AUDIENCE: audience,
           CEREBRO_IDENTITY_ISSUER: jwks.issuer,
           CEREBRO_IDENTITY_JWKS_URL: `${jwks.issuer}/jwks`,
+          CEREBRO_POSTGRES_DSN: postgresDSN,
+          CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL: provider.baseURL,
+          CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN: providerBearer,
+          CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT: "5s",
           CEREBRO_RUST_BIND: `127.0.0.1:${rustPort}`,
         }),
       },
@@ -524,6 +924,14 @@ export async function runAuthenticatedRustE2E(options = {}) {
       identity.user?.confidence === "signature-verified",
       `Browser identity confidence was ${identity.user?.confidence}`,
     );
+    const actionResult = await executeSignedActionLifecycle({
+      webBase: `http://127.0.0.1:${webPort}`,
+      privateKey,
+      issuer: jwks.issuer,
+      readBearer: bearer,
+      fixture,
+      provider,
+    });
 
     const metricsBefore = await request(`http://127.0.0.1:${rustPort}/metrics`);
     const beforeCount = lifecycleSuccesses(metricsBefore.body);
@@ -566,6 +974,37 @@ export async function runAuthenticatedRustE2E(options = {}) {
       fullPage: true,
       path: path.join(workDir, "authenticated-rust-lifecycle.png"),
     });
+    await context.setExtraHTTPHeaders({
+      Authorization: `Bearer ${bearer}`,
+    });
+    const actionResponse = page.waitForResponse(
+      (candidate) =>
+        new URL(candidate.url()).pathname ===
+        `/api/cerebro/v1/actions/${encodeURIComponent(fixture.operation_id)}`,
+      { timeout: Math.min(30_000, remaining(deadlineAt, "Action browser request")) },
+    );
+    const actionNavigation = await page.goto(
+      `http://127.0.0.1:${webPort}/actions/${encodeURIComponent(fixture.operation_id)}`,
+      {
+        timeout: Math.min(30_000, remaining(deadlineAt, "Action navigation")),
+        waitUntil: "domcontentloaded",
+      },
+    );
+    expect(actionNavigation?.status() === 200, `Action page returned ${actionNavigation?.status()}`);
+    expect((await actionResponse).status() === 200, "Action browser query did not reach Rust");
+    await page.getByText("Provider Succeeded", { exact: true }).waitFor({
+      state: "visible",
+      timeout: Math.min(30_000, remaining(deadlineAt, "provider status rendering")),
+    });
+    await page.getByText("Not verified", { exact: true }).first().waitFor({
+      state: "visible",
+      timeout: Math.min(30_000, remaining(deadlineAt, "verification state rendering")),
+    });
+    expect(pageErrors.length === 0, `Action page raised ${pageErrors.at(-1)?.message}`);
+    await page.screenshot({
+      fullPage: true,
+      path: path.join(workDir, "authenticated-rust-action.png"),
+    });
 
     const metricsAfter = await request(`http://127.0.0.1:${rustPort}/metrics`);
     const afterCount = lifecycleSuccesses(metricsAfter.body);
@@ -577,11 +1016,34 @@ export async function runAuthenticatedRustE2E(options = {}) {
     return {
       identityConfidence: identity.user.confidence,
       lifecycleRequests: afterCount,
+      actionVersion: actionResult.operation.version,
     };
   } finally {
     await browser?.close().catch(() => undefined);
     await Promise.allSettled([...processes].reverse().map(stopChild));
+    await provider?.stop().catch(() => undefined);
     await jwks?.stop().catch(() => undefined);
+    if (postgresStarted) {
+      if (failed) {
+        const postgresLog = await run(
+          "docker",
+          ["logs", postgresContainer],
+          { cwd: repositoryRoot, env: portableEnvironment() },
+          Date.now() + 30_000,
+        ).catch((error) => `Unable to capture PostgreSQL logs: ${error.message}\n`);
+        await writeFile(
+          path.join(logDir, "postgres.log"),
+          postgresLog,
+          "utf8",
+        ).catch(() => undefined);
+      }
+      await run(
+        "docker",
+        ["rm", "-f", postgresContainer],
+        { cwd: repositoryRoot, env: portableEnvironment() },
+        Date.now() + 30_000,
+      ).catch(() => undefined);
+    }
     if (failed) {
       console.error(`[e2e:rust-auth:local] retained artifacts: ${workDir}`);
     } else {
@@ -594,7 +1056,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   runAuthenticatedRustE2E(parseArgs(process.argv.slice(2)))
     .then((result) => {
       console.log(
-        `[e2e:rust-auth:local] passed signed browser identity -> Next relay -> Rust auth and lifecycle (${result.identityConfidence}, ${result.lifecycleRequests} Rust reads)`,
+        `[e2e:rust-auth:local] passed signed browser identity and Action lifecycle -> Next relay -> Rust/Postgres/provider authority (${result.identityConfidence}, Action version ${result.actionVersion}, ${result.lifecycleRequests} Rust reads)`,
       );
     })
     .catch((error) => {
