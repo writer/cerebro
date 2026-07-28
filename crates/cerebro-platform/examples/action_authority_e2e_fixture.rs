@@ -1,9 +1,11 @@
 use std::{
+    env,
     error::Error,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use cerebro_action_catalog::lookup;
+use cerebro_action_store::PostgresActionLedger;
 use cerebro_platform_sdk::{
     ActionEffect, ActionOperationId, ActionProposal, ActorId, ContentDigest,
     FindingValidationDecision, FindingValidationReceipt, GraphRevision, MAX_ACTION_CLAIM_LEASE_MS,
@@ -29,7 +31,19 @@ struct Fixture {
     max_claim_lease_ms: u64,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    match env::args().nth(1).as_deref() {
+        Some("--probe-postgres") => {
+            let connection_string = env::var("CEREBRO_POSTGRES_DSN")?;
+            let ledger = PostgresActionLedger::connect_tls(&connection_string).await?;
+            ledger.health().await?;
+            return Ok(());
+        }
+        Some(argument) => return Err(format!("unknown argument: {argument}").into()),
+        None => {}
+    }
+
     let now = u64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())?;
     let expires_at = now
         .checked_add(30 * 60 * 1_000)

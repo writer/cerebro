@@ -8,7 +8,7 @@ import {
   randomUUID,
 } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
@@ -377,7 +377,38 @@ async function startPostgres(containerName, deadlineAt) {
     undefined,
     deadlineAt,
   );
-  return `postgres://postgres@127.0.0.1:${port}/cerebro?sslmode=disable`;
+  const postgresDSN =
+    `postgres://postgres@127.0.0.1:${port}/cerebro?sslmode=disable`;
+  await waitFor(
+    "Postgres host connection",
+    async () => {
+      await run(
+        "cargo",
+        [
+          "run",
+          "--quiet",
+          "--locked",
+          "-p",
+          "cerebro-platform",
+          "--example",
+          "action_authority_e2e_fixture",
+          "--",
+          "--probe-postgres",
+        ],
+        {
+          cwd: repositoryRoot,
+          env: portableEnvironment(process.env, {
+            CEREBRO_POSTGRES_DSN: postgresDSN,
+          }),
+        },
+        deadlineAt,
+      );
+      return true;
+    },
+    undefined,
+    deadlineAt,
+  );
+  return postgresDSN;
 }
 
 async function startAccessApprovalsProvider(bearerToken) {
@@ -977,6 +1008,19 @@ export async function runAuthenticatedRustE2E(options = {}) {
     await provider?.stop().catch(() => undefined);
     await jwks?.stop().catch(() => undefined);
     if (postgresStarted) {
+      if (failed) {
+        const postgresLog = await run(
+          "docker",
+          ["logs", postgresContainer],
+          { cwd: repositoryRoot, env: portableEnvironment() },
+          Date.now() + 30_000,
+        ).catch((error) => `Unable to capture PostgreSQL logs: ${error.message}\n`);
+        await writeFile(
+          path.join(logDir, "postgres.log"),
+          postgresLog,
+          "utf8",
+        ).catch(() => undefined);
+      }
       await run(
         "docker",
         ["rm", "-f", postgresContainer],
