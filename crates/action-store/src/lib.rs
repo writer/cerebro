@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS action_operations (
     'approved',
     'claimed',
     'executing',
+    'dispatched',
     'outcome_unknown',
     'completed',
     'reconciled',
@@ -105,6 +106,31 @@ CREATE TABLE IF NOT EXISTS action_operations (
 );
 ALTER TABLE action_operations
   ADD COLUMN IF NOT EXISTS finding_validation_receipt_digest TEXT;
+ALTER TABLE action_operations
+  DROP CONSTRAINT IF EXISTS action_operations_state_check;
+DO $$
+BEGIN
+  ALTER TABLE action_operations
+    ADD CONSTRAINT action_operations_state_values
+    CHECK (state IN (
+      'proposed',
+      'simulated',
+      'waiting_for_approval',
+      'approved',
+      'claimed',
+      'executing',
+      'dispatched',
+      'outcome_unknown',
+      'completed',
+      'reconciled',
+      'verified',
+      'failed',
+      'rolled_back'
+    )) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+ALTER TABLE action_operations
+  VALIDATE CONSTRAINT action_operations_state_values;
 DO $$
 BEGIN
   ALTER TABLE action_operations
@@ -720,6 +746,9 @@ impl PostgresActionLedger {
             claimed_at_unix_ms: None,
             claim_expires_at_unix_ms: None,
             executor_actor_id: None,
+            provider_receipt_digest: None,
+            provider_status: None,
+            provider_observed_at_unix_ms: None,
             executed_at_unix_ms: None,
             external_receipt_ref: None,
             observed_effect_digest: None,
@@ -1065,7 +1094,7 @@ impl PostgresActionLedger {
         set_tenant(&transaction, tenant_id.as_str()).await?;
         let rows = transaction
             .query(
-                "SELECT dispatch.dispatch_json, event.actor_id AS event_actor_id, event.event_kind, event.command_json, event.operation_json FROM action_dispatches AS dispatch INNER JOIN action_operations AS operation ON operation.tenant_id = dispatch.tenant_id AND operation.operation_id = dispatch.operation_id INNER JOIN action_operation_events AS event ON event.tenant_id = dispatch.tenant_id AND event.operation_id = dispatch.operation_id AND event.version = dispatch.operation_version WHERE dispatch.tenant_id = $1 AND operation.state IN ('executing', 'outcome_unknown') ORDER BY dispatch.requested_at_unix_ms, dispatch.operation_id LIMIT $2",
+                "SELECT dispatch.dispatch_json, event.actor_id AS event_actor_id, event.event_kind, event.command_json, event.operation_json FROM action_dispatches AS dispatch INNER JOIN action_operations AS operation ON operation.tenant_id = dispatch.tenant_id AND operation.operation_id = dispatch.operation_id INNER JOIN action_operation_events AS event ON event.tenant_id = dispatch.tenant_id AND event.operation_id = dispatch.operation_id AND event.version = dispatch.operation_version WHERE dispatch.tenant_id = $1 AND operation.state IN ('executing', 'dispatched', 'outcome_unknown') ORDER BY dispatch.requested_at_unix_ms, dispatch.operation_id LIMIT $2",
                 &[&tenant_id.as_str(), &limit],
             )
             .await?;
@@ -1336,6 +1365,9 @@ fn command_actor_matches(
         ActionCommand::Complete {
             executor_actor_id, ..
         } => owns_claim() && executor_actor_id == actor_id,
+        ActionCommand::RecordProviderReceipt {
+            executor_actor_id, ..
+        } => owns_claim() && executor_actor_id == actor_id,
         // Reconciliation is the recovery path after an original claimant has
         // lost execution authority, so its signed executor may differ.
         ActionCommand::Reconcile {
@@ -1344,6 +1376,7 @@ fn command_actor_matches(
         ActionCommand::Verify { receipt } => receipt.receipt.verifier_actor_id == *actor_id,
         ActionCommand::RenewClaim { .. }
         | ActionCommand::StartExecution { .. }
+        | ActionCommand::ObserveProviderReceipt { .. }
         | ActionCommand::MarkOutcomeUnknown => owns_claim(),
         // Any signed executor may recover an unstarted claim after the engine
         // verifies its recorded lease has expired. The releasing actor remains
@@ -1374,6 +1407,8 @@ fn command_valid_at_authority_time(
         ActionCommand::RecordSimulation
         | ActionCommand::RequestApproval
         | ActionCommand::RecordApproval { .. }
+        | ActionCommand::RecordProviderReceipt { .. }
+        | ActionCommand::ObserveProviderReceipt { .. }
         | ActionCommand::MarkOutcomeUnknown
         | ActionCommand::Complete { .. }
         | ActionCommand::Reconcile { .. }
@@ -1406,6 +1441,14 @@ fn command_observed_at(command: &ActionCommand) -> Option<u64> {
             observed_at_unix_ms,
         } => Some(*observed_at_unix_ms),
         ActionCommand::StartExecution { started_at_unix_ms } => Some(*started_at_unix_ms),
+        ActionCommand::RecordProviderReceipt {
+            observed_at_unix_ms,
+            ..
+        }
+        | ActionCommand::ObserveProviderReceipt {
+            observed_at_unix_ms,
+            ..
+        } => Some(*observed_at_unix_ms),
         ActionCommand::Complete {
             executed_at_unix_ms,
             ..
@@ -1544,6 +1587,9 @@ mod tests {
             "finding_validation_receipts_policy_idx",
             "action_operations_queue_idx",
             "action_operations_dispatch_queue_idx",
+            "action_operations_state_values",
+            "'dispatched'",
+            "VALIDATE CONSTRAINT action_operations_state_values",
             "action_dispatches_requested_idx",
             "action_dispatches_finding_idx",
         ] {
@@ -1750,8 +1796,51 @@ mod tests {
         assert!(command_actor_matches(
             &actor,
             Some(&claim),
+            &ActionCommand::RecordProviderReceipt {
+                external_receipt_ref: cerebro_platform_sdk::OpaqueId::parse("receipt:queued")
+                    .unwrap(),
+                provider_receipt_digest: ContentDigest::of_bytes("queued"),
+                provider_status: "queued".to_owned(),
+                executor_actor_id: actor.clone(),
+                observed_at_unix_ms: 11,
+            }
+        ));
+        assert!(!command_actor_matches(
+            &other,
+            Some(&claim),
+            &ActionCommand::RecordProviderReceipt {
+                external_receipt_ref: cerebro_platform_sdk::OpaqueId::parse("receipt:queued")
+                    .unwrap(),
+                provider_receipt_digest: ContentDigest::of_bytes("queued"),
+                provider_status: "queued".to_owned(),
+                executor_actor_id: other.clone(),
+                observed_at_unix_ms: 11,
+            }
+        ));
+        assert!(command_actor_matches(
+            &actor,
+            Some(&claim),
+            &ActionCommand::ObserveProviderReceipt {
+                provider_receipt_digest: ContentDigest::of_bytes("running"),
+                provider_status: "running".to_owned(),
+                observed_at_unix_ms: 12,
+            }
+        ));
+        assert!(!command_actor_matches(
+            &other,
+            Some(&claim),
+            &ActionCommand::ObserveProviderReceipt {
+                provider_receipt_digest: ContentDigest::of_bytes("running"),
+                provider_status: "running".to_owned(),
+                observed_at_unix_ms: 12,
+            }
+        ));
+        assert!(command_actor_matches(
+            &actor,
+            Some(&claim),
             &ActionCommand::Complete {
                 external_receipt_ref: cerebro_platform_sdk::OpaqueId::parse("receipt:one").unwrap(),
+                provider_receipt_digest: ContentDigest::of_bytes("provider succeeded"),
                 observed_effect_digest: ContentDigest::of_bytes("effect"),
                 executor_actor_id: actor.clone(),
                 executed_at_unix_ms: 11,
@@ -1762,6 +1851,7 @@ mod tests {
             Some(&claim),
             &ActionCommand::Complete {
                 external_receipt_ref: cerebro_platform_sdk::OpaqueId::parse("receipt:one").unwrap(),
+                provider_receipt_digest: ContentDigest::of_bytes("provider succeeded"),
                 observed_effect_digest: ContentDigest::of_bytes("effect"),
                 executor_actor_id: actor,
                 executed_at_unix_ms: 11,
@@ -1772,6 +1862,7 @@ mod tests {
             Some(&claim),
             &ActionCommand::Complete {
                 external_receipt_ref: cerebro_platform_sdk::OpaqueId::parse("receipt:two").unwrap(),
+                provider_receipt_digest: ContentDigest::of_bytes("provider succeeded"),
                 observed_effect_digest: ContentDigest::of_bytes("effect"),
                 executor_actor_id: other.clone(),
                 executed_at_unix_ms: 11,

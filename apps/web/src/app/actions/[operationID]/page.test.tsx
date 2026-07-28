@@ -119,4 +119,34 @@ describe("Action detail page", () => {
     expect(mocks.historyReload).toHaveBeenCalledTimes(1);
     expect(mocks.actionReload).not.toHaveBeenCalled();
   });
+
+  it("shows provider acceptance without claiming the effect completed", async () => {
+    const dispatched: ActionOperation = {
+      ...action,
+      state: "dispatched",
+      version: 7,
+      claimed_by: "worker-1",
+      executor_actor_id: "worker-1",
+      external_receipt_ref: "provider-receipt-1",
+      provider_receipt_digest: "provider-receipt-digest",
+      provider_status: "queued",
+      provider_observed_at_unix_ms: 1_700_000_001_000,
+    };
+    mocks.useGRCQuery.mockImplementation((path: string | null) => {
+      if (path?.endsWith("/history")) {
+        return { data: [], error: null, loading: false, reload: mocks.historyReload };
+      }
+      return { data: dispatched, error: null, loading: false, reload: mocks.actionReload };
+    });
+
+    await act(async () => {
+      root.render(<ActionDetailPage />);
+    });
+
+    expect(container.textContent).toContain("Provider Queued");
+    expect(container.textContent).toContain("provider-receipt-1");
+    expect(container.textContent).toContain("Provider receipt digest");
+    expect(container.textContent).toContain("Effect recordedNot recorded");
+    expect(container.textContent).not.toContain("Receipt recorded");
+  });
 });

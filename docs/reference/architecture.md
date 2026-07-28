@@ -270,6 +270,17 @@ executors can read only their tenant's open dispatches through
 `/v1/action-dispatches`; legacy tenant authentication cannot reach this
 authority.
 
+Provider acceptance is not effect completion. Rust records an immutable provider
+receipt digest, external receipt reference, provider status, executor identity,
+and observation time before moving an operation from `executing` to
+`dispatched`. Queued and running provider work stays `dispatched`; newer status
+observations must advance time. Only a terminal effect observation bound to the
+same external receipt identity and a terminal provider response can move the
+operation to `completed`, and closure still requires a later independent
+verification receipt against a newer source revision. A request with no
+trustworthy provider receipt moves through `outcome_unknown` and reconciliation
+instead of being replayed as new work.
+
 Provider network and first-party mutation adapters have not moved to Rust yet.
 Until they do, `internal/graphactions` is a legacy adapter behind the Rust
 dispatch record, not the Action lifecycle authority. Completing that cutover

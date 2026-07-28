@@ -188,11 +188,67 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     assert_eq!(dispatch.requested_by, worker.to_string());
     assert_eq!(
         ledger.list_open_dispatches(&tenant, 10).await?.dispatches,
-        vec![dispatch]
+        vec![dispatch.clone()]
     );
     assert!(matches!(
         ledger.get_dispatch(&other_tenant, &operation_id).await,
         Err(ActionStoreError::NotFound(_))
+    ));
+    let dispatched = ledger
+        .transition(
+            &tenant,
+            &operation_id,
+            &worker,
+            executing.version,
+            ActionCommand::RecordProviderReceipt {
+                external_receipt_ref: OpaqueId::parse("receipt:live:one")?,
+                provider_receipt_digest: ContentDigest::of_bytes("provider queued"),
+                provider_status: "queued".to_owned(),
+                executor_actor_id: worker.clone(),
+                observed_at_unix_ms: 43,
+            },
+            43,
+        )
+        .await?;
+    assert_eq!(dispatched.state, ActionState::Dispatched);
+    assert_eq!(dispatched.provider_status.as_deref(), Some("queued"));
+    assert_eq!(
+        ledger.list_open_dispatches(&tenant, 10).await?.dispatches,
+        vec![dispatch.clone()],
+        "provider acceptance must keep the immutable dispatch open"
+    );
+    let running = ledger
+        .transition(
+            &tenant,
+            &operation_id,
+            &worker,
+            dispatched.version,
+            ActionCommand::ObserveProviderReceipt {
+                provider_receipt_digest: ContentDigest::of_bytes("provider running"),
+                provider_status: "running".to_owned(),
+                observed_at_unix_ms: 44,
+            },
+            44,
+        )
+        .await?;
+    assert_eq!(running.state, ActionState::Dispatched);
+    assert_eq!(running.provider_status.as_deref(), Some("running"));
+    assert!(matches!(
+        ledger
+            .transition(
+                &tenant,
+                &operation_id,
+                &worker,
+                running.version,
+                ActionCommand::ObserveProviderReceipt {
+                    provider_receipt_digest: ContentDigest::of_bytes("provider replay"),
+                    provider_status: "running".to_owned(),
+                    observed_at_unix_ms: 44,
+                },
+                45,
+            )
+            .await,
+        Err(ActionStoreError::Conflict(_))
     ));
 
     let second = proposal(
@@ -220,7 +276,7 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     let second_page = ledger
         .list(&tenant, 1, first_page.next_page_token.as_deref())
         .await?;
-    assert_eq!(second_page.actions, vec![executing]);
+    assert_eq!(second_page.actions, vec![running]);
     assert!(second_page.next_page_token.is_none());
     assert_eq!(
         ledger.list(&other_tenant, 10, None).await?.actions,

@@ -927,9 +927,22 @@ enum HttpActionCommand {
     StartExecution {
         started_at_unix_ms: u64,
     },
+    RecordProviderReceipt {
+        external_receipt_ref: String,
+        provider_receipt_digest: String,
+        provider_status: String,
+        executor_actor_id: String,
+        observed_at_unix_ms: u64,
+    },
+    ObserveProviderReceipt {
+        provider_receipt_digest: String,
+        provider_status: String,
+        observed_at_unix_ms: u64,
+    },
     MarkOutcomeUnknown {},
     Complete {
         external_receipt_ref: String,
+        provider_receipt_digest: String,
         observed_effect_digest: String,
         executor_actor_id: String,
         executed_at_unix_ms: u64,
@@ -989,6 +1002,8 @@ impl HttpActionCommand {
             | Self::RenewClaim { .. }
             | Self::ReleaseExpiredClaim { .. }
             | Self::StartExecution { .. }
+            | Self::RecordProviderReceipt { .. }
+            | Self::ObserveProviderReceipt { .. }
             | Self::MarkOutcomeUnknown {}
             | Self::Complete { .. }
             | Self::Reconcile { .. }
@@ -1029,14 +1044,42 @@ impl HttpActionCommand {
             Self::StartExecution { started_at_unix_ms } => {
                 ActionCommand::StartExecution { started_at_unix_ms }
             }
+            Self::RecordProviderReceipt {
+                external_receipt_ref,
+                provider_receipt_digest,
+                provider_status,
+                executor_actor_id,
+                observed_at_unix_ms,
+            } => ActionCommand::RecordProviderReceipt {
+                external_receipt_ref: OpaqueId::parse(external_receipt_ref)
+                    .map_err(|error| error.to_string())?,
+                provider_receipt_digest: ContentDigest::parse(provider_receipt_digest)
+                    .map_err(|error| error.to_string())?,
+                provider_status,
+                executor_actor_id: parse_action_actor(executor_actor_id)?,
+                observed_at_unix_ms,
+            },
+            Self::ObserveProviderReceipt {
+                provider_receipt_digest,
+                provider_status,
+                observed_at_unix_ms,
+            } => ActionCommand::ObserveProviderReceipt {
+                provider_receipt_digest: ContentDigest::parse(provider_receipt_digest)
+                    .map_err(|error| error.to_string())?,
+                provider_status,
+                observed_at_unix_ms,
+            },
             Self::MarkOutcomeUnknown {} => ActionCommand::MarkOutcomeUnknown,
             Self::Complete {
                 external_receipt_ref,
+                provider_receipt_digest,
                 observed_effect_digest,
                 executor_actor_id,
                 executed_at_unix_ms,
             } => ActionCommand::Complete {
                 external_receipt_ref: OpaqueId::parse(external_receipt_ref)
+                    .map_err(|error| error.to_string())?,
+                provider_receipt_digest: ContentDigest::parse(provider_receipt_digest)
                     .map_err(|error| error.to_string())?,
                 observed_effect_digest: ContentDigest::parse(observed_effect_digest)
                     .map_err(|error| error.to_string())?,
@@ -3760,6 +3803,7 @@ mod tests {
             "command": {
                 "command": "complete",
                 "external_receipt_ref": "receipt:one",
+                "provider_receipt_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "observed_effect_digest": "not-a-digest",
                 "executor_actor_id": "executor:one",
                 "executed_at_unix_ms": 10
@@ -3767,6 +3811,21 @@ mod tests {
         });
         let request =
             serde_json::from_value::<ActionTransitionRequest>(invalid).expect("request shape");
+        assert!(request.command.into_domain().is_err());
+
+        let invalid_provider_receipt = serde_json::json!({
+            "expected_version": 6,
+            "command": {
+                "command": "record_provider_receipt",
+                "external_receipt_ref": "receipt:one",
+                "provider_receipt_digest": "not-a-digest",
+                "provider_status": "queued",
+                "executor_actor_id": "executor:one",
+                "observed_at_unix_ms": 10
+            }
+        });
+        let request = serde_json::from_value::<ActionTransitionRequest>(invalid_provider_receipt)
+            .expect("provider receipt request shape");
         assert!(request.command.into_domain().is_err());
 
         let claim_without_expiry = serde_json::json!({
@@ -3858,6 +3917,26 @@ mod tests {
         assert_eq!(
             HttpActionCommand::StartExecution {
                 started_at_unix_ms: 10,
+            }
+            .required_scope(),
+            ACTION_EXECUTE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::RecordProviderReceipt {
+                external_receipt_ref: "receipt:one".to_owned(),
+                provider_receipt_digest: ContentDigest::of_bytes("queued").to_string(),
+                provider_status: "queued".to_owned(),
+                executor_actor_id: "worker:one".to_owned(),
+                observed_at_unix_ms: 10,
+            }
+            .required_scope(),
+            ACTION_EXECUTE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::ObserveProviderReceipt {
+                provider_receipt_digest: ContentDigest::of_bytes("running").to_string(),
+                provider_status: "running".to_owned(),
+                observed_at_unix_ms: 11,
             }
             .required_scope(),
             ACTION_EXECUTE_SCOPE

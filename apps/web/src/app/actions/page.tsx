@@ -31,7 +31,7 @@ export default function ActionsPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Waiting for approval" value={summary.waitingForApproval} detail="Current page" intent={summary.waitingForApproval > 0 ? actionStateIntent("waiting_for_approval") : "neutral"} state={query.state} />
-        <MetricCard label="In execution" value={summary.inExecution} detail="Claimed, executing, or outcome unknown" intent={summary.inExecution > 0 ? "warning" : "neutral"} state={query.state} />
+        <MetricCard label="In execution" value={summary.inExecution} detail="Claimed, dispatched, executing, or outcome unknown" intent={summary.inExecution > 0 ? "warning" : "neutral"} state={query.state} />
         <MetricCard label="Verified" value={summary.verified} detail="Current page" intent={summary.verified > 0 ? actionStateIntent("verified") : "neutral"} state={query.state} />
         <MetricCard label="Failed or rolled back" value={summary.failedOrRolledBack} detail="Current page" intent={summary.failedOrRolledBack > 0 ? actionStateIntent("failed") : "neutral"} state={query.state} />
       </div>
