@@ -1,7 +1,9 @@
 use std::{env, error::Error};
 
 use cerebro_action_catalog::lookup;
-use cerebro_action_store::{ActionStoreError, PostgresActionLedger};
+use cerebro_action_store::{
+    ActionReconciliationDisposition, ActionStoreError, PostgresActionLedger,
+};
 use cerebro_platform_engine::ActionCommand;
 use cerebro_platform_sdk::{
     ActionEffect, ActionOperationId, ActionProposal, ActionState, ActorId, ContentDigest,
@@ -218,6 +220,66 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
         vec![dispatch.clone()],
         "provider acceptance must keep the immutable dispatch open"
     );
+    let reconciliation = ledger
+        .claim_due_reconciliation(&tenant, &reconciler, 44, 100)
+        .await?
+        .expect("scheduled reconciliation");
+    assert_eq!(reconciliation.operation, dispatched);
+    assert_eq!(reconciliation.dispatch, dispatch);
+    assert_eq!(reconciliation.attempt_count, 1);
+    assert!(
+        ledger
+            .claim_due_reconciliation(&tenant, &worker, 44, 100)
+            .await?
+            .is_none(),
+        "an active reconciliation lease cannot be claimed twice"
+    );
+    assert!(
+        ledger
+            .claim_due_reconciliation(&other_tenant, &reconciler, 44, 100)
+            .await?
+            .is_none(),
+        "tenant RLS must hide reconciliation work"
+    );
+    assert!(matches!(
+        ledger
+            .finish_reconciliation(
+                &tenant,
+                &operation_id,
+                &worker,
+                dispatched.version,
+                44,
+                ActionReconciliationDisposition::PollAgain {
+                    next_attempt_at_unix_ms: 50,
+                },
+            )
+            .await,
+        Err(ActionStoreError::Conflict(_))
+    ));
+    ledger
+        .finish_reconciliation(
+            &tenant,
+            &operation_id,
+            &reconciler,
+            dispatched.version,
+            44,
+            ActionReconciliationDisposition::PollAgain {
+                next_attempt_at_unix_ms: 50,
+            },
+        )
+        .await?;
+    assert!(
+        ledger
+            .claim_due_reconciliation(&tenant, &reconciler, 49, 100)
+            .await?
+            .is_none(),
+        "the ledger, not the wake-up caller, owns the next due time"
+    );
+    let reconciliation = ledger
+        .claim_due_reconciliation(&tenant, &reconciler, 50, 100)
+        .await?
+        .expect("due reconciliation");
+    assert_eq!(reconciliation.attempt_count, 2);
     let running = ledger
         .transition(
             &tenant,
@@ -228,9 +290,9 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
                 provider_receipt_digest: ContentDigest::of_bytes("provider running"),
                 provider_status: "running".to_owned(),
                 reconciler_actor_id: reconciler.clone(),
-                observed_at_unix_ms: 44,
+                observed_at_unix_ms: 51,
             },
-            44,
+            51,
         )
         .await?;
     assert_eq!(running.state, ActionState::Dispatched);
@@ -246,13 +308,64 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
                     provider_receipt_digest: ContentDigest::of_bytes("provider replay"),
                     provider_status: "running".to_owned(),
                     reconciler_actor_id: reconciler.clone(),
-                    observed_at_unix_ms: 44,
+                    observed_at_unix_ms: 51,
                 },
-                45,
+                52,
             )
             .await,
         Err(ActionStoreError::Conflict(_))
     ));
+    ledger
+        .finish_reconciliation(
+            &tenant,
+            &operation_id,
+            &reconciler,
+            running.version,
+            52,
+            ActionReconciliationDisposition::PollAgain {
+                next_attempt_at_unix_ms: 60,
+            },
+        )
+        .await?;
+    let reconciliation = ledger
+        .claim_due_reconciliation(&tenant, &reconciler, 60, 100)
+        .await?
+        .expect("terminal reconciliation attempt");
+    assert_eq!(reconciliation.attempt_count, 3);
+    let succeeded = ledger
+        .transition(
+            &tenant,
+            &operation_id,
+            &reconciler,
+            running.version,
+            ActionCommand::ObserveProviderReceipt {
+                provider_receipt_digest: ContentDigest::of_bytes("provider succeeded"),
+                provider_status: "succeeded".to_owned(),
+                reconciler_actor_id: reconciler.clone(),
+                observed_at_unix_ms: 61,
+            },
+            61,
+        )
+        .await?;
+    ledger
+        .finish_reconciliation(
+            &tenant,
+            &operation_id,
+            &reconciler,
+            succeeded.version,
+            61,
+            ActionReconciliationDisposition::Terminal {
+                provider_status: "succeeded".to_owned(),
+            },
+        )
+        .await?;
+    assert!(
+        ledger
+            .claim_due_reconciliation(&tenant, &reconciler, 100, 200)
+            .await?
+            .is_none(),
+        "terminal provider evidence must retire the polling job"
+    );
 
     let second = proposal(
         "operation:live:second",
@@ -272,7 +385,7 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     ledger.propose(other_tenant_proposal.clone(), 42).await?;
 
     let first_page = ledger.list(&tenant, 1, None).await?;
-    assert_eq!(first_page.actions, vec![running]);
+    assert_eq!(first_page.actions, vec![succeeded]);
     let second_page = ledger
         .list(&tenant, 1, first_page.next_page_token.as_deref())
         .await?;

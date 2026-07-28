@@ -225,6 +225,44 @@ CREATE TABLE IF NOT EXISTS action_dispatches (
   CHECK ((dispatch_json->>'requested_by') IS NOT DISTINCT FROM requested_by),
   CHECK ((dispatch_json->>'requested_at_unix_ms')::BIGINT IS NOT DISTINCT FROM requested_at_unix_ms)
 );
+CREATE TABLE IF NOT EXISTS action_reconciliation_jobs (
+  tenant_id TEXT NOT NULL CHECK (char_length(tenant_id) BETWEEN 1 AND 256),
+  operation_id TEXT NOT NULL CHECK (char_length(operation_id) BETWEEN 1 AND 256),
+  dispatch_digest TEXT NOT NULL CHECK (dispatch_digest ~ '^[0-9a-f]{64}$'),
+  state TEXT NOT NULL CHECK (state IN ('scheduled', 'leased', 'terminal')),
+  next_attempt_at_unix_ms BIGINT,
+  attempt_count BIGINT NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  lease_owner TEXT CHECK (lease_owner IS NULL OR char_length(lease_owner) BETWEEN 1 AND 256),
+  lease_expires_at_unix_ms BIGINT,
+  terminal_provider_status TEXT CHECK (
+    terminal_provider_status IS NULL
+    OR char_length(terminal_provider_status) BETWEEN 1 AND 64
+  ),
+  updated_at_unix_ms BIGINT NOT NULL CHECK (updated_at_unix_ms > 0),
+  PRIMARY KEY (tenant_id, operation_id),
+  FOREIGN KEY (tenant_id, operation_id)
+    REFERENCES action_dispatches (tenant_id, operation_id)
+    DEFERRABLE INITIALLY DEFERRED,
+  CHECK (
+    (state = 'scheduled'
+      AND next_attempt_at_unix_ms IS NOT NULL
+      AND lease_owner IS NULL
+      AND lease_expires_at_unix_ms IS NULL
+      AND terminal_provider_status IS NULL)
+    OR
+    (state = 'leased'
+      AND next_attempt_at_unix_ms IS NOT NULL
+      AND lease_owner IS NOT NULL
+      AND lease_expires_at_unix_ms IS NOT NULL
+      AND terminal_provider_status IS NULL)
+    OR
+    (state = 'terminal'
+      AND next_attempt_at_unix_ms IS NULL
+      AND lease_owner IS NULL
+      AND lease_expires_at_unix_ms IS NULL
+      AND terminal_provider_status IS NOT NULL)
+  )
+);
 CREATE INDEX IF NOT EXISTS action_operation_events_committed_idx
   ON action_operation_events (tenant_id, committed_at_unix_ms DESC);
 CREATE INDEX IF NOT EXISTS action_operations_queue_idx
@@ -235,6 +273,13 @@ CREATE INDEX IF NOT EXISTS action_dispatches_requested_idx
   ON action_dispatches (tenant_id, requested_at_unix_ms, operation_id);
 CREATE INDEX IF NOT EXISTS action_dispatches_finding_idx
   ON action_dispatches (tenant_id, finding_id, requested_at_unix_ms, operation_id);
+CREATE INDEX IF NOT EXISTS action_reconciliation_jobs_due_idx
+  ON action_reconciliation_jobs (
+    tenant_id,
+    state,
+    next_attempt_at_unix_ms,
+    operation_id
+  );
 CREATE INDEX IF NOT EXISTS finding_validation_receipts_finding_idx
   ON finding_validation_receipts (tenant_id, finding_id, validated_at_unix_ms DESC);
 CREATE INDEX IF NOT EXISTS finding_validation_receipts_policy_idx
@@ -286,6 +331,8 @@ ALTER TABLE action_operation_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE action_operation_events FORCE ROW LEVEL SECURITY;
 ALTER TABLE action_dispatches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE action_dispatches FORCE ROW LEVEL SECURITY;
+ALTER TABLE action_reconciliation_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE action_reconciliation_jobs FORCE ROW LEVEL SECURITY;
 DO $$
 DECLARE table_name TEXT;
 BEGIN
@@ -293,7 +340,8 @@ BEGIN
     'finding_validation_receipts',
     'action_operations',
     'action_operation_events',
-    'action_dispatches'
+    'action_dispatches',
+    'action_reconciliation_jobs'
   ] LOOP
     BEGIN
       EXECUTE format(
@@ -597,6 +645,22 @@ impl ActionDispatch {
 pub struct ActionDispatchPage {
     pub dispatches: Vec<ActionDispatch>,
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActionReconciliationJob {
+    pub operation: ActionOperation,
+    pub dispatch: ActionDispatch,
+    pub attempt_count: u64,
+    pub lease_expires_at_unix_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ActionReconciliationDisposition {
+    PollAgain { next_attempt_at_unix_ms: u64 },
+    Terminal { provider_status: String },
+}
+
+const MAX_RECONCILIATION_LEASE_MS: u64 = 5 * 60 * 1_000;
 
 pub struct PostgresActionLedger {
     client: Mutex<Client>,
@@ -920,6 +984,8 @@ impl PostgresActionLedger {
     ) -> Result<ActionOperation, ActionStoreError> {
         let expected_version_i64 = storage_i64(expected_version, "Action expected version")?;
         let committed_at = storage_i64(committed_at_unix_ms, "Action commit time")?;
+        let schedules_provider_reconciliation =
+            matches!(&command, ActionCommand::RecordProviderReceipt { .. });
         let command_json = serde_json::to_value(&command)?;
         let command_digest = digest_json(&command_json)?;
         let event_kind = command_json
@@ -1053,6 +1119,19 @@ impl PostgresActionLedger {
                 ],
             )
             .await?;
+        if schedules_provider_reconciliation {
+            let scheduled = transaction
+                .execute(
+                    "INSERT INTO action_reconciliation_jobs (tenant_id, operation_id, dispatch_digest, state, next_attempt_at_unix_ms, attempt_count, lease_owner, lease_expires_at_unix_ms, terminal_provider_status, updated_at_unix_ms) SELECT tenant_id, operation_id, dispatch_digest, 'scheduled', $3, 0, NULL, NULL, NULL, $3 FROM action_dispatches WHERE tenant_id = $1 AND operation_id = $2 ON CONFLICT DO NOTHING",
+                    &[&tenant_id.as_str(), &operation_id.as_str(), &committed_at],
+                )
+                .await?;
+            if scheduled != 1 {
+                return Err(ActionStoreError::Conflict(
+                    "Action provider reconciliation was not scheduled".to_owned(),
+                ));
+            }
+        }
         transaction.commit().await?;
         Ok(next)
     }
@@ -1104,6 +1183,157 @@ impl PostgresActionLedger {
             .collect::<Result<Vec<_>, _>>()?;
         transaction.commit().await?;
         Ok(ActionDispatchPage { dispatches })
+    }
+
+    pub async fn claim_due_reconciliation(
+        &self,
+        tenant_id: &TenantId,
+        worker_id: &ActorId,
+        claimed_at_unix_ms: u64,
+        lease_expires_at_unix_ms: u64,
+    ) -> Result<Option<ActionReconciliationJob>, ActionStoreError> {
+        if lease_expires_at_unix_ms <= claimed_at_unix_ms
+            || lease_expires_at_unix_ms - claimed_at_unix_ms > MAX_RECONCILIATION_LEASE_MS
+        {
+            return Err(ActionStoreError::OutOfRange("Action reconciliation lease"));
+        }
+        let claimed_at = storage_i64(claimed_at_unix_ms, "Action reconciliation claim time")?;
+        let lease_expires = storage_i64(
+            lease_expires_at_unix_ms,
+            "Action reconciliation lease expiry",
+        )?;
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let candidate = transaction
+            .query_opt(
+                "SELECT job.operation_id, job.dispatch_digest FROM action_reconciliation_jobs AS job INNER JOIN action_operations AS operation ON operation.tenant_id = job.tenant_id AND operation.operation_id = job.operation_id WHERE job.tenant_id = $1 AND operation.state = 'dispatched' AND ((job.state = 'scheduled' AND job.next_attempt_at_unix_ms <= $2) OR (job.state = 'leased' AND job.lease_expires_at_unix_ms <= $2)) ORDER BY job.next_attempt_at_unix_ms, job.operation_id FOR UPDATE OF job SKIP LOCKED LIMIT 1",
+                &[&tenant_id.as_str(), &claimed_at],
+            )
+            .await?;
+        let Some(candidate) = candidate else {
+            transaction.commit().await?;
+            return Ok(None);
+        };
+        let operation_id = ActionOperationId::parse(candidate.get::<_, String>(0))
+            .map_err(|error| ActionStoreError::Corrupt(error.to_string()))?;
+        let scheduled_dispatch_digest = ContentDigest::parse(candidate.get::<_, String>(1))
+            .map_err(|error| ActionStoreError::Corrupt(error.to_string()))?;
+        let leased = transaction
+            .query_one(
+                "UPDATE action_reconciliation_jobs SET state = 'leased', attempt_count = attempt_count + 1, lease_owner = $3, lease_expires_at_unix_ms = $4, updated_at_unix_ms = $2 WHERE tenant_id = $1 AND operation_id = $5 RETURNING attempt_count",
+                &[
+                    &tenant_id.as_str(),
+                    &claimed_at,
+                    &worker_id.as_str(),
+                    &lease_expires,
+                    &operation_id.as_str(),
+                ],
+            )
+            .await?;
+        let attempt_count = u64::try_from(leased.get::<_, i64>(0)).map_err(|_| {
+            ActionStoreError::Corrupt("Action reconciliation attempt count is invalid".to_owned())
+        })?;
+        let operation = transaction
+            .query_one(
+                "SELECT operation_id, idempotency_key, proposal_digest, state, version, operation_json, created_at_unix_ms, updated_at_unix_ms FROM action_operations WHERE tenant_id = $1 AND operation_id = $2 FOR SHARE",
+                &[&tenant_id.as_str(), &operation_id.as_str()],
+            )
+            .await
+            .map_err(ActionStoreError::from)
+            .and_then(|row| validate_current_row(&row).map(|current| current.operation))?;
+        let dispatch = transaction
+            .query_one(
+                "SELECT dispatch.dispatch_json, event.actor_id AS event_actor_id, event.event_kind, event.command_json, event.operation_json FROM action_dispatches AS dispatch INNER JOIN action_operation_events AS event ON event.tenant_id = dispatch.tenant_id AND event.operation_id = dispatch.operation_id AND event.version = dispatch.operation_version WHERE dispatch.tenant_id = $1 AND dispatch.operation_id = $2",
+                &[&tenant_id.as_str(), &operation_id.as_str()],
+            )
+            .await
+            .map_err(ActionStoreError::from)
+            .and_then(|row| decode_dispatch_row(&row))?;
+        if dispatch.dispatch_digest != scheduled_dispatch_digest.as_str() {
+            return Err(ActionStoreError::Corrupt(
+                "Action reconciliation job does not match its dispatch".to_owned(),
+            ));
+        }
+        transaction.commit().await?;
+        Ok(Some(ActionReconciliationJob {
+            operation,
+            dispatch,
+            attempt_count,
+            lease_expires_at_unix_ms,
+        }))
+    }
+
+    pub async fn finish_reconciliation(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+        worker_id: &ActorId,
+        expected_operation_version: u64,
+        finished_at_unix_ms: u64,
+        disposition: ActionReconciliationDisposition,
+    ) -> Result<(), ActionStoreError> {
+        let expected_version =
+            storage_i64(expected_operation_version, "Action reconciliation version")?;
+        let finished_at =
+            storage_i64(finished_at_unix_ms, "Action reconciliation completion time")?;
+        let (state, next_attempt, terminal_status) = match disposition {
+            ActionReconciliationDisposition::PollAgain {
+                next_attempt_at_unix_ms,
+            } => {
+                if next_attempt_at_unix_ms <= finished_at_unix_ms {
+                    return Err(ActionStoreError::OutOfRange(
+                        "Action reconciliation next attempt",
+                    ));
+                }
+                (
+                    "scheduled",
+                    Some(storage_i64(
+                        next_attempt_at_unix_ms,
+                        "Action reconciliation next attempt",
+                    )?),
+                    None,
+                )
+            }
+            ActionReconciliationDisposition::Terminal { provider_status } => {
+                if provider_status.is_empty()
+                    || provider_status.len() > 64
+                    || !provider_status
+                        .bytes()
+                        .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
+                {
+                    return Err(ActionStoreError::Corrupt(
+                        "Action reconciliation terminal status is invalid".to_owned(),
+                    ));
+                }
+                ("terminal", None, Some(provider_status))
+            }
+        };
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let updated = transaction
+            .execute(
+                "UPDATE action_reconciliation_jobs AS job SET state = $1, next_attempt_at_unix_ms = $2, lease_owner = NULL, lease_expires_at_unix_ms = NULL, terminal_provider_status = $3, updated_at_unix_ms = $4 FROM action_operations AS operation WHERE job.tenant_id = $5 AND job.operation_id = $6 AND job.state = 'leased' AND job.lease_owner = $7 AND job.lease_expires_at_unix_ms >= $4 AND operation.tenant_id = job.tenant_id AND operation.operation_id = job.operation_id AND operation.version = $8 AND ($3::TEXT IS NULL OR operation.operation_json->>'provider_status' = $3)",
+                &[
+                    &state,
+                    &next_attempt,
+                    &terminal_status,
+                    &finished_at,
+                    &tenant_id.as_str(),
+                    &operation_id.as_str(),
+                    &worker_id.as_str(),
+                    &expected_version,
+                ],
+            )
+            .await?;
+        if updated != 1 {
+            return Err(ActionStoreError::Conflict(
+                "Action reconciliation lease or operation version changed".to_owned(),
+            ));
+        }
+        transaction.commit().await?;
+        Ok(())
     }
 
     pub async fn history(
@@ -1595,6 +1825,10 @@ mod tests {
             "VALIDATE CONSTRAINT action_operations_state_values",
             "action_dispatches_requested_idx",
             "action_dispatches_finding_idx",
+            "CREATE TABLE IF NOT EXISTS action_reconciliation_jobs",
+            "action_reconciliation_jobs_due_idx",
+            "FOREIGN KEY (tenant_id, operation_id)\n    REFERENCES action_dispatches",
+            "'scheduled', 'leased', 'terminal'",
         ] {
             assert!(POSTGRES_SCHEMA.contains(required), "missing {required}");
         }

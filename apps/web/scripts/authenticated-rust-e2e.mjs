@@ -655,22 +655,35 @@ async function executeSignedActionLifecycle({
   );
 
   provider.markSucceeded();
-  response = await postJSON(`${actionURL}/provider-observation`, workerBearer, {});
+  const reconciliationURL =
+    `${webBase}/api/cerebro/v1/action-reconciliation-runs`;
+  response = await postJSON(reconciliationURL, workerBearer, {});
   expect(
     response.status === 403,
-    `Rust accepted provider reconciliation from the executor (${response.status})`,
+    `Rust accepted a reconciliation run from the executor (${response.status})`,
   );
   expect(
     provider.observationCount() === 0,
     "Rejected executor reconciliation reached the provider",
   );
-  response = await postJSON(
-    `${actionURL}/provider-observation`,
-    reconcilerBearer,
-    {},
+  response = await postJSON(reconciliationURL, reconcilerBearer, {});
+  expect(
+    response.status === 200,
+    `Reconciliation run returned ${response.status}: ${response.body}`,
   );
-  expect(response.status === 200, `Provider observation returned ${response.status}: ${response.body}`);
-  operation = parsedJSON(response, "Provider observation");
+  const reconciliation = parsedJSON(response, "Reconciliation run");
+  expect(
+    reconciliation.claimed === 1 &&
+      reconciliation.observed === 1 &&
+      reconciliation.terminal === 1 &&
+      reconciliation.provider_unavailable === 0,
+    `Rust returned an unexpected reconciliation receipt: ${response.body}`,
+  );
+  response = await request(actionURL, {
+    headers: { authorization: `Bearer ${readBearer}` },
+  });
+  expect(response.status === 200, `Reconciled Action read returned ${response.status}`);
+  operation = parsedJSON(response, "Reconciled Action read");
   expect(operation.state === "dispatched", "Provider success completed the Action without effect evidence");
   expect(operation.provider_status === "succeeded", "Rust did not persist the provider observation");
   expect(operation.version === 8, `Provider observation committed version ${operation.version}`);
@@ -680,6 +693,19 @@ async function executeSignedActionLifecycle({
   expect(
     provider.observationCount() === 1,
     "Rust performed an unexpected number of provider observations",
+  );
+  response = await postJSON(reconciliationURL, reconcilerBearer, {});
+  expect(
+    response.status === 200,
+    `Terminal reconciliation replay returned ${response.status}: ${response.body}`,
+  );
+  expect(
+    parsedJSON(response, "Terminal reconciliation replay").claimed === 0,
+    "Rust reclaimed a terminal provider reconciliation job",
+  );
+  expect(
+    provider.observationCount() === 1,
+    "Terminal reconciliation replay reached the provider",
   );
 
   response = await request(actionURL, {

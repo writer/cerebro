@@ -30,8 +30,8 @@ use cerebro_action_catalog::{
 };
 use cerebro_action_provider::{AccessApprovalsClient, AccessApprovalsConfig, ProviderError};
 use cerebro_action_store::{
-    ActionDispatch, ActionDispatchPage, ActionEvent, ActionPage, ActionStoreError,
-    PostgresActionLedger,
+    ActionDispatch, ActionDispatchPage, ActionEvent, ActionPage, ActionReconciliationDisposition,
+    ActionReconciliationJob, ActionStoreError, PostgresActionLedger,
 };
 use cerebro_agent_context::{
     AgentContext, AgentGraph, ContextEntity, ContextError, GraphPath, MemoryAgentGraph,
@@ -83,6 +83,9 @@ const ACTION_EXECUTE_SCOPE: &str = "cerebro:actions:execute";
 const ACTION_RECONCILE_SCOPE: &str = "cerebro:actions:reconcile";
 const ACTION_VERIFY_SCOPE: &str = "cerebro:actions:verify";
 const FINDING_VALIDATE_SCOPE: &str = "cerebro:findings:validate";
+const ACTION_RECONCILIATION_BATCH_LIMIT: usize = 10;
+const ACTION_RECONCILIATION_LEASE_MS: u64 = 2 * 60 * 1_000;
+const ACTION_RECONCILIATION_POLL_DELAY_MS: u64 = 15 * 1_000;
 
 #[derive(Clone)]
 struct AppState {
@@ -156,6 +159,24 @@ trait ActionAuthority: Send + Sync {
         tenant_id: &TenantId,
         limit: usize,
     ) -> Result<ActionDispatchPage, ActionStoreError>;
+
+    async fn claim_due_reconciliation(
+        &self,
+        tenant_id: &TenantId,
+        worker_id: &ActorId,
+        claimed_at_unix_ms: u64,
+        lease_expires_at_unix_ms: u64,
+    ) -> Result<Option<ActionReconciliationJob>, ActionStoreError>;
+
+    async fn finish_reconciliation(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+        worker_id: &ActorId,
+        expected_operation_version: u64,
+        finished_at_unix_ms: u64,
+        disposition: ActionReconciliationDisposition,
+    ) -> Result<(), ActionStoreError>;
 }
 
 #[async_trait]
@@ -248,6 +269,42 @@ impl ActionAuthority for PostgresActionLedger {
         limit: usize,
     ) -> Result<ActionDispatchPage, ActionStoreError> {
         self.list_open_dispatches(tenant_id, limit).await
+    }
+
+    async fn claim_due_reconciliation(
+        &self,
+        tenant_id: &TenantId,
+        worker_id: &ActorId,
+        claimed_at_unix_ms: u64,
+        lease_expires_at_unix_ms: u64,
+    ) -> Result<Option<ActionReconciliationJob>, ActionStoreError> {
+        self.claim_due_reconciliation(
+            tenant_id,
+            worker_id,
+            claimed_at_unix_ms,
+            lease_expires_at_unix_ms,
+        )
+        .await
+    }
+
+    async fn finish_reconciliation(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+        worker_id: &ActorId,
+        expected_operation_version: u64,
+        finished_at_unix_ms: u64,
+        disposition: ActionReconciliationDisposition,
+    ) -> Result<(), ActionStoreError> {
+        self.finish_reconciliation(
+            tenant_id,
+            operation_id,
+            worker_id,
+            expected_operation_version,
+            finished_at_unix_ms,
+            disposition,
+        )
+        .await
     }
 }
 
@@ -412,6 +469,7 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
         _ if path.starts_with("/v1/finding-validations/") => "cerebro:read",
         "/v1/action-dispatches" => "cerebro:actions:read",
         _ if path.starts_with("/v1/action-dispatches/") => "cerebro:actions:read",
+        "/v1/action-reconciliation-runs" => "cerebro:actions:write",
         "/v1/actions" if method == Method::GET => "cerebro:actions:read",
         "/v1/actions" => "cerebro:actions:write",
         _ if path.starts_with("/v1/actions/") && path.ends_with("/provider-observation") => {
@@ -456,6 +514,7 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/action-definitions" => "action_definitions",
         "/v1/policy-definitions" => "policy_definitions",
         "/v1/action-dispatches" => "list_action_dispatches",
+        "/v1/action-reconciliation-runs" => "run_action_reconciliation",
         "/v1/sources/summary" => "source_summary",
         "/platform/graph/neighborhood" => "neighborhood",
         "/v1/graph/search" => "search",
@@ -823,6 +882,14 @@ struct ActionListQuery {
     limit: Option<usize>,
     #[serde(default)]
     page_token: Option<String>,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+struct ActionReconciliationRun {
+    claimed: usize,
+    observed: usize,
+    terminal: usize,
+    provider_unavailable: usize,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -1512,6 +1579,10 @@ fn router_with_backend(
             .route("/v1/policy-definitions", get(list_policy_definitions))
             .route("/v1/action-dispatches", get(list_action_dispatches))
             .route(
+                "/v1/action-reconciliation-runs",
+                post(run_action_reconciliation),
+            )
+            .route(
                 "/v1/action-dispatches/{operation_id}",
                 get(get_action_dispatch),
             )
@@ -2144,6 +2215,122 @@ async fn transition_action_route(
         .map_err(action_store_error)
 }
 
+async fn run_action_reconciliation(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+) -> Result<Json<ActionReconciliationRun>, (StatusCode, Json<ErrorResponse>)> {
+    require_action_scope(&identity, ACTION_RECONCILE_SCOPE)?;
+    let actor_id = authenticated_action_actor(&identity)?;
+    let provider = state.access_approvals.clone().ok_or_else(|| {
+        service_unavailable(
+            "action_provider_unavailable",
+            "The access-approvals provider is not configured in the Rust runtime.",
+        )
+    })?;
+    let authority = action_authority(&state)?.clone();
+    let mut result = ActionReconciliationRun {
+        claimed: 0,
+        observed: 0,
+        terminal: 0,
+        provider_unavailable: 0,
+    };
+    for _ in 0..ACTION_RECONCILIATION_BATCH_LIMIT {
+        let claimed_at = current_unix_millis()?;
+        let lease_expires_at = claimed_at
+            .checked_add(ACTION_RECONCILIATION_LEASE_MS)
+            .ok_or_else(action_clock_overflow)?;
+        let Some(job) = authority
+            .claim_due_reconciliation(&identity.tenant, &actor_id, claimed_at, lease_expires_at)
+            .await
+            .map_err(action_store_error)?
+        else {
+            break;
+        };
+        result.claimed += 1;
+        let external_id = job.operation.external_receipt_ref.as_ref().ok_or_else(|| {
+            action_store_error(ActionStoreError::Corrupt(
+                "Action reconciliation job has no provider receipt".to_owned(),
+            ))
+        })?;
+        let receipt = if job.dispatch.provider == "access-approvals" {
+            provider.observe(&job.dispatch, external_id).await
+        } else {
+            Err(ProviderError::ObservationUnavailable)
+        };
+        let receipt = match receipt {
+            Ok(receipt) => receipt,
+            Err(_) => {
+                let finished_at = current_unix_millis()?;
+                let next_attempt_at = finished_at
+                    .checked_add(ACTION_RECONCILIATION_POLL_DELAY_MS)
+                    .ok_or_else(action_clock_overflow)?;
+                authority
+                    .finish_reconciliation(
+                        &identity.tenant,
+                        &job.operation.proposal.operation_id,
+                        &actor_id,
+                        job.operation.version,
+                        finished_at,
+                        ActionReconciliationDisposition::PollAgain {
+                            next_attempt_at_unix_ms: next_attempt_at,
+                        },
+                    )
+                    .await
+                    .map_err(action_store_error)?;
+                result.provider_unavailable += 1;
+                continue;
+            }
+        };
+        let previous_observation = job.operation.provider_observed_at_unix_ms.ok_or_else(|| {
+            action_store_error(ActionStoreError::Corrupt(
+                "Action reconciliation job has no provider observation time".to_owned(),
+            ))
+        })?;
+        let observed_at =
+            next_provider_observation_time(previous_observation, current_unix_millis()?)
+                .ok_or_else(action_clock_overflow)?;
+        let operation = authority
+            .transition(
+                &identity.tenant,
+                &job.operation.proposal.operation_id,
+                &actor_id,
+                job.operation.version,
+                receipt.observation_command(actor_id.clone(), observed_at),
+                observed_at,
+            )
+            .await
+            .map_err(action_store_error)?;
+        let terminal = receipt.status.is_terminal();
+        let disposition = if terminal {
+            ActionReconciliationDisposition::Terminal {
+                provider_status: receipt.status.as_str().to_owned(),
+            }
+        } else {
+            ActionReconciliationDisposition::PollAgain {
+                next_attempt_at_unix_ms: observed_at
+                    .checked_add(ACTION_RECONCILIATION_POLL_DELAY_MS)
+                    .ok_or_else(action_clock_overflow)?,
+            }
+        };
+        authority
+            .finish_reconciliation(
+                &identity.tenant,
+                &operation.proposal.operation_id,
+                &actor_id,
+                operation.version,
+                observed_at,
+                disposition,
+            )
+            .await
+            .map_err(action_store_error)?;
+        result.observed += 1;
+        if terminal {
+            result.terminal += 1;
+        }
+    }
+    Ok(Json(result))
+}
+
 async fn observe_action_provider_route(
     State(state): State<AppState>,
     Extension(identity): Extension<AuthenticatedIdentity>,
@@ -2207,6 +2394,13 @@ async fn observe_action_provider_route(
 
 fn next_provider_observation_time(previous: u64, current: u64) -> Option<u64> {
     previous.checked_add(1).map(|minimum| current.max(minimum))
+}
+
+fn action_clock_overflow() -> (StatusCode, Json<ErrorResponse>) {
+    service_unavailable(
+        "action_clock_unavailable",
+        "The Action reconciliation schedule cannot advance.",
+    )
 }
 
 fn provider_dispatch_command(
@@ -3056,6 +3250,28 @@ mod tests {
         ) -> Result<ActionDispatchPage, ActionStoreError> {
             panic!("spoofed request reached the Action authority")
         }
+
+        async fn claim_due_reconciliation(
+            &self,
+            _tenant_id: &TenantId,
+            _worker_id: &ActorId,
+            _claimed_at_unix_ms: u64,
+            _lease_expires_at_unix_ms: u64,
+        ) -> Result<Option<ActionReconciliationJob>, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn finish_reconciliation(
+            &self,
+            _tenant_id: &TenantId,
+            _operation_id: &ActionOperationId,
+            _worker_id: &ActorId,
+            _expected_operation_version: u64,
+            _finished_at_unix_ms: u64,
+            _disposition: ActionReconciliationDisposition,
+        ) -> Result<(), ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
     }
 
     fn unavailable() -> ContextError {
@@ -3878,6 +4094,10 @@ mod tests {
             ),
             "observe_action_provider"
         );
+        assert_eq!(
+            bounded_operation(&Method::POST, "/v1/action-reconciliation-runs"),
+            "run_action_reconciliation"
+        );
     }
 
     #[test]
@@ -3950,6 +4170,10 @@ mod tests {
                 &Method::POST,
                 "/v1/actions/operation:one/provider-observation"
             ),
+            "cerebro:actions:write"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/action-reconciliation-runs"),
             "cerebro:actions:write"
         );
     }
@@ -4186,11 +4410,17 @@ mod tests {
             .insert(ACTION_EXECUTE_SCOPE.to_owned());
         let error = observe_action_provider_route(
             State(state.clone()),
-            Extension(executor_identity),
+            Extension(executor_identity.clone()),
             Path("operation:http:one".to_owned()),
         )
         .await
         .expect_err("execution authority must not grant reconciliation authority");
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(error.1.0.code, "permission_denied");
+
+        let error = run_action_reconciliation(State(state.clone()), Extension(executor_identity))
+            .await
+            .expect_err("execution authority must not wake reconciliation work");
         assert_eq!(error.0, StatusCode::FORBIDDEN);
         assert_eq!(error.1.0.code, "permission_denied");
 
