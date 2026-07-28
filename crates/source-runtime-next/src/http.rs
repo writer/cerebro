@@ -1701,12 +1701,15 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
             let mut requests = Vec::new();
-            for _ in 0..2 {
+            for index in 0..2 {
                 let (mut socket, _) = listener.accept().await.unwrap();
                 let mut request = vec![0; 4096];
                 let read = socket.read(&mut request).await.unwrap();
                 requests.push(String::from_utf8_lossy(&request[..read]).into_owned());
-                let body = r#"{"entries":[{"id":"membership-1","user":{"id":"user-1","login":"user@example.test","name":"User One"},"role":"member"}]}"#;
+                let body = format!(
+                    r#"{{"entries":[{{"id":"membership-{}","user":{{"id":"user-1","login":"user@example.test","name":"User One"}},"role":"member"}}]}}"#,
+                    index + 1
+                );
                 let response = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
                     body.len()
@@ -1751,7 +1754,7 @@ mod tests {
         assert!(matches!(batch.scope, CollectedScope::Complete(_)));
         assert_eq!(batch.records.len(), 2);
         assert_eq!(batch.records[0].provider_id, "membership-1");
-        assert_eq!(batch.records[1].provider_id, "membership-1");
+        assert_eq!(batch.records[1].provider_id, "membership-2");
         assert_ne!(
             batch.records[0].observation_id,
             batch.records[1].observation_id

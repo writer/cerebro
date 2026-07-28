@@ -436,7 +436,9 @@ impl CatalogGraphMapper {
             identity.into_entity(),
             projected
                 .iter()
-                .filter(|(key, _)| !key.starts_with("group_") && key.as_str() != "role")
+                .filter(|(key, _)| {
+                    !key.starts_with("group_") && key.as_str() != "role" && key.as_str() != "id"
+                })
                 .map(|(key, value)| (key.clone(), value.clone()))
                 .collect(),
         )?;
@@ -444,7 +446,7 @@ impl CatalogGraphMapper {
             group,
             projected
                 .into_iter()
-                .filter(|(key, _)| !key.starts_with("member_") && key != "role")
+                .filter(|(key, _)| !key.starts_with("member_") && key != "role" && key != "id")
                 .collect(),
         )?;
         let assertion = RelationshipAssertion::new(
