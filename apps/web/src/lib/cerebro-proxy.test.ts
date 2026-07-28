@@ -8,12 +8,14 @@ import {
   getCerebroPublicConfig,
   isCacheableCerebroPath,
   responseHeadersFor,
+  rustOwnsWebAuthority,
   shouldBypassCerebroProxyCache,
   withCerebroCacheBypassHeader,
 } from "./cerebro-proxy";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
@@ -41,6 +43,13 @@ describe("cerebro proxy cache headers", () => {
 
   it("keeps internal upstream addresses out of the browser config", () => {
     expect(getCerebroPublicConfig().apiBase).toBe("/api/cerebro");
+  });
+
+  it("enables Rust authority only through an explicit deployment mode", () => {
+    vi.stubEnv("CEREBRO_AUTHORITY_MODE", "rust");
+    expect(rustOwnsWebAuthority()).toBe(true);
+    vi.stubEnv("CEREBRO_AUTHORITY_MODE", "legacy");
+    expect(rustOwnsWebAuthority()).toBe(false);
   });
 
   it("recognizes explicit cache bypass requests", () => {

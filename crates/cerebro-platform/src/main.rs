@@ -2,6 +2,7 @@
 
 mod append_log_consumer;
 mod cutover_command;
+mod oidc;
 mod parity_command;
 mod rpc;
 
@@ -40,6 +41,7 @@ use cerebro_source_runtime_next::{
     GraphSink, HttpSourceConnector, ResolvedAuth, SourceRuntime,
 };
 use hmac::{Hmac, KeyInit, Mac};
+use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
@@ -160,6 +162,69 @@ async fn authenticate_tenant(
     Ok(next.run(request).await)
 }
 
+async fn authenticate_oidc(
+    State(auth): State<OidcAuthenticator>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    let bearer = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "));
+    let identity = match bearer {
+        Some(bearer) => auth.authenticate(bearer).await,
+        None => Err(AuthenticationError::Invalid),
+    };
+    let identity = match identity {
+        Ok(identity) => identity,
+        Err(AuthenticationError::Invalid) => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    code: "authentication_required",
+                    message: "A valid signed browser identity is required.".to_owned(),
+                }),
+            ));
+        }
+        Err(AuthenticationError::Unavailable(message)) => {
+            eprintln!("OIDC verification unavailable: {message}");
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    code: "identity_verification_unavailable",
+                    message: "Identity verification is temporarily unavailable.".to_owned(),
+                }),
+            ));
+        }
+    };
+    let required_scope = oidc_scope_for_route(request.uri().path());
+    if !identity.has_scope(required_scope) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                code: "permission_denied",
+                message: format!("The signed identity does not grant {required_scope}."),
+            }),
+        ));
+    }
+    request
+        .extensions_mut()
+        .insert(AuthenticatedTenant(identity.tenant.clone()));
+    request.extensions_mut().insert(identity);
+    Ok(next.run(request).await)
+}
+
+fn oidc_scope_for_route(path: &str) -> &'static str {
+    match path {
+        "/v1/me" => "identity:read",
+        "/v1/projections/events"
+        | "/v1/projections/legacy-deltas"
+        | "/v1/projections/collections" => "cerebro:write",
+        _ => "cerebro:read",
+    }
+}
+
 async fn record_request(
     State(metrics): State<PlatformMetrics>,
     request: Request,
@@ -183,12 +248,14 @@ fn bounded_operation(path: &str) -> &'static str {
         "/healthz" => "healthz",
         "/readyz" => "readyz",
         "/metrics" => "metrics",
+        "/v1/me" => "current_user",
         "/v1/sources/summary" => "source_summary",
         "/platform/graph/neighborhood" => "neighborhood",
         "/v1/graph/search" => "search",
         "/v1/graph/expand" => "expand",
         "/v1/graph/expand-batch" => "expand_batch",
         "/v1/graph/paths" => "paths",
+        "/v1/security/lifecycle" => "security_lifecycle",
         "/v1/projections/events" => "project_event",
         "/v1/projections/legacy-deltas" => "record_legacy_projection",
         "/v1/projections/collections" => "record_source_collection",
@@ -196,6 +263,7 @@ fn bounded_operation(path: &str) -> &'static str {
         _ if path.starts_with("/v1/entities/") => "get_entity",
         _ if path.starts_with("/v1/assertions/") => "explain_assertion",
         _ if path.starts_with("/cerebro.graph.v1.OrganizationalGraphService/") => "connect_rpc",
+        _ if path.starts_with("/cerebro.v1.SecurityLifecycleService/") => "security_lifecycle",
         _ => "other",
     }
 }
@@ -946,11 +1014,24 @@ async fn serve(
     let tenant_auth =
         TenantRequestAuth::new(required_env("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET")?)
             .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidInput, message))?;
+    let oidc = match OidcAuthenticator::from_env()
+        .await
+        .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidInput, message))?
+    {
+        OidcConfiguration::Disabled => None,
+        OidcConfiguration::Configured(authenticator) => Some(authenticator),
+    };
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     println!("cerebro Rust platform listening on {bind}");
     axum::serve(
         listener,
-        router_with_backend(graph, load_catalog_summary().ok(), projection, tenant_auth),
+        router_with_backend(
+            graph,
+            load_catalog_summary().ok(),
+            projection,
+            tenant_auth,
+            oidc,
+        ),
     )
     .await?;
     Ok(())
@@ -963,6 +1044,7 @@ fn router(graph: OrganizationalGraph) -> Router {
         None,
         None,
         TenantRequestAuth::new("test-organizational-graph-secret-32-bytes".to_owned()).unwrap(),
+        None,
     )
 }
 
@@ -971,6 +1053,7 @@ fn router_with_backend(
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
     tenant_auth: TenantRequestAuth,
+    oidc: Option<OidcAuthenticator>,
 ) -> Router {
     let platform_metrics = PlatformMetrics::default();
     let connect = rpc::router(graph.clone(), catalog_summary.clone(), tenant_auth.clone());
@@ -995,11 +1078,17 @@ fn router_with_backend(
             "/v1/projections/collections",
             post(record_source_collection),
         )
-        .route("/v1/projections/authority", get(projection_authority))
-        .route_layer(middleware::from_fn_with_state(
+        .route("/v1/projections/authority", get(projection_authority));
+    let protected = if let Some(oidc) = oidc {
+        protected
+            .route("/v1/me", get(current_user))
+            .route_layer(middleware::from_fn_with_state(oidc, authenticate_oidc))
+    } else {
+        protected.route_layer(middleware::from_fn_with_state(
             tenant_auth,
             authenticate_tenant,
-        ));
+        ))
+    };
     Router::new()
         .route("/healthz", get(health))
         .route("/readyz", get(readiness))
@@ -1366,6 +1455,12 @@ async fn source_summary(
             }),
         )
     })
+}
+
+async fn current_user(
+    Extension(identity): Extension<AuthenticatedIdentity>,
+) -> Json<oidc::CurrentUserResponse> {
+    Json(identity.current_user_response())
 }
 
 async fn get_entity(
@@ -2504,6 +2599,7 @@ mod tests {
             None,
             None,
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
+            None,
         );
         let response = app
             .clone()
@@ -2609,6 +2705,32 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn lifecycle_requests_have_a_bounded_metrics_operation() {
+        assert_eq!(
+            bounded_operation("/v1/security/lifecycle"),
+            "security_lifecycle"
+        );
+        assert_eq!(
+            bounded_operation("/cerebro.v1.SecurityLifecycleService/ListSecurityLifecycle"),
+            "security_lifecycle"
+        );
+    }
+
+    #[test]
+    fn oidc_authorization_scopes_cover_reads_identity_and_mutations() {
+        assert_eq!(oidc_scope_for_route("/v1/me"), "identity:read");
+        assert_eq!(
+            oidc_scope_for_route("/v1/security/lifecycle"),
+            "cerebro:read"
+        );
+        assert_eq!(oidc_scope_for_route("/v1/graph/search"), "cerebro:read");
+        assert_eq!(
+            oidc_scope_for_route("/v1/projections/events"),
+            "cerebro:write"
+        );
     }
 
     #[tokio::test]
@@ -2849,6 +2971,7 @@ mod tests {
             None,
             None,
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
+            None,
         );
         let liveness = app
             .clone()
@@ -2976,7 +3099,13 @@ mod tests {
             store: Mutex::new(DurableGraphStore::new(store_ledger, graph.clone())),
         });
         let tenant_auth = TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap();
-        let app = router_with_backend(Arc::new(graph.clone()), None, Some(runtime), tenant_auth);
+        let app = router_with_backend(
+            Arc::new(graph.clone()),
+            None,
+            Some(runtime),
+            tenant_auth,
+            None,
+        );
         let resource_urn = format!("urn:cerebro:{tenant_id}:runtime_file:asset-1");
         let response = app
             .oneshot(

@@ -93,6 +93,9 @@ export const getCerebroPublicConfig = () => ({
   forwardRequestAuth,
 });
 
+export const rustOwnsWebAuthority = () =>
+  process.env.CEREBRO_AUTHORITY_MODE?.trim().toLowerCase() === "rust";
+
 export const buildCerebroUrl = (path: string, search = "") => {
   const base = new URL(API_BASE.endsWith("/") ? API_BASE : `${API_BASE}/`);
   const basePath = base.pathname.endsWith("/") ? base.pathname.slice(0, -1) : base.pathname;

@@ -12,6 +12,7 @@ import {
   readCerebroProxyCache,
   readCerebroProxyInflight,
   responseHeadersFor,
+  rustOwnsWebAuthority,
   shouldBypassCerebroProxyCache,
   trackCerebroProxyInflight,
   withCerebroCacheBypassHeader,
@@ -45,20 +46,25 @@ type RouteContext = {
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const [params, currentUser] = await Promise.all([
-    context.params,
-    resolveCurrentUserFromHeadersWithFallback(request.headers),
-  ]);
+  const params = await context.params;
+  const rustAuthority = rustOwnsWebAuthority();
+  const currentUser = rustAuthority
+    ? null
+    : await resolveCurrentUserFromHeadersWithFallback(request.headers);
   const normalized = normalizeRequestPath(params.path);
   if (normalized instanceof NextResponse) return normalized;
   const path = normalized;
   const span = startWebSpan("cerebro.proxy.request", proxySpanAttributes("GET", path, request), request.headers.get("traceparent"));
   const requiredPermission = permissionForCerebroProxyRequest("GET", path);
-  const decision = authorizeCurrentUser(currentUser, requiredPermission);
-  span.annotate(authorizationSpanAttributes(decision, currentUser));
-  if (!decision.allowed) {
-    console.warn("cerebro proxy read denied", { ...currentUserServerAuditFields(currentUser), permission: requiredPermission });
-    return tracedAuthorizationError(decision, span);
+  if (rustAuthority) {
+    span.annotate({ authorization_authority: "rust" });
+  } else {
+    const decision = authorizeCurrentUser(currentUser, requiredPermission);
+    span.annotate(authorizationSpanAttributes(decision, currentUser));
+    if (!decision.allowed) {
+      console.warn("cerebro proxy read denied", { ...currentUserServerAuditFields(currentUser), permission: requiredPermission });
+      return tracedAuthorizationError(decision, span);
+    }
   }
   const url = new URL(request.url);
   const fixture = tracedFixtureResponse("GET", path, request, span);
@@ -67,10 +73,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
   const target = buildCerebroUrl(path, url.search);
   const baseAuthHeaders = authHeadersFor(request);
-  const authHeaders = {
-    ...baseAuthHeaders,
-    ...currentUserPreferenceHeaders(currentUser),
-  };
+  const authHeaders = rustAuthority
+    ? baseAuthHeaders
+    : { ...baseAuthHeaders, ...currentUserPreferenceHeaders(currentUser) };
   const bypassCache = shouldBypassCerebroProxyCache(request.headers);
   const cacheablePath = isCacheableCerebroPath(path);
   const upstreamHeaders = headersWithTrace(bypassCache ? withCerebroCacheBypassHeader(authHeaders) : authHeaders, span);
