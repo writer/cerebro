@@ -2172,7 +2172,19 @@ async fn observe_action_provider_route(
         .observe(&dispatch, external_id)
         .await
         .map_err(action_provider_error)?;
-    let observed_at = current_unix_millis()?;
+    let previous_observation = operation.provider_observed_at_unix_ms.ok_or_else(|| {
+        service_unavailable(
+            "action_provider_receipt_unavailable",
+            "The Action provider receipt has no authority observation time.",
+        )
+    })?;
+    let observed_at = next_provider_observation_time(previous_observation, current_unix_millis()?)
+        .ok_or_else(|| {
+            service_unavailable(
+                "action_clock_unavailable",
+                "The Action provider observation time cannot advance.",
+            )
+        })?;
     authority
         .transition(
             &identity.tenant,
@@ -2185,6 +2197,10 @@ async fn observe_action_provider_route(
         .await
         .map(Json)
         .map_err(action_store_error)
+}
+
+fn next_provider_observation_time(previous: u64, current: u64) -> Option<u64> {
+    previous.checked_add(1).map(|minimum| current.max(minimum))
 }
 
 fn provider_dispatch_command(
@@ -3997,6 +4013,14 @@ mod tests {
             request.command.into_domain().unwrap(),
             ActionCommand::RecordSimulation
         ));
+    }
+
+    #[test]
+    fn provider_observation_time_advances_within_one_clock_tick() {
+        assert_eq!(next_provider_observation_time(42, 42), Some(43));
+        assert_eq!(next_provider_observation_time(42, 41), Some(43));
+        assert_eq!(next_provider_observation_time(42, 44), Some(44));
+        assert_eq!(next_provider_observation_time(u64::MAX, u64::MAX), None);
     }
 
     #[tokio::test]
