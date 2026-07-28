@@ -247,7 +247,8 @@ mapping, tenant-authorized finding lookup, and service dependency wiring. Action
 target selection, provider request shaping, idempotency, provider dispatch, and
 external reference mapping stay behind `internal/graphactions` and
 `internal/graphactionapi`. Supported actions are cataloged in
-`internal/graphactions/action_catalog.yaml` and generated into the registry with
+`crates/action-catalog/action_catalog.yaml` and generated into the Rust authority
+and retiring Go compatibility registry with
 `make graph-action-generate`. The generated registry also exposes serializable
 action metadata plus action id, provider id, and target-kind lists so API
 schemas, agent tools, and future codegen can consume the same provider-neutral
