@@ -42,7 +42,7 @@ export function signedBearerToken(privateKey, issuer, now = Date.now(), claims =
       iat: issuedAt,
       iss: issuer,
       name: "Rust E2E",
-      scope: "cerebro:read identity:read",
+      scope: "cerebro:read cerebro:actions:read identity:read",
       sub: "rust-e2e-user",
       tenant_id: tenantID,
       ...claims,
@@ -661,11 +661,18 @@ async function executeSignedActionLifecycle({
   response = await request(actionURL, {
     headers: { authorization: `Bearer ${workerBearer}` },
   });
+  expect(
+    response.status === 403,
+    `Rust accepted an Action read from the executor (${response.status})`,
+  );
+  response = await request(actionURL, {
+    headers: { authorization: `Bearer ${readBearer}` },
+  });
   expect(response.status === 200, `Durable Action read returned ${response.status}`);
   expect(parsedJSON(response, "Durable Action read").version === 8, "Rust did not return the latest durable Action version");
 
   response = await request(`${actionURL}/history`, {
-    headers: { authorization: `Bearer ${workerBearer}` },
+    headers: { authorization: `Bearer ${readBearer}` },
   });
   expect(response.status === 200, `Durable Action history returned ${response.status}`);
   const history = parsedJSON(response, "Durable Action history");
