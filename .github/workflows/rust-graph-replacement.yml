@@ -8,6 +8,7 @@ on:
       - "Makefile"
       - "Cargo.lock"
       - "Cargo.toml"
+      - "crates/action-provider/**"
       - "crates/action-store/**"
       - "crates/agent-context/**"
       - "crates/cerebro-platform/**"
