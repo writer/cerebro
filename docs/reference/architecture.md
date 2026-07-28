@@ -295,9 +295,12 @@ start-execution transition and immutable dispatch before it submits that exact
 dispatch through the Rust client. A bound provider receipt becomes a second
 durable Rust transition. Any unsuccessful or unbound response moves the Action
 to `outcome_unknown`; the handler does not retry the mutation. Provider receipt,
-outcome, completion, and reconciliation commands are not accepted from the
-public HTTP command schema. A signed execution principal can start the provider
-mutation. A separate signed reconciliation principal with
+outcome, completion, reconciliation, verification, verification-rejection, and
+rollback commands are not accepted from the public HTTP command schema. A
+signed principal cannot close or roll back an Action by submitting an
+`effective` flag, a source revision string, or evidence URNs. A signed execution
+principal can start the provider mutation. A separate signed reconciliation
+principal with
 `cerebro:actions:reconcile` can ask the Rust runtime to refresh an existing
 provider receipt; the runtime performs the GET, revalidates every dispatch
 binding, and commits the observation itself. Execution authority does not grant
