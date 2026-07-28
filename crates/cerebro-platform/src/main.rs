@@ -467,8 +467,8 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
         "/v1/me" => "identity:read",
         "/v1/finding-validations" => "cerebro:write",
         _ if path.starts_with("/v1/finding-validations/") => "cerebro:read",
-        "/v1/action-dispatches" => "cerebro:actions:read",
-        _ if path.starts_with("/v1/action-dispatches/") => "cerebro:actions:read",
+        "/v1/action-dispatches" => ACTION_EXECUTE_SCOPE,
+        _ if path.starts_with("/v1/action-dispatches/") => ACTION_EXECUTE_SCOPE,
         "/v1/action-reconciliation-runs" => ACTION_RECONCILE_SCOPE,
         "/v1/actions" if method == Method::GET => "cerebro:actions:read",
         "/v1/actions" => "cerebro:actions:write",
@@ -4150,11 +4150,11 @@ mod tests {
         );
         assert_eq!(
             oidc_scope_for_route(&Method::GET, "/v1/action-dispatches"),
-            "cerebro:actions:read"
+            ACTION_EXECUTE_SCOPE
         );
         assert_eq!(
             oidc_scope_for_route(&Method::GET, "/v1/action-dispatches/operation:one"),
-            "cerebro:actions:read"
+            ACTION_EXECUTE_SCOPE
         );
         assert_eq!(
             oidc_scope_for_route(&Method::POST, "/v1/actions"),

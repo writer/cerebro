@@ -562,6 +562,8 @@ async function executeSignedActionLifecycle({
   );
   const actionURL = `${webBase}/api/cerebro/v1/actions/${encodeURIComponent(fixture.operation_id)}`;
   const commandURL = `${actionURL}/commands`;
+  const dispatchURL =
+    `${webBase}/api/cerebro/v1/action-dispatches/${encodeURIComponent(fixture.operation_id)}`;
 
   let response = await postJSON(
     `${webBase}/api/cerebro/v1/finding-validations`,
@@ -657,6 +659,29 @@ async function executeSignedActionLifecycle({
       provider.requests[0]?.email_or_user_id === fixture.proposal.target_id &&
       provider.requests[0]?.idempotency_key === fixture.proposal.idempotency_key,
     "Rust provider submission was not bound to the durable dispatch",
+  );
+  response = await request(dispatchURL, {
+    headers: { authorization: `Bearer ${workerBearer}` },
+  });
+  expect(
+    response.status === 200,
+    `Execution-only dispatch read returned ${response.status}: ${response.body}`,
+  );
+  const dispatch = parsedJSON(response, "Execution-only dispatch read");
+  expect(
+    dispatch.operation_id === fixture.operation_id &&
+      dispatch.operation_version === 6 &&
+      dispatch.provider === "access-approvals" &&
+      dispatch.target_id === provider.requests[0]?.email_or_user_id &&
+      dispatch.idempotency_key === provider.requests[0]?.idempotency_key,
+    `Rust returned an unbound execution dispatch: ${response.body}`,
+  );
+  response = await request(dispatchURL, {
+    headers: { authorization: `Bearer ${readBearer}` },
+  });
+  expect(
+    response.status === 403,
+    `Rust exposed the provider dispatch to Action read authority (${response.status})`,
   );
 
   provider.markSucceeded();
