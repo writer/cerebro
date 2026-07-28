@@ -975,7 +975,7 @@ export async function runAuthenticatedRustE2E(options = {}) {
       path: path.join(workDir, "authenticated-rust-lifecycle.png"),
     });
     await context.setExtraHTTPHeaders({
-      Authorization: `Bearer ${actionResult.workerBearer}`,
+      Authorization: `Bearer ${bearer}`,
     });
     const actionResponse = page.waitForResponse(
       (candidate) =>

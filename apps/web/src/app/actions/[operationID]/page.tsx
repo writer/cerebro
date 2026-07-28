@@ -17,9 +17,20 @@ function DetailRow({ label, value, mono = false }: { label: string; value: strin
   );
 }
 
+function decodeOperationID(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return "";
+  }
+}
+
 export default function ActionDetailPage() {
   const params = useParams<{ operationID: string }>();
-  const operationID = typeof params.operationID === "string" ? params.operationID : "";
+  const operationID =
+    typeof params.operationID === "string"
+      ? decodeOperationID(params.operationID)
+      : "";
   const encodedOperationID = encodeURIComponent(operationID);
   const actionQuery = useGRCQuery<ActionOperation>(operationID ? `/v1/actions/${encodedOperationID}` : null);
   const historyQuery = useGRCQuery<ActionEvent[]>(operationID ? `/v1/actions/${encodedOperationID}/history` : null);
