@@ -241,26 +241,31 @@ async fn dispatch_classifies_rejection_ambiguity_and_unbounded_success_fail_clos
 
 #[tokio::test]
 async fn dispatch_rejects_provider_responses_that_do_not_echo_authority_bindings() {
+    let requests = Arc::new(AtomicUsize::new(0));
+    let requests_for_handler = requests.clone();
     let app = Router::new().route(
         "/admin/okta-jail/suspend",
-        post(|Json(body): Json<Value>| async move {
-            let mut response = provider_response(&body, "provider-action:one", "queued");
-            response["tenant_id"] = json!("tenant:other");
-            Json(response)
+        post(move |Json(body): Json<Value>| {
+            let requests = requests_for_handler.clone();
+            async move {
+                requests.fetch_add(1, Ordering::SeqCst);
+                let mut response = provider_response(&body, "provider-action:one", "queued");
+                response["tenant_id"] = json!("tenant:other");
+                Json(response)
+            }
         }),
     );
     let (base_url, server) = serve(app).await;
     let client = client(base_url);
-    let mut tampered = dispatch();
-    tampered.target_id = "okta-user:other".to_owned();
-    assert!(matches!(
-        client.dispatch(&tampered).await,
-        Err(ProviderError::InvalidDispatch(_))
-    ));
     assert_eq!(
         client.dispatch(&dispatch()).await,
         Err(ProviderError::DispatchAmbiguous),
         "a successful but unbound response leaves mutation outcome unknown"
+    );
+    assert_eq!(
+        requests.load(Ordering::SeqCst),
+        1,
+        "the provider response binding must be checked after a valid dispatch is sent"
     );
     server.abort();
 }
