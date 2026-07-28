@@ -5,6 +5,7 @@ import {
   type ComputerSandboxActionV1,
   type ComputerSandboxProviderAttempt,
   type ComputerSandboxProvisionResult,
+  type ComputerSandboxSessionCreateResult,
   type ComputerSandboxSessionRequestV1,
   type ComputerSandboxSessionV1,
 } from "./contracts.js";
@@ -130,6 +131,7 @@ export class ComputerSandboxCoordinator {
           status: "unknown",
         };
       }
+      assertSessionCreateOutcome(result);
       if (result.outcome === "unavailable") {
         if (result.provider_id !== candidate.provider.provider_id) {
           throw new ComputerSandboxContractError(
@@ -195,6 +197,7 @@ export class ComputerSandboxCoordinator {
     );
     const adapter = this.requireAdapter(providerId);
     const result = await adapter.reconcileSession(request, reconciliationRef);
+    assertSessionCreateOutcome(result);
     if (result.outcome === "created") {
       validateComputerSandboxSession(result.session, request);
       if (result.session.provider_id !== providerId) {
@@ -296,6 +299,17 @@ export class ComputerSandboxCoordinator {
       );
     }
     return adapter;
+  }
+}
+
+function assertSessionCreateOutcome(
+  result: ComputerSandboxSessionCreateResult,
+): void {
+  const outcome = (result as { outcome?: unknown }).outcome;
+  if (!["created", "unavailable", "unknown"].includes(String(outcome))) {
+    throw new ComputerSandboxContractError(
+      "computer sandbox provider returned an unsupported session outcome",
+    );
   }
 }
 

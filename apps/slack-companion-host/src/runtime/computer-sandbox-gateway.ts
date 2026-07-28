@@ -98,19 +98,60 @@ export class ComputerSandboxGatewayProvider
     if (!response.ok) {
       throw new Error(`Computer sandbox gateway returned HTTP ${response.status}.`);
     }
-    const contentLength = Number(response.headers.get("content-length") ?? "0");
-    if (contentLength > 1_048_576) {
-      throw new Error("Computer sandbox gateway response is too large.");
-    }
-    const text = await response.text();
-    if (text.length > 1_048_576) {
-      throw new Error("Computer sandbox gateway response is too large.");
-    }
+    const text = await readBoundedResponse(response, 1_048_576);
     const parsed: unknown = JSON.parse(text);
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error("Computer sandbox gateway response is invalid.");
     }
     return parsed as T;
+  }
+}
+
+async function readBoundedResponse(
+  response: Response,
+  maxBytes: number,
+): Promise<string> {
+  const contentLengthHeader = response.headers.get("content-length");
+  if (contentLengthHeader !== null) {
+    const contentLength = Number(contentLengthHeader);
+    if (
+      !Number.isSafeInteger(contentLength)
+      || contentLength < 0
+      || contentLength > maxBytes
+    ) {
+      throw new Error("Computer sandbox gateway response is too large.");
+    }
+  }
+  if (response.body === null) {
+    throw new Error("Computer sandbox gateway response is invalid.");
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        throw new Error("Computer sandbox gateway response is too large.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(body);
+  } catch {
+    throw new Error("Computer sandbox gateway response is invalid.");
   }
 }
 

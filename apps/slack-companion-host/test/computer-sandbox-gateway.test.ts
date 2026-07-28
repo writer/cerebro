@@ -78,6 +78,24 @@ test("empty gateway configuration leaves computer access disabled", () => {
   assert.equal(createComputerSandboxRuntime([]), undefined);
 });
 
+test("gateway adapter bounds streamed responses without content length", async () => {
+  const adapter = new ComputerSandboxGatewayProvider({
+    baseUrl: "https://sandbox.example.com",
+    fetchImpl: async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(700_000));
+        controller.enqueue(new Uint8Array(700_000));
+        controller.close();
+      },
+    })),
+    providerId: "managed-desktop",
+    timeoutMs: 30_000,
+    token: "bound-at-runtime",
+  });
+
+  await assert.rejects(() => adapter.describe(), /response is too large/);
+});
+
 function baseEnv(): NodeJS.ProcessEnv {
   return {
     CEREBRO_BASE_URL: "https://cerebro.example.com",
