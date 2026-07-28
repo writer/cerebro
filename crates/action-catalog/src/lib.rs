@@ -2,9 +2,10 @@
 
 //! Closed, content-addressed Action definitions.
 //!
-//! The checked-in catalog is generated from the same source used by the
-//! retiring Go runtime. New Action proposals must bind one exact generated
-//! definition; stored historical operations retain their original digest.
+//! The canonical catalog source lives with this crate. The retiring Go registry
+//! is generated as a compatibility consumer. New Action proposals must bind one
+//! exact generated definition; stored historical operations retain their
+//! original digest.
 
 mod generated;
 

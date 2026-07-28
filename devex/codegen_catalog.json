@@ -159,7 +159,7 @@
       "summary": "Keeps graph action catalog definitions and generated Go and Rust registries aligned.",
       "change_reason": "graph action catalog, generated registry, or provider action metadata changed",
       "triggers": [
-        "internal/graphactions/action_catalog.yaml",
+        "crates/action-catalog/action_catalog.yaml",
         "internal/graphactions/registry_gen.go",
         "crates/action-catalog/src/generated.rs",
         "tools/graphactiongen/**"
