@@ -545,11 +545,15 @@ async function executeSignedActionLifecycle({
       decided_at_unix_ms: Date.now(),
     },
   });
+  const claimedAt = Date.now();
   await transition(workerBearer, {
     command: "claim",
     worker_id: fixture.worker_id,
-    claimed_at_unix_ms: Date.now(),
-    claim_expires_at_unix_ms: fixture.claim_expires_at_unix_ms,
+    claimed_at_unix_ms: claimedAt,
+    claim_expires_at_unix_ms: Math.min(
+      claimedAt + fixture.max_claim_lease_ms,
+      fixture.proposal.proposal_expires_at_unix_ms,
+    ),
   });
   expect(operation.state === "claimed" && operation.version === 5, "Rust did not persist the Action claim");
 

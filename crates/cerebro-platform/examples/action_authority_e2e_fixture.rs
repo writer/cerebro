@@ -6,7 +6,8 @@ use std::{
 use cerebro_action_catalog::lookup;
 use cerebro_platform_sdk::{
     ActionEffect, ActionOperationId, ActionProposal, ActorId, ContentDigest,
-    FindingValidationDecision, FindingValidationReceipt, GraphRevision, OpaqueId, TenantId,
+    FindingValidationDecision, FindingValidationReceipt, GraphRevision, MAX_ACTION_CLAIM_LEASE_MS,
+    OpaqueId, TenantId,
 };
 use serde::Serialize;
 
@@ -25,13 +26,13 @@ struct Fixture {
     worker_id: &'static str,
     operation_id: &'static str,
     decision_id: &'static str,
-    claim_expires_at_unix_ms: u64,
+    max_claim_lease_ms: u64,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let now = u64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())?;
     let expires_at = now
-        .checked_add(10 * 60 * 1_000)
+        .checked_add(30 * 60 * 1_000)
         .ok_or("fixture expiration overflow")?;
     let policy = cerebro_policy_catalog::definitions()
         .first()
@@ -90,7 +91,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             worker_id: WORKER_ID,
             operation_id: OPERATION_ID,
             decision_id: "decision:rust-action-e2e",
-            claim_expires_at_unix_ms: expires_at,
+            max_claim_lease_ms: MAX_ACTION_CLAIM_LEASE_MS,
         })?
     );
     Ok(())
