@@ -5,7 +5,8 @@ use cerebro_action_store::{ActionStoreError, PostgresActionLedger};
 use cerebro_platform_engine::ActionCommand;
 use cerebro_platform_sdk::{
     ActionEffect, ActionOperationId, ActionProposal, ActionState, ActorId, ContentDigest,
-    FindingValidationDecision, FindingValidationReceipt, GraphRevision, OpaqueId, TenantId,
+    DecisionId, DecisionReceipt, FindingValidationDecision, FindingValidationReceipt,
+    GraphRevision, OpaqueId, TenantId,
 };
 use tokio_postgres::NoTls;
 
@@ -119,12 +120,87 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     assert!(history[0].command_digest.is_none());
     assert!(history[1].command_digest.is_some());
 
+    let approved = ledger
+        .transition(
+            &tenant,
+            &operation_id,
+            &operator,
+            waiting.version,
+            ActionCommand::RecordApproval {
+                receipt: DecisionReceipt {
+                    decision_id: DecisionId::parse("decision:live:one")?,
+                    proposal_digest: waiting.proposal.proposal_digest.to_string(),
+                    approved: true,
+                    decided_by: operator.clone(),
+                    decided_at_unix_ms: 35,
+                },
+            },
+            35,
+        )
+        .await?;
+    let worker = ActorId::parse("worker:live:one")?;
+    let claimed = ledger
+        .transition(
+            &tenant,
+            &operation_id,
+            &worker,
+            approved.version,
+            ActionCommand::Claim {
+                worker_id: OpaqueId::parse(worker.as_str())?,
+                claimed_at_unix_ms: 36,
+                claim_expires_at_unix_ms: 100,
+            },
+            36,
+        )
+        .await?;
+    let executing = ledger
+        .transition(
+            &tenant,
+            &operation_id,
+            &worker,
+            claimed.version,
+            ActionCommand::StartExecution {
+                started_at_unix_ms: 40,
+            },
+            40,
+        )
+        .await?;
+    let dispatch = ledger.get_dispatch(&tenant, &operation_id).await?;
+    assert_eq!(dispatch.operation_version, executing.version);
+    assert_eq!(
+        dispatch.proposal_digest,
+        executing.proposal.proposal_digest.to_string()
+    );
+    assert_eq!(
+        dispatch.finding_id,
+        executing.proposal.finding_id.to_string()
+    );
+    assert_eq!(
+        dispatch.finding_validation_receipt_digest,
+        validation.receipt_digest.to_string()
+    );
+    assert_eq!(
+        dispatch.graph_revision,
+        executing.proposal.graph_revision.get()
+    );
+    assert_eq!(dispatch.provider, "cerebro-device-auth");
+    assert_eq!(dispatch.provider_action, "revoke");
+    assert_eq!(dispatch.requested_by, worker.to_string());
+    assert_eq!(
+        ledger.list_open_dispatches(&tenant, 10).await?.dispatches,
+        vec![dispatch]
+    );
+    assert!(matches!(
+        ledger.get_dispatch(&other_tenant, &operation_id).await,
+        Err(ActionStoreError::NotFound(_))
+    ));
+
     let second = proposal(
         "operation:live:second",
         "idempotency:live:second",
         &validation,
     );
-    ledger.propose(second.clone(), 40).await?;
+    ledger.propose(second.clone(), 41).await?;
     let other_validation = finding_validation(other_tenant.as_str());
     ledger
         .record_finding_validation(other_validation.clone(), 6)
@@ -134,7 +210,7 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
         "idempotency:live:other",
         &other_validation,
     );
-    ledger.propose(other_tenant_proposal.clone(), 41).await?;
+    ledger.propose(other_tenant_proposal.clone(), 42).await?;
 
     let first_page = ledger.list(&tenant, 1, None).await?;
     assert_eq!(
@@ -144,7 +220,7 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     let second_page = ledger
         .list(&tenant, 1, first_page.next_page_token.as_deref())
         .await?;
-    assert_eq!(second_page.actions, vec![waiting]);
+    assert_eq!(second_page.actions, vec![executing]);
     assert!(second_page.next_page_token.is_none());
     assert_eq!(
         ledger.list(&other_tenant, 10, None).await?.actions,
@@ -205,6 +281,28 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
             .as_db_error()
             .is_some_and(|error| error.message().contains("append-only"))
     );
+    event_mutation.rollback().await?;
+
+    let dispatch_mutation = mutation_client.transaction().await?;
+    dispatch_mutation
+        .query_one(
+            "SELECT set_config('cerebro.tenant_id', $1, true)",
+            &[&tenant.as_str()],
+        )
+        .await?;
+    let error = dispatch_mutation
+        .execute(
+            "UPDATE action_dispatches SET provider_action = 'erase' WHERE tenant_id = $1 AND operation_id = $2",
+            &[&tenant.as_str(), &operation_id.as_str()],
+        )
+        .await
+        .expect_err("dispatch mutation must fail");
+    assert!(
+        error
+            .as_db_error()
+            .is_some_and(|error| error.message().contains("append-only"))
+    );
+    dispatch_mutation.rollback().await?;
     Ok(())
 }
 

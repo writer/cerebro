@@ -8,15 +8,15 @@
 
 use std::{error::Error, fmt};
 
-use cerebro_action_catalog::{ActionCatalogError, validate_proposal};
+use cerebro_action_catalog::{ActionCatalogError, lookup, validate_proposal};
 use cerebro_platform_engine::{ActionCommand, transition_action};
 use cerebro_platform_sdk::{
     ActionOperation, ActionOperationId, ActionProposal, ActionState, ActorId, ContentDigest,
-    FindingValidationReceipt, SdkError, TenantId, VerificationState,
+    FindingValidationReceipt, GraphRevision, SdkError, TenantId, VerificationState,
 };
 use cerebro_policy_catalog::{PolicyCatalogError, validate_finding_receipt};
 use postgres_native_tls::MakeTlsConnector;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_postgres::{Client, Row, Transaction};
@@ -150,16 +150,65 @@ CREATE TABLE IF NOT EXISTS action_operation_events (
   FOREIGN KEY (tenant_id, operation_id)
     REFERENCES action_operations (tenant_id, operation_id)
     DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (tenant_id, operation_id, operation_version)
+    REFERENCES action_operation_events (tenant_id, operation_id, version)
+    DEFERRABLE INITIALLY DEFERRED,
   CHECK ((version = 1 AND event_kind = 'proposed' AND command_digest IS NULL AND command_json IS NULL)
     OR (version > 1 AND event_kind <> 'proposed' AND command_digest IS NOT NULL AND command_json IS NOT NULL)),
   CHECK ((operation_json->'proposal'->>'tenant_id') IS NOT DISTINCT FROM tenant_id),
   CHECK ((operation_json->'proposal'->>'operation_id') IS NOT DISTINCT FROM operation_id),
   CHECK ((operation_json->>'version')::BIGINT IS NOT DISTINCT FROM version)
 );
+CREATE TABLE IF NOT EXISTS action_dispatches (
+  tenant_id TEXT NOT NULL CHECK (char_length(tenant_id) BETWEEN 1 AND 256),
+  operation_id TEXT NOT NULL CHECK (char_length(operation_id) BETWEEN 1 AND 256),
+  operation_version BIGINT NOT NULL CHECK (operation_version > 1),
+  proposal_digest TEXT NOT NULL CHECK (proposal_digest ~ '^[0-9a-f]{64}$'),
+  finding_id TEXT NOT NULL CHECK (char_length(finding_id) BETWEEN 1 AND 256),
+  finding_revision_digest TEXT NOT NULL CHECK (finding_revision_digest ~ '^[0-9a-f]{64}$'),
+  finding_validation_receipt_digest TEXT NOT NULL CHECK (finding_validation_receipt_digest ~ '^[0-9a-f]{64}$'),
+  graph_revision BIGINT NOT NULL CHECK (graph_revision > 0),
+  action_definition_digest TEXT NOT NULL CHECK (action_definition_digest ~ '^[0-9a-f]{64}$'),
+  dispatch_digest TEXT NOT NULL CHECK (dispatch_digest ~ '^[0-9a-f]{64}$'),
+  provider TEXT NOT NULL CHECK (char_length(provider) BETWEEN 1 AND 128),
+  provider_action TEXT NOT NULL CHECK (char_length(provider_action) BETWEEN 1 AND 128),
+  target_id TEXT NOT NULL CHECK (char_length(target_id) BETWEEN 1 AND 256),
+  idempotency_key TEXT NOT NULL CHECK (char_length(idempotency_key) BETWEEN 1 AND 256),
+  requested_by TEXT NOT NULL CHECK (char_length(requested_by) BETWEEN 1 AND 256),
+  dispatch_json JSONB NOT NULL CHECK (jsonb_typeof(dispatch_json) = 'object'),
+  requested_at_unix_ms BIGINT NOT NULL CHECK (requested_at_unix_ms > 0),
+  PRIMARY KEY (tenant_id, operation_id),
+  UNIQUE (tenant_id, dispatch_digest),
+  FOREIGN KEY (tenant_id, operation_id)
+    REFERENCES action_operations (tenant_id, operation_id)
+    DEFERRABLE INITIALLY DEFERRED,
+  CHECK ((dispatch_json->>'tenant_id') IS NOT DISTINCT FROM tenant_id),
+  CHECK ((dispatch_json->>'operation_id') IS NOT DISTINCT FROM operation_id),
+  CHECK ((dispatch_json->>'operation_version')::BIGINT IS NOT DISTINCT FROM operation_version),
+  CHECK ((dispatch_json->>'proposal_digest') IS NOT DISTINCT FROM proposal_digest),
+  CHECK ((dispatch_json->>'finding_id') IS NOT DISTINCT FROM finding_id),
+  CHECK ((dispatch_json->>'finding_revision_digest') IS NOT DISTINCT FROM finding_revision_digest),
+  CHECK ((dispatch_json->>'finding_validation_receipt_digest') IS NOT DISTINCT FROM finding_validation_receipt_digest),
+  CHECK ((dispatch_json->>'graph_revision')::BIGINT IS NOT DISTINCT FROM graph_revision),
+  CHECK ((dispatch_json->>'action_definition_digest') IS NOT DISTINCT FROM action_definition_digest),
+  CHECK ((dispatch_json->>'dispatch_digest') IS NOT DISTINCT FROM dispatch_digest),
+  CHECK ((dispatch_json->>'provider') IS NOT DISTINCT FROM provider),
+  CHECK ((dispatch_json->>'provider_action') IS NOT DISTINCT FROM provider_action),
+  CHECK ((dispatch_json->>'target_id') IS NOT DISTINCT FROM target_id),
+  CHECK ((dispatch_json->>'idempotency_key') IS NOT DISTINCT FROM idempotency_key),
+  CHECK ((dispatch_json->>'requested_by') IS NOT DISTINCT FROM requested_by),
+  CHECK ((dispatch_json->>'requested_at_unix_ms')::BIGINT IS NOT DISTINCT FROM requested_at_unix_ms)
+);
 CREATE INDEX IF NOT EXISTS action_operation_events_committed_idx
   ON action_operation_events (tenant_id, committed_at_unix_ms DESC);
 CREATE INDEX IF NOT EXISTS action_operations_queue_idx
   ON action_operations (tenant_id, updated_at_unix_ms DESC, operation_id);
+CREATE INDEX IF NOT EXISTS action_operations_dispatch_queue_idx
+  ON action_operations (tenant_id, state, updated_at_unix_ms, operation_id);
+CREATE INDEX IF NOT EXISTS action_dispatches_requested_idx
+  ON action_dispatches (tenant_id, requested_at_unix_ms, operation_id);
+CREATE INDEX IF NOT EXISTS action_dispatches_finding_idx
+  ON action_dispatches (tenant_id, finding_id, requested_at_unix_ms, operation_id);
 CREATE INDEX IF NOT EXISTS finding_validation_receipts_finding_idx
   ON finding_validation_receipts (tenant_id, finding_id, validated_at_unix_ms DESC);
 CREATE INDEX IF NOT EXISTS finding_validation_receipts_policy_idx
@@ -190,19 +239,35 @@ BEGIN
     FOR EACH ROW EXECUTE FUNCTION reject_action_operation_event_mutation();
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+CREATE OR REPLACE FUNCTION reject_action_dispatch_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'Action dispatches are append-only';
+END;
+$$ LANGUAGE plpgsql;
+DO $$
+BEGIN
+  CREATE TRIGGER action_dispatches_append_only
+    BEFORE UPDATE OR DELETE ON action_dispatches
+    FOR EACH ROW EXECUTE FUNCTION reject_action_dispatch_mutation();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 ALTER TABLE finding_validation_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE finding_validation_receipts FORCE ROW LEVEL SECURITY;
 ALTER TABLE action_operations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE action_operations FORCE ROW LEVEL SECURITY;
 ALTER TABLE action_operation_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE action_operation_events FORCE ROW LEVEL SECURITY;
+ALTER TABLE action_dispatches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE action_dispatches FORCE ROW LEVEL SECURITY;
 DO $$
 DECLARE table_name TEXT;
 BEGIN
   FOREACH table_name IN ARRAY ARRAY[
     'finding_validation_receipts',
     'action_operations',
-    'action_operation_events'
+    'action_operation_events',
+    'action_dispatches'
   ] LOOP
     BEGIN
       EXECUTE format(
@@ -307,6 +372,204 @@ pub struct ActionEvent {
 pub struct ActionPage {
     pub actions: Vec<ActionOperation>,
     pub next_page_token: Option<String>,
+}
+
+const ACTION_DISPATCH_DIGEST_SCHEMA: &str = "cerebro.action-dispatch.v1";
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActionDispatch {
+    pub tenant_id: String,
+    pub operation_id: String,
+    pub operation_version: u64,
+    pub proposal_digest: String,
+    pub finding_id: String,
+    pub finding_revision_digest: String,
+    pub finding_validation_receipt_digest: String,
+    pub graph_revision: u64,
+    pub action_kind: String,
+    pub action_definition_digest: String,
+    pub provider: String,
+    pub provider_action: String,
+    pub target_kind: String,
+    pub target_id: String,
+    pub effect: String,
+    pub idempotency_key: String,
+    pub requested_by: String,
+    pub requested_at_unix_ms: u64,
+    pub dispatch_digest: String,
+}
+
+impl ActionDispatch {
+    fn from_started_operation(
+        operation: &ActionOperation,
+        requested_by: &ActorId,
+        requested_at_unix_ms: u64,
+    ) -> Result<Self, ActionStoreError> {
+        if operation.state != ActionState::Executing
+            || operation
+                .claimed_by
+                .as_ref()
+                .is_none_or(|worker| worker.as_str() != requested_by.as_str())
+        {
+            return Err(ActionStoreError::Conflict(
+                "Action dispatch requires the authenticated execution claimant".to_owned(),
+            ));
+        }
+        let definition = validate_proposal(&operation.proposal)?;
+        let mut dispatch = Self {
+            tenant_id: operation.proposal.tenant_id.to_string(),
+            operation_id: operation.proposal.operation_id.to_string(),
+            operation_version: operation.version,
+            proposal_digest: operation.proposal.proposal_digest.to_string(),
+            finding_id: operation.proposal.finding_id.to_string(),
+            finding_revision_digest: operation.proposal.finding_revision_digest.to_string(),
+            finding_validation_receipt_digest: operation
+                .proposal
+                .finding_validation_receipt_digest
+                .to_string(),
+            graph_revision: operation.proposal.graph_revision.get(),
+            action_kind: definition.id.to_owned(),
+            action_definition_digest: operation.proposal.action_definition_digest.to_string(),
+            provider: definition.provider.to_owned(),
+            provider_action: definition.provider_action.to_owned(),
+            target_kind: definition.target_kind.to_owned(),
+            target_id: operation.proposal.target_id.to_string(),
+            effect: definition.effect.to_owned(),
+            idempotency_key: operation.proposal.idempotency_key.to_string(),
+            requested_by: requested_by.to_string(),
+            requested_at_unix_ms,
+            dispatch_digest: ContentDigest::of_bytes("unbound Action dispatch").to_string(),
+        };
+        dispatch.dispatch_digest = dispatch.computed_digest()?.to_string();
+        dispatch.validate()?;
+        Ok(dispatch)
+    }
+
+    fn computed_digest(&self) -> Result<ContentDigest, ActionStoreError> {
+        #[derive(Serialize)]
+        struct DigestMaterial<'a> {
+            schema: &'static str,
+            tenant_id: &'a str,
+            operation_id: &'a str,
+            operation_version: u64,
+            proposal_digest: &'a str,
+            finding_id: &'a str,
+            finding_revision_digest: &'a str,
+            finding_validation_receipt_digest: &'a str,
+            graph_revision: u64,
+            action_kind: &'a str,
+            action_definition_digest: &'a str,
+            provider: &'a str,
+            provider_action: &'a str,
+            target_kind: &'a str,
+            target_id: &'a str,
+            effect: &'a str,
+            idempotency_key: &'a str,
+            requested_by: &'a str,
+            requested_at_unix_ms: u64,
+        }
+
+        let material = DigestMaterial {
+            schema: ACTION_DISPATCH_DIGEST_SCHEMA,
+            tenant_id: &self.tenant_id,
+            operation_id: &self.operation_id,
+            operation_version: self.operation_version,
+            proposal_digest: &self.proposal_digest,
+            finding_id: &self.finding_id,
+            finding_revision_digest: &self.finding_revision_digest,
+            finding_validation_receipt_digest: &self.finding_validation_receipt_digest,
+            graph_revision: self.graph_revision,
+            action_kind: &self.action_kind,
+            action_definition_digest: &self.action_definition_digest,
+            provider: &self.provider,
+            provider_action: &self.provider_action,
+            target_kind: &self.target_kind,
+            target_id: &self.target_id,
+            effect: &self.effect,
+            idempotency_key: &self.idempotency_key,
+            requested_by: &self.requested_by,
+            requested_at_unix_ms: self.requested_at_unix_ms,
+        };
+        Ok(ContentDigest::of_bytes(serde_json::to_vec(&material)?))
+    }
+
+    fn validate(&self) -> Result<(), ActionStoreError> {
+        if self.operation_version <= 1
+            || self.requested_at_unix_ms == 0
+            || TenantId::parse(self.tenant_id.clone()).is_err()
+            || ActionOperationId::parse(self.operation_id.clone()).is_err()
+            || ContentDigest::parse(self.proposal_digest.clone()).is_err()
+            || cerebro_platform_sdk::OpaqueId::parse(self.finding_id.clone()).is_err()
+            || ContentDigest::parse(self.finding_revision_digest.clone()).is_err()
+            || ContentDigest::parse(self.finding_validation_receipt_digest.clone()).is_err()
+            || GraphRevision::new(self.graph_revision).is_err()
+            || ContentDigest::parse(self.action_definition_digest.clone()).is_err()
+            || ContentDigest::parse(self.dispatch_digest.clone()).is_err()
+            || cerebro_platform_sdk::OpaqueId::parse(self.target_id.clone()).is_err()
+            || cerebro_platform_sdk::OpaqueId::parse(self.idempotency_key.clone()).is_err()
+            || ActorId::parse(self.requested_by.clone()).is_err()
+        {
+            return Err(ActionStoreError::Corrupt(
+                "Action dispatch version or request time is invalid".to_owned(),
+            ));
+        }
+        let definition = lookup(&self.action_kind)?;
+        if self.action_definition_digest != definition.definition_digest
+            || self.provider != definition.provider
+            || self.provider_action != definition.provider_action
+            || self.target_kind != definition.target_kind
+            || self.effect != definition.effect
+        {
+            return Err(ActionStoreError::Corrupt(
+                "Action dispatch does not match its closed definition".to_owned(),
+            ));
+        }
+        if self.dispatch_digest != self.computed_digest()?.as_str() {
+            return Err(ActionStoreError::Corrupt(
+                "Action dispatch digest does not match its content".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_against_operation(
+        &self,
+        operation: &ActionOperation,
+    ) -> Result<(), ActionStoreError> {
+        if operation.state != ActionState::Executing
+            || operation.version != self.operation_version
+            || operation.proposal.tenant_id.as_str() != self.tenant_id
+            || operation.proposal.operation_id.as_str() != self.operation_id
+            || operation.proposal.proposal_digest.as_str() != self.proposal_digest
+            || operation.proposal.finding_id.as_str() != self.finding_id
+            || operation.proposal.finding_revision_digest.as_str() != self.finding_revision_digest
+            || operation
+                .proposal
+                .finding_validation_receipt_digest
+                .as_str()
+                != self.finding_validation_receipt_digest
+            || operation.proposal.graph_revision.get() != self.graph_revision
+            || operation.proposal.action_kind != self.action_kind
+            || operation.proposal.action_definition_digest.as_str() != self.action_definition_digest
+            || operation.proposal.target_id.as_str() != self.target_id
+            || operation.proposal.idempotency_key.as_str() != self.idempotency_key
+            || operation
+                .claimed_by
+                .as_ref()
+                .is_none_or(|worker| worker.as_str() != self.requested_by)
+        {
+            return Err(ActionStoreError::Corrupt(
+                "Action dispatch does not match its start-execution event".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ActionDispatchPage {
+    pub dispatches: Vec<ActionDispatch>,
 }
 
 pub struct PostgresActionLedger {
@@ -677,8 +940,17 @@ impl PostgresActionLedger {
                 "authenticated actor does not own the Action command".to_owned(),
             ));
         }
+        let dispatch_requested_at = match &command {
+            ActionCommand::StartExecution { started_at_unix_ms } => Some(*started_at_unix_ms),
+            _ => None,
+        };
         let next = transition_action(&current.operation, expected_version, command)?;
         next.validate()?;
+        let dispatch = dispatch_requested_at
+            .map(|requested_at| {
+                ActionDispatch::from_started_operation(&next, actor_id, requested_at)
+            })
+            .transpose()?;
         let next_version = storage_i64(next.version, "Action operation version")?;
         let next_json = serde_json::to_value(&next)?;
         let operation_digest = digest_json(&next_json)?;
@@ -702,6 +974,39 @@ impl PostgresActionLedger {
                 "stale Action operation version".to_owned(),
             ));
         }
+        if let Some(dispatch) = dispatch.as_ref() {
+            let dispatch_json = serde_json::to_value(dispatch)?;
+            let graph_revision =
+                storage_i64(dispatch.graph_revision, "Action dispatch graph revision")?;
+            let requested_at = storage_i64(
+                dispatch.requested_at_unix_ms,
+                "Action dispatch request time",
+            )?;
+            transaction
+                .execute(
+                    "INSERT INTO action_dispatches (tenant_id, operation_id, operation_version, proposal_digest, finding_id, finding_revision_digest, finding_validation_receipt_digest, graph_revision, action_definition_digest, dispatch_digest, provider, provider_action, target_id, idempotency_key, requested_by, dispatch_json, requested_at_unix_ms) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
+                    &[
+                        &dispatch.tenant_id.as_str(),
+                        &dispatch.operation_id.as_str(),
+                        &next_version,
+                        &dispatch.proposal_digest.as_str(),
+                        &dispatch.finding_id.as_str(),
+                        &dispatch.finding_revision_digest.as_str(),
+                        &dispatch.finding_validation_receipt_digest.as_str(),
+                        &graph_revision,
+                        &dispatch.action_definition_digest.as_str(),
+                        &dispatch.dispatch_digest.as_str(),
+                        &dispatch.provider,
+                        &dispatch.provider_action,
+                        &dispatch.target_id.as_str(),
+                        &dispatch.idempotency_key.as_str(),
+                        &dispatch.requested_by.as_str(),
+                        &dispatch_json,
+                        &requested_at,
+                    ],
+                )
+                .await?;
+        }
         transaction
             .execute(
                 "INSERT INTO action_operation_events (tenant_id, operation_id, version, actor_id, event_kind, command_digest, operation_digest, command_json, operation_json, committed_at_unix_ms) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
@@ -721,6 +1026,55 @@ impl PostgresActionLedger {
             .await?;
         transaction.commit().await?;
         Ok(next)
+    }
+
+    pub async fn get_dispatch(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+    ) -> Result<ActionDispatch, ActionStoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let dispatch = transaction
+            .query_opt(
+                "SELECT dispatch.dispatch_json, event.actor_id AS event_actor_id, event.event_kind, event.command_json, event.operation_json FROM action_dispatches AS dispatch INNER JOIN action_operation_events AS event ON event.tenant_id = dispatch.tenant_id AND event.operation_id = dispatch.operation_id AND event.version = dispatch.operation_version WHERE dispatch.tenant_id = $1 AND dispatch.operation_id = $2",
+                &[&tenant_id.as_str(), &operation_id.as_str()],
+            )
+            .await?
+            .as_ref()
+            .map(decode_dispatch_row)
+            .transpose()?
+            .ok_or_else(|| ActionStoreError::NotFound(operation_id.to_string()))?;
+        transaction.commit().await?;
+        Ok(dispatch)
+    }
+
+    pub async fn list_open_dispatches(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+    ) -> Result<ActionDispatchPage, ActionStoreError> {
+        if !(1..=100).contains(&limit) {
+            return Err(ActionStoreError::OutOfRange("Action dispatch page limit"));
+        }
+        let limit = i64::try_from(limit)
+            .map_err(|_| ActionStoreError::OutOfRange("Action dispatch page limit"))?;
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let rows = transaction
+            .query(
+                "SELECT dispatch.dispatch_json, event.actor_id AS event_actor_id, event.event_kind, event.command_json, event.operation_json FROM action_dispatches AS dispatch INNER JOIN action_operations AS operation ON operation.tenant_id = dispatch.tenant_id AND operation.operation_id = dispatch.operation_id INNER JOIN action_operation_events AS event ON event.tenant_id = dispatch.tenant_id AND event.operation_id = dispatch.operation_id AND event.version = dispatch.operation_version WHERE dispatch.tenant_id = $1 AND operation.state IN ('executing', 'outcome_unknown') ORDER BY dispatch.requested_at_unix_ms, dispatch.operation_id LIMIT $2",
+                &[&tenant_id.as_str(), &limit],
+            )
+            .await?;
+        let dispatches = rows
+            .iter()
+            .map(decode_dispatch_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        transaction.commit().await?;
+        Ok(ActionDispatchPage { dispatches })
     }
 
     pub async fn history(
@@ -906,6 +1260,34 @@ fn validate_current_row(row: &Row) -> Result<CurrentAction, ActionStoreError> {
 fn decode_operation(value: Value) -> Result<ActionOperation, ActionStoreError> {
     serde_json::from_value(value)
         .map_err(|error| ActionStoreError::Corrupt(format!("invalid Action operation: {error}")))
+}
+
+fn decode_dispatch_row(row: &Row) -> Result<ActionDispatch, ActionStoreError> {
+    let value: Value = row.get("dispatch_json");
+    let dispatch: ActionDispatch = serde_json::from_value(value)
+        .map_err(|error| ActionStoreError::Corrupt(format!("invalid Action dispatch: {error}")))?;
+    dispatch.validate()?;
+    let event_kind: String = row.get("event_kind");
+    let event_actor_id: String = row.get("event_actor_id");
+    let command_json: Option<Value> = row.get("command_json");
+    let operation = decode_operation(row.get("operation_json"))?;
+    let command_json = command_json.ok_or_else(|| {
+        ActionStoreError::Corrupt("Action dispatch event has no execution command".to_owned())
+    })?;
+    if event_kind != "start_execution"
+        || event_actor_id != dispatch.requested_by
+        || command_json.get("command").and_then(Value::as_str) != Some("start_execution")
+        || command_json
+            .get("started_at_unix_ms")
+            .and_then(Value::as_u64)
+            != Some(dispatch.requested_at_unix_ms)
+    {
+        return Err(ActionStoreError::Corrupt(
+            "Action dispatch does not match its execution command".to_owned(),
+        ));
+    }
+    dispatch.validate_against_operation(&operation)?;
+    Ok(dispatch)
 }
 
 fn digest_json(value: &Value) -> Result<ContentDigest, ActionStoreError> {
@@ -1142,6 +1524,9 @@ mod tests {
             "PRIMARY KEY (tenant_id, operation_id)",
             "UNIQUE (tenant_id, idempotency_key)",
             "PRIMARY KEY (tenant_id, operation_id, version)",
+            "PRIMARY KEY (tenant_id, operation_id)",
+            "UNIQUE (tenant_id, dispatch_digest)",
+            "FOREIGN KEY (tenant_id, operation_id, operation_version)",
             "actor_id TEXT NOT NULL",
             "FORCE ROW LEVEL SECURITY",
             "current_setting(''cerebro.tenant_id'', true)",
@@ -1150,12 +1535,17 @@ mod tests {
             "version > 1 AND event_kind <> 'proposed'",
             "CREATE TRIGGER action_operation_events_append_only",
             "CREATE TRIGGER finding_validation_receipts_append_only",
+            "CREATE TRIGGER action_dispatches_append_only",
             "BEFORE UPDATE OR DELETE ON action_operation_events",
             "BEFORE UPDATE OR DELETE ON finding_validation_receipts",
+            "BEFORE UPDATE OR DELETE ON action_dispatches",
             "finding_validation_receipts_finding_idx",
             "finding_validation_receipts_policy_binding",
             "finding_validation_receipts_policy_idx",
             "action_operations_queue_idx",
+            "action_operations_dispatch_queue_idx",
+            "action_dispatches_requested_idx",
+            "action_dispatches_finding_idx",
         ] {
             assert!(POSTGRES_SCHEMA.contains(required), "missing {required}");
         }
@@ -1163,6 +1553,8 @@ mod tests {
         assert!(!POSTGRES_SCHEMA.contains("DELETE FROM action_operation_events"));
         assert!(!POSTGRES_SCHEMA.contains("UPDATE finding_validation_receipts"));
         assert!(!POSTGRES_SCHEMA.contains("DELETE FROM finding_validation_receipts"));
+        assert!(!POSTGRES_SCHEMA.contains("UPDATE action_dispatches"));
+        assert!(!POSTGRES_SCHEMA.contains("DELETE FROM action_dispatches"));
     }
 
     #[test]
@@ -1170,6 +1562,50 @@ mod tests {
         assert!(storage_i64(0, "test").is_err());
         assert!(storage_i64(u64::MAX, "test").is_err());
         assert_eq!(storage_i64(i64::MAX as u64, "test").unwrap(), i64::MAX);
+    }
+
+    #[test]
+    fn dispatches_reject_tampered_provider_definition_and_content() {
+        let definition = lookup("endpoint.cerebro.revoke_device").unwrap();
+        let mut dispatch = ActionDispatch {
+            tenant_id: "tenant:dispatch:one".to_owned(),
+            operation_id: "operation:dispatch:one".to_owned(),
+            operation_version: 6,
+            proposal_digest: ContentDigest::of_bytes("proposal").to_string(),
+            finding_id: "finding:dispatch:one".to_owned(),
+            finding_revision_digest: ContentDigest::of_bytes("finding revision").to_string(),
+            finding_validation_receipt_digest: ContentDigest::of_bytes("finding validation")
+                .to_string(),
+            graph_revision: 7,
+            action_kind: definition.id.to_owned(),
+            action_definition_digest: definition.definition_digest.to_owned(),
+            provider: definition.provider.to_owned(),
+            provider_action: definition.provider_action.to_owned(),
+            target_kind: definition.target_kind.to_owned(),
+            target_id: "device:dispatch:one".to_owned(),
+            effect: definition.effect.to_owned(),
+            idempotency_key: "idempotency:dispatch:one".to_owned(),
+            requested_by: "worker:dispatch:one".to_owned(),
+            requested_at_unix_ms: 42,
+            dispatch_digest: ContentDigest::of_bytes("unbound").to_string(),
+        };
+        dispatch.dispatch_digest = dispatch.computed_digest().unwrap().to_string();
+        dispatch.validate().unwrap();
+
+        let mut changed_provider = dispatch.clone();
+        changed_provider.provider = "attacker-provider".to_owned();
+        changed_provider.dispatch_digest = changed_provider.computed_digest().unwrap().to_string();
+        assert!(matches!(
+            changed_provider.validate(),
+            Err(ActionStoreError::Corrupt(_))
+        ));
+
+        let mut changed_target = dispatch;
+        changed_target.target_id = "device:dispatch:other".to_owned();
+        assert!(matches!(
+            changed_target.validate(),
+            Err(ActionStoreError::Corrupt(_))
+        ));
     }
 
     #[test]

@@ -20,7 +20,10 @@ use axum::{
 use cerebro_action_catalog::{
     ActionCatalogError, definitions as action_definitions, validate_proposal,
 };
-use cerebro_action_store::{ActionEvent, ActionPage, ActionStoreError, PostgresActionLedger};
+use cerebro_action_store::{
+    ActionDispatch, ActionDispatchPage, ActionEvent, ActionPage, ActionStoreError,
+    PostgresActionLedger,
+};
 use cerebro_agent_context::{
     AgentContext, AgentGraph, ContextEntity, ContextError, GraphPath, MemoryAgentGraph,
     Neighborhood,
@@ -130,6 +133,18 @@ trait ActionAuthority: Send + Sync {
         tenant_id: &TenantId,
         operation_id: &ActionOperationId,
     ) -> Result<Vec<ActionEvent>, ActionStoreError>;
+
+    async fn get_dispatch(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+    ) -> Result<ActionDispatch, ActionStoreError>;
+
+    async fn list_open_dispatches(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+    ) -> Result<ActionDispatchPage, ActionStoreError>;
 }
 
 #[async_trait]
@@ -206,6 +221,22 @@ impl ActionAuthority for PostgresActionLedger {
         operation_id: &ActionOperationId,
     ) -> Result<Vec<ActionEvent>, ActionStoreError> {
         self.history(tenant_id, operation_id).await
+    }
+
+    async fn get_dispatch(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+    ) -> Result<ActionDispatch, ActionStoreError> {
+        self.get_dispatch(tenant_id, operation_id).await
+    }
+
+    async fn list_open_dispatches(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+    ) -> Result<ActionDispatchPage, ActionStoreError> {
+        self.list_open_dispatches(tenant_id, limit).await
     }
 }
 
@@ -368,6 +399,8 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
         "/v1/me" => "identity:read",
         "/v1/finding-validations" => "cerebro:write",
         _ if path.starts_with("/v1/finding-validations/") => "cerebro:read",
+        "/v1/action-dispatches" => "cerebro:actions:read",
+        _ if path.starts_with("/v1/action-dispatches/") => "cerebro:actions:read",
         "/v1/actions" if method == Method::GET => "cerebro:actions:read",
         "/v1/actions" => "cerebro:actions:write",
         _ if path.starts_with("/v1/actions/") && path.ends_with("/commands") => {
@@ -408,6 +441,7 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/finding-validations" => "record_finding_validation",
         "/v1/action-definitions" => "action_definitions",
         "/v1/policy-definitions" => "policy_definitions",
+        "/v1/action-dispatches" => "list_action_dispatches",
         "/v1/sources/summary" => "source_summary",
         "/platform/graph/neighborhood" => "neighborhood",
         "/v1/graph/search" => "search",
@@ -423,6 +457,7 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/projections/authority" => "projection_authority",
         _ if path.starts_with("/v1/entities/") => "get_entity",
         _ if path.starts_with("/v1/finding-validations/") => "get_finding_validation",
+        _ if path.starts_with("/v1/action-dispatches/") => "get_action_dispatch",
         _ if path.starts_with("/v1/assertions/") => "explain_assertion",
         _ if path.starts_with("/v1/actions/") && path.ends_with("/history") => "action_history",
         _ if path.starts_with("/v1/actions/") && path.ends_with("/commands") => "transition_action",
@@ -861,6 +896,12 @@ struct ProductNeighborhoodQuery {
 struct ActionTransitionRequest {
     expected_version: u64,
     command: HttpActionCommand,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActionDispatchQuery {
+    limit: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -1487,6 +1528,11 @@ fn router_with_backend(
             )
             .route("/v1/action-definitions", get(list_action_definitions))
             .route("/v1/policy-definitions", get(list_policy_definitions))
+            .route("/v1/action-dispatches", get(list_action_dispatches))
+            .route(
+                "/v1/action-dispatches/{operation_id}",
+                get(get_action_dispatch),
+            )
             .route("/v1/actions", get(list_actions).post(propose_action))
             .route("/v1/actions/{operation_id}", get(get_action))
             .route(
@@ -1991,6 +2037,41 @@ async fn get_action_history(
         .map_err(|error| bad_request("invalid_action_operation_id", error.to_string()))?;
     action_authority(&state)?
         .history(&identity.tenant, &operation_id)
+        .await
+        .map(Json)
+        .map_err(action_store_error)
+}
+
+async fn list_action_dispatches(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Query(query): Query<ActionDispatchQuery>,
+) -> Result<Json<ActionDispatchPage>, (StatusCode, Json<ErrorResponse>)> {
+    require_action_scope(&identity, ACTION_EXECUTE_SCOPE)?;
+    let limit = query.limit.unwrap_or(50);
+    if !(1..=100).contains(&limit) {
+        return Err(bad_request(
+            "invalid_action_dispatch_query",
+            "limit must be between 1 and 100.",
+        ));
+    }
+    action_authority(&state)?
+        .list_open_dispatches(&identity.tenant, limit)
+        .await
+        .map(Json)
+        .map_err(action_store_error)
+}
+
+async fn get_action_dispatch(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Path(operation_id): Path<String>,
+) -> Result<Json<ActionDispatch>, (StatusCode, Json<ErrorResponse>)> {
+    require_action_scope(&identity, ACTION_EXECUTE_SCOPE)?;
+    let operation_id = ActionOperationId::parse(operation_id)
+        .map_err(|error| bad_request("invalid_action_operation_id", error.to_string()))?;
+    action_authority(&state)?
+        .get_dispatch(&identity.tenant, &operation_id)
         .await
         .map(Json)
         .map_err(action_store_error)
@@ -2762,6 +2843,22 @@ mod tests {
             _tenant_id: &TenantId,
             _operation_id: &ActionOperationId,
         ) -> Result<Vec<ActionEvent>, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn get_dispatch(
+            &self,
+            _tenant_id: &TenantId,
+            _operation_id: &ActionOperationId,
+        ) -> Result<ActionDispatch, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn list_open_dispatches(
+            &self,
+            _tenant_id: &TenantId,
+            _limit: usize,
+        ) -> Result<ActionDispatchPage, ActionStoreError> {
             panic!("spoofed request reached the Action authority")
         }
     }
@@ -3570,6 +3667,14 @@ mod tests {
             bounded_operation(&Method::POST, "/v1/actions"),
             "propose_action"
         );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/action-dispatches"),
+            "list_action_dispatches"
+        );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/action-dispatches/operation:one"),
+            "get_action_dispatch"
+        );
     }
 
     #[test]
@@ -3611,6 +3716,14 @@ mod tests {
         );
         assert_eq!(
             oidc_scope_for_route(&Method::GET, "/v1/actions"),
+            "cerebro:actions:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/action-dispatches"),
+            "cerebro:actions:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/action-dispatches/operation:one"),
             "cerebro:actions:read"
         );
         assert_eq!(
@@ -3714,6 +3827,22 @@ mod tests {
             assert_eq!(error.0, StatusCode::BAD_REQUEST);
             assert_eq!(error.1.0.code, "invalid_action_query");
         }
+
+        let mut execution_identity = action_identity("tenant:http:one", "worker:http:one");
+        execution_identity
+            .scopes
+            .insert(ACTION_EXECUTE_SCOPE.to_owned());
+        for limit in [0, 101, usize::MAX] {
+            let error = list_action_dispatches(
+                State(state.clone()),
+                Extension(execution_identity.clone()),
+                Query(ActionDispatchQuery { limit: Some(limit) }),
+            )
+            .await
+            .expect_err("unbounded dispatch query must fail before storage");
+            assert_eq!(error.0, StatusCode::BAD_REQUEST);
+            assert_eq!(error.1.0.code, "invalid_action_dispatch_query");
+        }
     }
 
     #[tokio::test]
@@ -3764,8 +3893,8 @@ mod tests {
         let mut identity = action_identity("tenant:http:one", "actor:http:one");
         identity.scopes = BTreeSet::from(["cerebro:actions:write".to_owned()]);
         let error = transition_action_route(
-            State(state),
-            Extension(identity),
+            State(state.clone()),
+            Extension(identity.clone()),
             Path("operation:http:one".to_owned()),
             Json(ActionTransitionRequest {
                 expected_version: 1,
@@ -3776,6 +3905,26 @@ mod tests {
         )
         .await
         .expect_err("broad write scope must not grant execution authority");
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(error.1.0.code, "permission_denied");
+
+        let error = list_action_dispatches(
+            State(state.clone()),
+            Extension(identity.clone()),
+            Query(ActionDispatchQuery { limit: Some(10) }),
+        )
+        .await
+        .expect_err("broad write scope must not expose provider dispatches");
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(error.1.0.code, "permission_denied");
+
+        let error = get_action_dispatch(
+            State(state),
+            Extension(identity),
+            Path("operation:http:one".to_owned()),
+        )
+        .await
+        .expect_err("broad write scope must not expose a provider dispatch");
         assert_eq!(error.0, StatusCode::FORBIDDEN);
         assert_eq!(error.1.0.code, "permission_denied");
     }

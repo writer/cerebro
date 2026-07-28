@@ -259,6 +259,24 @@ code. First-party providers, such as Cerebro device-auth revocation, use the
 same adapter boundary as external providers so target derivation, tenant checks,
 workflow events, and reconciliation remain shared.
 
+The replacement Rust platform now owns Action proposal admission, approval and
+execution state transitions, and the durable provider-dispatch boundary. A
+`start_execution` transition and its immutable `action_dispatches` row commit
+in one PostgreSQL transaction. Each dispatch binds the tenant, operation
+version, proposal digest, finding revision and validation receipt, graph
+revision, generated Action definition, provider operation, target, idempotency
+key, signed claimant, and request time under one content digest. Signed
+executors can read only their tenant's open dispatches through
+`/v1/action-dispatches`; legacy tenant authentication cannot reach this
+authority.
+
+Provider network and first-party mutation adapters have not moved to Rust yet.
+Until they do, `internal/graphactions` is a legacy adapter behind the Rust
+dispatch record, not the Action lifecycle authority. Completing that cutover
+requires Rust provider clients, retry and timeout classification, outcome
+reconciliation, effect observation, and deployment receipts proving the
+provider calls no longer enter the Go runtime.
+
 A2A discovery, outbound event subscription metadata, and public idempotency
 semantics also live in `internal/agentplatform`. The bootstrap budget includes
 only public Agent Card serving and authenticated request/response mapping for
