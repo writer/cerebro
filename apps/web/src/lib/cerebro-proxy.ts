@@ -129,6 +129,17 @@ export const authHeadersFor = (request: NextRequest): HeadersInit => {
   return headers;
 };
 
+export const signedIdentityHeadersFor = (request: NextRequest): HeadersInit => {
+  const headers: Record<string, string> = {
+    Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
+  };
+  const authorization = request.headers.get("authorization");
+  if (authorization) {
+    headers.Authorization = authorization;
+  }
+  return headers;
+};
+
 export const isCacheableCerebroPath = (path: string) => {
   if (PROXY_CACHE_TTL_MS <= 0) {
     return false;

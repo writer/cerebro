@@ -82,15 +82,60 @@ describe("Cerebro proxy route", () => {
 
     const response = await GET(
       new NextRequest("http://localhost/api/cerebro/v1/security/lifecycle", {
-        headers: { authorization: "Bearer signed-browser-token" },
+        headers: {
+          authorization: "Bearer signed-browser-token",
+          "x-cerebro-api-key": "legacy-server-identity",
+        },
       }),
       { params: Promise.resolve({ path: ["v1", "security", "lifecycle"] }) },
     );
 
     expect(response.status).toBe(200);
     expect(upstreamHeaders.get("authorization")).toBe("Bearer signed-browser-token");
+    expect(upstreamHeaders.get("x-cerebro-api-key")).toBeNull();
     expect(upstreamHeaders.get("x-cerebro-user-id")).toBeNull();
     expect(upstreamHeaders.get("x-cerebro-user-subject")).toBeNull();
+  });
+
+  it("relays signed Rust-authority writes without authorizing or stamping in Next", async () => {
+    process.env.CEREBRO_AUTHORITY_MODE = "rust";
+    process.env.CEREBRO_IDENTITY_REQUIRED = "true";
+    process.env.CEREBRO_LOCAL_IDENTITY_FALLBACK = "false";
+    let upstreamHeaders = new Headers();
+    let upstreamBody = "";
+    vi.stubGlobal("fetch", vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
+      upstreamHeaders = new Headers(init?.headers);
+      upstreamBody = String(init?.body);
+      return new Response(JSON.stringify({ state: "proposed", version: 1 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }));
+    const body = JSON.stringify({
+      operation_id: "operation:web:one",
+      tenant_id: "tenant:web:one",
+      proposed_by: "actor:web:one",
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/cerebro/v1/actions", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer signed-browser-token",
+          "x-cerebro-api-key": "legacy-server-identity",
+          "content-type": "application/json",
+        },
+        body,
+      }),
+      { params: Promise.resolve({ path: ["v1", "actions"] }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(upstreamHeaders.get("authorization")).toBe("Bearer signed-browser-token");
+    expect(upstreamHeaders.get("x-cerebro-api-key")).toBeNull();
+    expect(upstreamHeaders.get("x-cerebro-user-id")).toBeNull();
+    expect(upstreamHeaders.get("x-cerebro-user-subject")).toBeNull();
+    expect(upstreamBody).toBe(body);
   });
 
   it.each([

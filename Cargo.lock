@@ -328,6 +328,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cerebro-action-store"
+version = "0.1.0"
+dependencies = [
+ "cerebro-platform-engine",
+ "cerebro-platform-sdk",
+ "native-tls",
+ "postgres-native-tls",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-postgres",
+]
+
+[[package]]
 name = "cerebro-agent-context"
 version = "0.1.0"
 dependencies = [
@@ -427,10 +441,13 @@ dependencies = [
  "axum",
  "buffa",
  "buffa-types",
+ "cerebro-action-store",
  "cerebro-agent-context",
  "cerebro-organizational-graph",
  "cerebro-organizational-model",
  "cerebro-organizational-store",
+ "cerebro-platform-engine",
+ "cerebro-platform-sdk",
  "cerebro-security-lifecycle",
  "cerebro-source-catalog",
  "cerebro-source-runtime-next",
