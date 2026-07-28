@@ -1373,10 +1373,13 @@ fn command_actor_matches(
         ActionCommand::Reconcile {
             executor_actor_id, ..
         } => executor_actor_id == actor_id,
+        ActionCommand::ObserveProviderReceipt {
+            reconciler_actor_id,
+            ..
+        } => reconciler_actor_id == actor_id,
         ActionCommand::Verify { receipt } => receipt.receipt.verifier_actor_id == *actor_id,
         ActionCommand::RenewClaim { .. }
         | ActionCommand::StartExecution { .. }
-        | ActionCommand::ObserveProviderReceipt { .. }
         | ActionCommand::MarkOutcomeUnknown => owns_claim(),
         // Any signed executor may recover an unstarted claim after the engine
         // verifies its recorded lease has expired. The releasing actor remains
@@ -1823,6 +1826,7 @@ mod tests {
             &ActionCommand::ObserveProviderReceipt {
                 provider_receipt_digest: ContentDigest::of_bytes("running"),
                 provider_status: "running".to_owned(),
+                reconciler_actor_id: actor.clone(),
                 observed_at_unix_ms: 12,
             }
         ));
@@ -1832,6 +1836,17 @@ mod tests {
             &ActionCommand::ObserveProviderReceipt {
                 provider_receipt_digest: ContentDigest::of_bytes("running"),
                 provider_status: "running".to_owned(),
+                reconciler_actor_id: actor.clone(),
+                observed_at_unix_ms: 12,
+            }
+        ));
+        assert!(command_actor_matches(
+            &other,
+            Some(&claim),
+            &ActionCommand::ObserveProviderReceipt {
+                provider_receipt_digest: ContentDigest::of_bytes("running"),
+                provider_status: "running".to_owned(),
+                reconciler_actor_id: other.clone(),
                 observed_at_unix_ms: 12,
             }
         ));

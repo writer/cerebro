@@ -349,6 +349,7 @@ fn action_transitions_are_optimistic_and_fail_closed() {
         ActionCommand::ObserveProviderReceipt {
             provider_receipt_digest: digest("provider-running"),
             provider_status: "running".to_owned(),
+            reconciler_actor_id: actor("reconciler:one"),
             observed_at_unix_ms: 13,
         },
     )
@@ -360,6 +361,7 @@ fn action_transitions_are_optimistic_and_fail_closed() {
             ActionCommand::ObserveProviderReceipt {
                 provider_receipt_digest: digest("provider-replay"),
                 provider_status: "running".to_owned(),
+                reconciler_actor_id: actor("reconciler:one"),
                 observed_at_unix_ms: 12,
             },
         )

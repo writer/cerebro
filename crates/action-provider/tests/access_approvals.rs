@@ -131,13 +131,15 @@ async fn observation_requires_the_same_external_action_and_dispatch_bindings() {
     assert!(receipt.status.is_terminal());
     assert_eq!(receipt.completed_at_unix_s, Some(43));
     assert_eq!(receipt.request_digest, None);
+    let reconciler = ActorId::parse("reconciler:one").expect("reconciler actor");
     assert!(matches!(
-        receipt.observation_command(43_000),
+        receipt.observation_command(reconciler.clone(), 43_000),
         ActionCommand::ObserveProviderReceipt {
             provider_status,
+            reconciler_actor_id,
             observed_at_unix_ms: 43_000,
             ..
-        } if provider_status == "succeeded"
+        } if provider_status == "succeeded" && reconciler_actor_id == reconciler
     ));
     server.abort();
 }
