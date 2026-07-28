@@ -364,7 +364,11 @@ async function startPostgres(containerName, deadlineAt) {
     await run(
       "docker",
       ["port", containerName, "5432/tcp"],
-      { cwd: repositoryRoot, env: portableEnvironment() },
+      {
+        capture: "stdout",
+        cwd: repositoryRoot,
+        env: portableEnvironment(),
+      },
       deadlineAt,
     ),
   );
