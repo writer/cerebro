@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     error::Error,
     fmt,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -17,7 +17,9 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use cerebro_organizational_model::{
     CollectionId, CollectionReceipt, CompleteCollection, ModelError, ObservationId,
 };
-use cerebro_source_catalog::{AuthModel, CompiledFamily, CompiledSource, HttpMethod, Pagination};
+use cerebro_source_catalog::{
+    AuthModel, CompiledFamily, CompiledSource, HttpMethod, Pagination, PathParameterBinding,
+};
 use futures_util::StreamExt;
 use hmac::{Hmac, KeyInit, Mac};
 use reqwest::{
@@ -31,6 +33,7 @@ use time::OffsetDateTime;
 use crate::{CollectedBatch, CollectedScope, CollectionRequest, SourceConnector, SourceRecord};
 
 const MAX_PAGES: usize = 10_000;
+const MAX_FANOUT_SCOPES: usize = 1_000;
 const MAX_RESPONSE_BYTES: usize = 16 << 20;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -141,6 +144,26 @@ pub struct HttpSourceConnector {
     auth: ResolvedAuth,
 }
 
+struct RequestScope {
+    url: Url,
+    query_parameters: BTreeMap<String, String>,
+    record_attributes: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Default)]
+struct RequestScopeValues {
+    path_parameters: BTreeMap<String, String>,
+    query_parameters: BTreeMap<String, String>,
+    record_attributes: BTreeMap<String, String>,
+}
+
+#[derive(Clone)]
+enum RequestParameterTarget {
+    Path(String),
+    Query(String),
+    RecordAttribute(String),
+}
+
 impl HttpSourceConnector {
     pub fn new(
         source: CompiledSource,
@@ -183,9 +206,111 @@ impl HttpSourceConnector {
         })
     }
 
-    fn request_url(&self) -> Result<Url, HttpConnectorError> {
+    fn request_scopes(&self) -> Result<Vec<RequestScope>, HttpConnectorError> {
+        let mut binding_targets: BTreeMap<(String, u8), Vec<RequestParameterTarget>> =
+            BTreeMap::new();
+        for (parameter, binding) in self.family.path_parameters() {
+            add_binding_target(
+                &mut binding_targets,
+                binding,
+                RequestParameterTarget::Path(parameter.clone()),
+            );
+        }
+        for (parameter, binding) in self.family.config_query() {
+            add_binding_target(
+                &mut binding_targets,
+                binding,
+                RequestParameterTarget::Query(parameter.clone()),
+            );
+        }
+        for (attribute, binding) in self.family.config_attributes() {
+            add_binding_target(
+                &mut binding_targets,
+                binding,
+                RequestParameterTarget::RecordAttribute(attribute.clone()),
+            );
+        }
+
+        let mut scopes = vec![RequestScopeValues::default()];
+        for ((field, mode), targets) in binding_targets {
+            let values = match mode {
+                0 => vec![Some(required_config_value(&self.config, &field)?)],
+                1 => vec![
+                    self.config
+                        .get(&field)
+                        .filter(|value| !value.is_empty())
+                        .cloned(),
+                ],
+                2 => csv_fanout_values(&self.config, &field)?
+                    .into_iter()
+                    .map(Some)
+                    .collect(),
+                _ => unreachable!(),
+            };
+            let expanded = scopes.len().checked_mul(values.len()).ok_or_else(|| {
+                HttpConnectorError::InvalidConfiguration(format!(
+                    "family {} fanout scope count overflowed",
+                    self.family.id()
+                ))
+            })?;
+            if expanded > MAX_FANOUT_SCOPES {
+                return Err(HttpConnectorError::InvalidConfiguration(format!(
+                    "family {} fanout exceeds {MAX_FANOUT_SCOPES} scopes",
+                    self.family.id()
+                )));
+            }
+            let mut next = Vec::with_capacity(expanded);
+            for scope in &scopes {
+                for value in &values {
+                    let mut scope = scope.clone();
+                    if let Some(value) = value {
+                        for target in &targets {
+                            match target {
+                                RequestParameterTarget::Path(parameter) => {
+                                    scope
+                                        .path_parameters
+                                        .insert(parameter.clone(), value.clone());
+                                    scope
+                                        .record_attributes
+                                        .insert(parameter.clone(), value.clone());
+                                }
+                                RequestParameterTarget::Query(parameter) => {
+                                    scope
+                                        .query_parameters
+                                        .insert(parameter.clone(), value.clone());
+                                }
+                                RequestParameterTarget::RecordAttribute(attribute) => {
+                                    scope
+                                        .record_attributes
+                                        .insert(attribute.clone(), value.clone());
+                                }
+                            }
+                        }
+                    }
+                    next.push(scope);
+                }
+            }
+            scopes = next;
+        }
+        scopes
+            .into_iter()
+            .map(|scope| {
+                self.request_url(&scope.path_parameters)
+                    .map(|url| RequestScope {
+                        url,
+                        query_parameters: scope.query_parameters,
+                        record_attributes: scope.record_attributes,
+                    })
+            })
+            .collect()
+    }
+
+    fn request_url(
+        &self,
+        path_parameters: &BTreeMap<String, String>,
+    ) -> Result<Url, HttpConnectorError> {
         let mut path = self.family.path().to_owned();
-        for (key, value) in &self.config {
+        for (key, value) in path_parameters {
             let direct = format!("{{{key}}}");
             let configured = format!("${{config.{key}}}");
             if path.contains(&direct) || path.contains(&configured) {
@@ -204,6 +329,64 @@ impl HttpSourceConnector {
             .join(path.trim_start_matches('/'))
             .map_err(|error| HttpConnectorError::InvalidUrl(error.to_string()))
     }
+}
+
+fn add_binding_target(
+    targets: &mut BTreeMap<(String, u8), Vec<RequestParameterTarget>>,
+    binding: &PathParameterBinding,
+    target: RequestParameterTarget,
+) {
+    let mode = match binding {
+        PathParameterBinding::ScalarConfig { .. } => 0,
+        PathParameterBinding::OptionalScalarConfig { .. } => 1,
+        PathParameterBinding::CsvFanout { .. } => 2,
+    };
+    targets
+        .entry((binding.field().to_owned(), mode))
+        .or_default()
+        .push(target);
+}
+
+fn required_config_value(
+    config: &BTreeMap<String, String>,
+    field: &str,
+) -> Result<String, HttpConnectorError> {
+    config
+        .get(field)
+        .filter(|value| !value.is_empty())
+        .cloned()
+        .ok_or_else(|| {
+            HttpConnectorError::InvalidConfiguration(format!("request config {field} is required"))
+        })
+}
+
+fn csv_fanout_values(
+    config: &BTreeMap<String, String>,
+    field: &str,
+) -> Result<Vec<String>, HttpConnectorError> {
+    let raw = required_config_value(config, field)?;
+    let mut seen = BTreeSet::new();
+    let mut values = Vec::new();
+    for value in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if seen.insert(value.to_owned()) {
+            values.push(value.to_owned());
+            if values.len() > MAX_FANOUT_SCOPES {
+                return Err(HttpConnectorError::InvalidConfiguration(format!(
+                    "path parameter config {field} exceeds {MAX_FANOUT_SCOPES} values"
+                )));
+            }
+        }
+    }
+    if values.is_empty() {
+        return Err(HttpConnectorError::InvalidConfiguration(format!(
+            "request config {field} requires at least one value"
+        )));
+    }
+    Ok(values)
 }
 
 fn encode_path_parameter(key: &str, value: &str) -> Result<String, HttpConnectorError> {
@@ -232,136 +415,158 @@ impl SourceConnector for HttpSourceConnector {
 
     async fn collect(&mut self, request: CollectionRequest) -> Result<CollectedBatch, Self::Error> {
         let observed_at = unix_millis()?;
-        let mut url = self.request_url()?;
+        let request_scopes = self.request_scopes()?;
         let initial_cursor = effective_cursor(self.family.pagination(), request.cursor.as_deref());
-        let mut cursor = initial_cursor.clone();
-        let mut page = pagination_start(self.family.pagination());
-        let mut offset = 0usize;
-        let mut records = Vec::new();
-        let mut exhausted = false;
-
-        for _ in 0..MAX_PAGES {
-            apply_query(
-                &mut url,
-                self.family.static_query(),
-                self.family.pagination(),
-                cursor.as_deref(),
-                page,
-                offset,
-            );
-            let mut builder = match self.family.method() {
-                HttpMethod::Get => self.client.get(url.clone()),
-                HttpMethod::Post => self.client.post(url.clone()),
-            };
-            builder = match &self.auth {
-                ResolvedAuth::None => builder,
-                ResolvedAuth::Bearer { token } => builder.bearer_auth(token),
-                ResolvedAuth::Basic { username, password } => {
-                    builder.basic_auth(username, Some(password))
-                }
-                ResolvedAuth::Header { name, value } => builder.header(name, value),
-                ResolvedAuth::AwsSigV4 { .. } | ResolvedAuth::DuoHmacV5 { .. } => builder,
-            };
-            let mut request = builder.build().map_err(HttpConnectorError::Request)?;
-            match self.auth {
-                ResolvedAuth::AwsSigV4 { .. } => {
-                    sign_aws_sigv4(&mut request, &self.auth, SystemTime::now())?;
-                }
-                ResolvedAuth::DuoHmacV5 { .. } => {
-                    sign_duo_hmac_v5(&mut request, &self.auth, SystemTime::now())?;
-                }
-                _ => {}
-            }
-            let response = self
-                .client
-                .execute(request)
-                .await
-                .map_err(HttpConnectorError::Request)?;
-            let status = response.status();
-            if !status.is_success() {
-                return Err(HttpConnectorError::ProviderStatus(status));
-            }
-            let next_link = response_next_link(response.headers(), self.family.pagination())?;
-            let body = read_bounded_json(response).await?;
-            let selected = select_records(&body, self.family.record_selector())?;
-            let selected_count = selected.len();
-            for value in selected {
-                let provider_id = scalar_at(&value, self.family.id_field()).ok_or_else(|| {
-                    HttpConnectorError::InvalidResponse(format!(
-                        "family {} record is missing {}",
-                        self.family.id(),
-                        self.family.id_field()
-                    ))
-                })?;
-                records.push(SourceRecord {
-                    observation_id: observation_id(
-                        self.source.id(),
-                        self.family.id(),
-                        &provider_id,
-                        observed_at,
-                    )?,
-                    family: self.family.id().to_owned(),
-                    provider_kind: format!("{}.{}", self.source.id(), self.family.id()),
-                    provider_id,
-                    fields: flatten_scalars(&value),
-                    payload: value,
-                });
-            }
-
-            match self.family.pagination() {
-                Pagination::None => {
-                    exhausted = true;
-                    break;
-                }
-                Pagination::Cursor { response_path, .. } => {
-                    cursor = scalar_at_path(&body, response_path);
-                    if cursor.as_deref().is_none_or(str::is_empty) {
-                        exhausted = true;
-                        break;
-                    }
-                }
-                Pagination::Page { page_size, .. } => {
-                    if selected_count < *page_size {
-                        exhausted = true;
-                        break;
-                    }
-                    page = page.saturating_add(1);
-                }
-                Pagination::Offset { page_size, .. } => {
-                    if selected_count < *page_size {
-                        exhausted = true;
-                        break;
-                    }
-                    offset = offset.saturating_add(*page_size);
-                }
-                Pagination::Link { .. } => {
-                    let Some(next) = next_link else {
-                        exhausted = true;
-                        break;
-                    };
-                    let Some(next) = resolve_next_url(&url, &next)? else {
-                        exhausted = true;
-                        break;
-                    };
-                    ensure_same_origin(&self.base_url, &next)?;
-                    url = next;
-                }
-                Pagination::NextUrl { response_path } => {
-                    let Some(next) = scalar_at_path(&body, response_path) else {
-                        exhausted = true;
-                        break;
-                    };
-                    let Some(next) = resolve_next_url(&url, &next)? else {
-                        exhausted = true;
-                        break;
-                    };
-                    ensure_same_origin(&self.base_url, &next)?;
-                    url = next;
-                }
-            }
+        if request.cursor.is_some() && request_scopes.len() > 1 {
+            return Err(HttpConnectorError::InvalidConfiguration(format!(
+                "family {} fanout does not accept an unscoped cursor",
+                self.family.id()
+            )));
         }
-        if !exhausted {
-            return Err(HttpConnectorError::PageLimit);
+        let mut records = Vec::new();
+        let mut remaining_pages = MAX_PAGES;
+
+        for RequestScope {
+            mut url,
+            query_parameters,
+            record_attributes,
+        } in request_scopes
+        {
+            let mut request_query = self.family.static_query().clone();
+            request_query.extend(query_parameters);
+            let mut cursor = initial_cursor.clone();
+            let mut page = pagination_start(self.family.pagination());
+            let mut offset = 0usize;
+            let mut exhausted = false;
+            while remaining_pages > 0 {
+                remaining_pages -= 1;
+                apply_query(
+                    &mut url,
+                    &request_query,
+                    self.family.pagination(),
+                    cursor.as_deref(),
+                    page,
+                    offset,
+                );
+                let mut builder = match self.family.method() {
+                    HttpMethod::Get => self.client.get(url.clone()),
+                    HttpMethod::Post => self.client.post(url.clone()),
+                };
+                builder = match &self.auth {
+                    ResolvedAuth::None => builder,
+                    ResolvedAuth::Bearer { token } => builder.bearer_auth(token),
+                    ResolvedAuth::Basic { username, password } => {
+                        builder.basic_auth(username, Some(password))
+                    }
+                    ResolvedAuth::Header { name, value } => builder.header(name, value),
+                    ResolvedAuth::AwsSigV4 { .. } | ResolvedAuth::DuoHmacV5 { .. } => builder,
+                };
+                let mut provider_request = builder.build().map_err(HttpConnectorError::Request)?;
+                match self.auth {
+                    ResolvedAuth::AwsSigV4 { .. } => {
+                        sign_aws_sigv4(&mut provider_request, &self.auth, SystemTime::now())?;
+                    }
+                    ResolvedAuth::DuoHmacV5 { .. } => {
+                        sign_duo_hmac_v5(&mut provider_request, &self.auth, SystemTime::now())?;
+                    }
+                    _ => {}
+                }
+                let response = self
+                    .client
+                    .execute(provider_request)
+                    .await
+                    .map_err(HttpConnectorError::Request)?;
+                let status = response.status();
+                if !status.is_success() {
+                    return Err(HttpConnectorError::ProviderStatus(status));
+                }
+                let next_link = response_next_link(response.headers(), self.family.pagination())?;
+                let body = read_bounded_json(response).await?;
+                let selected = select_records(&body, self.family.record_selector())?;
+                let selected_count = selected.len();
+                for value in selected {
+                    validate_record_scope(self.family.id(), &value, &record_attributes)?;
+                    let provider_id =
+                        scalar_at(&value, self.family.id_field()).ok_or_else(|| {
+                            HttpConnectorError::InvalidResponse(format!(
+                                "family {} record is missing {}",
+                                self.family.id(),
+                                self.family.id_field()
+                            ))
+                        })?;
+                    let mut fields = flatten_scalars(&value);
+                    fields.extend(record_attributes.clone());
+                    records.push(SourceRecord {
+                        observation_id: observation_id(
+                            self.source.id(),
+                            self.family.id(),
+                            &provider_id,
+                            &record_attributes,
+                            observed_at,
+                        )?,
+                        family: self.family.id().to_owned(),
+                        provider_kind: format!("{}.{}", self.source.id(), self.family.id()),
+                        provider_id,
+                        fields,
+                        payload: value,
+                    });
+                }
+
+                match self.family.pagination() {
+                    Pagination::None => {
+                        exhausted = true;
+                        break;
+                    }
+                    Pagination::Cursor { response_path, .. } => {
+                        cursor = scalar_at_path(&body, response_path);
+                        if cursor.as_deref().is_none_or(str::is_empty) {
+                            exhausted = true;
+                            break;
+                        }
+                    }
+                    Pagination::Page { page_size, .. } => {
+                        if selected_count < *page_size {
+                            exhausted = true;
+                            break;
+                        }
+                        page = page.saturating_add(1);
+                    }
+                    Pagination::Offset { page_size, .. } => {
+                        if selected_count < *page_size {
+                            exhausted = true;
+                            break;
+                        }
+                        offset = offset.saturating_add(*page_size);
+                    }
+                    Pagination::Link { .. } => {
+                        let Some(next) = next_link else {
+                            exhausted = true;
+                            break;
+                        };
+                        let Some(next) = resolve_next_url(&url, &next)? else {
+                            exhausted = true;
+                            break;
+                        };
+                        ensure_same_origin(&self.base_url, &next)?;
+                        url = next;
+                    }
+                    Pagination::NextUrl { response_path } => {
+                        let Some(next) = scalar_at_path(&body, response_path) else {
+                            exhausted = true;
+                            break;
+                        };
+                        let Some(next) = resolve_next_url(&url, &next)? else {
+                            exhausted = true;
+                            break;
+                        };
+                        ensure_same_origin(&self.base_url, &next)?;
+                        url = next;
+                    }
+                }
+            }
+            if !exhausted {
+                return Err(HttpConnectorError::PageLimit);
+            }
         }
 
         let collection_id = CollectionId::parse(format!(
@@ -399,7 +604,7 @@ impl SourceConnector for HttpSourceConnector {
         Ok(CollectedBatch {
             scope,
             records,
-            next_cursor: cursor,
+            next_cursor: None,
         })
     }
 }
@@ -947,6 +1152,23 @@ fn flatten_scalars(value: &Value) -> BTreeMap<String, String> {
     fields
 }
 
+fn validate_record_scope(
+    family_id: &str,
+    value: &Value,
+    path_parameters: &BTreeMap<String, String>,
+) -> Result<(), HttpConnectorError> {
+    for (parameter, expected) in path_parameters {
+        if let Some(actual) = scalar_at(value, parameter)
+            && actual != *expected
+        {
+            return Err(HttpConnectorError::InvalidResponse(format!(
+                "family {family_id} record changed requested {parameter} scope"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn next_link_url(header: &str) -> Option<String> {
     split_link_header(header, ',').into_iter().find_map(|part| {
         let part = part.trim();
@@ -1038,14 +1260,23 @@ fn observation_id(
     source_id: &str,
     family_id: &str,
     provider_id: &str,
+    path_parameters: &BTreeMap<String, String>,
     observed_at: i64,
 ) -> Result<ObservationId, HttpConnectorError> {
     let mut hasher = Sha256::new();
     let observed_at = observed_at.to_string();
-    for part in [source_id, family_id, provider_id, observed_at.as_str()] {
+    for part in [source_id, family_id, provider_id] {
         hasher.update((part.len() as u64).to_be_bytes());
         hasher.update(part.as_bytes());
     }
+    for (parameter, value) in path_parameters {
+        for part in [parameter.as_str(), value.as_str()] {
+            hasher.update((part.len() as u64).to_be_bytes());
+            hasher.update(part.as_bytes());
+        }
+    }
+    hasher.update((observed_at.len() as u64).to_be_bytes());
+    hasher.update(observed_at.as_bytes());
     ObservationId::parse(format!("observation:{}", hex(&hasher.finalize()))).map_err(Into::into)
 }
 
@@ -1069,6 +1300,8 @@ mod tests {
     use cerebro_organizational_model::{SourceRuntimeId, TenantId};
     use cerebro_source_catalog::SourceCatalog;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    use crate::{CatalogGraphMapper, GraphMapper};
 
     use super::*;
 
@@ -1153,7 +1386,9 @@ mod tests {
             },
         )
         .unwrap();
-        let url = connector.request_url().unwrap();
+        let scopes = connector.request_scopes().unwrap();
+        assert_eq!(scopes.len(), 1);
+        let url = &scopes[0].url;
         assert_eq!(
             url.as_str(),
             "https://api.example.test/v2/sim_cards/%2E%2E%2Fother%3Fscope%3Dexpanded%23fragment/wireless_connectivity_logs"
@@ -1458,6 +1693,189 @@ mod tests {
         assert!(matches!(batch.scope, CollectedScope::Complete(_)));
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "user-1");
+    }
+
+    #[tokio::test]
+    async fn csv_path_fanout_is_bounded_deduplicated_and_scope_preserving() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for _ in 0..2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                requests.push(String::from_utf8_lossy(&request[..read]).into_owned());
+                let body = r#"{"entries":[{"id":"membership-1","user":{"id":"user-1","login":"user@example.test","name":"User One"},"role":"member"}]}"#;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+            requests
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("box").unwrap().clone();
+        let mut connector = HttpSourceConnector::new(
+            source.clone(),
+            "group_memberships",
+            &format!("http://{address}"),
+            BTreeMap::from([(
+                "group_ids".to_owned(),
+                " group-a, group-a, group/b ".to_owned(),
+            )]),
+            ResolvedAuth::Bearer {
+                token: "token".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("box-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        let requests = server.await.unwrap();
+
+        assert!(requests[0].starts_with("GET /groups/group-a/memberships?"));
+        assert!(requests[1].starts_with("GET /groups/group%2Fb/memberships?"));
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(batch.records.len(), 2);
+        assert_eq!(batch.records[0].provider_id, "membership-1");
+        assert_eq!(batch.records[1].provider_id, "membership-1");
+        assert_ne!(
+            batch.records[0].observation_id,
+            batch.records[1].observation_id
+        );
+        assert_eq!(batch.records[0].fields["group_id"], "group-a");
+        assert_eq!(batch.records[1].fields["group_id"], "group/b");
+
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+        assert_eq!(delta.assertions().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn csv_query_fanout_binds_the_requested_scope_into_records() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for _ in 0..2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                requests.push(String::from_utf8_lossy(&request[..read]).into_owned());
+                let body = r#"{"values":[{"accountId":"user-1","displayName":"User One","emailAddress":"user@example.test"}]}"#;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+            requests
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("jira").unwrap().clone();
+        let mut connector = HttpSourceConnector::new(
+            source.clone(),
+            "group_members",
+            &format!("http://{address}"),
+            BTreeMap::from([("group_ids".to_owned(), "group-a,group/b".to_owned())]),
+            ResolvedAuth::Basic {
+                username: "user@example.test".to_owned(),
+                password: "token".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("jira-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        let requests = server.await.unwrap();
+
+        assert!(requests[0].starts_with("GET /rest/api/3/group/member?"));
+        assert!(requests[0].contains("groupId=group-a"));
+        assert!(requests[1].contains("groupId=group%2Fb"));
+        assert_eq!(batch.records[0].fields["group_id"], "group-a");
+        assert_eq!(batch.records[1].fields["group_id"], "group/b");
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+        assert_eq!(delta.assertions().len(), 2);
+    }
+
+    #[test]
+    fn provider_records_cannot_contradict_the_requested_scope() {
+        let error = validate_record_scope(
+            "memberships",
+            &serde_json::json!({"group_id": "other"}),
+            &BTreeMap::from([("group_id".to_owned(), "requested".to_owned())]),
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "invalid provider response: family memberships record changed requested group_id scope"
+        );
+    }
+
+    #[test]
+    fn csv_fanout_rejects_empty_and_oversized_scope_sets() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("box").unwrap().clone();
+        for (value, expected) in [
+            (
+                " , ".to_owned(),
+                "request config group_ids requires at least one value",
+            ),
+            (
+                (0..=MAX_FANOUT_SCOPES)
+                    .map(|value| format!("group-{value}"))
+                    .collect::<Vec<_>>()
+                    .join(","),
+                "path parameter config group_ids exceeds 1000 values",
+            ),
+        ] {
+            let connector = HttpSourceConnector::new(
+                source.clone(),
+                "group_memberships",
+                "https://api.example.test",
+                BTreeMap::from([("group_ids".to_owned(), value)]),
+                ResolvedAuth::Bearer {
+                    token: "token".to_owned(),
+                },
+            )
+            .unwrap();
+            let error = connector.request_scopes().err().unwrap();
+            assert_eq!(error.to_string(), expected);
+        }
     }
 
     #[tokio::test]
