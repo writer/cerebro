@@ -7,13 +7,13 @@ import (
 	"github.com/writer/cerebro/internal/securitypathdelta"
 )
 
-func TestJobPayloadIncludesBoundedRustShadowEvidence(t *testing.T) {
+func TestJobPayloadIncludesBoundRustAuthorityReceipts(t *testing.T) {
 	t.Parallel()
 	result := OrchestrationResult{SecurityPath: &SecurityPathResult{
 		Delta: securitypathdelta.Delta{ID: "delta-a", Digest: "digest-a"},
-		RustShadow: []securitypathdelta.RustShadowResult{{
-			Operation: "compare", Status: securitypathdelta.RustShadowMatch,
-			GoDigest: "go-digest", RustDigest: "rust-digest",
+		RustAuthority: []securitypathdelta.RustAuthorityReceipt{{
+			Operation: "compare", SchemaVersion: "security-path-decision-input/v1",
+			InputDigest: "input-digest", DecisionDigest: "decision-digest",
 		}},
 	}}
 	payload, _, err := result.JobPayload()
@@ -24,9 +24,9 @@ func TestJobPayloadIncludesBoundedRustShadowEvidence(t *testing.T) {
 	if securityPath == nil {
 		t.Fatalf("security_path_delta = %#v", payload.SecurityPathDelta)
 	}
-	shadow := securityPath.RustShadow
-	if len(shadow) != 1 || shadow[0].Status != securitypathdelta.RustShadowMatch {
-		t.Fatalf("rust_shadow = %#v", shadow)
+	authority := securityPath.RustAuthority
+	if len(authority) != 1 || authority[0].Operation != "compare" {
+		t.Fatalf("rust_authority = %#v", authority)
 	}
 	encoded, err := json.Marshal(payload.Result())
 	if err != nil {
@@ -40,7 +40,7 @@ func TestJobPayloadIncludesBoundedRustShadowEvidence(t *testing.T) {
 	if !ok {
 		t.Fatalf("wire security_path_delta = %#v", wire["security_path_delta"])
 	}
-	if _, ok := securityPathWire["rust_shadow"].([]any); !ok {
-		t.Fatalf("wire rust_shadow = %#v", securityPathWire["rust_shadow"])
+	if _, ok := securityPathWire["rust_authority"].([]any); !ok {
+		t.Fatalf("wire rust_authority = %#v", securityPathWire["rust_authority"])
 	}
 }
