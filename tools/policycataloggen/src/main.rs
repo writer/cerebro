@@ -188,12 +188,7 @@ fn generate(root: &Path) -> Result<String, GeneratorError> {
                 policy.metadata.id
             )));
         }
-        let domain = relative
-            .components()
-            .nth(1)
-            .and_then(|value| value.as_os_str().to_str())
-            .ok_or_else(|| GeneratorError(format!("missing domain for {source_path}")))?
-            .to_owned();
+        let domain = policy_domain(&path, &policy_root, &source_path)?;
         let source_digest = hex_digest(&bytes);
         let resource = policy_resource(&policy.spec)?.to_owned();
         let material = DigestMaterial {
@@ -227,6 +222,31 @@ fn generate(root: &Path) -> Result<String, GeneratorError> {
     }
     definitions.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(render(&definitions))
+}
+
+fn policy_domain(
+    path: &Path,
+    policy_root: &Path,
+    source_path: &str,
+) -> Result<String, GeneratorError> {
+    let relative = path.strip_prefix(policy_root).map_err(|_| {
+        GeneratorError(format!(
+            "{source_path} is not contained by {}",
+            policy_root.display()
+        ))
+    })?;
+    let mut components = relative.components();
+    let domain = components
+        .next()
+        .and_then(|value| value.as_os_str().to_str())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| GeneratorError(format!("missing domain for {source_path}")))?;
+    if components.next().is_none() {
+        return Err(GeneratorError(format!(
+            "{source_path} must be placed under {POLICY_DIR}/<domain>/"
+        )));
+    }
+    Ok(domain.to_owned())
 }
 
 fn collect_policy_paths(directory: &Path, paths: &mut Vec<PathBuf>) -> Result<(), GeneratorError> {
@@ -505,5 +525,28 @@ mod tests {
         ));
         let _ = fs::remove_file(&path);
         reject_symlink(&path).expect("missing output is safe to create");
+    }
+
+    #[test]
+    fn policy_domain_requires_a_directory_below_the_policy_root() {
+        assert_eq!(
+            policy_domain(
+                Path::new("policies/cloud/policy.yaml"),
+                Path::new("policies"),
+                "policies/cloud/policy.yaml",
+            )
+            .unwrap(),
+            "cloud"
+        );
+        let error = policy_domain(
+            Path::new("policies/policy.yaml"),
+            Path::new("policies"),
+            "policies/policy.yaml",
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "policies/policy.yaml must be placed under policies/<domain>/"
+        );
     }
 }

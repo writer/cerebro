@@ -167,6 +167,7 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	replacementWorkflow := readText(t, filepath.Join(root, ".github/workflows/rust-graph-replacement.yml"))
 	for _, required := range []string{
 		"name: Rust-only persisted product read",
+		`- "crates/action-catalog/**"`,
 		"--target replacement-test-runtime",
 		"--entrypoint /usr/local/bin/organizational-graph-e2e",
 		`receipt.json)" -eq 14`,
