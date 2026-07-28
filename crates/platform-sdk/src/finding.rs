@@ -17,6 +17,7 @@ pub struct FindingValidationReceipt {
     pub finding_id: OpaqueId,
     pub finding_revision_digest: ContentDigest,
     pub graph_revision: GraphRevision,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub policy_id: String,
     pub policy_definition_digest: ContentDigest,
     pub decision: FindingValidationDecision,
@@ -29,6 +30,10 @@ pub struct FindingValidationReceipt {
 
 impl FindingValidationReceipt {
     pub fn computed_digest(&self) -> Result<ContentDigest, SdkError> {
+        if self.policy_id.is_empty() {
+            return self.computed_legacy_digest();
+        }
+
         #[derive(Serialize)]
         struct DigestMaterial<'a> {
             schema: &'static str,
@@ -67,6 +72,43 @@ impl FindingValidationReceipt {
         })
     }
 
+    fn computed_legacy_digest(&self) -> Result<ContentDigest, SdkError> {
+        #[derive(Serialize)]
+        struct DigestMaterial<'a> {
+            schema: &'static str,
+            tenant_id: &'a TenantId,
+            finding_id: &'a OpaqueId,
+            finding_revision_digest: &'a ContentDigest,
+            graph_revision: &'a GraphRevision,
+            policy_definition_digest: &'a ContentDigest,
+            decision: FindingValidationDecision,
+            evidence_digests: &'a [ContentDigest],
+            validated_by: &'a ActorId,
+            validated_at_unix_ms: u64,
+            expires_at_unix_ms: u64,
+        }
+
+        serde_json::to_vec(&DigestMaterial {
+            schema: FINDING_VALIDATION_DIGEST_SCHEMA,
+            tenant_id: &self.tenant_id,
+            finding_id: &self.finding_id,
+            finding_revision_digest: &self.finding_revision_digest,
+            graph_revision: &self.graph_revision,
+            policy_definition_digest: &self.policy_definition_digest,
+            decision: self.decision,
+            evidence_digests: &self.evidence_digests,
+            validated_by: &self.validated_by,
+            validated_at_unix_ms: self.validated_at_unix_ms,
+            expires_at_unix_ms: self.expires_at_unix_ms,
+        })
+        .map(ContentDigest::of_bytes)
+        .map_err(|error| {
+            SdkError::Backend(format!(
+                "legacy finding validation receipt serialization failed: {error}"
+            ))
+        })
+    }
+
     pub fn bind_computed_digest(&mut self) -> Result<(), SdkError> {
         self.receipt_digest = self.computed_digest()?;
         Ok(())
@@ -76,17 +118,17 @@ impl FindingValidationReceipt {
         if self.evidence_digests.is_empty() || self.evidence_digests.len() > 100 {
             return Err(SdkError::OutOfRange("finding validation evidence count"));
         }
-        if self.policy_id.is_empty()
-            || self.policy_id.len() > 255
-            || !self
-                .policy_id
-                .bytes()
-                .enumerate()
-                .all(|(index, byte)| match byte {
-                    b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' => true,
-                    b'.' | b'_' | b'-' => index != 0,
-                    _ => false,
-                })
+        if !self.policy_id.is_empty()
+            && (self.policy_id.len() > 255
+                || !self
+                    .policy_id
+                    .bytes()
+                    .enumerate()
+                    .all(|(index, byte)| match byte {
+                        b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' => true,
+                        b'.' | b'_' | b'-' => index != 0,
+                        _ => false,
+                    }))
         {
             return Err(SdkError::Invalid("finding validation policy id"));
         }
@@ -113,6 +155,11 @@ impl FindingValidationReceipt {
         committed_at_unix_ms: u64,
     ) -> Result<(), SdkError> {
         self.validate()?;
+        if self.policy_id.is_empty() {
+            return Err(SdkError::Conflict(
+                "the finding validation receipt predates Rust policy binding".to_owned(),
+            ));
+        }
         if self.decision != FindingValidationDecision::Confirmed {
             return Err(SdkError::Conflict(
                 "the finding validation decision is not confirmed".to_owned(),
@@ -152,7 +199,8 @@ struct StoredFindingValidationReceipt {
     finding_id: String,
     finding_revision_digest: String,
     graph_revision: u64,
-    policy_id: String,
+    #[serde(default)]
+    policy_id: Option<String>,
     policy_definition_digest: String,
     decision: FindingValidationDecision,
     evidence_digests: Vec<String>,
@@ -172,7 +220,7 @@ impl TryFrom<StoredFindingValidationReceipt> for FindingValidationReceipt {
             finding_id: OpaqueId::parse(stored.finding_id)?,
             finding_revision_digest: ContentDigest::parse(stored.finding_revision_digest)?,
             graph_revision: GraphRevision::new(stored.graph_revision)?,
-            policy_id: stored.policy_id,
+            policy_id: stored.policy_id.unwrap_or_default(),
             policy_definition_digest: ContentDigest::parse(stored.policy_definition_digest)?,
             decision: stored.decision,
             evidence_digests: stored
@@ -310,5 +358,18 @@ mod tests {
 
         let unique = receipt.evidence_digests.iter().collect::<BTreeSet<_>>();
         assert_eq!(unique.len(), receipt.evidence_digests.len());
+    }
+
+    #[test]
+    fn historical_receipt_without_policy_id_remains_readable_but_cannot_authorize_actions() {
+        let mut historical = receipt();
+        historical.policy_id.clear();
+        historical.bind_computed_digest().unwrap();
+        let value = serde_json::to_value(&historical).unwrap();
+
+        assert!(value.get("policy_id").is_none());
+        let decoded = serde_json::from_value::<FindingValidationReceipt>(value).unwrap();
+        assert_eq!(decoded, historical);
+        assert!(decoded.authorizes_action(&proposal(&decoded), 20).is_err());
     }
 }
