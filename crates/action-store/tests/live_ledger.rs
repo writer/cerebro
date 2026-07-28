@@ -38,6 +38,7 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     ));
 
     let other_tenant = TenantId::parse("tenant:live:other")?;
+    let operator = ActorId::parse("operator:live:one")?;
     assert!(matches!(
         ledger.get(&other_tenant, &operation_id).await,
         Err(ActionStoreError::NotFound(_))
@@ -47,6 +48,7 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
         .transition(
             &tenant,
             &operation_id,
+            &operator,
             1,
             ActionCommand::RecordSimulation,
             20,
@@ -56,6 +58,7 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
         .transition(
             &tenant,
             &operation_id,
+            &operator,
             2,
             ActionCommand::RequestApproval,
             30,
@@ -67,6 +70,7 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
             .transition(
                 &tenant,
                 &operation_id,
+                &operator,
                 1,
                 ActionCommand::RecordSimulation,
                 31,
@@ -79,6 +83,7 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
             .transition(
                 &tenant,
                 &operation_id,
+                &operator,
                 waiting.version,
                 ActionCommand::Fail,
                 19,
@@ -91,6 +96,8 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
     let history = ledger.history(&tenant, &operation_id).await?;
     assert_eq!(history.len(), 3);
     assert_eq!(history[0].event_kind, "proposed");
+    assert_eq!(history[0].actor_id, proposed.proposal.proposed_by);
+    assert_eq!(history[1].actor_id, operator);
     assert_eq!(history[1].event_kind, "record_simulation");
     assert_eq!(history[2].event_kind, "request_approval");
     assert_eq!(history[1].operation, simulated);

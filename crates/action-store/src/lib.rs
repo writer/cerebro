@@ -10,8 +10,8 @@ use std::{error::Error, fmt};
 
 use cerebro_platform_engine::{ActionCommand, transition_action};
 use cerebro_platform_sdk::{
-    ActionOperation, ActionOperationId, ActionProposal, ActionState, ContentDigest, SdkError,
-    TenantId, VerificationState,
+    ActionOperation, ActionOperationId, ActionProposal, ActionState, ActorId, ContentDigest,
+    SdkError, TenantId, VerificationState,
 };
 use serde_json::Value;
 use tokio::sync::Mutex;
@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS action_operation_events (
   tenant_id TEXT NOT NULL,
   operation_id TEXT NOT NULL,
   version BIGINT NOT NULL CHECK (version > 0),
+  actor_id TEXT NOT NULL CHECK (char_length(actor_id) BETWEEN 1 AND 256),
   event_kind TEXT NOT NULL CHECK (char_length(event_kind) BETWEEN 1 AND 64),
   command_digest TEXT CHECK (command_digest IS NULL OR command_digest ~ '^[0-9a-f]{64}$'),
   operation_digest TEXT NOT NULL CHECK (operation_digest ~ '^[0-9a-f]{64}$'),
@@ -161,6 +162,7 @@ impl From<SdkError> for ActionStoreError {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ActionEvent {
+    pub actor_id: ActorId,
     pub event_kind: String,
     pub command_digest: Option<ContentDigest>,
     pub operation_digest: ContentDigest,
@@ -259,10 +261,11 @@ impl PostgresActionLedger {
         }
         transaction
             .execute(
-                "INSERT INTO action_operation_events (tenant_id, operation_id, version, event_kind, command_digest, operation_digest, command_json, operation_json, committed_at_unix_ms) VALUES ($1, $2, 1, 'proposed', NULL, $3, NULL, $4, $5)",
+                "INSERT INTO action_operation_events (tenant_id, operation_id, version, actor_id, event_kind, command_digest, operation_digest, command_json, operation_json, committed_at_unix_ms) VALUES ($1, $2, 1, $3, 'proposed', NULL, $4, NULL, $5, $6)",
                 &[
                     &tenant_id,
                     &operation_id,
+                    &operation.proposal.proposed_by.as_str(),
                     &operation_digest.as_str(),
                     &operation_json,
                     &committed_at,
@@ -300,6 +303,7 @@ impl PostgresActionLedger {
         &self,
         tenant_id: &TenantId,
         operation_id: &ActionOperationId,
+        actor_id: &ActorId,
         expected_version: u64,
         command: ActionCommand,
         committed_at_unix_ms: u64,
@@ -313,6 +317,11 @@ impl PostgresActionLedger {
             .and_then(Value::as_str)
             .ok_or_else(|| ActionStoreError::Corrupt("command has no stable kind".to_owned()))?
             .to_owned();
+        if !command_actor_matches(actor_id, &command) {
+            return Err(ActionStoreError::Conflict(
+                "authenticated actor does not match the Action command receipt".to_owned(),
+            ));
+        }
 
         let mut client = self.client.lock().await;
         let transaction = client.transaction().await?;
@@ -360,11 +369,12 @@ impl PostgresActionLedger {
         }
         transaction
             .execute(
-                "INSERT INTO action_operation_events (tenant_id, operation_id, version, event_kind, command_digest, operation_digest, command_json, operation_json, committed_at_unix_ms) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                "INSERT INTO action_operation_events (tenant_id, operation_id, version, actor_id, event_kind, command_digest, operation_digest, command_json, operation_json, committed_at_unix_ms) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                 &[
                     &tenant_id.as_str(),
                     &operation_id.as_str(),
                     &next_version,
+                    &actor_id.as_str(),
                     &event_kind,
                     &command_digest.as_str(),
                     &operation_digest.as_str(),
@@ -398,7 +408,7 @@ impl PostgresActionLedger {
             .ok_or_else(|| ActionStoreError::NotFound(operation_id.to_string()))?;
         let rows = transaction
             .query(
-                "SELECT version, event_kind, command_digest, operation_digest, command_json, operation_json, committed_at_unix_ms FROM action_operation_events WHERE tenant_id = $1 AND operation_id = $2 ORDER BY version",
+                "SELECT version, actor_id, event_kind, command_digest, operation_digest, command_json, operation_json, committed_at_unix_ms FROM action_operation_events WHERE tenant_id = $1 AND operation_id = $2 ORDER BY version",
                 &[&tenant_id.as_str(), &operation_id.as_str()],
             )
             .await?;
@@ -417,15 +427,17 @@ impl PostgresActionLedger {
                     index + 1
                 )));
             }
-            let command_json: Option<Value> = row.get(4);
-            let operation_json: Value = row.get(5);
+            let actor_id = ActorId::parse(row.get::<_, String>(1))
+                .map_err(|error| ActionStoreError::Corrupt(error.to_string()))?;
+            let command_json: Option<Value> = row.get(5);
+            let operation_json: Value = row.get(6);
             let operation = decode_operation(operation_json.clone())?;
             if operation.version != u64::try_from(version).unwrap_or_default() {
                 return Err(ActionStoreError::Corrupt(
                     "Action event version does not match its record".to_owned(),
                 ));
             }
-            let stored_operation_digest: String = row.get(3);
+            let stored_operation_digest: String = row.get(4);
             let operation_digest = ContentDigest::parse(stored_operation_digest)
                 .map_err(|error| ActionStoreError::Corrupt(error.to_string()))?;
             if operation_digest != digest_json(&operation_json)? {
@@ -434,11 +446,11 @@ impl PostgresActionLedger {
                 ));
             }
             let command_digest = row
-                .get::<_, Option<String>>(2)
+                .get::<_, Option<String>>(3)
                 .map(ContentDigest::parse)
                 .transpose()
                 .map_err(|error| ActionStoreError::Corrupt(error.to_string()))?;
-            let event_kind: String = row.get(1);
+            let event_kind: String = row.get(2);
             match (&command_json, &command_digest) {
                 (None, None) if version == 1 && event_kind == "proposed" => {}
                 (Some(command), Some(digest))
@@ -452,7 +464,7 @@ impl PostgresActionLedger {
                     ));
                 }
             }
-            let committed_at: i64 = row.get(6);
+            let committed_at: i64 = row.get(7);
             let committed_at = u64::try_from(committed_at).map_err(|_| {
                 ActionStoreError::Corrupt("Action event commit time is invalid".to_owned())
             })?;
@@ -463,6 +475,7 @@ impl PostgresActionLedger {
             }
             previous_committed_at = committed_at;
             events.push(ActionEvent {
+                actor_id,
                 event_kind,
                 command_digest,
                 operation_digest,
@@ -565,6 +578,27 @@ fn digest_json(value: &Value) -> Result<ContentDigest, ActionStoreError> {
     Ok(ContentDigest::of_bytes(encoded))
 }
 
+fn command_actor_matches(actor_id: &ActorId, command: &ActionCommand) -> bool {
+    match command {
+        ActionCommand::RecordApproval { receipt } => receipt.decided_by == *actor_id,
+        ActionCommand::Claim { worker_id, .. } => worker_id.as_str() == actor_id.as_str(),
+        ActionCommand::Complete {
+            executor_actor_id, ..
+        }
+        | ActionCommand::Reconcile {
+            executor_actor_id, ..
+        } => executor_actor_id == actor_id,
+        ActionCommand::Verify { receipt } => receipt.receipt.verifier_actor_id == *actor_id,
+        ActionCommand::RecordSimulation
+        | ActionCommand::RequestApproval
+        | ActionCommand::StartExecution
+        | ActionCommand::MarkOutcomeUnknown
+        | ActionCommand::RejectVerification
+        | ActionCommand::Fail
+        | ActionCommand::RollBack => true,
+    }
+}
+
 fn enum_name<T: serde::Serialize>(value: &T) -> Result<String, ActionStoreError> {
     match serde_json::to_value(value)? {
         Value::String(value) => Ok(value),
@@ -604,6 +638,7 @@ mod tests {
             "PRIMARY KEY (tenant_id, operation_id)",
             "UNIQUE (tenant_id, idempotency_key)",
             "PRIMARY KEY (tenant_id, operation_id, version)",
+            "actor_id TEXT NOT NULL",
             "FORCE ROW LEVEL SECURITY",
             "current_setting(''cerebro.tenant_id'', true)",
             "(operation_json->'proposal'->>'tenant_id') IS NOT DISTINCT FROM tenant_id",
@@ -623,5 +658,47 @@ mod tests {
         assert!(storage_i64(0, "test").is_err());
         assert!(storage_i64(u64::MAX, "test").is_err());
         assert_eq!(storage_i64(i64::MAX as u64, "test").unwrap(), i64::MAX);
+    }
+
+    #[test]
+    fn command_receipt_actors_must_match_the_authenticated_actor() {
+        let actor = ActorId::parse("operator:one").unwrap();
+        let other = ActorId::parse("operator:other").unwrap();
+        assert!(command_actor_matches(
+            &actor,
+            &ActionCommand::RecordSimulation
+        ));
+        assert!(command_actor_matches(
+            &actor,
+            &ActionCommand::Claim {
+                worker_id: cerebro_platform_sdk::OpaqueId::parse(actor.as_str()).unwrap(),
+                claimed_at_unix_ms: 10,
+            }
+        ));
+        assert!(!command_actor_matches(
+            &other,
+            &ActionCommand::Claim {
+                worker_id: cerebro_platform_sdk::OpaqueId::parse(actor.as_str()).unwrap(),
+                claimed_at_unix_ms: 10,
+            }
+        ));
+        assert!(command_actor_matches(
+            &actor,
+            &ActionCommand::Complete {
+                external_receipt_ref: cerebro_platform_sdk::OpaqueId::parse("receipt:one").unwrap(),
+                observed_effect_digest: ContentDigest::of_bytes("effect"),
+                executor_actor_id: actor.clone(),
+                executed_at_unix_ms: 11,
+            }
+        ));
+        assert!(!command_actor_matches(
+            &other,
+            &ActionCommand::Complete {
+                external_receipt_ref: cerebro_platform_sdk::OpaqueId::parse("receipt:one").unwrap(),
+                observed_effect_digest: ContentDigest::of_bytes("effect"),
+                executor_actor_id: actor,
+                executed_at_unix_ms: 11,
+            }
+        ));
     }
 }
