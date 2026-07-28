@@ -234,13 +234,17 @@ impl ActionOperation {
             }
             _ => return Err(SdkError::Invalid("action operation claimant")),
         };
-        let has_provider_receipt = match (
+        let (has_provider_receipt, has_legacy_external_receipt) = match (
             &self.external_receipt_ref,
             &self.provider_receipt_digest,
             &self.provider_status,
             self.provider_observed_at_unix_ms,
         ) {
-            (None, None, None, None) => false,
+            (None, None, None, None) => (false, false),
+            // Actions completed before provider observations became explicit
+            // stored only the provider receipt reference. Keep those durable
+            // records readable without treating them as new provider evidence.
+            (Some(_), None, None, None) => (false, true),
             (Some(_), Some(_), Some(status), Some(observed_at)) => {
                 if self.executor_actor_id.is_none()
                     || self
@@ -250,7 +254,7 @@ impl ActionOperation {
                 {
                     return Err(SdkError::Invalid("action provider receipt"));
                 }
-                true
+                (true, false)
             }
             _ => return Err(SdkError::Invalid("action provider receipt")),
         };
@@ -312,6 +316,8 @@ impl ActionOperation {
             }
             ActionState::Completed => {
                 exact(true, true, true, true, false, VerificationState::Pending)
+                    || (has_legacy_external_receipt
+                        && exact(true, true, false, true, false, VerificationState::Pending))
             }
             ActionState::Reconciled => {
                 exact(true, true, false, true, false, VerificationState::Pending)
@@ -330,7 +336,15 @@ impl ActionOperation {
                     && (!has_verification || has_execution)
             }
         };
-        if !valid_state {
+        let legacy_external_receipt_allowed = !has_legacy_external_receipt
+            || matches!(
+                self.state,
+                ActionState::Completed
+                    | ActionState::Verified
+                    | ActionState::Failed
+                    | ActionState::RolledBack
+            );
+        if !valid_state || !legacy_external_receipt_allowed {
             return Err(SdkError::Invalid("action operation state"));
         }
         Ok(())
@@ -727,6 +741,35 @@ mod tests {
         assert!(
             serde_json::from_value::<ActionOperation>(completed_too_early).is_err(),
             "effect completion cannot predate the latest provider observation"
+        );
+    }
+
+    #[test]
+    fn legacy_completed_actions_without_provider_observation_fields_remain_readable() {
+        let mut completed = serde_json::to_value(dispatched_operation()).expect("serialize Action");
+        completed["state"] = serde_json::json!("completed");
+        completed["version"] = serde_json::json!(8);
+        completed["executed_at_unix_ms"] = serde_json::json!(5);
+        completed["observed_effect_digest"] =
+            serde_json::json!(ContentDigest::of_bytes("legacy effect").to_string());
+        let object = completed.as_object_mut().expect("Action object");
+        object.remove("provider_receipt_digest");
+        object.remove("provider_status");
+        object.remove("provider_observed_at_unix_ms");
+
+        let decoded =
+            serde_json::from_value::<ActionOperation>(completed).expect("decode legacy Action");
+        assert_eq!(decoded.state, ActionState::Completed);
+        assert!(decoded.external_receipt_ref.is_some());
+        assert!(decoded.provider_receipt_digest.is_none());
+        assert!(decoded.provider_status.is_none());
+        assert!(decoded.provider_observed_at_unix_ms.is_none());
+
+        let mut forged = serde_json::to_value(operation()).expect("serialize proposed Action");
+        forged["external_receipt_ref"] = serde_json::json!("receipt:forged");
+        assert!(
+            serde_json::from_value::<ActionOperation>(forged).is_err(),
+            "legacy receipt compatibility must not admit receipts before execution"
         );
     }
 

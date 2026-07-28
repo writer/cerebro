@@ -2124,6 +2124,11 @@ async fn transition_action_route(
         .await
         .map_err(action_store_error)?;
     let provider_result = provider.dispatch(&dispatch).await;
+    if let Err(error) = &provider_result {
+        eprintln!(
+            "Action provider dispatch returned no receipt: operation_id={operation_id} error={error}"
+        );
+    }
     let observed_at = current_unix_millis()?;
     authority
         .transition(
