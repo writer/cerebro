@@ -58,7 +58,9 @@ semantics.
 - An Action proposal binds the validated finding revision, action-definition
   revision, target, simulation, rollback, and verification plan. A worker can
   claim it only after an independent decision receipt approves that exact
-  proposal digest.
+  proposal digest. The SDK computes that versioned digest from every
+  execution-relevant proposal field and rejects any record whose stored digest
+  no longer matches.
 - Provider completion is not verification. The verified transition requires a
   receipt bound to the operation, proposal, observed effect, and executor, with
   a different verifier, a fresh source revision, and evidence.

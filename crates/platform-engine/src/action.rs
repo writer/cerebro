@@ -2,8 +2,10 @@ use cerebro_platform_sdk::{
     ActionOperation, ActionState, ActionVerificationReceipt, ActorId, ContentDigest,
     DecisionReceipt, OpaqueId, SdkError, VerificationState,
 };
+use serde::Serialize;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(tag = "command", rename_all = "snake_case")]
 pub enum ActionCommand {
     RecordSimulation,
     RequestApproval,
@@ -40,62 +42,7 @@ pub fn transition_action(
     expected_version: u64,
     command: ActionCommand,
 ) -> Result<ActionOperation, SdkError> {
-    operation.proposal.validate()?;
-    if operation.version == 0 {
-        return Err(SdkError::OutOfRange("action operation version"));
-    }
-    if matches!(
-        operation.state,
-        ActionState::Approved
-            | ActionState::Claimed
-            | ActionState::Executing
-            | ActionState::OutcomeUnknown
-            | ActionState::Completed
-            | ActionState::Reconciled
-            | ActionState::Verified
-    ) {
-        let Some(approval) = operation.approval_receipt.as_ref() else {
-            return Err(SdkError::Invalid("action approval receipt"));
-        };
-        if !approval_authorizes(operation, approval) {
-            return Err(SdkError::Invalid("action approval receipt"));
-        }
-    }
-    if matches!(
-        operation.state,
-        ActionState::Claimed
-            | ActionState::Executing
-            | ActionState::OutcomeUnknown
-            | ActionState::Completed
-            | ActionState::Reconciled
-            | ActionState::Verified
-    ) && (operation.claimed_by.is_none() || operation.claimed_at_unix_ms.is_none())
-    {
-        return Err(SdkError::Invalid("action operation claimant"));
-    }
-    if matches!(
-        operation.state,
-        ActionState::Completed | ActionState::Reconciled | ActionState::Verified
-    ) && (operation.executor_actor_id.is_none()
-        || operation.executed_at_unix_ms.is_none()
-        || operation.external_receipt_ref.is_none() && operation.state == ActionState::Completed
-        || operation.observed_effect_digest.is_none())
-    {
-        return Err(SdkError::Invalid("action execution receipt"));
-    }
-    if operation.state == ActionState::Verified {
-        if operation.verification_state != VerificationState::Verified {
-            return Err(SdkError::Invalid("action verification state"));
-        }
-        let Some(receipt) = operation.verification_receipt.as_ref() else {
-            return Err(SdkError::Invalid("action verification receipt"));
-        };
-        if !verification_confirms(operation, receipt) {
-            return Err(SdkError::Invalid("action verification receipt"));
-        }
-    } else if operation.verification_state == VerificationState::Verified {
-        return Err(SdkError::Invalid("action verification state"));
-    }
+    operation.validate()?;
     if operation.version != expected_version {
         return Err(SdkError::Conflict(
             "stale action operation version".to_owned(),
@@ -110,9 +57,6 @@ pub fn transition_action(
             next.state = ActionState::WaitingForApproval;
         }
         (ActionState::WaitingForApproval, ActionCommand::RecordApproval { receipt }) => {
-            if !approval_authorizes(operation, &receipt) {
-                return Err(SdkError::Invalid("action approval receipt"));
-            }
             next.state = ActionState::Approved;
             next.approval_receipt = Some(receipt);
         }
@@ -177,9 +121,6 @@ pub fn transition_action(
             next.observed_effect_digest = Some(observed_effect_digest);
         }
         (ActionState::Completed | ActionState::Reconciled, ActionCommand::Verify { receipt }) => {
-            if !verification_confirms(operation, &receipt) {
-                return Err(SdkError::Invalid("action verification receipt"));
-            }
             next.state = ActionState::Verified;
             next.verification_state = VerificationState::Verified;
             next.verification_receipt = Some(receipt);
@@ -222,28 +163,6 @@ pub fn transition_action(
         .version
         .checked_add(1)
         .ok_or(SdkError::OutOfRange("action operation version"))?;
+    next.validate()?;
     Ok(next)
-}
-
-fn approval_authorizes(operation: &ActionOperation, receipt: &DecisionReceipt) -> bool {
-    receipt.authorizes(operation.proposal.proposal_digest.as_str())
-        && receipt.decided_by != operation.proposal.proposed_by
-        && receipt.decided_at_unix_ms >= operation.proposal.proposed_at_unix_ms
-        && receipt.decided_at_unix_ms < operation.proposal.proposal_expires_at_unix_ms
-}
-
-fn verification_confirms(operation: &ActionOperation, receipt: &ActionVerificationReceipt) -> bool {
-    receipt.operation_id == operation.proposal.operation_id
-        && receipt.proposal_digest == operation.proposal.proposal_digest
-        && Some(&receipt.observed_effect_digest) == operation.observed_effect_digest.as_ref()
-        && Some(&receipt.receipt.executor_actor_id) == operation.executor_actor_id.as_ref()
-        && receipt.receipt.verifier_actor_id != operation.proposal.proposed_by
-        && operation
-            .approval_receipt
-            .as_ref()
-            .is_some_and(|approval| receipt.receipt.verifier_actor_id != approval.decided_by)
-        && operation
-            .executed_at_unix_ms
-            .is_some_and(|executed_at| receipt.receipt.verified_at_unix_ms > executed_at)
-        && receipt.receipt.independently_confirms_effect()
 }

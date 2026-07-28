@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/action-store",
     "crates/agent-context",
     "crates/cerebro-platform",
     "crates/control-kernel",
@@ -35,6 +36,7 @@ async-trait = "0.1.91"
 buffa = { version = "=0.9.1", features = ["json"] }
 buffa-types = { version = "=0.9.1", features = ["json"] }
 cerebro-agent-context = { version = "0.1.0", path = "crates/agent-context" }
+cerebro-action-store = { version = "0.1.0", path = "crates/action-store" }
 cerebro-control-kernel = { version = "0.1.0", path = "crates/control-kernel" }
 cerebro-organizational-graph = { version = "0.1.0", path = "crates/organizational-graph" }
 cerebro-organizational-model = { version = "0.1.0", path = "crates/organizational-model" }
@@ -50,6 +52,7 @@ connectrpc = { git = "https://github.com/connectrpc/connect-rust.git", rev = "8b
 libc = "0.2.180"
 futures-util = "0.3.31"
 hmac = "0.13.0"
+jsonwebtoken = { version = "11.0.0", default-features = false, features = ["aws_lc_rs"] }
 prost = "0.14.4"
 prost-types = "0.14.4"
 regex = { version = "1.12.3", default-features = false, features = ["perf", "std"] }
