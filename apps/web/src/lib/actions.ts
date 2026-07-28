@@ -5,6 +5,7 @@ export type ActionState =
   | "approved"
   | "claimed"
   | "executing"
+  | "dispatched"
   | "outcome_unknown"
   | "completed"
   | "reconciled"
@@ -50,6 +51,9 @@ export type ActionOperation = {
   claimed_at_unix_ms?: number | null;
   claim_expires_at_unix_ms?: number | null;
   executor_actor_id?: string | null;
+  provider_receipt_digest?: string | null;
+  provider_status?: string | null;
+  provider_observed_at_unix_ms?: number | null;
   executed_at_unix_ms?: number | null;
   external_receipt_ref?: string | null;
   observed_effect_digest?: string | null;
@@ -115,7 +119,7 @@ export const summarizeActionPage = (actions: ActionOperation[]) =>
   actions.reduce(
     (summary, action) => {
       if (action.state === "waiting_for_approval") summary.waitingForApproval += 1;
-      if (["claimed", "executing", "outcome_unknown"].includes(action.state)) summary.inExecution += 1;
+      if (["claimed", "executing", "dispatched", "outcome_unknown"].includes(action.state)) summary.inExecution += 1;
       if (action.state === "verified") summary.verified += 1;
       if (action.state === "failed" || action.state === "rolled_back") summary.failedOrRolledBack += 1;
       return summary;

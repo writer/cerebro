@@ -6,7 +6,14 @@ mod oidc;
 mod parity_command;
 mod rpc;
 
-use std::{collections::BTreeMap, env, error::Error, path::PathBuf, sync::Arc, time::Instant};
+use std::{
+    collections::BTreeMap,
+    env,
+    error::Error,
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use async_trait::async_trait;
 use axum::{
@@ -18,9 +25,14 @@ use axum::{
     routing::{get, post},
 };
 use cerebro_action_catalog::{
-    ActionCatalogError, definitions as action_definitions, validate_proposal,
+    ActionCatalogError, definitions as action_definitions, lookup as lookup_action,
+    validate_proposal,
 };
-use cerebro_action_store::{ActionEvent, ActionPage, ActionStoreError, PostgresActionLedger};
+use cerebro_action_provider::{AccessApprovalsClient, AccessApprovalsConfig, ProviderError};
+use cerebro_action_store::{
+    ActionDispatch, ActionDispatchPage, ActionEvent, ActionPage, ActionReconciliationDisposition,
+    ActionReconciliationJob, ActionStoreError, PostgresActionLedger,
+};
 use cerebro_agent_context::{
     AgentContext, AgentGraph, ContextEntity, ContextError, GraphPath, MemoryAgentGraph,
     Neighborhood,
@@ -37,10 +49,10 @@ use cerebro_organizational_store::{
 };
 use cerebro_platform_engine::ActionCommand;
 use cerebro_platform_sdk::{
-    ActionOperation, ActionOperationId, ActionProposal, ActionVerificationReceipt, ActorId,
-    ContentDigest, DecisionId, DecisionReceipt, FindingValidationReceipt, OpaqueId, VerificationId,
-    VerificationReceipt,
+    ActionOperation, ActionOperationId, ActionProposal, ActorId, ContentDigest, DecisionId,
+    DecisionReceipt, FindingValidationReceipt, OpaqueId,
 };
+use cerebro_policy_catalog::{definitions as policy_definitions, validate_finding_receipt};
 use cerebro_security_lifecycle::{
     CERTIFICATE_EVENT_KIND, CREDENTIAL_EVENT_KIND, LifecycleQuery, LifecycleState,
     ProjectedResource, SubjectKind, decode_protobuf_observation, project_observation,
@@ -67,11 +79,15 @@ const ACTION_PROPOSE_SCOPE: &str = "cerebro:actions:propose";
 const ACTION_SIMULATE_SCOPE: &str = "cerebro:actions:simulate";
 const ACTION_APPROVE_SCOPE: &str = "cerebro:actions:approve";
 const ACTION_EXECUTE_SCOPE: &str = "cerebro:actions:execute";
-const ACTION_VERIFY_SCOPE: &str = "cerebro:actions:verify";
+const ACTION_RECONCILE_SCOPE: &str = "cerebro:actions:reconcile";
 const FINDING_VALIDATE_SCOPE: &str = "cerebro:findings:validate";
+const ACTION_RECONCILIATION_BATCH_LIMIT: usize = 10;
+const ACTION_RECONCILIATION_LEASE_MS: u64 = 2 * 60 * 1_000;
+const ACTION_RECONCILIATION_POLL_DELAY_MS: u64 = 15 * 1_000;
 
 #[derive(Clone)]
 struct AppState {
+    access_approvals: Option<AccessApprovalsClient>,
     actions: Option<Arc<dyn ActionAuthority>>,
     graph: Arc<dyn AgentGraph>,
     catalog_summary: Option<CatalogSummary>,
@@ -129,6 +145,36 @@ trait ActionAuthority: Send + Sync {
         tenant_id: &TenantId,
         operation_id: &ActionOperationId,
     ) -> Result<Vec<ActionEvent>, ActionStoreError>;
+
+    async fn get_dispatch(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+    ) -> Result<ActionDispatch, ActionStoreError>;
+
+    async fn list_open_dispatches(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+    ) -> Result<ActionDispatchPage, ActionStoreError>;
+
+    async fn claim_due_reconciliation(
+        &self,
+        tenant_id: &TenantId,
+        worker_id: &ActorId,
+        claimed_at_unix_ms: u64,
+        lease_expires_at_unix_ms: u64,
+    ) -> Result<Option<ActionReconciliationJob>, ActionStoreError>;
+
+    async fn finish_reconciliation(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+        worker_id: &ActorId,
+        expected_operation_version: u64,
+        finished_at_unix_ms: u64,
+        disposition: ActionReconciliationDisposition,
+    ) -> Result<(), ActionStoreError>;
 }
 
 #[async_trait]
@@ -205,6 +251,58 @@ impl ActionAuthority for PostgresActionLedger {
         operation_id: &ActionOperationId,
     ) -> Result<Vec<ActionEvent>, ActionStoreError> {
         self.history(tenant_id, operation_id).await
+    }
+
+    async fn get_dispatch(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+    ) -> Result<ActionDispatch, ActionStoreError> {
+        self.get_dispatch(tenant_id, operation_id).await
+    }
+
+    async fn list_open_dispatches(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+    ) -> Result<ActionDispatchPage, ActionStoreError> {
+        self.list_open_dispatches(tenant_id, limit).await
+    }
+
+    async fn claim_due_reconciliation(
+        &self,
+        tenant_id: &TenantId,
+        worker_id: &ActorId,
+        claimed_at_unix_ms: u64,
+        lease_expires_at_unix_ms: u64,
+    ) -> Result<Option<ActionReconciliationJob>, ActionStoreError> {
+        self.claim_due_reconciliation(
+            tenant_id,
+            worker_id,
+            claimed_at_unix_ms,
+            lease_expires_at_unix_ms,
+        )
+        .await
+    }
+
+    async fn finish_reconciliation(
+        &self,
+        tenant_id: &TenantId,
+        operation_id: &ActionOperationId,
+        worker_id: &ActorId,
+        expected_operation_version: u64,
+        finished_at_unix_ms: u64,
+        disposition: ActionReconciliationDisposition,
+    ) -> Result<(), ActionStoreError> {
+        self.finish_reconciliation(
+            tenant_id,
+            operation_id,
+            worker_id,
+            expected_operation_version,
+            finished_at_unix_ms,
+            disposition,
+        )
+        .await
     }
 }
 
@@ -367,8 +465,14 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
         "/v1/me" => "identity:read",
         "/v1/finding-validations" => "cerebro:write",
         _ if path.starts_with("/v1/finding-validations/") => "cerebro:read",
+        "/v1/action-dispatches" => ACTION_EXECUTE_SCOPE,
+        _ if path.starts_with("/v1/action-dispatches/") => ACTION_EXECUTE_SCOPE,
+        "/v1/action-reconciliation-runs" => ACTION_RECONCILE_SCOPE,
         "/v1/actions" if method == Method::GET => "cerebro:actions:read",
         "/v1/actions" => "cerebro:actions:write",
+        _ if path.starts_with("/v1/actions/") && path.ends_with("/provider-observation") => {
+            ACTION_RECONCILE_SCOPE
+        }
         _ if path.starts_with("/v1/actions/") && path.ends_with("/commands") => {
             "cerebro:actions:write"
         }
@@ -406,6 +510,9 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/me" => "current_user",
         "/v1/finding-validations" => "record_finding_validation",
         "/v1/action-definitions" => "action_definitions",
+        "/v1/policy-definitions" => "policy_definitions",
+        "/v1/action-dispatches" => "list_action_dispatches",
+        "/v1/action-reconciliation-runs" => "run_action_reconciliation",
         "/v1/sources/summary" => "source_summary",
         "/platform/graph/neighborhood" => "neighborhood",
         "/v1/graph/search" => "search",
@@ -421,8 +528,12 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/projections/authority" => "projection_authority",
         _ if path.starts_with("/v1/entities/") => "get_entity",
         _ if path.starts_with("/v1/finding-validations/") => "get_finding_validation",
+        _ if path.starts_with("/v1/action-dispatches/") => "get_action_dispatch",
         _ if path.starts_with("/v1/assertions/") => "explain_assertion",
         _ if path.starts_with("/v1/actions/") && path.ends_with("/history") => "action_history",
+        _ if path.starts_with("/v1/actions/") && path.ends_with("/provider-observation") => {
+            "observe_action_provider"
+        }
         _ if path.starts_with("/v1/actions/") && path.ends_with("/commands") => "transition_action",
         _ if path.starts_with("/v1/actions/") => "get_action",
         _ if path.starts_with("/cerebro.graph.v1.OrganizationalGraphService/") => "connect_rpc",
@@ -771,6 +882,14 @@ struct ActionListQuery {
     page_token: Option<String>,
 }
 
+#[derive(Debug, Eq, PartialEq, Serialize)]
+struct ActionReconciliationRun {
+    claimed: usize,
+    observed: usize,
+    terminal: usize,
+    provider_unavailable: usize,
+}
+
 #[derive(Debug, Default, Deserialize)]
 struct HttpLifecycleQuery {
     #[serde(default)]
@@ -862,6 +981,12 @@ struct ActionTransitionRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActionDispatchQuery {
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 enum HttpActionCommand {
     RecordSimulation {},
@@ -884,24 +1009,7 @@ enum HttpActionCommand {
     StartExecution {
         started_at_unix_ms: u64,
     },
-    MarkOutcomeUnknown {},
-    Complete {
-        external_receipt_ref: String,
-        observed_effect_digest: String,
-        executor_actor_id: String,
-        executed_at_unix_ms: u64,
-    },
-    Reconcile {
-        observed_effect_digest: String,
-        executor_actor_id: String,
-        executed_at_unix_ms: u64,
-    },
-    Verify {
-        receipt: HttpActionVerificationReceipt,
-    },
-    RejectVerification {},
     Fail {},
-    RollBack {},
 }
 
 #[derive(Deserialize)]
@@ -914,28 +1022,6 @@ struct HttpDecisionReceipt {
     decided_at_unix_ms: u64,
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct HttpActionVerificationReceipt {
-    operation_id: String,
-    proposal_digest: String,
-    observed_effect_digest: String,
-    receipt: HttpVerificationReceipt,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct HttpVerificationReceipt {
-    verification_id: String,
-    executor_actor_id: String,
-    verifier_actor_id: String,
-    previous_source_revision: String,
-    observed_source_revision: String,
-    effective: bool,
-    evidence_urns: Vec<String>,
-    verified_at_unix_ms: u64,
-}
-
 impl HttpActionCommand {
     fn required_scope(&self) -> &'static str {
         match self {
@@ -946,12 +1032,7 @@ impl HttpActionCommand {
             | Self::RenewClaim { .. }
             | Self::ReleaseExpiredClaim { .. }
             | Self::StartExecution { .. }
-            | Self::MarkOutcomeUnknown {}
-            | Self::Complete { .. }
-            | Self::Reconcile { .. }
-            | Self::Fail {}
-            | Self::RollBack {} => ACTION_EXECUTE_SCOPE,
-            Self::Verify { .. } | Self::RejectVerification {} => ACTION_VERIFY_SCOPE,
+            | Self::Fail {} => ACTION_EXECUTE_SCOPE,
         }
     }
 
@@ -986,36 +1067,7 @@ impl HttpActionCommand {
             Self::StartExecution { started_at_unix_ms } => {
                 ActionCommand::StartExecution { started_at_unix_ms }
             }
-            Self::MarkOutcomeUnknown {} => ActionCommand::MarkOutcomeUnknown,
-            Self::Complete {
-                external_receipt_ref,
-                observed_effect_digest,
-                executor_actor_id,
-                executed_at_unix_ms,
-            } => ActionCommand::Complete {
-                external_receipt_ref: OpaqueId::parse(external_receipt_ref)
-                    .map_err(|error| error.to_string())?,
-                observed_effect_digest: ContentDigest::parse(observed_effect_digest)
-                    .map_err(|error| error.to_string())?,
-                executor_actor_id: parse_action_actor(executor_actor_id)?,
-                executed_at_unix_ms,
-            },
-            Self::Reconcile {
-                observed_effect_digest,
-                executor_actor_id,
-                executed_at_unix_ms,
-            } => ActionCommand::Reconcile {
-                observed_effect_digest: ContentDigest::parse(observed_effect_digest)
-                    .map_err(|error| error.to_string())?,
-                executor_actor_id: parse_action_actor(executor_actor_id)?,
-                executed_at_unix_ms,
-            },
-            Self::Verify { receipt } => ActionCommand::Verify {
-                receipt: receipt.into_domain()?,
-            },
-            Self::RejectVerification {} => ActionCommand::RejectVerification,
             Self::Fail {} => ActionCommand::Fail,
-            Self::RollBack {} => ActionCommand::RollBack,
         })
     }
 }
@@ -1028,36 +1080,6 @@ impl HttpDecisionReceipt {
             approved: self.approved,
             decided_by: parse_action_actor(self.decided_by)?,
             decided_at_unix_ms: self.decided_at_unix_ms,
-        })
-    }
-}
-
-impl HttpActionVerificationReceipt {
-    fn into_domain(self) -> Result<ActionVerificationReceipt, String> {
-        Ok(ActionVerificationReceipt {
-            operation_id: ActionOperationId::parse(self.operation_id)
-                .map_err(|error| error.to_string())?,
-            proposal_digest: ContentDigest::parse(self.proposal_digest)
-                .map_err(|error| error.to_string())?,
-            observed_effect_digest: ContentDigest::parse(self.observed_effect_digest)
-                .map_err(|error| error.to_string())?,
-            receipt: self.receipt.into_domain()?,
-        })
-    }
-}
-
-impl HttpVerificationReceipt {
-    fn into_domain(self) -> Result<VerificationReceipt, String> {
-        Ok(VerificationReceipt {
-            verification_id: VerificationId::parse(self.verification_id)
-                .map_err(|error| error.to_string())?,
-            executor_actor_id: parse_action_actor(self.executor_actor_id)?,
-            verifier_actor_id: parse_action_actor(self.verifier_actor_id)?,
-            previous_source_revision: self.previous_source_revision,
-            observed_source_revision: self.observed_source_revision,
-            effective: self.effective,
-            evidence_urns: self.evidence_urns,
-            verified_at_unix_ms: self.verified_at_unix_ms,
         })
     }
 }
@@ -1414,6 +1436,7 @@ async fn serve(
         Err(env::VarError::NotPresent) => None,
         Err(error) => return Err(error.into()),
     };
+    let access_approvals = access_approvals_from_env()?;
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     println!("cerebro Rust platform listening on {bind}");
     axum::serve(
@@ -1423,6 +1446,7 @@ async fn serve(
             load_catalog_summary().ok(),
             projection,
             actions,
+            access_approvals,
             tenant_auth,
             oidc,
         ),
@@ -1438,6 +1462,7 @@ fn router(graph: OrganizationalGraph) -> Router {
         None,
         None,
         None,
+        None,
         TenantRequestAuth::new("test-organizational-graph-secret-32-bytes".to_owned()).unwrap(),
         None,
     )
@@ -1448,6 +1473,7 @@ fn router_with_backend(
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
     actions: Option<Arc<dyn ActionAuthority>>,
+    access_approvals: Option<AccessApprovalsClient>,
     tenant_auth: TenantRequestAuth,
     oidc: Option<OidcAuthenticator>,
 ) -> Router {
@@ -1484,6 +1510,16 @@ fn router_with_backend(
                 get(get_finding_validation),
             )
             .route("/v1/action-definitions", get(list_action_definitions))
+            .route("/v1/policy-definitions", get(list_policy_definitions))
+            .route("/v1/action-dispatches", get(list_action_dispatches))
+            .route(
+                "/v1/action-reconciliation-runs",
+                post(run_action_reconciliation),
+            )
+            .route(
+                "/v1/action-dispatches/{operation_id}",
+                get(get_action_dispatch),
+            )
             .route("/v1/actions", get(list_actions).post(propose_action))
             .route("/v1/actions/{operation_id}", get(get_action))
             .route(
@@ -1493,6 +1529,10 @@ fn router_with_backend(
             .route(
                 "/v1/actions/{operation_id}/commands",
                 post(transition_action_route),
+            )
+            .route(
+                "/v1/actions/{operation_id}/provider-observation",
+                post(observe_action_provider_route),
             )
             .route_layer(middleware::from_fn_with_state(oidc, authenticate_oidc))
     } else {
@@ -1509,6 +1549,7 @@ fn router_with_backend(
         .merge(protected)
         .fallback_service(connect.into_axum_service())
         .with_state(AppState {
+            access_approvals,
             actions,
             graph,
             catalog_summary,
@@ -1884,6 +1925,11 @@ async fn list_action_definitions()
     Json(action_definitions())
 }
 
+async fn list_policy_definitions()
+-> Json<&'static [cerebro_policy_catalog::PolicyDefinition<'static>]> {
+    Json(policy_definitions())
+}
+
 async fn record_finding_validation(
     State(state): State<AppState>,
     Extension(identity): Extension<AuthenticatedIdentity>,
@@ -1896,6 +1942,8 @@ async fn record_finding_validation(
             "The finding validation tenant and validator must match the signed identity.",
         ));
     }
+    validate_finding_receipt(&receipt)
+        .map_err(|error| bad_request("invalid_policy_definition", error.to_string()))?;
     let committed_at = current_unix_millis()?;
     action_authority(&state)?
         .record_finding_validation(receipt, committed_at)
@@ -1986,6 +2034,41 @@ async fn get_action_history(
         .map_err(action_store_error)
 }
 
+async fn list_action_dispatches(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Query(query): Query<ActionDispatchQuery>,
+) -> Result<Json<ActionDispatchPage>, (StatusCode, Json<ErrorResponse>)> {
+    require_action_scope(&identity, ACTION_EXECUTE_SCOPE)?;
+    let limit = query.limit.unwrap_or(50);
+    if !(1..=100).contains(&limit) {
+        return Err(bad_request(
+            "invalid_action_dispatch_query",
+            "limit must be between 1 and 100.",
+        ));
+    }
+    action_authority(&state)?
+        .list_open_dispatches(&identity.tenant, limit)
+        .await
+        .map(Json)
+        .map_err(action_store_error)
+}
+
+async fn get_action_dispatch(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Path(operation_id): Path<String>,
+) -> Result<Json<ActionDispatch>, (StatusCode, Json<ErrorResponse>)> {
+    require_action_scope(&identity, ACTION_EXECUTE_SCOPE)?;
+    let operation_id = ActionOperationId::parse(operation_id)
+        .map_err(|error| bad_request("invalid_action_operation_id", error.to_string()))?;
+    action_authority(&state)?
+        .get_dispatch(&identity.tenant, &operation_id)
+        .await
+        .map(Json)
+        .map_err(action_store_error)
+}
+
 async fn transition_action_route(
     State(state): State<AppState>,
     Extension(identity): Extension<AuthenticatedIdentity>,
@@ -1996,12 +2079,37 @@ async fn transition_action_route(
         .map_err(|error| bad_request("invalid_action_operation_id", error.to_string()))?;
     require_action_scope(&identity, request.command.required_scope())?;
     let actor_id = authenticated_action_actor(&identity)?;
+    let starts_execution = matches!(&request.command, HttpActionCommand::StartExecution { .. });
+    let authority = action_authority(&state)?.clone();
+    let provider = if starts_execution {
+        let provider = state.access_approvals.clone().ok_or_else(|| {
+            service_unavailable(
+                "action_provider_unavailable",
+                "The access-approvals provider is not configured in the Rust runtime.",
+            )
+        })?;
+        let current = authority
+            .get(&identity.tenant, &operation_id)
+            .await
+            .map_err(action_store_error)?;
+        let definition =
+            lookup_action(&current.proposal.action_kind).map_err(action_catalog_error)?;
+        if definition.provider != "access-approvals" {
+            return Err(service_unavailable(
+                "action_provider_unavailable",
+                "The Action provider is not available in the Rust runtime.",
+            ));
+        }
+        Some(provider)
+    } else {
+        None
+    };
     let command = request
         .command
         .into_domain()
         .map_err(|error| bad_request("invalid_action_command", error))?;
     let committed_at = current_unix_millis()?;
-    action_authority(&state)?
+    let operation = authority
         .transition(
             &identity.tenant,
             &operation_id,
@@ -2011,8 +2119,247 @@ async fn transition_action_route(
             committed_at,
         )
         .await
+        .map_err(action_store_error)?;
+    let Some(provider) = provider else {
+        return Ok(Json(operation));
+    };
+
+    let dispatch = authority
+        .get_dispatch(&identity.tenant, &operation_id)
+        .await
+        .map_err(action_store_error)?;
+    let provider_result = provider.dispatch(&dispatch).await;
+    if let Err(error) = &provider_result {
+        eprintln!(
+            "Action provider dispatch returned no receipt: operation_id={operation_id} error={error}"
+        );
+    }
+    let observed_at = current_unix_millis()?;
+    authority
+        .transition(
+            &identity.tenant,
+            &operation_id,
+            &actor_id,
+            operation.version,
+            provider_dispatch_command(provider_result, actor_id.clone(), observed_at),
+            observed_at,
+        )
+        .await
         .map(Json)
         .map_err(action_store_error)
+}
+
+async fn run_action_reconciliation(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+) -> Result<Json<ActionReconciliationRun>, (StatusCode, Json<ErrorResponse>)> {
+    require_action_scope(&identity, ACTION_RECONCILE_SCOPE)?;
+    let actor_id = authenticated_action_actor(&identity)?;
+    let provider = state.access_approvals.clone().ok_or_else(|| {
+        service_unavailable(
+            "action_provider_unavailable",
+            "The access-approvals provider is not configured in the Rust runtime.",
+        )
+    })?;
+    let authority = action_authority(&state)?.clone();
+    let mut result = ActionReconciliationRun {
+        claimed: 0,
+        observed: 0,
+        terminal: 0,
+        provider_unavailable: 0,
+    };
+    for _ in 0..ACTION_RECONCILIATION_BATCH_LIMIT {
+        let claimed_at = current_unix_millis()?;
+        let lease_expires_at = claimed_at
+            .checked_add(ACTION_RECONCILIATION_LEASE_MS)
+            .ok_or_else(action_clock_overflow)?;
+        let Some(job) = authority
+            .claim_due_reconciliation(&identity.tenant, &actor_id, claimed_at, lease_expires_at)
+            .await
+            .map_err(action_store_error)?
+        else {
+            break;
+        };
+        result.claimed += 1;
+        let external_id = job.operation.external_receipt_ref.as_ref().ok_or_else(|| {
+            action_store_error(ActionStoreError::Corrupt(
+                "Action reconciliation job has no provider receipt".to_owned(),
+            ))
+        })?;
+        let receipt = if job.dispatch.provider == "access-approvals" {
+            provider.observe(&job.dispatch, external_id).await
+        } else {
+            Err(ProviderError::ObservationUnavailable)
+        };
+        let receipt = match receipt {
+            Ok(receipt) => receipt,
+            Err(_) => {
+                let finished_at = current_unix_millis()?;
+                let next_attempt_at = finished_at
+                    .checked_add(ACTION_RECONCILIATION_POLL_DELAY_MS)
+                    .ok_or_else(action_clock_overflow)?;
+                authority
+                    .finish_reconciliation(
+                        &identity.tenant,
+                        &job.operation.proposal.operation_id,
+                        &actor_id,
+                        job.operation.version,
+                        finished_at,
+                        ActionReconciliationDisposition::PollAgain {
+                            next_attempt_at_unix_ms: next_attempt_at,
+                        },
+                    )
+                    .await
+                    .map_err(action_store_error)?;
+                result.provider_unavailable += 1;
+                continue;
+            }
+        };
+        let previous_observation = job.operation.provider_observed_at_unix_ms.ok_or_else(|| {
+            action_store_error(ActionStoreError::Corrupt(
+                "Action reconciliation job has no provider observation time".to_owned(),
+            ))
+        })?;
+        let observed_at =
+            next_provider_observation_time(previous_observation, current_unix_millis()?)
+                .ok_or_else(action_clock_overflow)?;
+        let operation = authority
+            .transition(
+                &identity.tenant,
+                &job.operation.proposal.operation_id,
+                &actor_id,
+                job.operation.version,
+                receipt.observation_command(actor_id.clone(), observed_at),
+                observed_at,
+            )
+            .await
+            .map_err(action_store_error)?;
+        let terminal = receipt.status.is_terminal();
+        let disposition = if terminal {
+            ActionReconciliationDisposition::Terminal {
+                provider_status: receipt.status.as_str().to_owned(),
+            }
+        } else {
+            ActionReconciliationDisposition::PollAgain {
+                next_attempt_at_unix_ms: observed_at
+                    .checked_add(ACTION_RECONCILIATION_POLL_DELAY_MS)
+                    .ok_or_else(action_clock_overflow)?,
+            }
+        };
+        authority
+            .finish_reconciliation(
+                &identity.tenant,
+                &operation.proposal.operation_id,
+                &actor_id,
+                operation.version,
+                observed_at,
+                disposition,
+            )
+            .await
+            .map_err(action_store_error)?;
+        result.observed += 1;
+        if terminal {
+            result.terminal += 1;
+        }
+    }
+    Ok(Json(result))
+}
+
+async fn observe_action_provider_route(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Path(operation_id): Path<String>,
+) -> Result<Json<ActionOperation>, (StatusCode, Json<ErrorResponse>)> {
+    require_action_scope(&identity, ACTION_RECONCILE_SCOPE)?;
+    let actor_id = authenticated_action_actor(&identity)?;
+    let operation_id = ActionOperationId::parse(operation_id)
+        .map_err(|error| bad_request("invalid_action_operation_id", error.to_string()))?;
+    let provider = state.access_approvals.clone().ok_or_else(|| {
+        service_unavailable(
+            "action_provider_unavailable",
+            "The access-approvals provider is not configured in the Rust runtime.",
+        )
+    })?;
+    let authority = action_authority(&state)?.clone();
+    let operation = authority
+        .get(&identity.tenant, &operation_id)
+        .await
+        .map_err(action_store_error)?;
+    let external_id = operation.external_receipt_ref.as_ref().ok_or_else(|| {
+        bad_request(
+            "action_provider_receipt_unavailable",
+            "The Action has no provider receipt to observe.",
+        )
+    })?;
+    let previous_observation =
+        require_provider_observation_time(operation.provider_observed_at_unix_ms)?;
+    let dispatch = authority
+        .get_dispatch(&identity.tenant, &operation_id)
+        .await
+        .map_err(action_store_error)?;
+    let receipt = provider
+        .observe(&dispatch, external_id)
+        .await
+        .map_err(action_provider_error)?;
+    let observed_at = next_provider_observation_time(previous_observation, current_unix_millis()?)
+        .ok_or_else(|| {
+            service_unavailable(
+                "action_clock_unavailable",
+                "The Action provider observation time cannot advance.",
+            )
+        })?;
+    authority
+        .transition(
+            &identity.tenant,
+            &operation_id,
+            &actor_id,
+            operation.version,
+            receipt.observation_command(actor_id.clone(), observed_at),
+            observed_at,
+        )
+        .await
+        .map(Json)
+        .map_err(action_store_error)
+}
+
+fn next_provider_observation_time(previous: u64, current: u64) -> Option<u64> {
+    previous.checked_add(1).map(|minimum| current.max(minimum))
+}
+
+fn require_provider_observation_time(
+    previous: Option<u64>,
+) -> Result<u64, (StatusCode, Json<ErrorResponse>)> {
+    previous.ok_or_else(|| {
+        bad_request(
+            "action_not_observable",
+            "The Action was not dispatched through the observable provider path.",
+        )
+    })
+}
+
+fn action_clock_overflow() -> (StatusCode, Json<ErrorResponse>) {
+    service_unavailable(
+        "action_clock_unavailable",
+        "The Action reconciliation schedule cannot advance.",
+    )
+}
+
+fn provider_dispatch_command(
+    result: Result<cerebro_action_provider::ProviderReceipt, ProviderError>,
+    actor_id: ActorId,
+    observed_at_unix_ms: u64,
+) -> ActionCommand {
+    match result {
+        Ok(receipt) => receipt.record_command(actor_id, observed_at_unix_ms),
+        Err(_) => ActionCommand::MarkOutcomeUnknown,
+    }
+}
+
+fn action_provider_error(_error: ProviderError) -> (StatusCode, Json<ErrorResponse>) {
+    service_unavailable(
+        "action_provider_unavailable",
+        "The Action provider observation is temporarily unavailable.",
+    )
 }
 
 fn action_authority(
@@ -2448,6 +2795,9 @@ fn action_store_error(error: ActionStoreError) -> (StatusCode, Json<ErrorRespons
         ActionStoreError::Catalog(error) => {
             bad_request("invalid_action_definition", error.to_string())
         }
+        ActionStoreError::PolicyCatalog(error) => {
+            bad_request("invalid_policy_definition", error.to_string())
+        }
         ActionStoreError::OutOfRange(field) => bad_request("invalid_action", field),
         ActionStoreError::Postgres(error) => {
             eprintln!("Action PostgreSQL unavailable: {error}");
@@ -2577,6 +2927,80 @@ fn required_env(name: &str) -> Result<String, Box<dyn Error>> {
         return Err(format!("{name} is required").into());
     }
     Ok(value)
+}
+
+fn access_approvals_from_env() -> Result<Option<AccessApprovalsClient>, Box<dyn Error>> {
+    const BASE_URL: &str = "CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL";
+    const BEARER_TOKEN: &str = "CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN";
+    const BEARER_TOKEN_FILE: &str = "CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE";
+    const TIMEOUT: &str = "CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT";
+
+    let base_url = optional_env(BASE_URL)?;
+    let direct_token = optional_env(BEARER_TOKEN)?;
+    let token_file = optional_env(BEARER_TOKEN_FILE)?;
+    if base_url.is_none() && direct_token.is_none() && token_file.is_none() {
+        return Ok(None);
+    }
+    let base_url = base_url.ok_or_else(|| format!("{BASE_URL} is required"))?;
+    let bearer_token = match (direct_token, token_file) {
+        (Some(_), Some(_)) => {
+            return Err(
+                format!("configure only one of {BEARER_TOKEN} and {BEARER_TOKEN_FILE}").into(),
+            );
+        }
+        (Some(token), None) => token,
+        (None, Some(path)) => read_bounded_secret_file(&path)?,
+        (None, None) => {
+            return Err(
+                format!("one of {BEARER_TOKEN} and {BEARER_TOKEN_FILE} is required").into(),
+            );
+        }
+    };
+    let mut config = AccessApprovalsConfig::new(base_url, bearer_token);
+    if let Some(timeout) = optional_env(TIMEOUT)? {
+        config.timeout = parse_provider_timeout(&timeout)?;
+    }
+    AccessApprovalsClient::new(config)
+        .map(Some)
+        .map_err(|error| error.into())
+}
+
+fn optional_env(name: &str) -> Result<Option<String>, env::VarError> {
+    match env::var(name) {
+        Ok(value) => Ok(Some(value)),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn read_bounded_secret_file(path: &str) -> Result<String, Box<dyn Error>> {
+    use std::io::Read as _;
+
+    const MAX_SECRET_FILE_BYTES: usize = 16 * 1_024;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take((MAX_SECRET_FILE_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.is_empty() || bytes.len() > MAX_SECRET_FILE_BYTES {
+        return Err("access-approvals bearer token file is empty or too large".into());
+    }
+    let token = String::from_utf8(bytes)?;
+    Ok(token
+        .strip_suffix("\r\n")
+        .or_else(|| token.strip_suffix('\n'))
+        .unwrap_or(&token)
+        .to_owned())
+}
+
+fn parse_provider_timeout(value: &str) -> Result<Duration, Box<dyn Error>> {
+    let duration = if let Some(milliseconds) = value.strip_suffix("ms") {
+        Duration::from_millis(milliseconds.parse()?)
+    } else if let Some(seconds) = value.strip_suffix('s') {
+        Duration::from_secs(seconds.parse()?)
+    } else {
+        return Err("access-approvals timeout must use an ms or s suffix".into());
+    };
+    Ok(duration)
 }
 
 fn demo_graph() -> Result<(OrganizationalGraph, TenantId, EntityId), Box<dyn Error>> {
@@ -2751,6 +3175,44 @@ mod tests {
         ) -> Result<Vec<ActionEvent>, ActionStoreError> {
             panic!("spoofed request reached the Action authority")
         }
+
+        async fn get_dispatch(
+            &self,
+            _tenant_id: &TenantId,
+            _operation_id: &ActionOperationId,
+        ) -> Result<ActionDispatch, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn list_open_dispatches(
+            &self,
+            _tenant_id: &TenantId,
+            _limit: usize,
+        ) -> Result<ActionDispatchPage, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn claim_due_reconciliation(
+            &self,
+            _tenant_id: &TenantId,
+            _worker_id: &ActorId,
+            _claimed_at_unix_ms: u64,
+            _lease_expires_at_unix_ms: u64,
+        ) -> Result<Option<ActionReconciliationJob>, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn finish_reconciliation(
+            &self,
+            _tenant_id: &TenantId,
+            _operation_id: &ActionOperationId,
+            _worker_id: &ActorId,
+            _expected_operation_version: u64,
+            _finished_at_unix_ms: u64,
+            _disposition: ActionReconciliationDisposition,
+        ) -> Result<(), ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
     }
 
     fn unavailable() -> ContextError {
@@ -2895,12 +3357,14 @@ mod tests {
     }
 
     fn finding_validation(tenant_id: &str, validated_by: &str) -> FindingValidationReceipt {
+        let policy = policy_definitions().first().expect("generated policy");
         let mut receipt = FindingValidationReceipt {
             tenant_id: TenantId::parse(tenant_id).unwrap(),
             finding_id: OpaqueId::parse("finding:http:one").unwrap(),
             finding_revision_digest: ContentDigest::of_bytes("finding-revision"),
             graph_revision: GraphRevision::new(1).unwrap(),
-            policy_definition_digest: ContentDigest::of_bytes("policy-definition"),
+            policy_id: policy.id.to_owned(),
+            policy_definition_digest: ContentDigest::parse(policy.definition_digest).unwrap(),
             decision: cerebro_platform_sdk::FindingValidationDecision::Confirmed,
             evidence_digests: vec![ContentDigest::of_bytes("finding-evidence")],
             validated_by: ActorId::parse(validated_by).unwrap(),
@@ -3425,6 +3889,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
             None,
         );
@@ -3555,6 +4020,25 @@ mod tests {
             bounded_operation(&Method::POST, "/v1/actions"),
             "propose_action"
         );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/action-dispatches"),
+            "list_action_dispatches"
+        );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/action-dispatches/operation:one"),
+            "get_action_dispatch"
+        );
+        assert_eq!(
+            bounded_operation(
+                &Method::POST,
+                "/v1/actions/operation:one/provider-observation"
+            ),
+            "observe_action_provider"
+        );
+        assert_eq!(
+            bounded_operation(&Method::POST, "/v1/action-reconciliation-runs"),
+            "run_action_reconciliation"
+        );
     }
 
     #[test]
@@ -3569,6 +4053,10 @@ mod tests {
         );
         assert_eq!(
             oidc_scope_for_route(&Method::GET, "/v1/action-definitions"),
+            "cerebro:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/policy-definitions"),
             "cerebro:read"
         );
         assert_eq!(
@@ -3595,6 +4083,14 @@ mod tests {
             "cerebro:actions:read"
         );
         assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/action-dispatches"),
+            ACTION_EXECUTE_SCOPE
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/action-dispatches/operation:one"),
+            ACTION_EXECUTE_SCOPE
+        );
+        assert_eq!(
             oidc_scope_for_route(&Method::POST, "/v1/actions"),
             "cerebro:actions:write"
         );
@@ -3610,6 +4106,17 @@ mod tests {
             oidc_scope_for_route(&Method::POST, "/v1/actions/operation:one/commands"),
             "cerebro:actions:write"
         );
+        assert_eq!(
+            oidc_scope_for_route(
+                &Method::POST,
+                "/v1/actions/operation:one/provider-observation"
+            ),
+            ACTION_RECONCILE_SCOPE
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/action-reconciliation-runs"),
+            ACTION_RECONCILE_SCOPE
+        );
     }
 
     #[test]
@@ -3623,19 +4130,35 @@ mod tests {
         });
         assert!(serde_json::from_value::<ActionTransitionRequest>(unknown).is_err());
 
-        let invalid = serde_json::json!({
+        let caller_supplied_completion = serde_json::json!({
             "expected_version": 1,
             "command": {
                 "command": "complete",
                 "external_receipt_ref": "receipt:one",
+                "provider_receipt_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "observed_effect_digest": "not-a-digest",
                 "executor_actor_id": "executor:one",
                 "executed_at_unix_ms": 10
             }
         });
-        let request =
-            serde_json::from_value::<ActionTransitionRequest>(invalid).expect("request shape");
-        assert!(request.command.into_domain().is_err());
+        assert!(
+            serde_json::from_value::<ActionTransitionRequest>(caller_supplied_completion).is_err()
+        );
+
+        let invalid_provider_receipt = serde_json::json!({
+            "expected_version": 6,
+            "command": {
+                "command": "record_provider_receipt",
+                "external_receipt_ref": "receipt:one",
+                "provider_receipt_digest": "not-a-digest",
+                "provider_status": "queued",
+                "executor_actor_id": "executor:one",
+                "observed_at_unix_ms": 10
+            }
+        });
+        assert!(
+            serde_json::from_value::<ActionTransitionRequest>(invalid_provider_receipt).is_err()
+        );
 
         let claim_without_expiry = serde_json::json!({
             "expected_version": 1,
@@ -3663,6 +4186,19 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn provider_observation_time_advances_within_one_clock_tick() {
+        assert_eq!(next_provider_observation_time(42, 42), Some(43));
+        assert_eq!(next_provider_observation_time(42, 41), Some(43));
+        assert_eq!(next_provider_observation_time(42, 44), Some(44));
+        assert_eq!(next_provider_observation_time(u64::MAX, u64::MAX), None);
+
+        let error = require_provider_observation_time(None)
+            .expect_err("legacy Action must not be treated as retryable provider work");
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert_eq!(error.1.0.code, "action_not_observable");
+    }
+
     #[tokio::test]
     async fn action_queue_rejects_unknown_and_unbounded_queries_before_storage() {
         assert!(
@@ -3675,6 +4211,7 @@ mod tests {
 
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
+            access_approvals: None,
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
             catalog_summary: None,
@@ -3695,6 +4232,22 @@ mod tests {
             assert_eq!(error.0, StatusCode::BAD_REQUEST);
             assert_eq!(error.1.0.code, "invalid_action_query");
         }
+
+        let mut execution_identity = action_identity("tenant:http:one", "worker:http:one");
+        execution_identity
+            .scopes
+            .insert(ACTION_EXECUTE_SCOPE.to_owned());
+        for limit in [0, 101, usize::MAX] {
+            let error = list_action_dispatches(
+                State(state.clone()),
+                Extension(execution_identity.clone()),
+                Query(ActionDispatchQuery { limit: Some(limit) }),
+            )
+            .await
+            .expect_err("unbounded dispatch query must fail before storage");
+            assert_eq!(error.0, StatusCode::BAD_REQUEST);
+            assert_eq!(error.1.0.code, "invalid_action_dispatch_query");
+        }
     }
 
     #[tokio::test]
@@ -3714,6 +4267,62 @@ mod tests {
             .required_scope(),
             ACTION_EXECUTE_SCOPE
         );
+        for internal_command in [
+            serde_json::json!({
+                "command": "record_provider_receipt",
+                "external_receipt_ref": "receipt:one",
+                "provider_receipt_digest": ContentDigest::of_bytes("queued"),
+                "provider_status": "queued",
+                "executor_actor_id": "worker:one",
+                "observed_at_unix_ms": 10
+            }),
+            serde_json::json!({
+                "command": "observe_provider_receipt",
+                "provider_receipt_digest": ContentDigest::of_bytes("running"),
+                "provider_status": "running",
+                "observed_at_unix_ms": 11
+            }),
+            serde_json::json!({"command": "mark_outcome_unknown"}),
+            serde_json::json!({
+                "command": "complete",
+                "external_receipt_ref": "receipt:one",
+                "provider_receipt_digest": ContentDigest::of_bytes("succeeded"),
+                "observed_effect_digest": ContentDigest::of_bytes("effect"),
+                "executor_actor_id": "worker:one",
+                "executed_at_unix_ms": 12
+            }),
+            serde_json::json!({
+                "command": "reconcile",
+                "observed_effect_digest": ContentDigest::of_bytes("effect"),
+                "executor_actor_id": "worker:one",
+                "executed_at_unix_ms": 12
+            }),
+            serde_json::json!({
+                "command": "verify",
+                "receipt": {
+                    "operation_id": "operation:one",
+                    "proposal_digest": ContentDigest::of_bytes("proposal"),
+                    "observed_effect_digest": ContentDigest::of_bytes("effect"),
+                    "receipt": {
+                        "verification_id": "verification:one",
+                        "executor_actor_id": "worker:one",
+                        "verifier_actor_id": "verifier:one",
+                        "previous_source_revision": "source:one",
+                        "observed_source_revision": "source:two",
+                        "effective": true,
+                        "evidence_urns": ["urn:cerebro:tenant:observation:one"],
+                        "verified_at_unix_ms": 13
+                    }
+                }
+            }),
+            serde_json::json!({"command": "reject_verification"}),
+            serde_json::json!({"command": "roll_back"}),
+        ] {
+            assert!(
+                serde_json::from_value::<HttpActionCommand>(internal_command).is_err(),
+                "provider receipts, effect completion, and verification are internal Rust authority commands"
+            );
+        }
         assert_eq!(
             HttpActionCommand::RenewClaim {
                 renewed_at_unix_ms: 10,
@@ -3729,13 +4338,9 @@ mod tests {
             .required_scope(),
             ACTION_EXECUTE_SCOPE
         );
-        assert_eq!(
-            HttpActionCommand::RejectVerification {}.required_scope(),
-            ACTION_VERIFY_SCOPE
-        );
-
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
+            access_approvals: None,
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
             catalog_summary: None,
@@ -3745,8 +4350,8 @@ mod tests {
         let mut identity = action_identity("tenant:http:one", "actor:http:one");
         identity.scopes = BTreeSet::from(["cerebro:actions:write".to_owned()]);
         let error = transition_action_route(
-            State(state),
-            Extension(identity),
+            State(state.clone()),
+            Extension(identity.clone()),
             Path("operation:http:one".to_owned()),
             Json(ActionTransitionRequest {
                 expected_version: 1,
@@ -3759,12 +4364,138 @@ mod tests {
         .expect_err("broad write scope must not grant execution authority");
         assert_eq!(error.0, StatusCode::FORBIDDEN);
         assert_eq!(error.1.0.code, "permission_denied");
+
+        let mut executor_identity = action_identity("tenant:http:one", "executor:http:one");
+        executor_identity
+            .scopes
+            .insert(ACTION_EXECUTE_SCOPE.to_owned());
+        let error = observe_action_provider_route(
+            State(state.clone()),
+            Extension(executor_identity.clone()),
+            Path("operation:http:one".to_owned()),
+        )
+        .await
+        .expect_err("execution authority must not grant reconciliation authority");
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(error.1.0.code, "permission_denied");
+
+        let error = run_action_reconciliation(State(state.clone()), Extension(executor_identity))
+            .await
+            .expect_err("execution authority must not wake reconciliation work");
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(error.1.0.code, "permission_denied");
+
+        let error = list_action_dispatches(
+            State(state.clone()),
+            Extension(identity.clone()),
+            Query(ActionDispatchQuery { limit: Some(10) }),
+        )
+        .await
+        .expect_err("broad write scope must not expose provider dispatches");
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(error.1.0.code, "permission_denied");
+
+        let error = get_action_dispatch(
+            State(state),
+            Extension(identity),
+            Path("operation:http:one".to_owned()),
+        )
+        .await
+        .expect_err("broad write scope must not expose a provider dispatch");
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(error.1.0.code, "permission_denied");
+    }
+
+    #[test]
+    fn provider_submission_results_become_internal_authority_commands() {
+        let actor = ActorId::parse("worker:one").unwrap();
+        let receipt = cerebro_action_provider::ProviderReceipt {
+            external_id: OpaqueId::parse("provider-action:one").unwrap(),
+            status: cerebro_action_provider::ProviderStatus::Queued,
+            request_digest: Some(ContentDigest::of_bytes("request")),
+            response_digest: ContentDigest::of_bytes("response"),
+            updated_at_unix_s: Some(10),
+            completed_at_unix_s: None,
+        };
+        assert!(matches!(
+            provider_dispatch_command(Ok(receipt), actor.clone(), 10_000),
+            ActionCommand::RecordProviderReceipt {
+                external_receipt_ref,
+                provider_status,
+                executor_actor_id,
+                observed_at_unix_ms: 10_000,
+                ..
+            } if external_receipt_ref.as_str() == "provider-action:one"
+                && provider_status == "queued"
+                && executor_actor_id == actor
+        ));
+        assert!(matches!(
+            provider_dispatch_command(Err(ProviderError::DispatchAmbiguous), actor, 10_000),
+            ActionCommand::MarkOutcomeUnknown
+        ));
+    }
+
+    #[test]
+    fn provider_timeouts_use_explicit_bounded_units() {
+        assert_eq!(
+            parse_provider_timeout("250ms").unwrap(),
+            Duration::from_millis(250)
+        );
+        assert_eq!(
+            parse_provider_timeout("10s").unwrap(),
+            Duration::from_secs(10)
+        );
+        for invalid in ["", "10", "1m", " 10s", "10s "] {
+            assert!(parse_provider_timeout(invalid).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn start_execution_fails_before_storage_when_rust_provider_is_unconfigured() {
+        let (graph, _, _) = demo_graph().unwrap();
+        let state = AppState {
+            access_approvals: None,
+            actions: Some(Arc::new(UnreachableActionAuthority)),
+            graph: Arc::new(MemoryAgentGraph::new(graph)),
+            catalog_summary: None,
+            projection: None,
+            metrics: PlatformMetrics::default(),
+        };
+        let mut identity = action_identity("tenant:http:one", "actor:http:one");
+        identity.scopes.insert(ACTION_EXECUTE_SCOPE.to_owned());
+        identity.scopes.insert(ACTION_RECONCILE_SCOPE.to_owned());
+        let error = transition_action_route(
+            State(state.clone()),
+            Extension(identity.clone()),
+            Path("operation:http:one".to_owned()),
+            Json(ActionTransitionRequest {
+                expected_version: 5,
+                command: HttpActionCommand::StartExecution {
+                    started_at_unix_ms: 10,
+                },
+            }),
+        )
+        .await
+        .expect_err("unconfigured Rust provider must fail before touching storage");
+        assert_eq!(error.0, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(error.1.0.code, "action_provider_unavailable");
+
+        let error = observe_action_provider_route(
+            State(state),
+            Extension(identity),
+            Path("operation:http:one".to_owned()),
+        )
+        .await
+        .expect_err("unconfigured Rust provider observation must fail before storage");
+        assert_eq!(error.0, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(error.1.0.code, "action_provider_unavailable");
     }
 
     #[tokio::test]
     async fn action_proposals_reject_spoofed_tenants_and_actors_before_storage() {
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
+            access_approvals: None,
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
             catalog_summary: None,
@@ -3793,6 +4524,7 @@ mod tests {
     async fn action_proposals_reject_unregistered_or_tampered_definitions_before_storage() {
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
+            access_approvals: None,
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
             catalog_summary: None,
@@ -3844,12 +4576,48 @@ mod tests {
 
         let definitions = list_action_definitions().await.0;
         assert!(definitions.iter().any(|candidate| candidate == definition));
+        assert!(list_policy_definitions().await.0.len() > 1_000);
+    }
+
+    #[tokio::test]
+    async fn finding_validation_rejects_unknown_or_tampered_policies_before_storage() {
+        let (graph, _, _) = demo_graph().unwrap();
+        let state = AppState {
+            access_approvals: None,
+            actions: Some(Arc::new(UnreachableActionAuthority)),
+            graph: Arc::new(MemoryAgentGraph::new(graph)),
+            catalog_summary: None,
+            projection: None,
+            metrics: PlatformMetrics::default(),
+        };
+        let identity = action_identity("tenant:http:one", "validator:http:one");
+
+        let mut unknown = finding_validation("tenant:http:one", "validator:http:one");
+        unknown.policy_id = "unknown-policy".to_owned();
+        unknown.bind_computed_digest().unwrap();
+
+        let mut tampered = finding_validation("tenant:http:one", "validator:http:one");
+        tampered.policy_definition_digest = ContentDigest::of_bytes("attacker policy");
+        tampered.bind_computed_digest().unwrap();
+
+        for receipt in [unknown, tampered] {
+            let error = record_finding_validation(
+                State(state.clone()),
+                Extension(identity.clone()),
+                Json(receipt),
+            )
+            .await
+            .expect_err("unregistered policy must fail before storage");
+            assert_eq!(error.0, StatusCode::BAD_REQUEST);
+            assert_eq!(error.1.0.code, "invalid_policy_definition");
+        }
     }
 
     #[tokio::test]
     async fn finding_validation_rejects_spoofed_identity_before_storage() {
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
+            access_approvals: None,
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
             catalog_summary: None,
@@ -4140,6 +4908,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
             None,
         );
@@ -4273,6 +5042,7 @@ mod tests {
             Arc::new(graph.clone()),
             None,
             Some(runtime),
+            None,
             None,
             tenant_auth,
             None,
