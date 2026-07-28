@@ -154,7 +154,7 @@ fn adaptive_plans_respect_tenant_budgets() {
 
 #[test]
 fn action_transitions_are_optimistic_and_fail_closed() {
-    let proposal = ActionProposal {
+    let mut proposal = ActionProposal {
         operation_id: ActionOperationId::parse("operation:one").expect("valid operation"),
         tenant_id: tenant(),
         finding_id: OpaqueId::parse("finding:one").expect("valid finding"),
@@ -178,6 +178,9 @@ fn action_transitions_are_optimistic_and_fail_closed() {
         proposal_expires_at_unix_ms: 100,
         proposal_digest: digest("proposal"),
     };
+    proposal
+        .bind_computed_digest()
+        .expect("bind action proposal digest");
     let operation = ActionOperation {
         proposal,
         state: ActionState::Proposed,
@@ -282,7 +285,7 @@ fn action_transitions_are_optimistic_and_fail_closed() {
 
 #[test]
 fn action_authority_rejects_forged_approval_and_verification_receipts() {
-    let proposal = ActionProposal {
+    let mut proposal = ActionProposal {
         operation_id: ActionOperationId::parse("operation:receipt-check").expect("valid operation"),
         tenant_id: tenant(),
         finding_id: OpaqueId::parse("finding:receipt-check").expect("valid finding"),
@@ -306,6 +309,9 @@ fn action_authority_rejects_forged_approval_and_verification_receipts() {
         proposal_expires_at_unix_ms: 100,
         proposal_digest: digest("proposal"),
     };
+    proposal
+        .bind_computed_digest()
+        .expect("bind action proposal digest");
     let proposed = ActionOperation {
         proposal,
         state: ActionState::Proposed,
@@ -320,6 +326,27 @@ fn action_authority_rejects_forged_approval_and_verification_receipts() {
         verification_state: VerificationState::Pending,
         verification_receipt: None,
     };
+    let mut changed_kind = proposed.clone();
+    changed_kind.proposal.action_kind = "grant_access".to_owned();
+    let mut changed_target = proposed.clone();
+    changed_target.proposal.target_id =
+        OpaqueId::parse("grant:attacker-selected").expect("valid target");
+    let mut changed_finding = proposed.clone();
+    changed_finding.proposal.finding_revision_digest = digest("different-finding-revision");
+    let mut changed_effect = proposed.clone();
+    changed_effect.proposal.expected_effects[0].expected_state_digest =
+        digest("attacker-selected-state");
+    for (field, tampered) in [
+        ("action kind", changed_kind),
+        ("target", changed_target),
+        ("finding revision", changed_finding),
+        ("expected effect", changed_effect),
+    ] {
+        assert!(
+            transition_action(&tampered, 1, ActionCommand::RecordSimulation).is_err(),
+            "{field} changed after the proposal digest was bound"
+        );
+    }
     let simulated =
         transition_action(&proposed, 1, ActionCommand::RecordSimulation).expect("simulation");
     let waiting =
