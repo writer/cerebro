@@ -93,6 +93,9 @@ export const getCerebroPublicConfig = () => ({
   forwardRequestAuth,
 });
 
+export const rustOwnsWebAuthority = () =>
+  process.env.CEREBRO_AUTHORITY_MODE?.trim().toLowerCase() === "rust";
+
 export const buildCerebroUrl = (path: string, search = "") => {
   const base = new URL(API_BASE.endsWith("/") ? API_BASE : `${API_BASE}/`);
   const basePath = base.pathname.endsWith("/") ? base.pathname.slice(0, -1) : base.pathname;
@@ -123,6 +126,17 @@ export const authHeadersFor = (request: NextRequest): HeadersInit => {
     headers.Authorization = SERVER_AUTHORIZATION;
   }
 
+  return headers;
+};
+
+export const signedIdentityHeadersFor = (request: NextRequest): HeadersInit => {
+  const headers: Record<string, string> = {
+    Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
+  };
+  const authorization = request.headers.get("authorization");
+  if (authorization) {
+    headers.Authorization = authorization;
+  }
   return headers;
 };
 

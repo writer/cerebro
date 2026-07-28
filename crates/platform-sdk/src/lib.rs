@@ -25,7 +25,8 @@ mod traits;
 mod view;
 
 pub use action::{
-    ActionEffect, ActionOperation, ActionProposal, ActionReceipt, ActionState, VerificationState,
+    ActionEffect, ActionOperation, ActionProposal, ActionReceipt, ActionState,
+    ActionVerificationReceipt, VerificationState,
 };
 pub use assertion::{
     AssertionCondition, AssertionDefinition, AssertionEvaluation, AssertionState, EvaluationTrigger,
@@ -35,8 +36,9 @@ pub use cerebro_agent_context::{
     FactQuery, QueryAbsentEdge, QueryDirection, QueryEdge, QueryMatch, QueryNode, QueryResult,
 };
 pub use cerebro_control_kernel::{
-    AuthorizationDecision, AuthorizationRequest, CapabilityGrant, DecisionReceipt, Mandate,
-    Mission, MissionEvent, MissionEventEnvelope, VerificationReceipt,
+    ActorId, AuthorizationDecision, AuthorizationRequest, CapabilityGrant, DecisionId,
+    DecisionReceipt, Mandate, Mission, MissionEvent, MissionEventEnvelope, VerificationId,
+    VerificationReceipt,
 };
 pub use cerebro_organizational_model::{
     AssertionId, EntityId, EntityKind, RelationKind, SourceRuntimeId, TenantId,
