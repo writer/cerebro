@@ -13,6 +13,8 @@ use cerebro_platform_sdk::{
     ActionOperation, ActionOperationId, ActionProposal, ActionState, ActorId, ContentDigest,
     SdkError, TenantId, VerificationState,
 };
+use postgres_native_tls::MakeTlsConnector;
+use serde::Serialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_postgres::{Client, Row, Transaction};
@@ -73,6 +75,8 @@ CREATE TABLE IF NOT EXISTS action_operation_events (
 );
 CREATE INDEX IF NOT EXISTS action_operation_events_committed_idx
   ON action_operation_events (tenant_id, committed_at_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS action_operations_queue_idx
+  ON action_operations (tenant_id, updated_at_unix_ms DESC, operation_id);
 CREATE OR REPLACE FUNCTION reject_action_operation_event_mutation()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -116,6 +120,7 @@ pub enum ActionStoreError {
     Conflict(String),
     NotFound(String),
     Corrupt(String),
+    InvalidPageToken,
     OutOfRange(&'static str),
 }
 
@@ -132,6 +137,7 @@ impl fmt::Display for ActionStoreError {
             Self::Corrupt(message) => {
                 write!(formatter, "Action ledger record is corrupt: {message}")
             }
+            Self::InvalidPageToken => write!(formatter, "Action page token is invalid"),
             Self::OutOfRange(field) => write!(formatter, "{field} is outside its storage range"),
         }
     }
@@ -160,7 +166,7 @@ impl From<SdkError> for ActionStoreError {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ActionEvent {
     pub actor_id: ActorId,
     pub event_kind: String,
@@ -168,6 +174,12 @@ pub struct ActionEvent {
     pub operation_digest: ContentDigest,
     pub committed_at_unix_ms: u64,
     pub operation: ActionOperation,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ActionPage {
+    pub actions: Vec<ActionOperation>,
+    pub next_page_token: Option<String>,
 }
 
 pub struct PostgresActionLedger {
@@ -187,6 +199,22 @@ impl PostgresActionLedger {
         }
     }
 
+    pub async fn connect_tls(connection_string: &str) -> Result<Self, ActionStoreError> {
+        let tls = native_tls::TlsConnector::builder()
+            .build()
+            .map_err(|error| {
+                ActionStoreError::Conflict(format!("build PostgreSQL TLS: {error}"))
+            })?;
+        let (client, connection) =
+            tokio_postgres::connect(connection_string, MakeTlsConnector::new(tls)).await?;
+        tokio::spawn(async move {
+            if let Err(error) = connection.await {
+                eprintln!("Action PostgreSQL connection closed: {error}");
+            }
+        });
+        Ok(Self::from_client(client))
+    }
+
     pub async fn migrate(&self) -> Result<(), ActionStoreError> {
         self.client
             .lock()
@@ -196,12 +224,26 @@ impl PostgresActionLedger {
         Ok(())
     }
 
+    pub async fn health(&self) -> Result<(), ActionStoreError> {
+        self.client.lock().await.simple_query("SELECT 1").await?;
+        Ok(())
+    }
+
     pub async fn propose(
         &self,
         proposal: ActionProposal,
         committed_at_unix_ms: u64,
     ) -> Result<ActionOperation, ActionStoreError> {
         proposal.validate()?;
+        if !proposal_valid_at(
+            proposal.proposed_at_unix_ms,
+            proposal.proposal_expires_at_unix_ms,
+            committed_at_unix_ms,
+        ) {
+            return Err(ActionStoreError::Conflict(
+                "Action proposal is not valid at the authority commit time".to_owned(),
+            ));
+        }
         let committed_at = storage_i64(committed_at_unix_ms, "Action commit time")?;
         let operation = ActionOperation {
             proposal,
@@ -299,6 +341,59 @@ impl PostgresActionLedger {
         Ok(operation.operation)
     }
 
+    pub async fn list(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+        page_token: Option<&str>,
+    ) -> Result<ActionPage, ActionStoreError> {
+        if !(1..=100).contains(&limit) {
+            return Err(ActionStoreError::OutOfRange("Action page limit"));
+        }
+        let anchor = page_token.map(decode_page_token).transpose()?;
+        let (anchor_updated_at, anchor_operation_id) = match anchor.as_ref() {
+            Some((updated_at, operation_id)) => (
+                Some(storage_i64(*updated_at, "Action page token timestamp")?),
+                Some(operation_id.as_str()),
+            ),
+            None => (None, None),
+        };
+        let fetch_limit = i64::try_from(limit + 1)
+            .map_err(|_| ActionStoreError::OutOfRange("Action page limit"))?;
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id.as_str()).await?;
+        let rows = transaction
+            .query(
+                "SELECT operation_id, idempotency_key, proposal_digest, state, version, operation_json, created_at_unix_ms, updated_at_unix_ms FROM action_operations WHERE tenant_id = $1 AND ($2::BIGINT IS NULL OR updated_at_unix_ms < $2 OR (updated_at_unix_ms = $2 AND operation_id > $3)) ORDER BY updated_at_unix_ms DESC, operation_id ASC LIMIT $4",
+                &[
+                    &tenant_id.as_str(),
+                    &anchor_updated_at,
+                    &anchor_operation_id,
+                    &fetch_limit,
+                ],
+            )
+            .await?;
+        let truncated = rows.len() > limit;
+        let mut current = rows
+            .iter()
+            .map(validate_current_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        current.truncate(limit);
+        let next_page_token = truncated.then(|| current.last()).flatten().map(|action| {
+            encode_page_token(
+                action.updated_at_unix_ms,
+                &action.operation.proposal.operation_id,
+            )
+        });
+        let actions = current.into_iter().map(|action| action.operation).collect();
+        transaction.commit().await?;
+        Ok(ActionPage {
+            actions,
+            next_page_token,
+        })
+    }
+
     pub async fn transition(
         &self,
         tenant_id: &TenantId,
@@ -320,6 +415,13 @@ impl PostgresActionLedger {
         if !command_actor_matches(actor_id, &command) {
             return Err(ActionStoreError::Conflict(
                 "authenticated actor does not match the Action command receipt".to_owned(),
+            ));
+        }
+        if command_observed_at(&command)
+            .is_some_and(|observed_at| observed_at == 0 || observed_at > committed_at_unix_ms)
+        {
+            return Err(ActionStoreError::Conflict(
+                "Action command receipt time exceeds the authority commit time".to_owned(),
             ));
         }
 
@@ -599,6 +701,40 @@ fn command_actor_matches(actor_id: &ActorId, command: &ActionCommand) -> bool {
     }
 }
 
+fn proposal_valid_at(
+    proposed_at_unix_ms: u64,
+    proposal_expires_at_unix_ms: u64,
+    committed_at_unix_ms: u64,
+) -> bool {
+    committed_at_unix_ms >= proposed_at_unix_ms
+        && committed_at_unix_ms < proposal_expires_at_unix_ms
+}
+
+fn command_observed_at(command: &ActionCommand) -> Option<u64> {
+    match command {
+        ActionCommand::RecordApproval { receipt } => Some(receipt.decided_at_unix_ms),
+        ActionCommand::Claim {
+            claimed_at_unix_ms, ..
+        } => Some(*claimed_at_unix_ms),
+        ActionCommand::Complete {
+            executed_at_unix_ms,
+            ..
+        }
+        | ActionCommand::Reconcile {
+            executed_at_unix_ms,
+            ..
+        } => Some(*executed_at_unix_ms),
+        ActionCommand::Verify { receipt } => Some(receipt.receipt.verified_at_unix_ms),
+        ActionCommand::RecordSimulation
+        | ActionCommand::RequestApproval
+        | ActionCommand::StartExecution
+        | ActionCommand::MarkOutcomeUnknown
+        | ActionCommand::RejectVerification
+        | ActionCommand::Fail
+        | ActionCommand::RollBack => None,
+    }
+}
+
 fn enum_name<T: serde::Serialize>(value: &T) -> Result<String, ActionStoreError> {
     match serde_json::to_value(value)? {
         Value::String(value) => Ok(value),
@@ -613,6 +749,46 @@ fn storage_i64(value: u64, field: &'static str) -> Result<i64, ActionStoreError>
         return Err(ActionStoreError::OutOfRange(field));
     }
     i64::try_from(value).map_err(|_| ActionStoreError::OutOfRange(field))
+}
+
+fn encode_page_token(updated_at_unix_ms: u64, operation_id: &ActionOperationId) -> String {
+    let raw = format!("{updated_at_unix_ms}\0{}", operation_id.as_str());
+    let mut encoded = String::with_capacity(3 + raw.len() * 2);
+    encoded.push_str("v1.");
+    for byte in raw.as_bytes() {
+        use std::fmt::Write as _;
+        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    encoded
+}
+
+fn decode_page_token(token: &str) -> Result<(u64, ActionOperationId), ActionStoreError> {
+    let encoded = token
+        .strip_prefix("v1.")
+        .filter(|encoded| !encoded.is_empty() && encoded.len() <= 554 && encoded.len() % 2 == 0)
+        .ok_or(ActionStoreError::InvalidPageToken)?;
+    let bytes = encoded
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            std::str::from_utf8(pair)
+                .ok()
+                .and_then(|value| u8::from_str_radix(value, 16).ok())
+                .ok_or(ActionStoreError::InvalidPageToken)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let raw = String::from_utf8(bytes).map_err(|_| ActionStoreError::InvalidPageToken)?;
+    let (updated_at, operation_id) = raw
+        .split_once('\0')
+        .ok_or(ActionStoreError::InvalidPageToken)?;
+    let updated_at = updated_at
+        .parse::<u64>()
+        .ok()
+        .filter(|updated_at| *updated_at > 0 && *updated_at <= i64::MAX as u64)
+        .ok_or(ActionStoreError::InvalidPageToken)?;
+    let operation_id = ActionOperationId::parse(operation_id.to_owned())
+        .map_err(|_| ActionStoreError::InvalidPageToken)?;
+    Ok((updated_at, operation_id))
 }
 
 async fn set_tenant(
@@ -646,6 +822,7 @@ mod tests {
             "version > 1 AND event_kind <> 'proposed'",
             "CREATE TRIGGER action_operation_events_append_only",
             "BEFORE UPDATE OR DELETE ON action_operation_events",
+            "action_operations_queue_idx",
         ] {
             assert!(POSTGRES_SCHEMA.contains(required), "missing {required}");
         }
@@ -658,6 +835,50 @@ mod tests {
         assert!(storage_i64(0, "test").is_err());
         assert!(storage_i64(u64::MAX, "test").is_err());
         assert_eq!(storage_i64(i64::MAX as u64, "test").unwrap(), i64::MAX);
+    }
+
+    #[test]
+    fn queue_page_tokens_are_bounded_composite_cursors() {
+        let operation_id = ActionOperationId::parse("operation:queue:one").unwrap();
+        let token = encode_page_token(42, &operation_id);
+        assert_ne!(token, operation_id.as_str());
+        assert_eq!(
+            decode_page_token(&token).unwrap(),
+            (42, operation_id.clone())
+        );
+        for invalid in [
+            "",
+            "v2.00",
+            "v1.not-hex",
+            "v1.00",
+            &encode_page_token(0, &operation_id),
+        ] {
+            assert!(matches!(
+                decode_page_token(invalid),
+                Err(ActionStoreError::InvalidPageToken)
+            ));
+        }
+        assert!(matches!(
+            decode_page_token(&format!("v1.{}", "00".repeat(278))),
+            Err(ActionStoreError::InvalidPageToken)
+        ));
+    }
+
+    #[test]
+    fn authority_time_rejects_future_or_expired_evidence() {
+        assert!(!proposal_valid_at(10, 20, 9));
+        assert!(proposal_valid_at(10, 20, 10));
+        assert!(proposal_valid_at(10, 20, 19));
+        assert!(!proposal_valid_at(10, 20, 20));
+
+        assert_eq!(
+            command_observed_at(&ActionCommand::Claim {
+                worker_id: cerebro_platform_sdk::OpaqueId::parse("worker:one").unwrap(),
+                claimed_at_unix_ms: 21,
+            }),
+            Some(21)
+        );
+        assert_eq!(command_observed_at(&ActionCommand::StartExecution), None);
     }
 
     #[test]

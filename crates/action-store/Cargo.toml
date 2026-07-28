@@ -9,6 +9,8 @@ publish = false
 [dependencies]
 cerebro-platform-engine.workspace = true
 cerebro-platform-sdk.workspace = true
+native-tls.workspace = true
+postgres-native-tls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
