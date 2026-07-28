@@ -19,6 +19,14 @@ export interface SlackRuntimeConfig {
   memoryDirectory: string;
   port: number;
   production: boolean;
+  computerSandboxGateways: readonly ComputerSandboxGatewayRuntimeConfig[];
+}
+
+export interface ComputerSandboxGatewayRuntimeConfig {
+  baseUrl: string;
+  providerId: string;
+  timeoutMs: number;
+  token: string;
 }
 
 export class SlackRuntimeConfigError extends Error {
@@ -51,7 +59,58 @@ export function loadSlackRuntimeConfig(
       || "/memory/slack-runtime",
     port: port(env.PORT),
     production: booleanBinding(env.CEREBRO_SLACK_PRODUCTION),
+    computerSandboxGateways: computerSandboxGateways(env),
   });
+}
+
+function computerSandboxGateways(
+  env: NodeJS.ProcessEnv,
+): readonly ComputerSandboxGatewayRuntimeConfig[] {
+  const raw = env.CEREBRO_COMPUTER_SANDBOX_GATEWAYS_JSON?.trim();
+  if (!raw) return Object.freeze([]);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new SlackRuntimeConfigError("Computer sandbox gateway configuration is invalid.");
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 8) {
+    throw new SlackRuntimeConfigError("Computer sandbox gateway configuration is invalid.");
+  }
+  const providerIds = new Set<string>();
+  const bindings = parsed.map((item) => {
+    if (
+      item === null
+      || typeof item !== "object"
+      || Array.isArray(item)
+      || JSON.stringify(Object.keys(item).sort()) !==
+        JSON.stringify(["base_url", "provider_id", "timeout_ms", "token_env"])
+    ) {
+      throw new SlackRuntimeConfigError("Computer sandbox gateway configuration is invalid.");
+    }
+    const record = item as Record<string, unknown>;
+    const providerId = String(record.provider_id ?? "");
+    const tokenEnv = String(record.token_env ?? "");
+    const timeoutMs = Number(record.timeout_ms);
+    if (
+      !/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/u.test(providerId)
+      || providerIds.has(providerId)
+      || !/^CEREBRO_COMPUTER_SANDBOX_TOKEN_[A-Z0-9_]+$/u.test(tokenEnv)
+      || !Number.isSafeInteger(timeoutMs)
+      || timeoutMs < 1_000
+      || timeoutMs > 120_000
+    ) {
+      throw new SlackRuntimeConfigError("Computer sandbox gateway configuration is invalid.");
+    }
+    providerIds.add(providerId);
+    return Object.freeze({
+      baseUrl: validatedBaseUrl(String(record.base_url ?? "")),
+      providerId,
+      timeoutMs,
+      token: required(env[tokenEnv]),
+    });
+  });
+  return Object.freeze(bindings);
 }
 
 function archetypeConfig(
