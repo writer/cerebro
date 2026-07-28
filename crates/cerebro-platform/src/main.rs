@@ -12,12 +12,12 @@ use async_trait::async_trait;
 use axum::{
     Extension, Json, Router,
     extract::{Path, Query, Request, State},
-    http::{StatusCode, header::AUTHORIZATION},
+    http::{Method, StatusCode, header::AUTHORIZATION},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use cerebro_action_store::{ActionEvent, ActionStoreError, PostgresActionLedger};
+use cerebro_action_store::{ActionEvent, ActionPage, ActionStoreError, PostgresActionLedger};
 use cerebro_agent_context::{
     AgentContext, AgentGraph, ContextEntity, ContextError, GraphPath, MemoryAgentGraph,
     Neighborhood,
@@ -90,6 +90,13 @@ trait ActionAuthority: Send + Sync {
         operation_id: &ActionOperationId,
     ) -> Result<ActionOperation, ActionStoreError>;
 
+    async fn list(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+        page_token: Option<&str>,
+    ) -> Result<ActionPage, ActionStoreError>;
+
     async fn transition(
         &self,
         tenant_id: &TenantId,
@@ -127,6 +134,15 @@ impl ActionAuthority for PostgresActionLedger {
         operation_id: &ActionOperationId,
     ) -> Result<ActionOperation, ActionStoreError> {
         self.get(tenant_id, operation_id).await
+    }
+
+    async fn list(
+        &self,
+        tenant_id: &TenantId,
+        limit: usize,
+        page_token: Option<&str>,
+    ) -> Result<ActionPage, ActionStoreError> {
+        self.list(tenant_id, limit, page_token).await
     }
 
     async fn transition(
@@ -295,7 +311,7 @@ async fn authenticate_oidc(
             ));
         }
     };
-    let required_scope = oidc_scope_for_route(request.uri().path());
+    let required_scope = oidc_scope_for_route(request.method(), request.uri().path());
     if !identity.has_scope(required_scope) {
         return Err((
             StatusCode::FORBIDDEN,
@@ -312,9 +328,10 @@ async fn authenticate_oidc(
     Ok(next.run(request).await)
 }
 
-fn oidc_scope_for_route(path: &str) -> &'static str {
+fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
     match path {
         "/v1/me" => "identity:read",
+        "/v1/actions" if method == Method::GET => "cerebro:actions:read",
         "/v1/actions" => "cerebro:actions:write",
         _ if path.starts_with("/v1/actions/") && path.ends_with("/commands") => {
             "cerebro:actions:write"
@@ -332,7 +349,7 @@ async fn record_request(
     request: Request,
     next: Next,
 ) -> Response {
-    let operation = bounded_operation(request.uri().path());
+    let operation = bounded_operation(request.method(), request.uri().path());
     let started = Instant::now();
     let response = next.run(request).await;
     metrics
@@ -345,7 +362,7 @@ async fn record_request(
     response
 }
 
-fn bounded_operation(path: &str) -> &'static str {
+fn bounded_operation(method: &Method, path: &str) -> &'static str {
     match path {
         "/healthz" => "healthz",
         "/readyz" => "readyz",
@@ -358,6 +375,7 @@ fn bounded_operation(path: &str) -> &'static str {
         "/v1/graph/expand-batch" => "expand_batch",
         "/v1/graph/paths" => "paths",
         "/v1/security/lifecycle" => "security_lifecycle",
+        "/v1/actions" if method == Method::GET => "list_actions",
         "/v1/actions" => "propose_action",
         "/v1/projections/events" => "project_event",
         "/v1/projections/legacy-deltas" => "record_legacy_projection",
@@ -703,6 +721,15 @@ struct ErrorResponse {
 #[derive(Deserialize)]
 struct TenantQuery {
     tenant_id: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActionListQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    page_token: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -1384,7 +1411,7 @@ fn router_with_backend(
     let protected = if let Some(oidc) = oidc {
         protected
             .route("/v1/me", get(current_user))
-            .route("/v1/actions", post(propose_action))
+            .route("/v1/actions", get(list_actions).post(propose_action))
             .route("/v1/actions/{operation_id}", get(get_action))
             .route(
                 "/v1/actions/{operation_id}/history",
@@ -1794,6 +1821,25 @@ async fn propose_action(
     let committed_at = current_unix_millis()?;
     action_authority(&state)?
         .propose(proposal, committed_at)
+        .await
+        .map(Json)
+        .map_err(action_store_error)
+}
+
+async fn list_actions(
+    State(state): State<AppState>,
+    Extension(identity): Extension<AuthenticatedIdentity>,
+    Query(query): Query<ActionListQuery>,
+) -> Result<Json<ActionPage>, (StatusCode, Json<ErrorResponse>)> {
+    let limit = query.limit.unwrap_or(25);
+    if !(1..=100).contains(&limit) {
+        return Err(bad_request(
+            "invalid_action_query",
+            "limit must be between 1 and 100.",
+        ));
+    }
+    action_authority(&state)?
+        .list(&identity.tenant, limit, query.page_token.as_deref())
         .await
         .map(Json)
         .map_err(action_store_error)
@@ -2308,6 +2354,10 @@ fn action_store_error(error: ActionStoreError) -> (StatusCode, Json<ErrorRespons
                 "The stored Action failed authority validation.",
             )
         }
+        ActionStoreError::InvalidPageToken => bad_request(
+            "invalid_action_page_token",
+            "The Action page token is invalid.",
+        ),
     }
 }
 
@@ -2509,6 +2559,15 @@ mod tests {
             _tenant_id: &TenantId,
             _operation_id: &ActionOperationId,
         ) -> Result<ActionOperation, ActionStoreError> {
+            panic!("spoofed request reached the Action authority")
+        }
+
+        async fn list(
+            &self,
+            _tenant_id: &TenantId,
+            _limit: usize,
+            _page_token: Option<&str>,
+        ) -> Result<ActionPage, ActionStoreError> {
             panic!("spoofed request reached the Action authority")
         }
 
@@ -3297,38 +3356,62 @@ mod tests {
     #[test]
     fn lifecycle_requests_have_a_bounded_metrics_operation() {
         assert_eq!(
-            bounded_operation("/v1/security/lifecycle"),
+            bounded_operation(&Method::GET, "/v1/security/lifecycle"),
             "security_lifecycle"
         );
         assert_eq!(
-            bounded_operation("/cerebro.v1.SecurityLifecycleService/ListSecurityLifecycle"),
+            bounded_operation(
+                &Method::POST,
+                "/cerebro.v1.SecurityLifecycleService/ListSecurityLifecycle"
+            ),
             "security_lifecycle"
+        );
+        assert_eq!(
+            bounded_operation(&Method::GET, "/v1/actions"),
+            "list_actions"
+        );
+        assert_eq!(
+            bounded_operation(&Method::POST, "/v1/actions"),
+            "propose_action"
         );
     }
 
     #[test]
     fn oidc_authorization_scopes_cover_reads_identity_and_mutations() {
-        assert_eq!(oidc_scope_for_route("/v1/me"), "identity:read");
         assert_eq!(
-            oidc_scope_for_route("/v1/security/lifecycle"),
+            oidc_scope_for_route(&Method::GET, "/v1/me"),
+            "identity:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/security/lifecycle"),
             "cerebro:read"
         );
-        assert_eq!(oidc_scope_for_route("/v1/graph/search"), "cerebro:read");
         assert_eq!(
-            oidc_scope_for_route("/v1/projections/events"),
+            oidc_scope_for_route(&Method::POST, "/v1/graph/search"),
+            "cerebro:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/projections/events"),
             "cerebro:write"
         );
-        assert_eq!(oidc_scope_for_route("/v1/actions"), "cerebro:actions:write");
         assert_eq!(
-            oidc_scope_for_route("/v1/actions/operation:one"),
+            oidc_scope_for_route(&Method::GET, "/v1/actions"),
             "cerebro:actions:read"
         );
         assert_eq!(
-            oidc_scope_for_route("/v1/actions/operation:one/history"),
+            oidc_scope_for_route(&Method::POST, "/v1/actions"),
+            "cerebro:actions:write"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/actions/operation:one"),
             "cerebro:actions:read"
         );
         assert_eq!(
-            oidc_scope_for_route("/v1/actions/operation:one/commands"),
+            oidc_scope_for_route(&Method::GET, "/v1/actions/operation:one/history"),
+            "cerebro:actions:read"
+        );
+        assert_eq!(
+            oidc_scope_for_route(&Method::POST, "/v1/actions/operation:one/commands"),
             "cerebro:actions:write"
         );
     }
@@ -3369,6 +3452,40 @@ mod tests {
             request.command.into_domain().unwrap(),
             ActionCommand::RecordSimulation
         ));
+    }
+
+    #[tokio::test]
+    async fn action_queue_rejects_unknown_and_unbounded_queries_before_storage() {
+        assert!(
+            serde_json::from_value::<ActionListQuery>(serde_json::json!({
+                "limit": 25,
+                "tenant_id": "tenant:http:other"
+            }))
+            .is_err()
+        );
+
+        let (graph, _, _) = demo_graph().unwrap();
+        let state = AppState {
+            actions: Some(Arc::new(UnreachableActionAuthority)),
+            graph: Arc::new(MemoryAgentGraph::new(graph)),
+            catalog_summary: None,
+            projection: None,
+            metrics: PlatformMetrics::default(),
+        };
+        for limit in [0, 101, usize::MAX] {
+            let error = list_actions(
+                State(state.clone()),
+                Extension(action_identity("tenant:http:one", "actor:http:one")),
+                Query(ActionListQuery {
+                    limit: Some(limit),
+                    page_token: None,
+                }),
+            )
+            .await
+            .expect_err("unbounded query must fail before storage");
+            assert_eq!(error.0, StatusCode::BAD_REQUEST);
+            assert_eq!(error.1.0.code, "invalid_action_query");
+        }
     }
 
     #[tokio::test]
