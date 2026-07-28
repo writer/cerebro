@@ -7,6 +7,7 @@ use crate::{
 };
 
 const ACTION_PROPOSAL_DIGEST_SCHEMA: &str = "cerebro.action-proposal.v1";
+pub const MAX_ACTION_CLAIM_LEASE_MS: u64 = 5 * 60 * 1_000;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -167,6 +168,7 @@ pub struct ActionOperation {
     pub approval_receipt: Option<DecisionReceipt>,
     pub claimed_by: Option<OpaqueId>,
     pub claimed_at_unix_ms: Option<u64>,
+    pub claim_expires_at_unix_ms: Option<u64>,
     pub executor_actor_id: Option<ActorId>,
     pub executed_at_unix_ms: Option<u64>,
     pub external_receipt_ref: Option<OpaqueId>,
@@ -206,14 +208,21 @@ impl ActionOperation {
         } else {
             false
         };
-        let has_claim = match (&self.claimed_by, self.claimed_at_unix_ms) {
-            (None, None) => false,
-            (Some(_), Some(claimed_at)) => {
+        let has_claim = match (
+            &self.claimed_by,
+            self.claimed_at_unix_ms,
+            self.claim_expires_at_unix_ms,
+        ) {
+            (None, None, None) => false,
+            (Some(_), Some(claimed_at), Some(claim_expires_at)) => {
                 let Some(approval) = self.approval_receipt.as_ref() else {
                     return Err(SdkError::Invalid("action operation claimant"));
                 };
                 if claimed_at < approval.decided_at_unix_ms
                     || claimed_at >= self.proposal.proposal_expires_at_unix_ms
+                    || claim_expires_at <= claimed_at
+                    || claim_expires_at > self.proposal.proposal_expires_at_unix_ms
+                    || claim_expires_at - claimed_at > MAX_ACTION_CLAIM_LEASE_MS
                 {
                     return Err(SdkError::Invalid("action operation claimant"));
                 }
@@ -399,6 +408,7 @@ struct StoredActionOperation {
     approval_receipt: Option<StoredDecisionReceipt>,
     claimed_by: Option<String>,
     claimed_at_unix_ms: Option<u64>,
+    claim_expires_at_unix_ms: Option<u64>,
     executor_actor_id: Option<String>,
     executed_at_unix_ms: Option<u64>,
     external_receipt_ref: Option<String>,
@@ -418,6 +428,7 @@ impl TryFrom<StoredActionOperation> for ActionOperation {
             approval_receipt: stored.approval_receipt.map(TryInto::try_into).transpose()?,
             claimed_by: stored.claimed_by.map(OpaqueId::parse).transpose()?,
             claimed_at_unix_ms: stored.claimed_at_unix_ms,
+            claim_expires_at_unix_ms: stored.claim_expires_at_unix_ms,
             executor_actor_id: stored.executor_actor_id.map(parse_actor_id).transpose()?,
             executed_at_unix_ms: stored.executed_at_unix_ms,
             external_receipt_ref: stored
@@ -616,6 +627,7 @@ mod tests {
         let mut dormant_claim = serde_json::to_value(operation()).expect("serialize operation");
         dormant_claim["claimed_by"] = serde_json::json!("worker:attacker");
         dormant_claim["claimed_at_unix_ms"] = serde_json::json!(2);
+        dormant_claim["claim_expires_at_unix_ms"] = serde_json::json!(3);
         assert!(serde_json::from_value::<ActionOperation>(dormant_claim).is_err());
     }
 
@@ -652,6 +664,7 @@ mod tests {
             approval_receipt: None,
             claimed_by: None,
             claimed_at_unix_ms: None,
+            claim_expires_at_unix_ms: None,
             executor_actor_id: None,
             executed_at_unix_ms: None,
             external_receipt_ref: None,

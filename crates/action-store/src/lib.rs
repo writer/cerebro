@@ -252,6 +252,7 @@ impl PostgresActionLedger {
             approval_receipt: None,
             claimed_by: None,
             claimed_at_unix_ms: None,
+            claim_expires_at_unix_ms: None,
             executor_actor_id: None,
             executed_at_unix_ms: None,
             external_receipt_ref: None,
@@ -437,6 +438,16 @@ impl PostgresActionLedger {
         if committed_at_unix_ms < current.updated_at_unix_ms {
             return Err(ActionStoreError::Conflict(
                 "Action commit time predates the current version".to_owned(),
+            ));
+        }
+        if !command_valid_at_authority_time(
+            current.operation.proposal.proposal_expires_at_unix_ms,
+            current.operation.claim_expires_at_unix_ms,
+            &command,
+            committed_at_unix_ms,
+        ) {
+            return Err(ActionStoreError::Conflict(
+                "Action command is not valid at the authority commit time".to_owned(),
             ));
         }
         if !command_actor_matches(actor_id, current.operation.claimed_by.as_ref(), &command) {
@@ -698,9 +709,42 @@ fn command_actor_matches(
             executor_actor_id, ..
         } => executor_actor_id == actor_id,
         ActionCommand::Verify { receipt } => receipt.receipt.verifier_actor_id == *actor_id,
-        ActionCommand::StartExecution | ActionCommand::MarkOutcomeUnknown => owns_claim(),
+        ActionCommand::RenewClaim { .. }
+        | ActionCommand::StartExecution { .. }
+        | ActionCommand::MarkOutcomeUnknown => owns_claim(),
+        // Any signed executor may recover an unstarted claim after the engine
+        // verifies its recorded lease has expired. The releasing actor remains
+        // part of the append-only event history.
         ActionCommand::RecordSimulation
         | ActionCommand::RequestApproval
+        | ActionCommand::ReleaseExpiredClaim { .. }
+        | ActionCommand::RejectVerification
+        | ActionCommand::Fail
+        | ActionCommand::RollBack => true,
+    }
+}
+
+fn command_valid_at_authority_time(
+    proposal_expires_at_unix_ms: u64,
+    claim_expires_at_unix_ms: Option<u64>,
+    command: &ActionCommand,
+    committed_at_unix_ms: u64,
+) -> bool {
+    match command {
+        ActionCommand::Claim { .. } => committed_at_unix_ms < proposal_expires_at_unix_ms,
+        ActionCommand::RenewClaim { .. } | ActionCommand::StartExecution { .. } => {
+            claim_expires_at_unix_ms
+                .is_some_and(|claim_expires_at| committed_at_unix_ms < claim_expires_at)
+        }
+        ActionCommand::ReleaseExpiredClaim { .. } => claim_expires_at_unix_ms
+            .is_some_and(|claim_expires_at| committed_at_unix_ms >= claim_expires_at),
+        ActionCommand::RecordSimulation
+        | ActionCommand::RequestApproval
+        | ActionCommand::RecordApproval { .. }
+        | ActionCommand::MarkOutcomeUnknown
+        | ActionCommand::Complete { .. }
+        | ActionCommand::Reconcile { .. }
+        | ActionCommand::Verify { .. }
         | ActionCommand::RejectVerification
         | ActionCommand::Fail
         | ActionCommand::RollBack => true,
@@ -722,6 +766,13 @@ fn command_observed_at(command: &ActionCommand) -> Option<u64> {
         ActionCommand::Claim {
             claimed_at_unix_ms, ..
         } => Some(*claimed_at_unix_ms),
+        ActionCommand::RenewClaim {
+            renewed_at_unix_ms, ..
+        } => Some(*renewed_at_unix_ms),
+        ActionCommand::ReleaseExpiredClaim {
+            observed_at_unix_ms,
+        } => Some(*observed_at_unix_ms),
+        ActionCommand::StartExecution { started_at_unix_ms } => Some(*started_at_unix_ms),
         ActionCommand::Complete {
             executed_at_unix_ms,
             ..
@@ -733,7 +784,6 @@ fn command_observed_at(command: &ActionCommand) -> Option<u64> {
         ActionCommand::Verify { receipt } => Some(receipt.receipt.verified_at_unix_ms),
         ActionCommand::RecordSimulation
         | ActionCommand::RequestApproval
-        | ActionCommand::StartExecution
         | ActionCommand::MarkOutcomeUnknown
         | ActionCommand::RejectVerification
         | ActionCommand::Fail
@@ -881,10 +931,16 @@ mod tests {
             command_observed_at(&ActionCommand::Claim {
                 worker_id: cerebro_platform_sdk::OpaqueId::parse("worker:one").unwrap(),
                 claimed_at_unix_ms: 21,
+                claim_expires_at_unix_ms: 30,
             }),
             Some(21)
         );
-        assert_eq!(command_observed_at(&ActionCommand::StartExecution), None);
+        assert_eq!(
+            command_observed_at(&ActionCommand::StartExecution {
+                started_at_unix_ms: 22,
+            }),
+            Some(22)
+        );
     }
 
     #[test]
@@ -902,6 +958,7 @@ mod tests {
             &ActionCommand::Claim {
                 worker_id: cerebro_platform_sdk::OpaqueId::parse(actor.as_str()).unwrap(),
                 claimed_at_unix_ms: 10,
+                claim_expires_at_unix_ms: 20,
             }
         ));
         assert!(!command_actor_matches(
@@ -910,18 +967,46 @@ mod tests {
             &ActionCommand::Claim {
                 worker_id: cerebro_platform_sdk::OpaqueId::parse(actor.as_str()).unwrap(),
                 claimed_at_unix_ms: 10,
+                claim_expires_at_unix_ms: 20,
             }
         ));
         let claim = cerebro_platform_sdk::OpaqueId::parse(actor.as_str()).unwrap();
         assert!(command_actor_matches(
             &actor,
             Some(&claim),
-            &ActionCommand::StartExecution
+            &ActionCommand::StartExecution {
+                started_at_unix_ms: 11,
+            }
         ));
         assert!(!command_actor_matches(
             &other,
             Some(&claim),
-            &ActionCommand::StartExecution
+            &ActionCommand::StartExecution {
+                started_at_unix_ms: 11,
+            }
+        ));
+        assert!(command_actor_matches(
+            &actor,
+            Some(&claim),
+            &ActionCommand::RenewClaim {
+                renewed_at_unix_ms: 11,
+                claim_expires_at_unix_ms: 20,
+            }
+        ));
+        assert!(!command_actor_matches(
+            &other,
+            Some(&claim),
+            &ActionCommand::RenewClaim {
+                renewed_at_unix_ms: 11,
+                claim_expires_at_unix_ms: 20,
+            }
+        ));
+        assert!(command_actor_matches(
+            &other,
+            Some(&claim),
+            &ActionCommand::ReleaseExpiredClaim {
+                observed_at_unix_ms: 20,
+            }
         ));
         assert!(!command_actor_matches(
             &actor,
@@ -958,5 +1043,44 @@ mod tests {
                 executed_at_unix_ms: 11,
             }
         ));
+    }
+
+    #[test]
+    fn authority_commit_time_cannot_revive_an_expired_claim() {
+        let start = ActionCommand::StartExecution {
+            started_at_unix_ms: 19,
+        };
+        assert!(command_valid_at_authority_time(30, Some(20), &start, 19));
+        assert!(
+            !command_valid_at_authority_time(30, Some(20), &start, 20),
+            "a backdated start must fail at the exclusive authority deadline"
+        );
+
+        let renew = ActionCommand::RenewClaim {
+            renewed_at_unix_ms: 19,
+            claim_expires_at_unix_ms: 30,
+        };
+        assert!(command_valid_at_authority_time(30, Some(20), &renew, 19));
+        assert!(
+            !command_valid_at_authority_time(30, Some(20), &renew, 21),
+            "a backdated renewal must not revive an expired claim"
+        );
+
+        let release = ActionCommand::ReleaseExpiredClaim {
+            observed_at_unix_ms: 20,
+        };
+        assert!(!command_valid_at_authority_time(30, Some(20), &release, 19));
+        assert!(command_valid_at_authority_time(30, Some(20), &release, 20));
+
+        let claim = ActionCommand::Claim {
+            worker_id: cerebro_platform_sdk::OpaqueId::parse("worker:one").unwrap(),
+            claimed_at_unix_ms: 29,
+            claim_expires_at_unix_ms: 30,
+        };
+        assert!(command_valid_at_authority_time(30, None, &claim, 29));
+        assert!(
+            !command_valid_at_authority_time(30, None, &claim, 30),
+            "a backdated claim must not commit after proposal expiry"
+        );
     }
 }

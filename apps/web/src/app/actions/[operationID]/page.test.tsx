@@ -54,6 +54,7 @@ const action: ActionOperation = {
   approval_receipt: null,
   claimed_by: null,
   claimed_at_unix_ms: null,
+  claim_expires_at_unix_ms: null,
   executor_actor_id: null,
   executed_at_unix_ms: null,
   external_receipt_ref: null,

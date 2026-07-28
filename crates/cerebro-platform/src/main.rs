@@ -833,8 +833,18 @@ enum HttpActionCommand {
     Claim {
         worker_id: String,
         claimed_at_unix_ms: u64,
+        claim_expires_at_unix_ms: u64,
     },
-    StartExecution {},
+    RenewClaim {
+        renewed_at_unix_ms: u64,
+        claim_expires_at_unix_ms: u64,
+    },
+    ReleaseExpiredClaim {
+        observed_at_unix_ms: u64,
+    },
+    StartExecution {
+        started_at_unix_ms: u64,
+    },
     MarkOutcomeUnknown {},
     Complete {
         external_receipt_ref: String,
@@ -894,7 +904,9 @@ impl HttpActionCommand {
             Self::RequestApproval {} => ACTION_PROPOSE_SCOPE,
             Self::RecordApproval { .. } => ACTION_APPROVE_SCOPE,
             Self::Claim { .. }
-            | Self::StartExecution {}
+            | Self::RenewClaim { .. }
+            | Self::ReleaseExpiredClaim { .. }
+            | Self::StartExecution { .. }
             | Self::MarkOutcomeUnknown {}
             | Self::Complete { .. }
             | Self::Reconcile { .. }
@@ -914,11 +926,27 @@ impl HttpActionCommand {
             Self::Claim {
                 worker_id,
                 claimed_at_unix_ms,
+                claim_expires_at_unix_ms,
             } => ActionCommand::Claim {
                 worker_id: OpaqueId::parse(worker_id).map_err(|error| error.to_string())?,
                 claimed_at_unix_ms,
+                claim_expires_at_unix_ms,
             },
-            Self::StartExecution {} => ActionCommand::StartExecution,
+            Self::RenewClaim {
+                renewed_at_unix_ms,
+                claim_expires_at_unix_ms,
+            } => ActionCommand::RenewClaim {
+                renewed_at_unix_ms,
+                claim_expires_at_unix_ms,
+            },
+            Self::ReleaseExpiredClaim {
+                observed_at_unix_ms,
+            } => ActionCommand::ReleaseExpiredClaim {
+                observed_at_unix_ms,
+            },
+            Self::StartExecution { started_at_unix_ms } => {
+                ActionCommand::StartExecution { started_at_unix_ms }
+            }
             Self::MarkOutcomeUnknown {} => ActionCommand::MarkOutcomeUnknown,
             Self::Complete {
                 external_receipt_ref,
@@ -3441,6 +3469,19 @@ mod tests {
             serde_json::from_value::<ActionTransitionRequest>(invalid).expect("request shape");
         assert!(request.command.into_domain().is_err());
 
+        let claim_without_expiry = serde_json::json!({
+            "expected_version": 1,
+            "command": {
+                "command": "claim",
+                "worker_id": "worker:one",
+                "claimed_at_unix_ms": 10
+            }
+        });
+        assert!(
+            serde_json::from_value::<ActionTransitionRequest>(claim_without_expiry).is_err(),
+            "the HTTP boundary must not create an unbounded claim"
+        );
+
         let valid = serde_json::json!({
             "expected_version": 1,
             "command": {"command": "record_simulation"}
@@ -3499,7 +3540,25 @@ mod tests {
             ACTION_PROPOSE_SCOPE
         );
         assert_eq!(
-            HttpActionCommand::StartExecution {}.required_scope(),
+            HttpActionCommand::StartExecution {
+                started_at_unix_ms: 10,
+            }
+            .required_scope(),
+            ACTION_EXECUTE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::RenewClaim {
+                renewed_at_unix_ms: 10,
+                claim_expires_at_unix_ms: 20,
+            }
+            .required_scope(),
+            ACTION_EXECUTE_SCOPE
+        );
+        assert_eq!(
+            HttpActionCommand::ReleaseExpiredClaim {
+                observed_at_unix_ms: 20,
+            }
+            .required_scope(),
             ACTION_EXECUTE_SCOPE
         );
         assert_eq!(
@@ -3523,7 +3582,9 @@ mod tests {
             Path("operation:http:one".to_owned()),
             Json(ActionTransitionRequest {
                 expected_version: 1,
-                command: HttpActionCommand::StartExecution {},
+                command: HttpActionCommand::StartExecution {
+                    started_at_unix_ms: 10,
+                },
             }),
         )
         .await
