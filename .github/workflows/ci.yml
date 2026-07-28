@@ -123,17 +123,46 @@ jobs:
       - name: Validate real-service web integration
         run: npm run e2e:grc:local --workspace @writer/cerebro-web -- --browser --timeout-ms 900000 --artifact-dir "${RUNNER_TEMP}/cerebro-grc-e2e"
 
-      - name: Validate authenticated web-to-Rust integration
-        run: npm run e2e:rust-auth:local --workspace @writer/cerebro-web -- --timeout-ms 600000 --artifact-dir "${RUNNER_TEMP}/cerebro-rust-auth-e2e"
-
       - name: Upload failed integration artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cerebro-grc-e2e-artifacts
-          path: |
-            ${{ runner.temp }}/cerebro-grc-e2e
-            ${{ runner.temp }}/cerebro-rust-auth-e2e
+          path: ${{ runner.temp }}/cerebro-grc-e2e
+          if-no-files-found: ignore
+          retention-days: 7
+
+  web-rust-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: ci-scope
+    if: needs.ci-scope.outputs.web_integration == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Rust
+        run: rustup toolchain install 1.93.1 --profile minimal
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JavaScript workspaces
+        run: npm ci
+
+      - name: Install Chromium for Rust authority validation
+        run: npm exec --workspace @writer/cerebro-web -- playwright install --with-deps chromium
+
+      - name: Validate authenticated browser-to-Rust authority
+        run: npm run e2e:rust-auth:local --workspace @writer/cerebro-web -- --timeout-ms 900000 --artifact-dir "${RUNNER_TEMP}/cerebro-rust-auth-e2e"
+
+      - name: Upload failed Rust authority artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cerebro-rust-auth-e2e-artifacts
+          path: ${{ runner.temp }}/cerebro-rust-auth-e2e
           if-no-files-found: ignore
           retention-days: 7
 
@@ -593,7 +622,7 @@ jobs:
 
   verify:
     runs-on: ubuntu-latest
-    needs: [ci-scope, app-workspace-contract, web, web-image, web-integration, slack-companion, typescript-sdk, javascript-dependency-audit, verify-shard, catalog, test, race, lint]
+    needs: [ci-scope, app-workspace-contract, web, web-image, web-integration, web-rust-integration, slack-companion, typescript-sdk, javascript-dependency-audit, verify-shard, catalog, test, race, lint]
     if: always()
     steps:
       - name: Check selected CI scopes
@@ -624,6 +653,10 @@ jobs:
           fi
           if [ "${CI_SCOPE_WEB_INTEGRATION}" = "true" ] && [ "${{ needs.web-integration.result }}" != "success" ]; then
             echo "Real-service web integration failed"
+            exit 1
+          fi
+          if [ "${CI_SCOPE_WEB_INTEGRATION}" = "true" ] && [ "${{ needs.web-rust-integration.result }}" != "success" ]; then
+            echo "Rust authority web integration failed"
             exit 1
           fi
           if [ "${CI_SCOPE_SLACK}" = "true" ] && [ "${{ needs.slack-companion.result }}" != "success" ]; then
