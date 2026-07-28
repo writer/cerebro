@@ -95,6 +95,7 @@ impl AuthModel {
                 | Self::OauthClientCredentials
                 | Self::TwoStep
                 | Self::Jwt
+                | Self::AwsSigV4
         )
     }
 }
@@ -915,6 +916,10 @@ mod tests {
         .unwrap();
         assert_eq!(
             catalog.get("box").unwrap().authority(),
+            CollectionAuthority::Authoritative
+        );
+        assert_eq!(
+            catalog.get("aws_bedrock").unwrap().authority(),
             CollectionAuthority::Authoritative
         );
         assert_eq!(

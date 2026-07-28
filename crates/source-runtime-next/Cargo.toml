@@ -8,6 +8,12 @@ publish = false
 
 [dependencies]
 async-trait.workspace = true
+aws-credential-types.workspace = true
+aws-sigv4.workspace = true
+aws-smithy-async.workspace = true
+aws-smithy-runtime-api.workspace = true
+aws-smithy-runtime-api-macros.workspace = true
+aws-smithy-types.workspace = true
 cerebro-organizational-graph.workspace = true
 cerebro-organizational-model.workspace = true
 cerebro-source-catalog.workspace = true

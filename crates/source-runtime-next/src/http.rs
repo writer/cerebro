@@ -6,14 +6,21 @@ use std::{
 };
 
 use async_trait::async_trait;
+use aws_credential_types::Credentials;
+use aws_sigv4::{
+    http_request::{
+        SignableBody, SignableRequest, SigningParams, SigningSettings, sign as sign_http_request,
+    },
+    sign::v4,
+};
 use cerebro_organizational_model::{
     CollectionId, CollectionReceipt, CompleteCollection, ModelError, ObservationId,
 };
 use cerebro_source_catalog::{AuthModel, CompiledFamily, CompiledSource, HttpMethod, Pagination};
 use futures_util::StreamExt;
 use reqwest::{
-    Client, Response, StatusCode, Url,
-    header::{HeaderMap, HeaderName},
+    Client, Request, Response, StatusCode, Url,
+    header::{HeaderMap, HeaderName, HeaderValue},
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -25,12 +32,55 @@ const MAX_RESPONSE_BYTES: usize = 16 << 20;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum ResolvedAuth {
     None,
-    Bearer { token: String },
-    Basic { username: String, password: String },
-    Header { name: String, value: String },
+    Bearer {
+        token: String,
+    },
+    Basic {
+        username: String,
+        password: String,
+    },
+    Header {
+        name: String,
+        value: String,
+    },
+    AwsSigV4 {
+        access_key_id: String,
+        secret_access_key: String,
+        session_token: Option<String>,
+        region: String,
+        service: String,
+    },
+}
+
+impl fmt::Debug for ResolvedAuth {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => formatter.write_str("None"),
+            Self::Bearer { .. } => formatter.write_str("Bearer { token: [REDACTED] }"),
+            Self::Basic { .. } => {
+                formatter.write_str("Basic { username: [REDACTED], password: [REDACTED] }")
+            }
+            Self::Header { name, .. } => formatter
+                .debug_struct("Header")
+                .field("name", name)
+                .field("value", &"[REDACTED]")
+                .finish(),
+            Self::AwsSigV4 { session_token, .. } => formatter
+                .debug_struct("AwsSigV4")
+                .field("access_key_id", &"[REDACTED]")
+                .field("secret_access_key", &"[REDACTED]")
+                .field(
+                    "session_token",
+                    &session_token.as_ref().map(|_| "[REDACTED]"),
+                )
+                .field("region", &"[CONFIGURED]")
+                .field("service", &"[CONFIGURED]")
+                .finish(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -173,8 +223,17 @@ impl SourceConnector for HttpSourceConnector {
                     builder.basic_auth(username, Some(password))
                 }
                 ResolvedAuth::Header { name, value } => builder.header(name, value),
+                ResolvedAuth::AwsSigV4 { .. } => builder,
             };
-            let response = builder.send().await.map_err(HttpConnectorError::Request)?;
+            let mut request = builder.build().map_err(HttpConnectorError::Request)?;
+            if matches!(self.auth, ResolvedAuth::AwsSigV4 { .. }) {
+                sign_aws_sigv4(&mut request, &self.auth, SystemTime::now())?;
+            }
+            let response = self
+                .client
+                .execute(request)
+                .await
+                .map_err(HttpConnectorError::Request)?;
             let status = response.status();
             if !status.is_success() {
                 return Err(HttpConnectorError::ProviderStatus(status));
@@ -364,9 +423,8 @@ fn validate_auth(expected: &AuthModel, actual: &ResolvedAuth) -> Result<(), Http
             actual,
             ResolvedAuth::Bearer { .. } | ResolvedAuth::Header { .. }
         ),
-        AuthModel::Signature | AuthModel::AwsSigV4 | AuthModel::DuoHmac | AuthModel::DuoHmacV5 => {
-            false
-        }
+        AuthModel::AwsSigV4 => matches!(actual, ResolvedAuth::AwsSigV4 { .. }),
+        AuthModel::Signature | AuthModel::DuoHmac | AuthModel::DuoHmacV5 => false,
     };
     if valid {
         Ok(())
@@ -375,6 +433,121 @@ fn validate_auth(expected: &AuthModel, actual: &ResolvedAuth) -> Result<(), Http
             "resolved credential does not match the source auth model".to_owned(),
         ))
     }
+}
+
+fn sign_aws_sigv4(
+    request: &mut Request,
+    auth: &ResolvedAuth,
+    time: SystemTime,
+) -> Result<(), HttpConnectorError> {
+    let ResolvedAuth::AwsSigV4 {
+        access_key_id,
+        secret_access_key,
+        session_token,
+        region,
+        service,
+    } = auth
+    else {
+        return Err(HttpConnectorError::InvalidConfiguration(
+            "AWS SigV4 signing requires AWS credentials".to_owned(),
+        ));
+    };
+    for (field, value) in [
+        ("access key ID", access_key_id.as_str()),
+        ("secret access key", secret_access_key.as_str()),
+        ("region", region.as_str()),
+        ("service", service.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            return Err(HttpConnectorError::InvalidConfiguration(format!(
+                "AWS SigV4 {field} is required"
+            )));
+        }
+    }
+    let body = request
+        .body()
+        .and_then(reqwest::Body::as_bytes)
+        .unwrap_or_default();
+    if request.body().is_some() && request.body().and_then(reqwest::Body::as_bytes).is_none() {
+        return Err(HttpConnectorError::InvalidConfiguration(
+            "AWS SigV4 requires a replayable request body".to_owned(),
+        ));
+    }
+    let header_values = request
+        .headers()
+        .iter()
+        .map(|(name, value)| {
+            value
+                .to_str()
+                .map(|value| (name.as_str(), value))
+                .map_err(|_| {
+                    HttpConnectorError::InvalidConfiguration(format!(
+                        "AWS SigV4 cannot sign non-text header {}",
+                        name.as_str()
+                    ))
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let credentials = Credentials::new(
+        access_key_id,
+        secret_access_key,
+        session_token.clone(),
+        None,
+        "cerebro-source-runtime",
+    );
+    let identity = credentials.into();
+    let params: SigningParams<'_> = v4::SigningParams::builder()
+        .identity(&identity)
+        .region(region)
+        .name(service)
+        .time(time)
+        .settings(SigningSettings::default())
+        .build()
+        .map_err(|error| {
+            HttpConnectorError::InvalidConfiguration(format!(
+                "build AWS SigV4 signing parameters: {error}"
+            ))
+        })?
+        .into();
+    let signable = SignableRequest::new(
+        request.method().as_str(),
+        request.url().as_str(),
+        header_values.into_iter(),
+        SignableBody::Bytes(body),
+    )
+    .map_err(|error| {
+        HttpConnectorError::InvalidConfiguration(format!("build AWS SigV4 request: {error}"))
+    })?;
+    let (instructions, _) = sign_http_request(signable, &params)
+        .map_err(|error| {
+            HttpConnectorError::InvalidConfiguration(format!("sign AWS SigV4 request: {error}"))
+        })?
+        .into_parts();
+    let (headers, query) = instructions.into_parts();
+    if !query.is_empty() {
+        return Err(HttpConnectorError::InvalidConfiguration(
+            "AWS SigV4 unexpectedly returned query signing instructions".to_owned(),
+        ));
+    }
+    for header in headers {
+        let name = HeaderName::from_bytes(header.name().as_bytes()).map_err(|error| {
+            HttpConnectorError::InvalidConfiguration(format!(
+                "invalid AWS SigV4 header name: {error}"
+            ))
+        })?;
+        let mut value = HeaderValue::from_str(header.value()).map_err(|error| {
+            HttpConnectorError::InvalidConfiguration(format!(
+                "invalid AWS SigV4 header value: {error}"
+            ))
+        })?;
+        value.set_sensitive(
+            header.sensitive()
+                || name == reqwest::header::AUTHORIZATION
+                || name.as_str() == "x-amz-security-token",
+        );
+        request.headers_mut().insert(name, value);
+    }
+    Ok(())
 }
 
 fn is_loopback(url: &Url) -> bool {
@@ -662,7 +835,7 @@ fn hex(bytes: &[u8]) -> String {
 mod tests {
     use std::{
         path::{Path, PathBuf},
-        time::Duration,
+        time::{Duration, UNIX_EPOCH},
     };
 
     use cerebro_organizational_model::{SourceRuntimeId, TenantId};
@@ -828,6 +1001,74 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn aws_sigv4_signing_is_deterministic_and_covers_the_query() {
+        let auth = ResolvedAuth::AwsSigV4 {
+            access_key_id: "AKIDEXAMPLE".to_owned(),
+            secret_access_key: "secret-example".to_owned(),
+            session_token: Some("session-example".to_owned()),
+            region: "us-east-1".to_owned(),
+            service: "bedrock".to_owned(),
+        };
+        let time = UNIX_EPOCH + Duration::from_secs(1_440_938_160);
+        let client = Client::new();
+        let mut first = client
+            .get("https://bedrock.us-east-1.amazonaws.com/foundation-models?maxResults=10")
+            .build()
+            .unwrap();
+        let mut same = first.try_clone().unwrap();
+        let mut changed_query = client
+            .get("https://bedrock.us-east-1.amazonaws.com/foundation-models?maxResults=11")
+            .build()
+            .unwrap();
+
+        sign_aws_sigv4(&mut first, &auth, time).unwrap();
+        sign_aws_sigv4(&mut same, &auth, time).unwrap();
+        sign_aws_sigv4(&mut changed_query, &auth, time).unwrap();
+
+        let authorization = first.headers()["authorization"].to_str().unwrap();
+        assert!(authorization.starts_with("AWS4-HMAC-SHA256 "));
+        assert!(
+            authorization
+                .contains("Credential=AKIDEXAMPLE/20150830/us-east-1/bedrock/aws4_request")
+        );
+        assert!(authorization.contains("SignedHeaders=host;x-amz-date;x-amz-security-token"));
+        assert_eq!(first.headers()["x-amz-date"], "20150830T123600Z");
+        assert_eq!(first.headers()["x-amz-security-token"], "session-example");
+        assert!(first.headers()["authorization"].is_sensitive());
+        assert!(first.headers()["x-amz-security-token"].is_sensitive());
+        assert_eq!(
+            first.headers()["authorization"],
+            same.headers()["authorization"]
+        );
+        assert_ne!(
+            first.headers()["authorization"],
+            changed_query.headers()["authorization"]
+        );
+        let debug = format!("{auth:?}");
+        for secret in ["AKIDEXAMPLE", "secret-example", "session-example"] {
+            assert!(!debug.contains(secret));
+        }
+    }
+
+    #[test]
+    fn aws_sigv4_rejects_empty_signing_scope() {
+        let mut request = Client::new()
+            .get("https://bedrock.us-east-1.amazonaws.com/foundation-models")
+            .build()
+            .unwrap();
+        let auth = ResolvedAuth::AwsSigV4 {
+            access_key_id: "access".to_owned(),
+            secret_access_key: "secret".to_owned(),
+            session_token: None,
+            region: " ".to_owned(),
+            service: "bedrock".to_owned(),
+        };
+        let error = sign_aws_sigv4(&mut request, &auth, UNIX_EPOCH).unwrap_err();
+        assert_eq!(error.to_string(), "AWS SigV4 region is required");
+        assert!(!request.headers().contains_key("authorization"));
     }
 
     #[tokio::test]
