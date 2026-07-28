@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useMemo } from "react";
 
 import { Badge, EmptyBlock, ErrorBlock, LoadingBlock, MetricCard, PageHeader, Panel } from "@/components/grc/Primitives";
-import { actionStateLabel, actionTimeLabel, type ActionEvent, type ActionOperation } from "@/lib/actions";
+import { actionStateIntent, actionStateLabel, actionTimeLabel, type ActionEvent, type ActionOperation } from "@/lib/actions";
 import { useGRCQuery } from "@/lib/grc-client";
 
 function DetailRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
@@ -55,10 +55,10 @@ export default function ActionDetailPage() {
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="State" value={actionStateLabel(action.state)} detail={`Version ${action.version}`} intent={action.state === "verified" ? "success" : action.state === "failed" || action.state === "outcome_unknown" ? "danger" : "neutral"} />
+        <MetricCard label="State" value={actionStateLabel(action.state)} detail={`Version ${action.version}`} intent={actionStateIntent(action.state)} />
         <MetricCard label="Verification" value={actionStateLabel(action.verification_state)} detail={verification ? actionTimeLabel(verification.verified_at_unix_ms) : "No verification receipt"} intent={action.verification_state === "verified" ? "success" : action.verification_state === "rejected" || action.verification_state === "stale" ? "warning" : "neutral"} />
         <MetricCard label="Approval" value={approval?.approved ? "Approved" : approval ? "Rejected" : "Not recorded"} detail={approval ? `By ${approval.decided_by}` : "Signed decision required"} intent={approval?.approved ? "success" : approval ? "danger" : "neutral"} />
-        <MetricCard label="Execution" value={action.executed_at_unix_ms ? "Receipt recorded" : action.claimed_by ? "Claimed" : "Not started"} detail={action.executor_actor_id || action.claimed_by || "No executor"} intent={action.state === "outcome_unknown" ? "danger" : action.executed_at_unix_ms ? "success" : "neutral"} />
+        <MetricCard label="Execution" value={action.executed_at_unix_ms ? "Receipt recorded" : action.claimed_by ? "Claimed" : "Not started"} detail={action.executor_actor_id || action.claimed_by || "No executor"} intent={action.state === "outcome_unknown" ? actionStateIntent(action.state) : action.executed_at_unix_ms ? "success" : "neutral"} />
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
