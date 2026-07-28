@@ -328,6 +328,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cerebro-action-store"
+version = "0.1.0"
+dependencies = [
+ "cerebro-platform-engine",
+ "cerebro-platform-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-postgres",
+]
+
+[[package]]
 name = "cerebro-agent-context"
 version = "0.1.0"
 dependencies = [
