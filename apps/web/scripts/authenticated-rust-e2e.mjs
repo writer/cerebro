@@ -530,14 +530,23 @@ async function executeSignedActionLifecycle({
     signedBearerToken(privateKey, issuer, Date.now(), { scope, sub: subject });
   const validatorBearer = token(
     fixture.finding_validation.validated_by,
-    "cerebro:findings:validate",
+    "cerebro:write cerebro:findings:validate",
   );
-  const proposerBearer = token(fixture.proposal.proposed_by, "cerebro:actions:propose");
-  const simulatorBearer = token("simulator:rust-e2e", "cerebro:actions:simulate");
-  const approverBearer = token(fixture.approver_id, "cerebro:actions:approve");
+  const proposerBearer = token(
+    fixture.proposal.proposed_by,
+    "cerebro:actions:write cerebro:actions:propose",
+  );
+  const simulatorBearer = token(
+    "simulator:rust-e2e",
+    "cerebro:actions:write cerebro:actions:simulate",
+  );
+  const approverBearer = token(
+    fixture.approver_id,
+    "cerebro:actions:write cerebro:actions:approve",
+  );
   const workerBearer = token(
     fixture.worker_id,
-    "cerebro:read identity:read cerebro:actions:execute",
+    "cerebro:read cerebro:actions:write identity:read cerebro:actions:execute",
   );
   const actionURL = `${webBase}/api/cerebro/v1/actions/${encodeURIComponent(fixture.operation_id)}`;
   const commandURL = `${actionURL}/commands`;
