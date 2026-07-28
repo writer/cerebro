@@ -13,7 +13,7 @@ entries:
             reference_only: true
             required: true
             secret: true
-        model: duo_hmac
+        model: duo_hmac_v5
         requires_references: true
       categories:
         - saas
@@ -340,9 +340,7 @@ entries:
               policy_type: administrator_role
             template: policy
           record_selector: $.response[*]
-        - config:
-            auth_model: duo_hmac_v5
-          coverage:
+        - coverage:
             - control_domains:
                 - asset_inventory
                 - identity_access

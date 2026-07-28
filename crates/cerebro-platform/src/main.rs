@@ -1329,7 +1329,11 @@ fn resolved_auth(
             region: required_config(config, "region")?,
             service: required_config(config, "service")?,
         },
-        AuthModel::DuoHmac | AuthModel::DuoHmacV5 | AuthModel::Signature => {
+        AuthModel::DuoHmacV5 => ResolvedAuth::DuoHmacV5 {
+            integration_key: take_required_config(config, "client_id")?,
+            secret_key: take_required_config(config, "client_secret")?,
+        },
+        AuthModel::DuoHmac | AuthModel::Signature => {
             return Err("source auth requires a bespoke Rust connector".into());
         }
         _ => ResolvedAuth::Bearer {
@@ -2548,6 +2552,29 @@ mod tests {
         assert_eq!(config.get("region").map(String::as_str), Some("us-east-1"));
         assert_eq!(config.get("service").map(String::as_str), Some("bedrock"));
         assert_eq!(config.get("account").map(String::as_str), Some("account-a"));
+    }
+
+    #[test]
+    fn duo_hmac_v5_resolution_scrubs_both_credentials() {
+        let mut config = BTreeMap::from([
+            ("client_id".to_owned(), "integration-example".to_owned()),
+            ("client_secret".to_owned(), "secret-example".to_owned()),
+            ("base_url".to_owned(), "https://api.example.test".to_owned()),
+        ]);
+        let auth = resolved_auth(&AuthModel::DuoHmacV5, &mut config).unwrap();
+        assert!(matches!(
+            auth,
+            ResolvedAuth::DuoHmacV5 {
+                ref integration_key,
+                ref secret_key,
+            } if integration_key == "integration-example" && secret_key == "secret-example"
+        ));
+        assert!(!config.contains_key("client_id"));
+        assert!(!config.contains_key("client_secret"));
+        assert_eq!(
+            config.get("base_url").map(String::as_str),
+            Some("https://api.example.test")
+        );
     }
 
     struct UnavailableGraph;

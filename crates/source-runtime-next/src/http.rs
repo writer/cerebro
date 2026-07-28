@@ -13,17 +13,20 @@ use aws_sigv4::{
     },
     sign::v4,
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use cerebro_organizational_model::{
     CollectionId, CollectionReceipt, CompleteCollection, ModelError, ObservationId,
 };
 use cerebro_source_catalog::{AuthModel, CompiledFamily, CompiledSource, HttpMethod, Pagination};
 use futures_util::StreamExt;
+use hmac::{Hmac, KeyInit, Mac};
 use reqwest::{
     Client, Request, Response, StatusCode, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
 };
 use serde_json::Value;
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256, Sha512};
+use time::OffsetDateTime;
 
 use crate::{CollectedBatch, CollectedScope, CollectionRequest, SourceConnector, SourceRecord};
 
@@ -53,6 +56,10 @@ pub enum ResolvedAuth {
         region: String,
         service: String,
     },
+    DuoHmacV5 {
+        integration_key: String,
+        secret_key: String,
+    },
 }
 
 impl fmt::Debug for ResolvedAuth {
@@ -78,6 +85,11 @@ impl fmt::Debug for ResolvedAuth {
                 )
                 .field("region", &"[CONFIGURED]")
                 .field("service", &"[CONFIGURED]")
+                .finish(),
+            Self::DuoHmacV5 { .. } => formatter
+                .debug_struct("DuoHmacV5")
+                .field("integration_key", &"[REDACTED]")
+                .field("secret_key", &"[REDACTED]")
                 .finish(),
         }
     }
@@ -223,11 +235,17 @@ impl SourceConnector for HttpSourceConnector {
                     builder.basic_auth(username, Some(password))
                 }
                 ResolvedAuth::Header { name, value } => builder.header(name, value),
-                ResolvedAuth::AwsSigV4 { .. } => builder,
+                ResolvedAuth::AwsSigV4 { .. } | ResolvedAuth::DuoHmacV5 { .. } => builder,
             };
             let mut request = builder.build().map_err(HttpConnectorError::Request)?;
-            if matches!(self.auth, ResolvedAuth::AwsSigV4 { .. }) {
-                sign_aws_sigv4(&mut request, &self.auth, SystemTime::now())?;
+            match self.auth {
+                ResolvedAuth::AwsSigV4 { .. } => {
+                    sign_aws_sigv4(&mut request, &self.auth, SystemTime::now())?;
+                }
+                ResolvedAuth::DuoHmacV5 { .. } => {
+                    sign_duo_hmac_v5(&mut request, &self.auth, SystemTime::now())?;
+                }
+                _ => {}
             }
             let response = self
                 .client
@@ -424,7 +442,8 @@ fn validate_auth(expected: &AuthModel, actual: &ResolvedAuth) -> Result<(), Http
             ResolvedAuth::Bearer { .. } | ResolvedAuth::Header { .. }
         ),
         AuthModel::AwsSigV4 => matches!(actual, ResolvedAuth::AwsSigV4 { .. }),
-        AuthModel::Signature | AuthModel::DuoHmac | AuthModel::DuoHmacV5 => false,
+        AuthModel::DuoHmacV5 => matches!(actual, ResolvedAuth::DuoHmacV5 { .. }),
+        AuthModel::Signature | AuthModel::DuoHmac => false,
     };
     if valid {
         Ok(())
@@ -433,6 +452,190 @@ fn validate_auth(expected: &AuthModel, actual: &ResolvedAuth) -> Result<(), Http
             "resolved credential does not match the source auth model".to_owned(),
         ))
     }
+}
+
+fn sign_duo_hmac_v5(
+    request: &mut Request,
+    auth: &ResolvedAuth,
+    signed_at: SystemTime,
+) -> Result<(), HttpConnectorError> {
+    let ResolvedAuth::DuoHmacV5 {
+        integration_key,
+        secret_key,
+    } = auth
+    else {
+        return Err(HttpConnectorError::InvalidConfiguration(
+            "Duo HMAC v5 signing requires Duo credentials".to_owned(),
+        ));
+    };
+    for (field, value) in [
+        ("integration key", integration_key.as_str()),
+        ("secret key", secret_key.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            return Err(HttpConnectorError::InvalidConfiguration(format!(
+                "Duo HMAC v5 {field} is required"
+            )));
+        }
+    }
+    let date_format = time::format_description::parse_borrowed::<2>(
+        "[weekday repr:short], [day padding:zero] [month repr:short] [year] [hour]:[minute]:[second] -0000",
+    )
+    .map_err(|error| {
+        HttpConnectorError::InvalidConfiguration(format!(
+            "build Duo HMAC v5 date format: {error}"
+        ))
+    })?;
+    let date = OffsetDateTime::from(signed_at)
+        .format(&date_format)
+        .map_err(|error| {
+            HttpConnectorError::InvalidConfiguration(format!("format Duo HMAC v5 date: {error}"))
+        })?;
+    let canonical = duo_hmac_v5_canonical(request, &date)?;
+    let mut mac = Hmac::<Sha512>::new_from_slice(secret_key.as_bytes()).map_err(|error| {
+        HttpConnectorError::InvalidConfiguration(format!("initialize Duo HMAC v5 signer: {error}"))
+    })?;
+    mac.update(canonical.as_bytes());
+    let signature = hex(&mac.finalize().into_bytes());
+    let mut authorization = HeaderValue::from_str(&format!(
+        "Basic {}",
+        BASE64.encode(format!("{integration_key}:{signature}"))
+    ))
+    .map_err(|error| {
+        HttpConnectorError::InvalidConfiguration(format!(
+            "build Duo HMAC v5 authorization: {error}"
+        ))
+    })?;
+    authorization.set_sensitive(true);
+    request.headers_mut().insert(
+        reqwest::header::DATE,
+        HeaderValue::from_str(&date).map_err(|error| {
+            HttpConnectorError::InvalidConfiguration(format!(
+                "build Duo HMAC v5 date header: {error}"
+            ))
+        })?,
+    );
+    request
+        .headers_mut()
+        .insert(reqwest::header::AUTHORIZATION, authorization);
+    Ok(())
+}
+
+fn duo_hmac_v5_canonical(request: &Request, date: &str) -> Result<String, HttpConnectorError> {
+    let body = match request.method() {
+        &reqwest::Method::GET | &reqwest::Method::DELETE => {
+            if request
+                .body()
+                .and_then(reqwest::Body::as_bytes)
+                .is_some_and(|body| !body.is_empty())
+            {
+                return Err(HttpConnectorError::InvalidConfiguration(
+                    "Duo HMAC v5 GET and DELETE requests cannot contain a body".to_owned(),
+                ));
+            }
+            &[][..]
+        }
+        &reqwest::Method::POST | &reqwest::Method::PUT | &reqwest::Method::PATCH => {
+            let content_type = request
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok());
+            if content_type != Some("application/json") {
+                return Err(HttpConnectorError::InvalidConfiguration(
+                    "Duo HMAC v5 request bodies require application/json".to_owned(),
+                ));
+            }
+            request
+                .body()
+                .and_then(reqwest::Body::as_bytes)
+                .ok_or_else(|| {
+                    HttpConnectorError::InvalidConfiguration(
+                        "Duo HMAC v5 requires a replayable request body".to_owned(),
+                    )
+                })?
+        }
+        method => {
+            return Err(HttpConnectorError::InvalidConfiguration(format!(
+                "Duo HMAC v5 does not support {method} requests"
+            )));
+        }
+    };
+    let host = request.url().host_str().ok_or_else(|| {
+        HttpConnectorError::InvalidConfiguration(
+            "Duo HMAC v5 request URL requires a host".to_owned(),
+        )
+    })?;
+    let mut additional_headers = request
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            let name = name.as_str().to_ascii_lowercase();
+            name.starts_with("x-duo-").then(|| {
+                value
+                    .to_str()
+                    .map(|value| (name, value.trim().to_owned()))
+                    .map_err(|_| {
+                        HttpConnectorError::InvalidConfiguration(
+                            "Duo HMAC v5 cannot sign a non-text X-Duo header".to_owned(),
+                        )
+                    })
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    additional_headers.sort();
+    let canonical_headers = additional_headers
+        .iter()
+        .flat_map(|(name, value)| [name.as_str(), value.as_str()])
+        .collect::<Vec<_>>()
+        .join("\0");
+    Ok([
+        date.to_owned(),
+        request.method().as_str().to_ascii_uppercase(),
+        host.to_ascii_lowercase(),
+        request.url().path().to_owned(),
+        duo_canonical_query(request.url()),
+        sha512_hex(body),
+        sha512_hex(canonical_headers.as_bytes()),
+    ]
+    .join("\n"))
+}
+
+fn duo_canonical_query(url: &Url) -> String {
+    let mut pairs = url
+        .query_pairs()
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect::<Vec<_>>();
+    pairs.sort();
+    pairs
+        .into_iter()
+        .map(|(key, value)| {
+            format!(
+                "{}={}",
+                duo_percent_encode(&key),
+                duo_percent_encode(&value)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+fn duo_percent_encode(value: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('%');
+            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        }
+    }
+    encoded
+}
+
+fn sha512_hex(value: impl AsRef<[u8]>) -> String {
+    hex(&Sha512::digest(value))
 }
 
 fn sign_aws_sigv4(
@@ -1071,6 +1274,86 @@ mod tests {
         assert!(!request.headers().contains_key("authorization"));
     }
 
+    #[test]
+    fn duo_hmac_v5_matches_the_provider_canonical_contract() {
+        const EMPTY_SHA512: &str = "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e";
+        let client = Client::new();
+        let mut request = client
+            .get("https://api-xxxxxxxx.duosecurity.com/admin/v1/users?username=root")
+            .build()
+            .unwrap();
+        let canonical = duo_hmac_v5_canonical(&request, "Tue, 21 Aug 2012 17:29:18 -0000").unwrap();
+        assert_eq!(
+            canonical,
+            [
+                "Tue, 21 Aug 2012 17:29:18 -0000",
+                "GET",
+                "api-xxxxxxxx.duosecurity.com",
+                "/admin/v1/users",
+                "username=root",
+                EMPTY_SHA512,
+                EMPTY_SHA512,
+            ]
+            .join("\n")
+        );
+
+        let auth = ResolvedAuth::DuoHmacV5 {
+            integration_key: "DIWJ8X6AEYOR5OMC6TQ1".to_owned(),
+            secret_key: "Zh5eGmUq9zpfQnyUIu5OL9iWoMMv5ZNmk3zLJ4Ep".to_owned(),
+        };
+        sign_duo_hmac_v5(
+            &mut request,
+            &auth,
+            UNIX_EPOCH + Duration::from_secs(1_345_570_158),
+        )
+        .unwrap();
+        assert_eq!(request.headers()["date"], "Tue, 21 Aug 2012 17:29:18 -0000");
+        let authorization = request.headers()["authorization"].to_str().unwrap();
+        let credentials = BASE64
+            .decode(authorization.strip_prefix("Basic ").unwrap())
+            .unwrap();
+        assert_eq!(
+            String::from_utf8(credentials).unwrap(),
+            "DIWJ8X6AEYOR5OMC6TQ1:c2f048c5ec058a0b27a2387820fefcf0c0a1059dab5f63d96e7add10cece874fe629f5b3c24aed25a1af1008a50e45096ea9823256930e398bc671856395b8af"
+        );
+        assert!(request.headers()["authorization"].is_sensitive());
+        let debug = format!("{auth:?}");
+        assert!(!debug.contains("DIWJ8X6AEYOR5OMC6TQ1"));
+        assert!(!debug.contains("Zh5eGmUq9zpfQnyUIu5OL9iWoMMv5ZNmk3zLJ4Ep"));
+    }
+
+    #[test]
+    fn duo_hmac_v5_sorts_and_encodes_queries_and_rejects_unsigned_bodies() {
+        let request = Client::new()
+            .get("https://api.example.test/admin/v1/users?username=root&realname=First%20Last")
+            .header("x-duo-context", " tenant-a ")
+            .build()
+            .unwrap();
+        let canonical = duo_hmac_v5_canonical(&request, "Tue, 21 Aug 2012 17:29:18 -0000").unwrap();
+        assert_eq!(
+            canonical.lines().nth(4),
+            Some("realname=First%20Last&username=root")
+        );
+        let empty_hash = sha512_hex("");
+        assert_ne!(canonical.lines().last(), Some(empty_hash.as_str()));
+
+        let mut unsigned_body = Client::new()
+            .post("https://api.example.test/admin/v1/users")
+            .body("{}")
+            .build()
+            .unwrap();
+        let auth = ResolvedAuth::DuoHmacV5 {
+            integration_key: "integration".to_owned(),
+            secret_key: "secret".to_owned(),
+        };
+        let error = sign_duo_hmac_v5(&mut unsigned_body, &auth, UNIX_EPOCH).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Duo HMAC v5 request bodies require application/json"
+        );
+        assert!(!unsigned_body.headers().contains_key("authorization"));
+    }
+
     #[tokio::test]
     async fn verified_catalog_family_executes_and_can_complete() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1110,6 +1393,73 @@ mod tests {
             .collect(CollectionRequest {
                 tenant_id: TenantId::parse("tenant-a").unwrap(),
                 source_runtime_id: SourceRuntimeId::parse("box-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "user-1");
+    }
+
+    #[tokio::test]
+    async fn duo_catalog_family_executes_with_v5_signing() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /admin/v1/users?"));
+            assert!(request.to_ascii_lowercase().contains("\r\ndate: "));
+            let authorization = request
+                .lines()
+                .find_map(|line| {
+                    line.to_ascii_lowercase()
+                        .starts_with("authorization: basic ")
+                        .then(|| line.split_once(':').unwrap().1.trim())
+                })
+                .expect("Duo request must contain Basic authorization");
+            let credentials = BASE64
+                .decode(authorization.strip_prefix("Basic ").unwrap())
+                .unwrap();
+            let credentials = String::from_utf8(credentials).unwrap();
+            let (integration_key, signature) = credentials.split_once(':').unwrap();
+            assert_eq!(integration_key, "integration-example");
+            assert_eq!(signature.len(), 128);
+            assert!(signature.bytes().all(|byte| byte.is_ascii_hexdigit()));
+
+            let body = r#"{"stat":"OK","response":[{"user_id":"user-1","username":"alice","status":"active"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let mut connector = HttpSourceConnector::new(
+            catalog.get("duo").unwrap().clone(),
+            "user",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            ResolvedAuth::DuoHmacV5 {
+                integration_key: "integration-example".to_owned(),
+                secret_key: "secret-example".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("duo-prod").unwrap(),
                 cursor: None,
             })
             .await

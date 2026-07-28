@@ -96,6 +96,7 @@ impl AuthModel {
                 | Self::TwoStep
                 | Self::Jwt
                 | Self::AwsSigV4
+                | Self::DuoHmacV5
         )
     }
 }
@@ -920,6 +921,10 @@ mod tests {
         );
         assert_eq!(
             catalog.get("aws_bedrock").unwrap().authority(),
+            CollectionAuthority::Authoritative
+        );
+        assert_eq!(
+            catalog.get("duo").unwrap().authority(),
             CollectionAuthority::Authoritative
         );
         assert_eq!(
