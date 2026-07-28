@@ -41,7 +41,7 @@ const action: ActionOperation = {
       expected_state_digest: "expected-state-digest",
     }],
     rollback_ref: "rollback-1",
-    idempotency_key: "idempotency-1",
+    idempotency_key: "test",
     simulation_digest: "simulation-digest",
     verification_plan_digest: "verification-plan-digest",
     proposed_by: "actor-1",
