@@ -44,8 +44,8 @@ use cerebro_security_lifecycle::{
 };
 use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
-    CatalogGraphMapper, CollectionRequest, CommittedSourceEvent, CommittedSourceInput, GraphMapper,
-    GraphSink, HttpSourceConnector, ResolvedAuth, SourceRuntime,
+    CatalogGraphMapper, CollectionRequest, CommittedSourceEvent, GraphMapper, GraphSink,
+    HttpSourceConnector, ResolvedAuth, SourceRuntime,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
@@ -337,9 +337,7 @@ fn oidc_scope_for_route(method: &Method, path: &str) -> &'static str {
             "cerebro:actions:write"
         }
         _ if path.starts_with("/v1/actions/") => "cerebro:actions:read",
-        "/v1/projections/events"
-        | "/v1/projections/legacy-deltas"
-        | "/v1/projections/collections" => "cerebro:write",
+        "/v1/projections/legacy-deltas" | "/v1/projections/collections" => "cerebro:write",
         _ => "cerebro:read",
     }
 }
@@ -377,7 +375,6 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/security/lifecycle" => "security_lifecycle",
         "/v1/actions" if method == Method::GET => "list_actions",
         "/v1/actions" => "propose_action",
-        "/v1/projections/events" => "project_event",
         "/v1/projections/legacy-deltas" => "record_legacy_projection",
         "/v1/projections/collections" => "record_source_collection",
         "/v1/projections/authority" => "projection_authority",
@@ -1049,26 +1046,6 @@ struct ProductNeighborhood {
     relations: Vec<ProductNeighborhoodRelation>,
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ProjectEventRequest {
-    tenant_id: String,
-    source_runtime_id: String,
-    source_id: String,
-    family_id: String,
-    event_id: String,
-    #[serde(default)]
-    event_kind: String,
-    #[serde(default)]
-    schema_ref: String,
-    observed_at_unix_ms: i64,
-    append_log_committed: bool,
-    #[serde(default)]
-    attributes: BTreeMap<String, String>,
-    #[serde(default)]
-    payload: serde_json::Value,
-}
-
 #[derive(Serialize)]
 struct ProjectEventResponse {
     authority: ProjectionAuthority,
@@ -1426,7 +1403,6 @@ fn router_with_backend(
         .route("/v1/graph/expand-batch", post(expand_batch))
         .route("/v1/graph/paths", post(find_paths))
         .route("/v1/security/lifecycle", get(security_lifecycle))
-        .route("/v1/projections/events", post(project_event))
         .route(
             "/v1/projections/legacy-deltas",
             post(record_legacy_projection),
@@ -1507,63 +1483,6 @@ async fn projection_authority(
         .await
         .map(Json)
         .map_err(store_error)
-}
-
-async fn project_event(
-    State(state): State<AppState>,
-    Extension(authenticated): Extension<AuthenticatedTenant>,
-    Json(request): Json<ProjectEventRequest>,
-) -> Result<Json<ProjectEventResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let runtime = state.projection.ok_or_else(|| {
-        service_unavailable(
-            "projection_runtime_unavailable",
-            "The organizational projection runtime is not configured.",
-        )
-    })?;
-    if !request.append_log_committed {
-        return Err(bad_request(
-            "append_log_required",
-            "The source event must be committed to the append log before projection.",
-        ));
-    }
-    if request.observed_at_unix_ms <= 0 {
-        return Err(bad_request(
-            "invalid_observed_at",
-            "observed_at_unix_ms must be positive.",
-        ));
-    }
-    let tenant_id = authorized_tenant(&authenticated, request.tenant_id)?;
-    let source_id = request.source_id.trim().to_owned();
-    let family_id = request.family_id.trim().to_owned();
-    let event_kind = if request.event_kind.trim().is_empty() {
-        format!("{source_id}.{family_id}")
-    } else {
-        request.event_kind
-    };
-    let event = CommittedSourceEvent::from_input(CommittedSourceInput {
-        tenant_id,
-        source_runtime_id: SourceRuntimeId::parse(request.source_runtime_id)
-            .map_err(model_error)?,
-        observation_id: ObservationId::parse(request.event_id).map_err(model_error)?,
-        source_id,
-        family_id,
-        event_kind,
-        schema_ref: request.schema_ref,
-        observed_at_unix_ms: request.observed_at_unix_ms,
-        attributes: request.attributes,
-        payload: request.payload,
-    })
-    .map_err(|error| bad_request("invalid_source_event", error.to_string()))?;
-    runtime
-        .project_committed(event)
-        .await
-        .map(Json)
-        .map_err(|error| match error {
-            ProjectionFailure::Invalid(message) => {
-                bad_request("projection_mapping_failed", message)
-            }
-            ProjectionFailure::Store(error) => store_error(error),
-        })
 }
 
 async fn record_legacy_projection(
@@ -3381,6 +3300,24 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
     }
 
+    #[tokio::test]
+    async fn committed_event_payloads_cannot_be_submitted_over_http() {
+        let app = router(OrganizationalGraph::new());
+        let response = app
+            .oneshot(
+                authenticated(Request::builder(), "tenant-demo")
+                    .method("POST")
+                    .uri("/v1/projections/events")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"append_log_committed":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
     #[test]
     fn lifecycle_requests_have_a_bounded_metrics_operation() {
         assert_eq!(
@@ -3417,10 +3354,6 @@ mod tests {
         assert_eq!(
             oidc_scope_for_route(&Method::POST, "/v1/graph/search"),
             "cerebro:read"
-        );
-        assert_eq!(
-            oidc_scope_for_route(&Method::POST, "/v1/projections/events"),
-            "cerebro:write"
         );
         assert_eq!(
             oidc_scope_for_route(&Method::GET, "/v1/actions"),
@@ -4005,51 +3938,38 @@ mod tests {
             authority,
             store: Mutex::new(DurableGraphStore::new(store_ledger, graph.clone())),
         });
-        let tenant_auth = TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap();
-        let app = router_with_backend(
-            Arc::new(graph.clone()),
-            None,
-            Some(runtime),
-            None,
-            tenant_auth,
-            None,
-        );
         let resource_urn = format!("urn:cerebro:{tenant_id}:runtime_file:asset-1");
-        let response = app
-            .oneshot(
-                authenticated(Request::builder(), &tenant_id)
-                    .method("POST")
-                    .uri("/v1/projections/events")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "tenant_id": tenant_id.clone(),
-                            "source_runtime_id": "box-runtime",
-                            "source_id": "box",
-                            "family_id": "content_assets",
-                            "event_id": "event-1",
-                            "observed_at_unix_ms": 100,
-                            "append_log_committed": true,
-                            "attributes": {
-                                "resource_id": "asset-1",
-                                "resource_name": "Architecture",
-                                "resource_type": "file",
-                                "resource_urn": resource_urn.clone()
-                            },
-                            "payload": {
-                                "id": "asset-1",
-                                "name": "Architecture",
-                                "type": "file",
-                                "resource_urn": resource_urn.clone()
-                            }
-                        })
-                        .to_string(),
-                    ))
-                    .unwrap(),
+        let response = runtime
+            .project_committed(
+                CommittedSourceEvent::from_input(
+                    cerebro_source_runtime_next::CommittedSourceInput {
+                        tenant_id: TenantId::parse(tenant_id.clone()).unwrap(),
+                        source_runtime_id: SourceRuntimeId::parse("box-runtime").unwrap(),
+                        observation_id: ObservationId::parse("event-1").unwrap(),
+                        source_id: "box".to_owned(),
+                        family_id: "content_assets".to_owned(),
+                        event_kind: "box.content_assets".to_owned(),
+                        schema_ref: "box/content_assets/v1".to_owned(),
+                        observed_at_unix_ms: 100,
+                        attributes: BTreeMap::from([
+                            ("resource_id".to_owned(), "asset-1".to_owned()),
+                            ("resource_name".to_owned(), "Architecture".to_owned()),
+                            ("resource_type".to_owned(), "file".to_owned()),
+                            ("resource_urn".to_owned(), resource_urn.clone()),
+                        ]),
+                        payload: serde_json::json!({
+                            "id": "asset-1",
+                            "name": "Architecture",
+                            "type": "file",
+                            "resource_urn": resource_urn.clone()
+                        }),
+                    },
+                )
+                .unwrap(),
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.projected);
         let tenant = TenantId::parse(tenant_id).unwrap();
         let entity = graph.resolve(&tenant, &resource_urn).await.unwrap();
         assert_eq!(entity.label, "Architecture");
