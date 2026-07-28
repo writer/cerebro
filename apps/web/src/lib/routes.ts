@@ -24,6 +24,13 @@ export const operatorNavLinks: NavigationEntry[] = [
     keywords: ["issues", "findings", "risk", "sla", "triage", "owner", "framework", ...supportedGRCFrameworkNames],
   },
   {
+    label: "Actions",
+    href: "/actions",
+    description: "Remediation proposals, approvals, execution receipts, and independent verification.",
+    section: "Operator",
+    keywords: ["actions", "remediation", "approval", "execution", "verification", "rollback"],
+  },
+  {
     label: "Credentials",
     href: "/security/lifecycle",
     description: "Credential and certificate expiry, ownership, findings, and approved rotation routes.",

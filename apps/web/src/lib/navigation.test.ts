@@ -23,6 +23,7 @@ describe("navigation entries", () => {
     const hrefs = operatorNavLinks.map((e) => e.href);
     expect(hrefs).toContain("/");
     expect(hrefs).toContain("/risk-inbox");
+    expect(hrefs).toContain("/actions");
     expect(hrefs).toContain("/grc");
     expect(hrefs).toContain("/ask");
     expect(hrefs).toContain("/controls");
@@ -30,12 +31,15 @@ describe("navigation entries", () => {
     expect(hrefs).toContain("/credential-stores");
   });
 
-  it("uses operator labels for issues and compliance", () => {
+  it("uses operator labels for issues, Actions, and compliance", () => {
     expect(operatorNavLinks.find((entry) => entry.href === "/risk-inbox")).toMatchObject({
       label: "Issues",
     });
     expect(operatorNavLinks.find((entry) => entry.href === "/grc")).toMatchObject({
       label: "Compliance",
+    });
+    expect(operatorNavLinks.find((entry) => entry.href === "/actions")).toMatchObject({
+      label: "Actions",
     });
   });
 
