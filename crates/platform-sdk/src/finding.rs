@@ -17,6 +17,7 @@ pub struct FindingValidationReceipt {
     pub finding_id: OpaqueId,
     pub finding_revision_digest: ContentDigest,
     pub graph_revision: GraphRevision,
+    pub policy_id: String,
     pub policy_definition_digest: ContentDigest,
     pub decision: FindingValidationDecision,
     pub evidence_digests: Vec<ContentDigest>,
@@ -35,6 +36,7 @@ impl FindingValidationReceipt {
             finding_id: &'a OpaqueId,
             finding_revision_digest: &'a ContentDigest,
             graph_revision: &'a GraphRevision,
+            policy_id: &'a str,
             policy_definition_digest: &'a ContentDigest,
             decision: FindingValidationDecision,
             evidence_digests: &'a [ContentDigest],
@@ -49,6 +51,7 @@ impl FindingValidationReceipt {
             finding_id: &self.finding_id,
             finding_revision_digest: &self.finding_revision_digest,
             graph_revision: &self.graph_revision,
+            policy_id: &self.policy_id,
             policy_definition_digest: &self.policy_definition_digest,
             decision: self.decision,
             evidence_digests: &self.evidence_digests,
@@ -72,6 +75,20 @@ impl FindingValidationReceipt {
     pub fn validate(&self) -> Result<(), SdkError> {
         if self.evidence_digests.is_empty() || self.evidence_digests.len() > 100 {
             return Err(SdkError::OutOfRange("finding validation evidence count"));
+        }
+        if self.policy_id.is_empty()
+            || self.policy_id.len() > 255
+            || !self
+                .policy_id
+                .bytes()
+                .enumerate()
+                .all(|(index, byte)| match byte {
+                    b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' => true,
+                    b'.' | b'_' | b'-' => index != 0,
+                    _ => false,
+                })
+        {
+            return Err(SdkError::Invalid("finding validation policy id"));
         }
         let evidence = self
             .evidence_digests
@@ -135,6 +152,7 @@ struct StoredFindingValidationReceipt {
     finding_id: String,
     finding_revision_digest: String,
     graph_revision: u64,
+    policy_id: String,
     policy_definition_digest: String,
     decision: FindingValidationDecision,
     evidence_digests: Vec<String>,
@@ -154,6 +172,7 @@ impl TryFrom<StoredFindingValidationReceipt> for FindingValidationReceipt {
             finding_id: OpaqueId::parse(stored.finding_id)?,
             finding_revision_digest: ContentDigest::parse(stored.finding_revision_digest)?,
             graph_revision: GraphRevision::new(stored.graph_revision)?,
+            policy_id: stored.policy_id,
             policy_definition_digest: ContentDigest::parse(stored.policy_definition_digest)?,
             decision: stored.decision,
             evidence_digests: stored
@@ -196,6 +215,7 @@ mod tests {
             finding_id: OpaqueId::parse("finding:one").unwrap(),
             finding_revision_digest: ContentDigest::of_bytes("finding"),
             graph_revision: GraphRevision::new(4).unwrap(),
+            policy_id: "policy-one".to_owned(),
             policy_definition_digest: ContentDigest::of_bytes("policy"),
             decision: FindingValidationDecision::Confirmed,
             evidence_digests: vec![

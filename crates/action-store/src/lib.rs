@@ -14,6 +14,7 @@ use cerebro_platform_sdk::{
     ActionOperation, ActionOperationId, ActionProposal, ActionState, ActorId, ContentDigest,
     FindingValidationReceipt, SdkError, TenantId, VerificationState,
 };
+use cerebro_policy_catalog::{PolicyCatalogError, validate_finding_receipt};
 use postgres_native_tls::MakeTlsConnector;
 use serde::Serialize;
 use serde_json::Value;
@@ -27,6 +28,8 @@ CREATE TABLE IF NOT EXISTS finding_validation_receipts (
   finding_id TEXT NOT NULL CHECK (char_length(finding_id) BETWEEN 1 AND 256),
   finding_revision_digest TEXT NOT NULL CHECK (finding_revision_digest ~ '^[0-9a-f]{64}$'),
   graph_revision BIGINT NOT NULL CHECK (graph_revision > 0),
+  policy_id TEXT,
+  policy_definition_digest TEXT,
   decision TEXT NOT NULL CHECK (decision IN ('confirmed', 'rejected')),
   validated_by TEXT NOT NULL CHECK (char_length(validated_by) BETWEEN 1 AND 256),
   receipt_json JSONB NOT NULL CHECK (jsonb_typeof(receipt_json) = 'object'),
@@ -42,11 +45,31 @@ CREATE TABLE IF NOT EXISTS finding_validation_receipts (
   CHECK ((receipt_json->>'finding_id') IS NOT DISTINCT FROM finding_id),
   CHECK ((receipt_json->>'finding_revision_digest') IS NOT DISTINCT FROM finding_revision_digest),
   CHECK ((receipt_json->>'graph_revision')::BIGINT IS NOT DISTINCT FROM graph_revision),
+  CHECK (policy_id IS NULL OR (receipt_json->>'policy_id') IS NOT DISTINCT FROM policy_id),
+  CHECK (policy_definition_digest IS NULL OR (receipt_json->>'policy_definition_digest') IS NOT DISTINCT FROM policy_definition_digest),
   CHECK ((receipt_json->>'decision') IS NOT DISTINCT FROM decision),
   CHECK ((receipt_json->>'validated_by') IS NOT DISTINCT FROM validated_by),
   CHECK ((receipt_json->>'validated_at_unix_ms')::BIGINT IS NOT DISTINCT FROM validated_at_unix_ms),
   CHECK ((receipt_json->>'expires_at_unix_ms')::BIGINT IS NOT DISTINCT FROM expires_at_unix_ms)
 );
+ALTER TABLE finding_validation_receipts
+  ADD COLUMN IF NOT EXISTS policy_id TEXT;
+ALTER TABLE finding_validation_receipts
+  ADD COLUMN IF NOT EXISTS policy_definition_digest TEXT;
+DO $$
+BEGIN
+  ALTER TABLE finding_validation_receipts
+    ADD CONSTRAINT finding_validation_receipts_policy_binding
+    CHECK (
+      policy_id IS NOT NULL
+      AND char_length(policy_id) BETWEEN 1 AND 255
+      AND policy_definition_digest ~ '^[0-9a-f]{64}$'
+      AND (receipt_json->>'policy_id') IS NOT DISTINCT FROM policy_id
+      AND (receipt_json->>'policy_definition_digest')
+        IS NOT DISTINCT FROM policy_definition_digest
+    ) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 CREATE TABLE IF NOT EXISTS action_operations (
   tenant_id TEXT NOT NULL CHECK (char_length(tenant_id) BETWEEN 1 AND 256),
   operation_id TEXT NOT NULL CHECK (char_length(operation_id) BETWEEN 1 AND 256),
@@ -139,6 +162,8 @@ CREATE INDEX IF NOT EXISTS action_operations_queue_idx
   ON action_operations (tenant_id, updated_at_unix_ms DESC, operation_id);
 CREATE INDEX IF NOT EXISTS finding_validation_receipts_finding_idx
   ON finding_validation_receipts (tenant_id, finding_id, validated_at_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS finding_validation_receipts_policy_idx
+  ON finding_validation_receipts (tenant_id, policy_id, validated_at_unix_ms DESC);
 CREATE OR REPLACE FUNCTION reject_finding_validation_receipt_mutation()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -196,6 +221,7 @@ pub enum ActionStoreError {
     Serialization(serde_json::Error),
     Invalid(SdkError),
     Catalog(ActionCatalogError),
+    PolicyCatalog(PolicyCatalogError),
     Conflict(String),
     NotFound(String),
     Corrupt(String),
@@ -212,6 +238,9 @@ impl fmt::Display for ActionStoreError {
             }
             Self::Invalid(error) => write!(formatter, "Action is invalid: {error}"),
             Self::Catalog(error) => write!(formatter, "Action definition is invalid: {error}"),
+            Self::PolicyCatalog(error) => {
+                write!(formatter, "Policy definition is invalid: {error}")
+            }
             Self::Conflict(message) => write!(formatter, "Action ledger conflict: {message}"),
             Self::NotFound(message) => write!(formatter, "Action was not found: {message}"),
             Self::Corrupt(message) => {
@@ -255,6 +284,12 @@ impl From<ActionCatalogError> for ActionStoreError {
             ActionCatalogError::InvalidProposal(error) => Self::Invalid(error),
             other => Self::Catalog(other),
         }
+    }
+}
+
+impl From<PolicyCatalogError> for ActionStoreError {
+    fn from(value: PolicyCatalogError) -> Self {
+        Self::PolicyCatalog(value)
     }
 }
 
@@ -326,7 +361,7 @@ impl PostgresActionLedger {
         receipt: FindingValidationReceipt,
         committed_at_unix_ms: u64,
     ) -> Result<FindingValidationReceipt, ActionStoreError> {
-        receipt.validate()?;
+        validate_finding_receipt(&receipt)?;
         if committed_at_unix_ms < receipt.validated_at_unix_ms
             || committed_at_unix_ms >= receipt.expires_at_unix_ms
         {
@@ -347,13 +382,15 @@ impl PostgresActionLedger {
         set_tenant(&transaction, tenant_id).await?;
         let inserted = transaction
             .execute(
-                "INSERT INTO finding_validation_receipts (tenant_id, receipt_digest, finding_id, finding_revision_digest, graph_revision, decision, validated_by, receipt_json, validated_at_unix_ms, expires_at_unix_ms, committed_at_unix_ms) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT DO NOTHING",
+                "INSERT INTO finding_validation_receipts (tenant_id, receipt_digest, finding_id, finding_revision_digest, graph_revision, policy_id, policy_definition_digest, decision, validated_by, receipt_json, validated_at_unix_ms, expires_at_unix_ms, committed_at_unix_ms) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT DO NOTHING",
                 &[
                     &tenant_id,
                     &receipt_digest,
                     &receipt.finding_id.as_str(),
                     &receipt.finding_revision_digest.as_str(),
                     &graph_revision,
+                    &receipt.policy_id,
+                    &receipt.policy_definition_digest.as_str(),
                     &finding_validation_decision(&receipt),
                     &receipt.validated_by.as_str(),
                     &receipt_json,
@@ -1116,6 +1153,8 @@ mod tests {
             "BEFORE UPDATE OR DELETE ON action_operation_events",
             "BEFORE UPDATE OR DELETE ON finding_validation_receipts",
             "finding_validation_receipts_finding_idx",
+            "finding_validation_receipts_policy_binding",
+            "finding_validation_receipts_policy_idx",
             "action_operations_queue_idx",
         ] {
             assert!(POSTGRES_SCHEMA.contains(required), "missing {required}");

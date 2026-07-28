@@ -209,12 +209,17 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
 }
 
 fn finding_validation(tenant_id: &str) -> FindingValidationReceipt {
+    let policy = cerebro_policy_catalog::definitions()
+        .first()
+        .expect("generated policy");
     let mut receipt = FindingValidationReceipt {
         tenant_id: TenantId::parse(tenant_id).expect("valid tenant"),
         finding_id: OpaqueId::parse("finding:live:one").expect("valid finding"),
         finding_revision_digest: ContentDigest::of_bytes("finding-revision"),
         graph_revision: GraphRevision::new(1).expect("valid graph revision"),
-        policy_definition_digest: ContentDigest::of_bytes("policy-definition"),
+        policy_id: policy.id.to_owned(),
+        policy_definition_digest: ContentDigest::parse(policy.definition_digest)
+            .expect("policy digest"),
         decision: FindingValidationDecision::Confirmed,
         evidence_digests: vec![ContentDigest::of_bytes("finding-evidence")],
         validated_by: ActorId::parse("validator:live:one").expect("valid validator"),

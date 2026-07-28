@@ -41,6 +41,7 @@ use cerebro_platform_sdk::{
     ContentDigest, DecisionId, DecisionReceipt, FindingValidationReceipt, OpaqueId, VerificationId,
     VerificationReceipt,
 };
+use cerebro_policy_catalog::{definitions as policy_definitions, validate_finding_receipt};
 use cerebro_security_lifecycle::{
     CERTIFICATE_EVENT_KIND, CREDENTIAL_EVENT_KIND, LifecycleQuery, LifecycleState,
     ProjectedResource, SubjectKind, decode_protobuf_observation, project_observation,
@@ -406,6 +407,7 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/me" => "current_user",
         "/v1/finding-validations" => "record_finding_validation",
         "/v1/action-definitions" => "action_definitions",
+        "/v1/policy-definitions" => "policy_definitions",
         "/v1/sources/summary" => "source_summary",
         "/platform/graph/neighborhood" => "neighborhood",
         "/v1/graph/search" => "search",
@@ -1484,6 +1486,7 @@ fn router_with_backend(
                 get(get_finding_validation),
             )
             .route("/v1/action-definitions", get(list_action_definitions))
+            .route("/v1/policy-definitions", get(list_policy_definitions))
             .route("/v1/actions", get(list_actions).post(propose_action))
             .route("/v1/actions/{operation_id}", get(get_action))
             .route(
@@ -1884,6 +1887,11 @@ async fn list_action_definitions()
     Json(action_definitions())
 }
 
+async fn list_policy_definitions()
+-> Json<&'static [cerebro_policy_catalog::PolicyDefinition<'static>]> {
+    Json(policy_definitions())
+}
+
 async fn record_finding_validation(
     State(state): State<AppState>,
     Extension(identity): Extension<AuthenticatedIdentity>,
@@ -1896,6 +1904,8 @@ async fn record_finding_validation(
             "The finding validation tenant and validator must match the signed identity.",
         ));
     }
+    validate_finding_receipt(&receipt)
+        .map_err(|error| bad_request("invalid_policy_definition", error.to_string()))?;
     let committed_at = current_unix_millis()?;
     action_authority(&state)?
         .record_finding_validation(receipt, committed_at)
@@ -2448,6 +2458,9 @@ fn action_store_error(error: ActionStoreError) -> (StatusCode, Json<ErrorRespons
         ActionStoreError::Catalog(error) => {
             bad_request("invalid_action_definition", error.to_string())
         }
+        ActionStoreError::PolicyCatalog(error) => {
+            bad_request("invalid_policy_definition", error.to_string())
+        }
         ActionStoreError::OutOfRange(field) => bad_request("invalid_action", field),
         ActionStoreError::Postgres(error) => {
             eprintln!("Action PostgreSQL unavailable: {error}");
@@ -2895,12 +2908,14 @@ mod tests {
     }
 
     fn finding_validation(tenant_id: &str, validated_by: &str) -> FindingValidationReceipt {
+        let policy = policy_definitions().first().expect("generated policy");
         let mut receipt = FindingValidationReceipt {
             tenant_id: TenantId::parse(tenant_id).unwrap(),
             finding_id: OpaqueId::parse("finding:http:one").unwrap(),
             finding_revision_digest: ContentDigest::of_bytes("finding-revision"),
             graph_revision: GraphRevision::new(1).unwrap(),
-            policy_definition_digest: ContentDigest::of_bytes("policy-definition"),
+            policy_id: policy.id.to_owned(),
+            policy_definition_digest: ContentDigest::parse(policy.definition_digest).unwrap(),
             decision: cerebro_platform_sdk::FindingValidationDecision::Confirmed,
             evidence_digests: vec![ContentDigest::of_bytes("finding-evidence")],
             validated_by: ActorId::parse(validated_by).unwrap(),
@@ -3572,6 +3587,10 @@ mod tests {
             "cerebro:read"
         );
         assert_eq!(
+            oidc_scope_for_route(&Method::GET, "/v1/policy-definitions"),
+            "cerebro:read"
+        );
+        assert_eq!(
             oidc_scope_for_route(&Method::POST, "/v1/finding-validations"),
             "cerebro:write"
         );
@@ -3844,6 +3863,40 @@ mod tests {
 
         let definitions = list_action_definitions().await.0;
         assert!(definitions.iter().any(|candidate| candidate == definition));
+        assert!(list_policy_definitions().await.0.len() > 1_000);
+    }
+
+    #[tokio::test]
+    async fn finding_validation_rejects_unknown_or_tampered_policies_before_storage() {
+        let (graph, _, _) = demo_graph().unwrap();
+        let state = AppState {
+            actions: Some(Arc::new(UnreachableActionAuthority)),
+            graph: Arc::new(MemoryAgentGraph::new(graph)),
+            catalog_summary: None,
+            projection: None,
+            metrics: PlatformMetrics::default(),
+        };
+        let identity = action_identity("tenant:http:one", "validator:http:one");
+
+        let mut unknown = finding_validation("tenant:http:one", "validator:http:one");
+        unknown.policy_id = "unknown-policy".to_owned();
+        unknown.bind_computed_digest().unwrap();
+
+        let mut tampered = finding_validation("tenant:http:one", "validator:http:one");
+        tampered.policy_definition_digest = ContentDigest::of_bytes("attacker policy");
+        tampered.bind_computed_digest().unwrap();
+
+        for receipt in [unknown, tampered] {
+            let error = record_finding_validation(
+                State(state.clone()),
+                Extension(identity.clone()),
+                Json(receipt),
+            )
+            .await
+            .expect_err("unregistered policy must fail before storage");
+            assert_eq!(error.0, StatusCode::BAD_REQUEST);
+            assert_eq!(error.1.0.code, "invalid_policy_definition");
+        }
     }
 
     #[tokio::test]

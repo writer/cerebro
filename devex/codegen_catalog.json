@@ -483,12 +483,14 @@
     {
       "id": "policy-rule-catalog",
       "title": "Policy Rule Catalog",
-      "summary": "Generates domain-scoped Go policy rule catalogs from reviewed finding DSL files and extensions.",
+      "summary": "Generates the Rust content-addressed policy authority catalog and domain-scoped legacy rule catalogs from reviewed finding DSL files and extensions.",
       "change_reason": "Policy DSL definitions, rule extensions, or catalog generation changed",
       "triggers": [
         "policies/**",
         "internal/compliance/policy_rule_extensions.yaml",
+        "tools/policycataloggen/**",
         "tools/policyrulegen/**",
+        "crates/policy-catalog/src/generated.rs",
         "internal/findings/policy_rule_catalog_*_gen.go"
       ],
       "generator": {
@@ -497,7 +499,7 @@
           "make",
           "policy-rule-generate"
         ],
-        "summary": "Regenerate domain-scoped policy rule catalogs."
+        "summary": "Regenerate Rust authority definitions and domain-scoped legacy rule catalogs."
       },
       "checks": [
         {
@@ -512,6 +514,7 @@
         }
       ],
       "outputs": [
+        "crates/policy-catalog/src/generated.rs",
         "internal/findings/policy_rule_catalog_*_gen.go"
       ],
       "ci_jobs": [

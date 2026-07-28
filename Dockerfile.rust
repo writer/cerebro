@@ -23,6 +23,7 @@ COPY --from=source /src/internal/sourceruntime/eventadmission ./internal/sourcer
 COPY --from=source /src/internal/sourceruntime/recordkernel ./internal/sourceruntime/recordkernel
 COPY --from=source /src/internal/wasmguest ./internal/wasmguest
 COPY --from=source /src/tools/graphactiongen ./tools/graphactiongen
+COPY --from=source /src/tools/policycataloggen ./tools/policycataloggen
 
 RUN --mount=type=cache,id=cerebro-rust-only-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=cerebro-rust-only-cargo-git,target=/usr/local/cargo/git,sharing=locked \

@@ -10,6 +10,7 @@ members = [
     "crates/organizational-store",
     "crates/platform-engine",
     "crates/platform-sdk",
+    "crates/policy-catalog",
     "crates/security-lifecycle",
     "crates/source-catalog",
     "crates/security-path-kernel",
@@ -22,6 +23,7 @@ members = [
     "internal/sourceruntime/recordkernel",
     "internal/wasmguest",
     "tools/graphactiongen",
+    "tools/policycataloggen",
 ]
 resolver = "2"
 
@@ -45,6 +47,7 @@ cerebro-organizational-model = { version = "0.1.0", path = "crates/organizationa
 cerebro-organizational-store = { version = "0.1.0", path = "crates/organizational-store" }
 cerebro-platform-engine = { version = "0.1.0", path = "crates/platform-engine" }
 cerebro-platform-sdk = { version = "0.1.0", path = "crates/platform-sdk" }
+cerebro-policy-catalog = { version = "0.1.0", path = "crates/policy-catalog" }
 cerebro-security-lifecycle = { version = "0.1.0", path = "crates/security-lifecycle" }
 cerebro-source-catalog = { version = "0.1.0", path = "crates/source-catalog" }
 cerebro-source-runtime-next = { version = "0.1.0", path = "crates/source-runtime-next" }
