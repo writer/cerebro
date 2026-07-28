@@ -90,12 +90,12 @@ entries:
               type: entity_family
           default_enabled: true
           event:
-            kind: okta.users
+            kind: okta.user
             required_payload_fields:
               - id
-            schema_ref: okta/users/v1
-            urn_kind: okta_users
-          id: users
+            schema_ref: okta/user/v1
+            urn_kind: okta_user
+          id: user
           id_field: id
           label: Users
           method: GET
@@ -106,11 +106,12 @@ entries:
             page_size: 100
             page_size_param: limit
             type: cursor
-          path: /v1/users
+          path: /api/v1/users
           projection:
             fields:
               display_name: name
               email: email
+              employee_id: profile.employeeNumber|employee_number|employee_id
               status: status
               user_id: id
             template: identity_user

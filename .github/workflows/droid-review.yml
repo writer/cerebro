@@ -22,6 +22,8 @@ jobs:
       run_droid_review: ${{ steps.preflight.outputs.run_droid_review }}
       review_model: ${{ steps.preflight.outputs.review_model }}
       review_reason: ${{ steps.preflight.outputs.review_reason }}
+      review_base: ${{ steps.scope.outputs.review_base }}
+      review_mode: ${{ steps.scope.outputs.review_mode }}
     steps:
       - name: Supersede previous Droid comments
         if: github.event.action == 'synchronize'
@@ -95,7 +97,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: ${{ github.event.action == 'synchronize' && 100 || 0 }}
+      - name: Resolve review scope
+        id: scope
+        shell: bash
+        env:
+          EVENT_ACTION: ${{ github.event.action }}
+          PREVIOUS_HEAD: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          review_base="${PR_BASE_SHA}"
+          review_mode="full"
+          if [ "${EVENT_ACTION}" = "synchronize" ] \
+            && [ -n "${PREVIOUS_HEAD}" ] \
+            && git merge-base --is-ancestor "${PREVIOUS_HEAD}" "${PR_HEAD_SHA}"; then
+            review_base="${PREVIOUS_HEAD}"
+            review_mode="incremental"
+          elif [ "${EVENT_ACTION}" = "synchronize" ] && [ -f .git/shallow ]; then
+            git fetch --no-tags --unshallow origin
+            if [ -n "${PREVIOUS_HEAD}" ] \
+              && git merge-base --is-ancestor "${PREVIOUS_HEAD}" "${PR_HEAD_SHA}"; then
+              review_base="${PREVIOUS_HEAD}"
+              review_mode="incremental"
+            fi
+          fi
+          echo "review_base=${review_base}" >> "${GITHUB_OUTPUT}"
+          echo "review_mode=${review_mode}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "### Review Scope"
+            echo
+            echo "- Mode: ${review_mode}"
+            echo "- Base: ${review_base}"
+            echo "- Head: ${PR_HEAD_SHA}"
+          } >> "${GITHUB_STEP_SUMMARY}"
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -105,7 +142,7 @@ jobs:
         id: preflight
         shell: bash
         env:
-          DROID_REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          DROID_REVIEW_BASE: ${{ steps.scope.outputs.review_base }}
           DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
           DROID_PREFLIGHT_JSON_OUT: tmp/droid-preflight.json
         run: |
@@ -122,13 +159,13 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
           exit "${status}"
       - name: Set up Node for DeepSec
-        if: steps.preflight.outputs.run_droid_review == 'true'
+        if: steps.preflight.outputs.run_droid_review == 'true' && steps.scope.outputs.review_mode == 'full'
         continue-on-error: true
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
       - name: Install DeepSec
-        if: steps.preflight.outputs.run_droid_review == 'true'
+        if: steps.preflight.outputs.run_droid_review == 'true' && steps.scope.outputs.review_mode == 'full'
         continue-on-error: true
         shell: bash
         run: |
@@ -137,7 +174,7 @@ jobs:
           corepack prepare pnpm@10.12.4 --activate
           pnpm -C .deepsec install --frozen-lockfile
       - name: Install Semgrep
-        if: steps.preflight.outputs.run_droid_review == 'true'
+        if: steps.preflight.outputs.run_droid_review == 'true' && steps.scope.outputs.review_mode == 'full'
         continue-on-error: true
         shell: bash
         run: |
@@ -146,10 +183,10 @@ jobs:
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
       - name: Run Droid SAST context
         id: sast
-        if: steps.preflight.outputs.run_droid_review == 'true'
+        if: steps.preflight.outputs.run_droid_review == 'true' && steps.scope.outputs.review_mode == 'full'
         shell: bash
         env:
-          DROID_REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          DROID_REVIEW_BASE: ${{ steps.scope.outputs.review_base }}
           DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
           DROID_SAST_OUT: tmp/droid-sast-context.md
           DROID_SAST_JSON_OUT: tmp/droid-sast-context.json
@@ -218,7 +255,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BASE_SHA: ${{ steps.scope.outputs.review_base }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           DROID_SAST_OUT: tmp/droid-sast-context.md
           DROID_CI_OUT: tmp/droid-ci-context.md
@@ -345,12 +382,11 @@ jobs:
         with:
           factory_api_key: ${{ env.FACTORY_API_KEY }}
           automatic_review: true
-          automatic_security_review: true
-          # Fast deterministic preflight runs first; use GLM-5.2 for the actual
-          # bug-finding review (faster than Sonnet while maintaining quality).
-          review_model: ${{ needs.droid-review-preflight.outputs.review_model || 'glm-5.2' }}
+          automatic_security_review: ${{ needs.droid-review-preflight.outputs.review_mode == 'full' }}
+          review_depth: ${{ needs.droid-review-preflight.outputs.review_mode == 'incremental' && 'shallow' || 'deep' }}
+          review_model: ${{ needs.droid-review-preflight.outputs.review_mode == 'full' && (needs.droid-review-preflight.outputs.review_model || 'glm-5.2') || '' }}
           security_model: gpt-5.4
-          reasoning_effort: medium
+          reasoning_effort: ${{ needs.droid-review-preflight.outputs.review_mode == 'full' && 'medium' || '' }}
           allowed_bots: dependabot
       - name: Retry Droid Auto Review on failure
         if: steps.droid-review-first.outcome == 'failure'
@@ -359,8 +395,9 @@ jobs:
         with:
           factory_api_key: ${{ env.FACTORY_API_KEY }}
           automatic_review: true
-          automatic_security_review: true
-          review_model: ${{ needs.droid-review-preflight.outputs.review_model || 'glm-5.2' }}
+          automatic_security_review: ${{ needs.droid-review-preflight.outputs.review_mode == 'full' }}
+          review_depth: ${{ needs.droid-review-preflight.outputs.review_mode == 'incremental' && 'shallow' || 'deep' }}
+          review_model: ${{ needs.droid-review-preflight.outputs.review_mode == 'full' && (needs.droid-review-preflight.outputs.review_model || 'glm-5.2') || '' }}
           security_model: gpt-5.4
-          reasoning_effort: medium
+          reasoning_effort: ${{ needs.droid-review-preflight.outputs.review_mode == 'full' && 'medium' || '' }}
           allowed_bots: dependabot

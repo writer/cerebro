@@ -163,7 +163,12 @@ import (
 // Portable audit-event reads add only authenticated route registration,
 // tenant resolution, safe error mapping, and state-store capability wiring.
 // Query bounds, cursors, and response allowlisting stay in auditevents.
-const bootstrapProductionGoLineBudget = 29557
+// Rust organizational graph migration adds only dependency construction,
+// family-authority routing, and read-store selection. Projection decisions,
+// graph mapping, and HTTP transport stay behind organizational-store and
+// internal/sourcehttp/organizationalgraph as documented in
+// docs/engineering/rust-organizational-platform.md.
+const bootstrapProductionGoLineBudget = 29607
 
 type bootstrapFileLineCount struct {
 	path  string

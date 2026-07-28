@@ -48,7 +48,6 @@ the assignment.
 Do not configure a static Slack-to-user map for this path. Okta and Archetype
 source errors fail closed, and the runtime never substitutes local identity or
 finding data.
-
 ## Computer sandbox gateways
 
 The host adapter accepts one or more private computer sandbox gateways through

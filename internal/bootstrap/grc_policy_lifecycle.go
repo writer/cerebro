@@ -17,7 +17,7 @@ func (a *App) handleGRCPolicyLifecycle(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	store := graphQueryStore(a.deps.GraphStore)
+	store := dependencyGraphQueryStore(a.deps)
 	if store == nil {
 		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
 		return
@@ -66,7 +66,7 @@ func (a *App) handleGRCPolicyLifecycleAction(w http.ResponseWriter, r *http.Requ
 		writeGRCError(w, grcpolicylifecycle.ErrRuntimeUnavailable)
 		return
 	}
-	projector := sourceProjector(a.deps.StateStore, a.deps.GraphStore)
+	projector := appendLogSourceProjector(a.deps)
 	if projector == nil {
 		writeGRCError(w, grcpolicylifecycle.ErrRuntimeUnavailable)
 		return
@@ -94,7 +94,7 @@ func (a *App) handleGRCPolicyLifecycleExport(w http.ResponseWriter, r *http.Requ
 		writeGRCError(w, err)
 		return
 	}
-	store := graphQueryStore(a.deps.GraphStore)
+	store := dependencyGraphQueryStore(a.deps)
 	if store == nil {
 		writeGRCError(w, graphquery.ErrRuntimeUnavailable)
 		return

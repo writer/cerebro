@@ -22,6 +22,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourcehealth"
+	"github.com/writer/cerebro/internal/sourcehttp/organizationalgraph"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/sourceruntime/eventadmission"
@@ -362,7 +363,13 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		return nil, err
 	}
 	leaseOwner := orchestratorLeaseOwner()
-	runtimeService := newOrchestratorRuntimeService(registry, lister, deps.AppendLog, deps.StateStore)
+	runtimeService := newOrchestratorRuntimeService(
+		registry,
+		lister,
+		deps.AppendLog,
+		deps.StateStore,
+		deps.OrganizationalProjector,
+	)
 	admitter, err := eventadmission.NewNativeAdmitter(
 		ctx,
 		cfg.SourceRuntime.EventAdmissionWorkerPath,
@@ -389,7 +396,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 	graphService := graphingest.New(
 		registry,
 		lister,
-		sourceProjector(nil, deps.GraphStore),
+		guardedLegacyGraphProjector(deps),
 		deps.GraphStore,
 	).WithConfigPreparer(config.ResolveSourceRuntimeConfigSecretReferences)
 	result = &orchestratorResult{
@@ -451,19 +458,32 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 	return result, runErr
 }
 
-func newOrchestratorRuntimeService(registry *sourcecdk.Registry, store ports.SourceRuntimeStore, appendLog ports.AppendLog, stateStore ports.StateStore) *sourceruntime.Service {
+func newOrchestratorRuntimeService(
+	registry *sourcecdk.Registry,
+	store ports.SourceRuntimeStore,
+	appendLog ports.AppendLog,
+	stateStore ports.StateStore,
+	projectors ...*organizationalgraph.ProjectionClient,
+) *sourceruntime.Service {
 	return sourceruntime.New(
 		registry,
 		store,
 		appendLog,
-		newOrchestratorSyncProjector(stateStore),
+		newOrchestratorSyncProjector(stateStore, projectors...),
 	).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
 }
 
-func newOrchestratorSyncProjector(stateStore ports.StateStore) ports.SourceProjector {
-	// Source sync can project current state, but Neo4j writes are handled by
-	// the coalescing graph ingest phase below.
-	return sourceProjector(stateStore, nil)
+func newOrchestratorSyncProjector(
+	stateStore ports.StateStore,
+	projectors ...*organizationalgraph.ProjectionClient,
+) ports.SourceProjector {
+	// Source sync runs after append-log commit. The persisted family authority
+	// selects either the compatibility state projector or the Rust writer.
+	legacy := sourceProjector(stateStore, nil)
+	if len(projectors) == 0 || projectors[0] == nil {
+		return legacy
+	}
+	return organizationalgraph.NewAppendLogProjector(legacy, projectors[0])
 }
 
 func orchestratorGraphPageLimit(configured uint32, syncedPages uint32) uint32 {

@@ -202,6 +202,10 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		"Build and publish candidate web image",
 		"Verify candidate image platforms",
 		"Scan candidate images",
+		"rust-organizational-e2e:",
+		"cerebro.rust-organizational-e2e/v1",
+		"Attach the Rust E2E receipt to the candidate digest",
+		"rust_e2e_receipt_sha256",
 		`test "${platforms}" = '["linux/amd64","linux/arm64"]'`,
 		"aquasec/trivy:0.66.0@sha256:",
 		"--severity CRITICAL --ignore-unfixed --exit-code 1",
@@ -235,18 +239,48 @@ func TestReleaseWorkflowsKeepCandidateAndStableBoundaries(t *testing.T) {
 		t.Fatal("candidate workflow must define the receipt job")
 	}
 	receipt := candidate[receiptIndex:]
-	if !strings.Contains(receipt, "needs: [resolve, binaries, manifest, web-manifest, scan-images, product-release]") {
-		t.Fatal("candidate receipt must wait for both image scans")
+	if !strings.Contains(receipt, "needs: [resolve, binaries, manifest, rust-organizational-e2e, web-manifest, scan-images, product-release]") {
+		t.Fatal("candidate receipt must wait for both image scans and the exact-image Rust proof")
 	}
 	if !strings.Contains(receipt, "    permissions:\n      actions: read\n      contents: read\n") {
 		t.Fatal("candidate receipt job must allow artifact discovery with actions: read")
+	}
+	imageStart := strings.Index(candidate, "\n  image:\n")
+	manifestStart := strings.Index(candidate, "\n  manifest:\n")
+	if imageStart < 0 || manifestStart <= imageStart {
+		t.Fatal("candidate workflow must define image and manifest jobs")
+	}
+	imageJob := candidate[imageStart:manifestStart]
+	for _, required := range []string{
+		"runs-on: ${{ matrix.runner }}",
+		"needs: resolve",
+		"runner: ubuntu-24.04",
+		"runner: ubuntu-24.04-arm",
+		"name: Build runtime binary",
+	} {
+		if !strings.Contains(imageJob, required) {
+			t.Fatalf("candidate image job must contain %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"needs: [resolve, binaries]",
+		"actions/download-artifact",
+		"docker/setup-qemu-action",
+	} {
+		if strings.Contains(imageJob, forbidden) {
+			t.Fatalf("candidate image job must not contain serialized or emulated build step %q", forbidden)
+		}
 	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatalf("read Makefile: %v", err)
 	}
-	if !strings.Contains(string(makefile), `docker run --rm "$(DOCKER_SMOKE_IMAGE)" version`) {
+	makefileText = string(makefile)
+	if !strings.Contains(makefileText, `docker run --rm "$(DOCKER_SMOKE_IMAGE)" version`) {
 		t.Fatal("docker-smoke must run the built image entrypoint, not only build it")
+	}
+	if !strings.Contains(makefileText, `go build -trimpath -ldflags="-s -w" -o .dist/cerebro`) {
+		t.Fatal("docker-smoke must strip the runtime binary before loading the image")
 	}
 }
 

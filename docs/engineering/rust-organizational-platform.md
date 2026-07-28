@@ -1,0 +1,172 @@
+# Rust Organizational Platform
+
+## Decision
+
+Cerebro's target runtime is a Rust-owned organizational data and agent platform. This is a replacement architecture, not a validation helper beside the Go projection path.
+
+Rust owns:
+
+- connector definition compilation and provider collection;
+- collection scope, completeness, cursors, and observations;
+- provider-object identity and canonical organizational identity;
+- relationship assertion admission and retraction;
+- current graph resolution and graph-store writes;
+- bounded graph context for agents, Slack, and web;
+- the public service process and generated client contracts.
+
+The existing Go runtime is a migration oracle. It may provide fixtures, expected events, source parity results, and differential test cases while sources move. It is not an alternate graph writer in the target deployment.
+
+## Crate ownership
+
+```text
+provider API
+    |
+cerebro-source-catalog --> cerebro-source-runtime-next
+                                  |
+                                  v
+                      cerebro-organizational-model
+                                  |
+                                  v
+                      cerebro-organizational-store
+                         |                   |
+                  Postgres ledger      Neo4j projection
+                                             |
+                                             v
+                                  cerebro-agent-context
+                                             |
+                                    cerebro-platform
+```
+
+`cerebro-organizational-model` is pure domain code. Its validated types expose no public fields and do not implement `Deserialize`. Wire records must be converted through checked constructors.
+
+`cerebro-organizational-graph` is the only crate that advances current organizational graph state. A commit takes a validated `GraphDelta`; there is no public entity/link mutation method.
+
+`cerebro-source-catalog` compiles all 794 checked-in source definitions and 3,891 resource families into a closed runtime grammar. Every family is assigned one Rust-owned projection class: identity, access, resource, finding, activity, or bespoke. Connector YAML cannot declare another class. It joins those definitions to provider proof manifests. A definition without complete provider proof remains shadow-only even if it can be executed. Bespoke families also remain shadow-only until a native mapper is added.
+
+`cerebro-source-runtime-next` owns source collection, pagination, mapping, and graph commit sequencing. Provider redirects are disabled, pagination cannot change origin, pages are bounded, and resolved credentials never enter the graph model. A source cannot obtain a graph store or construct an unvalidated graph write.
+
+`cerebro-organizational-store` commits raw observations, admitted entities, assertions, retractions, the tenant graph revision, parity receipts, and a projection outbox row in one PostgreSQL transaction. PostgreSQL is the transactional authority for organizational current state. Neo4j is an idempotent, rebuildable current-state projection written in batches.
+
+During migration, the Go source runtime remains the append-log owner. It commits the source event first and then calls the Rust projection endpoint. The endpoint checks the persisted family authority before mapping anything. A legacy family returns to the Go projector; a Rust family commits through Rust and cannot fall back to Go if that commit fails. Replay, refetch, device, CLI, and orchestrator paths use the same authority check, so an alternate Go entry point cannot restore a retired writer. The `append_log_committed` field is an internal handoff assertion, not a public trust boundary; deployment must restrict the projection endpoint to the source-runtime workload until Rust consumes the event log directly.
+
+`cerebro-agent-context` exposes bounded search, lookup, expansion, path, and explanation operations. It does not expose Cypher or store mutation.
+
+`cerebro-platform` serves the bounded agent graph API against Neo4j in production and the in-memory graph in local demos. Web, Slack, MCP, reports, and the graph agent use this API as the authority for bounded neighborhood reads. One-hop requests, including batches of up to 100 roots, execute as one tenant-scoped Neo4j query. Raw Cypher remains on the compatibility reader until each query has a typed Rust operation; it is not exposed by the Rust API.
+
+## Enforced identity model
+
+Provider identities and canonical identities are different Rust types.
+
+```text
+ProviderIdentity --REPRESENTS--> CanonicalIdentity
+```
+
+A provider identity contains the source runtime, provider kind, and provider ID. A canonical person contains an opaque Cerebro person ID. Neither can be constructed as the other.
+
+Identity binding is a dedicated assertion. The general relationship constructor cannot create `REPRESENTS`. An Okta employee ID anchors the canonical person. The same workforce record may attach a normalized email claim to that person. GitHub can match the claim only when its email record says `verified=true`; Slack can match an existing workforce claim but cannot create one. Human decisions remain explicit assertions. An agent proposal cannot create a confirmed binding.
+
+The canonical person ID is derived once from the tenant and authoritative employee ID. Verified email is a lookup key attached to that person, not another canonical-ID generator. This permits email renames without changing the person and prevents two claims for one employee from creating two canonical records.
+
+The graph engine rebuilds the identity indexes from active assertions on every atomic admission. It enforces one current canonical person per provider identity, one canonical person per authoritative claim, an employee anchor before an email claim, and an existing authoritative claim before a GitHub or Slack match. PostgreSQL repeats those checks inside the commit transaction. A conflicting or unanchored delta fails without advancing the tenant graph revision.
+
+Every entity also has one tenant-scoped `agent_key`. A valid source URN is
+kept when it belongs to the entity's tenant. Otherwise Rust derives a stable
+organizational-entity URN from the sealed tenant and entity ID. Neo4j indexes
+that key, and every bounded API response returns it explicitly. Agents can use
+any returned node as the root of the next request without learning internal
+Neo4j IDs or inventing another identity layer.
+
+## Enforced relationship model
+
+Relations are a closed Rust enum. Each variant owns its accepted endpoint kinds. Invalid combinations cannot produce a `RelationshipAssertion`.
+
+Every assertion requires one or more observations from one tenant, source runtime, and collection. The delta must match that tenant and runtime. Cross-tenant values fail before storage.
+
+Incomplete and incremental collections cannot call `retract_missing`. That method exists only on `GraphDeltaBuilder<Authoritative>`, which can be created only from `CompleteCollection`.
+
+## Production bypass prevention
+
+Language-level constraints prevent accidental bypass inside Rust. Production authority prevents deliberate bypass across processes:
+
+1. Only the Rust platform workload receives graph-write credentials.
+2. Source collectors run inside the Rust source runtime and receive no graph handle.
+3. Go deployments become read-only for each promoted family. A persisted `(tenant, source, family)` authority record selects one writer, including through replay and refetch entry points.
+4. The graph store accepts writes only from the Rust workload identity at the network and database authorization layers.
+5. CI rejects dependencies from the replacement crates onto Go projection contracts.
+6. PostgreSQL forces tenant row-level security on the ledger tables and uses a tenant-scoped unique key for confirmed identity bindings.
+7. Neo4j writes are not public API operations. Agent, web, and Slack routes are read-only and hard-bound to six hops and 500 results.
+
+Repository conventions and review are not the security boundary. Store credentials and workload identity are.
+
+## Source coverage migration
+
+Source migration is definition- and family-based, not package-by-package translation.
+
+For every existing source family, the parity corpus records:
+
+- provider request and pagination behavior;
+- collection scope and completeness;
+- emitted provider objects and stable IDs;
+- normalized entities and relationship assertions;
+- retractions after complete collections;
+- graph paths produced from the fixture;
+- provider failure and permission states.
+
+`make projection-parity-test` sends the same provider records through the current Go projector and the Rust mapper. The temporary Go adapter emits only catalog-governed semantic facts. Rust validates and compares provider identity, canonical identity, entity, relationship, identity-binding, provenance-observation, and retraction facts. Serialized Go and Rust storage shapes are not compared.
+
+Each receipt binds the tenant, runtime, source, family, collection, exact input digest, both projector revisions, both semantic digests, completeness, mismatch count and bounded mismatch sample, projection lag, runtime versions, and comparison time. PostgreSQL stores the full receipt under forced tenant row-level security.
+
+`CutoverGate` requires complete provider proof, a native projection class, at least three consecutive matching receipts, matching latest corpora, and projection lag within policy. A source family moves only after the ledger evaluates its own stored receipts. Callers cannot submit an approval decision. Promotion records the evidence digest and is irreversible; a later attempt with changed evidence is rejected.
+
+The runtime reads the same authority record before every projection. Legacy authority calls only Go. Rust authority calls only Rust, requires a commit receipt, and fails closed. The compatibility mapper remains available for parity comparison, but it is no longer a write fallback for a promoted family.
+
+The current checked-in catalog compiles to 794 sources and 3,891 families:
+
+| Projection class | Families | Rust meaning |
+| --- | ---: | --- |
+| Identity | 823 | people, provider identities, groups, memberships, credentials, and applications |
+| Access | 371 | policies and application grants |
+| Resource | 1,549 | assets, repositories, deployments, devices, cloud resources, and secrets |
+| Finding | 407 | findings, vulnerabilities, and alerts |
+| Activity | 738 | audit and operational events |
+| Bespoke | 3 | retained for source coverage but barred from authority |
+
+Based on exact provider method-and-path proof and auth support present in this Rust runtime, 33 sources and 238 families are authoritative; the other 761 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
+
+## Family cutover
+
+The first cutover unit is one tenant, source, and family. It does not move a whole connector or a whole tenant.
+
+```text
+source event
+    |
+    v
+append log commit
+    |
+    v
+PostgreSQL authority lookup
+    | legacy                     | rust
+    v                            v
+Go projector                Rust mapper
+                                 |
+                                 v
+                       PostgreSQL transaction
+                                 |
+                                 v
+                         Neo4j outbox apply
+```
+
+`cerebro-platform promote-family` evaluates stored parity receipts and records Rust authority. `cerebro-platform show-authority` reads the effective record. Both use `CEREBRO_POSTGRES_DSN` plus `CEREBRO_TENANT_ID`, `CEREBRO_SOURCE_ID`, and `CEREBRO_SOURCE_FAMILY`.
+
+## Performance shape
+
+- The reproducible Go/Rust comparison and current measurements are recorded in
+  [Rust Organizational Platform Benchmarks](rust-organizational-platform-benchmarks.md).
+- Deltas are tenant- and collection-scoped, deterministic, and batchable.
+- The graph engine validates a complete candidate transaction before commit.
+- Agent traversal is limited to six hops and 500 returned entities per request.
+- Provider documents remain outside the current graph; assertions carry compact evidence references.
+- Production graph adapters batch entity and relationship writes and publish one graph revision per accepted delta.
+- PostgreSQL serializes revisions per tenant, not globally.
+- The Neo4j outbox is tenant-scoped and replayable after projection failure.
+- Provider pagination is bounded at 10,000 pages and page size is bounded at 1,000 records.

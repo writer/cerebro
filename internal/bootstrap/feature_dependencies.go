@@ -43,7 +43,7 @@ type reportFeatureDeps struct {
 func newReportFeatureDeps(deps Dependencies) reportFeatureDeps {
 	return reportFeatureDeps{
 		Findings:     findingStore(deps.StateStore),
-		GraphQueries: graphQueryStore(deps.GraphStore),
+		GraphQueries: dependencyGraphQueryStore(deps),
 		Reports:      reportStore(deps.StateStore),
 	}
 }
@@ -66,7 +66,7 @@ func newRuntimeFeatureDeps(deps Dependencies, sources *sourcecdk.Registry) runti
 		Sources:            sources,
 		Runtimes:           sourceRuntimeStore(deps.StateStore),
 		AppendLog:          deps.AppendLog,
-		Projector:          sourceProjector(deps.StateStore, deps.GraphStore),
+		Projector:          appendLogSourceProjector(deps),
 		RuntimeConfigStore: deps.StateStore,
 		Definitions:        connectorDefinitionStore(deps.StateStore),
 	}
@@ -127,7 +127,7 @@ func newFindingFeatureDeps(deps Dependencies) findingFeatureDeps {
 		Claims:          claimStore(deps.StateStore),
 		Candidates:      findingCandidateStore(deps.StateStore),
 		ProjectionGraph: sourceProjectionGraphStore(deps.GraphStore),
-		GraphQueries:    graphQueryStore(deps.GraphStore),
+		GraphQueries:    dependencyGraphQueryStore(deps),
 		AppendLog:       deps.AppendLog,
 		Rules:           deps.FindingRules,
 	}
@@ -156,7 +156,7 @@ type knowledgeFeatureDeps struct {
 
 func newKnowledgeFeatureDeps(deps Dependencies) knowledgeFeatureDeps {
 	return knowledgeFeatureDeps{
-		GraphQueries:    graphQueryStore(deps.GraphStore),
+		GraphQueries:    dependencyGraphQueryStore(deps),
 		ProjectionGraph: sourceProjectionGraphStore(deps.GraphStore),
 		AppendLog:       deps.AppendLog,
 	}
@@ -182,7 +182,7 @@ type graphQueryFeatureDeps struct {
 }
 
 func newGraphQueryFeatureDeps(deps Dependencies) graphQueryFeatureDeps {
-	return graphQueryFeatureDeps{GraphQueries: graphQueryStore(deps.GraphStore)}
+	return graphQueryFeatureDeps{GraphQueries: dependencyGraphQueryStore(deps)}
 }
 
 func newGraphQueryFeatureService(deps graphQueryFeatureDeps) *graphquery.Service {
@@ -201,7 +201,7 @@ func newGraphIngestFeatureDeps(deps Dependencies, sources *sourcecdk.Registry) g
 	return graphIngestFeatureDeps{
 		Sources:            sources,
 		Runtimes:           sourceRuntimeStore(deps.StateStore),
-		Projector:          sourceProjector(nil, deps.GraphStore),
+		Projector:          guardedLegacyGraphProjector(deps),
 		GraphStore:         deps.GraphStore,
 		RuntimeConfigStore: deps.StateStore,
 	}
@@ -266,7 +266,7 @@ type graphReasoningFeatureDeps struct {
 
 func newGraphReasoningFeatureDeps(deps Dependencies) graphReasoningFeatureDeps {
 	return graphReasoningFeatureDeps{
-		GraphQueries:    graphQueryStore(deps.GraphStore),
+		GraphQueries:    dependencyGraphQueryStore(deps),
 		GraphAgentLLM:   deps.GraphAgentLLM,
 		TrajectoryStore: askTrajectoryStore(deps.StateStore),
 	}

@@ -1224,7 +1224,7 @@ func (app *App) mcpAssetSearchResults(r *http.Request, args map[string]any) ([]m
 	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
 		return nil, err
 	}
-	store := graphQueryStore(app.deps.GraphStore)
+	store := dependencyGraphQueryStore(app.deps)
 	if store == nil {
 		return nil, graphquery.ErrRuntimeUnavailable
 	}
@@ -1481,7 +1481,7 @@ func (app *App) mcpBuildRiskActionPlan(r *http.Request, args map[string]any) (mc
 		}
 		riskConfig = &config
 	}
-	if graphStore := graphQueryStore(app.deps.GraphStore); graphStore != nil {
+	if graphStore := dependencyGraphQueryStore(app.deps); graphStore != nil {
 		graphEvidenceStatus = mcpGraphEvidenceIncluded
 		targetURNs := riskplan.TargetURNs(findings, riskplan.Options{
 			TenantID:          tenantID,
