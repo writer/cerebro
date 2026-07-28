@@ -47,13 +47,14 @@ describe("Action UI state", () => {
     expect(summarizeActionPage([
       operation("waiting_for_approval"),
       operation("executing"),
+      operation("dispatched"),
       operation("outcome_unknown"),
       operation("verified"),
       operation("failed"),
       operation("rolled_back"),
     ])).toEqual({
       waitingForApproval: 1,
-      inExecution: 2,
+      inExecution: 3,
       verified: 1,
       failedOrRolledBack: 2,
     });

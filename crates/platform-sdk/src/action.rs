@@ -18,6 +18,7 @@ pub enum ActionState {
     Approved,
     Claimed,
     Executing,
+    Dispatched,
     OutcomeUnknown,
     Completed,
     Reconciled,
@@ -170,6 +171,9 @@ pub struct ActionOperation {
     pub claimed_at_unix_ms: Option<u64>,
     pub claim_expires_at_unix_ms: Option<u64>,
     pub executor_actor_id: Option<ActorId>,
+    pub provider_receipt_digest: Option<ContentDigest>,
+    pub provider_status: Option<String>,
+    pub provider_observed_at_unix_ms: Option<u64>,
     pub executed_at_unix_ms: Option<u64>,
     pub external_receipt_ref: Option<OpaqueId>,
     pub observed_effect_digest: Option<ContentDigest>,
@@ -230,16 +234,39 @@ impl ActionOperation {
             }
             _ => return Err(SdkError::Invalid("action operation claimant")),
         };
-        let has_execution = match (
-            &self.executor_actor_id,
-            self.executed_at_unix_ms,
-            &self.observed_effect_digest,
+        let (has_provider_receipt, has_legacy_external_receipt) = match (
+            &self.external_receipt_ref,
+            &self.provider_receipt_digest,
+            &self.provider_status,
+            self.provider_observed_at_unix_ms,
         ) {
-            (None, None, None) => false,
-            (Some(_), Some(executed_at), Some(_)) => {
+            (None, None, None, None) => (false, false),
+            // Actions completed before provider observations became explicit
+            // stored only the provider receipt reference. Keep those durable
+            // records readable without treating them as new provider evidence.
+            (Some(_), None, None, None) => (false, true),
+            (Some(_), Some(_), Some(status), Some(observed_at)) => {
+                if self.executor_actor_id.is_none()
+                    || self
+                        .claimed_at_unix_ms
+                        .is_none_or(|claimed_at| observed_at < claimed_at)
+                    || !valid_provider_status(status)
+                {
+                    return Err(SdkError::Invalid("action provider receipt"));
+                }
+                (true, false)
+            }
+            _ => return Err(SdkError::Invalid("action provider receipt")),
+        };
+        let has_execution = match (self.executed_at_unix_ms, &self.observed_effect_digest) {
+            (None, None) => false,
+            (Some(executed_at), Some(_)) => {
                 if self
                     .claimed_at_unix_ms
                     .is_none_or(|claimed_at| executed_at < claimed_at)
+                    || self
+                        .provider_observed_at_unix_ms
+                        .is_some_and(|provider_observed_at| executed_at < provider_observed_at)
                 {
                     return Err(SdkError::Invalid("action execution receipt"));
                 }
@@ -247,7 +274,7 @@ impl ActionOperation {
             }
             _ => return Err(SdkError::Invalid("action execution receipt")),
         };
-        if self.external_receipt_ref.is_some() && !has_execution {
+        if has_execution && self.executor_actor_id.is_none() {
             return Err(SdkError::Invalid("action execution receipt"));
         }
         let has_verification = if let Some(receipt) = self.verification_receipt.as_ref() {
@@ -258,14 +285,15 @@ impl ActionOperation {
         } else {
             false
         };
-        let exact = |approval, claim, execution, external, verification, verification_state| {
-            has_approval == approval
-                && has_claim == claim
-                && has_execution == execution
-                && self.external_receipt_ref.is_some() == external
-                && has_verification == verification
-                && self.verification_state == verification_state
-        };
+        let exact =
+            |approval, claim, provider_receipt, execution, verification, verification_state| {
+                has_approval == approval
+                    && has_claim == claim
+                    && has_provider_receipt == provider_receipt
+                    && has_execution == execution
+                    && has_verification == verification
+                    && self.verification_state == verification_state
+            };
         let valid_state = match self.state {
             ActionState::Proposed | ActionState::Simulated | ActionState::WaitingForApproval => {
                 exact(
@@ -283,15 +311,20 @@ impl ActionOperation {
             ActionState::Claimed | ActionState::Executing | ActionState::OutcomeUnknown => {
                 exact(true, true, false, false, false, VerificationState::Pending)
             }
+            ActionState::Dispatched => {
+                exact(true, true, true, false, false, VerificationState::Pending)
+            }
             ActionState::Completed => {
                 exact(true, true, true, true, false, VerificationState::Pending)
+                    || (has_legacy_external_receipt
+                        && exact(true, true, false, true, false, VerificationState::Pending))
             }
             ActionState::Reconciled => {
-                exact(true, true, true, false, false, VerificationState::Pending)
+                exact(true, true, false, true, false, VerificationState::Pending)
             }
             ActionState::Verified => {
                 exact(true, true, true, true, true, VerificationState::Verified)
-                    || exact(true, true, true, false, true, VerificationState::Verified)
+                    || exact(true, true, false, true, true, VerificationState::Verified)
             }
             ActionState::Failed => {
                 !has_verification
@@ -303,11 +336,28 @@ impl ActionOperation {
                     && (!has_verification || has_execution)
             }
         };
-        if !valid_state {
+        let legacy_external_receipt_allowed = !has_legacy_external_receipt
+            || matches!(
+                self.state,
+                ActionState::Completed
+                    | ActionState::Verified
+                    | ActionState::Failed
+                    | ActionState::RolledBack
+            );
+        if !valid_state || !legacy_external_receipt_allowed {
             return Err(SdkError::Invalid("action operation state"));
         }
         Ok(())
     }
+}
+
+fn valid_provider_status(status: &str) -> bool {
+    !status.is_empty()
+        && status.len() <= 64
+        && status.trim() == status
+        && status
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte))
 }
 
 pub(crate) fn approval_authorizes(operation: &ActionOperation, receipt: &DecisionReceipt) -> bool {
@@ -410,6 +460,9 @@ struct StoredActionOperation {
     claimed_at_unix_ms: Option<u64>,
     claim_expires_at_unix_ms: Option<u64>,
     executor_actor_id: Option<String>,
+    provider_receipt_digest: Option<String>,
+    provider_status: Option<String>,
+    provider_observed_at_unix_ms: Option<u64>,
     executed_at_unix_ms: Option<u64>,
     external_receipt_ref: Option<String>,
     observed_effect_digest: Option<String>,
@@ -430,6 +483,12 @@ impl TryFrom<StoredActionOperation> for ActionOperation {
             claimed_at_unix_ms: stored.claimed_at_unix_ms,
             claim_expires_at_unix_ms: stored.claim_expires_at_unix_ms,
             executor_actor_id: stored.executor_actor_id.map(parse_actor_id).transpose()?,
+            provider_receipt_digest: stored
+                .provider_receipt_digest
+                .map(ContentDigest::parse)
+                .transpose()?,
+            provider_status: stored.provider_status,
+            provider_observed_at_unix_ms: stored.provider_observed_at_unix_ms,
             executed_at_unix_ms: stored.executed_at_unix_ms,
             external_receipt_ref: stored
                 .external_receipt_ref
@@ -629,6 +688,89 @@ mod tests {
         dormant_claim["claimed_at_unix_ms"] = serde_json::json!(2);
         dormant_claim["claim_expires_at_unix_ms"] = serde_json::json!(3);
         assert!(serde_json::from_value::<ActionOperation>(dormant_claim).is_err());
+
+        let dispatched = dispatched_operation();
+        let dispatched_value =
+            serde_json::to_value(&dispatched).expect("serialize dispatched operation");
+        assert_eq!(
+            serde_json::from_value::<ActionOperation>(dispatched_value.clone())
+                .expect("decode dispatched operation"),
+            dispatched
+        );
+        for (field, tampered) in [
+            (
+                "missing provider digest",
+                clear(&dispatched_value, "provider_receipt_digest"),
+            ),
+            (
+                "missing provider status",
+                clear(&dispatched_value, "provider_status"),
+            ),
+            (
+                "missing provider observation time",
+                clear(&dispatched_value, "provider_observed_at_unix_ms"),
+            ),
+            (
+                "invalid provider status",
+                replace(
+                    &dispatched_value,
+                    "provider_status",
+                    serde_json::json!("queued with whitespace"),
+                ),
+            ),
+            (
+                "provider observation before claim",
+                replace(
+                    &dispatched_value,
+                    "provider_observed_at_unix_ms",
+                    serde_json::json!(2),
+                ),
+            ),
+        ] {
+            assert!(
+                serde_json::from_value::<ActionOperation>(tampered).is_err(),
+                "{field} bypassed provider receipt admission"
+            );
+        }
+
+        let mut completed_too_early = dispatched_value;
+        completed_too_early["state"] = serde_json::json!("completed");
+        completed_too_early["executed_at_unix_ms"] = serde_json::json!(3);
+        completed_too_early["observed_effect_digest"] =
+            serde_json::json!(ContentDigest::of_bytes("effect").to_string());
+        assert!(
+            serde_json::from_value::<ActionOperation>(completed_too_early).is_err(),
+            "effect completion cannot predate the latest provider observation"
+        );
+    }
+
+    #[test]
+    fn legacy_completed_actions_without_provider_observation_fields_remain_readable() {
+        let mut completed = serde_json::to_value(dispatched_operation()).expect("serialize Action");
+        completed["state"] = serde_json::json!("completed");
+        completed["version"] = serde_json::json!(8);
+        completed["executed_at_unix_ms"] = serde_json::json!(5);
+        completed["observed_effect_digest"] =
+            serde_json::json!(ContentDigest::of_bytes("legacy effect").to_string());
+        let object = completed.as_object_mut().expect("Action object");
+        object.remove("provider_receipt_digest");
+        object.remove("provider_status");
+        object.remove("provider_observed_at_unix_ms");
+
+        let decoded =
+            serde_json::from_value::<ActionOperation>(completed).expect("decode legacy Action");
+        assert_eq!(decoded.state, ActionState::Completed);
+        assert!(decoded.external_receipt_ref.is_some());
+        assert!(decoded.provider_receipt_digest.is_none());
+        assert!(decoded.provider_status.is_none());
+        assert!(decoded.provider_observed_at_unix_ms.is_none());
+
+        let mut forged = serde_json::to_value(operation()).expect("serialize proposed Action");
+        forged["external_receipt_ref"] = serde_json::json!("receipt:forged");
+        assert!(
+            serde_json::from_value::<ActionOperation>(forged).is_err(),
+            "legacy receipt compatibility must not admit receipts before execution"
+        );
     }
 
     fn operation() -> ActionOperation {
@@ -666,12 +808,53 @@ mod tests {
             claimed_at_unix_ms: None,
             claim_expires_at_unix_ms: None,
             executor_actor_id: None,
+            provider_receipt_digest: None,
+            provider_status: None,
+            provider_observed_at_unix_ms: None,
             executed_at_unix_ms: None,
             external_receipt_ref: None,
             observed_effect_digest: None,
             verification_state: VerificationState::Pending,
             verification_receipt: None,
         }
+    }
+
+    fn dispatched_operation() -> ActionOperation {
+        let mut operation = operation();
+        operation.state = ActionState::Dispatched;
+        operation.version = 7;
+        operation.approval_receipt = Some(DecisionReceipt {
+            decision_id: DecisionId::parse("decision:stored").expect("decision"),
+            proposal_digest: operation.proposal.proposal_digest.to_string(),
+            approved: true,
+            decided_by: ActorId::parse("approver:stored").expect("approver"),
+            decided_at_unix_ms: 2,
+        });
+        operation.claimed_by = Some(OpaqueId::parse("executor:stored").expect("worker"));
+        operation.claimed_at_unix_ms = Some(3);
+        operation.claim_expires_at_unix_ms = Some(50);
+        operation.executor_actor_id = Some(ActorId::parse("executor:stored").expect("executor"));
+        operation.external_receipt_ref =
+            Some(OpaqueId::parse("receipt:stored").expect("provider receipt"));
+        operation.provider_receipt_digest = Some(ContentDigest::of_bytes("provider receipt"));
+        operation.provider_status = Some("queued".to_owned());
+        operation.provider_observed_at_unix_ms = Some(4);
+        operation.validate().expect("dispatched operation");
+        operation
+    }
+
+    fn clear(value: &serde_json::Value, field: &str) -> serde_json::Value {
+        replace(value, field, serde_json::Value::Null)
+    }
+
+    fn replace(
+        value: &serde_json::Value,
+        field: &str,
+        replacement: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut value = value.clone();
+        value[field] = replacement;
+        value
     }
 
     fn set(value: &serde_json::Value, path: &[&str], replacement: &str) -> serde_json::Value {

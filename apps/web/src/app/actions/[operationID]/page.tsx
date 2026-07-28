@@ -17,9 +17,20 @@ function DetailRow({ label, value, mono = false }: { label: string; value: strin
   );
 }
 
+function decodeOperationID(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return "";
+  }
+}
+
 export default function ActionDetailPage() {
   const params = useParams<{ operationID: string }>();
-  const operationID = typeof params.operationID === "string" ? params.operationID : "";
+  const operationID =
+    typeof params.operationID === "string"
+      ? decodeOperationID(params.operationID)
+      : "";
   const encodedOperationID = encodeURIComponent(operationID);
   const actionQuery = useGRCQuery<ActionOperation>(operationID ? `/v1/actions/${encodedOperationID}` : null);
   const historyQuery = useGRCQuery<ActionEvent[]>(operationID ? `/v1/actions/${encodedOperationID}/history` : null);
@@ -44,6 +55,16 @@ export default function ActionDetailPage() {
   const proposal = action.proposal;
   const approval = action.approval_receipt;
   const verification = action.verification_receipt?.receipt;
+  const executionValue = action.observed_effect_digest
+    ? "Effect recorded"
+    : action.state === "dispatched"
+      ? action.provider_status
+        ? `Provider ${actionStateLabel(action.provider_status)}`
+        : "Provider receipt recorded"
+      : action.claimed_by
+        ? "Claimed"
+        : "Not started";
+  const executionDetail = action.external_receipt_ref || action.executor_actor_id || action.claimed_by || "No executor";
 
   return (
     <div>
@@ -58,7 +79,7 @@ export default function ActionDetailPage() {
         <MetricCard label="State" value={actionStateLabel(action.state)} detail={`Version ${action.version}`} intent={actionStateIntent(action.state)} />
         <MetricCard label="Verification" value={actionStateLabel(action.verification_state)} detail={verification ? actionTimeLabel(verification.verified_at_unix_ms) : "No verification receipt"} intent={action.verification_state === "verified" ? "success" : action.verification_state === "rejected" || action.verification_state === "stale" ? "warning" : "neutral"} />
         <MetricCard label="Approval" value={approval?.approved ? "Approved" : approval ? "Rejected" : "Not recorded"} detail={approval ? `By ${approval.decided_by}` : "Signed decision required"} intent={approval?.approved ? "success" : approval ? "danger" : "neutral"} />
-        <MetricCard label="Execution" value={action.executed_at_unix_ms ? "Receipt recorded" : action.claimed_by ? "Claimed" : "Not started"} detail={action.executor_actor_id || action.claimed_by || "No executor"} intent={action.state === "outcome_unknown" ? actionStateIntent(action.state) : action.executed_at_unix_ms ? "success" : "neutral"} />
+        <MetricCard label="Execution" value={executionValue} detail={executionDetail} intent={action.state === "outcome_unknown" ? actionStateIntent(action.state) : action.observed_effect_digest ? "success" : "neutral"} />
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
@@ -86,14 +107,17 @@ export default function ActionDetailPage() {
           </dl>
         </Panel>
 
-        <Panel title="Execution receipt">
+        <Panel title="Provider and effect receipts">
           <dl>
             <DetailRow label="Claimed by" value={action.claimed_by || "Not claimed"} mono={Boolean(action.claimed_by)} />
             <DetailRow label="Claimed" value={actionTimeLabel(action.claimed_at_unix_ms)} />
             <DetailRow label="Claim expires" value={actionTimeLabel(action.claim_expires_at_unix_ms)} />
             <DetailRow label="Executor" value={action.executor_actor_id || "No executor receipt"} mono={Boolean(action.executor_actor_id)} />
-            <DetailRow label="Executed" value={actionTimeLabel(action.executed_at_unix_ms)} />
             <DetailRow label="External receipt" value={action.external_receipt_ref || "Not recorded"} mono={Boolean(action.external_receipt_ref)} />
+            <DetailRow label="Provider status" value={action.provider_status ? actionStateLabel(action.provider_status) : "Not recorded"} />
+            <DetailRow label="Provider observed" value={actionTimeLabel(action.provider_observed_at_unix_ms)} />
+            <DetailRow label="Provider receipt digest" value={action.provider_receipt_digest || "Not recorded"} mono={Boolean(action.provider_receipt_digest)} />
+            <DetailRow label="Effect recorded" value={actionTimeLabel(action.executed_at_unix_ms)} />
             <DetailRow label="Observed effect" value={action.observed_effect_digest || "Not recorded"} mono={Boolean(action.observed_effect_digest)} />
           </dl>
         </Panel>

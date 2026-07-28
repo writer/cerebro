@@ -13,6 +13,7 @@ mod assertion;
 mod budget;
 mod diagnostics;
 mod error;
+mod finding;
 mod identity;
 mod incident;
 mod plugin;
@@ -45,6 +46,7 @@ pub use cerebro_organizational_model::{
 };
 pub use diagnostics::{CapabilityHealth, CapabilityState, OperationalDiagnostics, ProjectionLag};
 pub use error::SdkError;
+pub use finding::{FindingValidationDecision, FindingValidationReceipt};
 pub use identity::{
     ActionOperationId, AssertionDefinitionId, ContentDigest, IncidentSnapshotId, OpaqueId,
     PluginId, SimulationId, SubscriptionId, ViewId,

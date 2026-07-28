@@ -31,9 +31,23 @@ pub enum ActionCommand {
     StartExecution {
         started_at_unix_ms: u64,
     },
+    RecordProviderReceipt {
+        external_receipt_ref: OpaqueId,
+        provider_receipt_digest: ContentDigest,
+        provider_status: String,
+        executor_actor_id: ActorId,
+        observed_at_unix_ms: u64,
+    },
+    ObserveProviderReceipt {
+        provider_receipt_digest: ContentDigest,
+        provider_status: String,
+        reconciler_actor_id: ActorId,
+        observed_at_unix_ms: u64,
+    },
     MarkOutcomeUnknown,
     Complete {
         external_receipt_ref: OpaqueId,
+        provider_receipt_digest: ContentDigest,
         observed_effect_digest: ContentDigest,
         executor_actor_id: ActorId,
         executed_at_unix_ms: u64,
@@ -156,8 +170,47 @@ pub fn transition_action(
         }
         (
             ActionState::Executing,
+            ActionCommand::RecordProviderReceipt {
+                external_receipt_ref,
+                provider_receipt_digest,
+                provider_status,
+                executor_actor_id,
+                observed_at_unix_ms,
+            },
+        ) => {
+            next.state = ActionState::Dispatched;
+            next.executor_actor_id = Some(executor_actor_id);
+            next.external_receipt_ref = Some(external_receipt_ref);
+            next.provider_receipt_digest = Some(provider_receipt_digest);
+            next.provider_status = Some(provider_status);
+            next.provider_observed_at_unix_ms = Some(observed_at_unix_ms);
+        }
+        (
+            ActionState::Dispatched,
+            ActionCommand::ObserveProviderReceipt {
+                provider_receipt_digest,
+                provider_status,
+                observed_at_unix_ms,
+                ..
+            },
+        ) => {
+            if operation
+                .provider_observed_at_unix_ms
+                .is_none_or(|previous| observed_at_unix_ms <= previous)
+            {
+                return Err(SdkError::Conflict(
+                    "action provider observation did not advance".to_owned(),
+                ));
+            }
+            next.provider_receipt_digest = Some(provider_receipt_digest);
+            next.provider_status = Some(provider_status);
+            next.provider_observed_at_unix_ms = Some(observed_at_unix_ms);
+        }
+        (
+            ActionState::Executing,
             ActionCommand::Complete {
                 external_receipt_ref,
+                provider_receipt_digest,
                 observed_effect_digest,
                 executor_actor_id,
                 executed_at_unix_ms,
@@ -168,8 +221,36 @@ pub fn transition_action(
             }
             next.state = ActionState::Completed;
             next.executor_actor_id = Some(executor_actor_id);
+            next.provider_receipt_digest = Some(provider_receipt_digest);
+            next.provider_status = Some("succeeded".to_owned());
+            next.provider_observed_at_unix_ms = Some(executed_at_unix_ms);
             next.executed_at_unix_ms = Some(executed_at_unix_ms);
             next.external_receipt_ref = Some(external_receipt_ref);
+            next.observed_effect_digest = Some(observed_effect_digest);
+        }
+        (
+            ActionState::Dispatched,
+            ActionCommand::Complete {
+                external_receipt_ref,
+                provider_receipt_digest,
+                observed_effect_digest,
+                executor_actor_id,
+                executed_at_unix_ms,
+            },
+        ) => {
+            if operation.external_receipt_ref.as_ref() != Some(&external_receipt_ref)
+                || operation.executor_actor_id.as_ref() != Some(&executor_actor_id)
+                || operation
+                    .provider_observed_at_unix_ms
+                    .is_none_or(|observed_at| executed_at_unix_ms < observed_at)
+            {
+                return Err(SdkError::Invalid("action execution receipt"));
+            }
+            next.state = ActionState::Completed;
+            next.provider_receipt_digest = Some(provider_receipt_digest);
+            next.provider_status = Some("succeeded".to_owned());
+            next.provider_observed_at_unix_ms = Some(executed_at_unix_ms);
+            next.executed_at_unix_ms = Some(executed_at_unix_ms);
             next.observed_effect_digest = Some(observed_effect_digest);
         }
         (
@@ -204,6 +285,7 @@ pub fn transition_action(
             | ActionState::Approved
             | ActionState::Claimed
             | ActionState::Executing
+            | ActionState::Dispatched
             | ActionState::OutcomeUnknown
             | ActionState::Completed
             | ActionState::Reconciled,

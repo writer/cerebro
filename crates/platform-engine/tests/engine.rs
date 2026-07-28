@@ -190,6 +190,9 @@ fn action_transitions_are_optimistic_and_fail_closed() {
         claimed_at_unix_ms: None,
         claim_expires_at_unix_ms: None,
         executor_actor_id: None,
+        provider_receipt_digest: None,
+        provider_status: None,
+        provider_observed_at_unix_ms: None,
         executed_at_unix_ms: None,
         external_receipt_ref: None,
         observed_effect_digest: None,
@@ -326,20 +329,97 @@ fn action_transitions_are_optimistic_and_fail_closed() {
         },
     )
     .expect("transition");
-    let completed = transition_action(
+    let dispatched = transition_action(
         &executing,
         6,
+        ActionCommand::RecordProviderReceipt {
+            external_receipt_ref: OpaqueId::parse("receipt:one").expect("valid receipt"),
+            provider_receipt_digest: digest("provider-queued"),
+            provider_status: "queued".to_owned(),
+            executor_actor_id: actor("executor:one"),
+            observed_at_unix_ms: 12,
+        },
+    )
+    .expect("record provider receipt");
+    assert_eq!(dispatched.state, ActionState::Dispatched);
+    assert_eq!(dispatched.provider_status.as_deref(), Some("queued"));
+    let observed = transition_action(
+        &dispatched,
+        7,
+        ActionCommand::ObserveProviderReceipt {
+            provider_receipt_digest: digest("provider-running"),
+            provider_status: "running".to_owned(),
+            reconciler_actor_id: actor("reconciler:one"),
+            observed_at_unix_ms: 13,
+        },
+    )
+    .expect("refresh provider receipt");
+    assert!(
+        transition_action(
+            &dispatched,
+            7,
+            ActionCommand::ObserveProviderReceipt {
+                provider_receipt_digest: digest("provider-replay"),
+                provider_status: "running".to_owned(),
+                reconciler_actor_id: actor("reconciler:one"),
+                observed_at_unix_ms: 12,
+            },
+        )
+        .is_err(),
+        "provider observations must advance time"
+    );
+    assert!(
+        transition_action(
+            &executing,
+            6,
+            ActionCommand::RecordProviderReceipt {
+                external_receipt_ref: OpaqueId::parse("receipt:one").expect("valid receipt"),
+                provider_receipt_digest: digest("provider-invalid"),
+                provider_status: "contains whitespace".to_owned(),
+                executor_actor_id: actor("executor:one"),
+                observed_at_unix_ms: 12,
+            },
+        )
+        .is_err(),
+        "provider status must be a bounded machine state"
+    );
+    assert!(
+        transition_action(
+            &observed,
+            8,
+            ActionCommand::Complete {
+                external_receipt_ref: OpaqueId::parse("receipt:other").expect("valid receipt"),
+                provider_receipt_digest: digest("provider-succeeded"),
+                observed_effect_digest: digest("observed"),
+                executor_actor_id: actor("executor:one"),
+                executed_at_unix_ms: 14,
+            },
+        )
+        .is_err(),
+        "completion must retain the provider receipt identity"
+    );
+    let completed = transition_action(
+        &observed,
+        8,
         ActionCommand::Complete {
             external_receipt_ref: OpaqueId::parse("receipt:one").expect("valid receipt"),
+            provider_receipt_digest: digest("provider-succeeded"),
             observed_effect_digest: digest("observed"),
             executor_actor_id: actor("executor:one"),
-            executed_at_unix_ms: 12,
+            executed_at_unix_ms: 14,
         },
     )
     .expect("transition");
+    assert_eq!(
+        completed.provider_receipt_digest,
+        Some(digest("provider-succeeded")),
+        "completion must bind the terminal provider response"
+    );
+    assert_eq!(completed.provider_status.as_deref(), Some("succeeded"));
+    assert_eq!(completed.provider_observed_at_unix_ms, Some(14));
     let verified = transition_action(
         &completed,
-        7,
+        9,
         ActionCommand::Verify {
             receipt: verification_receipt(&completed, "executor:one", "verifier:one"),
         },
@@ -347,12 +427,12 @@ fn action_transitions_are_optimistic_and_fail_closed() {
     .expect("transition");
     assert_eq!(verified.state, ActionState::Verified);
     assert_eq!(verified.verification_state, VerificationState::Verified);
-    assert_eq!(verified.version, 8);
+    assert_eq!(verified.version, 10);
     assert!(verified.verification_receipt.is_some());
     assert!(
         transition_action(
             &verified,
-            8,
+            10,
             ActionCommand::StartExecution {
                 started_at_unix_ms: 13,
             },
@@ -418,6 +498,9 @@ fn action_authority_rejects_forged_approval_and_verification_receipts() {
         claimed_at_unix_ms: None,
         claim_expires_at_unix_ms: None,
         executor_actor_id: None,
+        provider_receipt_digest: None,
+        provider_status: None,
+        provider_observed_at_unix_ms: None,
         executed_at_unix_ms: None,
         external_receipt_ref: None,
         observed_effect_digest: None,
@@ -543,6 +626,7 @@ fn action_authority_rejects_forged_approval_and_verification_receipts() {
         6,
         ActionCommand::Complete {
             external_receipt_ref: OpaqueId::parse("receipt:receipt-check").expect("valid receipt"),
+            provider_receipt_digest: digest("provider-receipt-check"),
             observed_effect_digest: digest("observed"),
             executor_actor_id: actor("executor:receipt-check"),
             executed_at_unix_ms: 12,

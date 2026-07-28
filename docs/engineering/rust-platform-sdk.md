@@ -62,11 +62,17 @@ semantics.
   execution-relevant proposal field and rejects any record whose stored digest
   no longer matches.
 - `cerebro-action-catalog` is the closed runtime registry for new proposals.
-  It is generated from `internal/graphactions/action_catalog.yaml`, assigns a
+  Its reviewed source is `crates/action-catalog/action_catalog.yaml`; the
+  generator assigns a
   content digest to every provider operation, and rejects unknown Action kinds,
   altered definition digests, mismatched effects, and effects aimed at a
   different target. Historical ledger rows keep their committed definition
   digest even after the active catalog changes.
+- A new Action also requires an append-only Rust finding-validation receipt.
+  The receipt binds the tenant, finding revision, graph revision, policy
+  definition, evidence, decision, validator, and expiry. The ledger checks that
+  receipt in the same PostgreSQL transaction that commits the Action and rejects
+  rejected, expired, self-validated, missing, or mismatched receipts.
 - Provider completion is not verification. The verified transition requires a
   receipt bound to the operation, proposal, observed effect, and executor, with
   a different verifier, a fresh source revision, and evidence.
