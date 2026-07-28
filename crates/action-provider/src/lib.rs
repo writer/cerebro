@@ -122,10 +122,15 @@ impl ProviderReceipt {
         }
     }
 
-    pub fn observation_command(&self, observed_at_unix_ms: u64) -> ActionCommand {
+    pub fn observation_command(
+        &self,
+        reconciler_actor_id: ActorId,
+        observed_at_unix_ms: u64,
+    ) -> ActionCommand {
         ActionCommand::ObserveProviderReceipt {
             provider_receipt_digest: self.response_digest.clone(),
             provider_status: self.status.as_str().to_owned(),
+            reconciler_actor_id,
             observed_at_unix_ms,
         }
     }

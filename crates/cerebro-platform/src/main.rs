@@ -80,6 +80,7 @@ const ACTION_PROPOSE_SCOPE: &str = "cerebro:actions:propose";
 const ACTION_SIMULATE_SCOPE: &str = "cerebro:actions:simulate";
 const ACTION_APPROVE_SCOPE: &str = "cerebro:actions:approve";
 const ACTION_EXECUTE_SCOPE: &str = "cerebro:actions:execute";
+const ACTION_RECONCILE_SCOPE: &str = "cerebro:actions:reconcile";
 const ACTION_VERIFY_SCOPE: &str = "cerebro:actions:verify";
 const FINDING_VALIDATE_SCOPE: &str = "cerebro:findings:validate";
 
@@ -2143,7 +2144,7 @@ async fn observe_action_provider_route(
     Extension(identity): Extension<AuthenticatedIdentity>,
     Path(operation_id): Path<String>,
 ) -> Result<Json<ActionOperation>, (StatusCode, Json<ErrorResponse>)> {
-    require_action_scope(&identity, ACTION_EXECUTE_SCOPE)?;
+    require_action_scope(&identity, ACTION_RECONCILE_SCOPE)?;
     let actor_id = authenticated_action_actor(&identity)?;
     let operation_id = ActionOperationId::parse(operation_id)
         .map_err(|error| bad_request("invalid_action_operation_id", error.to_string()))?;
@@ -2191,7 +2192,7 @@ async fn observe_action_provider_route(
             &operation_id,
             &actor_id,
             operation.version,
-            receipt.observation_command(observed_at),
+            receipt.observation_command(actor_id.clone(), observed_at),
             observed_at,
         )
         .await
@@ -4174,6 +4175,20 @@ mod tests {
         assert_eq!(error.0, StatusCode::FORBIDDEN);
         assert_eq!(error.1.0.code, "permission_denied");
 
+        let mut executor_identity = action_identity("tenant:http:one", "executor:http:one");
+        executor_identity
+            .scopes
+            .insert(ACTION_EXECUTE_SCOPE.to_owned());
+        let error = observe_action_provider_route(
+            State(state.clone()),
+            Extension(executor_identity),
+            Path("operation:http:one".to_owned()),
+        )
+        .await
+        .expect_err("execution authority must not grant reconciliation authority");
+        assert_eq!(error.0, StatusCode::FORBIDDEN);
+        assert_eq!(error.1.0.code, "permission_denied");
+
         let error = list_action_dispatches(
             State(state.clone()),
             Extension(identity.clone()),
@@ -4252,6 +4267,7 @@ mod tests {
         };
         let mut identity = action_identity("tenant:http:one", "actor:http:one");
         identity.scopes.insert(ACTION_EXECUTE_SCOPE.to_owned());
+        identity.scopes.insert(ACTION_RECONCILE_SCOPE.to_owned());
         let error = transition_action_route(
             State(state.clone()),
             Extension(identity.clone()),

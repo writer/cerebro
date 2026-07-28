@@ -296,9 +296,12 @@ dispatch through the Rust client. A bound provider receipt becomes a second
 durable Rust transition. Any unsuccessful or unbound response moves the Action
 to `outcome_unknown`; the handler does not retry the mutation. Provider receipt,
 outcome, completion, and reconciliation commands are not accepted from the
-public HTTP command schema. A signed execution principal can ask the Rust
-runtime to refresh an existing provider receipt; the runtime performs the GET,
-revalidates every dispatch binding, and commits the observation itself.
+public HTTP command schema. A signed execution principal can start the provider
+mutation. A separate signed reconciliation principal with
+`cerebro:actions:reconcile` can ask the Rust runtime to refresh an existing
+provider receipt; the runtime performs the GET, revalidates every dispatch
+binding, and commits the observation itself. Execution authority does not grant
+reconciliation authority.
 
 This code path does not by itself prove deployment cutover. Until deployment
 receipts show the Rust handler serves Action execution traffic,

@@ -413,6 +413,7 @@ async function startPostgres(containerName, deadlineAt) {
 
 async function startAccessApprovalsProvider(bearerToken) {
   let providerStatus = "queued";
+  let observationCount = 0;
   const requests = [];
   const server = http.createServer((request, response) => {
     const reject = (status, message) => {
@@ -452,6 +453,7 @@ async function startAccessApprovalsProvider(bearerToken) {
       request.method === "GET" &&
       request.url === "/admin/okta-jail/actions/provider-action:rust-e2e"
     ) {
+      observationCount += 1;
       const payload = requests[0];
       if (!payload) {
         reject(404, "provider action not found");
@@ -473,6 +475,7 @@ async function startAccessApprovalsProvider(bearerToken) {
   return {
     baseURL: `http://127.0.0.1:${port}`,
     dispatchCount: () => requests.length,
+    observationCount: () => observationCount,
     requests,
     markSucceeded: () => {
       providerStatus = "succeeded";
@@ -547,6 +550,10 @@ async function executeSignedActionLifecycle({
   const workerBearer = token(
     fixture.worker_id,
     "cerebro:read cerebro:actions:write identity:read cerebro:actions:execute",
+  );
+  const reconcilerBearer = token(
+    "reconciler:rust-e2e",
+    "cerebro:actions:write cerebro:actions:reconcile",
   );
   const actionURL = `${webBase}/api/cerebro/v1/actions/${encodeURIComponent(fixture.operation_id)}`;
   const commandURL = `${actionURL}/commands`;
@@ -649,6 +656,19 @@ async function executeSignedActionLifecycle({
 
   provider.markSucceeded();
   response = await postJSON(`${actionURL}/provider-observation`, workerBearer, {});
+  expect(
+    response.status === 403,
+    `Rust accepted provider reconciliation from the executor (${response.status})`,
+  );
+  expect(
+    provider.observationCount() === 0,
+    "Rejected executor reconciliation reached the provider",
+  );
+  response = await postJSON(
+    `${actionURL}/provider-observation`,
+    reconcilerBearer,
+    {},
+  );
   expect(response.status === 200, `Provider observation returned ${response.status}: ${response.body}`);
   operation = parsedJSON(response, "Provider observation");
   expect(operation.state === "dispatched", "Provider success completed the Action without effect evidence");
@@ -657,6 +677,10 @@ async function executeSignedActionLifecycle({
   expect(operation.observed_effect_digest === null, "Provider status manufactured an observed effect");
   expect(operation.executed_at_unix_ms === null, "Provider status manufactured execution completion");
   expect(provider.dispatchCount() === 1, "Provider observation retried the mutation");
+  expect(
+    provider.observationCount() === 1,
+    "Rust performed an unexpected number of provider observations",
+  );
 
   response = await request(actionURL, {
     headers: { authorization: `Bearer ${workerBearer}` },

@@ -139,6 +139,7 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
         )
         .await?;
     let worker = ActorId::parse("worker:live:one")?;
+    let reconciler = ActorId::parse("reconciler:live:one")?;
     let claimed = ledger
         .transition(
             &tenant,
@@ -221,11 +222,12 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
         .transition(
             &tenant,
             &operation_id,
-            &worker,
+            &reconciler,
             dispatched.version,
             ActionCommand::ObserveProviderReceipt {
                 provider_receipt_digest: ContentDigest::of_bytes("provider running"),
                 provider_status: "running".to_owned(),
+                reconciler_actor_id: reconciler.clone(),
                 observed_at_unix_ms: 44,
             },
             44,
@@ -238,11 +240,12 @@ async fn durable_actions_are_tenant_scoped_idempotent_versioned_and_append_only(
             .transition(
                 &tenant,
                 &operation_id,
-                &worker,
+                &reconciler,
                 running.version,
                 ActionCommand::ObserveProviderReceipt {
                     provider_receipt_digest: ContentDigest::of_bytes("provider replay"),
                     provider_status: "running".to_owned(),
+                    reconciler_actor_id: reconciler.clone(),
                     observed_at_unix_ms: 44,
                 },
                 45,
