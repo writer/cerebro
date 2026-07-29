@@ -52,32 +52,18 @@ func (s *sourceProjectorStub) callCount() int {
 
 func TestAppendLogProjectorUsesExactlyOneAuthority(t *testing.T) {
 	var authority = projectionAuthorityLegacy
+	var authorityRequests int
+	var projectionRequests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(tenantAuthHeader) != "tenant-a" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 			t.Fatalf("tenant authentication headers are missing")
 		}
 		switch r.URL.Path {
 		case "/v1/projections/events":
-			var request projectEventRequest
-			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-				t.Fatalf("decode request: %v", err)
-			}
-			if !request.AppendLogCommitted ||
-				request.FamilyID != "content_assets" ||
-				request.SourceRuntimeID != "box-runtime" ||
-				request.EventKind != "box.content_assets" ||
-				request.SchemaRef != "box/content_assets/v1" {
-				t.Fatalf("request = %#v", request)
-			}
-			response := projectEventResponse{Authority: authority}
-			if authority == projectionAuthorityRust {
-				revision := uint64(11)
-				response.Projected = true
-				response.GraphRevision = &revision
-				response.EntitiesUpserted = 1
-			}
-			_ = json.NewEncoder(w).Encode(response)
+			projectionRequests++
+			http.Error(w, "event payload handoff is retired", http.StatusGone)
 		case "/v1/projections/authority":
+			authorityRequests++
 			_ = json.NewEncoder(w).Encode(authorityResponse{Authority: authority})
 		default:
 			http.NotFound(w, r)
@@ -98,8 +84,11 @@ func TestAppendLogProjectorUsesExactlyOneAuthority(t *testing.T) {
 	}
 	authority = projectionAuthorityRust
 	result, err = projector.Project(context.Background(), event)
-	if err != nil || result.EntitiesProjected != 1 || legacy.callCount() != 1 {
+	if err != nil || result != (ports.ProjectionResult{}) || legacy.callCount() != 1 {
 		t.Fatalf("Rust Project() = %#v, %v calls=%d", result, err, legacy.callCount())
+	}
+	if authorityRequests != 2 || projectionRequests != 0 {
+		t.Fatalf("authority_requests=%d projection_requests=%d", authorityRequests, projectionRequests)
 	}
 }
 
@@ -122,8 +111,8 @@ func TestAppendLogProjectorRecordsExactLegacyDelta(t *testing.T) {
 	var deltaRequests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/projections/events":
-			_ = json.NewEncoder(w).Encode(projectEventResponse{Authority: projectionAuthorityLegacy})
+		case "/v1/projections/authority":
+			_ = json.NewEncoder(w).Encode(authorityResponse{Authority: projectionAuthorityLegacy})
 		case "/v1/projections/legacy-deltas":
 			deltaRequests++
 			var request legacyProjectionRequest
@@ -254,6 +243,42 @@ func TestProjectionRejectsMissingOccurrenceTimeBeforeCallingEitherWriter(t *test
 	_, err = NewAppendLogProjector(legacy, client).Project(context.Background(), event)
 	if err == nil || serverCalled || legacy.callCount() != 0 {
 		t.Fatalf("Project() error = %v server_called=%t legacy_calls=%d", err, serverCalled, legacy.callCount())
+	}
+}
+
+func TestProjectionRejectsInvalidCommittedEventsBeforeAuthorityLookup(t *testing.T) {
+	for name, mutate := range map[string]func(*cerebrov1.EventEnvelope){
+		"missing runtime": func(event *cerebrov1.EventEnvelope) {
+			delete(event.Attributes, ports.EventAttributeSourceRuntimeID)
+		},
+		"invalid payload": func(event *cerebrov1.EventEnvelope) {
+			event.Payload = []byte(`{"unterminated"`)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			serverCalled := false
+			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				serverCalled = true
+			}))
+			defer server.Close()
+			client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+			if err != nil {
+				t.Fatalf("NewProjectionClient() error = %v", err)
+			}
+			legacy := &sourceProjectorStub{}
+			event := projectionEvent()
+			mutate(event)
+
+			_, err = NewAppendLogProjector(legacy, client).Project(context.Background(), event)
+			if err == nil || serverCalled || legacy.callCount() != 0 {
+				t.Fatalf(
+					"Project() error = %v server_called=%t legacy_calls=%d",
+					err,
+					serverCalled,
+					legacy.callCount(),
+				)
+			}
+		})
 	}
 }
 

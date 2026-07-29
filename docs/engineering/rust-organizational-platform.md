@@ -47,7 +47,7 @@ cerebro-source-catalog --> cerebro-source-runtime-next
 
 `cerebro-organizational-store` commits raw observations, admitted entities, assertions, retractions, the tenant graph revision, parity receipts, and a projection outbox row in one PostgreSQL transaction. PostgreSQL is the transactional authority for organizational current state. Neo4j is an idempotent, rebuildable current-state projection written in batches.
 
-During migration, the Go source runtime remains the append-log owner. It commits the source event first and then calls the Rust projection endpoint. The endpoint checks the persisted family authority before mapping anything. A legacy family returns to the Go projector; a Rust family commits through Rust and cannot fall back to Go if that commit fails. Replay, refetch, device, CLI, and orchestrator paths use the same authority check, so an alternate Go entry point cannot restore a retired writer. The `append_log_committed` field is an internal handoff assertion, not a public trust boundary; deployment must restrict the projection endpoint to the source-runtime workload until Rust consumes the event log directly.
+During migration, the Go source runtime may still collect legacy families and publish their events, but it cannot submit an event payload to the Rust projector. The Rust runtime consumes committed events directly from JetStream. Go asks Rust only for the persisted family authority: a legacy family returns to the Go projector and records a bounded compatibility delta, while a Rust-authoritative family returns no Go projection result and is committed only by the Rust consumer. Replay, refetch, device, CLI, and orchestrator paths use the same authority check, so an alternate Go entry point cannot restore a retired writer. The remaining projection HTTP routes accept legacy parity deltas, collection manifests, and authority reads; they do not provide a Rust-authoritative event write path.
 
 `cerebro-agent-context` exposes bounded search, lookup, expansion, path, and explanation operations. It does not expose Cypher or store mutation.
 
@@ -210,7 +210,7 @@ The current checked-in catalog compiles to 794 sources and 3,891 families:
 | Activity | 738 | audit and operational events |
 | Bespoke | 3 | retained for source coverage but barred from authority |
 
-Based on exact provider method-and-path proof and auth support present in this Rust runtime, 33 sources and 238 families are authoritative; the other 761 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
+Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 46 sources and 328 families are authoritative; the other 748 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
 
 ## Family cutover
 

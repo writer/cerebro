@@ -61,28 +61,6 @@ func normalizeBaseURL(raw string) (string, error) {
 	return parsed.Scheme + "://" + parsed.Host, nil
 }
 
-type projectEventRequest struct {
-	TenantID           string            `json:"tenant_id"`
-	SourceRuntimeID    string            `json:"source_runtime_id"`
-	SourceID           string            `json:"source_id"`
-	FamilyID           string            `json:"family_id"`
-	EventID            string            `json:"event_id"`
-	EventKind          string            `json:"event_kind"`
-	SchemaRef          string            `json:"schema_ref"`
-	ObservedAtUnixMS   int64             `json:"observed_at_unix_ms"`
-	AppendLogCommitted bool              `json:"append_log_committed"`
-	Attributes         map[string]string `json:"attributes"`
-	Payload            json.RawMessage   `json:"payload"`
-}
-
-type projectEventResponse struct {
-	Authority          string  `json:"authority"`
-	Projected          bool    `json:"projected"`
-	GraphRevision      *uint64 `json:"graph_revision"`
-	EntitiesUpserted   uint32  `json:"entities_upserted"`
-	AssertionsUpserted uint32  `json:"assertions_upserted"`
-}
-
 type legacyProjectedEntity struct {
 	URN        string            `json:"urn"`
 	TenantID   string            `json:"tenant_id"`
@@ -165,62 +143,6 @@ type sourceCollectionResponse struct {
 
 type authorityResponse struct {
 	Authority string `json:"authority"`
-}
-
-func (c *ProjectionClient) project(ctx context.Context, event *cerebrov1.EventEnvelope) (projectEventResponse, error) {
-	if event == nil {
-		return projectEventResponse{}, errors.New("source event is required")
-	}
-	runtimeID := strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID])
-	if runtimeID == "" {
-		return projectEventResponse{}, errors.New("source event runtime ID is required")
-	}
-	familyID, err := eventFamily(event)
-	if err != nil {
-		return projectEventResponse{}, err
-	}
-	payload := json.RawMessage(event.GetPayload())
-	if len(payload) == 0 {
-		payload = json.RawMessage(`{}`)
-	} else if !json.Valid(payload) {
-		return projectEventResponse{}, errors.New("source event payload must be valid JSON")
-	}
-	observedAt, err := observedAtUnixMS(event.GetOccurredAt())
-	if err != nil {
-		return projectEventResponse{}, err
-	}
-	requestBody, err := json.Marshal(projectEventRequest{
-		TenantID:           strings.TrimSpace(event.GetTenantId()),
-		SourceRuntimeID:    runtimeID,
-		SourceID:           strings.TrimSpace(event.GetSourceId()),
-		FamilyID:           familyID,
-		EventID:            strings.TrimSpace(event.GetId()),
-		EventKind:          strings.TrimSpace(event.GetKind()),
-		SchemaRef:          strings.TrimSpace(event.GetSchemaRef()),
-		ObservedAtUnixMS:   observedAt,
-		AppendLogCommitted: true,
-		Attributes:         cloneAttributes(event.GetAttributes()),
-		Payload:            payload,
-	})
-	if err != nil {
-		return projectEventResponse{}, fmt.Errorf("encode Rust projection request: %w", err)
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/projections/events", bytes.NewReader(requestBody))
-	if err != nil {
-		return projectEventResponse{}, fmt.Errorf("build Rust projection request: %w", err)
-	}
-	request.Header.Set("Content-Type", "application/json")
-	if err := c.auth.authorize(request, event.GetTenantId()); err != nil {
-		return projectEventResponse{}, err
-	}
-	var response projectEventResponse
-	if err := c.doJSON(request, &response); err != nil {
-		return projectEventResponse{}, err
-	}
-	if response.Authority != projectionAuthorityLegacy && response.Authority != projectionAuthorityRust {
-		return projectEventResponse{}, fmt.Errorf("rust projection returned invalid authority %q", response.Authority)
-	}
-	return response, nil
 }
 
 func (c *ProjectionClient) recordLegacyProjection(ctx context.Context, event *cerebrov1.EventEnvelope, delta ports.SourceProjectionDelta) error {
@@ -308,6 +230,15 @@ func (c *ProjectionClient) authority(ctx context.Context, event *cerebrov1.Event
 	if event == nil {
 		return "", errors.New("source event is required")
 	}
+	if strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]) == "" {
+		return "", errors.New("source event runtime ID is required")
+	}
+	if payload := event.GetPayload(); len(payload) > 0 && !json.Valid(payload) {
+		return "", errors.New("source event payload must be valid JSON")
+	}
+	if _, err := observedAtUnixMS(event.GetOccurredAt()); err != nil {
+		return "", err
+	}
 	familyID, err := eventFamily(event)
 	if err != nil {
 		return "", err
@@ -357,8 +288,9 @@ func (c *ProjectionClient) doJSON(request *http.Request, target any) (err error)
 }
 
 // AppendLogProjector is called only after the source event has been committed
-// to the append log. Rust handles authoritative families; Go handles legacy
-// families. A Rust-authoritative failure never falls back to a second writer.
+// to the append log. Go projects legacy families and records their parity
+// delta. Rust-authoritative events are consumed and projected directly from
+// JetStream by the Rust runtime; this path cannot submit their payload.
 type AppendLogProjector struct {
 	legacy ports.SourceProjector
 	rust   *ProjectionClient
@@ -378,18 +310,12 @@ func (p *AppendLogProjector) RecordSourceCollection(ctx context.Context, manifes
 }
 
 func (p *AppendLogProjector) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
-	response, err := p.rust.project(ctx, event)
+	authority, err := p.rust.authority(ctx, event)
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
-	if response.Authority == projectionAuthorityRust {
-		if !response.Projected || response.GraphRevision == nil {
-			return ports.ProjectionResult{}, errors.New("rust-authoritative projection did not commit")
-		}
-		return ports.ProjectionResult{
-			EntitiesProjected: response.EntitiesUpserted,
-			LinksProjected:    response.AssertionsUpserted,
-		}, nil
+	if authority == projectionAuthorityRust {
+		return ports.ProjectionResult{}, nil
 	}
 	if p.legacy == nil {
 		return ports.ProjectionResult{}, nil

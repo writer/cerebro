@@ -432,8 +432,23 @@ impl CatalogGraphMapper {
             EntityKind::Group,
             first(&projected, &["group_name", "group_email"]).unwrap_or(group_id),
         )?;
-        let identity = add_properties(identity.into_entity(), projected.clone())?;
-        let group = add_properties(group, projected)?;
+        let identity = add_properties(
+            identity.into_entity(),
+            projected
+                .iter()
+                .filter(|(key, _)| {
+                    !key.starts_with("group_") && key.as_str() != "role" && key.as_str() != "id"
+                })
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+        )?;
+        let group = add_properties(
+            group,
+            projected
+                .into_iter()
+                .filter(|(key, _)| !key.starts_with("member_") && key != "role" && key != "id")
+                .collect(),
+        )?;
         let assertion = RelationshipAssertion::new(
             &identity,
             RelationKind::MemberOf,

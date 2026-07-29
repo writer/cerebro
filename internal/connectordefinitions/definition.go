@@ -343,6 +343,7 @@ type ResourceReadSpec struct {
 	DetailPath            string            `json:"detail_path,omitempty"`
 	AllowBareDetailRecord bool              `json:"allow_bare_detail_record,omitempty"`
 	PathParams            []string          `json:"path_params,omitempty"`
+	PathParamFanout       map[string]string `json:"path_param_fanout,omitempty"`
 	MapRecords            map[string]string `json:"map_records,omitempty"`
 	Singleton             bool              `json:"singleton,omitempty"`
 	DisablePageSize       bool              `json:"disable_page_size,omitempty"`
@@ -535,6 +536,10 @@ func Validate(definition Definition) ValidationResult {
 	} else {
 		add(passing("resources", "Resource families", fmt.Sprintf("%d resource families are modeled.", len(definition.ResourceFamilies))))
 	}
+	runtimeConfigFields := map[string]struct{}{}
+	for _, field := range definition.ConfigFields {
+		runtimeConfigFields[strings.TrimSpace(field.Key)] = struct{}{}
+	}
 	for _, family := range definition.ResourceFamilies {
 		if !idPattern.MatchString(family.ID) {
 			add(blocking("family_"+family.ID, "Resource family ID", "Family ids must be lowercase identifiers."))
@@ -573,7 +578,7 @@ func Validate(definition Definition) ValidationResult {
 		if strings.ContainsAny(familyBaseURL, "\r\n\t\\") {
 			add(blocking("base_url_chars_"+family.ID, "Resource base URL", "Resource family base URL must not contain control characters or backslashes."))
 		}
-		validateFamilyIntegrationFields(family, add)
+		validateFamilyIntegrationFields(family, runtimeConfigFields, add)
 	}
 	status := ValidationReady
 	for _, check := range checks {
@@ -870,7 +875,7 @@ func isDepositResourceFamily(definition Definition, familyID string) bool {
 	return false
 }
 
-func validateFamilyIntegrationFields(family ResourceFamily, add func(ValidationCheck)) {
+func validateFamilyIntegrationFields(family ResourceFamily, configFields map[string]struct{}, add func(ValidationCheck)) {
 	if family.Read != nil {
 		if strings.TrimSpace(family.Read.DetailPath) != "" && !validRelativePath(family.Read.DetailPath) {
 			add(blocking("detail_path_"+family.ID, "Detail path", "Detail paths must be relative API paths such as /v1/assets/{id}."))
@@ -878,6 +883,22 @@ func validateFamilyIntegrationFields(family ResourceFamily, add func(ValidationC
 		for _, param := range family.Read.PathParams {
 			if !idPattern.MatchString(strings.TrimSpace(param)) {
 				add(blocking("path_param_"+family.ID+"_"+normalizeDefinitionID(param), "Path parameter", "Path parameters must be lowercase identifiers."))
+			}
+		}
+		pathParams := map[string]struct{}{}
+		for _, param := range family.Read.PathParams {
+			pathParams[strings.TrimSpace(param)] = struct{}{}
+		}
+		for param, configField := range family.Read.PathParamFanout {
+			param = strings.TrimSpace(param)
+			configField = strings.TrimSpace(configField)
+			if _, ok := pathParams[param]; !ok {
+				add(blocking("path_param_fanout_"+family.ID+"_"+normalizeDefinitionID(param), "Path parameter fanout", "Fanout bindings must reference a declared path parameter."))
+			}
+			if !idPattern.MatchString(configField) {
+				add(blocking("path_param_fanout_config_"+family.ID+"_"+normalizeDefinitionID(param), "Path parameter fanout", "Fanout config fields must be lowercase identifiers."))
+			} else if _, ok := configFields[configField]; !ok {
+				add(blocking("path_param_fanout_field_"+family.ID+"_"+normalizeDefinitionID(param), "Path parameter fanout", "Fanout config fields must be declared in definition.config_fields."))
 			}
 		}
 		for key, value := range family.Read.MapRecords {
@@ -1333,8 +1354,9 @@ func normalizeResourceReadSpec(read *ResourceReadSpec) *ResourceReadSpec {
 	next := *read
 	next.DetailPath = strings.TrimSpace(next.DetailPath)
 	next.PathParams = normalizeOrderedStringList(next.PathParams)
+	next.PathParamFanout = normalizeStringMap(next.PathParamFanout)
 	next.MapRecords = normalizeStringMap(next.MapRecords)
-	if next.DetailPath == "" && len(next.PathParams) == 0 && len(next.MapRecords) == 0 && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
+	if next.DetailPath == "" && len(next.PathParams) == 0 && len(next.PathParamFanout) == 0 && len(next.MapRecords) == 0 && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
 		return nil
 	}
 	return &next
