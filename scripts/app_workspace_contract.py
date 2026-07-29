@@ -14,7 +14,7 @@ from typing import Any
 
 
 CANONICAL_REPOSITORY = "git+https://github.com/writer/cerebro.git"
-MAPPED_APP_DIRS = frozenset({"slack-companion", "web"})
+MAPPED_APP_DIRS = frozenset({"slack-companion", "slack-companion-host", "web"})
 DIGEST_PINNED_IMAGE_PATTERN = r"^[^\s@]+:[^\s/@:]+@sha256:[0-9a-f]{64}$"
 
 

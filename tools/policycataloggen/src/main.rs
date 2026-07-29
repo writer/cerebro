@@ -1,13 +1,14 @@
 #![forbid(unsafe_code)]
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     env,
     error::Error,
     fmt,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
+    process::{Command, Stdio},
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -17,9 +18,12 @@ use sha2::{Digest, Sha256};
 const USAGE: &str = "usage: policycataloggen [--root PATH] (--write|--check)";
 const OUTPUT_PATH: &str = "crates/policy-catalog/src/generated.rs";
 const POLICY_DIR: &str = "policies";
+const DETECTION_CATALOG_PATH: &str = "internal/findings/public_detection_catalog.json";
 const MAX_POLICY_BYTES: usize = 1 << 20;
+const MAX_DETECTION_CATALOG_BYTES: usize = 16 << 20;
 const MAX_POLICIES: usize = 5_000;
-const DIGEST_SCHEMA: &str = "cerebro.policy-definition.v1";
+const POLICY_DIGEST_SCHEMA: &str = "cerebro.policy-definition.v2";
+const DETECTION_DIGEST_SCHEMA: &str = "cerebro.detection-definition.v1";
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -57,6 +61,43 @@ struct PolicySpec {
     enabled: bool,
 }
 
+#[derive(Debug, Deserialize)]
+struct DetectionCatalog {
+    detections: Vec<DetectionDocument>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DetectionDocument {
+    id: String,
+    pack_id: String,
+    source_id: String,
+    evaluation_mode: String,
+    #[serde(default)]
+    event_kinds: Vec<String>,
+    output_kind: String,
+    #[serde(default)]
+    required_attributes: Vec<String>,
+    #[serde(default)]
+    required_attributes_by_kind: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    fingerprint_fields: Vec<String>,
+    lifecycle: LifecycleDocument,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct LifecycleDocument {
+    kind: String,
+    anchor: String,
+    #[serde(default)]
+    ttl_seconds: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct RequiredAttributesByKindMaterial<'a> {
+    event_kind: &'a str,
+    attributes: Vec<&'a str>,
+}
+
 #[derive(Debug, Serialize)]
 struct DigestMaterial<'a> {
     schema: &'static str,
@@ -67,8 +108,36 @@ struct DigestMaterial<'a> {
     effect: &'a str,
     resource: &'a str,
     enabled: bool,
+    evaluation_mode: &'a str,
+    event_kinds: &'a [&'a str],
+    output_kind: &'a str,
+    required_attributes: &'a [&'a str],
+    required_attributes_by_kind: &'a [RequiredAttributesByKindMaterial<'a>],
+    fingerprint_fields: &'a [&'a str],
+    lifecycle: LifecycleMaterial<'a>,
     source_path: &'a str,
     source_digest: &'a str,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+struct LifecycleMaterial<'a> {
+    kind: &'a str,
+    anchor: &'a str,
+    ttl_seconds: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct DetectionDigestMaterial<'a> {
+    schema: &'static str,
+    id: &'a str,
+    source_id: &'a str,
+    evaluation_mode: &'a str,
+    event_kinds: &'a [&'a str],
+    output_kind: &'a str,
+    required_attributes: &'a [&'a str],
+    required_attributes_by_kind: &'a [RequiredAttributesByKindMaterial<'a>],
+    fingerprint_fields: &'a [&'a str],
+    lifecycle: LifecycleMaterial<'a>,
 }
 
 #[derive(Debug)]
@@ -80,8 +149,15 @@ struct Definition {
     effect: String,
     resource: String,
     enabled: bool,
+    detection: DetectionDocument,
     source_path: String,
     source_digest: String,
+    definition_digest: String,
+}
+
+#[derive(Debug)]
+struct DetectionDefinition {
+    detection: DetectionDocument,
     definition_digest: String,
 }
 
@@ -105,7 +181,7 @@ fn main() {
 
 fn run() -> Result<(), GeneratorError> {
     let (root, mode) = parse_args()?;
-    let generated = generate(&root)?;
+    let generated = format_generated(&generate(&root)?)?;
     let output = root.join(OUTPUT_PATH);
     match mode {
         Mode::Write => write_generated_file(&output, generated.as_bytes()),
@@ -119,6 +195,33 @@ fn run() -> Result<(), GeneratorError> {
             Ok(())
         }
     }
+}
+
+fn format_generated(generated: &str) -> Result<String, GeneratorError> {
+    let mut child = Command::new("rustfmt")
+        .args(["--emit", "stdout", "--edition", "2024"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| GeneratorError(format!("start rustfmt: {error}")))?;
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| GeneratorError("open rustfmt stdin".to_owned()))?
+        .write_all(generated.as_bytes())
+        .map_err(|error| GeneratorError(format!("write rustfmt input: {error}")))?;
+    let output = child
+        .wait_with_output()
+        .map_err(|error| GeneratorError(format!("wait for rustfmt: {error}")))?;
+    if !output.status.success() {
+        return Err(GeneratorError(format!(
+            "rustfmt generated catalog: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    String::from_utf8(output.stdout)
+        .map_err(|error| GeneratorError(format!("rustfmt emitted non-UTF-8 output: {error}")))
 }
 
 fn parse_args() -> Result<(PathBuf, Mode), GeneratorError> {
@@ -158,6 +261,22 @@ fn set_mode(current: &mut Option<Mode>, mode: Mode) -> Result<(), GeneratorError
 
 fn generate(root: &Path) -> Result<String, GeneratorError> {
     let policy_root = root.join(POLICY_DIR);
+    let detection_catalog_path = root.join(DETECTION_CATALOG_PATH);
+    let detection_catalog: DetectionCatalog = serde_json::from_slice(&read_bounded(
+        &detection_catalog_path,
+        MAX_DETECTION_CATALOG_BYTES,
+    )?)
+    .map_err(|error| GeneratorError(format!("decode {DETECTION_CATALOG_PATH}: {error}")))?;
+    let mut detections = BTreeMap::new();
+    for detection in detection_catalog.detections {
+        validate_detection(&detection)?;
+        let id = detection.id.clone();
+        if detections.insert(id.clone(), detection).is_some() {
+            return Err(GeneratorError(format!(
+                "{DETECTION_CATALOG_PATH}: duplicate detection id {id:?}"
+            )));
+        }
+    }
     let mut paths = Vec::new();
     collect_policy_paths(&policy_root, &mut paths)?;
     paths.sort();
@@ -191,8 +310,24 @@ fn generate(root: &Path) -> Result<String, GeneratorError> {
         let domain = policy_domain(&path, &policy_root, &source_path)?;
         let source_digest = hex_digest(&bytes);
         let resource = policy_resource(&policy.spec)?.to_owned();
+        let detection = detections.remove(&policy.metadata.id).ok_or_else(|| {
+            GeneratorError(format!(
+                "{source_path}: policy has no generated detection metadata"
+            ))
+        })?;
+        if detection.pack_id != "policy" {
+            return Err(GeneratorError(format!(
+                "{source_path}: detection pack must be policy, got {:?}",
+                detection.pack_id
+            )));
+        }
+        let event_kinds = string_refs(&detection.event_kinds);
+        let required_attributes = string_refs(&detection.required_attributes);
+        let required_attributes_by_kind =
+            required_attributes_by_kind_material(&detection.required_attributes_by_kind);
+        let fingerprint_fields = string_refs(&detection.fingerprint_fields);
         let material = DigestMaterial {
-            schema: DIGEST_SCHEMA,
+            schema: POLICY_DIGEST_SCHEMA,
             id: &policy.metadata.id,
             name: &policy.metadata.name,
             domain: &domain,
@@ -200,6 +335,13 @@ fn generate(root: &Path) -> Result<String, GeneratorError> {
             effect: &policy.spec.effect,
             resource: &resource,
             enabled: policy.spec.enabled,
+            evaluation_mode: &detection.evaluation_mode,
+            event_kinds: &event_kinds,
+            output_kind: &detection.output_kind,
+            required_attributes: &required_attributes,
+            required_attributes_by_kind: &required_attributes_by_kind,
+            fingerprint_fields: &fingerprint_fields,
+            lifecycle: lifecycle_material(&detection.lifecycle),
             source_path: &source_path,
             source_digest: &source_digest,
         };
@@ -215,13 +357,56 @@ fn generate(root: &Path) -> Result<String, GeneratorError> {
             effect: policy.spec.effect,
             resource,
             enabled: policy.spec.enabled,
+            detection,
             source_path,
             source_digest,
             definition_digest,
         });
     }
     definitions.sort_by(|left, right| left.id.cmp(&right.id));
-    Ok(render(&definitions))
+    if let Some((id, _)) = detections
+        .iter()
+        .find(|(_, detection)| detection.pack_id == "policy")
+    {
+        return Err(GeneratorError(format!(
+            "{DETECTION_CATALOG_PATH}: policy detection {id:?} has no policy document"
+        )));
+    }
+    let mut detection_definitions = detections
+        .into_values()
+        .map(|detection| {
+            let event_kinds = string_refs(&detection.event_kinds);
+            let required_attributes = string_refs(&detection.required_attributes);
+            let required_attributes_by_kind =
+                required_attributes_by_kind_material(&detection.required_attributes_by_kind);
+            let fingerprint_fields = string_refs(&detection.fingerprint_fields);
+            let material = DetectionDigestMaterial {
+                schema: DETECTION_DIGEST_SCHEMA,
+                id: &detection.id,
+                source_id: &detection.source_id,
+                evaluation_mode: &detection.evaluation_mode,
+                event_kinds: &event_kinds,
+                output_kind: &detection.output_kind,
+                required_attributes: &required_attributes,
+                required_attributes_by_kind: &required_attributes_by_kind,
+                fingerprint_fields: &fingerprint_fields,
+                lifecycle: lifecycle_material(&detection.lifecycle),
+            };
+            let definition_digest =
+                hex_digest(&serde_json::to_vec(&material).map_err(|error| {
+                    GeneratorError(format!(
+                        "encode detection definition {:?}: {error}",
+                        detection.id
+                    ))
+                })?);
+            Ok(DetectionDefinition {
+                detection,
+                definition_digest,
+            })
+        })
+        .collect::<Result<Vec<_>, GeneratorError>>()?;
+    detection_definitions.sort_by(|left, right| left.detection.id.cmp(&right.detection.id));
+    Ok(render(&definitions, &detection_definitions))
 }
 
 fn policy_domain(
@@ -315,6 +500,148 @@ fn validate_policy(policy: &PolicyDocument, source_path: &str) -> Result<(), Gen
     Ok(())
 }
 
+fn validate_detection(detection: &DetectionDocument) -> Result<(), GeneratorError> {
+    let prefix = format!("{DETECTION_CATALOG_PATH}: detection {:?}", detection.id);
+    if !valid_id(&detection.id) {
+        return Err(GeneratorError(format!(
+            "{prefix} has an invalid detection id"
+        )));
+    }
+    for (field, value) in [
+        ("pack_id", detection.pack_id.as_str()),
+        ("source_id", detection.source_id.as_str()),
+        ("output_kind", detection.output_kind.as_str()),
+    ] {
+        if value.trim().is_empty() || value != value.trim() {
+            return Err(GeneratorError(format!(
+                "{prefix} {field} must be non-empty and trimmed"
+            )));
+        }
+    }
+    if !matches!(detection.evaluation_mode.as_str(), "event" | "graph") {
+        return Err(GeneratorError(format!(
+            "{prefix} has unsupported evaluation_mode {:?}",
+            detection.evaluation_mode
+        )));
+    }
+    validate_string_list(&prefix, "event_kinds", &detection.event_kinds, false)?;
+    validate_string_list(
+        &prefix,
+        "required_attributes",
+        &detection.required_attributes,
+        true,
+    )?;
+    validate_string_list(
+        &prefix,
+        "fingerprint_fields",
+        &detection.fingerprint_fields,
+        detection.lifecycle.kind == "retired",
+    )?;
+    for (event_kind, attributes) in &detection.required_attributes_by_kind {
+        if event_kind.trim().is_empty() || event_kind != event_kind.trim() {
+            return Err(GeneratorError(format!(
+                "{prefix} required_attributes_by_kind has an invalid event kind"
+            )));
+        }
+        validate_string_list(
+            &prefix,
+            &format!("required_attributes_by_kind[{event_kind:?}]"),
+            attributes,
+            true,
+        )?;
+    }
+    match detection.lifecycle.kind.as_str() {
+        "ttl_evidence" if detection.lifecycle.ttl_seconds == 0 => {
+            return Err(GeneratorError(format!(
+                "{prefix} ttl_evidence requires ttl_seconds > 0"
+            )));
+        }
+        "ttl_evidence" => {}
+        "durable_state" if detection.lifecycle.anchor == "none" => {
+            return Err(GeneratorError(format!(
+                "{prefix} durable_state forbids anchor=none"
+            )));
+        }
+        "durable_state" | "audit_evidence" | "retired" if detection.lifecycle.ttl_seconds != 0 => {
+            return Err(GeneratorError(format!(
+                "{prefix} non-TTL lifecycle requires ttl_seconds=0"
+            )));
+        }
+        "durable_state" | "audit_evidence" | "retired" => {}
+        other => {
+            return Err(GeneratorError(format!(
+                "{prefix} has unsupported lifecycle kind {other:?}"
+            )));
+        }
+    }
+    if !matches!(
+        detection.lifecycle.anchor.as_str(),
+        "graph_anchored" | "source_state" | "none"
+    ) {
+        return Err(GeneratorError(format!(
+            "{prefix} has unsupported lifecycle anchor {:?}",
+            detection.lifecycle.anchor
+        )));
+    }
+    if detection.lifecycle.kind == "retired" && detection.lifecycle.anchor != "none" {
+        return Err(GeneratorError(format!(
+            "{prefix} retired requires anchor=none"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_string_list(
+    prefix: &str,
+    field: &str,
+    values: &[String],
+    allow_empty: bool,
+) -> Result<(), GeneratorError> {
+    if !allow_empty && values.is_empty() {
+        return Err(GeneratorError(format!("{prefix} {field} is required")));
+    }
+    let mut seen = BTreeSet::new();
+    for value in values {
+        if value.trim().is_empty() || value != value.trim() {
+            return Err(GeneratorError(format!(
+                "{prefix} {field} contains an empty or untrimmed value"
+            )));
+        }
+        if !seen.insert(value) {
+            return Err(GeneratorError(format!(
+                "{prefix} {field} contains duplicate value {value:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn string_refs(values: &[String]) -> Vec<&str> {
+    values.iter().map(String::as_str).collect()
+}
+
+fn required_attributes_by_kind_material(
+    values: &BTreeMap<String, Vec<String>>,
+) -> Vec<RequiredAttributesByKindMaterial<'_>> {
+    values
+        .iter()
+        .map(
+            |(event_kind, attributes)| RequiredAttributesByKindMaterial {
+                event_kind,
+                attributes: string_refs(attributes),
+            },
+        )
+        .collect()
+}
+
+fn lifecycle_material(lifecycle: &LifecycleDocument) -> LifecycleMaterial<'_> {
+    LifecycleMaterial {
+        kind: &lifecycle.kind,
+        anchor: &lifecycle.anchor,
+        ttl_seconds: lifecycle.ttl_seconds,
+    }
+}
+
 fn policy_resource(spec: &PolicySpec) -> Result<&str, GeneratorError> {
     match (spec.resource.as_deref(), spec.resource_type.as_deref()) {
         (Some(resource), Some(resource_type)) if resource.trim() != resource_type.trim() => Err(
@@ -338,9 +665,9 @@ fn valid_id(value: &str) -> bool {
         })
 }
 
-fn render(definitions: &[Definition]) -> String {
+fn render(definitions: &[Definition], detection_definitions: &[DetectionDefinition]) -> String {
     let mut output = String::from(
-        "// Code generated by policycataloggen; DO NOT EDIT.\n\nuse super::PolicyDefinition;\n\npub(super) const POLICY_DEFINITIONS: &[PolicyDefinition<'static>] = &[\n",
+        "// Code generated by policycataloggen; DO NOT EDIT.\n\nuse super::{\n    DetectionDefinition, EvaluationMode, Lifecycle, LifecycleAnchor, LifecycleKind,\n    PolicyDefinition, RequiredAttributesByKind,\n};\n\npub(super) const POLICY_DEFINITIONS: &[PolicyDefinition<'static>] = &[\n",
     );
     for definition in definitions {
         output.push_str("    PolicyDefinition {\n");
@@ -355,6 +682,7 @@ fn render(definitions: &[Definition]) -> String {
             output.push_str(&format!("        {field}: {},\n", rust_string(value)));
         }
         output.push_str(&format!("        enabled: {},\n", definition.enabled));
+        render_detection_semantics(&mut output, &definition.detection);
         output.push_str(&format!(
             "        source_path: {},\n",
             rust_string(&definition.source_path)
@@ -369,8 +697,111 @@ fn render(definitions: &[Definition]) -> String {
         ));
         output.push_str("    },\n");
     }
+    output.push_str("];\n\n");
+    output
+        .push_str("pub(super) const DETECTION_DEFINITIONS: &[DetectionDefinition<'static>] = &[\n");
+    for definition in detection_definitions {
+        output.push_str("    DetectionDefinition {\n");
+        output.push_str(&format!(
+            "        id: {},\n        source_id: {},\n",
+            rust_string(&definition.detection.id),
+            rust_string(&definition.detection.source_id),
+        ));
+        render_detection_semantics(&mut output, &definition.detection);
+        output.push_str(&format!(
+            "        definition_digest: {},\n",
+            rust_digest(&definition.definition_digest)
+        ));
+        output.push_str("    },\n");
+    }
     output.push_str("];\n");
     output
+}
+
+fn render_detection_semantics(output: &mut String, detection: &DetectionDocument) {
+    output.push_str(&format!(
+        "        evaluation_mode: {},\n",
+        evaluation_mode_expression(&detection.evaluation_mode)
+    ));
+    output.push_str(&format!(
+        "        event_kinds: {},\n",
+        rust_string_slice(&detection.event_kinds)
+    ));
+    output.push_str(&format!(
+        "        output_kind: {},\n",
+        rust_string(&detection.output_kind)
+    ));
+    output.push_str(&format!(
+        "        required_attributes: {},\n",
+        rust_string_slice(&detection.required_attributes)
+    ));
+    output.push_str(&format!(
+        "        required_attributes_by_kind: {},\n",
+        rust_required_attributes_by_kind(&detection.required_attributes_by_kind)
+    ));
+    output.push_str(&format!(
+        "        fingerprint_fields: {},\n",
+        rust_string_slice(&detection.fingerprint_fields)
+    ));
+    output.push_str(&format!(
+        "        lifecycle: {},\n",
+        rust_lifecycle(&detection.lifecycle)
+    ));
+}
+
+fn evaluation_mode_expression(value: &str) -> &'static str {
+    match value {
+        "event" => "EvaluationMode::Event",
+        "graph" => "EvaluationMode::Graph",
+        _ => unreachable!("validated evaluation mode"),
+    }
+}
+
+fn rust_string_slice(values: &[String]) -> String {
+    let values = values
+        .iter()
+        .map(|value| rust_string(value))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("&[{values}]")
+}
+
+fn rust_required_attributes_by_kind(values: &BTreeMap<String, Vec<String>>) -> String {
+    if values.is_empty() {
+        return "&[]".to_owned();
+    }
+    let mut rendered = String::from("&[\n");
+    for (event_kind, attributes) in values {
+        rendered.push_str("            RequiredAttributesByKind {\n");
+        rendered.push_str(&format!(
+            "                event_kind: {},\n                attributes: {},\n",
+            rust_string(event_kind),
+            rust_string_slice(attributes)
+        ));
+        rendered.push_str("            },\n");
+    }
+    rendered.push_str("        ]");
+    rendered
+}
+
+fn rust_lifecycle(lifecycle: &LifecycleDocument) -> String {
+    let kind = match lifecycle.kind.as_str() {
+        "durable_state" => "LifecycleKind::DurableState",
+        "audit_evidence" => "LifecycleKind::AuditEvidence",
+        "ttl_evidence" => "LifecycleKind::TtlEvidence",
+        "retired" => "LifecycleKind::Retired",
+        _ => unreachable!("validated lifecycle kind"),
+    };
+    let anchor = match lifecycle.anchor.as_str() {
+        "graph_anchored" => "LifecycleAnchor::GraphAnchored",
+        "source_state" => "LifecycleAnchor::SourceState",
+        "none" => "LifecycleAnchor::None",
+        _ => unreachable!("validated lifecycle anchor"),
+    };
+    format!(
+        "Lifecycle {{ kind: {kind}, anchor: {anchor}, ttl_seconds: {} }}",
+        lifecycle.ttl_seconds
+    )
 }
 
 fn rust_string(value: &str) -> String {

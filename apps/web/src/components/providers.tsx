@@ -45,6 +45,17 @@ type CurrentUserContextValue = {
   user: CurrentUser | null;
 };
 
+export type ConsoleConfig = {
+  apiBase: string;
+  serverAuthConfigured: boolean;
+  forwardRequestAuth: boolean;
+};
+
+type ConsoleConfigContextValue = {
+  config: ConsoleConfig | null;
+  loading: boolean;
+};
+
 type UserPreferencesContextValue = {
   error: string | null;
   loading: boolean;
@@ -71,6 +82,7 @@ const CommandPaletteContext = createContext<CommandPaletteContextValue | undefin
 const SidebarContext = createContext<SidebarContextValue | undefined>(undefined);
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 const CurrentUserContext = createContext<CurrentUserContextValue | undefined>(undefined);
+const ConsoleConfigContext = createContext<ConsoleConfigContextValue | undefined>(undefined);
 const UserPreferencesContext = createContext<UserPreferencesContextValue | undefined>(undefined);
 
 const STORAGE_KEY = "cerebro.apiKey";
@@ -280,6 +292,35 @@ export function CurrentUserProvider({ children }: { children: React.ReactNode })
   );
 }
 
+export function ConsoleConfigProvider({ children }: { children: React.ReactNode }) {
+  const [config, setConfig] = useState<ConsoleConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadConfig = async () => {
+      try {
+        const response = await fetch("/api/config", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (response.ok) {
+          setConfig((await response.json()) as ConsoleConfig);
+        }
+      } catch (error) {
+        if (!(error instanceof Error && error.name === "AbortError")) setConfig(null);
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+    void loadConfig();
+    return () => controller.abort();
+  }, []);
+
+  const contextValue = useMemo(() => ({ config, loading }), [config, loading]);
+  return <ConsoleConfigContext.Provider value={contextValue}>{children}</ConsoleConfigContext.Provider>;
+}
+
 export function UserPreferencesProvider({ children }: { children: React.ReactNode }) {
   const { apiKey } = useApiKey();
   const { actor, loading: userLoading } = useCurrentUser();
@@ -476,6 +517,14 @@ export function useCurrentUser() {
   const context = useContext(CurrentUserContext);
   if (!context) {
     throw new Error("useCurrentUser must be used within CurrentUserProvider");
+  }
+  return context;
+}
+
+export function useConsoleConfig() {
+  const context = useContext(ConsoleConfigContext);
+  if (!context) {
+    throw new Error("useConsoleConfig must be used within ConsoleConfigProvider");
   }
   return context;
 }

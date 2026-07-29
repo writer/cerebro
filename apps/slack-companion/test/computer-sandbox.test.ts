@@ -173,6 +173,23 @@ describe("provider-neutral computer sandboxes", () => {
     assert.equal(reconciled.status, "created");
   });
 
+  test("rejects unsupported provider outcomes before reading a session", async () => {
+    const malformed = new FakeProvider(provider("browser-grid"));
+    malformed.createResult = { outcome: "surprise" } as never;
+    await assert.rejects(
+      () => sandboxCoordinator(malformed).provision(request()),
+      /unsupported session outcome/,
+    );
+    await assert.rejects(
+      () => sandboxCoordinator(malformed).reconcileProvision(
+        "browser-grid",
+        request(),
+        "sandbox-reconciliation://create/1",
+      ),
+      /unsupported session outcome/,
+    );
+  });
+
   test("isolates provider discovery failures and treats thrown creates as unknown", async () => {
     const brokenDiscovery = new FakeProvider(provider("broken-discovery"));
     brokenDiscovery.describeError = true;

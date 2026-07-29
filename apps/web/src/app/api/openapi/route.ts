@@ -6,6 +6,11 @@ import { authHeadersFor, buildCerebroUrl, fetchCerebro, proxyFetchError } from "
 import { cerebroFixtureResponseFor } from "@/lib/cerebro-fixtures";
 import { resolveCurrentUserFromHeadersWithFallback } from "@/lib/identity";
 
+const OPENAPI_CACHE_TTL_MS = 5 * 60_000;
+let cachedOpenApi: { expiresAt: number; spec: Record<string, unknown> } | null = null;
+type OpenApiLoadResult = { spec: Record<string, unknown> | null; status: number };
+let openApiInflight: Promise<OpenApiLoadResult> | null = null;
+
 export const parseOpenApiDocument = (raw: string): Record<string, unknown> | null => {
   try {
     const parsed = parse(raw);
@@ -21,6 +26,32 @@ const invalidOpenApiResponse = () => NextResponse.json(
   { error: "The OpenAPI specification is invalid." },
   { status: 502 },
 );
+
+const openApiResponse = (spec: Record<string, unknown>) => NextResponse.json(spec, {
+  headers: { "cache-control": "private, max-age=300" },
+});
+
+const loadOpenApi = async (request: NextRequest) => {
+  if (cachedOpenApi && cachedOpenApi.expiresAt > Date.now()) {
+    return { spec: cachedOpenApi.spec, status: 200 };
+  }
+  if (openApiInflight) return openApiInflight;
+  openApiInflight = (async () => {
+    const response = await fetchCerebro(buildCerebroUrl("openapi.yaml"), {
+      cache: "no-store",
+      headers: authHeadersFor(request),
+    });
+    if (!response.ok) return { spec: null, status: response.status };
+    const spec = parseOpenApiDocument(await response.text());
+    if (spec) cachedOpenApi = { expiresAt: Date.now() + OPENAPI_CACHE_TTL_MS, spec };
+    return { spec, status: spec ? 200 : 502 };
+  })();
+  try {
+    return await openApiInflight;
+  } finally {
+    openApiInflight = null;
+  }
+};
 
 export async function GET(request: NextRequest) {
   const currentUser = await resolveCurrentUserFromHeadersWithFallback(request.headers);
@@ -43,29 +74,22 @@ export async function GET(request: NextRequest) {
   });
   if (fixture) {
     const spec = parseOpenApiDocument(fixture.body);
-    return spec ? NextResponse.json(spec) : invalidOpenApiResponse();
+    return spec ? openApiResponse(spec) : invalidOpenApiResponse();
   }
 
-  let response: Response;
+  let loaded: OpenApiLoadResult;
   try {
-    response = await fetchCerebro(buildCerebroUrl("openapi.yaml"), {
-      cache: "no-store",
-      headers: authHeadersFor(request),
-    });
+    loaded = await loadOpenApi(request);
   } catch (error) {
     return proxyFetchError(error);
   }
 
-  if (!response.ok) {
+  if (!loaded.spec) {
     return NextResponse.json(
-      { error: `Failed to load OpenAPI (${response.status})` },
-      { status: response.status },
+      { error: "Failed to load OpenAPI." },
+      { status: loaded.status },
     );
   }
 
-  const raw = await response.text();
-  const spec = parseOpenApiDocument(raw);
-  if (!spec) return invalidOpenApiResponse();
-
-  return NextResponse.json(spec);
+  return openApiResponse(loaded.spec);
 }

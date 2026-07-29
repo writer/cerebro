@@ -172,7 +172,11 @@ import (
 // Security lifecycle reads add only route/auth/dependency wiring and bounded
 // HTTP request/response mapping over the generated Connect client. Identity,
 // policy, pagination, finding, and verification behavior remain Rust-owned.
-const bootstrapProductionGoLineBudget = 29734
+// Durable lifecycle finding reconciliation adds bounded request decoding,
+// tenant authorization, dependency wiring, response mapping, and cache
+// invalidation. Resolver mapping, receipt verification, and closure decisions
+// remain in internal/securitylifecyclefindings and internal/findings.
+const bootstrapProductionGoLineBudget = 29817
 
 type bootstrapFileLineCount struct {
 	path  string

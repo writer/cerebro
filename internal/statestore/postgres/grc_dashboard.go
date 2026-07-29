@@ -130,7 +130,7 @@ func grcDashboardAggregateQuery(request ports.GRCDashboardAggregateRequest) (str
 	effectiveSeverity := findingEffectiveSeveritySQL()
 	query := `
 WITH finding_scope AS (
-  SELECT id, status, ` + effectiveSeverity + ` AS effective_severity, due_at, assignee, control_refs_json
+  SELECT id, status, ` + effectiveSeverity + ` AS effective_severity, due_at, assignee
   FROM findings
   WHERE ` + whereFindings + `
 ),
@@ -145,17 +145,11 @@ summary AS (
 ),
 control_refs AS (
   SELECT DISTINCT
-    COALESCE(NULLIF(TRIM(ref->>'framework_name'), ''), 'Unmapped') AS framework_name,
-    COALESCE(NULLIF(TRIM(ref->>'control_id'), ''), 'Needs mapping') AS control_id
-  FROM finding_scope
-  LEFT JOIN LATERAL jsonb_array_elements(
-    CASE
-      WHEN jsonb_array_length(control_refs_json) = 0
-        THEN '[{"framework_name":"Unmapped","control_id":"Needs mapping"}]'::jsonb
-      ELSE control_refs_json
-    END
-  ) AS ref ON TRUE
-  WHERE LOWER(status) = 'open'
+    ref.framework_name,
+    ref.control_id
+  FROM finding_scope AS finding
+  JOIN finding_control_refs AS ref ON ref.finding_id = finding.id
+  WHERE LOWER(finding.status) = 'open'
 ),
 evidence_summary AS (
   SELECT

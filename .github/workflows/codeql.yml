@@ -55,7 +55,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-go-v2-
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a # v4
+        uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
         with:
           config-file: ./.github/codeql-config.yml
           languages: ${{ matrix.language }}
@@ -74,4 +74,4 @@ jobs:
           go -C tools/linters build ./...
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@7188fc363630916deb702c7fdcf4e481b751f97a # v4
+        uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4

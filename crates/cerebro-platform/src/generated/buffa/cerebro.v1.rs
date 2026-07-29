@@ -2848,6 +2848,420 @@ impl ::buffa::Enumeration for SecurityLifecycleState {
         ]
     }
 }
+/// SecurityLifecyclePolicyState is the effective expiry posture evaluated from
+/// provider state, expiry metadata, and the policy evaluation time.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[repr(i32)]
+pub enum SecurityLifecyclePolicyState {
+    SECURITY_LIFECYCLE_POLICY_STATE_UNSPECIFIED = 0i32,
+    SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT = 1i32,
+    SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING = 2i32,
+    SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED = 3i32,
+    SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN = 4i32,
+}
+impl SecurityLifecyclePolicyState {
+    ///Idiomatic alias for [`Self::SECURITY_LIFECYCLE_POLICY_STATE_UNSPECIFIED`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Unspecified: Self = Self::SECURITY_LIFECYCLE_POLICY_STATE_UNSPECIFIED;
+    ///Idiomatic alias for [`Self::SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Compliant: Self = Self::SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT;
+    ///Idiomatic alias for [`Self::SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Expiring: Self = Self::SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING;
+    ///Idiomatic alias for [`Self::SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Expired: Self = Self::SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED;
+    ///Idiomatic alias for [`Self::SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Unknown: Self = Self::SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN;
+}
+impl ::core::default::Default for SecurityLifecyclePolicyState {
+    fn default() -> Self {
+        Self::SECURITY_LIFECYCLE_POLICY_STATE_UNSPECIFIED
+    }
+}
+impl ::serde::Serialize for SecurityLifecyclePolicyState {
+    fn serialize<S: ::serde::Serializer>(
+        &self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        s.serialize_str(::buffa::Enumeration::proto_name(self))
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for SecurityLifecyclePolicyState {
+    fn deserialize<D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        struct _V;
+        impl ::serde::de::Visitor<'_> for _V {
+            type Value = SecurityLifecyclePolicyState;
+            fn expecting(
+                &self,
+                f: &mut ::core::fmt::Formatter<'_>,
+            ) -> ::core::fmt::Result {
+                f.write_str(
+                    concat!(
+                        "a string, integer, or null for ",
+                        stringify!(SecurityLifecyclePolicyState)
+                    ),
+                )
+            }
+            fn visit_str<E: ::serde::de::Error>(
+                self,
+                v: &str,
+            ) -> ::core::result::Result<SecurityLifecyclePolicyState, E> {
+                <SecurityLifecyclePolicyState as ::buffa::Enumeration>::from_proto_name(
+                        v,
+                    )
+                    .ok_or_else(|| { ::serde::de::Error::unknown_variant(v, &[]) })
+            }
+            fn visit_i64<E: ::serde::de::Error>(
+                self,
+                v: i64,
+            ) -> ::core::result::Result<SecurityLifecyclePolicyState, E> {
+                let v32 = i32::try_from(v)
+                    .map_err(|_| {
+                        ::serde::de::Error::custom(
+                            ::buffa::alloc::format!("enum value {v} out of i32 range"),
+                        )
+                    })?;
+                <SecurityLifecyclePolicyState as ::buffa::Enumeration>::from_i32(v32)
+                    .ok_or_else(|| {
+                        ::serde::de::Error::custom(
+                            ::buffa::alloc::format!("unknown enum value {v32}"),
+                        )
+                    })
+            }
+            fn visit_u64<E: ::serde::de::Error>(
+                self,
+                v: u64,
+            ) -> ::core::result::Result<SecurityLifecyclePolicyState, E> {
+                let v32 = i32::try_from(v)
+                    .map_err(|_| {
+                        ::serde::de::Error::custom(
+                            ::buffa::alloc::format!("enum value {v} out of i32 range"),
+                        )
+                    })?;
+                <SecurityLifecyclePolicyState as ::buffa::Enumeration>::from_i32(v32)
+                    .ok_or_else(|| {
+                        ::serde::de::Error::custom(
+                            ::buffa::alloc::format!("unknown enum value {v32}"),
+                        )
+                    })
+            }
+            fn visit_unit<E: ::serde::de::Error>(
+                self,
+            ) -> ::core::result::Result<SecurityLifecyclePolicyState, E> {
+                ::core::result::Result::Ok(::core::default::Default::default())
+            }
+        }
+        d.deserialize_any(_V)
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for SecurityLifecyclePolicyState {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+impl ::buffa::Enumeration for SecurityLifecyclePolicyState {
+    fn from_i32(value: i32) -> ::core::option::Option<Self> {
+        match value {
+            0i32 => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_POLICY_STATE_UNSPECIFIED,
+                )
+            }
+            1i32 => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT,
+                )
+            }
+            2i32 => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING,
+                )
+            }
+            3i32 => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED,
+                )
+            }
+            4i32 => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN,
+                )
+            }
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn to_i32(&self) -> i32 {
+        *self as i32
+    }
+    fn proto_name(&self) -> &'static str {
+        match self {
+            Self::SECURITY_LIFECYCLE_POLICY_STATE_UNSPECIFIED => {
+                "SECURITY_LIFECYCLE_POLICY_STATE_UNSPECIFIED"
+            }
+            Self::SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT => {
+                "SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT"
+            }
+            Self::SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING => {
+                "SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING"
+            }
+            Self::SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED => {
+                "SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED"
+            }
+            Self::SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN => {
+                "SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN"
+            }
+        }
+    }
+    fn from_proto_name(name: &str) -> ::core::option::Option<Self> {
+        match name {
+            "SECURITY_LIFECYCLE_POLICY_STATE_UNSPECIFIED" => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_POLICY_STATE_UNSPECIFIED,
+                )
+            }
+            "SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT" => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT,
+                )
+            }
+            "SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING" => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING,
+                )
+            }
+            "SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED" => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED,
+                )
+            }
+            "SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN" => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN,
+                )
+            }
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn values() -> &'static [Self] {
+        &[
+            Self::SECURITY_LIFECYCLE_POLICY_STATE_UNSPECIFIED,
+            Self::SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT,
+            Self::SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING,
+            Self::SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED,
+            Self::SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN,
+        ]
+    }
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[repr(i32)]
+pub enum SecurityLifecycleCoverageReason {
+    SECURITY_LIFECYCLE_COVERAGE_REASON_UNSPECIFIED = 0i32,
+    SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE = 1i32,
+    SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT = 2i32,
+    SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED = 3i32,
+}
+impl SecurityLifecycleCoverageReason {
+    ///Idiomatic alias for [`Self::SECURITY_LIFECYCLE_COVERAGE_REASON_UNSPECIFIED`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Unspecified: Self = Self::SECURITY_LIFECYCLE_COVERAGE_REASON_UNSPECIFIED;
+    ///Idiomatic alias for [`Self::SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const Complete: Self = Self::SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE;
+    ///Idiomatic alias for [`Self::SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const ScanLimit: Self = Self::SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT;
+    ///Idiomatic alias for [`Self::SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED`]; `Debug` prints the variant name.
+    #[allow(non_upper_case_globals)]
+    pub const GraphChanged: Self = Self::SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED;
+}
+impl ::core::default::Default for SecurityLifecycleCoverageReason {
+    fn default() -> Self {
+        Self::SECURITY_LIFECYCLE_COVERAGE_REASON_UNSPECIFIED
+    }
+}
+impl ::serde::Serialize for SecurityLifecycleCoverageReason {
+    fn serialize<S: ::serde::Serializer>(
+        &self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        s.serialize_str(::buffa::Enumeration::proto_name(self))
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for SecurityLifecycleCoverageReason {
+    fn deserialize<D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        struct _V;
+        impl ::serde::de::Visitor<'_> for _V {
+            type Value = SecurityLifecycleCoverageReason;
+            fn expecting(
+                &self,
+                f: &mut ::core::fmt::Formatter<'_>,
+            ) -> ::core::fmt::Result {
+                f.write_str(
+                    concat!(
+                        "a string, integer, or null for ",
+                        stringify!(SecurityLifecycleCoverageReason)
+                    ),
+                )
+            }
+            fn visit_str<E: ::serde::de::Error>(
+                self,
+                v: &str,
+            ) -> ::core::result::Result<SecurityLifecycleCoverageReason, E> {
+                <SecurityLifecycleCoverageReason as ::buffa::Enumeration>::from_proto_name(
+                        v,
+                    )
+                    .ok_or_else(|| { ::serde::de::Error::unknown_variant(v, &[]) })
+            }
+            fn visit_i64<E: ::serde::de::Error>(
+                self,
+                v: i64,
+            ) -> ::core::result::Result<SecurityLifecycleCoverageReason, E> {
+                let v32 = i32::try_from(v)
+                    .map_err(|_| {
+                        ::serde::de::Error::custom(
+                            ::buffa::alloc::format!("enum value {v} out of i32 range"),
+                        )
+                    })?;
+                <SecurityLifecycleCoverageReason as ::buffa::Enumeration>::from_i32(v32)
+                    .ok_or_else(|| {
+                        ::serde::de::Error::custom(
+                            ::buffa::alloc::format!("unknown enum value {v32}"),
+                        )
+                    })
+            }
+            fn visit_u64<E: ::serde::de::Error>(
+                self,
+                v: u64,
+            ) -> ::core::result::Result<SecurityLifecycleCoverageReason, E> {
+                let v32 = i32::try_from(v)
+                    .map_err(|_| {
+                        ::serde::de::Error::custom(
+                            ::buffa::alloc::format!("enum value {v} out of i32 range"),
+                        )
+                    })?;
+                <SecurityLifecycleCoverageReason as ::buffa::Enumeration>::from_i32(v32)
+                    .ok_or_else(|| {
+                        ::serde::de::Error::custom(
+                            ::buffa::alloc::format!("unknown enum value {v32}"),
+                        )
+                    })
+            }
+            fn visit_unit<E: ::serde::de::Error>(
+                self,
+            ) -> ::core::result::Result<SecurityLifecycleCoverageReason, E> {
+                ::core::result::Result::Ok(::core::default::Default::default())
+            }
+        }
+        d.deserialize_any(_V)
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for SecurityLifecycleCoverageReason {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+impl ::buffa::Enumeration for SecurityLifecycleCoverageReason {
+    fn from_i32(value: i32) -> ::core::option::Option<Self> {
+        match value {
+            0i32 => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_COVERAGE_REASON_UNSPECIFIED,
+                )
+            }
+            1i32 => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE,
+                )
+            }
+            2i32 => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT,
+                )
+            }
+            3i32 => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED,
+                )
+            }
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn to_i32(&self) -> i32 {
+        *self as i32
+    }
+    fn proto_name(&self) -> &'static str {
+        match self {
+            Self::SECURITY_LIFECYCLE_COVERAGE_REASON_UNSPECIFIED => {
+                "SECURITY_LIFECYCLE_COVERAGE_REASON_UNSPECIFIED"
+            }
+            Self::SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE => {
+                "SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE"
+            }
+            Self::SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT => {
+                "SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT"
+            }
+            Self::SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED => {
+                "SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED"
+            }
+        }
+    }
+    fn from_proto_name(name: &str) -> ::core::option::Option<Self> {
+        match name {
+            "SECURITY_LIFECYCLE_COVERAGE_REASON_UNSPECIFIED" => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_COVERAGE_REASON_UNSPECIFIED,
+                )
+            }
+            "SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE" => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE,
+                )
+            }
+            "SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT" => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT,
+                )
+            }
+            "SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED" => {
+                ::core::option::Option::Some(
+                    Self::SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED,
+                )
+            }
+            _ => ::core::option::Option::None,
+        }
+    }
+    fn values() -> &'static [Self] {
+        &[
+            Self::SECURITY_LIFECYCLE_COVERAGE_REASON_UNSPECIFIED,
+            Self::SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE,
+            Self::SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT,
+            Self::SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED,
+        ]
+    }
+}
 #[derive(Clone, PartialEq, Default)]
 #[derive(::serde::Serialize, ::serde::Deserialize)]
 #[serde(default)]
@@ -5165,6 +5579,22 @@ pub struct SecurityLifecycleRecord {
         ::buffa_types::google::protobuf::Timestamp,
         ::buffa::Inline<::buffa_types::google::protobuf::Timestamp>,
     >,
+    /// Field 7: `source_runtime_id`
+    #[serde(
+        rename = "sourceRuntimeId",
+        alias = "source_runtime_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_runtime_id: ::buffa::alloc::string::String,
+    /// Field 8: `source_collection_id`
+    #[serde(
+        rename = "sourceCollectionId",
+        alias = "source_collection_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_collection_id: ::buffa::alloc::string::String,
     #[serde(skip)]
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
@@ -5177,6 +5607,8 @@ impl ::core::fmt::Debug for SecurityLifecycleRecord {
             .field("findings", &self.findings)
             .field("action_routes", &self.action_routes)
             .field("projected_at", &self.projected_at)
+            .field("source_runtime_id", &self.source_runtime_id)
+            .field("source_collection_id", &self.source_collection_id)
             .finish()
     }
 }
@@ -5247,6 +5679,17 @@ impl ::buffa::Message for SecurityLifecycleRecord {
                 += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
                     + inner_size as u64;
         }
+        if !self.source_runtime_id.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.source_runtime_id) as u64;
+        }
+        if !self.source_collection_id.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.source_collection_id)
+                        as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -5296,6 +5739,12 @@ impl ::buffa::Message for SecurityLifecycleRecord {
                 buf,
             );
             self.projected_at.write_to(__cache, buf);
+        }
+        if !self.source_runtime_id.is_empty() {
+            ::buffa::types::put_string_field(7u32, &self.source_runtime_id, buf);
+        }
+        if !self.source_collection_id.is_empty() {
+            ::buffa::types::put_string_field(8u32, &self.source_collection_id, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -5368,6 +5817,20 @@ impl ::buffa::Message for SecurityLifecycleRecord {
                     ctx,
                 )?;
             }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_runtime_id, buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_collection_id, buf)?;
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -5381,6 +5844,8 @@ impl ::buffa::Message for SecurityLifecycleRecord {
         self.findings.clear();
         self.action_routes.clear();
         self.projected_at = ::buffa::MessageField::none();
+        self.source_runtime_id.clear();
+        self.source_collection_id.clear();
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -5485,6 +5950,16 @@ pub struct SecurityLifecycleQuery {
         skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
     )]
     pub page_token: ::buffa::alloc::string::String,
+    /// Field 9: `subject_locator`
+    #[serde(
+        rename = "subjectLocator",
+        alias = "subject_locator",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub subject_locator: ::buffa::MessageField<
+        SecurityLifecycleSubjectLocator,
+        ::buffa::Inline<SecurityLifecycleSubjectLocator>,
+    >,
     #[serde(skip)]
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
@@ -5500,6 +5975,7 @@ impl ::core::fmt::Debug for SecurityLifecycleQuery {
             .field("findings_only", &self.findings_only)
             .field("limit", &self.limit)
             .field("page_token", &self.page_token)
+            .field("subject_locator", &self.subject_locator)
             .finish()
     }
 }
@@ -5569,6 +6045,14 @@ impl ::buffa::Message for SecurityLifecycleQuery {
         if !self.page_token.is_empty() {
             size += 1u64 + ::buffa::types::string_encoded_len(&self.page_token) as u64;
         }
+        if self.subject_locator.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.subject_locator.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -5623,6 +6107,14 @@ impl ::buffa::Message for SecurityLifecycleQuery {
         }
         if !self.page_token.is_empty() {
             ::buffa::types::put_string_field(8u32, &self.page_token, buf);
+        }
+        if self.subject_locator.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                9u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.subject_locator.write_to(__cache, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -5763,6 +6255,17 @@ impl ::buffa::Message for SecurityLifecycleQuery {
                 )?;
                 ::buffa::types::merge_string(&mut self.page_token, buf)?;
             }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.subject_locator.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -5779,6 +6282,7 @@ impl ::buffa::Message for SecurityLifecycleQuery {
         self.findings_only = false;
         self.limit = 0u32;
         self.page_token.clear();
+        self.subject_locator = ::buffa::MessageField::none();
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -5847,6 +6351,32 @@ pub struct SecurityLifecycleQueryResult {
         ::buffa_types::google::protobuf::Timestamp,
         ::buffa::Inline<::buffa_types::google::protobuf::Timestamp>,
     >,
+    /// Field 5: `aggregates`
+    #[serde(
+        rename = "aggregates",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub aggregates: ::buffa::MessageField<
+        SecurityLifecycleAggregates,
+        ::buffa::Inline<SecurityLifecycleAggregates>,
+    >,
+    /// Field 6: `previous_page_token`
+    #[serde(
+        rename = "previousPageToken",
+        alias = "previous_page_token",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub previous_page_token: ::buffa::alloc::string::String,
+    /// Field 7: `metadata`
+    #[serde(
+        rename = "metadata",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub metadata: ::buffa::MessageField<
+        SecurityLifecycleQueryMetadata,
+        ::buffa::Inline<SecurityLifecycleQueryMetadata>,
+    >,
     #[serde(skip)]
     #[doc(hidden)]
     pub __buffa_unknown_fields: ::buffa::UnknownFields,
@@ -5858,6 +6388,9 @@ impl ::core::fmt::Debug for SecurityLifecycleQueryResult {
             .field("next_page_token", &self.next_page_token)
             .field("truncated", &self.truncated)
             .field("as_of", &self.as_of)
+            .field("aggregates", &self.aggregates)
+            .field("previous_page_token", &self.previous_page_token)
+            .field("metadata", &self.metadata)
             .finish()
     }
 }
@@ -5912,6 +6445,28 @@ impl ::buffa::Message for SecurityLifecycleQueryResult {
                 += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
                     + inner_size as u64;
         }
+        if self.aggregates.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.aggregates.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if !self.previous_page_token.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.previous_page_token)
+                        as u64;
+        }
+        if self.metadata.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.metadata.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
         size += self.__buffa_unknown_fields.encoded_len() as u64;
         ::buffa::saturate_size(size)
     }
@@ -5943,6 +6498,25 @@ impl ::buffa::Message for SecurityLifecycleQueryResult {
                 buf,
             );
             self.as_of.write_to(__cache, buf);
+        }
+        if self.aggregates.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                5u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.aggregates.write_to(__cache, buf);
+        }
+        if !self.previous_page_token.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.previous_page_token, buf);
+        }
+        if self.metadata.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                7u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.metadata.write_to(__cache, buf);
         }
         self.__buffa_unknown_fields.write_to(buf);
     }
@@ -5994,6 +6568,35 @@ impl ::buffa::Message for SecurityLifecycleQueryResult {
                     ctx,
                 )?;
             }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.aggregates.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.previous_page_token, buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.metadata.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
             _ => {
                 self.__buffa_unknown_fields
                     .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
@@ -6006,6 +6609,9 @@ impl ::buffa::Message for SecurityLifecycleQueryResult {
         self.next_page_token.clear();
         self.truncated = false;
         self.as_of = ::buffa::MessageField::none();
+        self.aggregates = ::buffa::MessageField::none();
+        self.previous_page_token.clear();
+        self.metadata = ::buffa::MessageField::none();
         self.__buffa_unknown_fields.clear();
     }
 }
@@ -6036,6 +6642,2010 @@ pub const __SECURITY_LIFECYCLE_QUERY_RESULT_JSON_ANY: ::buffa::type_registry::Js
     type_url: "type.googleapis.com/cerebro.v1.SecurityLifecycleQueryResult",
     to_json: ::buffa::type_registry::any_to_json::<SecurityLifecycleQueryResult>,
     from_json: ::buffa::type_registry::any_from_json::<SecurityLifecycleQueryResult>,
+    is_wkt: false,
+};
+/// SecurityLifecycleSubjectLocator selects one stable governed slot without
+/// coupling a lookup to the currently observed material revision.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct SecurityLifecycleSubjectLocator {
+    /// Field 1: `subject_kind`
+    #[serde(
+        rename = "subjectKind",
+        alias = "subject_kind",
+        with = "::buffa::json_helpers::proto_enum",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_default_enum_value"
+    )]
+    pub subject_kind: ::buffa::EnumValue<SecurityLifecycleSubjectKind>,
+    /// Field 2: `authority_id`
+    #[serde(
+        rename = "authorityId",
+        alias = "authority_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub authority_id: ::buffa::alloc::string::String,
+    /// Field 3: `stable_locator`
+    #[serde(
+        rename = "stableLocator",
+        alias = "stable_locator",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub stable_locator: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for SecurityLifecycleSubjectLocator {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("SecurityLifecycleSubjectLocator")
+            .field("subject_kind", &self.subject_kind)
+            .field("authority_id", &self.authority_id)
+            .field("stable_locator", &self.stable_locator)
+            .finish()
+    }
+}
+impl SecurityLifecycleSubjectLocator {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleSubjectLocator";
+}
+::buffa::impl_default_instance!(SecurityLifecycleSubjectLocator);
+impl ::buffa::MessageName for SecurityLifecycleSubjectLocator {
+    const PACKAGE: &'static str = "cerebro.v1";
+    const NAME: &'static str = "SecurityLifecycleSubjectLocator";
+    const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleSubjectLocator";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleSubjectLocator";
+}
+impl ::buffa::Message for SecurityLifecycleSubjectLocator {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        {
+            let val = self.subject_kind.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        if !self.authority_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.authority_id) as u64;
+        }
+        if !self.stable_locator.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.stable_locator) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        {
+            let val = self.subject_kind.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(1u32, val, buf);
+            }
+        }
+        if !self.authority_id.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.authority_id, buf);
+        }
+        if !self.stable_locator.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.stable_locator, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.subject_kind = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.authority_id, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.stable_locator, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.subject_kind = ::buffa::EnumValue::from(0);
+        self.authority_id.clear();
+        self.stable_locator.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for SecurityLifecycleSubjectLocator {
+    const PROTO_FQN: &'static str = "cerebro.v1.SecurityLifecycleSubjectLocator";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for SecurityLifecycleSubjectLocator {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __SECURITY_LIFECYCLE_SUBJECT_LOCATOR_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.v1.SecurityLifecycleSubjectLocator",
+    to_json: ::buffa::type_registry::any_to_json::<SecurityLifecycleSubjectLocator>,
+    from_json: ::buffa::type_registry::any_from_json::<SecurityLifecycleSubjectLocator>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct SecurityLifecycleSubjectKindCount {
+    /// Field 1: `subject_kind`
+    #[serde(
+        rename = "subjectKind",
+        alias = "subject_kind",
+        with = "::buffa::json_helpers::proto_enum",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_default_enum_value"
+    )]
+    pub subject_kind: ::buffa::EnumValue<SecurityLifecycleSubjectKind>,
+    /// Field 2: `count`
+    #[serde(
+        rename = "count",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub count: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for SecurityLifecycleSubjectKindCount {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("SecurityLifecycleSubjectKindCount")
+            .field("subject_kind", &self.subject_kind)
+            .field("count", &self.count)
+            .finish()
+    }
+}
+impl SecurityLifecycleSubjectKindCount {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleSubjectKindCount";
+}
+::buffa::impl_default_instance!(SecurityLifecycleSubjectKindCount);
+impl ::buffa::MessageName for SecurityLifecycleSubjectKindCount {
+    const PACKAGE: &'static str = "cerebro.v1";
+    const NAME: &'static str = "SecurityLifecycleSubjectKindCount";
+    const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleSubjectKindCount";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleSubjectKindCount";
+}
+impl ::buffa::Message for SecurityLifecycleSubjectKindCount {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        {
+            let val = self.subject_kind.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        if self.count != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.count) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        {
+            let val = self.subject_kind.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(1u32, val, buf);
+            }
+        }
+        if self.count != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.count, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.subject_kind = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.count = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.subject_kind = ::buffa::EnumValue::from(0);
+        self.count = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for SecurityLifecycleSubjectKindCount {
+    const PROTO_FQN: &'static str = "cerebro.v1.SecurityLifecycleSubjectKindCount";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for SecurityLifecycleSubjectKindCount {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __SECURITY_LIFECYCLE_SUBJECT_KIND_COUNT_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.v1.SecurityLifecycleSubjectKindCount",
+    to_json: ::buffa::type_registry::any_to_json::<SecurityLifecycleSubjectKindCount>,
+    from_json: ::buffa::type_registry::any_from_json::<
+        SecurityLifecycleSubjectKindCount,
+    >,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct SecurityLifecycleStateCount {
+    /// Field 1: `state`
+    #[serde(
+        rename = "state",
+        with = "::buffa::json_helpers::proto_enum",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_default_enum_value"
+    )]
+    pub state: ::buffa::EnumValue<SecurityLifecycleState>,
+    /// Field 2: `count`
+    #[serde(
+        rename = "count",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub count: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for SecurityLifecycleStateCount {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("SecurityLifecycleStateCount")
+            .field("state", &self.state)
+            .field("count", &self.count)
+            .finish()
+    }
+}
+impl SecurityLifecycleStateCount {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleStateCount";
+}
+::buffa::impl_default_instance!(SecurityLifecycleStateCount);
+impl ::buffa::MessageName for SecurityLifecycleStateCount {
+    const PACKAGE: &'static str = "cerebro.v1";
+    const NAME: &'static str = "SecurityLifecycleStateCount";
+    const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleStateCount";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleStateCount";
+}
+impl ::buffa::Message for SecurityLifecycleStateCount {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        {
+            let val = self.state.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        if self.count != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.count) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        {
+            let val = self.state.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(1u32, val, buf);
+            }
+        }
+        if self.count != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.count, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.state = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.count = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.state = ::buffa::EnumValue::from(0);
+        self.count = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for SecurityLifecycleStateCount {
+    const PROTO_FQN: &'static str = "cerebro.v1.SecurityLifecycleStateCount";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for SecurityLifecycleStateCount {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __SECURITY_LIFECYCLE_STATE_COUNT_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.v1.SecurityLifecycleStateCount",
+    to_json: ::buffa::type_registry::any_to_json::<SecurityLifecycleStateCount>,
+    from_json: ::buffa::type_registry::any_from_json::<SecurityLifecycleStateCount>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct SecurityLifecyclePolicyStateCount {
+    /// Field 1: `policy_state`
+    #[serde(
+        rename = "policyState",
+        alias = "policy_state",
+        with = "::buffa::json_helpers::proto_enum",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_default_enum_value"
+    )]
+    pub policy_state: ::buffa::EnumValue<SecurityLifecyclePolicyState>,
+    /// Field 2: `count`
+    #[serde(
+        rename = "count",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub count: u64,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for SecurityLifecyclePolicyStateCount {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("SecurityLifecyclePolicyStateCount")
+            .field("policy_state", &self.policy_state)
+            .field("count", &self.count)
+            .finish()
+    }
+}
+impl SecurityLifecyclePolicyStateCount {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecyclePolicyStateCount";
+}
+::buffa::impl_default_instance!(SecurityLifecyclePolicyStateCount);
+impl ::buffa::MessageName for SecurityLifecyclePolicyStateCount {
+    const PACKAGE: &'static str = "cerebro.v1";
+    const NAME: &'static str = "SecurityLifecyclePolicyStateCount";
+    const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecyclePolicyStateCount";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecyclePolicyStateCount";
+}
+impl ::buffa::Message for SecurityLifecyclePolicyStateCount {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        {
+            let val = self.policy_state.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        if self.count != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.count) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        {
+            let val = self.policy_state.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(1u32, val, buf);
+            }
+        }
+        if self.count != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.count, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.policy_state = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.count = ::buffa::types::decode_uint64(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.policy_state = ::buffa::EnumValue::from(0);
+        self.count = 0u64;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for SecurityLifecyclePolicyStateCount {
+    const PROTO_FQN: &'static str = "cerebro.v1.SecurityLifecyclePolicyStateCount";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for SecurityLifecyclePolicyStateCount {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __SECURITY_LIFECYCLE_POLICY_STATE_COUNT_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.v1.SecurityLifecyclePolicyStateCount",
+    to_json: ::buffa::type_registry::any_to_json::<SecurityLifecyclePolicyStateCount>,
+    from_json: ::buffa::type_registry::any_from_json::<
+        SecurityLifecyclePolicyStateCount,
+    >,
+    is_wkt: false,
+};
+/// SecurityLifecycleAggregates describes the entire filtered population covered
+/// by the server query, never only the returned page. counts_are_exact is false
+/// when coverage metadata reports a bounded source scan.
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct SecurityLifecycleAggregates {
+    /// Field 1: `counts_are_exact`
+    #[serde(
+        rename = "countsAreExact",
+        alias = "counts_are_exact",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub counts_are_exact: bool,
+    /// Field 2: `matched_records`
+    #[serde(
+        rename = "matchedRecords",
+        alias = "matched_records",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub matched_records: u64,
+    /// Field 3: `matched_findings`
+    #[serde(
+        rename = "matchedFindings",
+        alias = "matched_findings",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub matched_findings: u64,
+    /// Field 4: `subject_kind_counts`
+    #[serde(
+        rename = "subjectKindCounts",
+        alias = "subject_kind_counts",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub subject_kind_counts: ::buffa::alloc::vec::Vec<SecurityLifecycleSubjectKindCount>,
+    /// Field 5: `state_counts`
+    #[serde(
+        rename = "stateCounts",
+        alias = "state_counts",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub state_counts: ::buffa::alloc::vec::Vec<SecurityLifecycleStateCount>,
+    /// Field 6: `policy_state_counts`
+    #[serde(
+        rename = "policyStateCounts",
+        alias = "policy_state_counts",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_vec",
+        deserialize_with = "::buffa::json_helpers::null_as_default"
+    )]
+    pub policy_state_counts: ::buffa::alloc::vec::Vec<SecurityLifecyclePolicyStateCount>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for SecurityLifecycleAggregates {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("SecurityLifecycleAggregates")
+            .field("counts_are_exact", &self.counts_are_exact)
+            .field("matched_records", &self.matched_records)
+            .field("matched_findings", &self.matched_findings)
+            .field("subject_kind_counts", &self.subject_kind_counts)
+            .field("state_counts", &self.state_counts)
+            .field("policy_state_counts", &self.policy_state_counts)
+            .finish()
+    }
+}
+impl SecurityLifecycleAggregates {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleAggregates";
+}
+::buffa::impl_default_instance!(SecurityLifecycleAggregates);
+impl ::buffa::MessageName for SecurityLifecycleAggregates {
+    const PACKAGE: &'static str = "cerebro.v1";
+    const NAME: &'static str = "SecurityLifecycleAggregates";
+    const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleAggregates";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleAggregates";
+}
+impl ::buffa::Message for SecurityLifecycleAggregates {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.counts_are_exact {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.matched_records != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.matched_records) as u64;
+        }
+        if self.matched_findings != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.matched_findings) as u64;
+        }
+        for v in &self.subject_kind_counts {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.state_counts {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.policy_state_counts {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.counts_are_exact {
+            ::buffa::types::put_bool_field(1u32, self.counts_are_exact, buf);
+        }
+        if self.matched_records != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.matched_records, buf);
+        }
+        if self.matched_findings != 0u64 {
+            ::buffa::types::put_uint64_field(3u32, self.matched_findings, buf);
+        }
+        for v in &self.subject_kind_counts {
+            ::buffa::types::put_len_delimited_header(
+                4u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.state_counts {
+            ::buffa::types::put_len_delimited_header(
+                5u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.policy_state_counts {
+            ::buffa::types::put_len_delimited_header(
+                6u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.counts_are_exact = ::buffa::types::decode_bool(buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.matched_records = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.matched_findings = ::buffa::types::decode_uint64(buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.subject_kind_counts.push(elem);
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.state_counts.push(elem);
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.policy_state_counts.push(elem);
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.counts_are_exact = false;
+        self.matched_records = 0u64;
+        self.matched_findings = 0u64;
+        self.subject_kind_counts.clear();
+        self.state_counts.clear();
+        self.policy_state_counts.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for SecurityLifecycleAggregates {
+    const PROTO_FQN: &'static str = "cerebro.v1.SecurityLifecycleAggregates";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for SecurityLifecycleAggregates {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __SECURITY_LIFECYCLE_AGGREGATES_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.v1.SecurityLifecycleAggregates",
+    to_json: ::buffa::type_registry::any_to_json::<SecurityLifecycleAggregates>,
+    from_json: ::buffa::type_registry::any_from_json::<SecurityLifecycleAggregates>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct SecurityLifecycleCoverage {
+    /// Field 1: `complete`
+    #[serde(
+        rename = "complete",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub complete: bool,
+    /// Field 2: `truncated`
+    #[serde(
+        rename = "truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub truncated: bool,
+    /// Field 3: `scanned_entities`
+    #[serde(
+        rename = "scannedEntities",
+        alias = "scanned_entities",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub scanned_entities: u64,
+    /// Field 4: `lifecycle_entities`
+    #[serde(
+        rename = "lifecycleEntities",
+        alias = "lifecycle_entities",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub lifecycle_entities: u64,
+    /// Field 5: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 6: `reason`
+    #[serde(
+        rename = "reason",
+        with = "::buffa::json_helpers::proto_enum",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_default_enum_value"
+    )]
+    pub reason: ::buffa::EnumValue<SecurityLifecycleCoverageReason>,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for SecurityLifecycleCoverage {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("SecurityLifecycleCoverage")
+            .field("complete", &self.complete)
+            .field("truncated", &self.truncated)
+            .field("scanned_entities", &self.scanned_entities)
+            .field("lifecycle_entities", &self.lifecycle_entities)
+            .field("graph_revision", &self.graph_revision)
+            .field("reason", &self.reason)
+            .finish()
+    }
+}
+impl SecurityLifecycleCoverage {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleCoverage";
+}
+::buffa::impl_default_instance!(SecurityLifecycleCoverage);
+impl ::buffa::MessageName for SecurityLifecycleCoverage {
+    const PACKAGE: &'static str = "cerebro.v1";
+    const NAME: &'static str = "SecurityLifecycleCoverage";
+    const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleCoverage";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleCoverage";
+}
+impl ::buffa::Message for SecurityLifecycleCoverage {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.complete {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.scanned_entities != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.scanned_entities) as u64;
+        }
+        if self.lifecycle_entities != 0u64 {
+            size
+                += 1u64
+                    + ::buffa::types::uint64_encoded_len(self.lifecycle_entities) as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        {
+            let val = self.reason.to_i32();
+            if val != 0 {
+                size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+            }
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.complete {
+            ::buffa::types::put_bool_field(1u32, self.complete, buf);
+        }
+        if self.truncated {
+            ::buffa::types::put_bool_field(2u32, self.truncated, buf);
+        }
+        if self.scanned_entities != 0u64 {
+            ::buffa::types::put_uint64_field(3u32, self.scanned_entities, buf);
+        }
+        if self.lifecycle_entities != 0u64 {
+            ::buffa::types::put_uint64_field(4u32, self.lifecycle_entities, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(5u32, self.graph_revision, buf);
+        }
+        {
+            let val = self.reason.to_i32();
+            if val != 0 {
+                ::buffa::types::put_int32_field(6u32, val, buf);
+            }
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.complete = ::buffa::types::decode_bool(buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.scanned_entities = ::buffa::types::decode_uint64(buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.lifecycle_entities = ::buffa::types::decode_uint64(buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.reason = ::buffa::EnumValue::from(
+                    ::buffa::types::decode_int32(buf)?,
+                );
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.complete = false;
+        self.truncated = false;
+        self.scanned_entities = 0u64;
+        self.lifecycle_entities = 0u64;
+        self.graph_revision = 0u64;
+        self.reason = ::buffa::EnumValue::from(0);
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for SecurityLifecycleCoverage {
+    const PROTO_FQN: &'static str = "cerebro.v1.SecurityLifecycleCoverage";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for SecurityLifecycleCoverage {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __SECURITY_LIFECYCLE_COVERAGE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.v1.SecurityLifecycleCoverage",
+    to_json: ::buffa::type_registry::any_to_json::<SecurityLifecycleCoverage>,
+    from_json: ::buffa::type_registry::any_from_json::<SecurityLifecycleCoverage>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct SecurityLifecycleFreshness {
+    /// Field 1: `as_of`
+    #[serde(
+        rename = "asOf",
+        alias = "as_of",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub as_of: ::buffa::MessageField<
+        ::buffa_types::google::protobuf::Timestamp,
+        ::buffa::Inline<::buffa_types::google::protobuf::Timestamp>,
+    >,
+    /// Field 2: `oldest_observed_at`
+    #[serde(
+        rename = "oldestObservedAt",
+        alias = "oldest_observed_at",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub oldest_observed_at: ::buffa::MessageField<
+        ::buffa_types::google::protobuf::Timestamp,
+        ::buffa::Inline<::buffa_types::google::protobuf::Timestamp>,
+    >,
+    /// Field 3: `newest_observed_at`
+    #[serde(
+        rename = "newestObservedAt",
+        alias = "newest_observed_at",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub newest_observed_at: ::buffa::MessageField<
+        ::buffa_types::google::protobuf::Timestamp,
+        ::buffa::Inline<::buffa_types::google::protobuf::Timestamp>,
+    >,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for SecurityLifecycleFreshness {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("SecurityLifecycleFreshness")
+            .field("as_of", &self.as_of)
+            .field("oldest_observed_at", &self.oldest_observed_at)
+            .field("newest_observed_at", &self.newest_observed_at)
+            .finish()
+    }
+}
+impl SecurityLifecycleFreshness {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleFreshness";
+}
+::buffa::impl_default_instance!(SecurityLifecycleFreshness);
+impl ::buffa::MessageName for SecurityLifecycleFreshness {
+    const PACKAGE: &'static str = "cerebro.v1";
+    const NAME: &'static str = "SecurityLifecycleFreshness";
+    const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleFreshness";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleFreshness";
+}
+impl ::buffa::Message for SecurityLifecycleFreshness {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.as_of.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.as_of.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.oldest_observed_at.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.oldest_observed_at.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.newest_observed_at.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.newest_observed_at.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.as_of.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.as_of.write_to(__cache, buf);
+        }
+        if self.oldest_observed_at.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                2u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.oldest_observed_at.write_to(__cache, buf);
+        }
+        if self.newest_observed_at.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                3u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.newest_observed_at.write_to(__cache, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.as_of.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.oldest_observed_at.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.newest_observed_at.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.as_of = ::buffa::MessageField::none();
+        self.oldest_observed_at = ::buffa::MessageField::none();
+        self.newest_observed_at = ::buffa::MessageField::none();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for SecurityLifecycleFreshness {
+    const PROTO_FQN: &'static str = "cerebro.v1.SecurityLifecycleFreshness";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for SecurityLifecycleFreshness {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __SECURITY_LIFECYCLE_FRESHNESS_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.v1.SecurityLifecycleFreshness",
+    to_json: ::buffa::type_registry::any_to_json::<SecurityLifecycleFreshness>,
+    from_json: ::buffa::type_registry::any_from_json::<SecurityLifecycleFreshness>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct SecurityLifecycleQueryMetadata {
+    /// Field 1: `coverage`
+    #[serde(
+        rename = "coverage",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub coverage: ::buffa::MessageField<
+        SecurityLifecycleCoverage,
+        ::buffa::Inline<SecurityLifecycleCoverage>,
+    >,
+    /// Field 2: `freshness`
+    #[serde(
+        rename = "freshness",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub freshness: ::buffa::MessageField<
+        SecurityLifecycleFreshness,
+        ::buffa::Inline<SecurityLifecycleFreshness>,
+    >,
+    /// Field 3: `page_truncated`
+    #[serde(
+        rename = "pageTruncated",
+        alias = "page_truncated",
+        with = "::buffa::json_helpers::proto_bool",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_false"
+    )]
+    pub page_truncated: bool,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for SecurityLifecycleQueryMetadata {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("SecurityLifecycleQueryMetadata")
+            .field("coverage", &self.coverage)
+            .field("freshness", &self.freshness)
+            .field("page_truncated", &self.page_truncated)
+            .finish()
+    }
+}
+impl SecurityLifecycleQueryMetadata {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleQueryMetadata";
+}
+::buffa::impl_default_instance!(SecurityLifecycleQueryMetadata);
+impl ::buffa::MessageName for SecurityLifecycleQueryMetadata {
+    const PACKAGE: &'static str = "cerebro.v1";
+    const NAME: &'static str = "SecurityLifecycleQueryMetadata";
+    const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleQueryMetadata";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleQueryMetadata";
+}
+impl ::buffa::Message for SecurityLifecycleQueryMetadata {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.coverage.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.coverage.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.freshness.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.freshness.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.page_truncated {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.coverage.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.coverage.write_to(__cache, buf);
+        }
+        if self.freshness.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                2u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.freshness.write_to(__cache, buf);
+        }
+        if self.page_truncated {
+            ::buffa::types::put_bool_field(3u32, self.page_truncated, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.coverage.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.freshness.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.page_truncated = ::buffa::types::decode_bool(buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.coverage = ::buffa::MessageField::none();
+        self.freshness = ::buffa::MessageField::none();
+        self.page_truncated = false;
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for SecurityLifecycleQueryMetadata {
+    const PROTO_FQN: &'static str = "cerebro.v1.SecurityLifecycleQueryMetadata";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for SecurityLifecycleQueryMetadata {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __SECURITY_LIFECYCLE_QUERY_METADATA_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.v1.SecurityLifecycleQueryMetadata",
+    to_json: ::buffa::type_registry::any_to_json::<SecurityLifecycleQueryMetadata>,
+    from_json: ::buffa::type_registry::any_from_json::<SecurityLifecycleQueryMetadata>,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ResolveSecurityLifecycleFindingRequest {
+    /// Field 1: `tenant_id`
+    #[serde(
+        rename = "tenantId",
+        alias = "tenant_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub tenant_id: ::buffa::alloc::string::String,
+    /// Field 2: `finding_urn`
+    #[serde(
+        rename = "findingUrn",
+        alias = "finding_urn",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub finding_urn: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ResolveSecurityLifecycleFindingRequest {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ResolveSecurityLifecycleFindingRequest")
+            .field("tenant_id", &self.tenant_id)
+            .field("finding_urn", &self.finding_urn)
+            .finish()
+    }
+}
+impl ResolveSecurityLifecycleFindingRequest {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.ResolveSecurityLifecycleFindingRequest";
+}
+::buffa::impl_default_instance!(ResolveSecurityLifecycleFindingRequest);
+impl ::buffa::MessageName for ResolveSecurityLifecycleFindingRequest {
+    const PACKAGE: &'static str = "cerebro.v1";
+    const NAME: &'static str = "ResolveSecurityLifecycleFindingRequest";
+    const FULL_NAME: &'static str = "cerebro.v1.ResolveSecurityLifecycleFindingRequest";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.ResolveSecurityLifecycleFindingRequest";
+}
+impl ::buffa::Message for ResolveSecurityLifecycleFindingRequest {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.tenant_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+        }
+        if !self.finding_urn.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.finding_urn) as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        _cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.tenant_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+        }
+        if !self.finding_urn.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.finding_urn, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.tenant_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.finding_urn, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.tenant_id.clear();
+        self.finding_urn.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ResolveSecurityLifecycleFindingRequest {
+    const PROTO_FQN: &'static str = "cerebro.v1.ResolveSecurityLifecycleFindingRequest";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ResolveSecurityLifecycleFindingRequest {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __RESOLVE_SECURITY_LIFECYCLE_FINDING_REQUEST_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.v1.ResolveSecurityLifecycleFindingRequest",
+    to_json: ::buffa::type_registry::any_to_json::<
+        ResolveSecurityLifecycleFindingRequest,
+    >,
+    from_json: ::buffa::type_registry::any_from_json::<
+        ResolveSecurityLifecycleFindingRequest,
+    >,
+    is_wkt: false,
+};
+#[derive(Clone, PartialEq, Default)]
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+#[serde(default)]
+pub struct ResolveSecurityLifecycleFindingResponse {
+    /// Field 1: `record`
+    #[serde(
+        rename = "record",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_unset_message_field"
+    )]
+    pub record: ::buffa::MessageField<
+        SecurityLifecycleRecord,
+        ::buffa::Inline<SecurityLifecycleRecord>,
+    >,
+    /// Field 2: `graph_revision`
+    #[serde(
+        rename = "graphRevision",
+        alias = "graph_revision",
+        with = "::buffa::json_helpers::uint64",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_zero_u64"
+    )]
+    pub graph_revision: u64,
+    /// Field 3: `source_runtime_id`
+    #[serde(
+        rename = "sourceRuntimeId",
+        alias = "source_runtime_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_runtime_id: ::buffa::alloc::string::String,
+    /// Field 4: `source_collection_id`
+    #[serde(
+        rename = "sourceCollectionId",
+        alias = "source_collection_id",
+        with = "::buffa::json_helpers::proto_string",
+        skip_serializing_if = "::buffa::json_helpers::skip_if::is_empty_str"
+    )]
+    pub source_collection_id: ::buffa::alloc::string::String,
+    #[serde(skip)]
+    #[doc(hidden)]
+    pub __buffa_unknown_fields: ::buffa::UnknownFields,
+}
+impl ::core::fmt::Debug for ResolveSecurityLifecycleFindingResponse {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ResolveSecurityLifecycleFindingResponse")
+            .field("record", &self.record)
+            .field("graph_revision", &self.graph_revision)
+            .field("source_runtime_id", &self.source_runtime_id)
+            .field("source_collection_id", &self.source_collection_id)
+            .finish()
+    }
+}
+impl ResolveSecurityLifecycleFindingResponse {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.ResolveSecurityLifecycleFindingResponse";
+}
+::buffa::impl_default_instance!(ResolveSecurityLifecycleFindingResponse);
+impl ::buffa::MessageName for ResolveSecurityLifecycleFindingResponse {
+    const PACKAGE: &'static str = "cerebro.v1";
+    const NAME: &'static str = "ResolveSecurityLifecycleFindingResponse";
+    const FULL_NAME: &'static str = "cerebro.v1.ResolveSecurityLifecycleFindingResponse";
+    const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.ResolveSecurityLifecycleFindingResponse";
+}
+impl ::buffa::Message for ResolveSecurityLifecycleFindingResponse {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if self.record.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.record.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        if self.graph_revision != 0u64 {
+            size
+                += 1u64 + ::buffa::types::uint64_encoded_len(self.graph_revision) as u64;
+        }
+        if !self.source_runtime_id.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.source_runtime_id) as u64;
+        }
+        if !self.source_collection_id.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.source_collection_id)
+                        as u64;
+        }
+        size += self.__buffa_unknown_fields.encoded_len() as u64;
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if self.record.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                1u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.record.write_to(__cache, buf);
+        }
+        if self.graph_revision != 0u64 {
+            ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+        }
+        if !self.source_runtime_id.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.source_runtime_id, buf);
+        }
+        if !self.source_collection_id.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.source_collection_id, buf);
+        }
+        self.__buffa_unknown_fields.write_to(buf);
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.record.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.graph_revision = ::buffa::types::decode_uint64(buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_runtime_id, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source_collection_id, buf)?;
+            }
+            _ => {
+                self.__buffa_unknown_fields
+                    .push(::buffa::encoding::decode_unknown_field(tag, buf, ctx)?);
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.record = ::buffa::MessageField::none();
+        self.graph_revision = 0u64;
+        self.source_runtime_id.clear();
+        self.source_collection_id.clear();
+        self.__buffa_unknown_fields.clear();
+    }
+}
+impl ::buffa::ExtensionSet for ResolveSecurityLifecycleFindingResponse {
+    const PROTO_FQN: &'static str = "cerebro.v1.ResolveSecurityLifecycleFindingResponse";
+    fn unknown_fields(&self) -> &::buffa::UnknownFields {
+        &self.__buffa_unknown_fields
+    }
+    fn unknown_fields_mut(&mut self) -> &mut ::buffa::UnknownFields {
+        &mut self.__buffa_unknown_fields
+    }
+}
+impl ::buffa::json_helpers::ProtoElemJson for ResolveSecurityLifecycleFindingResponse {
+    fn serialize_proto_json<S: ::serde::Serializer>(
+        v: &Self,
+        s: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        ::serde::Serialize::serialize(v, s)
+    }
+    fn deserialize_proto_json<'de, D: ::serde::Deserializer<'de>>(
+        d: D,
+    ) -> ::core::result::Result<Self, D::Error> {
+        <Self as ::serde::Deserialize>::deserialize(d)
+    }
+}
+#[doc(hidden)]
+pub const __RESOLVE_SECURITY_LIFECYCLE_FINDING_RESPONSE_JSON_ANY: ::buffa::type_registry::JsonAnyEntry = ::buffa::type_registry::JsonAnyEntry {
+    type_url: "type.googleapis.com/cerebro.v1.ResolveSecurityLifecycleFindingResponse",
+    to_json: ::buffa::type_registry::any_to_json::<
+        ResolveSecurityLifecycleFindingResponse,
+    >,
+    from_json: ::buffa::type_registry::any_from_json::<
+        ResolveSecurityLifecycleFindingResponse,
+    >,
     is_wkt: false,
 };
 #[allow(
@@ -14635,6 +17245,10 @@ pub mod __buffa {
             pub projected_at: ::buffa::MessageFieldView<
                 ::buffa_types::google::protobuf::__buffa::view::TimestampView<'a>,
             >,
+            /// Field 7: `source_runtime_id`
+            pub source_runtime_id: &'a str,
+            /// Field 8: `source_collection_id`
+            pub source_collection_id: &'a str,
             pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
         }
         impl<'a> ::buffa::MessageView<'a> for SecurityLifecycleRecordView<'a> {
@@ -14718,6 +17332,22 @@ pub mod __buffa {
                                 );
                             }
                         }
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_runtime_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    8u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_collection_id = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
                     }
                     3u32 => {
                         ::buffa::encoding::check_wire_type(
@@ -14841,6 +17471,8 @@ pub mod __buffa {
                         }
                         None => ::buffa::MessageField::none(),
                     },
+                    source_runtime_id: self.source_runtime_id.to_string(),
+                    source_collection_id: self.source_collection_id.to_string(),
                     __buffa_unknown_fields: self
                         .__buffa_unknown_fields
                         .to_owned()?
@@ -14895,6 +17527,19 @@ pub mod __buffa {
                         += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
                             + inner_size as u64;
                 }
+                if !self.source_runtime_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_runtime_id)
+                                as u64;
+                }
+                if !self.source_collection_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.source_collection_id,
+                            ) as u64;
+                }
                 size += self.__buffa_unknown_fields.encoded_len() as u64;
                 ::buffa::saturate_size(size)
             }
@@ -14946,6 +17591,16 @@ pub mod __buffa {
                     );
                     self.projected_at.write_to(__cache, buf);
                 }
+                if !self.source_runtime_id.is_empty() {
+                    ::buffa::types::put_string_field(7u32, &self.source_runtime_id, buf);
+                }
+                if !self.source_collection_id.is_empty() {
+                    ::buffa::types::put_string_field(
+                        8u32,
+                        &self.source_collection_id,
+                        buf,
+                    );
+                }
                 self.__buffa_unknown_fields.write_to(buf);
             }
         }
@@ -14995,6 +17650,20 @@ pub mod __buffa {
                     {
                         __map.serialize_entry("projectedAt", __v)?;
                     }
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.source_runtime_id,
+                ) {
+                    __map.serialize_entry("sourceRuntimeId", self.source_runtime_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.source_collection_id,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "sourceCollectionId",
+                            self.source_collection_id,
+                        )?;
                 }
                 __map.end()
             }
@@ -15141,6 +17810,16 @@ pub mod __buffa {
             > {
                 &self.0.reborrow().projected_at
             }
+            /// Field 7: `source_runtime_id`
+            #[must_use]
+            pub fn source_runtime_id(&self) -> &'_ str {
+                self.0.reborrow().source_runtime_id
+            }
+            /// Field 8: `source_collection_id`
+            #[must_use]
+            pub fn source_collection_id(&self) -> &'_ str {
+                self.0.reborrow().source_collection_id
+            }
         }
         impl ::core::convert::From<
             ::buffa::OwnedView<SecurityLifecycleRecordView<'static>>,
@@ -15206,6 +17885,10 @@ pub mod __buffa {
             pub limit: u32,
             /// Field 8: `page_token`
             pub page_token: &'a str,
+            /// Field 9: `subject_locator`
+            pub subject_locator: ::buffa::MessageFieldView<
+                super::super::__buffa::view::SecurityLifecycleSubjectLocatorView<'a>,
+            >,
             pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
         }
         impl<'a> ::buffa::MessageView<'a> for SecurityLifecycleQueryView<'a> {
@@ -15292,6 +17975,31 @@ pub mod __buffa {
                             ::buffa::encoding::WireType::LengthDelimited,
                         )?;
                         view.page_token = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    9u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.subject_locator.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.subject_locator = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::SecurityLifecycleSubjectLocatorView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
                     }
                     2u32 => {
                         if tag.wire_type()
@@ -15415,6 +18123,17 @@ pub mod __buffa {
                     findings_only: self.findings_only,
                     limit: self.limit,
                     page_token: self.page_token.to_string(),
+                    subject_locator: match self.subject_locator.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::SecurityLifecycleSubjectLocator,
+                                ::buffa::Inline<
+                                    super::super::SecurityLifecycleSubjectLocator,
+                                >,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
                     __buffa_unknown_fields: self
                         .__buffa_unknown_fields
                         .to_owned()?
@@ -15477,6 +18196,14 @@ pub mod __buffa {
                             + ::buffa::types::string_encoded_len(&self.page_token)
                                 as u64;
                 }
+                if self.subject_locator.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.subject_locator.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
                 size += self.__buffa_unknown_fields.encoded_len() as u64;
                 ::buffa::saturate_size(size)
             }
@@ -15532,6 +18259,14 @@ pub mod __buffa {
                 }
                 if !self.page_token.is_empty() {
                     ::buffa::types::put_string_field(8u32, &self.page_token, buf);
+                }
+                if self.subject_locator.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        9u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.subject_locator.write_to(__cache, buf);
                 }
                 self.__buffa_unknown_fields.write_to(buf);
             }
@@ -15594,6 +18329,14 @@ pub mod __buffa {
                 }
                 if !::buffa::json_helpers::skip_if::is_empty_str(self.page_token) {
                     __map.serialize_entry("pageToken", self.page_token)?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .subject_locator
+                        .as_option()
+                    {
+                        __map.serialize_entry("subjectLocator", __v)?;
+                    }
                 }
                 __map.end()
             }
@@ -15744,6 +18487,15 @@ pub mod __buffa {
             pub fn page_token(&self) -> &'_ str {
                 self.0.reborrow().page_token
             }
+            /// Field 9: `subject_locator`
+            #[must_use]
+            pub fn subject_locator(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::SecurityLifecycleSubjectLocatorView<'_>,
+            > {
+                &self.0.reborrow().subject_locator
+            }
         }
         impl ::core::convert::From<
             ::buffa::OwnedView<SecurityLifecycleQueryView<'static>>,
@@ -15795,6 +18547,16 @@ pub mod __buffa {
             /// Field 4: `as_of`
             pub as_of: ::buffa::MessageFieldView<
                 ::buffa_types::google::protobuf::__buffa::view::TimestampView<'a>,
+            >,
+            /// Field 5: `aggregates`
+            pub aggregates: ::buffa::MessageFieldView<
+                super::super::__buffa::view::SecurityLifecycleAggregatesView<'a>,
+            >,
+            /// Field 6: `previous_page_token`
+            pub previous_page_token: &'a str,
+            /// Field 7: `metadata`
+            pub metadata: ::buffa::MessageFieldView<
+                super::super::__buffa::view::SecurityLifecycleQueryMetadataView<'a>,
             >,
             pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
         }
@@ -15869,6 +18631,63 @@ pub mod __buffa {
                             }
                         }
                     }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.aggregates.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.aggregates = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::SecurityLifecycleAggregatesView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.previous_page_token = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    7u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.metadata.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.metadata = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::SecurityLifecycleQueryMetadataView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
                     1u32 => {
                         ::buffa::encoding::check_wire_type(
                             tag,
@@ -15934,6 +18753,27 @@ pub mod __buffa {
                         }
                         None => ::buffa::MessageField::none(),
                     },
+                    aggregates: match self.aggregates.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::SecurityLifecycleAggregates,
+                                ::buffa::Inline<super::super::SecurityLifecycleAggregates>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    previous_page_token: self.previous_page_token.to_string(),
+                    metadata: match self.metadata.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::SecurityLifecycleQueryMetadata,
+                                ::buffa::Inline<
+                                    super::super::SecurityLifecycleQueryMetadata,
+                                >,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
                     __buffa_unknown_fields: self
                         .__buffa_unknown_fields
                         .to_owned()?
@@ -15973,6 +18813,29 @@ pub mod __buffa {
                         += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
                             + inner_size as u64;
                 }
+                if self.aggregates.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.aggregates.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if !self.previous_page_token.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.previous_page_token,
+                            ) as u64;
+                }
+                if self.metadata.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.metadata.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
                 size += self.__buffa_unknown_fields.encoded_len() as u64;
                 ::buffa::saturate_size(size)
             }
@@ -16005,6 +18868,29 @@ pub mod __buffa {
                         buf,
                     );
                     self.as_of.write_to(__cache, buf);
+                }
+                if self.aggregates.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        5u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.aggregates.write_to(__cache, buf);
+                }
+                if !self.previous_page_token.is_empty() {
+                    ::buffa::types::put_string_field(
+                        6u32,
+                        &self.previous_page_token,
+                        buf,
+                    );
+                }
+                if self.metadata.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        7u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.metadata.write_to(__cache, buf);
                 }
                 self.__buffa_unknown_fields.write_to(buf);
             }
@@ -16039,6 +18925,26 @@ pub mod __buffa {
                 {
                     if let ::core::option::Option::Some(__v) = self.as_of.as_option() {
                         __map.serialize_entry("asOf", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .aggregates
+                        .as_option()
+                    {
+                        __map.serialize_entry("aggregates", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.previous_page_token,
+                ) {
+                    __map
+                        .serialize_entry("previousPageToken", self.previous_page_token)?;
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.metadata.as_option()
+                    {
+                        __map.serialize_entry("metadata", __v)?;
                     }
                 }
                 __map.end()
@@ -16171,6 +19077,29 @@ pub mod __buffa {
             > {
                 &self.0.reborrow().as_of
             }
+            /// Field 5: `aggregates`
+            #[must_use]
+            pub fn aggregates(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::SecurityLifecycleAggregatesView<'_>,
+            > {
+                &self.0.reborrow().aggregates
+            }
+            /// Field 6: `previous_page_token`
+            #[must_use]
+            pub fn previous_page_token(&self) -> &'_ str {
+                self.0.reborrow().previous_page_token
+            }
+            /// Field 7: `metadata`
+            #[must_use]
+            pub fn metadata(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::SecurityLifecycleQueryMetadataView<'_>,
+            > {
+                &self.0.reborrow().metadata
+            }
         }
         impl ::core::convert::From<
             ::buffa::OwnedView<SecurityLifecycleQueryResultView<'static>>,
@@ -16208,6 +19137,3846 @@ pub mod __buffa {
                 ::serde::Serialize::serialize(&self.0, __s)
             }
         }
+        /// SecurityLifecycleSubjectLocator selects one stable governed slot without
+        /// coupling a lookup to the currently observed material revision.
+        #[derive(Clone, Debug, Default)]
+        pub struct SecurityLifecycleSubjectLocatorView<'a> {
+            /// Field 1: `subject_kind`
+            pub subject_kind: ::buffa::EnumValue<
+                super::super::SecurityLifecycleSubjectKind,
+            >,
+            /// Field 2: `authority_id`
+            pub authority_id: &'a str,
+            /// Field 3: `stable_locator`
+            pub stable_locator: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for SecurityLifecycleSubjectLocatorView<'a> {
+            type Owned = super::super::SecurityLifecycleSubjectLocator;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.subject_kind = ::buffa::EnumValue::from(
+                            ::buffa::types::decode_int32(&mut cur)?,
+                        );
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.authority_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.stable_locator = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleSubjectLocator,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleSubjectLocator,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::SecurityLifecycleSubjectLocator {
+                    subject_kind: self.subject_kind,
+                    authority_id: self.authority_id.to_string(),
+                    stable_locator: self.stable_locator.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for SecurityLifecycleSubjectLocatorView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                {
+                    let val = self.subject_kind.to_i32();
+                    if val != 0 {
+                        size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+                    }
+                }
+                if !self.authority_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.authority_id)
+                                as u64;
+                }
+                if !self.stable_locator.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.stable_locator)
+                                as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                {
+                    let val = self.subject_kind.to_i32();
+                    if val != 0 {
+                        ::buffa::types::put_int32_field(1u32, val, buf);
+                    }
+                }
+                if !self.authority_id.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.authority_id, buf);
+                }
+                if !self.stable_locator.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.stable_locator, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for SecurityLifecycleSubjectLocatorView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_default_enum_value(
+                    &self.subject_kind,
+                ) {
+                    __map.serialize_entry("subjectKind", &self.subject_kind)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.authority_id) {
+                    __map.serialize_entry("authorityId", self.authority_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.stable_locator) {
+                    __map.serialize_entry("stableLocator", self.stable_locator)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for SecurityLifecycleSubjectLocatorView<'a> {
+            const PACKAGE: &'static str = "cerebro.v1";
+            const NAME: &'static str = "SecurityLifecycleSubjectLocator";
+            const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleSubjectLocator";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleSubjectLocator";
+        }
+        ::buffa::impl_default_view_instance!(SecurityLifecycleSubjectLocatorView);
+        ::buffa::impl_view_reborrow!(SecurityLifecycleSubjectLocatorView);
+        /** Self-contained, `'static` owned view of a `SecurityLifecycleSubjectLocator` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`SecurityLifecycleSubjectLocatorView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`SecurityLifecycleSubjectLocatorView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct SecurityLifecycleSubjectLocatorOwnedView(
+            ::buffa::OwnedView<SecurityLifecycleSubjectLocatorView<'static>>,
+        );
+        impl SecurityLifecycleSubjectLocatorOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleSubjectLocatorOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleSubjectLocatorOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::SecurityLifecycleSubjectLocator,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleSubjectLocatorOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`SecurityLifecycleSubjectLocatorView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &SecurityLifecycleSubjectLocatorView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::SecurityLifecycleSubjectLocator {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `subject_kind`
+            #[must_use]
+            pub fn subject_kind(
+                &self,
+            ) -> ::buffa::EnumValue<super::super::SecurityLifecycleSubjectKind> {
+                self.0.reborrow().subject_kind
+            }
+            /// Field 2: `authority_id`
+            #[must_use]
+            pub fn authority_id(&self) -> &'_ str {
+                self.0.reborrow().authority_id
+            }
+            /// Field 3: `stable_locator`
+            #[must_use]
+            pub fn stable_locator(&self) -> &'_ str {
+                self.0.reborrow().stable_locator
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<SecurityLifecycleSubjectLocatorView<'static>>,
+        > for SecurityLifecycleSubjectLocatorOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<SecurityLifecycleSubjectLocatorView<'static>>,
+            ) -> Self {
+                SecurityLifecycleSubjectLocatorOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<SecurityLifecycleSubjectLocatorOwnedView>
+        for ::buffa::OwnedView<SecurityLifecycleSubjectLocatorView<'static>> {
+            fn from(wrapper: SecurityLifecycleSubjectLocatorOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<SecurityLifecycleSubjectLocatorView<'static>>,
+        > for SecurityLifecycleSubjectLocatorOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<SecurityLifecycleSubjectLocatorView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::SecurityLifecycleSubjectLocator {
+            type View<'a> = SecurityLifecycleSubjectLocatorView<'a>;
+            type ViewHandle = SecurityLifecycleSubjectLocatorOwnedView;
+        }
+        impl ::serde::Serialize for SecurityLifecycleSubjectLocatorOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct SecurityLifecycleSubjectKindCountView<'a> {
+            /// Field 1: `subject_kind`
+            pub subject_kind: ::buffa::EnumValue<
+                super::super::SecurityLifecycleSubjectKind,
+            >,
+            /// Field 2: `count`
+            pub count: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for SecurityLifecycleSubjectKindCountView<'a> {
+            type Owned = super::super::SecurityLifecycleSubjectKindCount;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.subject_kind = ::buffa::EnumValue::from(
+                            ::buffa::types::decode_int32(&mut cur)?,
+                        );
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.count = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleSubjectKindCount,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleSubjectKindCount,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::SecurityLifecycleSubjectKindCount {
+                    subject_kind: self.subject_kind,
+                    count: self.count,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for SecurityLifecycleSubjectKindCountView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                {
+                    let val = self.subject_kind.to_i32();
+                    if val != 0 {
+                        size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+                    }
+                }
+                if self.count != 0u64 {
+                    size += 1u64 + ::buffa::types::uint64_encoded_len(self.count) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                {
+                    let val = self.subject_kind.to_i32();
+                    if val != 0 {
+                        ::buffa::types::put_int32_field(1u32, val, buf);
+                    }
+                }
+                if self.count != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.count, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for SecurityLifecycleSubjectKindCountView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_default_enum_value(
+                    &self.subject_kind,
+                ) {
+                    __map.serialize_entry("subjectKind", &self.subject_kind)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.count) {
+                    __map
+                        .serialize_entry(
+                            "count",
+                            &::buffa::json_helpers::ProtoJson(&self.count),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for SecurityLifecycleSubjectKindCountView<'a> {
+            const PACKAGE: &'static str = "cerebro.v1";
+            const NAME: &'static str = "SecurityLifecycleSubjectKindCount";
+            const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleSubjectKindCount";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleSubjectKindCount";
+        }
+        ::buffa::impl_default_view_instance!(SecurityLifecycleSubjectKindCountView);
+        ::buffa::impl_view_reborrow!(SecurityLifecycleSubjectKindCountView);
+        /** Self-contained, `'static` owned view of a `SecurityLifecycleSubjectKindCount` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`SecurityLifecycleSubjectKindCountView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`SecurityLifecycleSubjectKindCountView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct SecurityLifecycleSubjectKindCountOwnedView(
+            ::buffa::OwnedView<SecurityLifecycleSubjectKindCountView<'static>>,
+        );
+        impl SecurityLifecycleSubjectKindCountOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleSubjectKindCountOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleSubjectKindCountOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::SecurityLifecycleSubjectKindCount,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleSubjectKindCountOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`SecurityLifecycleSubjectKindCountView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &SecurityLifecycleSubjectKindCountView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::SecurityLifecycleSubjectKindCount {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `subject_kind`
+            #[must_use]
+            pub fn subject_kind(
+                &self,
+            ) -> ::buffa::EnumValue<super::super::SecurityLifecycleSubjectKind> {
+                self.0.reborrow().subject_kind
+            }
+            /// Field 2: `count`
+            #[must_use]
+            pub fn count(&self) -> u64 {
+                self.0.reborrow().count
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<SecurityLifecycleSubjectKindCountView<'static>>,
+        > for SecurityLifecycleSubjectKindCountOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<SecurityLifecycleSubjectKindCountView<'static>>,
+            ) -> Self {
+                SecurityLifecycleSubjectKindCountOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<SecurityLifecycleSubjectKindCountOwnedView>
+        for ::buffa::OwnedView<SecurityLifecycleSubjectKindCountView<'static>> {
+            fn from(wrapper: SecurityLifecycleSubjectKindCountOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<SecurityLifecycleSubjectKindCountView<'static>>,
+        > for SecurityLifecycleSubjectKindCountOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<SecurityLifecycleSubjectKindCountView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView
+        for super::super::SecurityLifecycleSubjectKindCount {
+            type View<'a> = SecurityLifecycleSubjectKindCountView<'a>;
+            type ViewHandle = SecurityLifecycleSubjectKindCountOwnedView;
+        }
+        impl ::serde::Serialize for SecurityLifecycleSubjectKindCountOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct SecurityLifecycleStateCountView<'a> {
+            /// Field 1: `state`
+            pub state: ::buffa::EnumValue<super::super::SecurityLifecycleState>,
+            /// Field 2: `count`
+            pub count: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for SecurityLifecycleStateCountView<'a> {
+            type Owned = super::super::SecurityLifecycleStateCount;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.state = ::buffa::EnumValue::from(
+                            ::buffa::types::decode_int32(&mut cur)?,
+                        );
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.count = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleStateCount,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleStateCount,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::SecurityLifecycleStateCount {
+                    state: self.state,
+                    count: self.count,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for SecurityLifecycleStateCountView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                {
+                    let val = self.state.to_i32();
+                    if val != 0 {
+                        size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+                    }
+                }
+                if self.count != 0u64 {
+                    size += 1u64 + ::buffa::types::uint64_encoded_len(self.count) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                {
+                    let val = self.state.to_i32();
+                    if val != 0 {
+                        ::buffa::types::put_int32_field(1u32, val, buf);
+                    }
+                }
+                if self.count != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.count, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for SecurityLifecycleStateCountView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_default_enum_value(&self.state) {
+                    __map.serialize_entry("state", &self.state)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.count) {
+                    __map
+                        .serialize_entry(
+                            "count",
+                            &::buffa::json_helpers::ProtoJson(&self.count),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for SecurityLifecycleStateCountView<'a> {
+            const PACKAGE: &'static str = "cerebro.v1";
+            const NAME: &'static str = "SecurityLifecycleStateCount";
+            const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleStateCount";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleStateCount";
+        }
+        ::buffa::impl_default_view_instance!(SecurityLifecycleStateCountView);
+        ::buffa::impl_view_reborrow!(SecurityLifecycleStateCountView);
+        /** Self-contained, `'static` owned view of a `SecurityLifecycleStateCount` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`SecurityLifecycleStateCountView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`SecurityLifecycleStateCountView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct SecurityLifecycleStateCountOwnedView(
+            ::buffa::OwnedView<SecurityLifecycleStateCountView<'static>>,
+        );
+        impl SecurityLifecycleStateCountOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleStateCountOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleStateCountOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::SecurityLifecycleStateCount,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleStateCountOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`SecurityLifecycleStateCountView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &SecurityLifecycleStateCountView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::SecurityLifecycleStateCount {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `state`
+            #[must_use]
+            pub fn state(
+                &self,
+            ) -> ::buffa::EnumValue<super::super::SecurityLifecycleState> {
+                self.0.reborrow().state
+            }
+            /// Field 2: `count`
+            #[must_use]
+            pub fn count(&self) -> u64 {
+                self.0.reborrow().count
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<SecurityLifecycleStateCountView<'static>>,
+        > for SecurityLifecycleStateCountOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<SecurityLifecycleStateCountView<'static>>,
+            ) -> Self {
+                SecurityLifecycleStateCountOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<SecurityLifecycleStateCountOwnedView>
+        for ::buffa::OwnedView<SecurityLifecycleStateCountView<'static>> {
+            fn from(wrapper: SecurityLifecycleStateCountOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<SecurityLifecycleStateCountView<'static>>,
+        > for SecurityLifecycleStateCountOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<SecurityLifecycleStateCountView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::SecurityLifecycleStateCount {
+            type View<'a> = SecurityLifecycleStateCountView<'a>;
+            type ViewHandle = SecurityLifecycleStateCountOwnedView;
+        }
+        impl ::serde::Serialize for SecurityLifecycleStateCountOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct SecurityLifecyclePolicyStateCountView<'a> {
+            /// Field 1: `policy_state`
+            pub policy_state: ::buffa::EnumValue<
+                super::super::SecurityLifecyclePolicyState,
+            >,
+            /// Field 2: `count`
+            pub count: u64,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for SecurityLifecyclePolicyStateCountView<'a> {
+            type Owned = super::super::SecurityLifecyclePolicyStateCount;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.policy_state = ::buffa::EnumValue::from(
+                            ::buffa::types::decode_int32(&mut cur)?,
+                        );
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.count = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecyclePolicyStateCount,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecyclePolicyStateCount,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::SecurityLifecyclePolicyStateCount {
+                    policy_state: self.policy_state,
+                    count: self.count,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for SecurityLifecyclePolicyStateCountView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                {
+                    let val = self.policy_state.to_i32();
+                    if val != 0 {
+                        size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+                    }
+                }
+                if self.count != 0u64 {
+                    size += 1u64 + ::buffa::types::uint64_encoded_len(self.count) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                {
+                    let val = self.policy_state.to_i32();
+                    if val != 0 {
+                        ::buffa::types::put_int32_field(1u32, val, buf);
+                    }
+                }
+                if self.count != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.count, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for SecurityLifecyclePolicyStateCountView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_default_enum_value(
+                    &self.policy_state,
+                ) {
+                    __map.serialize_entry("policyState", &self.policy_state)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.count) {
+                    __map
+                        .serialize_entry(
+                            "count",
+                            &::buffa::json_helpers::ProtoJson(&self.count),
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for SecurityLifecyclePolicyStateCountView<'a> {
+            const PACKAGE: &'static str = "cerebro.v1";
+            const NAME: &'static str = "SecurityLifecyclePolicyStateCount";
+            const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecyclePolicyStateCount";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecyclePolicyStateCount";
+        }
+        ::buffa::impl_default_view_instance!(SecurityLifecyclePolicyStateCountView);
+        ::buffa::impl_view_reborrow!(SecurityLifecyclePolicyStateCountView);
+        /** Self-contained, `'static` owned view of a `SecurityLifecyclePolicyStateCount` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`SecurityLifecyclePolicyStateCountView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`SecurityLifecyclePolicyStateCountView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct SecurityLifecyclePolicyStateCountOwnedView(
+            ::buffa::OwnedView<SecurityLifecyclePolicyStateCountView<'static>>,
+        );
+        impl SecurityLifecyclePolicyStateCountOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecyclePolicyStateCountOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecyclePolicyStateCountOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::SecurityLifecyclePolicyStateCount,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecyclePolicyStateCountOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`SecurityLifecyclePolicyStateCountView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &SecurityLifecyclePolicyStateCountView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::SecurityLifecyclePolicyStateCount {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `policy_state`
+            #[must_use]
+            pub fn policy_state(
+                &self,
+            ) -> ::buffa::EnumValue<super::super::SecurityLifecyclePolicyState> {
+                self.0.reborrow().policy_state
+            }
+            /// Field 2: `count`
+            #[must_use]
+            pub fn count(&self) -> u64 {
+                self.0.reborrow().count
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<SecurityLifecyclePolicyStateCountView<'static>>,
+        > for SecurityLifecyclePolicyStateCountOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<SecurityLifecyclePolicyStateCountView<'static>>,
+            ) -> Self {
+                SecurityLifecyclePolicyStateCountOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<SecurityLifecyclePolicyStateCountOwnedView>
+        for ::buffa::OwnedView<SecurityLifecyclePolicyStateCountView<'static>> {
+            fn from(wrapper: SecurityLifecyclePolicyStateCountOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<SecurityLifecyclePolicyStateCountView<'static>>,
+        > for SecurityLifecyclePolicyStateCountOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<SecurityLifecyclePolicyStateCountView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView
+        for super::super::SecurityLifecyclePolicyStateCount {
+            type View<'a> = SecurityLifecyclePolicyStateCountView<'a>;
+            type ViewHandle = SecurityLifecyclePolicyStateCountOwnedView;
+        }
+        impl ::serde::Serialize for SecurityLifecyclePolicyStateCountOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        /// SecurityLifecycleAggregates describes the entire filtered population covered
+        /// by the server query, never only the returned page. counts_are_exact is false
+        /// when coverage metadata reports a bounded source scan.
+        #[derive(Clone, Debug, Default)]
+        pub struct SecurityLifecycleAggregatesView<'a> {
+            /// Field 1: `counts_are_exact`
+            pub counts_are_exact: bool,
+            /// Field 2: `matched_records`
+            pub matched_records: u64,
+            /// Field 3: `matched_findings`
+            pub matched_findings: u64,
+            /// Field 4: `subject_kind_counts`
+            pub subject_kind_counts: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::SecurityLifecycleSubjectKindCountView<'a>,
+            >,
+            /// Field 5: `state_counts`
+            pub state_counts: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::SecurityLifecycleStateCountView<'a>,
+            >,
+            /// Field 6: `policy_state_counts`
+            pub policy_state_counts: ::buffa::RepeatedView<
+                'a,
+                super::super::__buffa::view::SecurityLifecyclePolicyStateCountView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for SecurityLifecycleAggregatesView<'a> {
+            type Owned = super::super::SecurityLifecycleAggregates;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.counts_are_exact = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.matched_records = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.matched_findings = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::SecurityLifecycleSubjectKindCountView,
+                            >(),
+                        )?;
+                        view.subject_kind_counts
+                            .push(
+                                <super::super::__buffa::view::SecurityLifecycleSubjectKindCountView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::SecurityLifecycleStateCountView,
+                            >(),
+                        )?;
+                        view.state_counts
+                            .push(
+                                <super::super::__buffa::view::SecurityLifecycleStateCountView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        ctx.register_element_memory(
+                            ::core::mem::size_of::<
+                                super::super::__buffa::view::SecurityLifecyclePolicyStateCountView,
+                            >(),
+                        )?;
+                        view.policy_state_counts
+                            .push(
+                                <super::super::__buffa::view::SecurityLifecyclePolicyStateCountView as ::buffa::MessageView>::decode_view_ctx(
+                                    sub,
+                                    __sub_ctx,
+                                )?,
+                            );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleAggregates,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleAggregates,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::SecurityLifecycleAggregates {
+                    counts_are_exact: self.counts_are_exact,
+                    matched_records: self.matched_records,
+                    matched_findings: self.matched_findings,
+                    subject_kind_counts: self
+                        .subject_kind_counts
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    state_counts: self
+                        .state_counts
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    policy_state_counts: self
+                        .policy_state_counts
+                        .iter()
+                        .map(|v| v.to_owned_from_source(__buffa_src))
+                        .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for SecurityLifecycleAggregatesView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.counts_are_exact {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if self.matched_records != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.matched_records)
+                                as u64;
+                }
+                if self.matched_findings != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.matched_findings)
+                                as u64;
+                }
+                for v in &self.subject_kind_counts {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.state_counts {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                for v in &self.policy_state_counts {
+                    let __slot = __cache.reserve();
+                    let inner_size = v.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.counts_are_exact {
+                    ::buffa::types::put_bool_field(1u32, self.counts_are_exact, buf);
+                }
+                if self.matched_records != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.matched_records, buf);
+                }
+                if self.matched_findings != 0u64 {
+                    ::buffa::types::put_uint64_field(3u32, self.matched_findings, buf);
+                }
+                for v in &self.subject_kind_counts {
+                    ::buffa::types::put_len_delimited_header(
+                        4u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                for v in &self.state_counts {
+                    ::buffa::types::put_len_delimited_header(
+                        5u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                for v in &self.policy_state_counts {
+                    ::buffa::types::put_len_delimited_header(
+                        6u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    v.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for SecurityLifecycleAggregatesView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if self.counts_are_exact {
+                    __map.serialize_entry("countsAreExact", &self.counts_are_exact)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.matched_records) {
+                    __map
+                        .serialize_entry(
+                            "matchedRecords",
+                            &::buffa::json_helpers::ProtoJson(&self.matched_records),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.matched_findings) {
+                    __map
+                        .serialize_entry(
+                            "matchedFindings",
+                            &::buffa::json_helpers::ProtoJson(&self.matched_findings),
+                        )?;
+                }
+                if !self.subject_kind_counts.is_empty() {
+                    __map
+                        .serialize_entry(
+                            "subjectKindCounts",
+                            &*self.subject_kind_counts,
+                        )?;
+                }
+                if !self.state_counts.is_empty() {
+                    __map.serialize_entry("stateCounts", &*self.state_counts)?;
+                }
+                if !self.policy_state_counts.is_empty() {
+                    __map
+                        .serialize_entry(
+                            "policyStateCounts",
+                            &*self.policy_state_counts,
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for SecurityLifecycleAggregatesView<'a> {
+            const PACKAGE: &'static str = "cerebro.v1";
+            const NAME: &'static str = "SecurityLifecycleAggregates";
+            const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleAggregates";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleAggregates";
+        }
+        ::buffa::impl_default_view_instance!(SecurityLifecycleAggregatesView);
+        ::buffa::impl_view_reborrow!(SecurityLifecycleAggregatesView);
+        /** Self-contained, `'static` owned view of a `SecurityLifecycleAggregates` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`SecurityLifecycleAggregatesView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`SecurityLifecycleAggregatesView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct SecurityLifecycleAggregatesOwnedView(
+            ::buffa::OwnedView<SecurityLifecycleAggregatesView<'static>>,
+        );
+        impl SecurityLifecycleAggregatesOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleAggregatesOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleAggregatesOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::SecurityLifecycleAggregates,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleAggregatesOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`SecurityLifecycleAggregatesView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &SecurityLifecycleAggregatesView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::SecurityLifecycleAggregates {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `counts_are_exact`
+            #[must_use]
+            pub fn counts_are_exact(&self) -> bool {
+                self.0.reborrow().counts_are_exact
+            }
+            /// Field 2: `matched_records`
+            #[must_use]
+            pub fn matched_records(&self) -> u64 {
+                self.0.reborrow().matched_records
+            }
+            /// Field 3: `matched_findings`
+            #[must_use]
+            pub fn matched_findings(&self) -> u64 {
+                self.0.reborrow().matched_findings
+            }
+            /// Field 4: `subject_kind_counts`
+            #[must_use]
+            pub fn subject_kind_counts(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::SecurityLifecycleSubjectKindCountView<'_>,
+            > {
+                &self.0.reborrow().subject_kind_counts
+            }
+            /// Field 5: `state_counts`
+            #[must_use]
+            pub fn state_counts(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::SecurityLifecycleStateCountView<'_>,
+            > {
+                &self.0.reborrow().state_counts
+            }
+            /// Field 6: `policy_state_counts`
+            #[must_use]
+            pub fn policy_state_counts(
+                &self,
+            ) -> &::buffa::RepeatedView<
+                '_,
+                super::super::__buffa::view::SecurityLifecyclePolicyStateCountView<'_>,
+            > {
+                &self.0.reborrow().policy_state_counts
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<SecurityLifecycleAggregatesView<'static>>,
+        > for SecurityLifecycleAggregatesOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<SecurityLifecycleAggregatesView<'static>>,
+            ) -> Self {
+                SecurityLifecycleAggregatesOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<SecurityLifecycleAggregatesOwnedView>
+        for ::buffa::OwnedView<SecurityLifecycleAggregatesView<'static>> {
+            fn from(wrapper: SecurityLifecycleAggregatesOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<SecurityLifecycleAggregatesView<'static>>,
+        > for SecurityLifecycleAggregatesOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<SecurityLifecycleAggregatesView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::SecurityLifecycleAggregates {
+            type View<'a> = SecurityLifecycleAggregatesView<'a>;
+            type ViewHandle = SecurityLifecycleAggregatesOwnedView;
+        }
+        impl ::serde::Serialize for SecurityLifecycleAggregatesOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct SecurityLifecycleCoverageView<'a> {
+            /// Field 1: `complete`
+            pub complete: bool,
+            /// Field 2: `truncated`
+            pub truncated: bool,
+            /// Field 3: `scanned_entities`
+            pub scanned_entities: u64,
+            /// Field 4: `lifecycle_entities`
+            pub lifecycle_entities: u64,
+            /// Field 5: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 6: `reason`
+            pub reason: ::buffa::EnumValue<
+                super::super::SecurityLifecycleCoverageReason,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for SecurityLifecycleCoverageView<'a> {
+            type Owned = super::super::SecurityLifecycleCoverage;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.complete = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.truncated = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.scanned_entities = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.lifecycle_entities = ::buffa::types::decode_uint64(
+                            &mut cur,
+                        )?;
+                    }
+                    5u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    6u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.reason = ::buffa::EnumValue::from(
+                            ::buffa::types::decode_int32(&mut cur)?,
+                        );
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleCoverage,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleCoverage,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::SecurityLifecycleCoverage {
+                    complete: self.complete,
+                    truncated: self.truncated,
+                    scanned_entities: self.scanned_entities,
+                    lifecycle_entities: self.lifecycle_entities,
+                    graph_revision: self.graph_revision,
+                    reason: self.reason,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for SecurityLifecycleCoverageView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.complete {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if self.truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                if self.scanned_entities != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.scanned_entities)
+                                as u64;
+                }
+                if self.lifecycle_entities != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.lifecycle_entities)
+                                as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                {
+                    let val = self.reason.to_i32();
+                    if val != 0 {
+                        size += 1u64 + ::buffa::types::int32_encoded_len(val) as u64;
+                    }
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.complete {
+                    ::buffa::types::put_bool_field(1u32, self.complete, buf);
+                }
+                if self.truncated {
+                    ::buffa::types::put_bool_field(2u32, self.truncated, buf);
+                }
+                if self.scanned_entities != 0u64 {
+                    ::buffa::types::put_uint64_field(3u32, self.scanned_entities, buf);
+                }
+                if self.lifecycle_entities != 0u64 {
+                    ::buffa::types::put_uint64_field(4u32, self.lifecycle_entities, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(5u32, self.graph_revision, buf);
+                }
+                {
+                    let val = self.reason.to_i32();
+                    if val != 0 {
+                        ::buffa::types::put_int32_field(6u32, val, buf);
+                    }
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for SecurityLifecycleCoverageView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if self.complete {
+                    __map.serialize_entry("complete", &self.complete)?;
+                }
+                if self.truncated {
+                    __map.serialize_entry("truncated", &self.truncated)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.scanned_entities) {
+                    __map
+                        .serialize_entry(
+                            "scannedEntities",
+                            &::buffa::json_helpers::ProtoJson(&self.scanned_entities),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(
+                    &self.lifecycle_entities,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "lifecycleEntities",
+                            &::buffa::json_helpers::ProtoJson(&self.lifecycle_entities),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_default_enum_value(&self.reason) {
+                    __map.serialize_entry("reason", &self.reason)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for SecurityLifecycleCoverageView<'a> {
+            const PACKAGE: &'static str = "cerebro.v1";
+            const NAME: &'static str = "SecurityLifecycleCoverage";
+            const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleCoverage";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleCoverage";
+        }
+        ::buffa::impl_default_view_instance!(SecurityLifecycleCoverageView);
+        ::buffa::impl_view_reborrow!(SecurityLifecycleCoverageView);
+        /** Self-contained, `'static` owned view of a `SecurityLifecycleCoverage` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`SecurityLifecycleCoverageView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`SecurityLifecycleCoverageView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct SecurityLifecycleCoverageOwnedView(
+            ::buffa::OwnedView<SecurityLifecycleCoverageView<'static>>,
+        );
+        impl SecurityLifecycleCoverageOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleCoverageOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleCoverageOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::SecurityLifecycleCoverage,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleCoverageOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`SecurityLifecycleCoverageView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &SecurityLifecycleCoverageView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::SecurityLifecycleCoverage {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `complete`
+            #[must_use]
+            pub fn complete(&self) -> bool {
+                self.0.reborrow().complete
+            }
+            /// Field 2: `truncated`
+            #[must_use]
+            pub fn truncated(&self) -> bool {
+                self.0.reborrow().truncated
+            }
+            /// Field 3: `scanned_entities`
+            #[must_use]
+            pub fn scanned_entities(&self) -> u64 {
+                self.0.reborrow().scanned_entities
+            }
+            /// Field 4: `lifecycle_entities`
+            #[must_use]
+            pub fn lifecycle_entities(&self) -> u64 {
+                self.0.reborrow().lifecycle_entities
+            }
+            /// Field 5: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 6: `reason`
+            #[must_use]
+            pub fn reason(
+                &self,
+            ) -> ::buffa::EnumValue<super::super::SecurityLifecycleCoverageReason> {
+                self.0.reborrow().reason
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<SecurityLifecycleCoverageView<'static>>,
+        > for SecurityLifecycleCoverageOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<SecurityLifecycleCoverageView<'static>>,
+            ) -> Self {
+                SecurityLifecycleCoverageOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<SecurityLifecycleCoverageOwnedView>
+        for ::buffa::OwnedView<SecurityLifecycleCoverageView<'static>> {
+            fn from(wrapper: SecurityLifecycleCoverageOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<SecurityLifecycleCoverageView<'static>>,
+        > for SecurityLifecycleCoverageOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<SecurityLifecycleCoverageView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::SecurityLifecycleCoverage {
+            type View<'a> = SecurityLifecycleCoverageView<'a>;
+            type ViewHandle = SecurityLifecycleCoverageOwnedView;
+        }
+        impl ::serde::Serialize for SecurityLifecycleCoverageOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct SecurityLifecycleFreshnessView<'a> {
+            /// Field 1: `as_of`
+            pub as_of: ::buffa::MessageFieldView<
+                ::buffa_types::google::protobuf::__buffa::view::TimestampView<'a>,
+            >,
+            /// Field 2: `oldest_observed_at`
+            pub oldest_observed_at: ::buffa::MessageFieldView<
+                ::buffa_types::google::protobuf::__buffa::view::TimestampView<'a>,
+            >,
+            /// Field 3: `newest_observed_at`
+            pub newest_observed_at: ::buffa::MessageFieldView<
+                ::buffa_types::google::protobuf::__buffa::view::TimestampView<'a>,
+            >,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for SecurityLifecycleFreshnessView<'a> {
+            type Owned = super::super::SecurityLifecycleFreshness;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.as_of.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.as_of = ::buffa::MessageFieldView::set(
+                                    <::buffa_types::google::protobuf::__buffa::view::TimestampView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.oldest_observed_at.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.oldest_observed_at = ::buffa::MessageFieldView::set(
+                                    <::buffa_types::google::protobuf::__buffa::view::TimestampView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.newest_observed_at.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.newest_observed_at = ::buffa::MessageFieldView::set(
+                                    <::buffa_types::google::protobuf::__buffa::view::TimestampView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleFreshness,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleFreshness,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::SecurityLifecycleFreshness {
+                    as_of: match self.as_of.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                ::buffa_types::google::protobuf::Timestamp,
+                                ::buffa::Inline<::buffa_types::google::protobuf::Timestamp>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    oldest_observed_at: match self.oldest_observed_at.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                ::buffa_types::google::protobuf::Timestamp,
+                                ::buffa::Inline<::buffa_types::google::protobuf::Timestamp>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    newest_observed_at: match self.newest_observed_at.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                ::buffa_types::google::protobuf::Timestamp,
+                                ::buffa::Inline<::buffa_types::google::protobuf::Timestamp>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for SecurityLifecycleFreshnessView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.as_of.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.as_of.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.oldest_observed_at.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.oldest_observed_at.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.newest_observed_at.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.newest_observed_at.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.as_of.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.as_of.write_to(__cache, buf);
+                }
+                if self.oldest_observed_at.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        2u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.oldest_observed_at.write_to(__cache, buf);
+                }
+                if self.newest_observed_at.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        3u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.newest_observed_at.write_to(__cache, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for SecurityLifecycleFreshnessView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.as_of.as_option() {
+                        __map.serialize_entry("asOf", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .oldest_observed_at
+                        .as_option()
+                    {
+                        __map.serialize_entry("oldestObservedAt", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self
+                        .newest_observed_at
+                        .as_option()
+                    {
+                        __map.serialize_entry("newestObservedAt", __v)?;
+                    }
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for SecurityLifecycleFreshnessView<'a> {
+            const PACKAGE: &'static str = "cerebro.v1";
+            const NAME: &'static str = "SecurityLifecycleFreshness";
+            const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleFreshness";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleFreshness";
+        }
+        ::buffa::impl_default_view_instance!(SecurityLifecycleFreshnessView);
+        ::buffa::impl_view_reborrow!(SecurityLifecycleFreshnessView);
+        /** Self-contained, `'static` owned view of a `SecurityLifecycleFreshness` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`SecurityLifecycleFreshnessView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`SecurityLifecycleFreshnessView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct SecurityLifecycleFreshnessOwnedView(
+            ::buffa::OwnedView<SecurityLifecycleFreshnessView<'static>>,
+        );
+        impl SecurityLifecycleFreshnessOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleFreshnessOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleFreshnessOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::SecurityLifecycleFreshness,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleFreshnessOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`SecurityLifecycleFreshnessView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &SecurityLifecycleFreshnessView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(&self) -> super::super::SecurityLifecycleFreshness {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `as_of`
+            #[must_use]
+            pub fn as_of(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                ::buffa_types::google::protobuf::__buffa::view::TimestampView<'_>,
+            > {
+                &self.0.reborrow().as_of
+            }
+            /// Field 2: `oldest_observed_at`
+            #[must_use]
+            pub fn oldest_observed_at(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                ::buffa_types::google::protobuf::__buffa::view::TimestampView<'_>,
+            > {
+                &self.0.reborrow().oldest_observed_at
+            }
+            /// Field 3: `newest_observed_at`
+            #[must_use]
+            pub fn newest_observed_at(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                ::buffa_types::google::protobuf::__buffa::view::TimestampView<'_>,
+            > {
+                &self.0.reborrow().newest_observed_at
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<SecurityLifecycleFreshnessView<'static>>,
+        > for SecurityLifecycleFreshnessOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<SecurityLifecycleFreshnessView<'static>>,
+            ) -> Self {
+                SecurityLifecycleFreshnessOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<SecurityLifecycleFreshnessOwnedView>
+        for ::buffa::OwnedView<SecurityLifecycleFreshnessView<'static>> {
+            fn from(wrapper: SecurityLifecycleFreshnessOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<SecurityLifecycleFreshnessView<'static>>,
+        > for SecurityLifecycleFreshnessOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<SecurityLifecycleFreshnessView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::SecurityLifecycleFreshness {
+            type View<'a> = SecurityLifecycleFreshnessView<'a>;
+            type ViewHandle = SecurityLifecycleFreshnessOwnedView;
+        }
+        impl ::serde::Serialize for SecurityLifecycleFreshnessOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct SecurityLifecycleQueryMetadataView<'a> {
+            /// Field 1: `coverage`
+            pub coverage: ::buffa::MessageFieldView<
+                super::super::__buffa::view::SecurityLifecycleCoverageView<'a>,
+            >,
+            /// Field 2: `freshness`
+            pub freshness: ::buffa::MessageFieldView<
+                super::super::__buffa::view::SecurityLifecycleFreshnessView<'a>,
+            >,
+            /// Field 3: `page_truncated`
+            pub page_truncated: bool,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a> for SecurityLifecycleQueryMetadataView<'a> {
+            type Owned = super::super::SecurityLifecycleQueryMetadata;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.coverage.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.coverage = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::SecurityLifecycleCoverageView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.freshness.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.freshness = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::SecurityLifecycleFreshnessView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.page_truncated = ::buffa::types::decode_bool(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleQueryMetadata,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::SecurityLifecycleQueryMetadata,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::SecurityLifecycleQueryMetadata {
+                    coverage: match self.coverage.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::SecurityLifecycleCoverage,
+                                ::buffa::Inline<super::super::SecurityLifecycleCoverage>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    freshness: match self.freshness.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::SecurityLifecycleFreshness,
+                                ::buffa::Inline<super::super::SecurityLifecycleFreshness>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    page_truncated: self.page_truncated,
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a> for SecurityLifecycleQueryMetadataView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.coverage.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.coverage.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.freshness.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.freshness.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.page_truncated {
+                    size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.coverage.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.coverage.write_to(__cache, buf);
+                }
+                if self.freshness.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        2u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.freshness.write_to(__cache, buf);
+                }
+                if self.page_truncated {
+                    ::buffa::types::put_bool_field(3u32, self.page_truncated, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize for SecurityLifecycleQueryMetadataView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.coverage.as_option()
+                    {
+                        __map.serialize_entry("coverage", __v)?;
+                    }
+                }
+                {
+                    if let ::core::option::Option::Some(__v) = self.freshness.as_option()
+                    {
+                        __map.serialize_entry("freshness", __v)?;
+                    }
+                }
+                if self.page_truncated {
+                    __map.serialize_entry("pageTruncated", &self.page_truncated)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName for SecurityLifecycleQueryMetadataView<'a> {
+            const PACKAGE: &'static str = "cerebro.v1";
+            const NAME: &'static str = "SecurityLifecycleQueryMetadata";
+            const FULL_NAME: &'static str = "cerebro.v1.SecurityLifecycleQueryMetadata";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.SecurityLifecycleQueryMetadata";
+        }
+        ::buffa::impl_default_view_instance!(SecurityLifecycleQueryMetadataView);
+        ::buffa::impl_view_reborrow!(SecurityLifecycleQueryMetadataView);
+        /** Self-contained, `'static` owned view of a `SecurityLifecycleQueryMetadata` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`SecurityLifecycleQueryMetadataView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`SecurityLifecycleQueryMetadataView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct SecurityLifecycleQueryMetadataOwnedView(
+            ::buffa::OwnedView<SecurityLifecycleQueryMetadataView<'static>>,
+        );
+        impl SecurityLifecycleQueryMetadataOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleQueryMetadataOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleQueryMetadataOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::SecurityLifecycleQueryMetadata,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    SecurityLifecycleQueryMetadataOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`SecurityLifecycleQueryMetadataView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &SecurityLifecycleQueryMetadataView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::SecurityLifecycleQueryMetadata {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `coverage`
+            #[must_use]
+            pub fn coverage(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::SecurityLifecycleCoverageView<'_>,
+            > {
+                &self.0.reborrow().coverage
+            }
+            /// Field 2: `freshness`
+            #[must_use]
+            pub fn freshness(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::SecurityLifecycleFreshnessView<'_>,
+            > {
+                &self.0.reborrow().freshness
+            }
+            /// Field 3: `page_truncated`
+            #[must_use]
+            pub fn page_truncated(&self) -> bool {
+                self.0.reborrow().page_truncated
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<SecurityLifecycleQueryMetadataView<'static>>,
+        > for SecurityLifecycleQueryMetadataOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<SecurityLifecycleQueryMetadataView<'static>>,
+            ) -> Self {
+                SecurityLifecycleQueryMetadataOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<SecurityLifecycleQueryMetadataOwnedView>
+        for ::buffa::OwnedView<SecurityLifecycleQueryMetadataView<'static>> {
+            fn from(wrapper: SecurityLifecycleQueryMetadataOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<SecurityLifecycleQueryMetadataView<'static>>,
+        > for SecurityLifecycleQueryMetadataOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<SecurityLifecycleQueryMetadataView<'static>> {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView for super::super::SecurityLifecycleQueryMetadata {
+            type View<'a> = SecurityLifecycleQueryMetadataView<'a>;
+            type ViewHandle = SecurityLifecycleQueryMetadataOwnedView;
+        }
+        impl ::serde::Serialize for SecurityLifecycleQueryMetadataOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ResolveSecurityLifecycleFindingRequestView<'a> {
+            /// Field 1: `tenant_id`
+            pub tenant_id: &'a str,
+            /// Field 2: `finding_urn`
+            pub finding_urn: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a>
+        for ResolveSecurityLifecycleFindingRequestView<'a> {
+            type Owned = super::super::ResolveSecurityLifecycleFindingRequest;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.tenant_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.finding_urn = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ResolveSecurityLifecycleFindingRequest,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ResolveSecurityLifecycleFindingRequest,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ResolveSecurityLifecycleFindingRequest {
+                    tenant_id: self.tenant_id.to_string(),
+                    finding_urn: self.finding_urn.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a>
+        for ResolveSecurityLifecycleFindingRequestView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, _cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if !self.tenant_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.tenant_id) as u64;
+                }
+                if !self.finding_urn.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.finding_urn)
+                                as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                _cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if !self.tenant_id.is_empty() {
+                    ::buffa::types::put_string_field(1u32, &self.tenant_id, buf);
+                }
+                if !self.finding_urn.is_empty() {
+                    ::buffa::types::put_string_field(2u32, &self.finding_urn, buf);
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize
+        for ResolveSecurityLifecycleFindingRequestView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.tenant_id) {
+                    __map.serialize_entry("tenantId", self.tenant_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(self.finding_urn) {
+                    __map.serialize_entry("findingUrn", self.finding_urn)?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName
+        for ResolveSecurityLifecycleFindingRequestView<'a> {
+            const PACKAGE: &'static str = "cerebro.v1";
+            const NAME: &'static str = "ResolveSecurityLifecycleFindingRequest";
+            const FULL_NAME: &'static str = "cerebro.v1.ResolveSecurityLifecycleFindingRequest";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.ResolveSecurityLifecycleFindingRequest";
+        }
+        ::buffa::impl_default_view_instance!(ResolveSecurityLifecycleFindingRequestView);
+        ::buffa::impl_view_reborrow!(ResolveSecurityLifecycleFindingRequestView);
+        /** Self-contained, `'static` owned view of a `ResolveSecurityLifecycleFindingRequest` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ResolveSecurityLifecycleFindingRequestView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ResolveSecurityLifecycleFindingRequestView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ResolveSecurityLifecycleFindingRequestOwnedView(
+            ::buffa::OwnedView<ResolveSecurityLifecycleFindingRequestView<'static>>,
+        );
+        impl ResolveSecurityLifecycleFindingRequestOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ResolveSecurityLifecycleFindingRequestOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ResolveSecurityLifecycleFindingRequestOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ResolveSecurityLifecycleFindingRequest,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ResolveSecurityLifecycleFindingRequestOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ResolveSecurityLifecycleFindingRequestView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ResolveSecurityLifecycleFindingRequestView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ResolveSecurityLifecycleFindingRequest {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `tenant_id`
+            #[must_use]
+            pub fn tenant_id(&self) -> &'_ str {
+                self.0.reborrow().tenant_id
+            }
+            /// Field 2: `finding_urn`
+            #[must_use]
+            pub fn finding_urn(&self) -> &'_ str {
+                self.0.reborrow().finding_urn
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ResolveSecurityLifecycleFindingRequestView<'static>>,
+        > for ResolveSecurityLifecycleFindingRequestOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<
+                    ResolveSecurityLifecycleFindingRequestView<'static>,
+                >,
+            ) -> Self {
+                ResolveSecurityLifecycleFindingRequestOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ResolveSecurityLifecycleFindingRequestOwnedView>
+        for ::buffa::OwnedView<ResolveSecurityLifecycleFindingRequestView<'static>> {
+            fn from(wrapper: ResolveSecurityLifecycleFindingRequestOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ResolveSecurityLifecycleFindingRequestView<'static>>,
+        > for ResolveSecurityLifecycleFindingRequestOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<
+                ResolveSecurityLifecycleFindingRequestView<'static>,
+            > {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView
+        for super::super::ResolveSecurityLifecycleFindingRequest {
+            type View<'a> = ResolveSecurityLifecycleFindingRequestView<'a>;
+            type ViewHandle = ResolveSecurityLifecycleFindingRequestOwnedView;
+        }
+        impl ::serde::Serialize for ResolveSecurityLifecycleFindingRequestOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
+        #[derive(Clone, Debug, Default)]
+        pub struct ResolveSecurityLifecycleFindingResponseView<'a> {
+            /// Field 1: `record`
+            pub record: ::buffa::MessageFieldView<
+                super::super::__buffa::view::SecurityLifecycleRecordView<'a>,
+            >,
+            /// Field 2: `graph_revision`
+            pub graph_revision: u64,
+            /// Field 3: `source_runtime_id`
+            pub source_runtime_id: &'a str,
+            /// Field 4: `source_collection_id`
+            pub source_collection_id: &'a str,
+            pub __buffa_unknown_fields: ::buffa::UnknownFieldsView<'a>,
+        }
+        impl<'a> ::buffa::MessageView<'a>
+        for ResolveSecurityLifecycleFindingResponseView<'a> {
+            type Owned = super::super::ResolveSecurityLifecycleFindingResponse;
+            fn decode_view(
+                buf: &'a [u8],
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                let __limit = ::core::cell::Cell::new(
+                    ::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT,
+                );
+                <Self as ::buffa::MessageView>::decode_view_ctx(
+                    buf,
+                    ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit),
+                )
+            }
+            fn decode_view_with_ctx(
+                buf: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+            }
+            #[inline]
+            fn merge_view_field(
+                &mut self,
+                tag: ::buffa::encoding::Tag,
+                cur: &'a [u8],
+                before_tag: &'a [u8],
+                ctx: ::buffa::DecodeContext<'_>,
+            ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+                let _ = ctx;
+                #[allow(unused_variables)]
+                let view = self;
+                let mut cur = cur;
+                match tag.field_number() {
+                    1u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        let __sub_ctx = ctx.descend()?;
+                        let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                        match view.record.as_mut() {
+                            Some(existing) => {
+                                ::buffa::MessageView::merge_into_view(
+                                    existing,
+                                    sub,
+                                    __sub_ctx,
+                                )?
+                            }
+                            None => {
+                                view.record = ::buffa::MessageFieldView::set(
+                                    <super::super::__buffa::view::SecurityLifecycleRecordView as ::buffa::MessageView>::decode_view_ctx(
+                                        sub,
+                                        __sub_ctx,
+                                    )?,
+                                );
+                            }
+                        }
+                    }
+                    2u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::Varint,
+                        )?;
+                        view.graph_revision = ::buffa::types::decode_uint64(&mut cur)?;
+                    }
+                    3u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_runtime_id = ::buffa::types::borrow_str(&mut cur)?;
+                    }
+                    4u32 => {
+                        ::buffa::encoding::check_wire_type(
+                            tag,
+                            ::buffa::encoding::WireType::LengthDelimited,
+                        )?;
+                        view.source_collection_id = ::buffa::types::borrow_str(
+                            &mut cur,
+                        )?;
+                    }
+                    _ => {
+                        ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+                        let span_len = before_tag.len() - cur.len();
+                        view.__buffa_unknown_fields
+                            .push_record(before_tag, span_len, ctx)?;
+                    }
+                }
+                ::core::result::Result::Ok(cur)
+            }
+            fn to_owned_message(
+                &self,
+            ) -> ::core::result::Result<
+                super::super::ResolveSecurityLifecycleFindingResponse,
+                ::buffa::DecodeError,
+            > {
+                self.to_owned_from_source(None)
+            }
+            #[allow(clippy::useless_conversion, clippy::needless_update)]
+            fn to_owned_from_source(
+                &self,
+                __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+            ) -> ::core::result::Result<
+                super::super::ResolveSecurityLifecycleFindingResponse,
+                ::buffa::DecodeError,
+            > {
+                #[allow(unused_imports)]
+                use ::buffa::alloc::string::ToString as _;
+                let _ = __buffa_src;
+                ::core::result::Result::Ok(super::super::ResolveSecurityLifecycleFindingResponse {
+                    record: match self.record.as_option() {
+                        Some(v) => {
+                            ::buffa::MessageField::<
+                                super::super::SecurityLifecycleRecord,
+                                ::buffa::Inline<super::super::SecurityLifecycleRecord>,
+                            >::some(v.to_owned_from_source(__buffa_src)?)
+                        }
+                        None => ::buffa::MessageField::none(),
+                    },
+                    graph_revision: self.graph_revision,
+                    source_runtime_id: self.source_runtime_id.to_string(),
+                    source_collection_id: self.source_collection_id.to_string(),
+                    __buffa_unknown_fields: self
+                        .__buffa_unknown_fields
+                        .to_owned()?
+                        .into(),
+                    ..::core::default::Default::default()
+                })
+            }
+        }
+        impl<'a> ::buffa::ViewEncode<'a>
+        for ResolveSecurityLifecycleFindingResponseView<'a> {
+            #[allow(clippy::needless_borrow, clippy::let_and_return)]
+            fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                let mut size = 0u64;
+                if self.record.is_set() {
+                    let __slot = __cache.reserve();
+                    let inner_size = self.record.compute_size(__cache);
+                    __cache.set(__slot, inner_size);
+                    size
+                        += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                            + inner_size as u64;
+                }
+                if self.graph_revision != 0u64 {
+                    size
+                        += 1u64
+                            + ::buffa::types::uint64_encoded_len(self.graph_revision)
+                                as u64;
+                }
+                if !self.source_runtime_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(&self.source_runtime_id)
+                                as u64;
+                }
+                if !self.source_collection_id.is_empty() {
+                    size
+                        += 1u64
+                            + ::buffa::types::string_encoded_len(
+                                &self.source_collection_id,
+                            ) as u64;
+                }
+                size += self.__buffa_unknown_fields.encoded_len() as u64;
+                ::buffa::saturate_size(size)
+            }
+            #[allow(clippy::needless_borrow)]
+            fn write_to(
+                &self,
+                __cache: &mut ::buffa::SizeCache,
+                buf: &mut impl ::buffa::EncodeSink,
+            ) {
+                #[allow(unused_imports)]
+                use ::buffa::Enumeration as _;
+                if self.record.is_set() {
+                    ::buffa::types::put_len_delimited_header(
+                        1u32,
+                        u64::from(__cache.consume_next()),
+                        buf,
+                    );
+                    self.record.write_to(__cache, buf);
+                }
+                if self.graph_revision != 0u64 {
+                    ::buffa::types::put_uint64_field(2u32, self.graph_revision, buf);
+                }
+                if !self.source_runtime_id.is_empty() {
+                    ::buffa::types::put_string_field(3u32, &self.source_runtime_id, buf);
+                }
+                if !self.source_collection_id.is_empty() {
+                    ::buffa::types::put_string_field(
+                        4u32,
+                        &self.source_collection_id,
+                        buf,
+                    );
+                }
+                self.__buffa_unknown_fields.write_to(buf);
+            }
+        }
+        /// Serializes this view as protobuf JSON.
+        ///
+        /// Implicit-presence fields with default values are omitted, `required`
+        /// fields are always emitted, explicit-presence (`optional`) fields are
+        /// emitted only when set, bytes fields are base64-encoded, and enum
+        /// values are their proto name strings.
+        ///
+        /// This impl uses `serialize_map(None)` because the number of emitted
+        /// fields depends on default-omission rules; serializers that require
+        /// known map lengths (e.g. `bincode`) will return a runtime error.
+        /// Use the owned message type for those formats.
+        impl<'__a> ::serde::Serialize
+        for ResolveSecurityLifecycleFindingResponseView<'__a> {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                use ::serde::ser::SerializeMap as _;
+                let mut __map = __s.serialize_map(::core::option::Option::None)?;
+                {
+                    if let ::core::option::Option::Some(__v) = self.record.as_option() {
+                        __map.serialize_entry("record", __v)?;
+                    }
+                }
+                if !::buffa::json_helpers::skip_if::is_zero_u64(&self.graph_revision) {
+                    __map
+                        .serialize_entry(
+                            "graphRevision",
+                            &::buffa::json_helpers::ProtoJson(&self.graph_revision),
+                        )?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.source_runtime_id,
+                ) {
+                    __map.serialize_entry("sourceRuntimeId", self.source_runtime_id)?;
+                }
+                if !::buffa::json_helpers::skip_if::is_empty_str(
+                    self.source_collection_id,
+                ) {
+                    __map
+                        .serialize_entry(
+                            "sourceCollectionId",
+                            self.source_collection_id,
+                        )?;
+                }
+                __map.end()
+            }
+        }
+        impl<'a> ::buffa::MessageName
+        for ResolveSecurityLifecycleFindingResponseView<'a> {
+            const PACKAGE: &'static str = "cerebro.v1";
+            const NAME: &'static str = "ResolveSecurityLifecycleFindingResponse";
+            const FULL_NAME: &'static str = "cerebro.v1.ResolveSecurityLifecycleFindingResponse";
+            const TYPE_URL: &'static str = "type.googleapis.com/cerebro.v1.ResolveSecurityLifecycleFindingResponse";
+        }
+        ::buffa::impl_default_view_instance!(
+            ResolveSecurityLifecycleFindingResponseView
+        );
+        ::buffa::impl_view_reborrow!(ResolveSecurityLifecycleFindingResponseView);
+        /** Self-contained, `'static` owned view of a `ResolveSecurityLifecycleFindingResponse` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`ResolveSecurityLifecycleFindingResponseView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`ResolveSecurityLifecycleFindingResponseView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+        #[derive(Clone, Debug)]
+        pub struct ResolveSecurityLifecycleFindingResponseOwnedView(
+            ::buffa::OwnedView<ResolveSecurityLifecycleFindingResponseView<'static>>,
+        );
+        impl ResolveSecurityLifecycleFindingResponseOwnedView {
+            /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+            ///
+            /// The view borrows directly from the buffer's data; the buffer is
+            /// retained inside the returned handle.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+            /// protobuf data.
+            pub fn decode(
+                bytes: ::buffa::bytes::Bytes,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ResolveSecurityLifecycleFindingResponseOwnedView(
+                        ::buffa::OwnedView::decode(bytes)?,
+                    ),
+                )
+            }
+            /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+            /// max message size).
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+            /// exceeds the configured limits.
+            pub fn decode_with_options(
+                bytes: ::buffa::bytes::Bytes,
+                opts: &::buffa::DecodeOptions,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ResolveSecurityLifecycleFindingResponseOwnedView(
+                        ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+                    ),
+                )
+            }
+            /// Build from an owned message via an encode → decode round-trip.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+            /// message's encoded size exceeds the 2 GiB protobuf limit, or
+            /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+            /// somehow invalid (should not happen for well-formed messages).
+            pub fn from_owned(
+                msg: &super::super::ResolveSecurityLifecycleFindingResponse,
+            ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+                ::core::result::Result::Ok(
+                    ResolveSecurityLifecycleFindingResponseOwnedView(
+                        ::buffa::OwnedView::from_owned(msg)?,
+                    ),
+                )
+            }
+            /// Borrow the full [`ResolveSecurityLifecycleFindingResponseView`] with its lifetime tied to `&self`.
+            #[must_use]
+            pub fn view(&self) -> &ResolveSecurityLifecycleFindingResponseView<'_> {
+                self.0.reborrow()
+            }
+            /// Convert to the owned message type.
+            ///
+            /// Infallible: this type's constructors wire-decode their
+            /// buffer, and a view produced by wire decoding always
+            /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+            /// whose contract also governs handles converted from a raw
+            /// [`::buffa::OwnedView`].
+            #[must_use]
+            pub fn to_owned_message(
+                &self,
+            ) -> super::super::ResolveSecurityLifecycleFindingResponse {
+                self.0.to_owned_message()
+            }
+            /// The underlying bytes buffer.
+            #[must_use]
+            pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+                self.0.bytes()
+            }
+            /// Consume the handle, returning the underlying bytes buffer.
+            #[must_use]
+            pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+                self.0.into_bytes()
+            }
+            /// Field 1: `record`
+            #[must_use]
+            pub fn record(
+                &self,
+            ) -> &::buffa::MessageFieldView<
+                super::super::__buffa::view::SecurityLifecycleRecordView<'_>,
+            > {
+                &self.0.reborrow().record
+            }
+            /// Field 2: `graph_revision`
+            #[must_use]
+            pub fn graph_revision(&self) -> u64 {
+                self.0.reborrow().graph_revision
+            }
+            /// Field 3: `source_runtime_id`
+            #[must_use]
+            pub fn source_runtime_id(&self) -> &'_ str {
+                self.0.reborrow().source_runtime_id
+            }
+            /// Field 4: `source_collection_id`
+            #[must_use]
+            pub fn source_collection_id(&self) -> &'_ str {
+                self.0.reborrow().source_collection_id
+            }
+        }
+        impl ::core::convert::From<
+            ::buffa::OwnedView<ResolveSecurityLifecycleFindingResponseView<'static>>,
+        > for ResolveSecurityLifecycleFindingResponseOwnedView {
+            fn from(
+                inner: ::buffa::OwnedView<
+                    ResolveSecurityLifecycleFindingResponseView<'static>,
+                >,
+            ) -> Self {
+                ResolveSecurityLifecycleFindingResponseOwnedView(inner)
+            }
+        }
+        impl ::core::convert::From<ResolveSecurityLifecycleFindingResponseOwnedView>
+        for ::buffa::OwnedView<ResolveSecurityLifecycleFindingResponseView<'static>> {
+            fn from(wrapper: ResolveSecurityLifecycleFindingResponseOwnedView) -> Self {
+                wrapper.0
+            }
+        }
+        impl ::core::convert::AsRef<
+            ::buffa::OwnedView<ResolveSecurityLifecycleFindingResponseView<'static>>,
+        > for ResolveSecurityLifecycleFindingResponseOwnedView {
+            fn as_ref(
+                &self,
+            ) -> &::buffa::OwnedView<
+                ResolveSecurityLifecycleFindingResponseView<'static>,
+            > {
+                &self.0
+            }
+        }
+        impl ::buffa::HasMessageView
+        for super::super::ResolveSecurityLifecycleFindingResponse {
+            type View<'a> = ResolveSecurityLifecycleFindingResponseView<'a>;
+            type ViewHandle = ResolveSecurityLifecycleFindingResponseOwnedView;
+        }
+        impl ::serde::Serialize for ResolveSecurityLifecycleFindingResponseOwnedView {
+            fn serialize<__S: ::serde::Serializer>(
+                &self,
+                __s: __S,
+            ) -> ::core::result::Result<__S::Ok, __S::Error> {
+                ::serde::Serialize::serialize(&self.0, __s)
+            }
+        }
     }
     /// Register this package's `Any` type entries and extension entries.
     pub fn register_types(reg: &mut ::buffa::type_registry::TypeRegistry) {
@@ -16231,6 +23000,20 @@ pub mod __buffa {
         reg.register_json_any(super::__SECURITY_LIFECYCLE_RECORD_JSON_ANY);
         reg.register_json_any(super::__SECURITY_LIFECYCLE_QUERY_JSON_ANY);
         reg.register_json_any(super::__SECURITY_LIFECYCLE_QUERY_RESULT_JSON_ANY);
+        reg.register_json_any(super::__SECURITY_LIFECYCLE_SUBJECT_LOCATOR_JSON_ANY);
+        reg.register_json_any(super::__SECURITY_LIFECYCLE_SUBJECT_KIND_COUNT_JSON_ANY);
+        reg.register_json_any(super::__SECURITY_LIFECYCLE_STATE_COUNT_JSON_ANY);
+        reg.register_json_any(super::__SECURITY_LIFECYCLE_POLICY_STATE_COUNT_JSON_ANY);
+        reg.register_json_any(super::__SECURITY_LIFECYCLE_AGGREGATES_JSON_ANY);
+        reg.register_json_any(super::__SECURITY_LIFECYCLE_COVERAGE_JSON_ANY);
+        reg.register_json_any(super::__SECURITY_LIFECYCLE_FRESHNESS_JSON_ANY);
+        reg.register_json_any(super::__SECURITY_LIFECYCLE_QUERY_METADATA_JSON_ANY);
+        reg.register_json_any(
+            super::__RESOLVE_SECURITY_LIFECYCLE_FINDING_REQUEST_JSON_ANY,
+        );
+        reg.register_json_any(
+            super::__RESOLVE_SECURITY_LIFECYCLE_FINDING_RESPONSE_JSON_ANY,
+        );
     }
 }
 #[doc(inline)]
@@ -16313,5 +23096,45 @@ pub use self::__buffa::view::SecurityLifecycleQueryOwnedView;
 pub use self::__buffa::view::SecurityLifecycleQueryResultView;
 #[doc(inline)]
 pub use self::__buffa::view::SecurityLifecycleQueryResultOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleSubjectLocatorView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleSubjectLocatorOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleSubjectKindCountView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleSubjectKindCountOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleStateCountView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleStateCountOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecyclePolicyStateCountView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecyclePolicyStateCountOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleAggregatesView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleAggregatesOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleCoverageView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleCoverageOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleFreshnessView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleFreshnessOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleQueryMetadataView;
+#[doc(inline)]
+pub use self::__buffa::view::SecurityLifecycleQueryMetadataOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ResolveSecurityLifecycleFindingRequestView;
+#[doc(inline)]
+pub use self::__buffa::view::ResolveSecurityLifecycleFindingRequestOwnedView;
+#[doc(inline)]
+pub use self::__buffa::view::ResolveSecurityLifecycleFindingResponseView;
+#[doc(inline)]
+pub use self::__buffa::view::ResolveSecurityLifecycleFindingResponseOwnedView;
 #[doc(inline)]
 pub use self::__buffa::register_types;

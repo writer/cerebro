@@ -7,9 +7,11 @@ use cerebro_agent_context::{
     QueryMatch as ContextQueryMatch, QueryNode as ContextQueryNode,
 };
 use cerebro_organizational_model::{AssertionId, EntityId, TenantId};
+use cerebro_organizational_store::{Neo4jProjector, StoreError};
 use cerebro_security_lifecycle::{
     LifecycleQuery, LifecycleState, ProjectedResource, QueryResult as LifecycleQueryResult,
-    SubjectKind, query_records,
+    QuerySource, SubjectKind, SubjectLocator, canonical_resource_urn, finalize_indexed_query,
+    prepare_indexed_query, query_records_with_source, resolve_finding_record,
 };
 use cerebro_source_catalog::CatalogSummary;
 use connectrpc::{ConnectError, RequestContext, Response, Router, ServiceRequest, ServiceResult};
@@ -67,11 +69,13 @@ const MAX_SECURITY_LIFECYCLE_SCAN: usize = 500;
 
 pub(crate) fn router(
     graph: Arc<dyn AgentGraph>,
+    lifecycle_projection: Option<Arc<Neo4jProjector>>,
     catalog_summary: Option<CatalogSummary>,
     tenant_auth: TenantRequestAuth,
 ) -> Router {
     let service = Arc::new(GraphRpc {
         graph,
+        lifecycle_projection,
         catalog_summary,
         tenant_auth,
     });
@@ -81,6 +85,7 @@ pub(crate) fn router(
 
 struct GraphRpc {
     graph: Arc<dyn AgentGraph>,
+    lifecycle_projection: Option<Arc<Neo4jProjector>>,
     catalog_summary: Option<CatalogSummary>,
     tenant_auth: TenantRequestAuth,
 }
@@ -130,13 +135,66 @@ impl GraphRpc {
         tenant: &TenantId,
         query: &LifecycleQuery,
     ) -> Result<LifecycleQueryResult, ConnectError> {
-        let resource_kinds = vec!["resource".to_owned()];
-        let entities: Vec<ProjectedResource> = self
-            .graph_call(
-                self.graph
-                    .search(tenant, "", &resource_kinds, MAX_SECURITY_LIFECYCLE_SCAN),
+        if let Some(projection) = self.lifecycle_projection.as_ref() {
+            let graph_revision = self.graph_call(self.graph.revision(tenant)).await?;
+            let as_of = OffsetDateTime::now_utc()
+                .format(&Rfc3339)
+                .map_err(|error| {
+                    ConnectError::internal(format!("Cannot format read time: {error}"))
+                })?;
+            let prepared = prepare_indexed_query(tenant, query, &as_of, graph_revision)
+                .map_err(|error| ConnectError::invalid_argument(error.to_string()))?;
+            let indexed = tokio::time::timeout(
+                GRAPH_RPC_TIMEOUT,
+                projection.query_lifecycle(tenant, &prepared),
             )
-            .await?
+            .await
+            .map_err(|_| {
+                ConnectError::unavailable("Lifecycle projection read exceeded 2 seconds.")
+            })?;
+            match indexed {
+                Ok(page) => {
+                    return finalize_indexed_query(tenant, &prepared, page)
+                        .map_err(|error| ConnectError::internal(error.to_string()));
+                }
+                Err(StoreError::LifecycleProjectionUnavailable { .. }) => {}
+                Err(error) => return Err(ConnectError::unavailable(error.to_string())),
+            }
+        }
+        let revision_before = self.graph_call(self.graph.revision(tenant)).await?;
+        let (entities, scan_truncated): (Vec<_>, bool) = if let Some(locator) =
+            query.subject_locator.as_ref()
+        {
+            let subject_urn = canonical_resource_urn(
+                tenant.as_str(),
+                locator.subject_kind,
+                &locator.authority_id,
+                &locator.stable_locator,
+            )
+            .map_err(|error| ConnectError::invalid_argument(error.to_string()))?;
+            match self
+                .graph_call(self.graph.resolve(tenant, &subject_urn))
+                .await
+            {
+                Ok(entity) => (vec![entity], false),
+                Err(error) if error.code == connectrpc::ErrorCode::NotFound => (Vec::new(), false),
+                Err(error) => return Err(error),
+            }
+        } else {
+            let resource_kinds = vec!["resource".to_owned()];
+            let entities = self
+                .graph_call(self.graph.search(
+                    tenant,
+                    "",
+                    &resource_kinds,
+                    MAX_SECURITY_LIFECYCLE_SCAN,
+                ))
+                .await?;
+            let scan_truncated = entities.len() == MAX_SECURITY_LIFECYCLE_SCAN;
+            (entities, scan_truncated)
+        };
+        let scanned_entities = entities.len();
+        let entities = entities
             .into_iter()
             .map(|entity| ProjectedResource {
                 agent_key: entity.agent_key,
@@ -144,14 +202,23 @@ impl GraphRpc {
                 properties: entity.properties,
             })
             .collect();
+        let revision_after = self.graph_call(self.graph.revision(tenant)).await?;
         let as_of = OffsetDateTime::now_utc()
             .format(&Rfc3339)
             .map_err(|error| ConnectError::internal(format!("Cannot format read time: {error}")))?;
-        let scan_truncated = entities.len() == MAX_SECURITY_LIFECYCLE_SCAN;
-        let mut result = query_records(tenant, query, entities, &as_of)
-            .map_err(|error| ConnectError::invalid_argument(error.to_string()))?;
-        result.truncated |= scan_truncated;
-        Ok(result)
+        query_records_with_source(
+            tenant,
+            query,
+            entities,
+            &as_of,
+            QuerySource {
+                scanned_entities,
+                truncated: scan_truncated,
+                graph_revision: revision_after,
+                graph_changed: revision_before != revision_after,
+            },
+        )
+        .map_err(|error| ConnectError::invalid_argument(error.to_string()))
     }
 }
 
@@ -175,6 +242,65 @@ impl SecurityLifecycleService for GraphRpc {
             result: response.into(),
             ..Default::default()
         })
+    }
+
+    async fn resolve_security_lifecycle_finding(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, proto::cerebro::v1::ResolveSecurityLifecycleFindingRequest>,
+    ) -> ServiceResult<proto::cerebro::v1::ResolveSecurityLifecycleFindingResponse> {
+        let owned_request = request.to_owned_message();
+        let tenant = self.authorized_tenant(&context, &owned_request.tenant_id)?;
+        let finding_urn = owned_request.finding_urn.trim();
+        if finding_urn.is_empty() {
+            return Err(ConnectError::invalid_argument("finding_urn is required"));
+        }
+        let expected_prefix = cerebro_security_lifecycle::canonical_finding_urn_prefix(
+            tenant.as_str(),
+        )
+        .map_err(|_| {
+            ConnectError::invalid_argument(
+                "finding_urn must be a bounded finding URN for the requested tenant",
+            )
+        })?;
+        if finding_urn.len() > 4_096 || !finding_urn.starts_with(&expected_prefix) {
+            return Err(ConnectError::invalid_argument(
+                "finding_urn must be a bounded finding URN for the requested tenant",
+            ));
+        }
+        let projection = self.lifecycle_projection.as_ref().ok_or_else(|| {
+            ConnectError::unavailable("Lifecycle finding resolution requires the durable graph.")
+        })?;
+        let resolved = tokio::time::timeout(
+            GRAPH_RPC_TIMEOUT,
+            projection.resolve_lifecycle_finding(&tenant, finding_urn),
+        )
+        .await
+        .map_err(|_| ConnectError::unavailable("Lifecycle finding resolution exceeded 2 seconds."))?
+        .map_err(lifecycle_store_error)?;
+        let resolved =
+            resolved.ok_or_else(|| ConnectError::not_found("Lifecycle finding was not found."))?;
+        let as_of = OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .map_err(|error| ConnectError::internal(format!("Cannot format read time: {error}")))?;
+        let record = resolve_finding_record(
+            &tenant,
+            finding_urn,
+            resolved.resource,
+            &as_of,
+            resolved.graph_revision,
+        )
+        .map_err(|error| ConnectError::internal(error.to_string()))?
+        .ok_or_else(|| ConnectError::not_found("Lifecycle finding is no longer open."))?;
+        Response::ok(
+            proto::cerebro::v1::ResolveSecurityLifecycleFindingResponse {
+                record: lifecycle_record(record)?.into(),
+                graph_revision: resolved.graph_revision,
+                source_runtime_id: resolved.source_runtime_id,
+                source_collection_id: resolved.source_collection_id,
+                ..Default::default()
+            },
+        )
     }
 }
 
@@ -510,6 +636,28 @@ fn lifecycle_query(
         findings_only: request.findings_only,
         limit,
         page_token: (!request.page_token.is_empty()).then(|| request.page_token.to_owned()),
+        subject_locator: request
+            .subject_locator
+            .as_option()
+            .map(|locator| {
+                let subject_kind = match locator.subject_kind.as_known() {
+                    Some(proto::cerebro::v1::SecurityLifecycleSubjectKind::Credential) => {
+                        Ok(SubjectKind::Credential)
+                    }
+                    Some(proto::cerebro::v1::SecurityLifecycleSubjectKind::Certificate) => {
+                        Ok(SubjectKind::Certificate)
+                    }
+                    _ => Err(ConnectError::invalid_argument(
+                        "subject_locator.subject_kind is required",
+                    )),
+                }?;
+                Ok::<SubjectLocator, ConnectError>(SubjectLocator {
+                    subject_kind,
+                    authority_id: locator.authority_id.to_owned(),
+                    stable_locator: locator.stable_locator.to_owned(),
+                })
+            })
+            .transpose()?,
     })
 }
 
@@ -539,19 +687,48 @@ fn lifecycle_query_result(
         .and_then(serde_json::Value::as_array_mut)
         .ok_or_else(|| ConnectError::internal("Lifecycle result has no records array"))?;
     for record in records {
-        let observation = record
-            .get_mut("observation")
-            .and_then(serde_json::Value::as_object_mut)
-            .ok_or_else(|| ConnectError::internal("Lifecycle record has no observation"))?;
-        let subject_kind = match observation
+        normalize_lifecycle_record(record)?;
+    }
+    let aggregates = value
+        .get_mut("aggregates")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| ConnectError::internal("Lifecycle result has no aggregates"))?;
+    let subject_kind_counts = aggregates
+        .get_mut("subject_kind_counts")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| {
+            ConnectError::internal("Lifecycle aggregates have no subject kind counts")
+        })?;
+    for count in subject_kind_counts {
+        let count = count
+            .as_object_mut()
+            .ok_or_else(|| ConnectError::internal("Lifecycle subject kind count is invalid"))?;
+        let subject_kind = match count
             .get("subject_kind")
             .and_then(serde_json::Value::as_str)
         {
             Some("credential") => "SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL",
             Some("certificate") => "SECURITY_LIFECYCLE_SUBJECT_KIND_CERTIFICATE",
-            _ => return Err(ConnectError::internal("Lifecycle subject kind is invalid")),
+            _ => {
+                return Err(ConnectError::internal(
+                    "Lifecycle subject kind count is invalid",
+                ));
+            }
         };
-        let state = match observation.get("state").and_then(serde_json::Value::as_str) {
+        count.insert(
+            "subject_kind".to_owned(),
+            serde_json::Value::String(subject_kind.to_owned()),
+        );
+    }
+    let state_counts = aggregates
+        .get_mut("state_counts")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| ConnectError::internal("Lifecycle aggregates have no state counts"))?;
+    for count in state_counts {
+        let count = count
+            .as_object_mut()
+            .ok_or_else(|| ConnectError::internal("Lifecycle state count is invalid"))?;
+        let state = match count.get("state").and_then(serde_json::Value::as_str) {
             Some("active") => "SECURITY_LIFECYCLE_STATE_ACTIVE",
             Some("expiring") => "SECURITY_LIFECYCLE_STATE_EXPIRING",
             Some("expired") => "SECURITY_LIFECYCLE_STATE_EXPIRED",
@@ -559,19 +736,107 @@ fn lifecycle_query_result(
             Some("revoked") => "SECURITY_LIFECYCLE_STATE_REVOKED",
             Some("inactive") => "SECURITY_LIFECYCLE_STATE_INACTIVE",
             Some("unknown") => "SECURITY_LIFECYCLE_STATE_UNKNOWN",
-            _ => return Err(ConnectError::internal("Lifecycle state is invalid")),
+            _ => return Err(ConnectError::internal("Lifecycle state count is invalid")),
         };
-        observation.insert(
-            "subject_kind".to_owned(),
-            serde_json::Value::String(subject_kind.to_owned()),
-        );
-        observation.insert(
+        count.insert(
             "state".to_owned(),
             serde_json::Value::String(state.to_owned()),
         );
     }
+    let policy_state_counts = aggregates
+        .get_mut("policy_state_counts")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| {
+            ConnectError::internal("Lifecycle aggregates have no policy state counts")
+        })?;
+    for count in policy_state_counts {
+        let count = count
+            .as_object_mut()
+            .ok_or_else(|| ConnectError::internal("Lifecycle policy state count is invalid"))?;
+        let policy_state = match count
+            .get("policy_state")
+            .and_then(serde_json::Value::as_str)
+        {
+            Some("compliant") => "SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT",
+            Some("expiring") => "SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING",
+            Some("expired") => "SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED",
+            Some("unknown") => "SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN",
+            _ => {
+                return Err(ConnectError::internal(
+                    "Lifecycle policy state count is invalid",
+                ));
+            }
+        };
+        count.insert(
+            "policy_state".to_owned(),
+            serde_json::Value::String(policy_state.to_owned()),
+        );
+    }
+    let reason = value
+        .get_mut("metadata")
+        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|metadata| metadata.get_mut("coverage"))
+        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|coverage| coverage.get_mut("reason"))
+        .ok_or_else(|| ConnectError::internal("Lifecycle coverage reason is missing"))?;
+    let reason_name = match reason.as_str() {
+        Some("complete") => "SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE",
+        Some("scan_limit") => "SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT",
+        Some("graph_changed") => "SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED",
+        _ => {
+            return Err(ConnectError::internal(
+                "Lifecycle coverage reason is invalid",
+            ));
+        }
+    };
+    *reason = serde_json::Value::String(reason_name.to_owned());
     serde_json::from_value(value)
         .map_err(|error| ConnectError::internal(format!("Cannot encode lifecycle result: {error}")))
+}
+
+fn lifecycle_record(
+    record: cerebro_security_lifecycle::LifecycleRecord,
+) -> Result<proto::cerebro::v1::SecurityLifecycleRecord, ConnectError> {
+    let mut value = serde_json::to_value(record).map_err(|error| {
+        ConnectError::internal(format!("Cannot encode lifecycle record: {error}"))
+    })?;
+    normalize_lifecycle_record(&mut value)?;
+    serde_json::from_value(value)
+        .map_err(|error| ConnectError::internal(format!("Cannot encode lifecycle record: {error}")))
+}
+
+fn normalize_lifecycle_record(record: &mut serde_json::Value) -> Result<(), ConnectError> {
+    let observation = record
+        .get_mut("observation")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| ConnectError::internal("Lifecycle record has no observation"))?;
+    let subject_kind = match observation
+        .get("subject_kind")
+        .and_then(serde_json::Value::as_str)
+    {
+        Some("credential") => "SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL",
+        Some("certificate") => "SECURITY_LIFECYCLE_SUBJECT_KIND_CERTIFICATE",
+        _ => return Err(ConnectError::internal("Lifecycle subject kind is invalid")),
+    };
+    let state = match observation.get("state").and_then(serde_json::Value::as_str) {
+        Some("active") => "SECURITY_LIFECYCLE_STATE_ACTIVE",
+        Some("expiring") => "SECURITY_LIFECYCLE_STATE_EXPIRING",
+        Some("expired") => "SECURITY_LIFECYCLE_STATE_EXPIRED",
+        Some("rotated") => "SECURITY_LIFECYCLE_STATE_ROTATED",
+        Some("revoked") => "SECURITY_LIFECYCLE_STATE_REVOKED",
+        Some("inactive") => "SECURITY_LIFECYCLE_STATE_INACTIVE",
+        Some("unknown") => "SECURITY_LIFECYCLE_STATE_UNKNOWN",
+        _ => return Err(ConnectError::internal("Lifecycle state is invalid")),
+    };
+    observation.insert(
+        "subject_kind".to_owned(),
+        serde_json::Value::String(subject_kind.to_owned()),
+    );
+    observation.insert(
+        "state".to_owned(),
+        serde_json::Value::String(state.to_owned()),
+    );
+    Ok(())
 }
 
 fn graph_entity(entity: ContextEntity) -> GraphEntity {
@@ -674,6 +939,16 @@ fn context_error(error: ContextError) -> ConnectError {
     }
 }
 
+fn lifecycle_store_error(error: StoreError) -> ConnectError {
+    match error {
+        StoreError::Conflict(message) => ConnectError::internal(message),
+        StoreError::LifecycleProjectionUnavailable { .. } => {
+            ConnectError::unavailable(error.to_string())
+        }
+        _ => ConnectError::unavailable(error.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::future;
@@ -696,6 +971,20 @@ mod tests {
             error.message.as_deref(),
             Some("The graph backend exceeded its RPC deadline.")
         );
+    }
+
+    #[test]
+    fn lifecycle_store_conflicts_are_not_retryable() {
+        let conflict = lifecycle_store_error(StoreError::Conflict(
+            "persistent lifecycle graph inconsistency".to_owned(),
+        ));
+        assert_eq!(conflict.code, ErrorCode::Internal);
+
+        let unavailable = lifecycle_store_error(StoreError::LifecycleProjectionUnavailable {
+            graph_revision: 3,
+            projection_revision: Some(2),
+        });
+        assert_eq!(unavailable.code, ErrorCode::Unavailable);
     }
 
     #[test]
@@ -730,15 +1019,54 @@ mod tests {
                 findings: Vec::new(),
                 action_routes: Vec::new(),
                 projected_at: "2026-07-26T12:00:00Z".to_owned(),
+                source_runtime_id: "lifecycle-test".to_owned(),
+                source_collection_id: "runtime:lifecycle-test:collection-1".to_owned(),
             }],
             next_page_token: Some("v1.616263".to_owned()),
+            previous_page_token: Some("v2.previous".to_owned()),
             truncated: true,
             as_of: "2026-07-26T12:00:00Z".to_owned(),
+            aggregates: cerebro_security_lifecycle::LifecycleAggregates {
+                counts_are_exact: true,
+                matched_records: 1,
+                matched_findings: 0,
+                subject_kind_counts: vec![cerebro_security_lifecycle::SubjectKindCount {
+                    subject_kind: SubjectKind::Credential,
+                    count: 1,
+                }],
+                state_counts: vec![cerebro_security_lifecycle::StateCount {
+                    state: LifecycleState::Expiring,
+                    count: 1,
+                }],
+                policy_state_counts: vec![cerebro_security_lifecycle::PolicyStateCount {
+                    policy_state: cerebro_security_lifecycle::PolicyState::Expiring,
+                    count: 1,
+                }],
+            },
+            metadata: cerebro_security_lifecycle::QueryMetadata {
+                coverage: cerebro_security_lifecycle::QueryCoverage {
+                    complete: true,
+                    truncated: false,
+                    scanned_entities: 1,
+                    lifecycle_entities: 1,
+                    graph_revision: 7,
+                    reason: cerebro_security_lifecycle::CoverageReason::Complete,
+                },
+                freshness: cerebro_security_lifecycle::QueryFreshness {
+                    as_of: "2026-07-26T12:00:00Z".to_owned(),
+                    oldest_observed_at: Some("2026-07-26T12:00:00Z".to_owned()),
+                    newest_observed_at: Some("2026-07-26T12:00:00Z".to_owned()),
+                },
+                page_truncated: true,
+            },
         })
         .unwrap();
 
         assert_eq!(response.next_page_token, "v1.616263");
         assert!(response.truncated);
+        assert_eq!(response.previous_page_token, "v2.previous");
+        assert_eq!(response.aggregates.matched_records, 1);
+        assert!(response.metadata.coverage.complete);
         assert_eq!(response.as_of.seconds, 1_785_067_200);
         assert_eq!(
             response.records[0].observation.subject_kind,

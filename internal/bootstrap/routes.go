@@ -216,6 +216,7 @@ func (app *App) registerGRCRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /grc/remediation-plans/{planID}", routeSurfacePlatformHTTP, app.handleGetComplianceRemediationPlan)
 	registerHTTPRoute(mux, "POST /grc/remediation-plans/{planID}/commands", routeSurfacePlatformHTTP, app.handleComplianceRemediationCommand)
 	registerHTTPRoute(mux, "POST /grc/findings/triage", routeSurfacePlatformHTTP, app.handleUpdateGRCFindingDispositions)
+	registerHTTPRoute(mux, "POST /grc/findings/{findingID}/security-lifecycle/reconcile", routeSurfacePlatformHTTP, app.handleReconcileSecurityLifecycleFinding)
 	registerHTTPRoute(mux, "GET /grc/findings/export", routeSurfacePlatformHTTP, app.handleGRCFindingsExport)
 	registerHTTPRoute(mux, "GET /grc/controls", routeSurfacePlatformHTTP, app.cacheGRCJSON(app.grcCachePolicy("controls", time.Minute, grcCacheScopeFindings, grcCacheScopeEvidence, grcCacheScopeRuntime), app.handleGRCControls))
 	registerHTTPRoute(mux, "GET /grc/controls/export", routeSurfacePlatformHTTP, app.handleGRCControlsExport)

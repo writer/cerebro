@@ -57,6 +57,7 @@ class AppCIWorkflowTests(unittest.TestCase):
         self.assertIn("npm run e2e:rust-auth:local --workspace @writer/cerebro-web", self.workflow)
         self.assertIn("if: needs.ci-scope.outputs.web_integration == 'true'", self.workflow)
         self.assertIn("npm run check --workspace @writer/cerebro-slack-companion", self.workflow)
+        self.assertIn("npm run check --workspace @writer/cerebro-slack-companion-host", self.workflow)
         self.assertIn("npm run check --workspace @writer/cerebro-sdk", self.workflow)
 
     def test_verify_binds_scope_outputs_before_using_them(self):

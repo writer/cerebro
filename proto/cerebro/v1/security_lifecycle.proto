@@ -11,6 +11,7 @@ import "google/protobuf/timestamp.proto";
 // organizational platform.
 service SecurityLifecycleService {
   rpc ListSecurityLifecycle(ListSecurityLifecycleRequest) returns (ListSecurityLifecycleResponse);
+  rpc ResolveSecurityLifecycleFinding(ResolveSecurityLifecycleFindingRequest) returns (ResolveSecurityLifecycleFindingResponse);
 }
 
 message ListSecurityLifecycleRequest {
@@ -40,6 +41,16 @@ enum SecurityLifecycleState {
   SECURITY_LIFECYCLE_STATE_REVOKED = 5;
   SECURITY_LIFECYCLE_STATE_INACTIVE = 6;
   SECURITY_LIFECYCLE_STATE_UNKNOWN = 7;
+}
+
+// SecurityLifecyclePolicyState is the effective expiry posture evaluated from
+// provider state, expiry metadata, and the policy evaluation time.
+enum SecurityLifecyclePolicyState {
+  SECURITY_LIFECYCLE_POLICY_STATE_UNSPECIFIED = 0;
+  SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT = 1;
+  SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING = 2;
+  SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED = 3;
+  SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN = 4;
 }
 
 // SecurityLifecycleObservation is one provider-neutral current-state
@@ -133,6 +144,8 @@ message SecurityLifecycleRecord {
   repeated SecurityLifecycleFindingBinding findings = 4;
   repeated SecurityLifecycleActionRoute action_routes = 5;
   google.protobuf.Timestamp projected_at = 6;
+  string source_runtime_id = 7;
+  string source_collection_id = 8;
 }
 
 // SecurityLifecycleQuery is a bounded, tenant-scoped selector for lifecycle
@@ -146,6 +159,7 @@ message SecurityLifecycleQuery {
   bool findings_only = 6;
   uint32 limit = 7;
   string page_token = 8;
+  SecurityLifecycleSubjectLocator subject_locator = 9;
 }
 
 message SecurityLifecycleQueryResult {
@@ -153,4 +167,82 @@ message SecurityLifecycleQueryResult {
   string next_page_token = 2;
   bool truncated = 3;
   google.protobuf.Timestamp as_of = 4;
+  SecurityLifecycleAggregates aggregates = 5;
+  string previous_page_token = 6;
+  SecurityLifecycleQueryMetadata metadata = 7;
+}
+
+// SecurityLifecycleSubjectLocator selects one stable governed slot without
+// coupling a lookup to the currently observed material revision.
+message SecurityLifecycleSubjectLocator {
+  SecurityLifecycleSubjectKind subject_kind = 1;
+  string authority_id = 2;
+  string stable_locator = 3;
+}
+
+message SecurityLifecycleSubjectKindCount {
+  SecurityLifecycleSubjectKind subject_kind = 1;
+  uint64 count = 2;
+}
+
+message SecurityLifecycleStateCount {
+  SecurityLifecycleState state = 1;
+  uint64 count = 2;
+}
+
+message SecurityLifecyclePolicyStateCount {
+  SecurityLifecyclePolicyState policy_state = 1;
+  uint64 count = 2;
+}
+
+// SecurityLifecycleAggregates describes the entire filtered population covered
+// by the server query, never only the returned page. counts_are_exact is false
+// when coverage metadata reports a bounded source scan.
+message SecurityLifecycleAggregates {
+  bool counts_are_exact = 1;
+  uint64 matched_records = 2;
+  uint64 matched_findings = 3;
+  repeated SecurityLifecycleSubjectKindCount subject_kind_counts = 4;
+  repeated SecurityLifecycleStateCount state_counts = 5;
+  repeated SecurityLifecyclePolicyStateCount policy_state_counts = 6;
+}
+
+enum SecurityLifecycleCoverageReason {
+  SECURITY_LIFECYCLE_COVERAGE_REASON_UNSPECIFIED = 0;
+  SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE = 1;
+  SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT = 2;
+  SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED = 3;
+}
+
+message SecurityLifecycleCoverage {
+  bool complete = 1;
+  bool truncated = 2;
+  uint64 scanned_entities = 3;
+  uint64 lifecycle_entities = 4;
+  uint64 graph_revision = 5;
+  SecurityLifecycleCoverageReason reason = 6;
+}
+
+message SecurityLifecycleFreshness {
+  google.protobuf.Timestamp as_of = 1;
+  google.protobuf.Timestamp oldest_observed_at = 2;
+  google.protobuf.Timestamp newest_observed_at = 3;
+}
+
+message SecurityLifecycleQueryMetadata {
+  SecurityLifecycleCoverage coverage = 1;
+  SecurityLifecycleFreshness freshness = 2;
+  bool page_truncated = 3;
+}
+
+message ResolveSecurityLifecycleFindingRequest {
+  string tenant_id = 1;
+  string finding_urn = 2;
+}
+
+message ResolveSecurityLifecycleFindingResponse {
+  SecurityLifecycleRecord record = 1;
+  uint64 graph_revision = 2;
+  string source_runtime_id = 3;
+  string source_collection_id = 4;
 }

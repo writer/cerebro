@@ -183,6 +183,37 @@ func (s *QueryStore) ListSecurityLifecycle(ctx context.Context, query *cerebrov1
 	return response.Msg.GetResult(), nil
 }
 
+// ResolveSecurityLifecycleFinding resolves only the Rust durable graph
+// boundary. It does not create or read GRC findings, evidence, or audit packets.
+func (s *QueryStore) ResolveSecurityLifecycleFinding(ctx context.Context, tenantID, findingURN string) (*cerebrov1.ResolveSecurityLifecycleFindingResponse, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	findingURN = strings.TrimSpace(findingURN)
+	if tenantID == "" {
+		return nil, errors.New("security lifecycle tenant_id is required")
+	}
+	if findingURN == "" {
+		return nil, errors.New("security lifecycle finding_urn is required")
+	}
+	if len(findingURN) > 4096 {
+		return nil, errors.New("security lifecycle finding_urn exceeds 4096 bytes")
+	}
+	request := connect.NewRequest(&cerebrov1.ResolveSecurityLifecycleFindingRequest{
+		TenantId:   tenantID,
+		FindingUrn: findingURN,
+	})
+	if err := s.auth.authorizeHeader(request.Header(), tenantID); err != nil {
+		return nil, err
+	}
+	response, err := s.lifecycle.ResolveSecurityLifecycleFinding(ctx, request)
+	if err != nil {
+		return nil, fmt.Errorf("resolve Rust security lifecycle finding: %w", err)
+	}
+	if response.Msg.GetRecord() == nil {
+		return nil, errors.New("rust security lifecycle finding response omitted record")
+	}
+	return response.Msg, nil
+}
+
 func (s *QueryStore) Ping(ctx context.Context) (err error) {
 	if s.compatibility != nil {
 		if err := s.compatibility.Ping(ctx); err != nil {

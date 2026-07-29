@@ -36,11 +36,15 @@ const (
 	// SecurityLifecycleServiceListSecurityLifecycleProcedure is the fully-qualified name of the
 	// SecurityLifecycleService's ListSecurityLifecycle RPC.
 	SecurityLifecycleServiceListSecurityLifecycleProcedure = "/cerebro.v1.SecurityLifecycleService/ListSecurityLifecycle"
+	// SecurityLifecycleServiceResolveSecurityLifecycleFindingProcedure is the fully-qualified name of
+	// the SecurityLifecycleService's ResolveSecurityLifecycleFinding RPC.
+	SecurityLifecycleServiceResolveSecurityLifecycleFindingProcedure = "/cerebro.v1.SecurityLifecycleService/ResolveSecurityLifecycleFinding"
 )
 
 // SecurityLifecycleServiceClient is a client for the cerebro.v1.SecurityLifecycleService service.
 type SecurityLifecycleServiceClient interface {
 	ListSecurityLifecycle(context.Context, *connect.Request[v1.ListSecurityLifecycleRequest]) (*connect.Response[v1.ListSecurityLifecycleResponse], error)
+	ResolveSecurityLifecycleFinding(context.Context, *connect.Request[v1.ResolveSecurityLifecycleFindingRequest]) (*connect.Response[v1.ResolveSecurityLifecycleFindingResponse], error)
 }
 
 // NewSecurityLifecycleServiceClient constructs a client for the cerebro.v1.SecurityLifecycleService
@@ -60,12 +64,19 @@ func NewSecurityLifecycleServiceClient(httpClient connect.HTTPClient, baseURL st
 			connect.WithSchema(securityLifecycleServiceMethods.ByName("ListSecurityLifecycle")),
 			connect.WithClientOptions(opts...),
 		),
+		resolveSecurityLifecycleFinding: connect.NewClient[v1.ResolveSecurityLifecycleFindingRequest, v1.ResolveSecurityLifecycleFindingResponse](
+			httpClient,
+			baseURL+SecurityLifecycleServiceResolveSecurityLifecycleFindingProcedure,
+			connect.WithSchema(securityLifecycleServiceMethods.ByName("ResolveSecurityLifecycleFinding")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // securityLifecycleServiceClient implements SecurityLifecycleServiceClient.
 type securityLifecycleServiceClient struct {
-	listSecurityLifecycle *connect.Client[v1.ListSecurityLifecycleRequest, v1.ListSecurityLifecycleResponse]
+	listSecurityLifecycle           *connect.Client[v1.ListSecurityLifecycleRequest, v1.ListSecurityLifecycleResponse]
+	resolveSecurityLifecycleFinding *connect.Client[v1.ResolveSecurityLifecycleFindingRequest, v1.ResolveSecurityLifecycleFindingResponse]
 }
 
 // ListSecurityLifecycle calls cerebro.v1.SecurityLifecycleService.ListSecurityLifecycle.
@@ -73,10 +84,17 @@ func (c *securityLifecycleServiceClient) ListSecurityLifecycle(ctx context.Conte
 	return c.listSecurityLifecycle.CallUnary(ctx, req)
 }
 
+// ResolveSecurityLifecycleFinding calls
+// cerebro.v1.SecurityLifecycleService.ResolveSecurityLifecycleFinding.
+func (c *securityLifecycleServiceClient) ResolveSecurityLifecycleFinding(ctx context.Context, req *connect.Request[v1.ResolveSecurityLifecycleFindingRequest]) (*connect.Response[v1.ResolveSecurityLifecycleFindingResponse], error) {
+	return c.resolveSecurityLifecycleFinding.CallUnary(ctx, req)
+}
+
 // SecurityLifecycleServiceHandler is an implementation of the cerebro.v1.SecurityLifecycleService
 // service.
 type SecurityLifecycleServiceHandler interface {
 	ListSecurityLifecycle(context.Context, *connect.Request[v1.ListSecurityLifecycleRequest]) (*connect.Response[v1.ListSecurityLifecycleResponse], error)
+	ResolveSecurityLifecycleFinding(context.Context, *connect.Request[v1.ResolveSecurityLifecycleFindingRequest]) (*connect.Response[v1.ResolveSecurityLifecycleFindingResponse], error)
 }
 
 // NewSecurityLifecycleServiceHandler builds an HTTP handler from the service implementation. It
@@ -92,10 +110,18 @@ func NewSecurityLifecycleServiceHandler(svc SecurityLifecycleServiceHandler, opt
 		connect.WithSchema(securityLifecycleServiceMethods.ByName("ListSecurityLifecycle")),
 		connect.WithHandlerOptions(opts...),
 	)
+	securityLifecycleServiceResolveSecurityLifecycleFindingHandler := connect.NewUnaryHandler(
+		SecurityLifecycleServiceResolveSecurityLifecycleFindingProcedure,
+		svc.ResolveSecurityLifecycleFinding,
+		connect.WithSchema(securityLifecycleServiceMethods.ByName("ResolveSecurityLifecycleFinding")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/cerebro.v1.SecurityLifecycleService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SecurityLifecycleServiceListSecurityLifecycleProcedure:
 			securityLifecycleServiceListSecurityLifecycleHandler.ServeHTTP(w, r)
+		case SecurityLifecycleServiceResolveSecurityLifecycleFindingProcedure:
+			securityLifecycleServiceResolveSecurityLifecycleFindingHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -107,4 +133,8 @@ type UnimplementedSecurityLifecycleServiceHandler struct{}
 
 func (UnimplementedSecurityLifecycleServiceHandler) ListSecurityLifecycle(context.Context, *connect.Request[v1.ListSecurityLifecycleRequest]) (*connect.Response[v1.ListSecurityLifecycleResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.SecurityLifecycleService.ListSecurityLifecycle is not implemented"))
+}
+
+func (UnimplementedSecurityLifecycleServiceHandler) ResolveSecurityLifecycleFinding(context.Context, *connect.Request[v1.ResolveSecurityLifecycleFindingRequest]) (*connect.Response[v1.ResolveSecurityLifecycleFindingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.SecurityLifecycleService.ResolveSecurityLifecycleFinding is not implemented"))
 }

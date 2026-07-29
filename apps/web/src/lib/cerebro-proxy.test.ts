@@ -9,6 +9,7 @@ import {
   isCacheableCerebroPath,
   responseHeadersFor,
   rustOwnsWebAuthority,
+  shouldRetryUpstreamResponse,
   shouldBypassCerebroProxyCache,
   withCerebroCacheBypassHeader,
 } from "./cerebro-proxy";
@@ -107,9 +108,36 @@ describe("cerebro proxy cache headers", () => {
     });
   });
 
+  it("does not amplify an unqualified unavailable response", () => {
+    expect(shouldRetryUpstreamResponse(new Response(null, { status: 503 }))).toBe(false);
+    expect(shouldRetryUpstreamResponse(new Response(null, {
+      status: 503,
+      headers: { "retry-after": "1" },
+    }))).toBe(true);
+    expect(shouldRetryUpstreamResponse(new Response(null, { status: 502 }))).toBe(true);
+    expect(shouldRetryUpstreamResponse(new Response(null, { status: 504 }))).toBe(true);
+  });
+
+  it("returns an unqualified unavailable response after one upstream attempt", async () => {
+    const upstreamFetch = vi.fn(async () => new Response(null, { status: 503 }));
+    vi.stubGlobal("fetch", upstreamFetch);
+
+    const response = await fetchCerebro(new URL("https://api.example.com/grc/dashboard"));
+
+    expect(response.status).toBe(503);
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("caches program readiness so audit readiness can stale-serve through transient backend failures", () => {
     expect(isCacheableCerebroPath("/grc/program-readiness")).toBe(true);
     expect(isCacheableCerebroPath("grc/program-readiness")).toBe(true);
+  });
+
+  it("keeps live finding previews fresh while immutable packets remain cacheable", () => {
+    expect(isCacheableCerebroPath("/grc/findings/finding-123/audit-preview")).toBe(false);
+    expect(isCacheableCerebroPath("/grc/findings/finding-123")).toBe(false);
+    expect(isCacheableCerebroPath("/grc/findings/finding-123/audit-preview/export")).toBe(false);
+    expect(isCacheableCerebroPath("/grc/audit-packets/packet-123")).toBe(true);
   });
 
   it("propagates trace headers upstream without logging auth or query strings", async () => {

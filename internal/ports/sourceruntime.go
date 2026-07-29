@@ -83,6 +83,12 @@ type SourceCollectionRecorder interface {
 	RecordSourceCollection(context.Context, SourceCollectionManifest) error
 }
 
+// SourceCollectionReader loads the exact durable final manifest used to prove
+// collection completeness. Missing receipts are not inferred from graph state.
+type SourceCollectionReader interface {
+	GetSourceCollection(ctx context.Context, tenantID, runtimeID, collectionID string) (SourceCollectionManifest, error)
+}
+
 // SourceRuntimePageLedgerStore durably records page commit state and outbox
 // events. CommitSourceRuntimePage must atomically persist runtime progress and
 // mark the page committed.

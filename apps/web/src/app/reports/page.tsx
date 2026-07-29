@@ -201,8 +201,8 @@ export default function ReportsPage() {
   }, [debouncedQuery, framework, loadedFindings]);
   const selectedFindingID = reportMode === "finding" ? findingID.trim() || findings[0]?.id || "" : "";
   const selectedFinding = findings.find((finding) => finding.id === selectedFindingID) ?? findings[0];
-  const findingPacket = useGRCQuery<GRCAuditPacket>(
-    reportMode === "finding" && selectedFindingID ? grcPath(`/grc/audit-packets/${encodeURIComponent(selectedFindingID)}`, { limit: 25 }) : null,
+  const findingPreview = useGRCQuery<GRCAuditPacket>(
+    reportMode === "finding" && selectedFindingID ? grcPath(`/grc/findings/${encodeURIComponent(selectedFindingID)}/audit-preview`, { limit: 25 }) : null,
   );
   const controlPacket = useGRCQuery<GRCControlEvidencePacketResponse>(
     reportMode === "control"
@@ -222,27 +222,23 @@ export default function ReportsPage() {
     ])),
     [loadedControlRows, loadedFindings],
   );
-  const metadata = reportMode === "control" ? controlPacket.data?.metadata : findingPacket.data?.metadata;
+  const metadata = reportMode === "control" ? controlPacket.data?.metadata : findingPreview.data?.metadata;
   const selectedUpcomingFramework = reportMode === "control" && isUpcomingGRCFramework(framework);
   const effectiveRedactionMode = metadata ? redactionMode : reportRedactionMode(metadata);
   const rawReportBody = useMemo(() => {
     if (reportMode === "control") return buildControlReportBody(controlPacket.data, framework, controlID);
-    return buildFindingReportBody(findingPacket.data);
-  }, [controlID, controlPacket.data, findingPacket.data, framework, reportMode]);
+    return buildFindingReportBody(findingPreview.data);
+  }, [controlID, controlPacket.data, findingPreview.data, framework, reportMode]);
   const displayReportBody = redactReportText(rawReportBody, effectiveRedactionMode);
-  const exportHref = reportMode === "control"
-    ? selectedUpcomingFramework
-      ? ""
-      : `/api/cerebro${grcPath("/grc/control-packets/export", { tenant_id: debouncedTenantID, profile: selectedProfileID, framework, control: controlID })}`
-    : selectedFindingID
-      ? `/api/cerebro/grc/audit-packets/${encodeURIComponent(selectedFindingID)}/export`
-      : "";
-  const error = reportMode === "control" ? controlPacket.error : findingsQuery.error || findingPacket.error;
-  const loading = reportMode === "control" ? controlPacket.loading : findingsQuery.loading || findingPacket.loading;
+  const exportHref = reportMode === "control" && !selectedUpcomingFramework
+    ? `/api/cerebro${grcPath("/grc/control-packets/export", { tenant_id: debouncedTenantID, profile: selectedProfileID, framework, control: controlID })}`
+    : "";
+  const error = reportMode === "control" ? controlPacket.error : findingsQuery.error || findingPreview.error;
+  const loading = reportMode === "control" ? controlPacket.loading : findingsQuery.loading || findingPreview.loading;
   const runtimeState = runtimeStateForError(error);
-  const metricState: RuntimeState = error ? runtimeState : loading && !(controlPacket.data || findingPacket.data) ? "loading" : "ready";
+  const metricState: RuntimeState = error ? runtimeState : loading && !(controlPacket.data || findingPreview.data) ? "loading" : "ready";
   const filterChips = [
-    { label: "Type", value: reportMode === "control" ? "Control packet" : "Finding packet", onClear: () => setReportType("") },
+    { label: "Type", value: reportMode === "control" ? "Control packet" : "Finding preview", onClear: () => setReportType("") },
     { label: "Search", value: query, onClear: () => setQuery("") },
     { label: "Tenant", value: tenantID, onClear: () => setTenantID("") },
     { label: "Profile", value: reportMode === "control" ? selectedProfileID : "", onClear: () => setProfileID("") },
@@ -264,7 +260,7 @@ export default function ReportsPage() {
   };
   const reload = () => {
     void findingsQuery.reload();
-    void findingPacket.reload();
+    void findingPreview.reload();
     void controlPacket.reload();
   };
   const clearFilters = () => {
@@ -291,7 +287,7 @@ export default function ReportsPage() {
     const href = window.URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = href;
-    anchor.download = reportMode === "control" ? "control-evidence-packet.md" : "finding-audit-packet.md";
+    anchor.download = reportMode === "control" ? "control-evidence-packet.md" : "finding-preview.md";
     anchor.click();
     window.URL.revokeObjectURL(href);
   };
@@ -301,7 +297,7 @@ export default function ReportsPage() {
       <PageHeader
         contractId="reports"
         title="Reports"
-        description="Create control evidence packets and finding packets with mapped evidence, scope exclusions, and source records."
+        description="Build control evidence packets or review current finding evidence, scope exclusions, and source records."
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <PacketActions
@@ -330,7 +326,7 @@ export default function ReportsPage() {
 
       <div className="surface-panel p-5">
         <div className="flex flex-wrap items-center gap-2">
-          <ModeButton active={reportMode === "finding"} label="Finding packet" onClick={() => setMode("finding")} />
+          <ModeButton active={reportMode === "finding"} label="Finding preview" onClick={() => setMode("finding")} />
           <ModeButton active={reportMode === "control"} label="Control packet" onClick={() => setMode("control")} />
         </div>
         <div className={`mt-4 grid gap-3 ${reportMode === "control" ? "md:grid-cols-5" : "md:grid-cols-6"}`}>
@@ -390,12 +386,12 @@ export default function ReportsPage() {
         />
       )}
 
-      {loading && <LoadingBlock label="Loading report packet..." />}
+      {loading && <LoadingBlock label="Loading report data..." />}
       {error && (
         <ErrorBlock
           error={error}
           onRetry={reload}
-          recoveryDetail="Other risks, controls, and evidence remain available while this packet request recovers."
+          recoveryDetail="Other risks, controls, and evidence remain available while this report request recovers."
         />
       )}
 
@@ -413,9 +409,9 @@ export default function ReportsPage() {
       {reportMode === "finding" && !selectedFindingID && !findingsQuery.loading && !findingsQuery.error && (
         <div className="rounded-lg border border-dashed border-[color:var(--border-strong)] bg-white p-8 dark:bg-white/5">
           <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">No finding packet is selected</h2>
+            <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">No finding is selected</h2>
             <p className="mt-2 text-[13px] leading-5 text-[var(--text-muted)]">
-              Build a control evidence packet from the default profile, or enter a finding ID above for a finding-specific audit packet.
+              Build a control evidence packet from the default profile, or enter a finding ID above to load its current audit preview.
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               <Link href={`/reports?report_type=control&profile=${encodeURIComponent(DEFAULT_CONTROL_PROFILE_ID)}`} className="rounded-md border border-slate-200 bg-indigo-500 px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-indigo-600">
@@ -428,9 +424,9 @@ export default function ReportsPage() {
           </div>
         </div>
       )}
-      {reportMode === "finding" && findingPacket.data && (
+      {reportMode === "finding" && findingPreview.data && (
         <FindingPacketView
-          packet={findingPacket.data}
+          packet={findingPreview.data}
           reportBody={displayReportBody}
           rawBody={rawReportBody}
           redactionMode={effectiveRedactionMode}
@@ -717,14 +713,14 @@ function FindingPacketView({
   return (
     <>
       <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="Packet score" value={readiness ? `${readiness.score}/100` : "—"} detail={reportReadinessLabel(readiness?.status)} intent={reportReadinessIntent(readiness?.status)} state={state} />
+        <MetricCard label="Preview score" value={readiness ? `${readiness.score}/100` : "—"} detail={reportReadinessLabel(readiness?.status)} intent={reportReadinessIntent(readiness?.status)} state={state} />
         <MetricCard label="Risk" value={<RiskBadge score={packet.finding.risk_score} />} detail={`L ${packet.finding.likelihood_score ?? "—"} / I ${packet.finding.impact_score ?? "—"}`} state={state} />
         <MetricCard label="Evidence" value={packet.evidence.length} detail="attached items" state={state} />
         <MetricCard label="Controls" value={(packet.controls ?? packet.finding.controls ?? []).length} detail={`${packet.metadata?.scope?.exclusions?.total ?? 0} exclusions`} state={state} />
       </div>
 
       <ReportBodyPanel
-        title="Finding packet"
+        title="Finding preview"
         body={reportBody}
         rawBody={rawBody}
         metadata={packet.metadata}
@@ -921,11 +917,13 @@ function buildFindingReportBody(packet?: GRCAuditPacket | null) {
   const metadata = packet.metadata;
   const readiness = metadata?.readiness;
   return [
-    "# Finding packet",
+    "# Finding preview",
+    "",
+    "This preview reflects current finding evidence and can change when the finding is updated.",
     "",
     `Finding: ${f.title}`,
     `Finding ID: ${f.id}`,
-    `Packet score: ${readiness ? `${reportReadinessLabel(readiness.status)} (${readiness.score}/100)` : "Not reported"}`,
+    `Preview score: ${readiness ? `${reportReadinessLabel(readiness.status)} (${readiness.score}/100)` : "Not reported"}`,
     `Risk score: ${f.risk_score ?? "Not scored"} (likelihood ${f.likelihood_score ?? "—"}, impact ${f.impact_score ?? "—"}, confidence ${f.confidence_score ?? "—"})`,
     `Risk drivers: ${(f.risk_reasons ?? []).join(", ") || "Not available"}`,
     `Severity: ${f.severity}`,
@@ -940,7 +938,7 @@ function buildFindingReportBody(packet?: GRCAuditPacket | null) {
     "Recommended action:",
     packet.recommended_action,
     "",
-    "Packet blockers:",
+    "Preview blockers:",
     ...(readiness?.blockers?.length ? readiness.blockers.map((blocker) => `- ${blocker.label}: ${blocker.count ?? 1}`) : ["- None reported"]),
   ].join("\n");
 }

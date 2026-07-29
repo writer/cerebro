@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
-import { useApiKey, useUserPreferences } from "@/components/providers";
+import { useUserPreferences } from "@/components/providers";
 import { AttentionBanner, DataStateBanner, PageHeader, RiskBadge } from "@/components/grc/Primitives";
 import { countLabel } from "@/lib/format";
 import {
@@ -22,7 +22,6 @@ import {
   shortEntity,
 } from "@/lib/grc";
 import { DASHBOARD_FINDING_LIMIT, grcDashboardPath, grcPath, grcProgramReadinessPath, useGRCQuery } from "@/lib/grc-client";
-import { prefetchTopFindings } from "@/lib/grc-prefetch";
 
 const HOME_DASHBOARD_FINDING_LIMIT = DASHBOARD_FINDING_LIMIT;
 
@@ -445,13 +444,6 @@ export default function Home() {
   );
   const readiness = readinessQuery.data?.summary;
   const priorityFindings = useMemo(() => (data?.findings ?? []).slice().sort(riskSort), [data?.findings]);
-  const { apiKey } = useApiKey();
-
-  useEffect(() => {
-    if (priorityFindings.length > 0) {
-      prefetchTopFindings(priorityFindings.map((finding: GRCFinding) => finding.id), apiKey);
-    }
-  }, [priorityFindings, apiKey]);
 
   const summary = data?.summary;
   const dashboardBackedReadiness = Boolean(readinessQuery.error && data);

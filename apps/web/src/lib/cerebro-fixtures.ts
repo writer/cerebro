@@ -34,6 +34,9 @@ const installedAppURN = `urn:cerebro:${tenantID}:sentinelone_installed_app:agent
 const emailAliasURN = `urn:cerebro:${tenantID}:identifier:email:platform-admin@example.com`;
 const coreSsoVendorURN = `urn:cerebro:${tenantID}:vendor:core-sso`;
 const paymentsProcessorVendorURN = `urn:cerebro:${tenantID}:vendor:payments-processor`;
+const lifecycleSubjectURN = `urn:cerebro:${tenantID}:credential:aws%2Fproduction:deploy%2Fsigning`;
+const lifecycleFindingURN = `urn:cerebro:${tenantID}:finding:deploy-signing-expiry`;
+const lifecycleEvidenceClaimURN = `urn:cerebro:${tenantID}:claim:deploy-signing-expiry`;
 
 const vendorDiscoverySourceLabels: Record<string, string> = {
   aws: "AWS",
@@ -2006,8 +2009,9 @@ const entityImpactFixture = (rawURN: string) => {
   });
 };
 
-const auditPacketFixture = (findingID: string) => {
-  const finding = findings.find((item) => item.id === safeDecode(findingID)) ?? findings[0];
+const auditPreviewFixture = (findingID: string) => {
+  const finding = findings.find((item) => item.id === safeDecode(findingID));
+  if (!finding) return null;
   return {
     id: `packet-${finding.id}`,
     finding,
@@ -2023,6 +2027,12 @@ const auditPacketFixture = (findingID: string) => {
     },
     generated_at: generatedAt,
   };
+};
+
+const auditPacketFixture = (packetID: string) => {
+  const decodedPacketID = safeDecode(packetID);
+  const finding = findings.find((item) => `packet-${item.id}` === decodedPacketID);
+  return finding ? auditPreviewFixture(finding.id) : null;
 };
 
 const controlPacketFixture = (params?: URLSearchParams) => {
@@ -4374,7 +4384,7 @@ export const cerebroFixtureResponseFor = ({
     const lifecycleRecords = [
       {
         observation: {
-          subject_ref: { kind: "credential", id: `urn:cerebro:${tenantID}:credential:aws%2Fproduction:deploy%2Fsigning`, revision: "key-2026-07" },
+          subject_ref: { kind: "credential", id: lifecycleSubjectURN, revision: "key-2026-07" },
           subject_kind: "SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL",
           provider: "aws",
           authority_id: "aws/production",
@@ -4384,11 +4394,27 @@ export const cerebroFixtureResponseFor = ({
           observed_at: "2026-07-26T12:00:00Z",
           expires_at: "2026-08-01T12:00:00Z",
           owner_urn: `urn:cerebro:${tenantID}:team:security-platform`,
-          evidence_claim_refs: [],
+          evidence_claim_refs: [{ kind: "claim", id: lifecycleEvidenceClaimURN }],
         },
-        policy_evaluations: [{ state: "expiring", warning_window_days: 30, evaluated_at: "2026-07-26T12:00:00Z" }],
-        findings: [{ finding_ref: { kind: "finding", id: `urn:cerebro:${tenantID}:finding:deploy-signing-expiry` }, finding_kind: "credential_expiry", status: "open" }],
+        policy_evaluations: [{
+          policy_id: "credential-expiry",
+          policy_version: "1",
+          subject_ref: { kind: "credential", id: lifecycleSubjectURN, revision: "key-2026-07" },
+          state: "expiring",
+          warning_window_days: 30,
+          evaluated_at: "2026-07-26T12:00:00Z",
+          evidence_claim_refs: [{ kind: "claim", id: lifecycleEvidenceClaimURN }],
+        }],
+        findings: [{
+          finding_ref: { kind: "finding", id: lifecycleFindingURN },
+          subject_ref: { kind: "credential", id: lifecycleSubjectURN, revision: "key-2026-07" },
+          finding_kind: "credential_expiry",
+          status: "open",
+          evidence_claim_refs: [{ kind: "claim", id: lifecycleEvidenceClaimURN }],
+        }],
         action_routes: [{
+          finding_ref: { kind: "finding", id: lifecycleFindingURN },
+          target_ref: { kind: "credential", id: lifecycleSubjectURN, revision: "key-2026-07" },
           action_type: "rotate_credential",
           approval_required: true,
           action_intent_ref: { kind: "action_intent", id: `urn:cerebro:${tenantID}:action_intent:deploy-signing` },
@@ -4411,7 +4437,14 @@ export const cerebroFixtureResponseFor = ({
           owner_urn: `urn:cerebro:${tenantID}:team:edge-platform`,
           evidence_claim_refs: [],
         },
-        policy_evaluations: [{ state: "compliant", warning_window_days: 30, evaluated_at: "2026-07-26T12:00:00Z" }],
+        policy_evaluations: [{
+          policy_id: "certificate-expiry",
+          policy_version: "1",
+          subject_ref: { kind: "certificate", id: `urn:cerebro:${tenantID}:certificate:cloudflare%2Fproduction:api.writer.com`, revision: "sha256:fixture-certificate" },
+          state: "compliant",
+          warning_window_days: 30,
+          evaluated_at: "2026-07-26T12:00:00Z",
+        }],
         findings: [],
         action_routes: [],
         projected_at: "2026-07-26T12:00:00Z",
@@ -4524,12 +4557,24 @@ export const cerebroFixtureResponseFor = ({
     return entityImpactFixture(impactMatch[1]);
   }
 
+  const auditPreviewMatch = /^grc\/findings\/([^/]+)\/audit-preview$/.exec(normalizedPath);
+  if (auditPreviewMatch) {
+    const preview = auditPreviewFixture(auditPreviewMatch[1]);
+    return preview
+      ? jsonFixture(preview)
+      : jsonFixture({ error: `No fixture finding found for ${safeDecode(auditPreviewMatch[1])}`, generated_at: generatedAt }, 404);
+  }
+
   const auditPacketMatch = /^grc\/audit-packets\/([^/]+)(?:\/export)?$/.exec(normalizedPath);
   if (auditPacketMatch) {
+    const packet = auditPacketFixture(auditPacketMatch[1]);
+    if (!packet) {
+      return jsonFixture({ error: "Audit packet not found" }, 404);
+    }
     if (normalizedPath.endsWith("/export")) {
       return textFixture(`# Audit Packet\n\nFixture audit packet for ${safeDecode(auditPacketMatch[1])}.\n`, "text/markdown; charset=utf-8");
     }
-    return jsonFixture(auditPacketFixture(auditPacketMatch[1]));
+    return jsonFixture(packet);
   }
 
   if (normalizedPath === "grc/control-packets") {

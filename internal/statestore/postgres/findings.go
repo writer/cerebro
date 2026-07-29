@@ -96,6 +96,63 @@ var ensureFindingStatements = []string{
 	`CREATE INDEX IF NOT EXISTS findings_event_ids_gin_idx ON findings USING GIN (event_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_observed_policy_ids_gin_idx ON findings USING GIN (observed_policy_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_control_refs_gin_idx ON findings USING GIN (control_refs_json)`,
+	`CREATE TABLE IF NOT EXISTS finding_control_refs (
+        finding_id TEXT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+        framework_name TEXT NOT NULL,
+        control_id TEXT NOT NULL,
+        PRIMARY KEY (finding_id, framework_name, control_id)
+    )`,
+	`CREATE INDEX IF NOT EXISTS finding_control_refs_control_idx
+        ON finding_control_refs (framework_name, control_id, finding_id)`,
+	`CREATE OR REPLACE FUNCTION sync_finding_control_refs() RETURNS trigger AS $$
+BEGIN
+    DELETE FROM finding_control_refs WHERE finding_id = NEW.id;
+    INSERT INTO finding_control_refs (finding_id, framework_name, control_id)
+    SELECT DISTINCT
+        NEW.id,
+        COALESCE(NULLIF(BTRIM(ref.framework_name), ''), 'Unmapped'),
+        COALESCE(NULLIF(BTRIM(ref.control_id), ''), 'Needs mapping')
+    FROM jsonb_to_recordset(
+        CASE
+            WHEN jsonb_array_length(NEW.control_refs_json) = 0
+                THEN '[{"framework_name":"Unmapped","control_id":"Needs mapping"}]'::jsonb
+            ELSE NEW.control_refs_json
+        END
+    ) AS ref(framework_name TEXT, control_id TEXT);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql`,
+	`DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'findings_control_refs_sync'
+          AND tgrelid = 'findings'::regclass
+          AND NOT tgisinternal
+    ) THEN
+        CREATE TRIGGER findings_control_refs_sync
+            AFTER INSERT OR UPDATE OF control_refs_json ON findings
+            FOR EACH ROW EXECUTE FUNCTION sync_finding_control_refs();
+    END IF;
+END $$`,
+	`INSERT INTO finding_control_refs (finding_id, framework_name, control_id)
+    SELECT DISTINCT
+        finding.id,
+        COALESCE(NULLIF(BTRIM(ref.framework_name), ''), 'Unmapped'),
+        COALESCE(NULLIF(BTRIM(ref.control_id), ''), 'Needs mapping')
+    FROM findings AS finding
+    CROSS JOIN LATERAL jsonb_to_recordset(
+        CASE
+            WHEN jsonb_array_length(finding.control_refs_json) = 0
+                THEN '[{"framework_name":"Unmapped","control_id":"Needs mapping"}]'::jsonb
+            ELSE finding.control_refs_json
+        END
+    ) AS ref(framework_name TEXT, control_id TEXT)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM finding_control_refs AS existing WHERE existing.finding_id = finding.id
+    )
+    ON CONFLICT DO NOTHING`,
 	`CREATE INDEX IF NOT EXISTS findings_notes_gin_idx ON findings USING GIN (notes_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_tickets_gin_idx ON findings USING GIN (tickets_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_external_refs_gin_idx ON findings USING GIN (external_refs_json)`,
@@ -214,10 +271,11 @@ var errTenantScopedFingerprintBackfillRetry = errors.New("retry tenant-scoped fi
 // every iteration.
 //
 // A resolved row reopens in place on a fresh open emit only when it was auto-resolved by the
-// lifecycle (TTL expiry or a remediation counter-event) or when the rule opts into TTL reopen
+// lifecycle (TTL expiry, a remediation counter-event, or a later verified observation) or when the rule opts into TTL reopen
 // via $37; analyst/manual resolutions keep their stored status so deliberate closures are not
-// reverted. The 'closed_by_counter_event' literal must stay in sync with
-// workflowevents.FindingStatusReasonClosedByCounterEvent.
+// reverted. The auto-resolution reason literals must stay in sync with
+// workflowevents.FindingStatusReasonClosedByCounterEvent and
+// workflowevents.FindingStatusReasonVerifiedObservation.
 const upsertFindingStatement = `
 INSERT INTO findings (
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
@@ -238,7 +296,7 @@ DO UPDATE SET
   status = CASE
     WHEN findings.tombstoned THEN findings.status
     WHEN findings.status = 'suppressed' THEN findings.status
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned AND (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR $37::boolean) THEN EXCLUDED.status
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned AND (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR (findings.rule_id = 'security-lifecycle-expiry' AND BTRIM(findings.status_reason) = 'verified_by_fresh_complete_observation') OR $37::boolean) THEN EXCLUDED.status
     WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' THEN findings.status
     ELSE EXCLUDED.status
   END,
@@ -280,13 +338,13 @@ DO UPDATE SET
   status_reason = CASE
     WHEN findings.tombstoned THEN findings.status_reason
     WHEN findings.status = 'suppressed' THEN findings.status_reason
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR $37::boolean) THEN findings.status_reason
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR (findings.rule_id = 'security-lifecycle-expiry' AND BTRIM(findings.status_reason) = 'verified_by_fresh_complete_observation') OR $37::boolean) THEN findings.status_reason
     ELSE EXCLUDED.status_reason
   END,
   status_updated_at = CASE
     WHEN findings.tombstoned THEN findings.status_updated_at
     WHEN findings.status = 'suppressed' THEN findings.status_updated_at
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR $37::boolean) THEN findings.status_updated_at
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR BTRIM(findings.status_reason) = 'closed_by_counter_event' OR (findings.rule_id = 'security-lifecycle-expiry' AND BTRIM(findings.status_reason) = 'verified_by_fresh_complete_observation') OR $37::boolean) THEN findings.status_updated_at
     ELSE EXCLUDED.status_updated_at
   END,
   first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),

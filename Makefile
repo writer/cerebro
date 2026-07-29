@@ -656,10 +656,10 @@ finding-dsl-schema-check: ## Verify PolicyFindingRule JSON Schema is current.
 finding-dsl-check: finding-dsl-schema-check finding-dsl-test finding-dsl-lint ## Validate PolicyFindingRule DSL authoring files.
 	go run ./tools/findingdsl --check
 
-policy-catalog-generate: ## Regenerate the Rust policy definition catalog.
+policy-catalog-generate: detection-catalog-generate ## Regenerate the Rust policy and finding-rule catalogs.
 	$(CARGO) run --locked --quiet -p cerebro-policycataloggen -- --write
 
-policy-catalog-check: ## Verify the Rust policy definition catalog is current.
+policy-catalog-check: detection-catalog-check ## Verify the Rust policy and finding-rule catalogs are current.
 	$(CARGO) run --locked --quiet -p cerebro-policycataloggen -- --check
 
 policy-rule-generate: policy-catalog-generate ## Regenerate generated policy rule catalogs.

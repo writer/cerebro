@@ -15,5 +15,12 @@ serde_json.workspace = true
 sha2.workspace = true
 time.workspace = true
 
+[dev-dependencies]
+stats_alloc.workspace = true
+
 [lints]
 workspace = true
+
+[[bench]]
+name = "lifecycle_query"
+harness = false

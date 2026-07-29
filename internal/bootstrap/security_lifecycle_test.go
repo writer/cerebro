@@ -16,7 +16,9 @@ import (
 	"github.com/writer/cerebro/internal/sourcehttp/organizationalgraph"
 )
 
-type securityLifecycleErrorService struct{}
+type securityLifecycleErrorService struct {
+	cerebrov1connect.UnimplementedSecurityLifecycleServiceHandler
+}
 
 func (securityLifecycleErrorService) ListSecurityLifecycle(
 	_ context.Context,
@@ -73,6 +75,16 @@ func TestSecurityLifecycleHandlerPreservesClientAndBackendErrors(t *testing.T) {
 		{
 			name:   "invalid findings only",
 			query:  "?findings_only=ture",
+			status: http.StatusBadRequest,
+		},
+		{
+			name:   "incomplete subject locator",
+			query:  "?subject_kind=credential&authority_id=authority-a",
+			status: http.StatusBadRequest,
+		},
+		{
+			name:   "ambiguous subject locator kind",
+			query:  "?subject_kind=credential&subject_kind=certificate&authority_id=authority-a&stable_locator=slot-a",
 			status: http.StatusBadRequest,
 		},
 		{

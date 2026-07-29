@@ -42,7 +42,7 @@ export default function DeveloperPage() {
       <Panel title="Developer Utilities">
         <div className="grid gap-3 lg:grid-cols-2">
           {developerLinks.map((link) => (
-            <Link key={link.href} href={link.href} className="rounded-md border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300 hover:bg-white">
+            <Link key={link.href} href={link.href} prefetch={false} className="rounded-md border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300 hover:bg-white">
               <div className="text-[13px] font-semibold text-slate-900">{link.label}</div>
               <div className="mt-1 text-[12px] text-slate-500">{link.description}</div>
             </Link>
@@ -55,7 +55,7 @@ export default function DeveloperPage() {
         {status === "error" && <div className="text-[13px] text-red-600">{error}</div>}
         <div className="grid gap-3 lg:grid-cols-3">
           {model?.tags.map((tag) => (
-            <Link key={tag.name} href={`/resources/${tagSlug(tag.name)}`} className="rounded-md border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300 hover:bg-white">
+            <Link key={tag.name} href={`/resources/${tagSlug(tag.name)}`} prefetch={false} className="rounded-md border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300 hover:bg-white">
               <div className="text-[13px] font-semibold text-slate-900">{tag.name}</div>
               <div className="mt-1 text-[12px] text-slate-500">{tag.description ?? "OpenAPI-defined resource group."}</div>
               <div className="mt-2 inline-flex rounded-md bg-white px-2.5 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200">{operationsByTag.get(tag.name) ?? 0} endpoints</div>

@@ -157,6 +157,7 @@ var httpAuthRoutePolicies = []httpAuthRoutePolicy{
 	{Method: http.MethodPost, Exact: "/grc/policy-lifecycle/uploads", Scope: scopeGRCPolicyLifecycleWrite, Static: true},
 	{Method: http.MethodPost, Prefix: "/grc/policy-lifecycle/uploads/", Suffix: "/replay", Scope: scopeGRCPolicyLifecycleWrite},
 	{Method: http.MethodPost, Exact: "/grc/findings/triage", Scope: scopeFindingLifecycleWrite, Static: true},
+	{Method: http.MethodPost, Prefix: "/grc/findings/", Suffix: "/security-lifecycle/reconcile", Scope: scopeFindingLifecycleWrite},
 	{Method: http.MethodPost, Exact: "/grc/inventory/resource-scope", Scope: scopeGRCInventoryWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/grc/inventory/accountability", Scope: scopeGRCInventoryWrite, Static: true},
 	{Method: http.MethodPost, Exact: "/grc/inventory/asset-reports", Scope: scopeGRCInventoryWrite, Static: true},

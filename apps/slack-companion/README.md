@@ -121,6 +121,19 @@ Hosts implement `CanonicalWorkItemPort` with the public Cerebro SDK and provide
 a durable `DurableCanonicalWorkCasePort`. Credentials, endpoints, deployment
 configuration, and provider-specific stores are outside this workspace.
 
+## Archetype daily work
+
+`src/archetype/workspace.ts` validates an actor-scoped Archetype daily digest
+and projects the current assignments, urgent findings, recent lifecycle
+changes, and bounded `Start work` actions into Slack blocks. It rejects actor
+drift, malformed source records, oversized collections, and invalid counts.
+
+The first action creates an Archetype preview only. A second action carries the
+returned intent id and requires explicit confirmation. The host resolves the
+Slack actor and supplies provider adapters; Archetype remains authoritative for
+permissions, expiry, finding state, idempotency, and the canonical Okta
+assignment.
+
 ## Alert triage
 
 `src/triage` owns portable alert-triage, evidence, and suggestion lifecycles.

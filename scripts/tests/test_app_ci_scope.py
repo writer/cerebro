@@ -18,6 +18,12 @@ class AppCIScopeTests(unittest.TestCase):
             CIScope(core=False, sdk=False, slack=True, web=False, web_image=False),
         )
 
+    def test_slack_host_only_change_uses_slack_scope(self):
+        self.assertEqual(
+            select_scope(["apps/slack-companion-host/src/main.ts"]),
+            CIScope(core=False, sdk=False, slack=True, web=False, web_image=False),
+        )
+
     def test_deleted_known_app_path_selects_its_owned_checks(self):
         self.assertEqual(
             select_scope(["apps/web/src/removed.ts"]),

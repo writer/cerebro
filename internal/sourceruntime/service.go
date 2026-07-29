@@ -414,6 +414,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	contractConfigured = len(eventContracts) > 0
 	sourceConfig := sourcecdk.NewConfig(runtimeConfig)
 	originalCheckpoint := cloneCheckpoint(runtime.GetCheckpoint())
+	collectionID := sourceRuntimeCollectionID(runtime.GetId(), started)
 	for i := uint32(0); i < pageLimit; i++ {
 		pull, err := readSourcePull(ctx, source, sourceConfig, cursor, originalCheckpoint)
 		if err != nil {
@@ -431,7 +432,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		eventsRead := boundedUint32(len(pull.Events))
 		materializedEvents := make([]*cerebrov1.EventEnvelope, 0, len(pull.Events))
 		for _, event := range pull.Events {
-			syncedEvent := materializeEvent(runtime, event)
+			syncedEvent := materializeEvent(runtime, collectionID, event)
 			if syncedEvent == nil {
 				continue
 			}
@@ -694,7 +695,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			collectionStatus = "incomplete"
 		}
 		if err := recorder.RecordSourceCollection(ctx, ports.SourceCollectionManifest{
-			CollectionID:          sourceRuntimeCollectionID(runtime.GetId(), started),
+			CollectionID:          collectionID,
 			TenantID:              strings.TrimSpace(runtime.GetTenantId()),
 			SourceID:              strings.TrimSpace(runtime.GetSourceId()),
 			RuntimeID:             strings.TrimSpace(runtime.GetId()),
@@ -1388,7 +1389,7 @@ func boundedUint32(value int) uint32 {
 	return uint32(value)
 }
 
-func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) *cerebrov1.EventEnvelope {
+func materializeEvent(runtime *cerebrov1.SourceRuntime, collectionID string, event *cerebrov1.EventEnvelope) *cerebrov1.EventEnvelope {
 	if event == nil {
 		return nil
 	}
@@ -1403,9 +1404,13 @@ func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEn
 		if cloned.Attributes == nil {
 			cloned.Attributes = make(map[string]string)
 		}
-		if strings.TrimSpace(cloned.Attributes[ports.EventAttributeSourceRuntimeID]) == "" {
-			cloned.Attributes[ports.EventAttributeSourceRuntimeID] = strings.TrimSpace(runtime.GetId())
+		cloned.Attributes[ports.EventAttributeSourceRuntimeID] = strings.TrimSpace(runtime.GetId())
+	}
+	if collectionID = strings.TrimSpace(collectionID); collectionID != "" {
+		if cloned.Attributes == nil {
+			cloned.Attributes = make(map[string]string)
 		}
+		cloned.Attributes[ports.EventAttributeSourceCollectionID] = collectionID
 	}
 	return cloned
 }

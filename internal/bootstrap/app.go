@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -77,7 +78,8 @@ type Dependencies struct {
 	StateStore                  ports.StateStore
 	GraphStore                  ports.GraphStore
 	GraphQueries                ports.GraphQueryStore
-	SecurityLifecycleQueries    *organizationalgraph.QueryStore
+	SecurityLifecycleQueries    securityLifecycleQueryReader
+	SourceCollectionReceipts    ports.SourceCollectionReader
 	OrganizationalProjector     *organizationalgraph.ProjectionClient
 	GraphAgentLLM               graphagent.LLMClient
 	QueryCache                  querycache.Cache
@@ -1359,11 +1361,24 @@ func healthResponse(ctx context.Context, cfg config.Config, deps Dependencies) *
 }
 
 func publicHealthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHealthResponse {
-	components := []*cerebrov1.ComponentStatus{
-		componentStatus(ctx, "append_log", deps.AppendLog),
-		componentStatus(ctx, "state_store", deps.StateStore),
-		componentStatus(ctx, "graph_store", organizationalgraph.ReadinessStore(deps.GraphStore, deps.GraphQueries)),
+	checks := []struct {
+		name       string
+		dependency pinger
+	}{
+		{name: "append_log", dependency: deps.AppendLog},
+		{name: "state_store", dependency: deps.StateStore},
+		{name: "graph_store", dependency: organizationalgraph.ReadinessStore(deps.GraphStore, deps.GraphQueries)},
 	}
+	components := make([]*cerebrov1.ComponentStatus, len(checks))
+	var wg sync.WaitGroup
+	wg.Add(len(checks))
+	for index, check := range checks {
+		go func() {
+			defer wg.Done()
+			components[index] = componentStatus(ctx, check.name, check.dependency)
+		}()
+	}
+	wg.Wait()
 	status := "ready"
 	for _, component := range components {
 		if component.Status == "error" {

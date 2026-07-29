@@ -13,6 +13,7 @@ base64.workspace = true
 cerebro-agent-context.workspace = true
 cerebro-organizational-graph.workspace = true
 cerebro-organizational-model.workspace = true
+cerebro-security-lifecycle.workspace = true
 cerebro-source-catalog.workspace = true
 cerebro-source-runtime-next.workspace = true
 neo4rs.workspace = true

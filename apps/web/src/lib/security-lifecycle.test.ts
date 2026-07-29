@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  lifecycleActionLabel,
+  lifecycleCompleteness,
+  lifecycleCoveragePresentation,
+  lifecycleCoverageReason,
   lifecycleEffectiveState,
   lifecycleOwnerLabel,
+  lifecyclePolicyStateCount,
   summarizeSecurityLifecycle,
   type SecurityLifecycleRecord,
 } from "./security-lifecycle";
@@ -67,4 +72,73 @@ describe("security lifecycle summaries", () => {
       "security%",
     );
   });
+
+  it("reads policy metrics only from typed policy-state counts", () => {
+    expect(lifecyclePolicyStateCount([
+      { policy_state: "SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED", count: 8 },
+      { policy_state: "expiring", count: 5 },
+    ], "expired")).toBe(8);
+    expect(lifecyclePolicyStateCount([{ policy_state: "expiring", count: 5 }], "expiring")).toBe(5);
+    expect(lifecyclePolicyStateCount(undefined, "expired")).toBeUndefined();
+  });
+
+  it("keeps source coverage separate from page truncation", () => {
+    expect(lifecycleCompleteness({
+      records: [],
+      truncated: false,
+      as_of: "2026-07-26T12:00:00Z",
+      metadata: {
+        page_truncated: true,
+        coverage: { complete: false, truncated: true, reason: "scan in progress" },
+      },
+    })).toEqual({
+      complete: false,
+      pageTruncated: true,
+      reason: "scan in progress",
+      sourceTruncated: true,
+      total: undefined,
+    });
+    expect(lifecycleCompleteness({
+      records: [],
+      truncated: true,
+      as_of: "2026-07-26T12:00:00Z",
+    })).toMatchObject({
+      complete: undefined,
+      pageTruncated: true,
+      sourceTruncated: false,
+    });
+  });
+
+  it("turns coverage reason enums into operator guidance", () => {
+    expect(lifecycleCoveragePresentation({
+      complete: true,
+      reason: "SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE",
+    })).toEqual({
+      label: "Source coverage complete",
+      detail: "Every lifecycle entity in this graph revision was evaluated.",
+    });
+    expect(lifecycleCoveragePresentation({
+      complete: false,
+      truncated: true,
+      reason: "SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT",
+    })).toEqual({
+      label: "Source coverage limited",
+      detail: "The scan limit was reached before every lifecycle entity was evaluated.",
+    });
+    expect(lifecycleCoveragePresentation({
+      complete: false,
+      reason: "SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED",
+    })).toEqual({
+      label: "Graph changed during read",
+      detail: "Refresh to load a consistent lifecycle snapshot.",
+    });
+    expect(lifecycleCoverageReason({
+      reason: "SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED",
+    })).toBe("graph_changed");
+  });
+
+  it("formats provider-neutral action types as operator copy", () => {
+    expect(lifecycleActionLabel("rotate_credential")).toBe("Rotate credential");
+  });
+
 });

@@ -25,7 +25,7 @@ func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T
 		"WITH finding_scope AS",
 		"SELECT id, status,",
 		"COUNT(*) FILTER (WHERE LOWER(status) = 'open') AS open_findings",
-		"jsonb_array_elements",
+		"JOIN finding_control_refs AS ref ON ref.finding_id = finding.id",
 		"jsonb_build_object('framework_name', framework_name, 'control_id', control_id)",
 		"evidence_summary AS",
 		"jsonb_object_agg(finding_id, evidence_count)",
@@ -40,13 +40,29 @@ func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T
 	}
 	// The dashboard evidence total must follow finding_scope (all open findings),
 	// not a windowed preview finding-id list, so no positional finding_id filter.
-	for _, forbidden := range []string{`E'\x00'`, `|| E'`, "control_key", "finding_id IN ($7"} {
+	for _, forbidden := range []string{`E'\x00'`, `|| E'`, "control_key", "finding_id IN ($7", "jsonb_array_elements"} {
 		if strings.Contains(query, forbidden) {
 			t.Fatalf("aggregate query must not contain %q:\n%s", forbidden, query)
 		}
 	}
 	if len(args) != 6 {
 		t.Fatalf("aggregate query args len = %d, want 6 (%v)", len(args), args)
+	}
+}
+
+func TestFindingControlReferenceProjectionStaysInSync(t *testing.T) {
+	statements := strings.Join(ensureFindingStatements, "\n")
+	for _, fragment := range []string{
+		"CREATE TABLE IF NOT EXISTS finding_control_refs",
+		"PRIMARY KEY (finding_id, framework_name, control_id)",
+		"CREATE INDEX IF NOT EXISTS finding_control_refs_control_idx",
+		"CREATE OR REPLACE FUNCTION sync_finding_control_refs()",
+		"AFTER INSERT OR UPDATE OF control_refs_json ON findings",
+		"WHERE NOT EXISTS",
+	} {
+		if !strings.Contains(statements, fragment) {
+			t.Fatalf("finding control-reference projection missing %q", fragment)
+		}
 	}
 }
 

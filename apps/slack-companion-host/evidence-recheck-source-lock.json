@@ -1,0 +1,9 @@
+{
+  "schema_version": "cerebro-slack-public-source-lock/v1",
+  "repository": "https://github.com/writer/cerebro",
+  "commit_sha": "42f88076c66aedc9540901d000f6d32ef9f2bec6",
+  "package_path": "apps/slack-companion",
+  "package_tree_sha": "cfe554498a07dbbe5da8ce6d0eed3ab3b422089b",
+  "package_name": "@writer/cerebro-slack-companion",
+  "package_version": "0.1.0"
+}

@@ -9,7 +9,7 @@ import { CoverageMetadata } from "@/components/connectors/CoverageMetadata";
 import { useApiKey } from "@/components/providers";
 import { useSecurityProducerCatalog } from "@/components/SecurityProducerCatalogProvider";
 import GraphViewer from "@/components/grc/LazyGraphViewer";
-import { Badge, DataStateBanner, MetricCard, PageHeader, Panel, ResultLimitNotice, RiskBadge, RiskBreakdown, SeverityDot } from "@/components/grc/Primitives";
+import { Badge, DataStateBanner, MetricCard, PageHeader, Panel, ResultLimitNotice, RiskBadge } from "@/components/grc/Primitives";
 import { fetchCerebro } from "@/lib/cerebro-client";
 import { runFindingMutation } from "@/lib/finding-actions";
 import { securityProducerContextForFinding } from "@/lib/security-producer-response";
@@ -36,7 +36,12 @@ const formatDateInput = (value?: string) => {
 };
 
 const focusElement = (id: string) => {
-  window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  window.setTimeout(() => {
+    const element = document.getElementById(id);
+    const disclosure = element?.closest("details");
+    if (disclosure) disclosure.open = true;
+    element?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 0);
 };
 
 function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
@@ -56,6 +61,7 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
 }
 
 function KeyValueRow({ label, value, mono = false, href }: { label: string; value: string; mono?: boolean; href?: string }) {
+  if (!value || value === "—" || value === "Not set") return null;
   const content = href ? (
     <Link href={href} className={`text-indigo-600 hover:text-indigo-800 ${mono ? "font-mono text-[12px]" : ""}`}>{value}</Link>
   ) : (
@@ -75,7 +81,7 @@ function ResourceURNsPanel({ urns }: { urns?: string[] }) {
   return (
     <Panel title={`Resource URNs (${boundedURNs.meta.total?.toLocaleString() ?? boundedURNs.rows.length})`}>
       <div className="space-y-1.5">
-        <ResultLimitNotice loaded={boundedURNs.rows.length} meta={boundedURNs.meta} limit={FINDING_RESOURCE_URN_LIMIT} noun="resource URNs" />
+        {boundedURNs.meta.truncated && <ResultLimitNotice loaded={boundedURNs.rows.length} meta={boundedURNs.meta} limit={FINDING_RESOURCE_URN_LIMIT} noun="resource URNs" />}
         {boundedURNs.rows.map((urn) => (
           <div key={urn} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
             <span className="truncate font-mono text-[12px] text-slate-700">{urn}</span>
@@ -344,17 +350,15 @@ function FindingWorkflowPanel({
   const tickets = finding.tickets ?? [];
   const externalRefs = finding.external_refs ?? [];
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Workflow</div>
-          <h2 className="mt-1 text-[15px] font-semibold text-slate-900">Push updates to Cerebro</h2>
-        </div>
+    <details className="rounded-lg border border-slate-200 bg-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4">
+        <span>
+          <span className="block text-[15px] font-semibold text-slate-900">Update finding</span>
+          <span className="mt-1 block text-[12px] leading-5 text-slate-500">Owner, due date, notes, tickets, resolution, or suppression.</span>
+        </span>
         <Badge value={finding.status} />
-      </div>
-      <p className="mt-2 text-[12px] leading-5 text-slate-500">
-        Change owner, due date, notes, tickets, and lifecycle state.
-      </p>
+      </summary>
+      <div className="border-t border-slate-100 p-4">
 
       {actionError && <div className="mt-3 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-[12px] text-red-700">{actionError}</div>}
       {actionSuccess && <div className="mt-3 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-700">{actionSuccess}</div>}
@@ -478,7 +482,8 @@ function FindingWorkflowPanel({
           )}
         </div>
       )}
-    </div>
+      </div>
+    </details>
   );
 }
 
@@ -504,7 +509,7 @@ export default function FindingDetailPage() {
   const [suppressReason, setSuppressReason] = useState("");
 
   const { data, error, lastSuccessfulAt, reload, state: queryState } = useGRCQuery<GRCAuditPacket>(
-    findingID ? grcPath(`/grc/audit-packets/${encodeURIComponent(findingID)}`, { limit: GRC_DETAIL_LIMIT }) : null,
+    findingID ? grcPath(`/grc/findings/${encodeURIComponent(findingID)}/audit-preview`, { limit: GRC_DETAIL_LIMIT }) : null,
   );
 
   const entityURN = data?.finding?.entity;
@@ -708,16 +713,15 @@ export default function FindingDetailPage() {
 
       {finding && (
         <>
-          <div className="grid gap-4 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
             <MetricCard label="Risk Score" value={<RiskBadge score={finding.risk_score} />} detail={`L ${finding.likelihood_score ?? "\u2014"} / I ${finding.impact_score ?? "\u2014"} / C ${finding.confidence_score ?? "\u2014"}`} intent={(finding.risk_score ?? 0) >= 85 ? "danger" : "neutral"} />
-            <MetricCard label="Severity" value={<div className="flex items-center gap-1.5"><SeverityDot severity={finding.severity} /><Badge value={finding.severity} tone="severity" /></div>} detail={finding.status} intent={finding.severity === "CRITICAL" ? "danger" : "neutral"} />
             <MetricCard label="Owner" value={finding.owner || "Unassigned"} detail={finding.sla_status} intent={!finding.owner || finding.owner === "Unassigned" ? "warning" : "success"} />
             <MetricCard label="Evidence" value={evidence.length} detail={`${evidenceTotal.toLocaleString()} total`} />
             <MetricCard label="Controls" value={controls.length} detail={pluralize(controls.length, "mapped objective")} />
           </div>
 
-          <div className="border-b border-slate-200">
-            <div className="flex gap-0">
+          <div className="overflow-x-auto border-b border-slate-200">
+            <div className="flex min-w-max gap-0">
               <TabButton label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
               <TabButton label={`Evidence (${evidence.length})`} active={tab === "evidence"} onClick={() => setTab("evidence")} />
               <TabButton label="Impact Graph" active={tab === "graph"} onClick={() => setTab("graph")} />
@@ -735,11 +739,9 @@ export default function FindingDetailPage() {
 
                 <AuditContextPanel finding={finding} />
 
-                <RiskBreakdown finding={finding} />
-
                 <Panel title="Mapped Controls">
                   <div className="space-y-3">
-                    {controls.length > 0 && <ResultLimitNotice loaded={controls.length} meta={boundedControlRows.meta} limit={GRC_DETAIL_LIMIT} noun="controls" />}
+                    {boundedControlRows.meta.truncated && <ResultLimitNotice loaded={controls.length} meta={boundedControlRows.meta} limit={GRC_DETAIL_LIMIT} noun="controls" />}
                     <div className="flex flex-wrap gap-2">
                     {controls.length === 0 && <span className="text-[13px] text-slate-500">No controls mapped.</span>}
                     {controls.map((c) => (
