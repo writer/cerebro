@@ -65,6 +65,7 @@
       "schema_ref": "meraki/eventtype/v1",
       "source_id": "meraki",
       "tenant_id": "tenant",
+      "type": "association",
       "updated_at": "2026-06-01T00:00:00Z"
     },
     "schema_ref": "meraki/eventtype/v1",

@@ -759,7 +759,23 @@ fn validate_auth(source: &CompiledSource, actual: &ResolvedAuth) -> Result<(), H
         AuthModel::ApiKey if !source.auth_query_parameters().is_empty() => {
             matches!(actual, ResolvedAuth::QueryParameters { .. })
         }
-        AuthModel::ApiKey => matches!(actual, ResolvedAuth::Header { .. }),
+        AuthModel::ApiKey => match actual {
+            ResolvedAuth::Header { name, value } => {
+                let expected_header = source.token_header();
+                let expected_scheme = source.token_scheme();
+                !expected_header.is_empty()
+                    && name.eq_ignore_ascii_case(expected_header)
+                    && if expected_scheme.is_empty() {
+                        !value.is_empty()
+                    } else {
+                        value
+                            .strip_prefix(expected_scheme)
+                            .and_then(|value| value.strip_prefix(' '))
+                            .is_some_and(|value| !value.is_empty())
+                    }
+            }
+            _ => false,
+        },
         AuthModel::BearerToken
         | AuthModel::OauthAuthorizationCode
         | AuthModel::OauthClientCredentials
@@ -1950,6 +1966,297 @@ mod tests {
         assert!(matches!(batch.scope, CollectedScope::Complete(_)));
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "user-1");
+    }
+
+    #[tokio::test]
+    async fn meraki_v1_access_policy_uses_the_proven_path_and_bearer_header() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(
+                request.starts_with("GET /networks/network-1/switch/accessPolicies HTTP/1.1\r\n")
+            );
+            assert!(
+                request
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("authorization: Bearer meraki-secret"))
+            );
+            assert!(!request.lines().next().unwrap().contains('?'));
+            let body = r#"[{"accessPolicyNumber":"1234","name":"Guest WiFi"}]"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("meraki").unwrap().clone();
+        assert_eq!(
+            source.authority(),
+            cerebro_source_catalog::CollectionAuthority::Authoritative
+        );
+        for invalid_auth in [
+            ResolvedAuth::Header {
+                name: "X-Cisco-Meraki-API-Key".to_owned(),
+                value: "meraki-secret".to_owned(),
+            },
+            ResolvedAuth::Header {
+                name: "Authorization".to_owned(),
+                value: "Token meraki-secret".to_owned(),
+            },
+            ResolvedAuth::Header {
+                name: "Authorization".to_owned(),
+                value: "Bearer ".to_owned(),
+            },
+        ] {
+            assert!(matches!(
+                HttpSourceConnector::new(
+                    source.clone(),
+                    "accesspolicy",
+                    &format!("http://{address}"),
+                    BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
+                    invalid_auth,
+                ),
+                Err(HttpConnectorError::InvalidConfiguration(_))
+            ));
+        }
+        let mut connector = HttpSourceConnector::new(
+            source,
+            "accesspolicy",
+            &format!("http://{address}"),
+            BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
+            ResolvedAuth::Header {
+                name: "Authorization".to_owned(),
+                value: "Bearer meraki-secret".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("meraki-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "1234");
+    }
+
+    #[tokio::test]
+    async fn meraki_v1_event_type_uses_type_as_the_provider_id() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /networks/network-1/events/eventTypes HTTP/1.1\r\n"));
+            assert!(
+                request
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("authorization: Bearer meraki-secret"))
+            );
+            let body = r#"[{"category":"802.11","type":"association","description":"802.11 association"}]"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("meraki")
+        .unwrap()
+        .clone();
+        let mut connector = HttpSourceConnector::new(
+            source,
+            "eventtype",
+            &format!("http://{address}"),
+            BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
+            ResolvedAuth::Header {
+                name: "Authorization".to_owned(),
+                value: "Bearer meraki-secret".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("meraki-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "association");
+    }
+
+    #[tokio::test]
+    async fn meraki_v1_organizations_follow_the_provider_link_header() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for page in 1..=2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                let request_line = request.lines().next().unwrap();
+                assert!(request_line.starts_with("GET /organizations?"));
+                assert!(request_line.contains("perPage=9000"));
+                assert_eq!(request_line.contains("startingAfter=2930418"), page == 2);
+                assert!(
+                    request.lines().any(
+                        |line| line.eq_ignore_ascii_case("authorization: Bearer meraki-secret")
+                    )
+                );
+                let body = if page == 1 {
+                    r#"[{"id":"2930418","name":"First organization"}]"#
+                } else {
+                    r#"[{"id":"2930419","name":"Second organization"}]"#
+                };
+                let link = if page == 1 {
+                    format!(
+                        "link: <http://{address}/organizations?startingAfter=2930418>; rel=\"next\"\r\n"
+                    )
+                } else {
+                    String::new()
+                };
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n{link}content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("meraki")
+        .unwrap()
+        .clone();
+        let mut connector = HttpSourceConnector::new(
+            source,
+            "organization",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            ResolvedAuth::Header {
+                name: "Authorization".to_owned(),
+                value: "Bearer meraki-secret".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("meraki-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(
+            batch
+                .records
+                .iter()
+                .map(|record| record.provider_id.as_str())
+                .collect::<Vec<_>>(),
+            ["2930418", "2930419"]
+        );
+    }
+
+    #[tokio::test]
+    async fn meraki_v1_auth_user_preserves_provider_identity_fields() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /networks/network-1/merakiAuthUsers HTTP/1.1\r\n"));
+            assert!(
+                request
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("authorization: Bearer meraki-secret"))
+            );
+            let body = r#"[{"id":"aGlAaGkuY29t","email":"miles@meraki.com","name":"Miles Meraki","accountType":"802.1X","isAdmin":false}]"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("meraki")
+        .unwrap()
+        .clone();
+        let mut connector = HttpSourceConnector::new(
+            source,
+            "merakiauthuser",
+            &format!("http://{address}"),
+            BTreeMap::from([("networkid".to_owned(), "network-1".to_owned())]),
+            ResolvedAuth::Header {
+                name: "Authorization".to_owned(),
+                value: "Bearer meraki-secret".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("meraki-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "aGlAaGkuY29t");
+        assert_eq!(
+            batch.records[0]
+                .payload
+                .get("name")
+                .and_then(serde_json::Value::as_str),
+            Some("Miles Meraki"),
+        );
+        assert_eq!(
+            batch.records[0]
+                .payload
+                .get("email")
+                .and_then(serde_json::Value::as_str),
+            Some("miles@meraki.com"),
+        );
     }
 
     #[tokio::test]

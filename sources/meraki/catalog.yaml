@@ -26,12 +26,16 @@ provider_api:
   verified_at: 2026-07-04T00:00:00Z
   transport: rest
   auth: api_key
-  auth_mechanics: x_cisco_meraki_api_key_header
+  auth_mechanics: bearer_authorization_header
   base_url: https://api.meraki.com/api/v1
   spec_url: https://api.meraki.com/api/v1/openapiSpec
   spec_kind: openapi
   references:
     - https://developer.cisco.com/meraki/api-v1/
+    - https://developer.cisco.com/meraki/api-v1/get-network-events-event-types/
+    - https://developer.cisco.com/meraki/api-v1/get-organizations/
+    - https://developer.cisco.com/meraki/api-v1/get-network-meraki-auth-users/
+    - https://developer.cisco.com/meraki/api-v1/get-network-switch-access-policies/
     - https://api.meraki.com/api/v1/openapiSpec
   auth_evidence:
     - https://developer.cisco.com/meraki/api-v1/authorization/
@@ -61,7 +65,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, auth, response identity, and projection are verified against Meraki Dashboard API v1.
     - id: organization
       type: entity_family
       title: "Organization"
@@ -71,7 +75,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response identity, and group projection are verified against Meraki Dashboard API v1.
     - id: merakiauthuser
       type: entity_family
       title: "Merakiauthuser"
@@ -81,7 +85,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, response identity, and user projection are verified against Meraki Dashboard API v1.
     - id: accesspolicy
       type: lifecycle_state
       title: "Accesspolicy"
@@ -91,7 +95,7 @@ coverage_contract:
       evidence_types: [configuration_state]
       control_domains: [security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, response identity, and policy projection are verified against Meraki Dashboard API v1.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -107,7 +111,7 @@ event_contracts:
       - event_type
       - actor_id
     required_payload_fields:
-      - id
+      - type
   - kind: meraki.organization
     schema_ref: meraki/organization/v1
     required_attributes:
@@ -132,4 +136,4 @@ event_contracts:
       - policy_id
       - policy_name
     required_payload_fields:
-      - id
+      - accessPolicyNumber
