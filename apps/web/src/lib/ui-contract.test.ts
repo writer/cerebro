@@ -70,8 +70,12 @@ describe("product UI contract", () => {
     const statusSource = readProjectFile("src/components/StatusPanel.tsx");
     const topbarSource = readProjectFile("src/components/Topbar.tsx");
 
-    expect(topbarSource).toContain("showNotifications ? grcDashboardPath");
-    expect(topbarSource).toContain("showNotifications ? grcPath");
+    expect(topbarSource).toContain("notificationsRequested ? grcDashboardPath");
+    expect(topbarSource).toContain("notificationsRequested ? grcPath");
+    expect(topbarSource).toContain("onFocus={() => setNotificationsRequested(true)}");
+    expect(topbarSource).toContain("onMouseEnter={() => setNotificationsRequested(true)}");
+    expect(topbarSource).not.toContain("showNotifications ? grcDashboardPath");
+    expect(topbarSource).not.toContain("showNotifications ? grcPath");
     expect(topbarSource).not.toContain('fetch("/api/config"');
     expect(statusSource).not.toContain('fetch("/api/config"');
     expect(providersSource.match(/fetch\("\/api\/config"/g)).toHaveLength(1);

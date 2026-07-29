@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -26,6 +29,12 @@ describe("OpenAPI document parsing", () => {
   it("rejects malformed and non-document YAML", () => {
     expect(parseOpenApiDocument("openapi: [unterminated")).toBeNull();
     expect(parseOpenApiDocument("plain scalar")).toBeNull();
+  });
+
+  it("keeps the shared upstream load independent of one client connection", () => {
+    const source = readFileSync(join(process.cwd(), "src/app/api/openapi/route.ts"), "utf8");
+
+    expect(source).not.toContain("signal: request.signal");
   });
 
   it("rejects schema requests without a trusted identity", async () => {

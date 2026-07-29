@@ -63,6 +63,7 @@ export default function Topbar() {
   const [showConnection, setShowConnection] = useState(false);
   const [showIdentity, setShowIdentity] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationsRequested, setNotificationsRequested] = useState(false);
   const { config } = useConsoleConfig();
   const [shareStatus, setShareStatus] = useState<ShareStatus>("idle");
   const [shareURL, setShareURL] = useState("");
@@ -150,10 +151,10 @@ export default function Topbar() {
   }, [shareStatus, shareURL]);
 
   const notificationsQuery = useGRCQuery<GRCDashboard>(
-    showNotifications ? grcDashboardPath({ limit: DASHBOARD_FINDING_LIMIT }) : null,
+    notificationsRequested ? grcDashboardPath({ limit: DASHBOARD_FINDING_LIMIT }) : null,
   );
   const reportRunsQuery = useGRCQuery<ReportRunListResponse>(
-    showNotifications ? grcPath("/report-runs", { limit: 5 }) : null,
+    notificationsRequested ? grcPath("/report-runs", { limit: 5 }) : null,
   );
   const notificationsLoading = notificationsQuery.loading || reportRunsQuery.loading;
   const notifications = useMemo(
@@ -232,7 +233,10 @@ export default function Topbar() {
         </button>
         <button
           type="button"
+          onFocus={() => setNotificationsRequested(true)}
+          onMouseEnter={() => setNotificationsRequested(true)}
           onClick={() => {
+            setNotificationsRequested(true);
             setShowNotifications((prev) => !prev);
             setShowIdentity(false);
             setShowConnection(false);

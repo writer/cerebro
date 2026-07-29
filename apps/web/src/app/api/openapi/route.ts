@@ -40,7 +40,6 @@ const loadOpenApi = async (request: NextRequest) => {
     const response = await fetchCerebro(buildCerebroUrl("openapi.yaml"), {
       cache: "no-store",
       headers: authHeadersFor(request),
-      signal: request.signal,
     });
     if (!response.ok) return { spec: null, status: response.status };
     const spec = parseOpenApiDocument(await response.text());
