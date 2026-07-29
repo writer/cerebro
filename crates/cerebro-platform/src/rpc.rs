@@ -277,13 +277,7 @@ impl SecurityLifecycleService for GraphRpc {
         )
         .await
         .map_err(|_| ConnectError::unavailable("Lifecycle finding resolution exceeded 2 seconds."))?
-        .map_err(|error| match error {
-            StoreError::LifecycleProjectionUnavailable { .. } => {
-                ConnectError::unavailable(error.to_string())
-            }
-            StoreError::Conflict(message) => ConnectError::unavailable(message),
-            _ => ConnectError::unavailable(error.to_string()),
-        })?;
+        .map_err(lifecycle_store_error)?;
         let resolved =
             resolved.ok_or_else(|| ConnectError::not_found("Lifecycle finding was not found."))?;
         let as_of = OffsetDateTime::now_utc()
@@ -945,6 +939,16 @@ fn context_error(error: ContextError) -> ConnectError {
     }
 }
 
+fn lifecycle_store_error(error: StoreError) -> ConnectError {
+    match error {
+        StoreError::Conflict(message) => ConnectError::internal(message),
+        StoreError::LifecycleProjectionUnavailable { .. } => {
+            ConnectError::unavailable(error.to_string())
+        }
+        _ => ConnectError::unavailable(error.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::future;
@@ -967,6 +971,20 @@ mod tests {
             error.message.as_deref(),
             Some("The graph backend exceeded its RPC deadline.")
         );
+    }
+
+    #[test]
+    fn lifecycle_store_conflicts_are_not_retryable() {
+        let conflict = lifecycle_store_error(StoreError::Conflict(
+            "persistent lifecycle graph inconsistency".to_owned(),
+        ));
+        assert_eq!(conflict.code, ErrorCode::Internal);
+
+        let unavailable = lifecycle_store_error(StoreError::LifecycleProjectionUnavailable {
+            graph_revision: 3,
+            projection_revision: Some(2),
+        });
+        assert_eq!(unavailable.code, ErrorCode::Unavailable);
     }
 
     #[test]
