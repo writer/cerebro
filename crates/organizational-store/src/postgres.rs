@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_postgres::Client;
+use zeroize::Zeroize;
 
 use crate::{
     CutoverDecision, CutoverGate, ParityReceipt, ParityStatus, ProjectionAuthority,
@@ -30,6 +31,32 @@ use crate::{
 
 const MAX_SOURCE_RUNTIME_LEASE_TTL_MILLIS: u64 = 24 * 60 * 60 * 1_000;
 static CREDENTIAL_AUDIT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+struct SensitiveValues(BTreeMap<String, String>);
+
+impl SensitiveValues {
+    fn new(values: &BTreeMap<String, String>) -> Self {
+        Self(values.clone())
+    }
+
+    fn insert(&mut self, key: String, value: String) {
+        if let Some(mut replaced) = self.0.insert(key, value) {
+            replaced.zeroize();
+        }
+    }
+
+    fn into_inner(mut self) -> BTreeMap<String, String> {
+        std::mem::take(&mut self.0)
+    }
+}
+
+impl Drop for SensitiveValues {
+    fn drop(&mut self) {
+        for value in self.0.values_mut() {
+            value.zeroize();
+        }
+    }
+}
 
 pub const POSTGRES_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS source_runtimes (
@@ -680,7 +707,7 @@ impl PostgresLedger {
 
         let vault_key = ConnectorVaultKey::parse(key_material)?;
         let client = self.client.lock().await;
-        let mut resolved = values.clone();
+        let mut resolved = SensitiveValues::new(values);
         let mut used_credentials = Vec::with_capacity(references.len());
         for (credential_id, requested_fields) in references {
             let row = client
@@ -736,7 +763,7 @@ impl PostgresLedger {
             )
             .await?;
         }
-        Ok(resolved)
+        Ok(resolved.into_inner())
     }
 
     /// Acquire the shared source-runtime lease and return its durable fencing

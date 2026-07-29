@@ -10,6 +10,32 @@ const MAX_SECRET_ID_BYTES: usize = 2_048;
 const MAX_FIELD_BYTES: usize = 128;
 const MAX_SECRET_VALUE_BYTES: usize = 256 * 1_024;
 
+struct SensitiveValues(BTreeMap<String, String>);
+
+impl SensitiveValues {
+    fn new(values: &BTreeMap<String, String>) -> Self {
+        Self(values.clone())
+    }
+
+    fn insert(&mut self, key: String, value: String) {
+        if let Some(mut replaced) = self.0.insert(key, value) {
+            replaced.zeroize();
+        }
+    }
+
+    fn into_inner(mut self) -> BTreeMap<String, String> {
+        std::mem::take(&mut self.0)
+    }
+}
+
+impl Drop for SensitiveValues {
+    fn drop(&mut self) {
+        for value in self.0.values_mut() {
+            value.zeroize();
+        }
+    }
+}
+
 pub struct AwsSecretReference {
     region: Option<String>,
     secret_id: String,
@@ -231,7 +257,7 @@ where
         return Ok(values.clone());
     }
 
-    let mut resolved = values.clone();
+    let mut resolved = SensitiveValues::new(values);
     for ((region, secret_id), fields) in requests {
         let secret = reader
             .read_secret((!region.is_empty()).then_some(region.as_str()), &secret_id)
@@ -244,17 +270,17 @@ where
             ));
         }
         for (key, field) in fields {
-            let value = match field {
+            let value = Zeroizing::new(match field {
                 Some(field) => extract_json_field(&text, &field, &key)?,
                 None => text.to_string(),
-            };
+            });
             if value.len() > MAX_SECRET_VALUE_BYTES {
                 return Err(AwsSecretResolutionError::InvalidSecretValue(key));
             }
-            resolved.insert(key, value);
+            resolved.insert(key, value.to_string());
         }
     }
-    Ok(resolved)
+    Ok(resolved.into_inner())
 }
 
 fn secret_text(secret: &AwsSecretValue) -> Zeroizing<String> {
