@@ -15,7 +15,9 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use cerebro_slack_authority::{AnswerCandidate, AnswerDecision, validate_answer};
+use cerebro_slack_authority::{
+    AnswerAuthorityError, AnswerCandidate, AnswerDecision, AnswerDisposition, validate_answer,
+};
 use serde::Serialize;
 
 const DEFAULT_BIND: &str = "127.0.0.1:8091";
@@ -127,17 +129,34 @@ async fn validate_answer_route(
     match validate_answer(candidate) {
         Ok(decision) => {
             match decision.disposition {
-                cerebro_slack_authority::AnswerDisposition::Grounded => {
+                AnswerDisposition::Grounded => {
                     runtime.grounded_total.fetch_add(1, Ordering::Relaxed);
                 }
-                cerebro_slack_authority::AnswerDisposition::SafeRefusal => {
+                AnswerDisposition::SafeRefusal => {
                     runtime.safe_refusal_total.fetch_add(1, Ordering::Relaxed);
                 }
             }
+            log_decision(
+                &runtime,
+                "accepted",
+                Some(match decision.disposition {
+                    AnswerDisposition::Grounded => "grounded",
+                    AnswerDisposition::SafeRefusal => "safe_refusal",
+                }),
+                None,
+                Some(&decision.trace_id),
+            );
             Ok(Json(decision))
         }
         Err(error) => {
             runtime.rejected_total.fetch_add(1, Ordering::Relaxed);
+            log_decision(
+                &runtime,
+                "rejected",
+                None,
+                Some(rejection_code(error)),
+                None,
+            );
             Err((
                 StatusCode::UNPROCESSABLE_ENTITY,
                 Json(ErrorResponse {
@@ -146,6 +165,45 @@ async fn validate_answer_route(
                 }),
             ))
         }
+    }
+}
+
+fn log_decision(
+    runtime: &AuthorityRuntime,
+    outcome: &'static str,
+    disposition: Option<&'static str>,
+    rejection_code: Option<&'static str>,
+    trace_id: Option<&str>,
+) {
+    let status = runtime.status();
+    println!(
+        "{}",
+        serde_json::json!({
+            "authority": "rust",
+            "component": "slack-answer-authority",
+            "disposition": disposition,
+            "grounded_total": status.grounded_total,
+            "operation": "answer_validate",
+            "outcome": outcome,
+            "rejected_total": status.rejected_total,
+            "rejection_code": rejection_code,
+            "requests_total": status.requests_total,
+            "safe_refusal_total": status.safe_refusal_total,
+            "schema_version": "slack-answer-authority-decision-log/v1",
+            "trace_id": trace_id,
+        })
+    );
+}
+
+fn rejection_code(error: AnswerAuthorityError) -> &'static str {
+    match error {
+        AnswerAuthorityError::CitationEvidenceMissing => "citation_evidence_missing",
+        AnswerAuthorityError::ConflictingEvidenceStates => "conflicting_evidence_states",
+        AnswerAuthorityError::Incomplete => "incomplete",
+        AnswerAuthorityError::InvalidRefusal => "invalid_refusal",
+        AnswerAuthorityError::InvalidSchema => "invalid_schema",
+        AnswerAuthorityError::InvalidTrace => "invalid_trace",
+        AnswerAuthorityError::MarkdownInvalid => "markdown_invalid",
     }
 }
 
