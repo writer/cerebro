@@ -138,6 +138,26 @@ func TestIngestRunListQueryBoundsLatestRunsByRequestedRuntime(t *testing.T) {
 	}
 }
 
+func TestIngestRunListQueryDoesNotMutateRuntimeIDBackingArray(t *testing.T) {
+	backing := []string{"runtime-a", "runtime-b", "next-batch-runtime"}
+	runtimeIDs := backing[:2]
+
+	_, params, err := ingestRunListQuery(graphstore.IngestRunFilter{
+		RuntimeIDs:      runtimeIDs,
+		LatestByRuntime: true,
+	}, 2)
+	if err != nil {
+		t.Fatalf("ingestRunListQuery() error = %v", err)
+	}
+	if backing[2] != "next-batch-runtime" {
+		t.Fatalf("ingestRunListQuery() mutated caller backing array: %#v", backing)
+	}
+	gotRuntimeIDs, ok := params["runtime_ids"].([]string)
+	if !ok || strings.Join(gotRuntimeIDs, ",") != "runtime-a,runtime-b" {
+		t.Fatalf("runtime_ids = %#v, want caller values only", params["runtime_ids"])
+	}
+}
+
 func TestNeo4jSchemaIndexesIngestRunLookupShape(t *testing.T) {
 	statements := strings.Join(neo4jSchemaStatements(), "\n")
 	for _, want := range []string{
