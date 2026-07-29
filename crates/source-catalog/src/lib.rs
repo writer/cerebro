@@ -228,6 +228,7 @@ pub struct CompiledFamily {
     method: HttpMethod,
     path: String,
     record_selector: String,
+    scalar_record_field: Option<String>,
     id_field: String,
     name_field: Option<String>,
     static_query: BTreeMap<String, String>,
@@ -256,6 +257,10 @@ impl CompiledFamily {
 
     pub fn record_selector(&self) -> &str {
         &self.record_selector
+    }
+
+    pub fn scalar_record_field(&self) -> Option<&str> {
+        self.scalar_record_field.as_deref()
     }
 
     pub fn id_field(&self) -> &str {
@@ -539,6 +544,8 @@ struct FamilyConfigWire {
 struct FamilyReadWire {
     #[serde(default)]
     path_param_fanout: BTreeMap<String, String>,
+    #[serde(default)]
+    scalar_record_field: String,
 }
 
 #[derive(Deserialize)]
@@ -989,6 +996,18 @@ fn compile_family(
     } else {
         "$[*]".to_owned()
     };
+    let scalar_record_field = family
+        .read
+        .as_ref()
+        .and_then(|read| optional(read.scalar_record_field.clone()));
+    if scalar_record_field.as_ref().is_some_and(|field| {
+        field.len() > 128
+            || !field
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    }) {
+        return invalid(path, "family scalar_record_field is invalid");
+    }
     let provider_contract_verified = canonical_path_template(&family.path).is_some_and(|path| {
         verified.contains(&(
             family.id.clone(),
@@ -1011,6 +1030,7 @@ fn compile_family(
         method,
         path: family.path,
         record_selector,
+        scalar_record_field,
         id_field: nonempty(path, "family id_field", family.id_field)?,
         name_field: optional(family.name_field),
         static_query: family.static_query,
@@ -1567,6 +1587,17 @@ mod tests {
             invalid_message(over_limit),
             "auth header parameters exceed the 16-header limit"
         );
+
+        let invalid_scalar_field = compile_auth_fixture(
+            "api_key",
+            "      token_header: X-API-Key",
+            "GET",
+            "        type: none\n      read:\n        scalar_record_field: \"bad field\"",
+        );
+        assert_eq!(
+            invalid_message(invalid_scalar_field),
+            "family scalar_record_field is invalid"
+        );
     }
 
     #[test]
@@ -1791,6 +1822,26 @@ mod tests {
                 ("x-store-key".to_owned(), "store_key".to_owned()),
             ])
         );
+        assert_eq!(
+            catalog.get("botify").unwrap().token_header(),
+            "Authorization"
+        );
+        assert_eq!(catalog.get("botify").unwrap().token_scheme(), "Token");
+        let botify = catalog.get("botify").unwrap();
+        let out_of_config = botify
+            .families()
+            .iter()
+            .find(|family| family.id() == "out_of_config")
+            .unwrap();
+        assert_eq!(out_of_config.scalar_record_field(), Some("url"));
+        assert!(matches!(
+            out_of_config.pagination(),
+            Pagination::Page {
+                page_size_parameter: Some(parameter),
+                page_size: 100,
+                ..
+            } if parameter == "size"
+        ));
         for family in catalog.get("akeyless").unwrap().families() {
             assert_eq!(
                 family.cursor_in_json_body(),
@@ -1833,6 +1884,7 @@ mod tests {
             "api2cart",
             "azure_openai",
             "beezup",
+            "botify",
             "box",
             "cloudflare_workers_ai",
             "elevenlabs",

@@ -722,6 +722,43 @@ func stringsContain(values []string, want string) bool {
 	return false
 }
 
+func TestBuiltinBotifyPreservesScalarRecordAndPageSizeContracts(t *testing.T) {
+	entry, ok, err := BuiltinEntry("botify")
+	if err != nil {
+		t.Fatalf("BuiltinEntry(botify) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(botify) ok = false, want true")
+	}
+	if entry.Definition.Auth.TokenHeader != "Authorization" || entry.Definition.Auth.TokenScheme != "Token" {
+		t.Fatalf("botify auth = %#v, want Authorization Token", entry.Definition.Auth)
+	}
+	for _, familyID := range []string{"out_of_config", "sitemap_only"} {
+		family := catalogFamily(t, entry.Definition.ResourceFamilies, familyID)
+		if family.Read == nil || family.Read.ScalarRecordField != "url" {
+			t.Fatalf("%s scalar record mapping = %#v, want url", familyID, family.Read)
+		}
+		if family.IDField != "url" {
+			t.Fatalf("%s id field = %q, want url", familyID, family.IDField)
+		}
+	}
+	for _, familyID := range []string{
+		"filter",
+		"export",
+		"out_of_config",
+		"sitemap_only",
+		"project",
+		"analyses",
+		"orphan_url",
+		"domain",
+	} {
+		family := catalogFamily(t, entry.Definition.ResourceFamilies, familyID)
+		if family.Pagination == nil || family.Pagination.PageSizeParam != "size" || family.Pagination.PageSize != 100 {
+			t.Fatalf("%s pagination = %#v, want size=100", familyID, family.Pagination)
+		}
+	}
+}
+
 func TestBuiltinCatalogIncludesAdditionalGapEntries(t *testing.T) {
 	for sourceID, wantStatus := range map[string]string{
 		"checkr":        StatusGenerateable,

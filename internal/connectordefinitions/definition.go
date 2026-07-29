@@ -345,6 +345,7 @@ type ResourceReadSpec struct {
 	PathParams            []string          `json:"path_params,omitempty"`
 	PathParamFanout       map[string]string `json:"path_param_fanout,omitempty"`
 	MapRecords            map[string]string `json:"map_records,omitempty"`
+	ScalarRecordField     string            `json:"scalar_record_field,omitempty"`
 	Singleton             bool              `json:"singleton,omitempty"`
 	DisablePageSize       bool              `json:"disable_page_size,omitempty"`
 }
@@ -1356,7 +1357,8 @@ func normalizeResourceReadSpec(read *ResourceReadSpec) *ResourceReadSpec {
 	next.PathParams = normalizeOrderedStringList(next.PathParams)
 	next.PathParamFanout = normalizeStringMap(next.PathParamFanout)
 	next.MapRecords = normalizeStringMap(next.MapRecords)
-	if next.DetailPath == "" && len(next.PathParams) == 0 && len(next.PathParamFanout) == 0 && len(next.MapRecords) == 0 && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
+	next.ScalarRecordField = strings.TrimSpace(next.ScalarRecordField)
+	if next.DetailPath == "" && len(next.PathParams) == 0 && len(next.PathParamFanout) == 0 && len(next.MapRecords) == 0 && next.ScalarRecordField == "" && !next.Singleton && !next.AllowBareDetailRecord && !next.DisablePageSize {
 		return nil
 	}
 	return &next

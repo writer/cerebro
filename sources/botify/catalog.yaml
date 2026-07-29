@@ -27,6 +27,72 @@ runtime_families:
   - report
   - sitemap_only
   - url
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-28T00:00:00Z
+  transport: rest
+  auth: api_key
+  auth_mechanics: token_authorization_header
+  base_url: https://api.botify.com/v1
+  spec_url: https://api.botify.com/v1/swagger.json
+  spec_kind: openapi
+  references:
+    - https://developers.botify.com/docs/getting-started
+    - https://developers.botify.com/docs/important-concepts
+    - https://developers.botify.com/docs/openapi-specifications
+    - https://api.botify.com/v1/swagger.json
+  auth_evidence:
+    - https://developers.botify.com/docs/getting-started
+  families:
+    - id: filter
+      method: GET
+      path: /projects/{username}/{project_slug}/filters
+      operation: getSavedFilters
+    - id: export
+      method: GET
+      path: /analyses/{username}/{project_slug}/{analysis_slug}/urls/export
+      operation: getUrlsExports
+    - id: out_of_config
+      method: GET
+      path: /analyses/{username}/{project_slug}/{analysis_slug}/features/sitemaps/samples/out_of_config
+      operation: getSitemapsSamplesOutOfConfig
+    - id: sitemap_only
+      method: GET
+      path: /analyses/{username}/{project_slug}/{analysis_slug}/features/sitemaps/samples/sitemap_only
+      operation: getSitemapsSamplesSitemapsOnly
+    - id: report
+      method: GET
+      path: /analyses/{username}/{project_slug}/{analysis_slug}/features/sitemaps/report
+      operation: getSitemapsReport
+    - id: project
+      method: GET
+      path: /projects/{username}
+      operation: getUserProjects
+    - id: analyses
+      method: GET
+      path: /analyses/{username}/{project_slug}
+      operation: getProjectAnalyses
+    - id: url
+      method: GET
+      path: /analyses/{username}/{project_slug}/{analysis_slug}/crawl_statistics/urls/{list_type}
+      operation: getCrawlStatisticsUrls
+    - id: orphan_url
+      method: GET
+      path: /analyses/{username}/{project_slug}/{analysis_slug}/features/ganalytics/orphan_urls/{medium}/{source}
+      operation: getGanalyticsOrphanURLs
+    - id: datamodel
+      method: GET
+      path: /analyses/{username}/{project_slug}/{analysis_slug}/urls/datamodel
+      operation: getUrlsDatamodel
+    - id: domain
+      method: GET
+      path: /analyses/{username}/{project_slug}/{analysis_slug}/features/top_domains/domains
+      operation: getLinksTopDomains
+    - id: percentile
+      method: GET
+      path: /analyses/{username}/{project_slug}/{analysis_slug}/features/links/percentiles
+      operation: getLinksPercentiles
 kind_lifecycle:
   - kind: botify.filter
     status: active
@@ -65,7 +131,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response selector, and stable identifier were checked against the current Botify OpenAPI specification.
     - id: export
       type: entity_family
       title: "Export"
@@ -75,7 +141,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response selector, and stable identifier were checked against the current Botify OpenAPI specification.
     - id: out_of_config
       type: entity_family
       title: "Out Of Config"
@@ -85,7 +151,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response selector, and stable identifier were checked against the current Botify OpenAPI specification.
     - id: sitemap_only
       type: entity_family
       title: "Sitemap Only"
@@ -95,7 +161,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response selector, and stable identifier were checked against the current Botify OpenAPI specification.
     - id: report
       type: entity_family
       title: "Report"
@@ -105,7 +171,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response selector, and stable identifier were checked against the current Botify OpenAPI specification.
     - id: project
       type: entity_family
       title: "Project"
@@ -115,7 +181,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response selector, and stable identifier were checked against the current Botify OpenAPI specification.
     - id: analyses
       type: entity_family
       title: "Analyses"
@@ -125,7 +191,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response selector, and stable identifier were checked against the current Botify OpenAPI specification.
     - id: url
       type: entity_family
       title: "Url"
@@ -135,7 +201,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response selector, and stable identifier were checked against the current Botify OpenAPI specification.
     - id: orphan_url
       type: entity_family
       title: "Orphan Url"
@@ -145,7 +211,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response selector, and stable identifier were checked against the current Botify OpenAPI specification.
     - id: datamodel
       type: entity_family
       title: "Datamodel"
@@ -155,7 +221,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response selector, and stable identifier were checked against the current Botify OpenAPI specification.
     - id: domain
       type: entity_family
       title: "Domain"
@@ -165,7 +231,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response selector, and stable identifier were checked against the current Botify OpenAPI specification.
     - id: percentile
       type: entity_family
       title: "Percentile"
@@ -175,7 +241,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Provider path, pagination, response selector, and stable identifier were checked against the current Botify OpenAPI specification.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
@@ -202,7 +268,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - area
+      - job_id
   - kind: botify.out_of_config
     schema_ref: botify/out_of_config/v1
     required_attributes:
@@ -212,7 +278,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - url
   - kind: botify.sitemap_only
     schema_ref: botify/sitemap_only/v1
     required_attributes:
@@ -222,7 +288,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - url
   - kind: botify.report
     schema_ref: botify/report/v1
     required_attributes:
@@ -232,7 +298,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - error
+      - url
   - kind: botify.project
     schema_ref: botify/project/v1
     required_attributes:
@@ -252,7 +318,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - slug
   - kind: botify.url
     schema_ref: botify/url/v1
     required_attributes:
@@ -262,7 +328,7 @@ event_contracts:
       - resource_type
       - resource_id
     required_payload_fields:
-      - id
+      - url
   - kind: botify.orphan_url
     schema_ref: botify/orphan_url/v1
     required_attributes:

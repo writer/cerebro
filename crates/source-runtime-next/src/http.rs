@@ -26,7 +26,7 @@ use reqwest::{
     Client, Request, Response, StatusCode, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
 };
-use serde_json::Value;
+use serde_json::{Map, Value};
 use sha2::{Digest, Sha256, Sha512};
 use time::OffsetDateTime;
 use zeroize::Zeroize;
@@ -590,6 +590,8 @@ impl SourceConnector for HttpSourceConnector {
                 let selected = select_records(&body, self.family.record_selector())?;
                 let selected_count = selected.len();
                 for value in selected {
+                    let value =
+                        normalize_selected_record(value, self.family.scalar_record_field())?;
                     validate_record_scope(self.family.id(), &value, &record_attributes)?;
                     let provider_id =
                         scalar_at(&value, self.family.id_field()).ok_or_else(|| {
@@ -1388,6 +1390,21 @@ fn select_records(body: &Value, selector: &str) -> Result<Vec<Value>, HttpConnec
     Ok(vec![selected.clone()])
 }
 
+fn normalize_selected_record(
+    value: Value,
+    scalar_record_field: Option<&str>,
+) -> Result<Value, HttpConnectorError> {
+    let Some(field) = scalar_record_field else {
+        return Ok(value);
+    };
+    if scalar(&value).is_none_or(|value| value.trim().is_empty()) {
+        return Err(HttpConnectorError::InvalidResponse(format!(
+            "scalar record mapping for {field} selected a non-scalar value"
+        )));
+    }
+    Ok(Value::Object(Map::from_iter([(field.to_owned(), value)])))
+}
+
 fn scalar_at(value: &Value, field: &str) -> Option<String> {
     scalar_at_path(value, field)
 }
@@ -1606,6 +1623,33 @@ mod tests {
             Some("/users?page=2")
         );
         assert_eq!(next_link_url("</users?page=2>; title=\"rel=next\""), None);
+
+        let scalar = normalize_selected_record(
+            Value::String("https://example.test".to_owned()),
+            Some("url"),
+        )
+        .unwrap();
+        assert_eq!(
+            scalar_at(&scalar, "url").as_deref(),
+            Some("https://example.test")
+        );
+        for invalid in [
+            Value::Null,
+            Value::String(String::new()),
+            Value::String(" \t".to_owned()),
+            serde_json::json!({}),
+            serde_json::json!([]),
+        ] {
+            assert!(matches!(
+                normalize_selected_record(invalid, Some("url")),
+                Err(HttpConnectorError::InvalidResponse(_))
+            ));
+        }
+        let object = serde_json::json!({"id": "one"});
+        assert_eq!(
+            normalize_selected_record(object.clone(), None).unwrap(),
+            object
+        );
     }
 
     #[test]
@@ -2156,6 +2200,88 @@ mod tests {
         server.await.unwrap();
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "group-1");
+    }
+
+    #[tokio::test]
+    async fn botify_uses_token_auth_bounded_pages_and_scalar_provider_ids() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with(
+                "GET /analyses/owner/project/20260728/features/sitemaps/samples/out_of_config?page=1&size=100 HTTP/1.1\r\n"
+            ));
+            assert!(
+                request
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("authorization: Token botify-secret"))
+            );
+            let body = r#"{"count":1,"page":1,"size":100,"next":null,"previous":null,"results":["https://example.test/orphan"]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("botify").unwrap().clone();
+        assert_eq!(
+            source.authority(),
+            cerebro_source_catalog::CollectionAuthority::Authoritative
+        );
+        assert!(matches!(
+            HttpSourceConnector::new(
+                source.clone(),
+                "out_of_config",
+                &format!("http://{address}"),
+                BTreeMap::from([
+                    ("analysis_slug".to_owned(), "20260728".to_owned()),
+                    ("project_slug".to_owned(), "project".to_owned()),
+                    ("username".to_owned(), "owner".to_owned()),
+                ]),
+                ResolvedAuth::Header {
+                    name: "Authorization".to_owned(),
+                    value: "Bearer botify-secret".to_owned(),
+                },
+            ),
+            Err(HttpConnectorError::InvalidConfiguration(_))
+        ));
+
+        let mut connector = HttpSourceConnector::new(
+            source,
+            "out_of_config",
+            &format!("http://{address}"),
+            BTreeMap::from([
+                ("analysis_slug".to_owned(), "20260728".to_owned()),
+                ("project_slug".to_owned(), "project".to_owned()),
+                ("username".to_owned(), "owner".to_owned()),
+            ]),
+            ResolvedAuth::Header {
+                name: "Authorization".to_owned(),
+                value: "Token botify-secret".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("botify-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "https://example.test/orphan");
     }
 
     #[tokio::test]
