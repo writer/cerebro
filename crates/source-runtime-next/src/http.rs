@@ -56,6 +56,9 @@ pub enum ResolvedAuth {
     QueryParameters {
         parameters: BTreeMap<String, String>,
     },
+    JsonBodyParameters {
+        parameters: BTreeMap<String, String>,
+    },
     AwsSigV4 {
         access_key_id: String,
         secret_access_key: String,
@@ -84,6 +87,11 @@ impl fmt::Debug for ResolvedAuth {
                 .finish(),
             Self::QueryParameters { parameters } => formatter
                 .debug_struct("QueryParameters")
+                .field("names", &parameters.keys().collect::<Vec<_>>())
+                .field("values", &"[REDACTED]")
+                .finish(),
+            Self::JsonBodyParameters { parameters } => formatter
+                .debug_struct("JsonBodyParameters")
                 .field("names", &parameters.keys().collect::<Vec<_>>())
                 .field("values", &"[REDACTED]")
                 .finish(),
@@ -118,6 +126,11 @@ impl Drop for ResolvedAuth {
             }
             Self::Header { value, .. } => value.zeroize(),
             Self::QueryParameters { parameters } => {
+                for value in parameters.values_mut() {
+                    value.zeroize();
+                }
+            }
+            Self::JsonBodyParameters { parameters } => {
                 for value in parameters.values_mut() {
                     value.zeroize();
                 }
@@ -230,7 +243,7 @@ impl HttpSourceConnector {
                     source.id()
                 ))
             })?;
-        validate_auth(source.auth(), &auth)?;
+        validate_auth(&source, &auth)?;
         let mut base_url = Url::parse(base_url)
             .map_err(|error| HttpConnectorError::InvalidUrl(error.to_string()))?;
         if base_url.scheme() != "https" && !is_loopback(&base_url) {
@@ -487,11 +500,14 @@ impl SourceConnector for HttpSourceConnector {
             let mut exhausted = false;
             while remaining_pages > 0 {
                 remaining_pages -= 1;
+                let query_cursor = (!self.family.cursor_in_json_body())
+                    .then_some(cursor.as_deref())
+                    .flatten();
                 apply_query(
                     &mut url,
                     &request_query,
                     self.family.pagination(),
-                    cursor.as_deref(),
+                    query_cursor,
                     page,
                     offset,
                 );
@@ -507,9 +523,19 @@ impl SourceConnector for HttpSourceConnector {
                     }
                     ResolvedAuth::Header { name, value } => builder.header(name, value),
                     ResolvedAuth::QueryParameters { .. }
+                    | ResolvedAuth::JsonBodyParameters { .. }
                     | ResolvedAuth::AwsSigV4 { .. }
                     | ResolvedAuth::DuoHmacV5 { .. } => builder,
                 };
+                if let ResolvedAuth::JsonBodyParameters { parameters } = &self.auth {
+                    let body = json_auth_body(
+                        parameters,
+                        self.family.cursor_in_json_body(),
+                        self.family.pagination(),
+                        cursor.as_deref(),
+                    )?;
+                    builder = builder.json(&body);
+                }
                 let sensitive_query = matches!(self.auth, ResolvedAuth::QueryParameters { .. });
                 let mut provider_request = builder.build().map_err(|error| {
                     if sensitive_query {
@@ -723,14 +749,17 @@ fn response_too_large(max_response_bytes: usize) -> HttpConnectorError {
     ))
 }
 
-fn validate_auth(expected: &AuthModel, actual: &ResolvedAuth) -> Result<(), HttpConnectorError> {
-    let valid = match expected {
+fn validate_auth(source: &CompiledSource, actual: &ResolvedAuth) -> Result<(), HttpConnectorError> {
+    let valid = match source.auth() {
         AuthModel::None => matches!(actual, ResolvedAuth::None),
         AuthModel::Basic => matches!(actual, ResolvedAuth::Basic { .. }),
-        AuthModel::ApiKey => matches!(
-            actual,
-            ResolvedAuth::Header { .. } | ResolvedAuth::QueryParameters { .. }
-        ),
+        AuthModel::ApiKey if !source.auth_json_body_parameters().is_empty() => {
+            matches!(actual, ResolvedAuth::JsonBodyParameters { .. })
+        }
+        AuthModel::ApiKey if !source.auth_query_parameters().is_empty() => {
+            matches!(actual, ResolvedAuth::QueryParameters { .. })
+        }
+        AuthModel::ApiKey => matches!(actual, ResolvedAuth::Header { .. }),
         AuthModel::BearerToken
         | AuthModel::OauthAuthorizationCode
         | AuthModel::OauthClientCredentials
@@ -799,6 +828,44 @@ fn valid_auth_query_parameter_name(name: &str) -> bool {
         && name
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~'))
+}
+
+fn json_auth_body(
+    parameters: &BTreeMap<String, String>,
+    cursor_in_json_body: bool,
+    pagination: &Pagination,
+    cursor: Option<&str>,
+) -> Result<BTreeMap<String, String>, HttpConnectorError> {
+    if parameters.is_empty() || parameters.len() > 16 {
+        return Err(HttpConnectorError::InvalidConfiguration(
+            "JSON body authentication requires 1 to 16 parameters".to_owned(),
+        ));
+    }
+    let mut body = BTreeMap::new();
+    for (name, value) in parameters {
+        if !valid_auth_query_parameter_name(name) || value.is_empty() {
+            return Err(HttpConnectorError::InvalidConfiguration(
+                "JSON body authentication parameters are invalid".to_owned(),
+            ));
+        }
+        body.insert(name.clone(), value.clone());
+    }
+    if cursor_in_json_body {
+        let Pagination::Cursor { parameter, .. } = pagination else {
+            return Err(HttpConnectorError::InvalidConfiguration(
+                "JSON body cursor requires cursor pagination".to_owned(),
+            ));
+        };
+        if body.contains_key(parameter) {
+            return Err(HttpConnectorError::InvalidConfiguration(
+                "JSON body cursor conflicts with an authentication parameter".to_owned(),
+            ));
+        }
+        if let Some(cursor) = cursor.filter(|value| !value.is_empty()) {
+            body.insert(parameter.clone(), cursor.to_owned());
+        }
+    }
+    Ok(body)
 }
 
 fn sign_duo_hmac_v5(
@@ -1161,6 +1228,10 @@ fn apply_query(
         query.clear();
         query.extend_pairs(retained);
         query.extend_pairs(static_query);
+        drop(query);
+        if url.query().is_some_and(str::is_empty) {
+            url.set_query(None);
+        }
         return;
     }
 
@@ -1202,6 +1273,10 @@ fn apply_query(
             query.append_pair(parameter, &offset.to_string());
             query.append_pair(limit_parameter, &page_size.to_string());
         }
+    }
+    drop(query);
+    if url.query().is_some_and(str::is_empty) {
+        url.set_query(None);
     }
 }
 
@@ -1906,6 +1981,22 @@ mod tests {
             root.join("sources"),
         )
         .unwrap();
+        let wrong_placement = HttpSourceConnector::new(
+            catalog.get("alchemer").unwrap().clone(),
+            "account",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            ResolvedAuth::Header {
+                name: "X-API-Key".to_owned(),
+                value: "secret".to_owned(),
+            },
+        )
+        .err()
+        .unwrap();
+        assert!(matches!(
+            wrong_placement,
+            HttpConnectorError::InvalidConfiguration(_)
+        ));
         let auth = ResolvedAuth::QueryParameters {
             parameters: BTreeMap::from([
                 ("api_token".to_owned(), "token&admin=true".to_owned()),
@@ -1998,6 +2089,94 @@ mod tests {
         assert_eq!(error.to_string(), "provider request failed");
         assert!(!format!("{error:?}").contains("token&admin=true"));
         assert!(!format!("{error:?}").contains("secret#fragment"));
+    }
+
+    #[tokio::test]
+    async fn json_body_credentials_and_cursor_are_posted_without_query_fallback() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for page in 0..2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                assert!(request.starts_with("POST /list-items HTTP/1.1\r\n"));
+                assert!(request.contains("content-type: application/json"));
+                let body = request.split("\r\n\r\n").nth(1).unwrap();
+                let body: Value = serde_json::from_str(body).unwrap();
+                assert_eq!(
+                    body.get("token").and_then(Value::as_str),
+                    Some("body-secret")
+                );
+                if page == 0 {
+                    assert!(body.get("pagination-token").is_none());
+                } else {
+                    assert_eq!(
+                        body.get("pagination-token").and_then(Value::as_str),
+                        Some("cursor-2")
+                    );
+                }
+                let response_body = if page == 0 {
+                    r#"{"items":[{"item_id":"item-1","item_name":"First"}],"next_page":"cursor-2"}"#
+                } else {
+                    r#"{"items":[{"item_id":"item-2","item_name":"Second"}],"next_page":""}"#
+                };
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{response_body}",
+                    response_body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let wrong_placement = HttpSourceConnector::new(
+            catalog.get("akeyless").unwrap().clone(),
+            "items",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            ResolvedAuth::Header {
+                name: "X-API-Key".to_owned(),
+                value: "secret".to_owned(),
+            },
+        )
+        .err()
+        .unwrap();
+        assert!(matches!(
+            wrong_placement,
+            HttpConnectorError::InvalidConfiguration(_)
+        ));
+        let auth = ResolvedAuth::JsonBodyParameters {
+            parameters: BTreeMap::from([("token".to_owned(), "body-secret".to_owned())]),
+        };
+        assert!(!format!("{auth:?}").contains("body-secret"));
+        let mut connector = HttpSourceConnector::new(
+            catalog.get("akeyless").unwrap().clone(),
+            "items",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            auth,
+        )
+        .unwrap();
+        assert!(connector.config.is_empty());
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("akeyless-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(batch.records.len(), 2);
+        assert_eq!(batch.records[0].provider_id, "item-1");
+        assert_eq!(batch.records[1].provider_id, "item-2");
     }
 
     #[tokio::test]

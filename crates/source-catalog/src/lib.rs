@@ -234,6 +234,7 @@ pub struct CompiledFamily {
     config_query: BTreeMap<String, PathParameterBinding>,
     config_attributes: BTreeMap<String, PathParameterBinding>,
     pagination: Pagination,
+    cursor_in_json_body: bool,
     path_parameters: BTreeMap<String, PathParameterBinding>,
     projection: Projection,
     authoritative: bool,
@@ -281,6 +282,10 @@ impl CompiledFamily {
         &self.pagination
     }
 
+    pub fn cursor_in_json_body(&self) -> bool {
+        self.cursor_in_json_body
+    }
+
     pub fn path_parameters(&self) -> &BTreeMap<String, PathParameterBinding> {
         &self.path_parameters
     }
@@ -312,6 +317,7 @@ pub struct CompiledSource {
     token_header: String,
     token_scheme: String,
     auth_query_parameters: BTreeMap<String, String>,
+    auth_json_body_parameters: BTreeMap<String, String>,
     authority: CollectionAuthority,
     families: Vec<CompiledFamily>,
 }
@@ -339,6 +345,10 @@ impl CompiledSource {
 
     pub fn auth_query_parameters(&self) -> &BTreeMap<String, String> {
         &self.auth_query_parameters
+    }
+
+    pub fn auth_json_body_parameters(&self) -> &BTreeMap<String, String> {
+        &self.auth_json_body_parameters
     }
 
     pub fn authority(&self) -> CollectionAuthority {
@@ -476,6 +486,8 @@ struct AuthWire {
     token_scheme: String,
     #[serde(default)]
     query_parameters: BTreeMap<String, String>,
+    #[serde(default)]
+    json_body_parameters: BTreeMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -548,6 +560,8 @@ struct PaginationWire {
     start_page: usize,
     #[serde(default)]
     page_size: usize,
+    #[serde(default)]
+    cursor_in_json_body: bool,
 }
 
 #[derive(Deserialize)]
@@ -648,16 +662,49 @@ fn compile_source(
     if auth_query_parameters.len() > 16 {
         return invalid(path, "auth query parameters exceed the 16-parameter limit");
     }
-    if !auth_query_parameters.is_empty() && auth != AuthModel::ApiKey {
+    let mut auth_json_body_parameters = BTreeMap::new();
+    for (parameter, credential_field) in entry.definition.auth.json_body_parameters {
+        let parameter = parameter.trim();
+        let credential_field = credential_field.trim();
+        if parameter.is_empty()
+            || parameter.len() > 128
+            || !parameter.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~')
+            })
+        {
+            return invalid(path, "auth JSON body parameter name is invalid");
+        }
+        if credential_field.is_empty() || !credential_fields.contains(credential_field) {
+            return invalid(
+                path,
+                &format!(
+                    "auth JSON body parameter {parameter} references undeclared credential field {credential_field}"
+                ),
+            );
+        }
+        auth_json_body_parameters.insert(parameter.to_owned(), credential_field.to_owned());
+    }
+    if auth_json_body_parameters.len() > 16 {
         return invalid(
             path,
-            "auth query parameters are supported only for api_key authentication",
+            "auth JSON body parameters exceed the 16-parameter limit",
         );
     }
-    if !auth_query_parameters.is_empty() && !token_header.is_empty() {
+    if (!auth_query_parameters.is_empty() || !auth_json_body_parameters.is_empty())
+        && auth != AuthModel::ApiKey
+    {
         return invalid(
             path,
-            "api_key authentication cannot use both token_header and query_parameters",
+            "auth request parameters are supported only for api_key authentication",
+        );
+    }
+    let api_key_placements = usize::from(!token_header.is_empty())
+        + usize::from(!auth_query_parameters.is_empty())
+        + usize::from(!auth_json_body_parameters.is_empty());
+    if api_key_placements > 1 {
+        return invalid(
+            path,
+            "api_key authentication must use exactly one credential placement",
         );
     }
     let config_fields = entry
@@ -670,7 +717,8 @@ fn compile_source(
         && auth.supports_generic_runtime()
         && (auth != AuthModel::ApiKey
             || !token_header.is_empty()
-            || !auth_query_parameters.is_empty());
+            || !auth_query_parameters.is_empty()
+            || !auth_json_body_parameters.is_empty());
     let verified_families = verified_families(proofs.get(&id));
     let mut family_ids = BTreeSet::new();
     let mut families = Vec::with_capacity(entry.definition.resource_families.len());
@@ -685,6 +733,24 @@ fn compile_source(
             generic_runtime_supported,
             &config_fields,
         )?);
+    }
+    if !auth_json_body_parameters.is_empty()
+        && families
+            .iter()
+            .any(|family| family.method() != HttpMethod::Post)
+    {
+        return invalid(
+            path,
+            "JSON body authentication requires POST for every source family",
+        );
+    }
+    if auth_json_body_parameters.is_empty()
+        && families.iter().any(CompiledFamily::cursor_in_json_body)
+    {
+        return invalid(
+            path,
+            "JSON body cursor placement requires JSON body authentication",
+        );
     }
     if families.is_empty() {
         return invalid(path, "at least one resource family is required");
@@ -702,6 +768,7 @@ fn compile_source(
         token_header,
         token_scheme,
         auth_query_parameters,
+        auth_json_body_parameters,
         authority,
         families,
     })
@@ -724,6 +791,24 @@ fn compile_family(
             );
         }
     };
+    let cursor_in_json_body = family
+        .pagination
+        .as_ref()
+        .is_some_and(|pagination| pagination.cursor_in_json_body);
+    if cursor_in_json_body
+        && (method != HttpMethod::Post
+            || family.pagination.as_ref().is_none_or(|pagination| {
+                pagination.r#type != "cursor" || !pagination.page_size_param.is_empty()
+            }))
+    {
+        return invalid(
+            path,
+            &format!(
+                "family {} JSON-body cursor requires POST cursor pagination without a page-size parameter",
+                family.id
+            ),
+        );
+    }
     if !family.path.starts_with('/') {
         return invalid(
             path,
@@ -874,6 +959,7 @@ fn compile_family(
         config_query,
         config_attributes,
         pagination: compile_pagination(path, family.pagination)?,
+        cursor_in_json_body,
         path_parameters,
         projection: Projection {
             class: projection_class,
@@ -1193,6 +1279,127 @@ mod tests {
             .unwrap()
     }
 
+    fn compile_auth_fixture(
+        model: &str,
+        auth_fields: &str,
+        method: &str,
+        pagination: &str,
+    ) -> Result<CompiledSource, CatalogError> {
+        let yaml = format!(
+            r#"entries:
+- classifier_output: supported
+  definition:
+    id: builtin-test
+    source_id: test
+    display_name: Test
+    auth:
+      model: {model}
+      credential_fields:
+      - key: api_token
+{auth_fields}
+    resource_families:
+    - id: items
+      method: {method}
+      path: /items
+      id_field: id
+      pagination:
+{pagination}
+      projection:
+        template: asset
+"#
+        );
+        let mut file: EntryFileWire = serde_saphyr::from_slice(yaml.as_bytes()).unwrap();
+        compile_source(
+            Path::new("auth-fixture.yaml"),
+            file.entries.remove(0),
+            &BTreeMap::new(),
+        )
+    }
+
+    fn invalid_message(result: Result<CompiledSource, CatalogError>) -> String {
+        match result.unwrap_err() {
+            CatalogError::Invalid { message, .. } => message,
+            error => panic!("unexpected error: {error}"),
+        }
+    }
+
+    #[test]
+    fn request_auth_grammar_rejects_unsafe_ambiguous_and_unbound_bodies() {
+        let invalid_name = compile_auth_fixture(
+            "api_key",
+            "      json_body_parameters:\n        \"bad name\": api_token",
+            "POST",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(invalid_name),
+            "auth JSON body parameter name is invalid"
+        );
+
+        let undeclared = compile_auth_fixture(
+            "api_key",
+            "      json_body_parameters:\n        token: missing",
+            "POST",
+            "        type: none",
+        );
+        assert!(invalid_message(undeclared).contains("undeclared credential field missing"));
+
+        let wrong_model = compile_auth_fixture(
+            "bearer_token",
+            "      json_body_parameters:\n        token: api_token",
+            "POST",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(wrong_model),
+            "auth request parameters are supported only for api_key authentication"
+        );
+
+        let ambiguous = compile_auth_fixture(
+            "api_key",
+            "      query_parameters:\n        key: api_token\n      json_body_parameters:\n        token: api_token",
+            "POST",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(ambiguous),
+            "api_key authentication must use exactly one credential placement"
+        );
+
+        let get_body = compile_auth_fixture(
+            "api_key",
+            "      json_body_parameters:\n        token: api_token",
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(get_body),
+            "JSON body authentication requires POST for every source family"
+        );
+
+        let page_body_cursor = compile_auth_fixture(
+            "api_key",
+            "      json_body_parameters:\n        token: api_token",
+            "POST",
+            "        type: page\n        cursor_in_json_body: true",
+        );
+        assert!(
+            invalid_message(page_body_cursor)
+                .contains("JSON-body cursor requires POST cursor pagination")
+        );
+
+        let unbound_body_cursor = compile_auth_fixture(
+            "api_key",
+            "      token_header: X-API-Key",
+            "POST",
+            "        type: cursor\n        cursor_in_json_body: true",
+        );
+        assert_eq!(
+            invalid_message(unbound_body_cursor),
+            "JSON body cursor placement requires JSON body authentication"
+        );
+    }
+
     #[test]
     fn compiles_the_complete_checked_in_catalog() {
         let root = repository_root();
@@ -1245,6 +1452,7 @@ mod tests {
                     && source.auth() == &AuthModel::ApiKey
                     && source.token_header().is_empty()
                     && source.auth_query_parameters().is_empty()
+                    && source.auth_json_body_parameters().is_empty()
             })
             .map(CompiledSource::id)
             .collect::<Vec<_>>();
@@ -1269,6 +1477,18 @@ mod tests {
                 ("api_token_secret".to_owned(), "api_token_secret".to_owned()),
             ])
         );
+        assert_eq!(
+            catalog.get("akeyless").unwrap().auth_json_body_parameters(),
+            &BTreeMap::from([("token".to_owned(), "api_token".to_owned())])
+        );
+        for family in catalog.get("akeyless").unwrap().families() {
+            assert_eq!(
+                family.cursor_in_json_body(),
+                family.id() != "analytics",
+                "{} JSON-body cursor placement",
+                family.id()
+            );
+        }
     }
 
     #[test]
@@ -1293,6 +1513,7 @@ mod tests {
         );
         for source_id in [
             "akeneo",
+            "akeyless",
             "apacta",
             "appwrite",
             "airbrake",
@@ -1317,11 +1538,6 @@ mod tests {
                 "{source_id} has verified parameterized provider paths"
             );
         }
-        assert_eq!(
-            catalog.get("akeyless").unwrap().authority(),
-            CollectionAuthority::ShadowOnly,
-            "akeyless requires bespoke Rust authentication"
-        );
         assert_eq!(
             catalog.get("agiloft").unwrap().authority(),
             CollectionAuthority::ShadowOnly

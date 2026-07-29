@@ -7,6 +7,8 @@ entries:
             reference_only: true
             secret: true
         model: api_key
+        json_body_parameters:
+          token: api_token
       categories:
         - identity
         - secrets
@@ -37,6 +39,7 @@ entries:
           label: Items
           method: POST
           pagination:
+            cursor_in_json_body: true
             cursor_json_path: $.next_page
             cursor_param: pagination-token
             page_size: 100
@@ -72,6 +75,7 @@ entries:
           label: Auth methods
           method: POST
           pagination:
+            cursor_in_json_body: true
             cursor_json_path: $.next_page
             cursor_param: pagination-token
             page_size: 100
@@ -107,6 +111,7 @@ entries:
           label: Roles
           method: POST
           pagination:
+            cursor_in_json_body: true
             cursor_json_path: $.next_page
             cursor_param: pagination-token
             page_size: 100
