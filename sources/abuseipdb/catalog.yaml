@@ -73,6 +73,7 @@ event_contracts:
       - status
     required_payload_fields:
       - reportedAt
+      - reporterId
   - kind: abuseipdb.ip_addresses
     schema_ref: abuseipdb/ip_addresses/v1
     required_attributes:

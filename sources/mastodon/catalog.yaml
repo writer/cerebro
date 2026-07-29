@@ -120,6 +120,7 @@ event_contracts:
       - actor_id
     required_payload_fields:
       - logins
+      - week
   - kind: mastodon.verify_credential
     schema_ref: mastodon/verify_credential/v1
     required_attributes:
