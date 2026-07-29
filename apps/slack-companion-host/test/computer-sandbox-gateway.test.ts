@@ -76,6 +76,13 @@ test("gateway adapter sends bounded authenticated protocol requests", async () =
 
 test("empty gateway configuration leaves computer access disabled", () => {
   assert.equal(createComputerSandboxRuntime([]), undefined);
+  assert.deepEqual(
+    loadSlackRuntimeConfig({
+      ...baseEnv(),
+      CEREBRO_COMPUTER_SANDBOX_GATEWAYS_JSON: "[]",
+    }).computerSandboxGateways,
+    [],
+  );
 });
 
 test("gateway adapter bounds streamed responses without content length", async () => {

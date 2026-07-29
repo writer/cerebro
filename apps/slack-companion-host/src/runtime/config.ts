@@ -74,9 +74,10 @@ function computerSandboxGateways(
   } catch {
     throw new SlackRuntimeConfigError("Computer sandbox gateway configuration is invalid.");
   }
-  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 8) {
+  if (!Array.isArray(parsed) || parsed.length > 8) {
     throw new SlackRuntimeConfigError("Computer sandbox gateway configuration is invalid.");
   }
+  if (parsed.length === 0) return Object.freeze([]);
   const providerIds = new Set<string>();
   const bindings = parsed.map((item) => {
     if (
@@ -149,7 +150,7 @@ function archetypeConfig(
     allowedEmailDomains,
     baseUrl: validatedBaseUrl(required(env.ARCHETYPE_BASE_URL)),
     oktaApiToken: required(env.OKTA_API_TOKEN),
-    oktaDomain: validatedBaseUrl(required(env.OKTA_DOMAIN)),
+    oktaDomain: validatedOktaDomain(required(env.OKTA_DOMAIN)),
     timeoutMs: positiveInteger(
       env.ARCHETYPE_REQUEST_TIMEOUT_MS,
       10_000,
@@ -229,4 +230,11 @@ function validatedBaseUrl(value: string): string {
   parsed.search = "";
   parsed.hash = "";
   return parsed.toString().replace(/\/$/, "");
+}
+
+function validatedOktaDomain(value: string): string {
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//iu.test(value)
+    ? value
+    : `https://${value}`;
+  return validatedBaseUrl(candidate);
 }
