@@ -79,6 +79,20 @@ pending instead of becoming false successes or failures.
 
 `encodeSlackCommandEnvelope` and `encodeSlackActionEnvelope` produce bounded, versioned values for transport-owned command and interaction handlers. Their decoders reject unknown fields and malformed input before admission. `projectSlackVisibleStatus`, `projectAssistantTurnProgress`, and `projectSlackMultipartDelivery` produce stable host-neutral operations and exact accepted-part records. Private adapters choose routes and Slack API methods.
 
+`src/scratchpad` defines the portable contract for explicit, thread-scoped
+working notes. The policy derives opaque workspace-channel-thread and author
+references, accepts only explicit add, show, or clear commands, bounds each
+note and the complete scratchpad, and removes credential-shaped values at the
+storage boundary. Scratchpad notes are untrusted context. They do not carry
+tool authority, approval, or evidence freshness. Hosts own durable persistence,
+expiry cleanup, Slack actor verification, and user-visible delivery.
+
+A host may save a delivered, citation-validated Cerebro turn autonomously when
+the note carries a hashed source trace. Autonomous writes stop at the same
+scratchpad limits and cannot replace human-authored notes. This autonomy is
+limited to working-memory maintenance; it does not authorize another tool,
+external effect, approval, or cross-thread write.
+
 Durable schedule definitions keep a stable schedule identity, revision, work
 digest, cadence anchor, and misfire policy. The portable planner derives the
 same due times after a restart or topology change and materializes occurrences

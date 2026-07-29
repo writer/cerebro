@@ -113,6 +113,8 @@ export * from "./risk-attestation/contracts.js";
 export * from "./risk-attestation/policy.js";
 export * from "./security/redaction.js";
 export * from "./safety/policy.js";
+export * from "./scratchpad/contracts.js";
+export * from "./scratchpad/policy.js";
 export * from "./thread-binding.js";
 export * from "./tools/catalog.js";
 export * from "./tools/contracts.js";
