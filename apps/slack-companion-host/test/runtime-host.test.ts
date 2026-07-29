@@ -508,6 +508,7 @@ test("failed claimed mentions persist a blocked outcome before retries are suppr
       teamId: "T-ONE",
       text: "<@BOT> What changed?",
       threadTs: "1710000000.000001",
+      userId: "U-ONE",
     };
     const client = {
       chat: {

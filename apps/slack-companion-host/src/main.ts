@@ -2,6 +2,7 @@ import { ArchetypeWorkspaceClient } from "./archetype-client.js";
 import { CerebroAskClient } from "./runtime/cerebro-ask-client.js";
 import { loadSlackRuntimeConfig } from "./runtime/config.js";
 import { FileOutcomeStore } from "./runtime/outcome-store.js";
+import { FileThreadScratchpadStore } from "./runtime/thread-scratchpad-store.js";
 import {
   AssistantQuestionService,
   createAssistantTurnHost,
@@ -12,6 +13,7 @@ import { ArchetypeSlackWorkspace } from "./runtime/archetype-workspace.js";
 async function main(): Promise<void> {
   const config = loadSlackRuntimeConfig();
   const outcomes = new FileOutcomeStore(config.memoryDirectory);
+  const scratchpads = new FileThreadScratchpadStore(config.memoryDirectory);
   const host = createAssistantTurnHost(outcomes);
   const questions = new AssistantQuestionService(host, new CerebroAskClient({
     apiKey: config.cerebroReadApiKey,
@@ -32,6 +34,7 @@ async function main(): Promise<void> {
     host,
     questions,
     outcomes,
+    scratchpads,
     archetype,
   );
   await runtime.start();

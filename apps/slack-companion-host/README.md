@@ -22,6 +22,31 @@ npm start --workspace @writer/cerebro-slack-companion-host
 
 The process accepts configured Slack app mentions, preserves bounded thread context, sends governed Cerebro requests, and records durable delivery and outcome state. `/healthz` reports process health. `/readyz` opens after Slack and the outcome store are ready.
 
+## Thread scratchpad
+
+People can keep short-lived working context with the bot inside one Slack
+thread:
+
+- `@Cerebro remember <note>` or `@Cerebro scratchpad add <note>` saves a note.
+- `@Cerebro scratchpad` shows the current notes.
+- `@Cerebro clear scratchpad` removes every note in the thread.
+
+After Cerebro delivers a citation-validated answer, it saves a bounded
+question-and-answer note without waiting for a command. This gives later turns
+working continuity beyond Slack's bounded history window. Autonomous notes
+carry a hashed `/grc/ask` trace reference. They do not replace or evict notes
+that a person explicitly saved.
+
+The runtime uses saved notes for later questions only in the same workspace,
+channel, and thread. Notes expire seven days after they are saved. A scratchpad
+holds at most 20 notes and 8 KB of text. Credential-shaped values are redacted
+before storage, and saved text is treated as untrusted context: it cannot grant
+tool authority or override current Cerebro evidence.
+
+Scratchpads use `CEREBRO_SLACK_RUNTIME_MEMORY_DIR` alongside the durable outcome
+store. The deployment must mount that directory on persistent storage if notes
+must survive a task or container replacement.
+
 ## Archetype workspace
 
 Set `ARCHETYPE_WORKSPACE_ENABLED=true` to replace the static App Home with the
