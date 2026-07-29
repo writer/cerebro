@@ -74,9 +74,10 @@ function computerSandboxGateways(
   } catch {
     throw new SlackRuntimeConfigError("Computer sandbox gateway configuration is invalid.");
   }
-  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > 8) {
+  if (!Array.isArray(parsed) || parsed.length > 8) {
     throw new SlackRuntimeConfigError("Computer sandbox gateway configuration is invalid.");
   }
+  if (parsed.length === 0) return Object.freeze([]);
   const providerIds = new Set<string>();
   const bindings = parsed.map((item) => {
     if (
