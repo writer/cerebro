@@ -144,6 +144,7 @@ export default function Sidebar() {
       <Link
         key={link.href}
         href={link.href}
+        prefetch={false}
         title={link.label}
         className={`relative flex items-center gap-2.5 rounded-lg px-2.5 py-[8px] text-[13px] font-medium transition ${
           active
@@ -174,7 +175,7 @@ export default function Sidebar() {
           } max-md:justify-center`}
         >
           {groupHref ? (
-            <Link href={groupHref} title={group.label} className="flex min-w-0 flex-1 items-center gap-2.5">
+            <Link href={groupHref} prefetch={false} title={group.label} className="flex min-w-0 flex-1 items-center gap-2.5">
               <NavIcon href={group.iconHref} />
               <span className="max-md:hidden">{group.label}</span>
             </Link>

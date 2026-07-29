@@ -55,7 +55,11 @@ const PROXY_TIMEOUT_MS = Number.isFinite(proxyTimeoutMs) && proxyTimeoutMs > 0 ?
 const PROXY_CACHE_TTL_MS = parseNonNegativeMs(process.env.CEREBRO_PROXY_CACHE_TTL_MS, 60000);
 const PROXY_CACHE_STALE_MS = parseNonNegativeMs(process.env.CEREBRO_PROXY_CACHE_STALE_MS, 300000);
 const PROXY_CACHE_MAX_ENTRIES = 400;
-const RETRY_STATUSES = new Set([502, 503, 504]);
+const RETRY_STATUSES = new Set([502, 504]);
+
+export const shouldRetryUpstreamResponse = (response: Response) =>
+  RETRY_STATUSES.has(response.status)
+  || (response.status === 503 && Boolean(response.headers.get("retry-after")));
 
 type CachedProxyResponse = {
   status: number;
@@ -291,7 +295,7 @@ export const fetchCerebro = async (target: URL, init: RequestInit = {}) => {
         signal: controller.signal,
       });
 
-      if (attempt < maxAttempts && RETRY_STATUSES.has(response.status)) {
+      if (attempt < maxAttempts && shouldRetryUpstreamResponse(response)) {
         span.increment("upstream.retry.count");
         span.event("cerebro.upstream.retry", {
           attempt,

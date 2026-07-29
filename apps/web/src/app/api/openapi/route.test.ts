@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -28,6 +31,12 @@ describe("OpenAPI document parsing", () => {
     expect(parseOpenApiDocument("plain scalar")).toBeNull();
   });
 
+  it("keeps the shared upstream load independent of one client connection", () => {
+    const source = readFileSync(join(process.cwd(), "src/app/api/openapi/route.ts"), "utf8");
+
+    expect(source).not.toContain("signal: request.signal");
+  });
+
   it("rejects schema requests without a trusted identity", async () => {
     delete process.env.CEREBRO_IDENTITY_PROFILE;
     delete process.env.CEREBRO_TRUSTED_IDENTITY_HEADERS;
@@ -51,6 +60,7 @@ describe("OpenAPI document parsing", () => {
     }));
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, max-age=300");
     await expect(response.json()).resolves.toMatchObject({ openapi: "3.1.0" });
   });
 });

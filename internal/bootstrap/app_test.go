@@ -619,6 +619,42 @@ type stubStore struct {
 
 func (s stubStore) Ping(context.Context) error { return s.err }
 
+type healthCheckBarrier struct {
+	mu      sync.Mutex
+	started int
+	release chan struct{}
+}
+
+func (b *healthCheckBarrier) wait() {
+	b.mu.Lock()
+	b.started++
+	if b.started == 2 {
+		close(b.release)
+	}
+	b.mu.Unlock()
+	<-b.release
+}
+
+type barrierAppendLog struct {
+	barrier *healthCheckBarrier
+}
+
+func (s barrierAppendLog) Ping(context.Context) error {
+	s.barrier.wait()
+	return nil
+}
+
+func (s barrierAppendLog) Append(context.Context, *cerebrov1.EventEnvelope) error { return nil }
+
+type barrierStore struct {
+	barrier *healthCheckBarrier
+}
+
+func (s barrierStore) Ping(context.Context) error {
+	s.barrier.wait()
+	return nil
+}
+
 type deadlineAwareStore struct {
 	sawDeadline bool
 }
@@ -4595,6 +4631,21 @@ func TestBootstrapHealthDegradesWhenRustGraphReadAuthorityIsUnavailable(t *testi
 	}
 	if component.GetDetail() != "unhealthy" || component.GetDetail() == rawDependencyError {
 		t.Fatalf("authoritative graph detail = %q, want sanitized detail", component.GetDetail())
+	}
+}
+
+func TestPublicHealthChecksDependenciesConcurrently(t *testing.T) {
+	barrier := &healthCheckBarrier{release: make(chan struct{})}
+	response := publicHealthResponse(context.Background(), Dependencies{
+		AppendLog:  barrierAppendLog{barrier: barrier},
+		StateStore: barrierStore{barrier: barrier},
+	})
+
+	if response.GetStatus() != "ready" {
+		t.Fatalf("health status = %q, want ready", response.GetStatus())
+	}
+	if barrier.started != 2 {
+		t.Fatalf("concurrent health checks started = %d, want 2", barrier.started)
 	}
 }
 
