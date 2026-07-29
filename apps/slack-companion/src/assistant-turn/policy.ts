@@ -34,7 +34,7 @@ const TURN_BUDGETS: Record<AssistantExecutionLaneV1, Omit<AssistantTurnBudgetV1,
   ignore: { latency_budget_ms: 5_000, max_selected_capabilities: 0, max_tool_calls: 0 },
   converse: { latency_budget_ms: 5_000, max_selected_capabilities: 0, max_tool_calls: 0 },
   continue: { latency_budget_ms: 5_000, max_selected_capabilities: 0, max_tool_calls: 0 },
-  lookup: { latency_budget_ms: 30_000, max_selected_capabilities: 4, max_tool_calls: 3 },
+  lookup: { latency_budget_ms: 60_000, max_selected_capabilities: 4, max_tool_calls: 3 },
   investigate: { latency_budget_ms: 180_000, max_selected_capabilities: 10, max_tool_calls: 8 },
   act: { latency_budget_ms: 300_000, max_selected_capabilities: 12, max_tool_calls: 12 },
 };
