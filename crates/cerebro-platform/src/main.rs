@@ -1407,6 +1407,7 @@ struct ProjectionAuthorityQuery {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    install_tls_crypto_provider()?;
     match env::args().nth(1).as_deref() {
         None | Some("demo") => demo().await,
         Some("serve") => serve_memory(OrganizationalGraph::new()).await,
@@ -1431,6 +1432,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         Some(other) => Err(format!("unknown command {other:?}").into()),
     }
+}
+
+fn install_tls_crypto_provider() -> Result<(), Box<dyn Error>> {
+    if rustls::crypto::CryptoProvider::get_default().is_some() {
+        return Ok(());
+    }
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .map_err(|_| "TLS crypto provider was initialized concurrently".into())
 }
 
 async fn serve_memory(graph: OrganizationalGraph) -> Result<(), Box<dyn Error>> {
@@ -3764,6 +3774,14 @@ mod tests {
     use super::*;
 
     const TEST_SHARED_SECRET: &str = "test-organizational-graph-secret-32-bytes";
+
+    #[test]
+    fn startup_installs_a_tls_crypto_provider() {
+        install_tls_crypto_provider().expect("TLS crypto provider should install");
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+        install_tls_crypto_provider()
+            .expect("TLS crypto provider installation should be idempotent");
+    }
 
     #[test]
     fn aws_secrets_manager_endpoint_requires_a_safe_transport() {
