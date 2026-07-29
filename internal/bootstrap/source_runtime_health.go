@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/nhicoverage"
+	"github.com/writer/cerebro/internal/operationtelemetry"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	"github.com/writer/cerebro/internal/sourcehealth"
@@ -622,27 +623,29 @@ func (a *App) sourceRuntimeHealthRecords(ctx context.Context, runtimes []*cerebr
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error {
 		runStore, ok := a.deps.GraphStore.(graphingest.RunStore)
-		if !ok || isNilInterface(runStore) {
+		configured := ok && !isNilInterface(runStore)
+		return operationtelemetry.Run(groupCtx, "sourcehealth.latest_graph_runs", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimeIDs)}), func(ctx context.Context) (telemetry.Attributes, error) {
+			var err error
 			graphRuns = map[string]*graphstore.IngestRun{}
-			return nil
-		}
-		var loadErr error
-		graphRuns, loadErr = sourcehealth.LatestGraphIngestRuns(groupCtx, runStore, runtimeIDs)
-		return loadErr
+			if configured {
+				graphRuns, err = sourcehealth.LatestGraphIngestRuns(ctx, runStore, runtimeIDs)
+			}
+			return telemetry.Attrs(telemetry.Field{Key: "run_count", Value: len(graphRuns)}, telemetry.Field{Key: "store_configured", Value: configured}), err
+		})
 	})
 	group.Go(func() error {
 		runStore := findingEvaluationRunStore(a.deps.StateStore)
-		if runStore == nil {
+		return operationtelemetry.Run(groupCtx, "sourcehealth.latest_finding_runs", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimeIDs)}), func(ctx context.Context) (telemetry.Attributes, error) {
 			findingRuns = map[string]*cerebrov1.FindingEvaluationRun{}
-			return nil
-		}
-		var loadErr error
-		findingRuns, loadErr = sourcehealth.LatestFindingEvaluationRuns(groupCtx, runStore, runtimeIDs)
-		if errors.Is(loadErr, findings.ErrRuntimeUnavailable) {
-			findingRuns = map[string]*cerebrov1.FindingEvaluationRun{}
-			return nil
-		}
-		return loadErr
+			var err error
+			if runStore != nil {
+				findingRuns, err = sourcehealth.LatestFindingEvaluationRuns(ctx, runStore, runtimeIDs)
+				if errors.Is(err, findings.ErrRuntimeUnavailable) {
+					findingRuns, err = map[string]*cerebrov1.FindingEvaluationRun{}, nil
+				}
+			}
+			return telemetry.Attrs(telemetry.Field{Key: "run_count", Value: len(findingRuns)}, telemetry.Field{Key: "store_configured", Value: runStore != nil}), err
+		})
 	})
 	if err := group.Wait(); err != nil {
 		return nil, err

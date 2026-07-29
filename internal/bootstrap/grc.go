@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -22,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/grctrends"
 	"github.com/writer/cerebro/internal/grcupload"
 	"github.com/writer/cerebro/internal/grcvendor"
+	"github.com/writer/cerebro/internal/operationtelemetry"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecoverage"
 	questionnairehttp "github.com/writer/cerebro/internal/sourcehttp/questionnaire"
@@ -154,54 +154,60 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	findingIDs := grcFindingIDs(findings)
+	generatedAt := time.Now().UTC()
 	var (
-		evidence       []*cerebrov1.FindingEvidence
-		findingSummary *ports.FindingSummary
-		evidenceCount  *int
-		aggregate      *ports.GRCDashboardAggregate
-		wg             sync.WaitGroup
-		errs           = make(chan error, 3)
+		evidence        []*cerebrov1.FindingEvidence
+		findingSummary  *ports.FindingSummary
+		evidenceCount   *int
+		aggregate       *ports.GRCDashboardAggregate
+		sourceSummaries []sourceRuntimeHealthSummary
+		coverage        []sourcecoverage.Record
 	)
-	wg.Add(2)
-	go func(parent context.Context) {
-		defer wg.Done()
+	group, groupCtx := errgroup.WithContext(r.Context())
+	group.Go(func() error {
 		var err error
-		ctx, evidenceSpan := telemetry.Start(parent, "grc.dashboard.evidence", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}))
-		evidenceRequest := r.WithContext(ctx)
-		evidence, err = a.grcListEvidenceRecords(evidenceRequest, runtimes, grcEvidenceFilter{FindingIDs: findingIDs, Limit: previewLimit})
-		evidenceAttrs := telemetry.Attrs(telemetry.Field{Key: "evidence_count", Value: len(evidence)})
-		telemetry.AnnotateMainPhase(ctx, "grc.dashboard.evidence", grcTelemetryStatus(err), evidenceAttrs)
-		telemetry.End(evidenceSpan, grcTelemetryStatus(err), evidenceAttrs)
-		if err != nil {
-			errs <- err
-		}
-	}(r.Context())
-	go func(parent context.Context) {
-		defer wg.Done()
+		return operationtelemetry.RunMainPhase(groupCtx, "grc.dashboard.evidence", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}), func(ctx context.Context) (telemetry.Attributes, error) {
+			evidence, err = a.grcListEvidenceRecords(r.WithContext(ctx), runtimes, grcEvidenceFilter{FindingIDs: findingIDs, Limit: previewLimit})
+			return telemetry.Attrs(telemetry.Field{Key: "evidence_count", Value: len(evidence)}), err
+		})
+	})
+	group.Go(func() error {
 		var err error
-		ctx, aggregateSpan := telemetry.Start(parent, "grc.dashboard.aggregate", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}))
-		aggregateRequest := r.WithContext(ctx)
-		aggregate, err = a.grcDashboardAggregate(aggregateRequest, runtimes, grcFindingFilter{Status: "open"}, grcEvidenceFilter{})
-		if err == nil && aggregate == nil {
-			findingSummary, err = a.grcFindingSummary(aggregateRequest, runtimes, grcFindingFilter{Status: "open"})
-			if err == nil {
-				evidenceCount, err = a.grcEvidenceCount(aggregateRequest, runtimes, grcEvidenceFilter{FindingIDs: findingIDs})
+		return operationtelemetry.RunMainPhase(groupCtx, "grc.dashboard.aggregate", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}), func(ctx context.Context) (telemetry.Attributes, error) {
+			request := r.WithContext(ctx)
+			aggregate, err = a.grcDashboardAggregate(request, runtimes, grcFindingFilter{Status: "open"}, grcEvidenceFilter{})
+			if err == nil && aggregate == nil {
+				findingSummary, err = a.grcFindingSummary(request, runtimes, grcFindingFilter{Status: "open"})
+				if err == nil {
+					evidenceCount, err = a.grcEvidenceCount(request, runtimes, grcEvidenceFilter{FindingIDs: findingIDs})
+				}
 			}
-		}
-		attrs := telemetry.Attrs()
-		if aggregate != nil {
-			attrs = attrs.WithField(telemetry.Field{Key: "evidence_count", Value: aggregate.EvidenceCount})
-			attrs = attrs.WithField(telemetry.Field{Key: "open_findings", Value: aggregate.FindingSummary.OpenFindings})
-		}
-		telemetry.AnnotateMainPhase(ctx, "grc.dashboard.aggregate", grcTelemetryStatus(err), attrs)
-		telemetry.End(aggregateSpan, grcTelemetryStatus(err), attrs)
-		if err != nil {
-			errs <- err
-		}
-	}(r.Context())
-	wg.Wait()
-	close(errs)
-	if err := joinGRCErrors(errs); err != nil {
+			attrs := telemetry.Attrs()
+			if aggregate != nil {
+				attrs = attrs.WithField(telemetry.Field{Key: "evidence_count", Value: aggregate.EvidenceCount}).
+					WithField(telemetry.Field{Key: "open_findings", Value: aggregate.FindingSummary.OpenFindings})
+			}
+			return attrs, err
+		})
+	})
+	group.Go(func() error {
+		var err error
+		return operationtelemetry.RunMainPhase(groupCtx, "grc.dashboard.runtime_health", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}), func(ctx context.Context) (telemetry.Attributes, error) {
+			sourceSummaries, err = a.grcSourceRuntimeHealthSummaries(ctx, runtimes, generatedAt)
+			return telemetry.Attrs(telemetry.Field{Key: "source_summary_count", Value: len(sourceSummaries)}), err
+		})
+	})
+	group.Go(func() error {
+		var err error
+		return operationtelemetry.RunMainPhase(groupCtx, "grc.dashboard.coverage", telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}), func(ctx context.Context) (telemetry.Attributes, error) {
+			coverage, err = a.sourceCoverageRecordsScoped(ctx, runtimes, ports.SourceRuntimeFilter{
+				RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID,
+				SourceID: scope.SourceID, Limit: scope.Limit,
+			}, generatedAt, coverageScope)
+			return telemetry.Attrs(telemetry.Field{Key: "coverage_record_count", Value: len(coverage)}), err
+		})
+	})
+	if err := group.Wait(); err != nil {
 		statusCode = grcHTTPStatusCode(err)
 		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, err)
@@ -219,21 +225,6 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	findingItems := grcFindingItems(findings, runtimeSourceIDs, evidenceCounts)
 	evidenceItems := grcEvidenceItems(evidence, grcFindingTitleMap(findings))
 	controls := grcControlItems(findingItems, evidenceItems)
-	generatedAt := time.Now().UTC()
-	sourceSummaries, err := a.grcSourceRuntimeHealthSummaries(r.Context(), runtimes, generatedAt)
-	if err != nil {
-		statusCode = grcHTTPStatusCode(err)
-		status, endAttrs = grcTelemetryError(endAttrs, err)
-		writeGRCError(w, err)
-		return
-	}
-	coverage, err := a.sourceCoverageRecordsScoped(r.Context(), runtimes, ports.SourceRuntimeFilter{RuntimeID: scope.RuntimeID, RuntimeIDs: scope.RuntimeIDs, TenantID: scope.TenantID, SourceID: scope.SourceID, Limit: scope.Limit}, generatedAt, coverageScope)
-	if err != nil {
-		statusCode = grcHTTPStatusCode(err)
-		status, endAttrs = grcTelemetryError(endAttrs, err)
-		writeGRCError(w, err)
-		return
-	}
 	coverageBlindSpots := sourcecoverage.BlindSpots(coverage)
 	serializedCoverageBlindSpots := coverageBlindSpots
 	productAreas := grcproductareas.BuildCoverageViews(coverage)
@@ -271,14 +262,6 @@ func grcDashboardPreviewLimitFor(limit uint32) uint32 {
 		return grcDashboardPreviewLimit
 	}
 	return limit
-}
-
-func joinGRCErrors(errs <-chan error) error {
-	var joined error
-	for err := range errs {
-		joined = errors.Join(joined, err)
-	}
-	return joined
 }
 
 const (
