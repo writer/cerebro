@@ -78,6 +78,12 @@ also need separate Rust ownership work.
 API-key collection authority also requires an explicit checked-in header and
 scheme contract. A provider proof manifest does not make a source
 Rust-authoritative when credential placement is still implicit or bespoke.
+Required provider query scope is compiled from checked-in configuration and
+must resolve before Rust makes a provider request. Provider records may also
+use a checked-in composite identity template when the provider has no stable
+single-field identifier. Rust validates those templates at catalog load,
+requires every referenced record value, and rejects blank, control-bearing, or
+oversized rendered identities before mapping or graph admission.
 
 `cerebro-agent-context` exposes bounded search, lookup, expansion, path, and explanation operations. It does not expose Cypher or store mutation.
 

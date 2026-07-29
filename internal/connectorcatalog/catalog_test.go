@@ -829,6 +829,65 @@ func TestBuiltinMastodonPreservesProviderContracts(t *testing.T) {
 	}
 }
 
+func TestBuiltinAbuseIPDBPreservesProviderContracts(t *testing.T) {
+	entry, ok, err := BuiltinEntry("abuseipdb")
+	if err != nil {
+		t.Fatalf("BuiltinEntry(abuseipdb) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(abuseipdb) ok = false, want true")
+	}
+	if entry.Definition.Auth.Model != "api_key" ||
+		entry.Definition.Auth.TokenHeader != "Key" ||
+		entry.Definition.Auth.TokenScheme != "" {
+		t.Fatalf("abuseipdb auth = %#v, want exact Key header", entry.Definition.Auth)
+	}
+
+	reports := catalogFamily(t, entry.Definition.ResourceFamilies, "reports")
+	if reports.Pagination == nil ||
+		reports.Pagination.Type != "page" ||
+		reports.Pagination.PageParam != "page" ||
+		reports.Pagination.PageSizeParam != "perPage" ||
+		reports.Pagination.PageSize != 100 {
+		t.Fatalf("reports pagination = %#v, want page/perPage with 100 records", reports.Pagination)
+	}
+	if reports.Config == nil ||
+		reports.Config.ConfigQuery["ipAddress"] != "ip_address" ||
+		reports.Config.ConfigQuery["maxAgeInDays"] != "max_age_in_days" ||
+		reports.Config.ConfigAttributes["resource_id"] != "ip_address" ||
+		reports.Config.IDTemplate != "${reportedAt}:${reporterId}" {
+		t.Fatalf("reports config = %#v, want scoped query and composite identity", reports.Config)
+	}
+	if reports.Projection == nil ||
+		reports.Projection.Fields["title"] != "comment" ||
+		reports.Projection.StaticFields["status"] != "observed" ||
+		reports.Projection.StaticFields["severity"] != "reported" {
+		t.Fatalf("reports projection = %#v, want finding fields", reports.Projection)
+	}
+	if _, ok := reports.Projection.Fields["finding_id"]; ok {
+		t.Fatalf("reports projection = %#v, must not collapse findings by timestamp", reports.Projection)
+	}
+
+	blacklist := catalogFamily(t, entry.Definition.ResourceFamilies, "ip_addresses")
+	if blacklist.Pagination == nil || blacklist.Pagination.Type != "none" {
+		t.Fatalf("ip_addresses pagination = %#v, want one bounded response", blacklist.Pagination)
+	}
+	if blacklist.StaticQuery["confidenceMinimum"] != "90" || blacklist.StaticQuery["limit"] != "10000" {
+		t.Fatalf("ip_addresses static query = %#v, want bounded blacklist contract", blacklist.StaticQuery)
+	}
+	if blacklist.Config == nil ||
+		blacklist.Config.ConfigQuery["confidenceMinimum"] != "confidence_minimum" ||
+		blacklist.Config.ConfigQuery["ipVersion"] != "ip_version" {
+		t.Fatalf("ip_addresses config = %#v, want provider filters", blacklist.Config)
+	}
+	if blacklist.Projection == nil ||
+		blacklist.Projection.Fields["resource_id"] != "ipAddress" ||
+		blacklist.Projection.Fields["resource_name"] != "ipAddress" ||
+		blacklist.Projection.StaticFields["resource_type"] != "ip_address" {
+		t.Fatalf("ip_addresses projection = %#v, want IP resource fields", blacklist.Projection)
+	}
+}
+
 func TestBuiltinCatalogIncludesAdditionalGapEntries(t *testing.T) {
 	for sourceID, wantStatus := range map[string]string{
 		"checkr":        StatusGenerateable,
