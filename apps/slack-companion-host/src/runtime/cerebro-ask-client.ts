@@ -13,6 +13,7 @@ export interface CerebroAskResult {
 }
 
 export interface CerebroAskClientOptions {
+  answerAuthority: SlackAnswerAuthorityPort;
   apiKey: string;
   baseUrl: string;
   fetchImpl?: typeof fetch;
@@ -61,28 +62,28 @@ export class CerebroAskClient {
       throw new CerebroAskError(sourceState(response.status), `Cerebro ask failed with status ${response.status}.`);
     }
 
-    let summary: CerebroAskResult | undefined;
+    let summary: Omit<SlackAnswerCandidate, "completed" | "schema_version" | "trace_id"> | undefined;
     let done = false;
+    let traceId = "";
     try {
       for await (const event of readSse(response.body)) {
         if (event.name === "summary") {
           const markdown = text(event.data.markdown);
           if (markdown) {
             summary = {
-              citationValidationPassed: event.data.citation_validation === undefined
-                ? false
-                : event.data.citation_validation !== null
-                  && typeof event.data.citation_validation === "object"
-                  && (event.data.citation_validation as Record<string, unknown>).ok === true,
+              ...(citationValidation(event.data.citation_validation) === undefined
+                ? {}
+                : { citation_validation: citationValidation(event.data.citation_validation) }),
               markdown,
-              safeRefusal: isStructuredSafeRefusal(event.data.unsupported_query),
+              ...(unsupportedQuery(event.data.unsupported_query) === undefined
+                ? {}
+                : { unsupported_query: unsupportedQuery(event.data.unsupported_query) }),
             };
           }
         }
         if (event.name === "done") {
           done = true;
-          const traceId = text(event.data.trace_id);
-          if (summary && traceId) summary.traceId = traceId;
+          traceId = text(event.data.trace_id);
           break;
         }
         if (event.name === "error") {
@@ -96,29 +97,80 @@ export class CerebroAskClient {
       }
       throw new CerebroAskError("unavailable", errorMessage(error));
     }
-    if (!done || !summary) {
+    if (!done || !summary || !traceId) {
       throw new CerebroAskError("unavailable", "Cerebro ended the response before a verified summary was available.");
     }
-    if (!summary.citationValidationPassed && !summary.safeRefusal) {
-      throw new CerebroAskError("unavailable", "Cerebro returned an answer without validated citations.");
+    let decision;
+    try {
+      decision = await this.options.answerAuthority.validate({
+        ...summary,
+        completed: true,
+        schema_version: "slack-answer-candidate/v1",
+        trace_id: traceId,
+      });
+    } catch (error: unknown) {
+      throw new CerebroAskError("unavailable", errorMessage(error));
     }
-    return summary;
+    return {
+      citationValidationPassed: decision.verified,
+      markdown: summary.markdown,
+      safeRefusal: decision.disposition === "safe_refusal",
+      traceId: decision.trace_id,
+    };
   }
 }
 
-function isStructuredSafeRefusal(value: unknown): boolean {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const refusal = value as Record<string, unknown>;
-  return text(refusal.code) !== ""
-    && text(refusal.reason) !== ""
-    && text(refusal.trace_id) !== ""
-    && stringArray(refusal.supported_intents)
-    && stringArray(refusal.suggested_rewrites);
+function citationValidation(
+  value: unknown,
+): SlackAnswerCandidate["citation_validation"] | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const validation = value as Record<string, unknown>;
+  if (
+    typeof validation.ok !== "boolean"
+    || !nonNegativeInteger(validation.referenced_urn_count)
+    || !nonNegativeInteger(validation.row_urn_count)
+  ) {
+    return undefined;
+  }
+  return {
+    ok: validation.ok,
+    referenced_urn_count: validation.referenced_urn_count,
+    row_urn_count: validation.row_urn_count,
+  };
 }
 
-function stringArray(value: unknown): boolean {
-  return Array.isArray(value)
-    && value.every((item) => typeof item === "string" && item.trim() !== "");
+function unsupportedQuery(
+  value: unknown,
+): SlackAnswerCandidate["unsupported_query"] | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const refusal = value as Record<string, unknown>;
+  const supportedIntents = stringArray(refusal.supported_intents);
+  const suggestedRewrites = stringArray(refusal.suggested_rewrites);
+  const code = text(refusal.code);
+  const reason = text(refusal.reason);
+  const traceId = text(refusal.trace_id);
+  if (!code || !reason || !traceId || !supportedIntents || !suggestedRewrites) return undefined;
+  return {
+    code,
+    reason,
+    suggested_rewrites: suggestedRewrites,
+    supported_intents: supportedIntents,
+    trace_id: traceId,
+  };
+}
+
+function stringArray(value: unknown): string[] | undefined {
+  if (
+    !Array.isArray(value)
+    || value.some((item) => typeof item !== "string" || item.trim() === "")
+  ) {
+    return undefined;
+  }
+  return value.map((item) => (item as string).trim());
+}
+
+function nonNegativeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
 }
 
 interface SseEvent {
@@ -201,3 +253,7 @@ function errorMessage(value: unknown): string {
 function isAbortError(value: unknown): boolean {
   return value instanceof DOMException && (value.name === "AbortError" || value.name === "TimeoutError");
 }
+import {
+  type SlackAnswerAuthorityPort,
+  type SlackAnswerCandidate,
+} from "./slack-answer-authority-client.js";

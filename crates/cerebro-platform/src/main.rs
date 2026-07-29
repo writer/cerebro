@@ -5,6 +5,7 @@ mod cutover_command;
 mod oidc;
 mod parity_command;
 mod rpc;
+mod slack_authority;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -1412,6 +1413,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("serve") => serve_memory(OrganizationalGraph::new()).await,
         Some("serve-demo") => serve_memory(demo_graph()?.0).await,
         Some("serve-neo4j-readonly") => serve_neo4j_readonly().await,
+        Some("serve-slack-authority") => slack_authority::serve().await,
         Some("serve-neo4j") => serve_neo4j().await,
         Some("serve-neo4j-consumer") => serve_neo4j_consumer().await,
         Some("consume-append-log") => consume_append_log().await,
@@ -1425,7 +1427,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("show-authority") => cutover_command::show_authority().await,
         Some("--help" | "-h") => {
             println!(
-                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-neo4j|serve-neo4j-consumer|consume-append-log|migrate-stores|rebuild-lifecycle-projection|sync-source|catalog-summary|compare-projection|evaluate-family|promote-family|show-authority>"
+                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-slack-authority|serve-neo4j|serve-neo4j-consumer|consume-append-log|migrate-stores|rebuild-lifecycle-projection|sync-source|catalog-summary|compare-projection|evaluate-family|promote-family|show-authority>"
             );
             Ok(())
         }

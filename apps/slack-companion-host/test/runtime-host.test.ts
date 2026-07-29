@@ -8,6 +8,10 @@ import { CerebroAskClient, CerebroAskError } from "../src/runtime/cerebro-ask-cl
 import { loadSlackRuntimeConfig, SlackRuntimeConfigError } from "../src/runtime/config.js";
 import { FileOutcomeStore } from "../src/runtime/outcome-store.js";
 import {
+  SlackAnswerAuthorityClient,
+  type SlackAnswerAuthorityPort,
+} from "../src/runtime/slack-answer-authority-client.js";
+import {
   AssistantQuestionService,
   closeHealthServer,
   contextualQuestion,
@@ -19,6 +23,28 @@ import {
   readSlackThreadContext,
   slackDeliveryReferences,
 } from "../src/runtime/slack-runtime.js";
+
+const testAnswerAuthority: SlackAnswerAuthorityPort = {
+  async validate(candidate) {
+    if (candidate.unsupported_query) {
+      return {
+        disposition: "safe_refusal",
+        schema_version: "slack-answer-decision/v1",
+        trace_id: candidate.trace_id,
+        verified: false,
+      };
+    }
+    if (candidate.citation_validation?.ok) {
+      return {
+        disposition: "grounded",
+        schema_version: "slack-answer-decision/v1",
+        trace_id: candidate.trace_id,
+        verified: true,
+      };
+    }
+    throw new Error("Rust authority rejected the candidate.");
+  },
+};
 
 test("health server cleanup is safe before listen succeeds", async () => {
   const server = createServer();
@@ -41,11 +67,46 @@ test("runtime config accepts environment-held bindings and an allowlisted worksp
   });
 
   assert.equal(config.cerebroBaseUrl, "https://cerebro.example.com");
+  assert.equal(config.slackAnswerAuthorityUrl, "http://127.0.0.1:8091");
   assert.equal(config.environmentLabel, "development");
   assert.equal(config.production, false);
   assert.equal(config.port, 3100);
   assert.equal(config.lifecycleNoticesEnabled, false);
   assert.deepEqual([...config.allowedTeamIds], ["T-ONE", "T-TWO"]);
+});
+
+test("runtime config keeps the Rust Slack authority on loopback", () => {
+  const base = {
+    CEREBRO_BASE_URL: "https://cerebro.example.com",
+    CEREBRO_READ_API_KEY: "bound-at-runtime",
+    CEREBRO_SLACK_APP_NAME: "Cerebro Development",
+    CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
+    CEREBRO_SLACK_PRODUCTION: "false",
+    CEREBRO_TENANT_ID: "tenant-one",
+    SLACK_ALLOWED_TEAM_IDS: "T-ONE",
+    SLACK_APP_TOKEN: "bound-at-runtime",
+    SLACK_BOT_TOKEN: "bound-at-runtime",
+  };
+
+  assert.equal(
+    loadSlackRuntimeConfig({
+      ...base,
+      CEREBRO_SLACK_ANSWER_AUTHORITY_URL: "http://localhost:8191/",
+    }).slackAnswerAuthorityUrl,
+    "http://localhost:8191",
+  );
+  for (const authorityUrl of [
+    "https://authority.example.com",
+    "http://10.0.0.4:8091",
+  ]) {
+    assert.throws(
+      () => loadSlackRuntimeConfig({
+        ...base,
+        CEREBRO_SLACK_ANSWER_AUTHORITY_URL: authorityUrl,
+      }),
+      SlackRuntimeConfigError,
+    );
+  }
 });
 
 test("runtime config requires durable destinations for enabled lifecycle notices", () => {
@@ -128,13 +189,18 @@ test("question service preflights one governed graph lookup and returns its veri
   try {
     let request: Request | undefined;
     const askClient = new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
       apiKey: "bound-at-runtime",
       baseUrl: "https://cerebro.example.com",
       fetchImpl: async (input, init) => {
         request = new Request(input, init);
         return sseResponse([
           ["summary", {
-            citation_validation: { ok: true },
+            citation_validation: {
+              ok: true,
+              referenced_urn_count: 1,
+              row_urn_count: 1,
+            },
             markdown: "One current finding is open.",
           }],
           ["done", { trace_id: "trace-one" }],
@@ -183,6 +249,7 @@ test("empty threaded mentions request a question without invoking Cerebro", asyn
     const service = new AssistantQuestionService(
       createAssistantTurnHost(new FileOutcomeStore(root)),
       new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
         apiKey: "bound-at-runtime",
         baseUrl: "https://cerebro.example.com",
         fetchImpl: async () => {
@@ -294,6 +361,7 @@ test("question service returns an exact source gap when Cerebro is unavailable",
     const service = new AssistantQuestionService(
       createAssistantTurnHost(store),
       new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
         apiKey: "bound-at-runtime",
         baseUrl: "https://cerebro.example.com",
         fetchImpl: async () => {
@@ -334,6 +402,7 @@ test("Cerebro ask cancels and unlocks an unfinished SSE response after an error 
     },
   });
   const client = new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
     apiKey: "bound-at-runtime",
     baseUrl: "https://cerebro.example.com",
     fetchImpl: async () => new Response(body, {
@@ -362,12 +431,13 @@ test("Cerebro ask returns after done without waiting for the SSE response to clo
     },
     start(controller) {
       controller.enqueue(new TextEncoder().encode(
-        'event: summary\ndata: {"citation_validation":{"ok":true},"markdown":"Current evidence is verified."}\n\n'
+        'event: summary\ndata: {"citation_validation":{"ok":true,"referenced_urn_count":1,"row_urn_count":1},"markdown":"Current evidence is verified."}\n\n'
           + 'event: done\ndata: {"trace_id":"trace-complete"}\n\n',
       ));
     },
   });
   const client = new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
     apiKey: "bound-at-runtime",
     baseUrl: "https://cerebro.example.com",
     fetchImpl: async () => new Response(body, {
@@ -398,13 +468,14 @@ test("Cerebro ask ignores an error event sent after done", async () => {
     },
     start(controller) {
       controller.enqueue(new TextEncoder().encode(
-        'event: summary\ndata: {"citation_validation":{"ok":true},"markdown":"Current evidence is verified."}\n\n'
+        'event: summary\ndata: {"citation_validation":{"ok":true,"referenced_urn_count":1,"row_urn_count":1},"markdown":"Current evidence is verified."}\n\n'
           + 'event: done\ndata: {"trace_id":"trace-complete"}\n\n'
           + 'event: error\ndata: {"message":"post-completion cleanup failed"}\n\n',
       ));
     },
   });
   const client = new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
     apiKey: "bound-at-runtime",
     baseUrl: "https://cerebro.example.com",
     fetchImpl: async () => new Response(body, {
@@ -440,6 +511,7 @@ test("Cerebro ask classifies a mid-stream deadline as timed out", async () => {
     },
   });
   const client = new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
     apiKey: "bound-at-runtime",
     baseUrl: "https://cerebro.example.com",
     fetchImpl: async () => new Response(body, {
@@ -461,6 +533,7 @@ test("Cerebro ask classifies a mid-stream deadline as timed out", async () => {
 
 test("Cerebro ask rejects a summary whose citations did not validate", async () => {
   const client = new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
     apiKey: "bound-at-runtime",
     baseUrl: "https://cerebro.example.com",
     fetchImpl: async () => sseResponse([
@@ -477,12 +550,90 @@ test("Cerebro ask rejects a summary whose citations did not validate", async () 
     client.ask("Are we clear?", new AbortController().signal),
     (error: unknown) => error instanceof CerebroAskError
       && error.sourceState === "unavailable"
-      && /without validated citations/u.test(error.message),
+      && /Rust authority rejected/u.test(error.message),
   );
+});
+
+test("Rust Slack answer authority receives the bounded candidate and binds the trace", async () => {
+  let body: unknown;
+  const authority = new SlackAnswerAuthorityClient({
+    baseUrl: "http://127.0.0.1:8091",
+    fetchImpl: async (_input, init) => {
+      body = JSON.parse(String(init?.body));
+      return Response.json({
+        disposition: "grounded",
+        schema_version: "slack-answer-decision/v1",
+        trace_id: "trace-grounded",
+        verified: true,
+      });
+    },
+  });
+
+  const decision = await authority.validate({
+    citation_validation: {
+      ok: true,
+      referenced_urn_count: 2,
+      row_urn_count: 2,
+    },
+    completed: true,
+    markdown: "Current evidence is verified.",
+    schema_version: "slack-answer-candidate/v1",
+    trace_id: "trace-grounded",
+  });
+
+  assert.equal(decision.disposition, "grounded");
+  assert.deepEqual(body, {
+    citation_validation: {
+      ok: true,
+      referenced_urn_count: 2,
+      row_urn_count: 2,
+    },
+    completed: true,
+    markdown: "Current evidence is verified.",
+    schema_version: "slack-answer-candidate/v1",
+    trace_id: "trace-grounded",
+  });
+});
+
+test("Rust Slack answer authority rejects a cross-trace or contradictory decision", async () => {
+  for (const responseBody of [
+    {
+      disposition: "grounded",
+      schema_version: "slack-answer-decision/v1",
+      trace_id: "other-trace",
+      verified: true,
+    },
+    {
+      disposition: "safe_refusal",
+      schema_version: "slack-answer-decision/v1",
+      trace_id: "trace-grounded",
+      verified: true,
+    },
+  ]) {
+    const authority = new SlackAnswerAuthorityClient({
+      baseUrl: "http://127.0.0.1:8091",
+      fetchImpl: async () => Response.json(responseBody),
+    });
+    await assert.rejects(
+      authority.validate({
+        citation_validation: {
+          ok: true,
+          referenced_urn_count: 1,
+          row_urn_count: 1,
+        },
+        completed: true,
+        markdown: "Current evidence is verified.",
+        schema_version: "slack-answer-candidate/v1",
+        trace_id: "trace-grounded",
+      }),
+      /invalid decision/u,
+    );
+  }
 });
 
 test("Cerebro ask accepts a structured safe refusal without citations", async () => {
   const client = new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
     apiKey: "bound-at-runtime",
     baseUrl: "https://cerebro.example.com",
     fetchImpl: async () => sseResponse([
@@ -519,6 +670,7 @@ test("Cerebro ask accepts a structured safe refusal without citations", async ()
 
 test("Cerebro ask rejects an unstructured refusal marker without citations", async () => {
   const client = new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
     apiKey: "bound-at-runtime",
     baseUrl: "https://cerebro.example.com",
     fetchImpl: async () => sseResponse([
@@ -538,7 +690,7 @@ test("Cerebro ask rejects an unstructured refusal marker without citations", asy
     client.ask("Show everything.", new AbortController().signal),
     (error: unknown) => error instanceof CerebroAskError
       && error.sourceState === "unavailable"
-      && /without validated citations/u.test(error.message),
+      && /Rust authority rejected/u.test(error.message),
   );
 });
 
@@ -549,6 +701,7 @@ test("a structured safe refusal does not open the source failure cooldown", asyn
     const service = new AssistantQuestionService(
       createAssistantTurnHost(new FileOutcomeStore(root)),
       new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
         apiKey: "bound-at-runtime",
         baseUrl: "https://cerebro.example.com",
         fetchImpl: async () => {
@@ -604,6 +757,7 @@ test("question service gives a bounded recovery action after a source timeout", 
     const service = new AssistantQuestionService(
       createAssistantTurnHost(new FileOutcomeStore(root)),
       new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
         apiKey: "bound-at-runtime",
         baseUrl: "https://cerebro.example.com",
         fetchImpl: async (_input, init) => {
@@ -636,6 +790,7 @@ test("failed claimed mentions persist a blocked outcome before retries are suppr
     const questions = new AssistantQuestionService(
       host,
       new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
         apiKey: "bound-at-runtime",
         baseUrl: "https://cerebro.example.com",
         fetchImpl: async () => sseResponse([]),

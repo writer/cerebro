@@ -15,6 +15,7 @@ export interface SlackRuntimeConfig {
   cerebroBaseUrl: string;
   cerebroReadApiKey: string;
   cerebroTenantId: string;
+  slackAnswerAuthorityUrl: string;
   environmentLabel: string;
   learningTableName?: string;
   lifecycleChannelIds: ReadonlySet<string>;
@@ -73,6 +74,9 @@ export function loadSlackRuntimeConfig(
     cerebroBaseUrl: baseUrl,
     cerebroReadApiKey: required(env.CEREBRO_READ_API_KEY),
     cerebroTenantId: required(env.CEREBRO_TENANT_ID),
+    slackAnswerAuthorityUrl: validatedLoopbackUrl(
+      env.CEREBRO_SLACK_ANSWER_AUTHORITY_URL?.trim() || "http://127.0.0.1:8091",
+    ),
     environmentLabel: required(env.CEREBRO_SLACK_ENVIRONMENT_LABEL),
     ...(learningTableName ? { learningTableName } : {}),
     lifecycleChannelIds,
@@ -251,6 +255,16 @@ function validatedBaseUrl(value: string): string {
   parsed.pathname = parsed.pathname.replace(/\/$/, "");
   parsed.search = "";
   parsed.hash = "";
+  return parsed.toString().replace(/\/$/, "");
+}
+
+function validatedLoopbackUrl(value: string): string {
+  const parsed = new URL(validatedBaseUrl(value));
+  if (parsed.protocol !== "http:" || (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost")) {
+    throw new SlackRuntimeConfigError(
+      "The Rust Slack answer authority must use a loopback HTTP binding.",
+    );
+  }
   return parsed.toString().replace(/\/$/, "");
 }
 

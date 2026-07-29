@@ -914,6 +914,7 @@ dependencies = [
  "cerebro-platform-sdk",
  "cerebro-policy-catalog",
  "cerebro-security-lifecycle",
+ "cerebro-slack-authority",
  "cerebro-source-catalog",
  "cerebro-source-runtime-next",
  "connectrpc",
@@ -999,6 +1000,14 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "time",
+]
+
+[[package]]
+name = "cerebro-slack-authority"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
