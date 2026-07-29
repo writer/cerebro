@@ -121,7 +121,7 @@ func ParseRequestTimeout(sourceID, raw string, defaultTimeout time.Duration) (ti
 	}
 	timeout, err := time.ParseDuration(raw)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s request_timeout must be a duration: %v", sourcecdk.ErrInvalidConfig, sourceID, err)
+		return 0, fmt.Errorf("%w: %s request_timeout must be a duration: %w", sourcecdk.ErrInvalidConfig, sourceID, err)
 	}
 	if timeout < time.Second || timeout > MaxConfigurableRequestTimeout {
 		return 0, fmt.Errorf(

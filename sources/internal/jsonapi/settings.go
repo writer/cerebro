@@ -42,7 +42,6 @@ type settings struct {
 	region                   string
 	service                  string
 	familyMethod             string
-	requestTimeout           time.Duration
 }
 
 type requestSettings struct {
@@ -51,6 +50,7 @@ type requestSettings struct {
 	configAttributes map[string]string
 	query            url.Values
 	jsonBody         map[string]any
+	timeout          time.Duration
 }
 
 func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
@@ -79,7 +79,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		service:                 sourcecdk.ConfigValue(cfg, "service"),
 		apiKey:                  sourcecdk.ConfigValue(cfg, "api_key"),
 	}
-	resolved.requestTimeout, err = sourcehttp.ParseRequestTimeout(
+	resolved.request.timeout, err = sourcehttp.ParseRequestTimeout(
 		s.options.SourceID,
 		sourcecdk.ConfigValue(cfg, "request_timeout"),
 		sourcehttp.DefaultTimeout,

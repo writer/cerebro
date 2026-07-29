@@ -2827,8 +2827,8 @@ func TestParseSettingsAcceptsBoundedRequestTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseSettings() error = %v", err)
 	}
-	if settings.requestTimeout != 2*time.Minute {
-		t.Fatalf("requestTimeout = %s, want 2m", settings.requestTimeout)
+	if settings.request.timeout != 2*time.Minute {
+		t.Fatalf("request timeout = %s, want 2m", settings.request.timeout)
 	}
 }
 

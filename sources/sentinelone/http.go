@@ -66,7 +66,7 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 
 	client := sourcehttp.HardenSourceClient(
 		s.client, "sentinelone", settings.requestTimeout,
-		s != nil && s.allowLoopbackBaseURL, lookupIPAddrs(s),
+		s.allowLoopbackBaseURL, lookupIPAddrs(s),
 	)
 	resp, err := client.Do(req)
 	if err != nil {
