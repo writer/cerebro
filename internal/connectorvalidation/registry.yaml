@@ -57,10 +57,10 @@ entries:
     evidence:
       - type: fixture
         ref: internal/connectorvalidation/testdata/cassettes/okta/users.json
-        resource_family: users
+        resource_family: user
         test: connector-contract-check
     resource_families:
-      - id: users
+      - id: user
         grade: fixture_validated
         evidence_refs:
           - internal/connectorvalidation/testdata/cassettes/okta/users.json
