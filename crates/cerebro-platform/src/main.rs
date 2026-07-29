@@ -1491,6 +1491,7 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
         source.auth(),
         source.token_header(),
         source.token_scheme(),
+        source.auth_header_parameters(),
         source.auth_query_parameters(),
         source.auth_json_body_parameters(),
         &mut config,
@@ -1648,6 +1649,7 @@ fn resolved_auth(
     model: &AuthModel,
     token_header: &str,
     token_scheme: &str,
+    header_parameters: &BTreeMap<String, String>,
     query_parameters: &BTreeMap<String, String>,
     json_body_parameters: &BTreeMap<String, String>,
     config: &mut BTreeMap<String, String>,
@@ -1658,6 +1660,16 @@ fn resolved_auth(
             username: take_required_config(config, "username")?,
             password: take_required_config(config, "password")?,
         },
+        AuthModel::ApiKey if !header_parameters.is_empty() => {
+            let mut parameters = BTreeMap::new();
+            for (header, credential_field) in header_parameters {
+                parameters.insert(
+                    header.clone(),
+                    take_required_config(config, credential_field)?,
+                );
+            }
+            ResolvedAuth::HeaderParameters { parameters }
+        }
         AuthModel::ApiKey if !json_body_parameters.is_empty() => {
             let mut parameters = BTreeMap::new();
             for (parameter, credential_field) in json_body_parameters {
@@ -3697,6 +3709,7 @@ mod tests {
             "",
             &BTreeMap::new(),
             &BTreeMap::new(),
+            &BTreeMap::new(),
             &mut config,
         )
         .unwrap();
@@ -3735,6 +3748,7 @@ mod tests {
             "",
             &BTreeMap::new(),
             &BTreeMap::new(),
+            &BTreeMap::new(),
             &mut config,
         )
         .unwrap();
@@ -3767,6 +3781,7 @@ mod tests {
                 "",
                 &BTreeMap::new(),
                 &BTreeMap::new(),
+                &BTreeMap::new(),
                 &mut basic
             )
             .unwrap(),
@@ -3789,6 +3804,7 @@ mod tests {
                 "Token",
                 &BTreeMap::new(),
                 &BTreeMap::new(),
+                &BTreeMap::new(),
                 &mut api_key
             )
             .unwrap(),
@@ -3798,6 +3814,37 @@ mod tests {
             } if name == "X-API-Key" && value == "Token secret-example"
         ));
         assert!(!api_key.contains_key("token"));
+
+        let mut header_api_keys = BTreeMap::from([
+            ("api_key".to_owned(), "account-secret".to_owned()),
+            ("store_key".to_owned(), "store-secret".to_owned()),
+            ("family".to_owned(), "attributes".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(
+                &AuthModel::ApiKey,
+                "",
+                "",
+                &BTreeMap::from([
+                    ("x-api-key".to_owned(), "api_key".to_owned()),
+                    ("x-store-key".to_owned(), "store_key".to_owned()),
+                ]),
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+                &mut header_api_keys
+            )
+            .unwrap(),
+            ResolvedAuth::HeaderParameters { ref parameters }
+                if parameters.get("x-api-key").map(String::as_str) == Some("account-secret")
+                    && parameters.get("x-store-key").map(String::as_str)
+                        == Some("store-secret")
+        ));
+        assert!(!header_api_keys.contains_key("api_key"));
+        assert!(!header_api_keys.contains_key("store_key"));
+        assert_eq!(
+            header_api_keys.get("family").map(String::as_str),
+            Some("attributes")
+        );
 
         let mut query_api_key = BTreeMap::from([
             ("api_token".to_owned(), "token-example".to_owned()),
@@ -3809,6 +3856,7 @@ mod tests {
                 &AuthModel::ApiKey,
                 "",
                 "",
+                &BTreeMap::new(),
                 &BTreeMap::from([
                     ("api_token".to_owned(), "api_token".to_owned()),
                     (
@@ -3842,6 +3890,7 @@ mod tests {
                 "",
                 "",
                 &BTreeMap::new(),
+                &BTreeMap::new(),
                 &BTreeMap::from([("token".to_owned(), "api_token".to_owned())]),
                 &mut body_api_key
             )
@@ -3867,6 +3916,7 @@ mod tests {
                 &AuthModel::BearerToken,
                 "",
                 "",
+                &BTreeMap::new(),
                 &BTreeMap::new(),
                 &BTreeMap::new(),
                 &mut config

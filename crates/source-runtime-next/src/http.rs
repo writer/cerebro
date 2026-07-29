@@ -53,6 +53,9 @@ pub enum ResolvedAuth {
         name: String,
         value: String,
     },
+    HeaderParameters {
+        parameters: BTreeMap<String, String>,
+    },
     QueryParameters {
         parameters: BTreeMap<String, String>,
     },
@@ -84,6 +87,11 @@ impl fmt::Debug for ResolvedAuth {
                 .debug_struct("Header")
                 .field("name", name)
                 .field("value", &"[REDACTED]")
+                .finish(),
+            Self::HeaderParameters { parameters } => formatter
+                .debug_struct("HeaderParameters")
+                .field("names", &parameters.keys().collect::<Vec<_>>())
+                .field("values", &"[REDACTED]")
                 .finish(),
             Self::QueryParameters { parameters } => formatter
                 .debug_struct("QueryParameters")
@@ -125,6 +133,11 @@ impl Drop for ResolvedAuth {
                 password.zeroize();
             }
             Self::Header { value, .. } => value.zeroize(),
+            Self::HeaderParameters { parameters } => {
+                for value in parameters.values_mut() {
+                    value.zeroize();
+                }
+            }
             Self::QueryParameters { parameters } => {
                 for value in parameters.values_mut() {
                     value.zeroize();
@@ -521,7 +534,7 @@ impl SourceConnector for HttpSourceConnector {
                     ResolvedAuth::Basic { username, password } => {
                         builder.basic_auth(username, Some(password))
                     }
-                    ResolvedAuth::Header { name, value } => builder.header(name, value),
+                    ResolvedAuth::Header { .. } | ResolvedAuth::HeaderParameters { .. } => builder,
                     ResolvedAuth::QueryParameters { .. }
                     | ResolvedAuth::JsonBodyParameters { .. }
                     | ResolvedAuth::AwsSigV4 { .. }
@@ -544,6 +557,7 @@ impl SourceConnector for HttpSourceConnector {
                         HttpConnectorError::Request(error)
                     }
                 })?;
+                apply_auth_headers(&mut provider_request, &self.auth)?;
                 if sensitive_query {
                     apply_auth_query_parameters(&mut provider_request, &self.auth)?;
                 }
@@ -759,6 +773,24 @@ fn validate_auth(source: &CompiledSource, actual: &ResolvedAuth) -> Result<(), H
         AuthModel::ApiKey if !source.auth_query_parameters().is_empty() => {
             matches!(actual, ResolvedAuth::QueryParameters { .. })
         }
+        AuthModel::ApiKey if !source.auth_header_parameters().is_empty() => match actual {
+            ResolvedAuth::HeaderParameters { parameters } => {
+                parameters.len() == source.auth_header_parameters().len()
+                    && parameters.values().all(|value| !value.is_empty())
+                    && parameters.keys().all(|actual| {
+                        source
+                            .auth_header_parameters()
+                            .keys()
+                            .any(|expected| actual.eq_ignore_ascii_case(expected))
+                    })
+                    && source.auth_header_parameters().keys().all(|expected| {
+                        parameters
+                            .keys()
+                            .any(|actual| actual.eq_ignore_ascii_case(expected))
+                    })
+            }
+            _ => false,
+        },
         AuthModel::ApiKey => match actual {
             ResolvedAuth::Header { name, value } => {
                 let expected_header = source.token_header();
@@ -795,6 +827,42 @@ fn validate_auth(source: &CompiledSource, actual: &ResolvedAuth) -> Result<(), H
             "resolved credential does not match the source auth model".to_owned(),
         ))
     }
+}
+
+fn apply_auth_headers(
+    request: &mut Request,
+    auth: &ResolvedAuth,
+) -> Result<(), HttpConnectorError> {
+    match auth {
+        ResolvedAuth::Header { name, value } => insert_sensitive_header(request, name, value),
+        ResolvedAuth::HeaderParameters { parameters } => {
+            for (name, value) in parameters {
+                insert_sensitive_header(request, name, value)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn insert_sensitive_header(
+    request: &mut Request,
+    name: &str,
+    value: &str,
+) -> Result<(), HttpConnectorError> {
+    let name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| {
+        HttpConnectorError::InvalidConfiguration(
+            "resolved credential contains an invalid header name".to_owned(),
+        )
+    })?;
+    let mut value = HeaderValue::from_str(value).map_err(|_| {
+        HttpConnectorError::InvalidConfiguration(
+            "resolved credential contains an invalid header value".to_owned(),
+        )
+    })?;
+    value.set_sensitive(true);
+    request.headers_mut().insert(name, value);
+    Ok(())
 }
 
 fn apply_auth_query_parameters(
@@ -1966,6 +2034,128 @@ mod tests {
         assert!(matches!(batch.scope, CollectedScope::Complete(_)));
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "user-1");
+    }
+
+    #[tokio::test]
+    async fn api2cart_uses_exact_sensitive_headers_and_offset_pagination() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            let request_line = request.lines().next().unwrap();
+            assert!(request_line.starts_with("GET /attribute.group.list.json?"));
+            assert!(request_line.contains("start=0"));
+            assert!(request_line.contains("count=100"));
+            assert!(
+                request
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("x-api-key: account-secret"))
+            );
+            assert!(
+                request
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("x-store-key: store-secret"))
+            );
+            let body = r#"{"result":[{"id":"group-1","name":"Default"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("api2cart").unwrap().clone();
+        assert_eq!(
+            source.authority(),
+            cerebro_source_catalog::CollectionAuthority::Authoritative
+        );
+        let incomplete = HttpSourceConnector::new(
+            source.clone(),
+            "attribute_group_list_json",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            ResolvedAuth::HeaderParameters {
+                parameters: BTreeMap::from([("x-api-key".to_owned(), "account-secret".to_owned())]),
+            },
+        )
+        .err()
+        .unwrap();
+        assert!(matches!(
+            incomplete,
+            HttpConnectorError::InvalidConfiguration(_)
+        ));
+
+        let malformed_auth = ResolvedAuth::HeaderParameters {
+            parameters: BTreeMap::from([
+                (
+                    "x-api-key".to_owned(),
+                    "account-secret\r\nx-leak: yes".to_owned(),
+                ),
+                ("x-store-key".to_owned(), "store-secret".to_owned()),
+            ]),
+        };
+        assert!(!format!("{malformed_auth:?}").contains("account-secret"));
+        let mut malformed = HttpSourceConnector::new(
+            source.clone(),
+            "attribute_group_list_json",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            malformed_auth,
+        )
+        .unwrap();
+        assert!(matches!(
+            malformed
+                .collect(CollectionRequest {
+                    tenant_id: TenantId::parse("tenant-a").unwrap(),
+                    source_runtime_id: SourceRuntimeId::parse("api2cart-malformed").unwrap(),
+                    cursor: None,
+                })
+                .await,
+            Err(HttpConnectorError::InvalidConfiguration(_))
+        ));
+
+        let auth = ResolvedAuth::HeaderParameters {
+            parameters: BTreeMap::from([
+                ("x-api-key".to_owned(), "account-secret".to_owned()),
+                ("x-store-key".to_owned(), "store-secret".to_owned()),
+            ]),
+        };
+        let mut request = Client::new()
+            .get("https://api.example.test/resource")
+            .build()
+            .unwrap();
+        apply_auth_headers(&mut request, &auth).unwrap();
+        assert!(request.headers()["x-api-key"].is_sensitive());
+        assert!(request.headers()["x-store-key"].is_sensitive());
+
+        let mut connector = HttpSourceConnector::new(
+            source,
+            "attribute_group_list_json",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            auth,
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("api2cart-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "group-1");
     }
 
     #[tokio::test]

@@ -8,6 +8,14 @@ entries:
         reference_only: true
         required: true
         secret: true
+      - key: store_key
+        label: Store key
+        reference_only: true
+        required: true
+        secret: true
+      header_parameters:
+        x-api-key: api_key
+        x-store-key: store_key
       model: api_key
       requires_references: true
     categories:
@@ -43,9 +51,10 @@ entries:
       method: GET
       name_field: name
       pagination:
+        limit_param: count
+        offset_param: start
         page_size: 100
-        page_size_param: count
-        type: page
+        type: offset
       path: "/attribute.group.list.json"
       permissions_needed:
       - api_key
@@ -78,9 +87,10 @@ entries:
       method: GET
       name_field: name
       pagination:
+        limit_param: count
+        offset_param: start
         page_size: 100
-        page_size_param: count
-        type: page
+        type: offset
       path: "/attribute.attributeset.list.json"
       permissions_needed:
       - api_key

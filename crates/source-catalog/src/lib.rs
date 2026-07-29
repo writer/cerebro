@@ -316,6 +316,7 @@ pub struct CompiledSource {
     auth: AuthModel,
     token_header: String,
     token_scheme: String,
+    auth_header_parameters: BTreeMap<String, String>,
     auth_query_parameters: BTreeMap<String, String>,
     auth_json_body_parameters: BTreeMap<String, String>,
     authority: CollectionAuthority,
@@ -341,6 +342,10 @@ impl CompiledSource {
 
     pub fn token_scheme(&self) -> &str {
         &self.token_scheme
+    }
+
+    pub fn auth_header_parameters(&self) -> &BTreeMap<String, String> {
+        &self.auth_header_parameters
     }
 
     pub fn auth_query_parameters(&self) -> &BTreeMap<String, String> {
@@ -484,6 +489,8 @@ struct AuthWire {
     token_header: String,
     #[serde(default)]
     token_scheme: String,
+    #[serde(default)]
+    header_parameters: BTreeMap<String, String>,
     #[serde(default)]
     query_parameters: BTreeMap<String, String>,
     #[serde(default)]
@@ -637,6 +644,52 @@ fn compile_source(
         .iter()
         .map(|field| field.key.trim())
         .collect::<BTreeSet<_>>();
+    let mut auth_header_parameters = BTreeMap::new();
+    let mut normalized_header_names = BTreeSet::new();
+    for (header, credential_field) in entry.definition.auth.header_parameters {
+        let header = header.trim();
+        let credential_field = credential_field.trim();
+        if header.is_empty()
+            || header.len() > 128
+            || !header.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric()
+                    || matches!(
+                        byte,
+                        b'!' | b'#'
+                            | b'$'
+                            | b'%'
+                            | b'&'
+                            | b'\''
+                            | b'*'
+                            | b'+'
+                            | b'-'
+                            | b'.'
+                            | b'^'
+                            | b'_'
+                            | b'`'
+                            | b'|'
+                            | b'~'
+                    )
+            })
+        {
+            return invalid(path, "auth header parameter name is invalid");
+        }
+        if !normalized_header_names.insert(header.to_ascii_lowercase()) {
+            return invalid(path, "auth header parameter names must be unique");
+        }
+        if credential_field.is_empty() || !credential_fields.contains(credential_field) {
+            return invalid(
+                path,
+                &format!(
+                    "auth header {header} references undeclared credential field {credential_field}"
+                ),
+            );
+        }
+        auth_header_parameters.insert(header.to_owned(), credential_field.to_owned());
+    }
+    if auth_header_parameters.len() > 16 {
+        return invalid(path, "auth header parameters exceed the 16-header limit");
+    }
     let mut auth_query_parameters = BTreeMap::new();
     for (parameter, credential_field) in entry.definition.auth.query_parameters {
         let parameter = parameter.trim();
@@ -690,7 +743,9 @@ fn compile_source(
             "auth JSON body parameters exceed the 16-parameter limit",
         );
     }
-    if (!auth_query_parameters.is_empty() || !auth_json_body_parameters.is_empty())
+    if (!auth_header_parameters.is_empty()
+        || !auth_query_parameters.is_empty()
+        || !auth_json_body_parameters.is_empty())
         && auth != AuthModel::ApiKey
     {
         return invalid(
@@ -699,6 +754,7 @@ fn compile_source(
         );
     }
     let api_key_placements = usize::from(!token_header.is_empty())
+        + usize::from(!auth_header_parameters.is_empty())
         + usize::from(!auth_query_parameters.is_empty())
         + usize::from(!auth_json_body_parameters.is_empty());
     if api_key_placements > 1 {
@@ -717,6 +773,7 @@ fn compile_source(
         && auth.supports_generic_runtime()
         && (auth != AuthModel::ApiKey
             || !token_header.is_empty()
+            || !auth_header_parameters.is_empty()
             || !auth_query_parameters.is_empty()
             || !auth_json_body_parameters.is_empty());
     let verified_families = verified_families(proofs.get(&id));
@@ -767,6 +824,7 @@ fn compile_source(
         auth,
         token_header,
         token_scheme,
+        auth_header_parameters,
         auth_query_parameters,
         auth_json_body_parameters,
         authority,
@@ -1285,6 +1343,22 @@ mod tests {
         method: &str,
         pagination: &str,
     ) -> Result<CompiledSource, CatalogError> {
+        compile_auth_fixture_with_credential_fields(
+            model,
+            "      - key: api_token",
+            auth_fields,
+            method,
+            pagination,
+        )
+    }
+
+    fn compile_auth_fixture_with_credential_fields(
+        model: &str,
+        credential_fields: &str,
+        auth_fields: &str,
+        method: &str,
+        pagination: &str,
+    ) -> Result<CompiledSource, CatalogError> {
         let yaml = format!(
             r#"entries:
 - classifier_output: supported
@@ -1295,7 +1369,7 @@ mod tests {
     auth:
       model: {model}
       credential_fields:
-      - key: api_token
+{credential_fields}
 {auth_fields}
     resource_families:
     - id: items
@@ -1401,6 +1475,101 @@ mod tests {
     }
 
     #[test]
+    fn request_auth_grammar_rejects_unsafe_ambiguous_and_unbound_headers() {
+        let invalid_name = compile_auth_fixture(
+            "api_key",
+            "      header_parameters:\n        \"bad header\": api_token",
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(invalid_name),
+            "auth header parameter name is invalid"
+        );
+
+        let non_ascii_name = compile_auth_fixture(
+            "api_key",
+            "      header_parameters:\n        X-Api-Kéy: api_token",
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(non_ascii_name),
+            "auth header parameter name is invalid"
+        );
+
+        let duplicate_name = compile_auth_fixture(
+            "api_key",
+            "      header_parameters:\n        X-API-Key: api_token\n        x-api-key: api_token",
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(duplicate_name),
+            "auth header parameter names must be unique"
+        );
+
+        let undeclared = compile_auth_fixture(
+            "api_key",
+            "      header_parameters:\n        X-API-Key: missing",
+            "GET",
+            "        type: none",
+        );
+        assert!(
+            invalid_message(undeclared).contains("references undeclared credential field missing")
+        );
+
+        let empty_credential_field = compile_auth_fixture_with_credential_fields(
+            "api_key",
+            "      - key: \"\"",
+            "      header_parameters:\n        X-API-Key: \"\"",
+            "GET",
+            "        type: none",
+        );
+        assert!(
+            invalid_message(empty_credential_field)
+                .contains("references undeclared credential field")
+        );
+
+        let wrong_model = compile_auth_fixture(
+            "bearer_token",
+            "      header_parameters:\n        X-API-Key: api_token",
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(wrong_model),
+            "auth request parameters are supported only for api_key authentication"
+        );
+
+        let ambiguous = compile_auth_fixture(
+            "api_key",
+            "      token_header: X-API-Key\n      header_parameters:\n        X-Store-Key: api_token",
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(ambiguous),
+            "api_key authentication must use exactly one credential placement"
+        );
+
+        let too_many_headers = (0..17)
+            .map(|index| format!("        X-Key-{index}: api_token"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let over_limit = compile_auth_fixture(
+            "api_key",
+            &format!("      header_parameters:\n{too_many_headers}"),
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(over_limit),
+            "auth header parameters exceed the 16-header limit"
+        );
+    }
+
+    #[test]
     fn compiles_the_complete_checked_in_catalog() {
         let root = repository_root();
         let catalog = SourceCatalog::load(
@@ -1451,6 +1620,7 @@ mod tests {
                 source.authority() == CollectionAuthority::Authoritative
                     && source.auth() == &AuthModel::ApiKey
                     && source.token_header().is_empty()
+                    && source.auth_header_parameters().is_empty()
                     && source.auth_query_parameters().is_empty()
                     && source.auth_json_body_parameters().is_empty()
             })
@@ -1614,6 +1784,13 @@ mod tests {
                 .map(String::as_str),
             Some("name")
         );
+        assert_eq!(
+            catalog.get("api2cart").unwrap().auth_header_parameters(),
+            &BTreeMap::from([
+                ("x-api-key".to_owned(), "api_key".to_owned()),
+                ("x-store-key".to_owned(), "store_key".to_owned()),
+            ])
+        );
         for family in catalog.get("akeyless").unwrap().families() {
             assert_eq!(
                 family.cursor_in_json_body(),
@@ -1653,6 +1830,7 @@ mod tests {
             "alchemer",
             "airtable",
             "anchore",
+            "api2cart",
             "azure_openai",
             "beezup",
             "box",
