@@ -1492,6 +1492,7 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
         source.token_header(),
         source.token_scheme(),
         source.auth_query_parameters(),
+        source.auth_json_body_parameters(),
         &mut config,
     )?;
     let connector = HttpSourceConnector::new(source.clone(), &family_id, &base_url, config, auth)?;
@@ -1648,6 +1649,7 @@ fn resolved_auth(
     token_header: &str,
     token_scheme: &str,
     query_parameters: &BTreeMap<String, String>,
+    json_body_parameters: &BTreeMap<String, String>,
     config: &mut BTreeMap<String, String>,
 ) -> Result<ResolvedAuth, Box<dyn Error>> {
     Ok(match model {
@@ -1656,6 +1658,16 @@ fn resolved_auth(
             username: take_required_config(config, "username")?,
             password: take_required_config(config, "password")?,
         },
+        AuthModel::ApiKey if !json_body_parameters.is_empty() => {
+            let mut parameters = BTreeMap::new();
+            for (parameter, credential_field) in json_body_parameters {
+                parameters.insert(
+                    parameter.clone(),
+                    take_required_config(config, credential_field)?,
+                );
+            }
+            ResolvedAuth::JsonBodyParameters { parameters }
+        }
         AuthModel::ApiKey if !query_parameters.is_empty() => {
             let mut parameters = BTreeMap::new();
             for (parameter, credential_field) in query_parameters {
@@ -3679,8 +3691,15 @@ mod tests {
             ("service".to_owned(), "bedrock".to_owned()),
             ("account".to_owned(), "account-a".to_owned()),
         ]);
-        let auth =
-            resolved_auth(&AuthModel::AwsSigV4, "", "", &BTreeMap::new(), &mut config).unwrap();
+        let auth = resolved_auth(
+            &AuthModel::AwsSigV4,
+            "",
+            "",
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &mut config,
+        )
+        .unwrap();
         assert!(matches!(
             auth,
             ResolvedAuth::AwsSigV4 {
@@ -3710,8 +3729,15 @@ mod tests {
             ("client_secret".to_owned(), "secret-example".to_owned()),
             ("base_url".to_owned(), "https://api.example.test".to_owned()),
         ]);
-        let auth =
-            resolved_auth(&AuthModel::DuoHmacV5, "", "", &BTreeMap::new(), &mut config).unwrap();
+        let auth = resolved_auth(
+            &AuthModel::DuoHmacV5,
+            "",
+            "",
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &mut config,
+        )
+        .unwrap();
         assert!(matches!(
             auth,
             ResolvedAuth::DuoHmacV5 {
@@ -3740,6 +3766,7 @@ mod tests {
                 "",
                 "",
                 &BTreeMap::new(),
+                &BTreeMap::new(),
                 &mut basic
             )
             .unwrap(),
@@ -3760,6 +3787,7 @@ mod tests {
                 &AuthModel::ApiKey,
                 "X-API-Key",
                 "Token",
+                &BTreeMap::new(),
                 &BTreeMap::new(),
                 &mut api_key
             )
@@ -3788,6 +3816,7 @@ mod tests {
                         "api_token_secret".to_owned()
                     ),
                 ]),
+                &BTreeMap::new(),
                 &mut query_api_key
             )
             .unwrap(),
@@ -3802,6 +3831,29 @@ mod tests {
             query_api_key.get("family").map(String::as_str),
             Some("surveys")
         );
+
+        let mut body_api_key = BTreeMap::from([
+            ("api_token".to_owned(), "token-example".to_owned()),
+            ("family".to_owned(), "items".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(
+                &AuthModel::ApiKey,
+                "",
+                "",
+                &BTreeMap::new(),
+                &BTreeMap::from([("token".to_owned(), "api_token".to_owned())]),
+                &mut body_api_key
+            )
+            .unwrap(),
+            ResolvedAuth::JsonBodyParameters { ref parameters }
+                if parameters.get("token").map(String::as_str) == Some("token-example")
+        ));
+        assert!(!body_api_key.contains_key("api_token"));
+        assert_eq!(
+            body_api_key.get("family").map(String::as_str),
+            Some("items")
+        );
     }
 
     #[test]
@@ -3815,6 +3867,7 @@ mod tests {
                 &AuthModel::BearerToken,
                 "",
                 "",
+                &BTreeMap::new(),
                 &BTreeMap::new(),
                 &mut config
             )
