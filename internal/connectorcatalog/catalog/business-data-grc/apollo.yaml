@@ -9,6 +9,7 @@ entries:
             required: true
             secret: true
         model: api_key
+        token_header: x-api-key
         requires_references: true
       categories:
         - saas

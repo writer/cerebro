@@ -1,9 +1,10 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cerebro_organizational_graph::GraphWriteReceipt;
 use cerebro_organizational_model::{
     CanonicalIdentityId, CollectionCompleteness, GraphAssertion, GraphDelta,
-    IdentityBindingAssertion, IdentityBindingState, IdentityResolutionMethod, TenantId,
+    IdentityBindingAssertion, IdentityBindingState, IdentityResolutionMethod, SourceRuntimeId,
+    TenantId,
 };
 use cerebro_source_catalog::SourceCatalog;
 use cerebro_source_runtime_next::{
@@ -488,6 +489,61 @@ pub struct SourceCollectionReceipt {
     pub manifest_digest: String,
 }
 
+/// One stored source-runtime definition admitted from the shared PostgreSQL
+/// current-state table. The config may contain unresolved secret references,
+/// so this type deliberately does not implement `Debug` or `Serialize`.
+#[derive(Clone)]
+pub struct StoredSourceRuntime {
+    runtime_id: SourceRuntimeId,
+    tenant_id: TenantId,
+    source_id: String,
+    config: BTreeMap<String, String>,
+    cursor: Option<String>,
+}
+
+impl StoredSourceRuntime {
+    pub fn runtime_id(&self) -> &SourceRuntimeId {
+        &self.runtime_id
+    }
+
+    pub fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
+    }
+
+    pub fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    pub fn config(&self) -> &BTreeMap<String, String> {
+        &self.config
+    }
+
+    pub fn cursor(&self) -> Option<&str> {
+        self.cursor.as_deref()
+    }
+}
+
+#[derive(Deserialize)]
+struct StoredSourceRuntimeWire {
+    id: String,
+    source_id: String,
+    tenant_id: String,
+    #[serde(default)]
+    config: BTreeMap<String, String>,
+    next_cursor: Option<StoredSourceCursorWire>,
+    checkpoint: Option<StoredSourceCheckpointWire>,
+}
+
+#[derive(Deserialize)]
+struct StoredSourceCursorWire {
+    opaque: String,
+}
+
+#[derive(Deserialize)]
+struct StoredSourceCheckpointWire {
+    cursor_opaque: String,
+}
+
 pub struct PostgresLedger {
     client: Mutex<Client>,
 }
@@ -522,6 +578,29 @@ impl PostgresLedger {
             .batch_execute(POSTGRES_SCHEMA)
             .await?;
         Ok(())
+    }
+
+    /// Load one durable runtime definition. Runtime identity comes only from
+    /// the stored record; callers cannot override its tenant or source.
+    pub async fn load_source_runtime(
+        &self,
+        source_runtime_id: &SourceRuntimeId,
+    ) -> Result<StoredSourceRuntime, StoreError> {
+        let row = self
+            .client
+            .lock()
+            .await
+            .query_opt(
+                "SELECT runtime_json FROM source_runtimes WHERE id = $1",
+                &[&source_runtime_id.as_str()],
+            )
+            .await?;
+        let Some(row) = row else {
+            return Err(StoreError::Conflict(
+                "source runtime is not stored".to_owned(),
+            ));
+        };
+        decode_stored_source_runtime(source_runtime_id, row.get(0))
     }
 
     /// Acquire the shared source-runtime lease and return its durable fencing
@@ -1820,6 +1899,66 @@ fn enum_name<T: Serialize>(value: &T) -> Result<String, StoreError> {
     }
 }
 
+fn decode_stored_source_runtime(
+    expected_runtime_id: &SourceRuntimeId,
+    value: Value,
+) -> Result<StoredSourceRuntime, StoreError> {
+    let wire: StoredSourceRuntimeWire = serde_json::from_value(value).map_err(|_| {
+        StoreError::Conflict("stored source runtime definition is invalid".to_owned())
+    })?;
+    let runtime_id = SourceRuntimeId::parse(wire.id)
+        .map_err(|_| StoreError::Conflict("stored source runtime id is invalid".to_owned()))?;
+    if &runtime_id != expected_runtime_id {
+        return Err(StoreError::Conflict(
+            "stored source runtime id does not match its row".to_owned(),
+        ));
+    }
+    let tenant_id = TenantId::parse(wire.tenant_id)
+        .map_err(|_| StoreError::Conflict("stored source runtime tenant is invalid".to_owned()))?;
+    let source_id = wire.source_id;
+    if source_id.is_empty()
+        || source_id.trim() != source_id
+        || source_id.len() > 128
+        || source_id.chars().any(char::is_control)
+    {
+        return Err(StoreError::Conflict(
+            "stored source runtime source is invalid".to_owned(),
+        ));
+    }
+    let cursor = wire
+        .next_cursor
+        .map(|cursor| cursor.opaque)
+        .filter(|cursor| !cursor.is_empty())
+        .or_else(|| {
+            wire.checkpoint
+                .map(|checkpoint| checkpoint.cursor_opaque)
+                .map(|cursor| cursor.trim().to_owned())
+                .filter(|cursor| resumable_checkpoint_cursor(cursor))
+        });
+    if cursor
+        .as_ref()
+        .is_some_and(|cursor| cursor.len() > 64 * 1024)
+    {
+        return Err(StoreError::Conflict(
+            "stored source runtime cursor is too large".to_owned(),
+        ));
+    }
+    Ok(StoredSourceRuntime {
+        runtime_id,
+        tenant_id,
+        source_id,
+        config: wire.config,
+        cursor,
+    })
+}
+
+fn resumable_checkpoint_cursor(cursor: &str) -> bool {
+    serde_json::from_str::<Value>(cursor)
+        .ok()
+        .and_then(|value| value.as_object()?.get("resumable_checkpoint")?.as_bool())
+        .unwrap_or(false)
+}
+
 fn validate_lease_request(owner: &str, ttl_millis: u64) -> Result<(), StoreError> {
     if owner.is_empty()
         || owner.trim() != owner
@@ -1967,6 +2106,75 @@ mod tests {
                 "claim replacement query missing {required}"
             );
         }
+    }
+
+    #[test]
+    fn stored_source_runtime_identity_and_cursor_come_from_the_durable_record() {
+        let runtime_id = SourceRuntimeId::parse("runtime-a").unwrap();
+        let stored = decode_stored_source_runtime(
+            &runtime_id,
+            serde_json::json!({
+                "id": "runtime-a",
+                "source_id": "github",
+                "tenant_id": "tenant-a",
+                "config": {
+                    "family": "repository",
+                    "token": "env:CEREBRO_SOURCE_GITHUB_TOKEN"
+                },
+                "checkpoint": {"cursor_opaque": "checkpoint"},
+                "next_cursor": {"opaque": "next"}
+            }),
+        )
+        .unwrap();
+        assert_eq!(stored.runtime_id(), &runtime_id);
+        assert_eq!(stored.tenant_id().as_str(), "tenant-a");
+        assert_eq!(stored.source_id(), "github");
+        assert_eq!(stored.cursor(), Some("next"));
+        assert_eq!(
+            stored.config().get("token").map(String::as_str),
+            Some("env:CEREBRO_SOURCE_GITHUB_TOKEN")
+        );
+
+        assert!(
+            decode_stored_source_runtime(
+                &runtime_id,
+                serde_json::json!({
+                    "id": "runtime-b",
+                    "source_id": "github",
+                    "tenant_id": "tenant-a"
+                }),
+            )
+            .is_err()
+        );
+
+        let checkpoint_only = decode_stored_source_runtime(
+            &runtime_id,
+            serde_json::json!({
+                "id": "runtime-a",
+                "source_id": "github",
+                "tenant_id": "tenant-a",
+                "checkpoint": {
+                    "cursor_opaque": "{\"token\":\"page:2\",\"resumable_checkpoint\":true}"
+                }
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            checkpoint_only.cursor(),
+            Some("{\"token\":\"page:2\",\"resumable_checkpoint\":true}")
+        );
+
+        let non_resumable = decode_stored_source_runtime(
+            &runtime_id,
+            serde_json::json!({
+                "id": "runtime-a",
+                "source_id": "github",
+                "tenant_id": "tenant-a",
+                "checkpoint": {"cursor_opaque": "{\"token\":\"page:2\"}"}
+            }),
+        )
+        .unwrap();
+        assert_eq!(non_resumable.cursor(), None);
     }
 
     #[test]

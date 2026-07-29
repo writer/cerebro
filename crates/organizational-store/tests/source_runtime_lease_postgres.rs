@@ -36,11 +36,27 @@ async fn source_runtime_lease_generation_fences_stale_and_cross_tenant_commits()
                 &serde_json::json!({
                     "id": runtime.as_str(),
                     "tenant_id": tenant.as_str(),
-                    "source_id": "fixture"
+                    "source_id": "fixture",
+                    "config": {
+                        "family": "resources",
+                        "base_url": "https://provider.example.test",
+                        "token": "env:CEREBRO_SOURCE_FIXTURE_TOKEN"
+                    },
+                    "next_cursor": {"opaque": "page:2"}
                 }),
             ],
         )
         .await?;
+
+    let stored = ledger.load_source_runtime(&runtime).await?;
+    assert_eq!(stored.runtime_id(), &runtime);
+    assert_eq!(stored.tenant_id(), &tenant);
+    assert_eq!(stored.source_id(), "fixture");
+    assert_eq!(stored.cursor(), Some("page:2"));
+    assert_eq!(
+        stored.config().get("token").map(String::as_str),
+        Some("env:CEREBRO_SOURCE_FIXTURE_TOKEN")
+    );
 
     assert!(
         ledger

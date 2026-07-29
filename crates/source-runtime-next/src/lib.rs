@@ -5,10 +5,12 @@
 mod append_log;
 mod http;
 mod mapper;
+mod runtime_config;
 
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
 pub use http::{HttpConnectorError, HttpSourceConnector, ResolvedAuth};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
+pub use runtime_config::{RuntimeConfigError, resolve_environment_references};
 
 use std::{collections::BTreeMap, error::Error, fmt};
 

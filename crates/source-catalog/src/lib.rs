@@ -309,6 +309,8 @@ pub struct CompiledSource {
     id: String,
     display_name: String,
     auth: AuthModel,
+    token_header: String,
+    token_scheme: String,
     authority: CollectionAuthority,
     families: Vec<CompiledFamily>,
 }
@@ -324,6 +326,14 @@ impl CompiledSource {
 
     pub fn auth(&self) -> &AuthModel {
         &self.auth
+    }
+
+    pub fn token_header(&self) -> &str {
+        &self.token_header
+    }
+
+    pub fn token_scheme(&self) -> &str {
+        &self.token_scheme
     }
 
     pub fn authority(&self) -> CollectionAuthority {
@@ -453,6 +463,10 @@ struct ConfigFieldWire {
 #[derive(Deserialize)]
 struct AuthWire {
     model: String,
+    #[serde(default)]
+    token_header: String,
+    #[serde(default)]
+    token_scheme: String,
 }
 
 #[derive(Deserialize)]
@@ -576,13 +590,27 @@ fn compile_source(
             message: format!("unsupported auth model {}", entry.definition.auth.model),
         }
     })?;
+    let token_header = entry.definition.auth.token_header.trim().to_owned();
+    if token_header.len() > 128
+        || token_header
+            .chars()
+            .any(|character| character.is_control() || matches!(character, ' ' | ':'))
+    {
+        return invalid(path, "auth token_header is invalid");
+    }
+    let token_scheme = entry.definition.auth.token_scheme.trim().to_owned();
+    if token_scheme.len() > 64 || token_scheme.chars().any(char::is_control) {
+        return invalid(path, "auth token_scheme is invalid");
+    }
     let config_fields = entry
         .definition
         .config_fields
         .iter()
         .map(|field| field.key.as_str())
         .collect::<BTreeSet<_>>();
-    let generic_runtime_supported = classifier_supported && auth.supports_generic_runtime();
+    let generic_runtime_supported = classifier_supported
+        && auth.supports_generic_runtime()
+        && (auth != AuthModel::ApiKey || !token_header.is_empty());
     let verified_families = verified_families(proofs.get(&id));
     let mut family_ids = BTreeSet::new();
     let mut families = Vec::with_capacity(entry.definition.resource_families.len());
@@ -611,6 +639,8 @@ fn compile_source(
         id,
         display_name: nonempty(path, "display_name", entry.definition.display_name)?,
         auth,
+        token_header,
+        token_scheme,
         authority,
         families,
     })
@@ -1147,6 +1177,25 @@ mod tests {
             summary.sources,
             summary.authoritative_sources + summary.shadow_only_sources
         );
+        let missing_api_key_headers = catalog
+            .sources()
+            .filter(|source| {
+                source.authority() == CollectionAuthority::Authoritative
+                    && source.auth() == &AuthModel::ApiKey
+                    && source.token_header().is_empty()
+            })
+            .map(CompiledSource::id)
+            .collect::<Vec<_>>();
+        assert!(
+            missing_api_key_headers.is_empty(),
+            "authoritative API-key sources have no token header: {missing_api_key_headers:?}"
+        );
+        assert_eq!(
+            catalog.get("elevenlabs").unwrap().token_header(),
+            "xi-api-key"
+        );
+        assert_eq!(catalog.get("snyk").unwrap().token_header(), "Authorization");
+        assert_eq!(catalog.get("snyk").unwrap().token_scheme(), "Token");
     }
 
     #[test]
@@ -1196,6 +1245,13 @@ mod tests {
                 catalog.get(source_id).unwrap().authority(),
                 CollectionAuthority::ShadowOnly,
                 "{source_id} has an unresolved request scope"
+            );
+        }
+        for source_id in ["airbrake", "akeyless", "alchemer"] {
+            assert_eq!(
+                catalog.get(source_id).unwrap().authority(),
+                CollectionAuthority::ShadowOnly,
+                "{source_id} has no closed Rust API-key placement"
             );
         }
         assert_eq!(

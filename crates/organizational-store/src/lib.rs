@@ -18,7 +18,7 @@ pub use parity::{
 };
 pub use postgres::{
     LegacyProjectionReceipt, POSTGRES_SCHEMA, PostgresLedger, SourceCollectionReceipt,
-    SourceEventReceipt,
+    SourceEventReceipt, StoredSourceRuntime,
 };
 
 use std::{error::Error, fmt};

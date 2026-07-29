@@ -7,7 +7,7 @@ mod parity_command;
 mod rpc;
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     env,
     error::Error,
     path::PathBuf,
@@ -65,6 +65,7 @@ use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
     CatalogGraphMapper, CollectionRequest, CommittedSourceEvent, GraphMapper, GraphSink,
     HttpSourceConnector, ResolvedAuth, SourceRuntime, SourceRuntimeLeaseFence,
+    resolve_environment_references,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
@@ -1330,31 +1331,35 @@ async fn migrate_stores() -> Result<(), Box<dyn Error>> {
 }
 
 async fn sync_source() -> Result<(), Box<dyn Error>> {
+    let runtime_id = SourceRuntimeId::parse(required_env("CEREBRO_SOURCE_RUNTIME_ID")?)?;
+    let postgres_dsn = required_env("CEREBRO_POSTGRES_DSN")?;
+    let lease_ledger = Arc::new(PostgresLedger::connect_tls(&postgres_dsn).await?);
+    lease_ledger.migrate().await?;
+    let stored_runtime = lease_ledger.load_source_runtime(&runtime_id).await?;
+    let tenant_id = stored_runtime.tenant_id().clone();
+    let source_id = stored_runtime.source_id().to_owned();
+    let cursor = stored_runtime.cursor().map(str::to_owned);
+    let mut config = resolve_environment_references(
+        &source_id,
+        stored_runtime.config(),
+        &source_config_environment_allowlist(),
+        |name| env::var(name).ok(),
+    )?;
+    let family_id = required_config(&config, "family")?;
+    let base_url = required_config(&config, "base_url")?;
+
     let catalog = load_catalog()?;
-    let source_id = required_env("CEREBRO_SOURCE_ID")?;
-    let family_id = required_env("CEREBRO_SOURCE_FAMILY")?;
-    let tenant_id = TenantId::parse(required_env("CEREBRO_TENANT_ID")?)?;
     let source = catalog
         .get(&source_id)
         .ok_or_else(|| format!("source {source_id} is not in the catalog"))?
         .clone();
-    let mut config = env::var("CEREBRO_SOURCE_CONFIG_JSON")
-        .ok()
-        .map(|value| serde_json::from_str::<BTreeMap<String, String>>(&value))
-        .transpose()?
-        .unwrap_or_default();
-    let auth = resolved_auth(source.auth(), &mut config)?;
-    let connector = HttpSourceConnector::new(
-        source.clone(),
-        &family_id,
-        &required_env("CEREBRO_SOURCE_BASE_URL")?,
-        config,
-        auth,
+    let auth = resolved_auth(
+        source.auth(),
+        source.token_header(),
+        source.token_scheme(),
+        &mut config,
     )?;
-    let postgres_dsn = required_env("CEREBRO_POSTGRES_DSN")?;
-    let runtime_id = SourceRuntimeId::parse(required_env("CEREBRO_SOURCE_RUNTIME_ID")?)?;
-    let lease_ledger = Arc::new(PostgresLedger::connect_tls(&postgres_dsn).await?);
-    lease_ledger.migrate().await?;
+    let connector = HttpSourceConnector::new(source.clone(), &family_id, &base_url, config, auth)?;
     let lease_ttl_millis = source_runtime_lease_ttl_millis()?;
     let lease_owner = source_runtime_lease_owner();
 
@@ -1374,7 +1379,7 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
     let request = CollectionRequest {
         tenant_id,
         source_runtime_id: runtime_id,
-        cursor: env::var("CEREBRO_SOURCE_CURSOR").ok(),
+        cursor,
     };
     let (stop_renewal, renewal_failure, renewal_task) =
         start_source_runtime_lease_renewal(lease_ledger.clone(), fence.clone(), lease_ttl_millis);
@@ -1408,6 +1413,21 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
     let receipt = outcome.map_err(|error| -> Box<dyn Error> { error.into() })?;
     println!("{}", serde_json::to_string_pretty(&receipt)?);
     Ok(())
+}
+
+fn source_config_environment_allowlist() -> BTreeSet<String> {
+    env::var("CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST")
+        .ok()
+        .into_iter()
+        .flat_map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 fn source_runtime_lease_ttl_millis() -> Result<u64, Box<dyn Error>> {
@@ -1490,17 +1510,22 @@ async fn connect_neo4j() -> Result<Neo4jProjector, Box<dyn Error>> {
 
 fn resolved_auth(
     model: &AuthModel,
+    token_header: &str,
+    token_scheme: &str,
     config: &mut BTreeMap<String, String>,
 ) -> Result<ResolvedAuth, Box<dyn Error>> {
     Ok(match model {
         AuthModel::None => ResolvedAuth::None,
         AuthModel::Basic => ResolvedAuth::Basic {
-            username: required_env("CEREBRO_SOURCE_USERNAME")?,
-            password: required_env("CEREBRO_SOURCE_PASSWORD")?,
+            username: take_required_config(config, "username")?,
+            password: take_required_config(config, "password")?,
         },
         AuthModel::ApiKey => ResolvedAuth::Header {
-            name: required_env("CEREBRO_SOURCE_AUTH_HEADER")?,
-            value: required_env("CEREBRO_SOURCE_AUTH_VALUE")?,
+            name: nonempty_catalog_auth_value(token_header, "token_header")?,
+            value: apply_auth_scheme(
+                token_scheme,
+                take_first_required_config(config, &["token", "api_key", "auth_value"])?,
+            ),
         },
         AuthModel::AwsSigV4 => ResolvedAuth::AwsSigV4 {
             access_key_id: take_required_config(config, "access_key")?,
@@ -1517,9 +1542,29 @@ fn resolved_auth(
             return Err("source auth requires a bespoke Rust connector".into());
         }
         _ => ResolvedAuth::Bearer {
-            token: required_env("CEREBRO_SOURCE_TOKEN")?,
+            token: take_first_required_config(
+                config,
+                &["token", "access_token", "api_token", "bearer_token"],
+            )?,
         },
     })
+}
+
+fn nonempty_catalog_auth_value(value: &str, field: &str) -> Result<String, Box<dyn Error>> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(format!("source catalog auth {field} is required").into());
+    }
+    Ok(value.to_owned())
+}
+
+fn apply_auth_scheme(scheme: &str, value: String) -> String {
+    let scheme = scheme.trim();
+    if scheme.is_empty() {
+        value
+    } else {
+        format!("{scheme} {value}")
+    }
 }
 
 fn required_config(config: &BTreeMap<String, String>, key: &str) -> Result<String, Box<dyn Error>> {
@@ -1527,7 +1572,7 @@ fn required_config(config: &BTreeMap<String, String>, key: &str) -> Result<Strin
         .get(key)
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| format!("CEREBRO_SOURCE_CONFIG_JSON.{key} is required").into())
+        .ok_or_else(|| format!("stored source runtime config {key:?} is required").into())
 }
 
 fn take_required_config(
@@ -1535,7 +1580,26 @@ fn take_required_config(
     key: &str,
 ) -> Result<String, Box<dyn Error>> {
     remove_nonempty(config, key)
-        .ok_or_else(|| format!("CEREBRO_SOURCE_CONFIG_JSON.{key} is required").into())
+        .ok_or_else(|| format!("stored source runtime config {key:?} is required").into())
+}
+
+fn take_first_required_config(
+    config: &mut BTreeMap<String, String>,
+    keys: &[&str],
+) -> Result<String, Box<dyn Error>> {
+    for key in keys {
+        if let Some(value) = remove_nonempty(config, key) {
+            return Ok(value);
+        }
+    }
+    Err(format!(
+        "stored source runtime config requires one of {}",
+        keys.iter()
+            .map(|key| format!("{key:?}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+    .into())
 }
 
 fn remove_nonempty(config: &mut BTreeMap<String, String>, key: &str) -> Option<String> {
@@ -3253,6 +3317,35 @@ mod tests {
     const TEST_SHARED_SECRET: &str = "test-organizational-graph-secret-32-bytes";
 
     #[test]
+    fn rust_source_sync_accepts_only_the_stored_runtime_selector() {
+        let source = include_str!("main.rs");
+        let sync_source = source
+            .split("async fn sync_source()")
+            .nth(1)
+            .and_then(|body| {
+                body.split("fn source_config_environment_allowlist()")
+                    .next()
+            })
+            .expect("sync-source implementation");
+        assert!(sync_source.contains("CEREBRO_SOURCE_RUNTIME_ID"));
+        for deprecated in [
+            ["CEREBRO", "SOURCE", "ID"].join("_"),
+            ["CEREBRO", "SOURCE", "FAMILY"].join("_"),
+            ["CEREBRO", "TENANT", "ID"].join("_"),
+            ["CEREBRO", "SOURCE", "BASE", "URL"].join("_"),
+            ["CEREBRO", "SOURCE", "CONFIG", "JSON"].join("_"),
+            ["CEREBRO", "SOURCE", "CURSOR"].join("_"),
+            ["CEREBRO", "SOURCE", "TOKEN"].join("_"),
+            ["CEREBRO", "SOURCE", "AUTH", "VALUE"].join("_"),
+        ] {
+            assert!(
+                !sync_source.contains(&deprecated),
+                "sync-source still accepts deprecated authority input {deprecated}"
+            );
+        }
+    }
+
+    #[test]
     fn aws_sigv4_resolution_scrubs_secrets_but_preserves_runtime_config() {
         let mut config = BTreeMap::from([
             ("access_key".to_owned(), "access-example".to_owned()),
@@ -3262,7 +3355,7 @@ mod tests {
             ("service".to_owned(), "bedrock".to_owned()),
             ("account".to_owned(), "account-a".to_owned()),
         ]);
-        let auth = resolved_auth(&AuthModel::AwsSigV4, &mut config).unwrap();
+        let auth = resolved_auth(&AuthModel::AwsSigV4, "", "", &mut config).unwrap();
         assert!(matches!(
             auth,
             ResolvedAuth::AwsSigV4 {
@@ -3292,7 +3385,7 @@ mod tests {
             ("client_secret".to_owned(), "secret-example".to_owned()),
             ("base_url".to_owned(), "https://api.example.test".to_owned()),
         ]);
-        let auth = resolved_auth(&AuthModel::DuoHmacV5, &mut config).unwrap();
+        let auth = resolved_auth(&AuthModel::DuoHmacV5, "", "", &mut config).unwrap();
         assert!(matches!(
             auth,
             ResolvedAuth::DuoHmacV5 {
@@ -3306,6 +3399,51 @@ mod tests {
             config.get("base_url").map(String::as_str),
             Some("https://api.example.test")
         );
+    }
+
+    #[test]
+    fn stored_basic_and_api_key_auth_scrub_credentials_from_connector_config() {
+        let mut basic = BTreeMap::from([
+            ("username".to_owned(), "service-account".to_owned()),
+            ("password".to_owned(), "secret-example".to_owned()),
+            ("family".to_owned(), "users".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(&AuthModel::Basic, "", "", &mut basic).unwrap(),
+            ResolvedAuth::Basic {
+                ref username,
+                ref password,
+            } if username == "service-account" && password == "secret-example"
+        ));
+        assert!(!basic.contains_key("username"));
+        assert!(!basic.contains_key("password"));
+
+        let mut api_key = BTreeMap::from([
+            ("token".to_owned(), "secret-example".to_owned()),
+            ("family".to_owned(), "resources".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(&AuthModel::ApiKey, "X-API-Key", "Token", &mut api_key).unwrap(),
+            ResolvedAuth::Header {
+                ref name,
+                ref value,
+            } if name == "X-API-Key" && value == "Token secret-example"
+        ));
+        assert!(!api_key.contains_key("token"));
+    }
+
+    #[test]
+    fn stored_bearer_auth_scrubs_token_from_connector_config() {
+        let mut config = BTreeMap::from([
+            ("token".to_owned(), "secret-example".to_owned()),
+            ("family".to_owned(), "resources".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(&AuthModel::BearerToken, "", "", &mut config).unwrap(),
+            ResolvedAuth::Bearer { ref token } if token == "secret-example"
+        ));
+        assert!(!config.contains_key("token"));
+        assert_eq!(config.get("family").map(String::as_str), Some("resources"));
     }
 
     struct UnavailableGraph;
