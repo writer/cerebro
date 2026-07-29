@@ -104,6 +104,52 @@ func TestScanIngestRunRecordPreservesMissingLegacyCheckpointTerminalState(t *tes
 	}
 }
 
+func TestIngestRunListQueryBoundsLatestRunsByRequestedRuntime(t *testing.T) {
+	query, params, err := ingestRunListQuery(graphstore.IngestRunFilter{
+		RuntimeIDs:      []string{"runtime-b", "runtime-a", "runtime-b"},
+		Status:          graphstore.IngestRunStatusCompleted,
+		LatestByRuntime: true,
+	}, 2)
+	if err != nil {
+		t.Fatalf("ingestRunListQuery() error = %v", err)
+	}
+	for _, want := range []string{
+		"UNWIND $runtime_ids AS runtime_id",
+		"MATCH (r:IngestRun {runtime_id: runtime_id})",
+		"WHERE r.status = $status",
+		"ORDER BY r.started_at DESC, r.id DESC",
+		"LIMIT 1",
+	} {
+		if !strings.Contains(query, want) {
+			t.Fatalf("ingestRunListQuery() missing %q:\n%s", want, query)
+		}
+	}
+	for _, rejected := range []string{"collect(r)[0]", "r.runtime_id IN $runtime_ids"} {
+		if strings.Contains(query, rejected) {
+			t.Fatalf("ingestRunListQuery() contains unbounded shape %q:\n%s", rejected, query)
+		}
+	}
+	gotRuntimeIDs, ok := params["runtime_ids"].([]string)
+	if !ok || strings.Join(gotRuntimeIDs, ",") != "runtime-b,runtime-a" {
+		t.Fatalf("runtime_ids = %#v, want normalized stable input order", params["runtime_ids"])
+	}
+	if params["status"] != graphstore.IngestRunStatusCompleted {
+		t.Fatalf("status = %#v, want %q", params["status"], graphstore.IngestRunStatusCompleted)
+	}
+}
+
+func TestNeo4jSchemaIndexesIngestRunLookupShape(t *testing.T) {
+	statements := strings.Join(neo4jSchemaStatements(), "\n")
+	for _, want := range []string{
+		"cerebro_ingest_run_runtime IF NOT EXISTS FOR (r:IngestRun) ON (r.runtime_id)",
+		"cerebro_ingest_run_runtime_started IF NOT EXISTS FOR (r:IngestRun) ON (r.runtime_id, r.started_at)",
+	} {
+		if !strings.Contains(statements, want) {
+			t.Fatalf("neo4jSchemaStatements() missing %q:\n%s", want, statements)
+		}
+	}
+}
+
 func TestUpsertProjectedEntityRejectsCrossTenantCerebroURNBeforeConnection(t *testing.T) {
 	store := &Store{}
 	err := store.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{

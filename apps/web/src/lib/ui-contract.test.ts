@@ -78,6 +78,9 @@ describe("product UI contract", () => {
     expect(identityPanelSource).toContain("Write Stamps");
     expect(identityPanelSource).toContain("currentUserWriteFieldForPath");
     expect(statusSource).toContain("Runtime Health");
+    expect(statusSource).toContain("API liveness");
+    expect(statusSource).toContain("API readiness");
+    expect(statusSource).not.toContain("/api/cerebro/grc/dashboard");
     expect(primitivesSource).toContain("DataStateBanner");
     expect(primitivesSource).toContain("data-grc-data-state");
     expect(primitivesSource).toContain("RuntimeRecoveryBlock");
