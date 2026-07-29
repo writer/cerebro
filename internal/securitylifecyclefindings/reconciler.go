@@ -50,6 +50,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, tenantID, findingID string) 
 	if r == nil || r.queries == nil {
 		return Result{}, fmt.Errorf("%w: lifecycle query reader is unavailable", ErrDependency)
 	}
+	if r.findings == nil {
+		return Result{}, fmt.Errorf("%w: findings service is unavailable", ErrDependency)
+	}
 	if tenantID == "" || findingID == "" {
 		return Result{}, fmt.Errorf("%w: tenant and finding are required", findings.ErrInvalidRequest)
 	}
@@ -92,6 +95,14 @@ func (r *Reconciler) reconcileClosed(ctx context.Context, tenantID, findingID st
 	locator, ok := findings.SecurityLifecycleLocatorForFinding(current)
 	if !ok {
 		return Result{}, fmt.Errorf("%w: finding is not a projected security lifecycle finding", findings.ErrInvalidRequest)
+	}
+	if strings.EqualFold(strings.TrimSpace(current.Status), "resolved") {
+		return Result{
+			FindingID:    current.ID,
+			Status:       current.Status,
+			Verification: "already_resolved",
+			Reason:       "The finding is already resolved; no reconciliation change was needed.",
+		}, nil
 	}
 	subjectKind, ok := lifecycleSubjectKind(locator.SubjectKind)
 	if !ok {

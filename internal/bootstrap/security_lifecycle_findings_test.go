@@ -192,6 +192,34 @@ func TestSecurityLifecycleFindingReconcileUsesDurableFindingAndAuditAuthorities(
 	if len(preview.Evidence) != 3 {
 		t.Fatalf("resolved audit preview evidence = %d, want open, provider-success, and verified observations", len(preview.Evidence))
 	}
+
+	alreadyResolved := reconcileLifecycleFinding(t, app)
+	if alreadyResolved.code != http.StatusOK ||
+		alreadyResolved.body.Status != "resolved" ||
+		alreadyResolved.body.Verification != "already_resolved" {
+		t.Fatalf("already-resolved reconcile = %#v", alreadyResolved)
+	}
+	if len(receipt.calls) != 2 {
+		t.Fatalf("receipt lookups after already-resolved reconcile = %d, want no additional lookup", len(receipt.calls))
+	}
+	if len(query.listQueries) != 2 {
+		t.Fatalf("exact subject queries after already-resolved reconcile = %d, want no additional query", len(query.listQueries))
+	}
+}
+
+func TestSecurityLifecycleFindingReconcileRejectsMissingFindingsService(t *testing.T) {
+	query := &lifecycleFindingQueryStub{}
+	_, err := securitylifecyclefindings.New(nil, query, nil).Reconcile(
+		context.Background(),
+		"tenant-a",
+		"urn:cerebro:tenant-a:finding:lifecycle",
+	)
+	if !errors.Is(err, securitylifecyclefindings.ErrDependency) {
+		t.Fatalf("Reconcile() error = %v, want ErrDependency", err)
+	}
+	if query.resolveCalls != 0 {
+		t.Fatalf("lifecycle resolver calls = %d, want dependency validation before query", query.resolveCalls)
+	}
 }
 
 func TestLifecycleOpenObservationRequiresMatchingResolverProvenanceAliases(t *testing.T) {
