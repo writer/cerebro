@@ -63,6 +63,22 @@ describe("product UI contract", () => {
     expect(source).not.toMatch(/const\s+userInitials\s*=\s*["'`](CB|JH)["'`]/);
   });
 
+  it("keeps global startup work bounded until the operator requests it", () => {
+    const developerSource = readProjectFile("src/app/developer/page.tsx");
+    const providersSource = readProjectFile("src/components/providers.tsx");
+    const sidebarSource = readProjectFile("src/components/Sidebar.tsx");
+    const statusSource = readProjectFile("src/components/StatusPanel.tsx");
+    const topbarSource = readProjectFile("src/components/Topbar.tsx");
+
+    expect(topbarSource).toContain("showNotifications ? grcDashboardPath");
+    expect(topbarSource).toContain("showNotifications ? grcPath");
+    expect(topbarSource).not.toContain('fetch("/api/config"');
+    expect(statusSource).not.toContain('fetch("/api/config"');
+    expect(providersSource.match(/fetch\("\/api\/config"/g)).toHaveLength(1);
+    expect(sidebarSource).toContain("prefetch={false}");
+    expect(developerSource.match(/prefetch=\{false\}/g)).toHaveLength(2);
+  });
+
   it("keeps identity and API recovery diagnostics in developer-owned surfaces", () => {
     expect(existsSync(projectPath("src/app/developer/identity/page.tsx"))).toBe(true);
     expect(existsSync(projectPath("src/lib/identity.ts"))).toBe(true);

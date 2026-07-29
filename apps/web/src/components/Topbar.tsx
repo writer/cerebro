@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { Check, Settings2, Share2, UsersRound } from "lucide-react";
 
 import { API_BASE } from "@/lib/api";
-import { useApiKey, useCommandPalette, useCurrentUser, useTheme, useUserPreferences } from "@/components/providers";
+import { useApiKey, useCommandPalette, useConsoleConfig, useCurrentUser, useTheme, useUserPreferences } from "@/components/providers";
 import { countLabel } from "@/lib/format";
 import type { GRCDashboard } from "@/lib/grc";
 import { DASHBOARD_FINDING_LIMIT, grcDashboardPath, grcPath, useGRCQuery } from "@/lib/grc-client";
@@ -16,12 +16,6 @@ import { authorizationRoleLabelsForUser, effectiveAuthorizationPermissionsForUse
 import type { ReportRunListResponse } from "@/lib/report-schedules";
 import { usePopoverDismissal } from "@/lib/use-popover-dismissal";
 import { HOME_SECTION_IDS, HOME_SECTION_LABELS, userPreferencesShareURL, type DisplayDensity, type ThemePreference, type UserPreferences } from "@/lib/user-preferences";
-
-type ConsoleConfig = {
-  apiBase: string;
-  serverAuthConfigured: boolean;
-  forwardRequestAuth: boolean;
-};
 
 const displayValues = (values: string[] | undefined) => values?.filter(Boolean).join(", ") || "—";
 
@@ -69,25 +63,9 @@ export default function Topbar() {
   const [showConnection, setShowConnection] = useState(false);
   const [showIdentity, setShowIdentity] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [config, setConfig] = useState<ConsoleConfig | null>(null);
+  const { config } = useConsoleConfig();
   const [shareStatus, setShareStatus] = useState<ShareStatus>("idle");
   const [shareURL, setShareURL] = useState("");
-
-  useEffect(() => {
-    let mounted = true;
-    const loadConfig = async () => {
-      try {
-        const response = await fetch("/api/config", { cache: "no-store" });
-        if (!response.ok) return;
-        const nextConfig = (await response.json()) as ConsoleConfig;
-        if (mounted) setConfig(nextConfig);
-      } catch {
-        return;
-      }
-    };
-    void loadConfig();
-    return () => { mounted = false; };
-  }, []);
 
   const serverAuthConfigured = config?.serverAuthConfigured ?? false;
   const clientKeyEnabled = config?.forwardRequestAuth ?? false;
@@ -171,8 +149,13 @@ export default function Topbar() {
     return () => window.clearTimeout(timeout);
   }, [shareStatus, shareURL]);
 
-  const notificationsQuery = useGRCQuery<GRCDashboard>(grcDashboardPath({ limit: DASHBOARD_FINDING_LIMIT }));
-  const reportRunsQuery = useGRCQuery<ReportRunListResponse>(grcPath("/report-runs", { limit: 5 }));
+  const notificationsQuery = useGRCQuery<GRCDashboard>(
+    showNotifications ? grcDashboardPath({ limit: DASHBOARD_FINDING_LIMIT }) : null,
+  );
+  const reportRunsQuery = useGRCQuery<ReportRunListResponse>(
+    showNotifications ? grcPath("/report-runs", { limit: 5 }) : null,
+  );
+  const notificationsLoading = notificationsQuery.loading || reportRunsQuery.loading;
   const notifications = useMemo(
     () => [...buildNotifications(notificationsQuery.data), ...reportRunNotifications(reportRunsQuery.data?.runs)],
     [notificationsQuery.data, reportRunsQuery.data?.runs],
@@ -302,7 +285,9 @@ export default function Topbar() {
             <div>
               <div className="text-[14px] font-semibold text-[var(--text-primary)]">Notifications</div>
               <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-                {notifications.length === 0
+                {notificationsLoading
+                  ? "Loading current alerts..."
+                  : notifications.length === 0
                   ? "Nothing needs attention right now."
                   : unreadCount > 0
                     ? countLabel(unreadCount, "unread alert")
@@ -319,7 +304,9 @@ export default function Topbar() {
               }`}
             />
           </div>
-          {notifications.length === 0 ? (
+          {notificationsLoading ? (
+            <div className="py-8 text-center text-[13px] text-[var(--text-muted)]">Loading notifications...</div>
+          ) : notifications.length === 0 ? (
             <div className="py-8 text-center text-[13px] text-[var(--text-muted)]">No notifications</div>
           ) : (
             <div className="max-h-[320px] divide-y divide-[color:var(--border)] overflow-y-auto">

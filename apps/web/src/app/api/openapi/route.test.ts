@@ -51,6 +51,7 @@ describe("OpenAPI document parsing", () => {
     }));
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, max-age=300");
     await expect(response.json()).resolves.toMatchObject({ openapi: "3.1.0" });
   });
 });

@@ -31,7 +31,7 @@ const loadOpenApi = async () => {
   try {
     const apiKey = window.localStorage.getItem(API_KEY_STORAGE) ?? "";
     const response = await fetch("/api/openapi", {
-      cache: "no-store",
+      cache: "default",
       headers: apiKey ? { "X-API-Key": apiKey } : {},
     });
     if (!response.ok) {

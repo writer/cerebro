@@ -2,16 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { useApiKey, useCurrentUser } from "@/components/providers";
+import { useApiKey, useConsoleConfig, useCurrentUser } from "@/components/providers";
 import { identityPosture } from "@/lib/identity";
 import { RuntimeState, runtimeStateCopy, runtimeStateForError, runtimeStateLabel } from "@/lib/runtime-state";
 
 type StatusState = {
-  config?: {
-    apiBase?: string;
-    forwardRequestAuth?: boolean;
-    serverAuthConfigured?: boolean;
-  };
   health?: Record<string, unknown>;
   healthz?: Record<string, unknown>;
   probes?: ProbeResult[];
@@ -66,6 +61,7 @@ const stateClass = (state: RuntimeState) => {
 
 export default function StatusPanel() {
   const { apiKey } = useApiKey();
+  const { config } = useConsoleConfig();
   const { error: identityError, loading: identityLoading, user } = useCurrentUser();
   const [state, setState] = useState<StatusState>({});
   const [loading, setLoading] = useState(true);
@@ -111,17 +107,11 @@ export default function StatusPanel() {
     };
 
     try {
-      const configPromise = fetch("/api/config", { cache: "no-store", signal })
-        .then((response) => response.ok ? response.json() as Promise<StatusState["config"]> : undefined)
-        .catch(() => undefined);
-      const [configJson, probes] = await Promise.all([
-        configPromise,
-        Promise.all(STATUS_PROBES.map(runProbe)),
-      ]);
+      const probes = await Promise.all(STATUS_PROBES.map(runProbe));
       if (signal?.aborted) return;
       const health = probes.find((probe) => probe.key === "health")?.data;
       const healthz = probes.find((probe) => probe.key === "healthz")?.data;
-      setState({ checkedAt: new Date().toISOString(), config: configJson, health, healthz, probes });
+      setState({ checkedAt: new Date().toISOString(), health, healthz, probes });
     } catch (err) {
       if (!signal?.aborted) setState({ error: err instanceof Error ? err.message : "Unable to reach API" });
     } finally {
@@ -164,8 +154,8 @@ export default function StatusPanel() {
             {[
               { label: "Web app", value: loading ? "Checking" : "Ready", detail: "Local UI is responding" },
               { label: "Identity", value: identity.label, detail: identity.sourceLabel },
-              { label: "API base", value: state.config?.apiBase ?? "Unknown", detail: state.config?.serverAuthConfigured ? "server auth configured" : "server auth not configured" },
-              { label: "Auth forwarding", value: state.config?.forwardRequestAuth ? "Enabled" : "Disabled", detail: apiKey ? "API key present" : "no API key in browser" },
+              { label: "API base", value: config?.apiBase ?? "Unknown", detail: config?.serverAuthConfigured ? "server auth configured" : "server auth not configured" },
+              { label: "Auth forwarding", value: config?.forwardRequestAuth ? "Enabled" : "Disabled", detail: apiKey ? "API key present" : "no API key in browser" },
             ].map((item) => (
               <div key={item.label} className="rounded-lg border border-[color:var(--border)] bg-[var(--surface-muted)] p-3">
                 <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">{item.label}</div>
