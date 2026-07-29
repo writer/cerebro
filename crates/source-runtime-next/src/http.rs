@@ -1430,6 +1430,71 @@ mod tests {
     }
 
     #[test]
+    fn promoted_source_paths_require_and_encode_exact_runtime_scope() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+
+        let missing_airtable_scope = HttpSourceConnector::new(
+            catalog.get("airtable").unwrap().clone(),
+            "users",
+            "https://api.airtable.com",
+            BTreeMap::new(),
+            ResolvedAuth::Bearer {
+                token: "token".to_owned(),
+            },
+        )
+        .unwrap()
+        .request_scopes()
+        .err()
+        .unwrap();
+        assert!(matches!(
+            missing_airtable_scope,
+            HttpConnectorError::InvalidConfiguration(_)
+        ));
+
+        let airtable = HttpSourceConnector::new(
+            catalog.get("airtable").unwrap().clone(),
+            "audit_events",
+            "https://api.airtable.com",
+            BTreeMap::from([(
+                "enterprise_account_id".to_owned(),
+                "../other?scope=expanded#fragment".to_owned(),
+            )]),
+            ResolvedAuth::Bearer {
+                token: "token".to_owned(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            airtable.request_scopes().unwrap()[0].url.as_str(),
+            "https://api.airtable.com/v0/meta/enterpriseAccounts/%2E%2E%2Fother%3Fscope%3Dexpanded%23fragment/auditLogEvents"
+        );
+
+        let anchore = HttpSourceConnector::new(
+            catalog.get("anchore").unwrap().clone(),
+            "vulnerabilities",
+            "https://anchore.example/v2",
+            BTreeMap::from([
+                ("app_id".to_owned(), "orders/api".to_owned()),
+                ("version_id".to_owned(), "../production".to_owned()),
+            ]),
+            ResolvedAuth::Basic {
+                username: "runtime-user".to_owned(),
+                password: "runtime-password".to_owned(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            anchore.request_scopes().unwrap()[0].url.as_str(),
+            "https://anchore.example/v2/apps/orders%2Fapi/versions/%2E%2E%2Fproduction/vulnerabilities"
+        );
+    }
+
+    #[test]
     fn only_cursor_pagination_accepts_a_collection_cursor() {
         let requested = Some("resume-here");
         let cursor = Pagination::Cursor {
