@@ -1,6 +1,6 @@
 use super::*;
 use std::fs::{self, OpenOptions};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -264,6 +264,10 @@ fn checked_in_catalog_matches_generated_registry() {
     let generated = generate(root, Path::new(DEFAULT_CATALOG_PATH)).unwrap();
     let existing = fs::read(root.join(DEFAULT_OUTPUT_PATH)).unwrap();
     assert_eq!(trim_ascii(&existing), trim_ascii(&generated));
+
+    let generated_rust = generate_rust(root, Path::new(DEFAULT_CATALOG_PATH)).unwrap();
+    let existing_rust = fs::read(root.join(DEFAULT_RUST_OUTPUT_PATH)).unwrap();
+    assert_eq!(trim_ascii(&existing_rust), trim_ascii(&generated_rust));
 }
 
 fn trim_ascii(value: &[u8]) -> &[u8] {

@@ -9,14 +9,16 @@ use cerebro_platform_engine::{
 };
 use cerebro_platform_sdk::{
     ActionEffect, ActionOperation, ActionOperationId, ActionProposal, ActionState,
-    AnalysisPluginManifest, AssertionCondition, AssertionDefinition, AssertionDefinitionId,
-    AssertionState, ContentDigest, EntityId, EntityKind, EvaluationTrigger, EvidenceAuthority,
-    EvidenceQuality, EvidenceReference, FactQuery, GraphDiffRequest, GraphRevision,
-    IncidentSnapshotId, IncidentSnapshotManifest, MaterializedViewDefinition, OpaqueId,
-    PlatformEvent, PlatformEventKind, PluginCapability, PluginId, PluginLimits, ProposedChange,
-    QueryEdge, QueryNode, QueryResult, RecoveryCheck, RecoveryState, RelationKind, ResourceBudget,
+    ActionVerificationReceipt, ActorId, AnalysisPluginManifest, AssertionCondition,
+    AssertionDefinition, AssertionDefinitionId, AssertionState, ContentDigest, DecisionId,
+    DecisionReceipt, EntityId, EntityKind, EvaluationTrigger, EvidenceAuthority, EvidenceQuality,
+    EvidenceReference, FactQuery, GraphDiffRequest, GraphRevision, IncidentSnapshotId,
+    IncidentSnapshotManifest, MaterializedViewDefinition, OpaqueId, PlatformEvent,
+    PlatformEventKind, PluginCapability, PluginId, PluginLimits, ProposedChange, QueryEdge,
+    QueryNode, QueryResult, RecoveryCheck, RecoveryState, RelationKind, ResourceBudget,
     ResourceUsage, RevisionSelector, SimulationId, SimulationRequest, SourceRuntimeId,
-    SubscriptionEventFilter, TenantId, VerificationState, ViewId,
+    SubscriptionEventFilter, TenantId, VerificationId, VerificationReceipt, VerificationState,
+    ViewId,
 };
 
 fn tenant() -> TenantId {
@@ -29,6 +31,10 @@ fn revision(value: u64) -> GraphRevision {
 
 fn digest(value: &str) -> ContentDigest {
     ContentDigest::of_bytes(value)
+}
+
+fn actor(value: &str) -> ActorId {
+    ActorId::parse(value).expect("valid actor")
 }
 
 fn query(limit: usize) -> FactQuery {
@@ -148,11 +154,15 @@ fn adaptive_plans_respect_tenant_budgets() {
 
 #[test]
 fn action_transitions_are_optimistic_and_fail_closed() {
-    let proposal = ActionProposal {
+    let mut proposal = ActionProposal {
         operation_id: ActionOperationId::parse("operation:one").expect("valid operation"),
         tenant_id: tenant(),
+        finding_id: OpaqueId::parse("finding:one").expect("valid finding"),
+        finding_revision_digest: digest("finding-revision"),
+        finding_validation_receipt_digest: digest("finding-validation"),
         graph_revision: revision(1),
         action_kind: "revoke_access".to_owned(),
+        action_definition_digest: digest("action-definition"),
         target_id: OpaqueId::parse("grant:one").expect("valid target"),
         expected_effects: vec![ActionEffect {
             target_id: OpaqueId::parse("grant:one").expect("valid target"),
@@ -162,16 +172,32 @@ fn action_transitions_are_optimistic_and_fail_closed() {
         rollback_ref: OpaqueId::parse("rollback:one").expect("valid rollback"),
         idempotency_key: OpaqueId::parse("idempotency:one").expect("valid key"),
         simulation_digest: digest("simulation"),
+        verification_plan_digest: digest("verification-plan"),
+        proposed_by: actor("proposer:one"),
+        proposed_at_unix_ms: 1,
+        proposal_expires_at_unix_ms: 100,
         proposal_digest: digest("proposal"),
     };
+    proposal
+        .bind_computed_digest()
+        .expect("bind action proposal digest");
     let operation = ActionOperation {
         proposal,
         state: ActionState::Proposed,
         version: 1,
+        approval_receipt: None,
         claimed_by: None,
+        claimed_at_unix_ms: None,
+        claim_expires_at_unix_ms: None,
+        executor_actor_id: None,
+        provider_receipt_digest: None,
+        provider_status: None,
+        provider_observed_at_unix_ms: None,
+        executed_at_unix_ms: None,
         external_receipt_ref: None,
         observed_effect_digest: None,
         verification_state: VerificationState::Pending,
+        verification_receipt: None,
     };
     let simulated =
         transition_action(&operation, 1, ActionCommand::RecordSimulation).expect("transition");
@@ -180,38 +206,249 @@ fn action_transitions_are_optimistic_and_fail_closed() {
     assert!(transition_action(&operation, 0, ActionCommand::RecordSimulation).is_err());
     let waiting =
         transition_action(&simulated, 2, ActionCommand::RequestApproval).expect("transition");
-    let claimed = transition_action(
+    assert!(
+        transition_action(
+            &waiting,
+            3,
+            ActionCommand::Claim {
+                worker_id: OpaqueId::parse("worker:one").expect("valid worker"),
+                claimed_at_unix_ms: 11,
+                claim_expires_at_unix_ms: 20,
+            },
+        )
+        .is_err()
+    );
+    let approved = transition_action(
         &waiting,
         3,
+        ActionCommand::RecordApproval {
+            receipt: DecisionReceipt {
+                decision_id: DecisionId::parse("decision:one").expect("valid decision"),
+                proposal_digest: waiting.proposal.proposal_digest.to_string(),
+                approved: true,
+                decided_by: actor("approver:one"),
+                decided_at_unix_ms: 10,
+            },
+        },
+    )
+    .expect("transition");
+    let claimed = transition_action(
+        &approved,
+        4,
         ActionCommand::Claim {
             worker_id: OpaqueId::parse("worker:one").expect("valid worker"),
+            claimed_at_unix_ms: 11,
+            claim_expires_at_unix_ms: 20,
         },
     )
     .expect("transition");
-    let executing =
-        transition_action(&claimed, 4, ActionCommand::StartExecution).expect("transition");
-    let completed = transition_action(
-        &executing,
+    assert!(
+        transition_action(
+            &claimed,
+            5,
+            ActionCommand::StartExecution {
+                started_at_unix_ms: 20,
+            },
+        )
+        .is_err(),
+        "a worker cannot start execution at the exclusive lease deadline"
+    );
+    assert!(
+        transition_action(
+            &claimed,
+            5,
+            ActionCommand::ReleaseExpiredClaim {
+                observed_at_unix_ms: 19,
+            },
+        )
+        .is_err(),
+        "a live claim cannot be taken over"
+    );
+    let released = transition_action(
+        &claimed,
         5,
+        ActionCommand::ReleaseExpiredClaim {
+            observed_at_unix_ms: 20,
+        },
+    )
+    .expect("expired claim release");
+    assert_eq!(released.state, ActionState::Approved);
+    assert!(released.claimed_by.is_none());
+    assert!(released.claim_expires_at_unix_ms.is_none());
+    let reclaimed = transition_action(
+        &released,
+        6,
+        ActionCommand::Claim {
+            worker_id: OpaqueId::parse("worker:recovery").expect("valid worker"),
+            claimed_at_unix_ms: 21,
+            claim_expires_at_unix_ms: 30,
+        },
+    )
+    .expect("reclaim after expiry");
+    assert_eq!(
+        reclaimed.claimed_by.as_ref().map(OpaqueId::as_str),
+        Some("worker:recovery")
+    );
+    assert!(
+        transition_action(
+            &claimed,
+            5,
+            ActionCommand::RenewClaim {
+                renewed_at_unix_ms: 20,
+                claim_expires_at_unix_ms: 30,
+            },
+        )
+        .is_err(),
+        "an expired claim cannot be renewed"
+    );
+    let renewed = transition_action(
+        &claimed,
+        5,
+        ActionCommand::RenewClaim {
+            renewed_at_unix_ms: 15,
+            claim_expires_at_unix_ms: 25,
+        },
+    )
+    .expect("claim renewal");
+    assert_eq!(renewed.claim_expires_at_unix_ms, Some(25));
+    assert!(
+        transition_action(
+            &renewed,
+            6,
+            ActionCommand::StartExecution {
+                started_at_unix_ms: 24,
+            },
+        )
+        .is_ok()
+    );
+    let executing = transition_action(
+        &claimed,
+        5,
+        ActionCommand::StartExecution {
+            started_at_unix_ms: 12,
+        },
+    )
+    .expect("transition");
+    let dispatched = transition_action(
+        &executing,
+        6,
+        ActionCommand::RecordProviderReceipt {
+            external_receipt_ref: OpaqueId::parse("receipt:one").expect("valid receipt"),
+            provider_receipt_digest: digest("provider-queued"),
+            provider_status: "queued".to_owned(),
+            executor_actor_id: actor("executor:one"),
+            observed_at_unix_ms: 12,
+        },
+    )
+    .expect("record provider receipt");
+    assert_eq!(dispatched.state, ActionState::Dispatched);
+    assert_eq!(dispatched.provider_status.as_deref(), Some("queued"));
+    let observed = transition_action(
+        &dispatched,
+        7,
+        ActionCommand::ObserveProviderReceipt {
+            provider_receipt_digest: digest("provider-running"),
+            provider_status: "running".to_owned(),
+            reconciler_actor_id: actor("reconciler:one"),
+            observed_at_unix_ms: 13,
+        },
+    )
+    .expect("refresh provider receipt");
+    assert!(
+        transition_action(
+            &dispatched,
+            7,
+            ActionCommand::ObserveProviderReceipt {
+                provider_receipt_digest: digest("provider-replay"),
+                provider_status: "running".to_owned(),
+                reconciler_actor_id: actor("reconciler:one"),
+                observed_at_unix_ms: 12,
+            },
+        )
+        .is_err(),
+        "provider observations must advance time"
+    );
+    assert!(
+        transition_action(
+            &executing,
+            6,
+            ActionCommand::RecordProviderReceipt {
+                external_receipt_ref: OpaqueId::parse("receipt:one").expect("valid receipt"),
+                provider_receipt_digest: digest("provider-invalid"),
+                provider_status: "contains whitespace".to_owned(),
+                executor_actor_id: actor("executor:one"),
+                observed_at_unix_ms: 12,
+            },
+        )
+        .is_err(),
+        "provider status must be a bounded machine state"
+    );
+    assert!(
+        transition_action(
+            &observed,
+            8,
+            ActionCommand::Complete {
+                external_receipt_ref: OpaqueId::parse("receipt:other").expect("valid receipt"),
+                provider_receipt_digest: digest("provider-succeeded"),
+                observed_effect_digest: digest("observed"),
+                executor_actor_id: actor("executor:one"),
+                executed_at_unix_ms: 14,
+            },
+        )
+        .is_err(),
+        "completion must retain the provider receipt identity"
+    );
+    let completed = transition_action(
+        &observed,
+        8,
         ActionCommand::Complete {
             external_receipt_ref: OpaqueId::parse("receipt:one").expect("valid receipt"),
+            provider_receipt_digest: digest("provider-succeeded"),
             observed_effect_digest: digest("observed"),
+            executor_actor_id: actor("executor:one"),
+            executed_at_unix_ms: 14,
         },
     )
     .expect("transition");
-    let verified = transition_action(&completed, 6, ActionCommand::Verify).expect("transition");
+    assert_eq!(
+        completed.provider_receipt_digest,
+        Some(digest("provider-succeeded")),
+        "completion must bind the terminal provider response"
+    );
+    assert_eq!(completed.provider_status.as_deref(), Some("succeeded"));
+    assert_eq!(completed.provider_observed_at_unix_ms, Some(14));
+    let verified = transition_action(
+        &completed,
+        9,
+        ActionCommand::Verify {
+            receipt: verification_receipt(&completed, "executor:one", "verifier:one"),
+        },
+    )
+    .expect("transition");
     assert_eq!(verified.state, ActionState::Verified);
     assert_eq!(verified.verification_state, VerificationState::Verified);
-    assert_eq!(verified.version, 7);
-    assert!(transition_action(&verified, 7, ActionCommand::StartExecution).is_err());
+    assert_eq!(verified.version, 10);
+    assert!(verified.verification_receipt.is_some());
+    assert!(
+        transition_action(
+            &verified,
+            10,
+            ActionCommand::StartExecution {
+                started_at_unix_ms: 13,
+            },
+        )
+        .is_err()
+    );
 
     let uncertain =
-        transition_action(&executing, 5, ActionCommand::MarkOutcomeUnknown).expect("transition");
+        transition_action(&executing, 6, ActionCommand::MarkOutcomeUnknown).expect("transition");
     let reconciled = transition_action(
         &uncertain,
-        6,
+        7,
         ActionCommand::Reconcile {
             observed_effect_digest: digest("reconciled"),
+            executor_actor_id: actor("executor:one"),
+            executed_at_unix_ms: 13,
         },
     )
     .expect("transition");
@@ -221,6 +458,294 @@ fn action_transitions_are_optimistic_and_fail_closed() {
     let rolled_back = transition_action(&failed, 3, ActionCommand::RollBack).expect("transition");
     assert_eq!(rolled_back.state, ActionState::RolledBack);
     assert_eq!(rolled_back.verification_state, VerificationState::Stale);
+}
+
+#[test]
+fn action_authority_rejects_forged_approval_and_verification_receipts() {
+    let mut proposal = ActionProposal {
+        operation_id: ActionOperationId::parse("operation:receipt-check").expect("valid operation"),
+        tenant_id: tenant(),
+        finding_id: OpaqueId::parse("finding:receipt-check").expect("valid finding"),
+        finding_revision_digest: digest("finding-revision"),
+        finding_validation_receipt_digest: digest("finding-validation"),
+        graph_revision: revision(1),
+        action_kind: "revoke_access".to_owned(),
+        action_definition_digest: digest("action-definition"),
+        target_id: OpaqueId::parse("grant:receipt-check").expect("valid target"),
+        expected_effects: vec![ActionEffect {
+            target_id: OpaqueId::parse("grant:receipt-check").expect("valid target"),
+            effect_kind: "access_removed".to_owned(),
+            expected_state_digest: digest("expected"),
+        }],
+        rollback_ref: OpaqueId::parse("rollback:receipt-check").expect("valid rollback"),
+        idempotency_key: OpaqueId::parse("idempotency:receipt-check").expect("valid key"),
+        simulation_digest: digest("simulation"),
+        verification_plan_digest: digest("verification-plan"),
+        proposed_by: actor("proposer:receipt-check"),
+        proposed_at_unix_ms: 1,
+        proposal_expires_at_unix_ms: 100,
+        proposal_digest: digest("proposal"),
+    };
+    proposal
+        .bind_computed_digest()
+        .expect("bind action proposal digest");
+    let proposed = ActionOperation {
+        proposal,
+        state: ActionState::Proposed,
+        version: 1,
+        approval_receipt: None,
+        claimed_by: None,
+        claimed_at_unix_ms: None,
+        claim_expires_at_unix_ms: None,
+        executor_actor_id: None,
+        provider_receipt_digest: None,
+        provider_status: None,
+        provider_observed_at_unix_ms: None,
+        executed_at_unix_ms: None,
+        external_receipt_ref: None,
+        observed_effect_digest: None,
+        verification_state: VerificationState::Pending,
+        verification_receipt: None,
+    };
+    let mut changed_kind = proposed.clone();
+    changed_kind.proposal.action_kind = "grant_access".to_owned();
+    let mut changed_target = proposed.clone();
+    changed_target.proposal.target_id =
+        OpaqueId::parse("grant:attacker-selected").expect("valid target");
+    let mut changed_finding = proposed.clone();
+    changed_finding.proposal.finding_revision_digest = digest("different-finding-revision");
+    let mut changed_effect = proposed.clone();
+    changed_effect.proposal.expected_effects[0].expected_state_digest =
+        digest("attacker-selected-state");
+    for (field, tampered) in [
+        ("action kind", changed_kind),
+        ("target", changed_target),
+        ("finding revision", changed_finding),
+        ("expected effect", changed_effect),
+    ] {
+        assert!(
+            transition_action(&tampered, 1, ActionCommand::RecordSimulation).is_err(),
+            "{field} changed after the proposal digest was bound"
+        );
+    }
+    let simulated =
+        transition_action(&proposed, 1, ActionCommand::RecordSimulation).expect("simulation");
+    let waiting =
+        transition_action(&simulated, 2, ActionCommand::RequestApproval).expect("approval request");
+
+    for (proposal_digest, approved, decided_by, decided_at_unix_ms) in [
+        (
+            digest("wrong-proposal").to_string(),
+            true,
+            actor("approver:receipt-check"),
+            10,
+        ),
+        (
+            waiting.proposal.proposal_digest.to_string(),
+            false,
+            actor("approver:receipt-check"),
+            10,
+        ),
+        (
+            waiting.proposal.proposal_digest.to_string(),
+            true,
+            waiting.proposal.proposed_by.clone(),
+            10,
+        ),
+        (
+            waiting.proposal.proposal_digest.to_string(),
+            true,
+            actor("approver:receipt-check"),
+            waiting.proposal.proposal_expires_at_unix_ms,
+        ),
+    ] {
+        assert!(
+            transition_action(
+                &waiting,
+                3,
+                ActionCommand::RecordApproval {
+                    receipt: DecisionReceipt {
+                        decision_id: DecisionId::parse("decision:forged").expect("valid decision"),
+                        proposal_digest,
+                        approved,
+                        decided_by,
+                        decided_at_unix_ms,
+                    },
+                },
+            )
+            .is_err()
+        );
+    }
+
+    let approved = transition_action(
+        &waiting,
+        3,
+        ActionCommand::RecordApproval {
+            receipt: DecisionReceipt {
+                decision_id: DecisionId::parse("decision:valid").expect("valid decision"),
+                proposal_digest: waiting.proposal.proposal_digest.to_string(),
+                approved: true,
+                decided_by: actor("approver:receipt-check"),
+                decided_at_unix_ms: 10,
+            },
+        },
+    )
+    .expect("approval");
+    assert!(
+        transition_action(
+            &approved,
+            4,
+            ActionCommand::Claim {
+                worker_id: OpaqueId::parse("worker:expired").expect("valid worker"),
+                claimed_at_unix_ms: approved.proposal.proposal_expires_at_unix_ms,
+                claim_expires_at_unix_ms: approved.proposal.proposal_expires_at_unix_ms,
+            },
+        )
+        .is_err()
+    );
+    let claimed = transition_action(
+        &approved,
+        4,
+        ActionCommand::Claim {
+            worker_id: OpaqueId::parse("worker:receipt-check").expect("valid worker"),
+            claimed_at_unix_ms: 11,
+            claim_expires_at_unix_ms: 20,
+        },
+    )
+    .expect("claim");
+    let executing = transition_action(
+        &claimed,
+        5,
+        ActionCommand::StartExecution {
+            started_at_unix_ms: 12,
+        },
+    )
+    .expect("execution");
+    let completed = transition_action(
+        &executing,
+        6,
+        ActionCommand::Complete {
+            external_receipt_ref: OpaqueId::parse("receipt:receipt-check").expect("valid receipt"),
+            provider_receipt_digest: digest("provider-receipt-check"),
+            observed_effect_digest: digest("observed"),
+            executor_actor_id: actor("executor:receipt-check"),
+            executed_at_unix_ms: 12,
+        },
+    )
+    .expect("completion");
+
+    let mut forged = verification_receipt(
+        &completed,
+        "executor:receipt-check",
+        "verifier:receipt-check",
+    );
+    forged.proposal_digest = digest("wrong-proposal");
+    assert!(transition_action(&completed, 7, ActionCommand::Verify { receipt: forged },).is_err());
+
+    let mut same_actor = verification_receipt(
+        &completed,
+        "executor:receipt-check",
+        "executor:receipt-check",
+    );
+    same_actor.receipt.evidence_urns = vec!["evidence://one".to_owned()];
+    assert!(
+        transition_action(
+            &completed,
+            7,
+            ActionCommand::Verify {
+                receipt: same_actor,
+            },
+        )
+        .is_err()
+    );
+
+    let mut stale = verification_receipt(
+        &completed,
+        "executor:receipt-check",
+        "verifier:receipt-check",
+    );
+    stale.receipt.observed_source_revision = stale.receipt.previous_source_revision.clone();
+    assert!(transition_action(&completed, 7, ActionCommand::Verify { receipt: stale },).is_err());
+
+    let mut early = verification_receipt(
+        &completed,
+        "executor:receipt-check",
+        "verifier:receipt-check",
+    );
+    early.receipt.verified_at_unix_ms = completed.executed_at_unix_ms.expect("execution time");
+    assert!(transition_action(&completed, 7, ActionCommand::Verify { receipt: early },).is_err());
+
+    let proposer_verification = verification_receipt(
+        &completed,
+        "executor:receipt-check",
+        "proposer:receipt-check",
+    );
+    assert!(
+        transition_action(
+            &completed,
+            7,
+            ActionCommand::Verify {
+                receipt: proposer_verification,
+            },
+        )
+        .is_err()
+    );
+
+    let approver_verification = verification_receipt(
+        &completed,
+        "executor:receipt-check",
+        "approver:receipt-check",
+    );
+    assert!(
+        transition_action(
+            &completed,
+            7,
+            ActionCommand::Verify {
+                receipt: approver_verification,
+            },
+        )
+        .is_err()
+    );
+
+    let mut forged_verified = completed.clone();
+    forged_verified.state = ActionState::Verified;
+    forged_verified.verification_state = VerificationState::Verified;
+    assert!(
+        transition_action(&forged_verified, 7, ActionCommand::RollBack).is_err(),
+        "a persisted verified state without its receipt must fail closed"
+    );
+
+    let mut inconsistent = completed.clone();
+    inconsistent.verification_state = VerificationState::Verified;
+    assert!(
+        transition_action(&inconsistent, 7, ActionCommand::RollBack).is_err(),
+        "verified status cannot be asserted outside the verified action state"
+    );
+}
+
+fn verification_receipt(
+    operation: &ActionOperation,
+    executor: &str,
+    verifier: &str,
+) -> ActionVerificationReceipt {
+    ActionVerificationReceipt {
+        operation_id: operation.proposal.operation_id.clone(),
+        proposal_digest: operation.proposal.proposal_digest.clone(),
+        observed_effect_digest: operation
+            .observed_effect_digest
+            .clone()
+            .expect("observed effect"),
+        receipt: VerificationReceipt {
+            verification_id: VerificationId::parse("verification:one").expect("valid verification"),
+            executor_actor_id: actor(executor),
+            verifier_actor_id: actor(verifier),
+            previous_source_revision: "source-revision:before".to_owned(),
+            observed_source_revision: "source-revision:after".to_owned(),
+            effective: true,
+            evidence_urns: vec!["evidence://one".to_owned()],
+            verified_at_unix_ms: 20,
+        },
+    }
 }
 
 #[test]

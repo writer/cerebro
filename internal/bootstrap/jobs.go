@@ -360,8 +360,7 @@ func (a *App) runSourceRuntimeOrchestrateJob(ctx context.Context, job *ports.Job
 		RuntimeID: runtimeID, SourcePageLimit: uint32Payload(job.Payload, "page_limit"), GraphPageLimit: uint32Payload(job.Payload, "graph_page_limit"),
 		RuleIDs: stringSlicePayload(job.Payload, "rule_ids"), EventLimit: uint32Payload(job.Payload, "event_limit"),
 		CaptureSecurityPathDelta: boolPayload(job.Payload, "capture_security_path_delta"), SecurityPathAccountID: stringPayload(job.Payload, "security_path_account_id", ""),
-		SecurityPathRustShadow: boolPayload(job.Payload, "security_path_rust_shadow"),
-		ObservationID:          strings.TrimSpace(job.ID), LeaseOwner: "security-path-delta:" + strings.TrimSpace(job.ID),
+		ObservationID: strings.TrimSpace(job.ID), LeaseOwner: "security-path-delta:" + strings.TrimSpace(job.ID),
 	})
 	payload, refs, mapErr := orchestration.JobPayload()
 	if mapErr != nil {

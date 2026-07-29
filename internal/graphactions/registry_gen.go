@@ -74,6 +74,7 @@ func KnownTargetKinds() []string {
 var generatedActionSpecs = []ActionSpec{
 	{
 		ID:               ActionIdentityOktaSuspendUser,
+		DefinitionDigest: "8786cfc15b5984021508b1ff90e9693e9d305e1b58e33a10760baddefde9871f",
 		Provider:         ProviderAccessApprovals,
 		ProviderAction:   AccessApprovalsActionSuspend,
 		TargetKind:       TargetKindOktaUser,
@@ -85,6 +86,7 @@ var generatedActionSpecs = []ActionSpec{
 	},
 	{
 		ID:               ActionIdentityOktaUnsuspendUser,
+		DefinitionDigest: "492f24f7b5fdf5679777201441ea963a54357d3f658359e2f554130e7797e605",
 		Provider:         ProviderAccessApprovals,
 		ProviderAction:   AccessApprovalsActionUnsuspend,
 		TargetKind:       TargetKindOktaUser,
@@ -96,6 +98,7 @@ var generatedActionSpecs = []ActionSpec{
 	},
 	{
 		ID:               ActionEndpointCerebroRevokeDevice,
+		DefinitionDigest: "bfe050dbcc8e237d27996d459c12185f94ee9f4a857e6286f87455536d6a9bb8",
 		Provider:         ProviderCerebroDeviceAuth,
 		ProviderAction:   CerebroDeviceActionRevoke,
 		TargetKind:       TargetKindCerebroDevice,

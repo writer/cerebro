@@ -3,7 +3,6 @@ package duo
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/sha1" // #nosec G505 -- Duo Admin API HMAC auth requires HMAC-SHA1.
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
@@ -38,7 +37,6 @@ func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 		family         string
 		kind           string
 		path           string
-		authV5         bool
 		response       map[string]any
 		config         map[string]string
 		want           map[string]string
@@ -145,7 +143,6 @@ func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 			family: "application",
 			kind:   "duo.application",
 			path:   "/admin/v3/integrations",
-			authV5: true,
 			response: map[string]any{"stat": "OK", "response": []map[string]any{{
 				"integration_key": "DIAPP1", "name": "GitHub Enterprise", "type": "websdk",
 			}}},
@@ -187,11 +184,7 @@ func TestReadDuoIdentityAndMFAPostureKinds(t *testing.T) {
 				if got := r.URL.EscapedPath(); got != tt.path {
 					t.Fatalf("request path = %q, want %s", got, tt.path)
 				}
-				if tt.authV5 {
-					assertDuoHMACV5Auth(t, r)
-				} else {
-					assertDuoHMACAuth(t, r)
-				}
+				assertDuoHMACV5Auth(t, r)
 				_ = json.NewEncoder(w).Encode(tt.response)
 			}))
 			defer server.Close()
@@ -235,7 +228,7 @@ func TestReadDuoAcceptsLegacyAdminBaseURL(t *testing.T) {
 		if got := r.URL.EscapedPath(); got != "/admin/v1/users" {
 			t.Fatalf("request path = %q, want /admin/v1/users", got)
 		}
-		assertDuoHMACAuth(t, r)
+		assertDuoHMACV5Auth(t, r)
 		_ = json.NewEncoder(w).Encode(map[string]any{"stat": "OK", "response": []map[string]any{{
 			"user_id": "user-1", "username": "alice", "status": "active",
 		}}})
@@ -269,7 +262,7 @@ func TestReadDuoInventoryUsesOffsetPagination(t *testing.T) {
 		if got := r.URL.EscapedPath(); got != "/admin/v1/users" {
 			t.Fatalf("request path = %q, want /admin/v1/users", got)
 		}
-		assertDuoHMACAuth(t, r)
+		assertDuoHMACV5Auth(t, r)
 		if got := r.URL.Query().Get("limit"); got != "1" {
 			t.Fatalf("limit = %q, want 1", got)
 		}
@@ -337,7 +330,7 @@ func TestReadDuoAuthenticationLogRoundTripsNextOffset(t *testing.T) {
 		if got := r.URL.EscapedPath(); got != "/admin/v2/logs/authentication" {
 			t.Fatalf("request path = %q, want /admin/v2/logs/authentication", got)
 		}
-		assertDuoHMACAuth(t, r)
+		assertDuoHMACV5Auth(t, r)
 		switch requests {
 		case 1:
 			if got := r.URL.Query().Get("next_offset"); got != "" {
@@ -424,7 +417,7 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 		if got := r.URL.EscapedPath(); got != "/admin/v1/users" {
 			t.Fatalf("request path = %q, want /admin/v1/users", got)
 		}
-		assertDuoHMACAuth(t, r)
+		assertDuoHMACV5Auth(t, r)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]string{"message": "temporarily unavailable", "stat": "FAIL"})
@@ -448,41 +441,6 @@ func TestReadProviderUnavailableReturnsProviderError(t *testing.T) {
 	}
 	if got := err.Error(); !strings.Contains(got, "duo API returned 503") {
 		t.Fatalf("Read() error = %q, want provider status", got)
-	}
-}
-
-func assertDuoHMACAuth(t *testing.T, r *http.Request) {
-	t.Helper()
-	date := r.Header.Get("Date")
-	if date == "" {
-		t.Fatal("Date header is empty; Duo HMAC auth requires it")
-	}
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Basic ") {
-		t.Fatalf("Authorization = %q, want Basic auth", auth)
-	}
-	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(auth, "Basic "))
-	if err != nil {
-		t.Fatalf("decode Authorization: %v", err)
-	}
-	username, signature, ok := strings.Cut(string(decoded), ":")
-	if !ok {
-		t.Fatalf("Authorization payload = %q, want username:signature", decoded)
-	}
-	if username != testDuoIntegrationKey {
-		t.Fatalf("Duo integration key = %q, want %q", username, testDuoIntegrationKey)
-	}
-	canonical := strings.Join([]string{
-		date,
-		r.Method,
-		r.Host,
-		r.URL.EscapedPath(),
-		r.URL.Query().Encode(),
-	}, "\n")
-	mac := hmac.New(sha1.New, []byte(testDuoSecretKey))
-	_, _ = mac.Write([]byte(canonical))
-	if want := hex.EncodeToString(mac.Sum(nil)); signature != want {
-		t.Fatalf("Duo HMAC signature = %q, want %q", signature, want)
 	}
 }
 

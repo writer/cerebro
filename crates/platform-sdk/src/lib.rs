@@ -13,6 +13,7 @@ mod assertion;
 mod budget;
 mod diagnostics;
 mod error;
+mod finding;
 mod identity;
 mod incident;
 mod plugin;
@@ -25,7 +26,8 @@ mod traits;
 mod view;
 
 pub use action::{
-    ActionEffect, ActionOperation, ActionProposal, ActionReceipt, ActionState, VerificationState,
+    ActionEffect, ActionOperation, ActionProposal, ActionReceipt, ActionState,
+    ActionVerificationReceipt, MAX_ACTION_CLAIM_LEASE_MS, VerificationState,
 };
 pub use assertion::{
     AssertionCondition, AssertionDefinition, AssertionEvaluation, AssertionState, EvaluationTrigger,
@@ -35,14 +37,16 @@ pub use cerebro_agent_context::{
     FactQuery, QueryAbsentEdge, QueryDirection, QueryEdge, QueryMatch, QueryNode, QueryResult,
 };
 pub use cerebro_control_kernel::{
-    AuthorizationDecision, AuthorizationRequest, CapabilityGrant, DecisionReceipt, Mandate,
-    Mission, MissionEvent, MissionEventEnvelope, VerificationReceipt,
+    ActorId, AuthorizationDecision, AuthorizationRequest, CapabilityGrant, DecisionId,
+    DecisionReceipt, Mandate, Mission, MissionEvent, MissionEventEnvelope, VerificationId,
+    VerificationReceipt,
 };
 pub use cerebro_organizational_model::{
     AssertionId, EntityId, EntityKind, RelationKind, SourceRuntimeId, TenantId,
 };
 pub use diagnostics::{CapabilityHealth, CapabilityState, OperationalDiagnostics, ProjectionLag};
 pub use error::SdkError;
+pub use finding::{FindingValidationDecision, FindingValidationReceipt};
 pub use identity::{
     ActionOperationId, AssertionDefinitionId, ContentDigest, IncidentSnapshotId, OpaqueId,
     PluginId, SimulationId, SubscriptionId, ViewId,

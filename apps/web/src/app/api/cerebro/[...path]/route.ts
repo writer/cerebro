@@ -12,6 +12,8 @@ import {
   readCerebroProxyCache,
   readCerebroProxyInflight,
   responseHeadersFor,
+  rustOwnsWebAuthority,
+  signedIdentityHeadersFor,
   shouldBypassCerebroProxyCache,
   trackCerebroProxyInflight,
   withCerebroCacheBypassHeader,
@@ -45,20 +47,25 @@ type RouteContext = {
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const [params, currentUser] = await Promise.all([
-    context.params,
-    resolveCurrentUserFromHeadersWithFallback(request.headers),
-  ]);
+  const params = await context.params;
+  const rustAuthority = rustOwnsWebAuthority();
+  const currentUser = rustAuthority
+    ? null
+    : await resolveCurrentUserFromHeadersWithFallback(request.headers);
   const normalized = normalizeRequestPath(params.path);
   if (normalized instanceof NextResponse) return normalized;
   const path = normalized;
   const span = startWebSpan("cerebro.proxy.request", proxySpanAttributes("GET", path, request), request.headers.get("traceparent"));
   const requiredPermission = permissionForCerebroProxyRequest("GET", path);
-  const decision = authorizeCurrentUser(currentUser, requiredPermission);
-  span.annotate(authorizationSpanAttributes(decision, currentUser));
-  if (!decision.allowed) {
-    console.warn("cerebro proxy read denied", { ...currentUserServerAuditFields(currentUser), permission: requiredPermission });
-    return tracedAuthorizationError(decision, span);
+  if (rustAuthority) {
+    span.annotate({ authorization_authority: "rust" });
+  } else {
+    const decision = authorizeCurrentUser(currentUser, requiredPermission);
+    span.annotate(authorizationSpanAttributes(decision, currentUser));
+    if (!decision.allowed) {
+      console.warn("cerebro proxy read denied", { ...currentUserServerAuditFields(currentUser), permission: requiredPermission });
+      return tracedAuthorizationError(decision, span);
+    }
   }
   const url = new URL(request.url);
   const fixture = tracedFixtureResponse("GET", path, request, span);
@@ -66,11 +73,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return fixture;
   }
   const target = buildCerebroUrl(path, url.search);
-  const baseAuthHeaders = authHeadersFor(request);
-  const authHeaders = {
-    ...baseAuthHeaders,
-    ...currentUserPreferenceHeaders(currentUser),
-  };
+  const baseAuthHeaders = rustAuthority
+    ? signedIdentityHeadersFor(request)
+    : authHeadersFor(request);
+  const authHeaders = rustAuthority
+    ? baseAuthHeaders
+    : { ...baseAuthHeaders, ...currentUserPreferenceHeaders(currentUser) };
   const bypassCache = shouldBypassCerebroProxyCache(request.headers);
   const cacheablePath = isCacheableCerebroPath(path);
   const upstreamHeaders = headersWithTrace(bypassCache ? withCerebroCacheBypassHeader(authHeaders) : authHeaders, span);
@@ -200,10 +208,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const [params, currentUser] = await Promise.all([
-    context.params,
-    resolveCurrentUserFromHeadersWithFallback(request.headers),
-  ]);
+  const params = await context.params;
+  const rustAuthority = rustOwnsWebAuthority();
+  const currentUser = rustAuthority
+    ? null
+    : await resolveCurrentUserFromHeadersWithFallback(request.headers);
   const normalized = normalizeRequestPath(params.path);
   if (normalized instanceof NextResponse) return normalized;
   const path = normalized;
@@ -215,20 +224,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const normalizedPath = normalizeProxyPath(path);
   const isMultipartUpload = isMultipartFormDataRequest(request);
   const requiredPermission = permissionForCerebroProxyRequest("POST", normalizedPath);
-  const decision = authorizeCurrentUser(currentUser, requiredPermission);
-  span.annotate(authorizationSpanAttributes(decision, currentUser));
+  let decision: AuthorizationDecision | null = null;
+  if (rustAuthority) {
+    span.annotate({ authorization_authority: "rust" });
+  } else {
+    decision = authorizeCurrentUser(currentUser, requiredPermission);
+    span.annotate(authorizationSpanAttributes(decision, currentUser));
+  }
   span.annotate({
-    request_body_was_stamped_with_actor: decision.allowed && !isMultipartUpload,
+    request_body_was_stamped_with_actor:
+      !rustAuthority && decision?.allowed === true && !isMultipartUpload,
     multipart_request: isMultipartUpload,
     normalized_proxy_path: normalizedPath,
   });
-  if (!decision.allowed) {
+  if (decision && !decision.allowed) {
     console.warn("cerebro proxy post denied", { ...currentUserServerAuditFields(currentUser), permission: requiredPermission });
     return tracedAuthorizationError(decision, span);
   }
   const url = new URL(request.url);
   let body: string | ArrayBuffer;
-  const currentActor = currentUserActor(currentUser);
   const acceptsEventStream = (request.headers.get("accept") ?? "").includes("text/event-stream");
   const isAskStreamRequest = normalizedPath === "grc/ask" && acceptsEventStream;
   span.annotate({
@@ -239,10 +253,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
     body = await request.arrayBuffer();
   } else {
     let requestBody = await request.text();
-    if (isAskStreamRequest) {
+    if (isAskStreamRequest && !rustAuthority) {
       requestBody = normalizeAskRequestBody(requestBody);
     }
-    body = stampCurrentUserOnWriteBody(requestBody, normalizedPath, currentActor);
+    body = rustAuthority
+      ? requestBody
+      : stampCurrentUserOnWriteBody(
+          requestBody,
+          normalizedPath,
+          currentUserActor(currentUser),
+        );
     const fixture = tracedFixtureResponse("POST", path, request, span, body);
     if (fixture) {
       return fixture;
@@ -250,9 +270,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
   const target = buildCerebroUrl(path, url.search);
   const requestContentType = request.headers.get("content-type");
-  const headers = new Headers(authHeadersFor(request));
-  for (const [key, value] of Object.entries(currentUserPreferenceHeaders(currentUser))) {
-    headers.set(key, value);
+  const headers = new Headers(
+    rustAuthority
+      ? signedIdentityHeadersFor(request)
+      : authHeadersFor(request),
+  );
+  if (!rustAuthority) {
+    for (const [key, value] of Object.entries(currentUserPreferenceHeaders(currentUser))) {
+      headers.set(key, value);
+    }
   }
   headers.set("accept", isAskStreamRequest ? "text/event-stream" : "application/json, text/plain;q=0.9, */*;q=0.8");
   if (isAskStreamRequest) {

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use crate::{ActionCatalog, ActionCatalogEntry, Error, Result};
+use crate::{ActionCatalog, ActionCatalogEntry, Error, Result, definition_digest};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct StringConstant {
@@ -79,6 +79,10 @@ var generatedActionSpecs = []ActionSpec{\n",
     for action in &catalog.actions {
         output.push_str("\t{\n");
         output.push_str(&format!("\t\tID: {},\n", action.const_name));
+        output.push_str(&format!(
+            "\t\tDefinitionDigest: {},\n",
+            go_quote(&definition_digest(action)?)?
+        ));
         output.push_str(&format!("\t\tProvider: {},\n", action.provider_const));
         output.push_str(&format!(
             "\t\tProviderAction: {},\n",

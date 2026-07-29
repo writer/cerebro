@@ -19,7 +19,6 @@ type SecurityPathRequest struct {
 	SourcePageLimit uint32
 	GraphPageLimit  uint32
 	LeaseOwner      string
-	RustShadow      bool
 }
 
 type RuntimeGraphRun struct {
@@ -28,16 +27,16 @@ type RuntimeGraphRun struct {
 }
 
 type SecurityPathResult struct {
-	Sync                    *cerebrov1.SyncSourceRuntimeResponse `json:"sync,omitempty"`
-	Graph                   *graphingest.RunResult               `json:"graph_ingest,omitempty"`
-	Before                  securitypathdelta.Snapshot           `json:"before"`
-	After                   securitypathdelta.Snapshot           `json:"after"`
-	Delta                   securitypathdelta.Delta              `json:"delta"`
-	VerificationGraphIngest *graphingest.RunResult               `json:"verification_graph_ingest,omitempty"`
-	VerificationGraphRuns   []RuntimeGraphRun                    `json:"verification_graph_ingests,omitempty"`
-	VerificationSnapshot    *securitypathdelta.Snapshot          `json:"verification_snapshot,omitempty"`
-	Verification            *securitypathdelta.Verification      `json:"verification,omitempty"`
-	RustShadow              []securitypathdelta.RustShadowResult `json:"rust_shadow,omitempty"`
+	Sync                    *cerebrov1.SyncSourceRuntimeResponse     `json:"sync,omitempty"`
+	Graph                   *graphingest.RunResult                   `json:"graph_ingest,omitempty"`
+	Before                  securitypathdelta.Snapshot               `json:"before"`
+	After                   securitypathdelta.Snapshot               `json:"after"`
+	Delta                   securitypathdelta.Delta                  `json:"delta"`
+	VerificationGraphIngest *graphingest.RunResult                   `json:"verification_graph_ingest,omitempty"`
+	VerificationGraphRuns   []RuntimeGraphRun                        `json:"verification_graph_ingests,omitempty"`
+	VerificationSnapshot    *securitypathdelta.Snapshot              `json:"verification_snapshot,omitempty"`
+	Verification            *securitypathdelta.Verification          `json:"verification,omitempty"`
+	RustAuthority           []securitypathdelta.RustAuthorityReceipt `json:"rust_authority"`
 }
 
 func (s *SecurityPathService) Capture(ctx context.Context, request SecurityPathRequest) (result SecurityPathResult, runErr error) {
@@ -110,12 +109,14 @@ func (s *SecurityPathService) Capture(ctx context.Context, request SecurityPathR
 	if err != nil {
 		return result, err
 	}
-	result.Delta, err = securitypathdelta.Compare(&result.Before, result.After)
-	if err == nil && request.RustShadow {
-		result.RustShadow = append(result.RustShadow, securitypathdelta.CompareRustShadow(ctx, &result.Before, result.After, result.Delta))
-	}
-	if err != nil || len(result.Delta.NoLongerObserved) == 0 {
+	var deltaAuthority securitypathdelta.RustAuthorityReceipt
+	result.Delta, deltaAuthority, err = securitypathdelta.CompareRustAuthority(ctx, &result.Before, result.After)
+	if err != nil {
 		return result, err
+	}
+	result.RustAuthority = append(result.RustAuthority, deltaAuthority)
+	if len(result.Delta.NoLongerObserved) == 0 {
+		return result, nil
 	}
 
 	requestedPathIDs := make([]string, 0, len(result.Delta.NoLongerObserved))
@@ -146,11 +147,7 @@ func (s *SecurityPathService) Capture(ctx context.Context, request SecurityPathR
 	}
 	if verification.Verification.ID != "" {
 		result.Verification = &verification.Verification
-		if request.RustShadow && result.VerificationSnapshot != nil {
-			result.RustShadow = append(result.RustShadow, securitypathdelta.VerifyObservedAbsentRustShadow(
-				ctx, result.Before, *result.VerificationSnapshot, requestedPathIDs, verification.Verification,
-			))
-		}
+		result.RustAuthority = append(result.RustAuthority, verification.Authority)
 	}
 	return result, err
 }
@@ -171,6 +168,7 @@ type verificationResult struct {
 	GraphRuns    []RuntimeGraphRun
 	Snapshot     securitypathdelta.Snapshot
 	Verification securitypathdelta.Verification
+	Authority    securitypathdelta.RustAuthorityReceipt
 }
 
 func (s *SecurityPathService) collectVerification(ctx context.Context, request verificationRequest) (result verificationResult, runErr error) {
@@ -256,7 +254,12 @@ func (s *SecurityPathService) collectVerification(ctx context.Context, request v
 	if !result.Snapshot.ObservedAt.After(request.Current.ObservedAt) {
 		return result, errors.New("security path verification observation did not follow the delta observation")
 	}
-	result.Verification, err = securitypathdelta.VerifyObservedAbsent(request.Reference, result.Snapshot, request.RequestedPathIDs)
+	result.Verification, result.Authority, err = securitypathdelta.VerifyObservedAbsentRustAuthority(
+		leaseCtx,
+		request.Reference,
+		result.Snapshot,
+		request.RequestedPathIDs,
+	)
 	return result, err
 }
 
