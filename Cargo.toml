@@ -39,10 +39,10 @@ async-nats = "0.50.0"
 async-trait = "0.1.91"
 aws-credential-types = "=1.2.14"
 aws-sigv4 = { version = "=1.4.5", default-features = false, features = ["http1", "sign-http"] }
-aws-smithy-async = "=1.2.14"
+aws-smithy-async = "=1.3.0"
 aws-smithy-runtime-api = { version = "=1.12.3", features = ["client"] }
-aws-smithy-runtime-api-macros = "=1.0.0"
-aws-smithy-types = "=1.5.0"
+aws-smithy-runtime-api-macros = "=1.1.0"
+aws-smithy-types = "=1.6.1"
 base64 = "0.22.1"
 buffa = { version = "=0.9.1", features = ["json"] }
 buffa-types = { version = "=0.9.1", features = ["json"] }
