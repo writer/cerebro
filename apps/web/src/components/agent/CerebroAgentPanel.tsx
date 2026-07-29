@@ -126,6 +126,7 @@ const answerText = (turn: AskTurnState) => turn.summary?.markdown ?? turn.agentA
 export default function CerebroAgentPanel() {
   const {
     activeTurnId,
+    agentMode,
     clearThread,
     draft,
     isOpen,
@@ -134,6 +135,7 @@ export default function CerebroAgentPanel() {
     pageContext,
     retryTurn,
     setDraft,
+    setAgentMode,
     setImages,
     setOpen,
     stopActiveTurn,
@@ -338,6 +340,19 @@ export default function CerebroAgentPanel() {
                 <span className="agent-mono hidden text-[10px] uppercase text-slate-400 sm:inline">
                   Cmd Enter to ask
                 </span>
+                <label className="ml-1">
+                  <span className="sr-only">Investigation depth</span>
+                  <select
+                    value={agentMode}
+                    onChange={(event) => setAgentMode(event.target.value === "deep" ? "deep" : "auto")}
+                    disabled={Boolean(activeTurnId)}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-medium text-slate-600 outline-none transition hover:border-slate-300 disabled:opacity-50"
+                    title="Choose automatic routing or use Sol for a deeper investigation"
+                  >
+                    <option value="auto">Auto depth</option>
+                    <option value="deep">Deep investigation</option>
+                  </select>
+                </label>
               </div>
               <button
                 type="button"

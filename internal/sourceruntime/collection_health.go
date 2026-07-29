@@ -20,6 +20,7 @@ const (
 	CollectionIncompleteShortCircuitScopeExcluded         = "short_circuit_scope_excluded"
 	CollectionIncompleteShortCircuitResourceScopeFiltered = "short_circuit_resource_scope_filtered"
 	CollectionIncompleteShortCircuitUnknown               = "short_circuit_unknown"
+	CollectionIncompleteEventLimitReached                 = "event_limit_reached"
 )
 
 // CollectionIncompletenessReasons returns deterministic reason codes when a

@@ -30,11 +30,10 @@ type ProbeResult = {
   status: number;
 };
 
-const STATUS_TIMEOUT_MS = 5000;
+const STATUS_TIMEOUT_MS = 3000;
 const STATUS_PROBES = [
-  { key: "health", label: "API health", path: "/api/cerebro/health" },
-  { key: "healthz", label: "API healthz", path: "/api/cerebro/healthz" },
-  { key: "dashboard", label: "Dashboard proxy", path: "/api/cerebro/grc/dashboard?limit=1&view=summary" },
+  { key: "healthz", label: "API liveness", path: "/api/cerebro/healthz" },
+  { key: "health", label: "API readiness", path: "/api/cerebro/health" },
 ];
 
 const parseStatus = async (response: Response): Promise<Record<string, unknown>> => {

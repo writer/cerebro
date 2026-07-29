@@ -97,6 +97,12 @@ the long-running reasoning pipeline. That deadline is owned by `net/http` and
 the response writer, so the hook belongs in bootstrap instead of the graphagent
 domain package.
 
+Credential and certificate lifecycle reads add a narrow transport adapter:
+bootstrap maps authenticated HTTP query parameters to the generated Connect
+client and returns the generated response. Stable identity, lifecycle policy,
+pagination, finding construction, action routing, and verification remain in
+the Rust organizational platform.
+
 The budget also includes explicit source-coverage evaluator error propagation at
 HTTP, MCP, and A2A boundaries. Coverage classification remains in
 `internal/sourcecoverage`; bootstrap only maps an unavailable embedded evaluator
@@ -241,7 +247,8 @@ mapping, tenant-authorized finding lookup, and service dependency wiring. Action
 target selection, provider request shaping, idempotency, provider dispatch, and
 external reference mapping stay behind `internal/graphactions` and
 `internal/graphactionapi`. Supported actions are cataloged in
-`internal/graphactions/action_catalog.yaml` and generated into the registry with
+`crates/action-catalog/action_catalog.yaml` and generated into the Rust authority
+and retiring Go compatibility registry with
 `make graph-action-generate`. The generated registry also exposes serializable
 action metadata plus action id, provider id, and target-kind lists so API
 schemas, agent tools, and future codegen can consume the same provider-neutral
@@ -252,6 +259,67 @@ add an `ActionProvider` adapter rather than branching in bootstrap or handler
 code. First-party providers, such as Cerebro device-auth revocation, use the
 same adapter boundary as external providers so target derivation, tenant checks,
 workflow events, and reconciliation remain shared.
+
+The replacement Rust platform now owns Action proposal admission, approval and
+execution state transitions, and the durable provider-dispatch boundary. A
+`start_execution` transition and its immutable `action_dispatches` row commit
+in one PostgreSQL transaction. Each dispatch binds the tenant, operation
+version, proposal digest, finding revision and validation receipt, graph
+revision, generated Action definition, provider operation, target, idempotency
+key, signed claimant, and request time under one content digest. Signed
+executors can read only their tenant's open dispatches through
+`/v1/action-dispatches`; legacy tenant authentication cannot reach this
+authority.
+
+Provider acceptance is not effect completion. Rust records an immutable provider
+receipt digest, external receipt reference, provider status, executor identity,
+and observation time before moving an operation from `executing` to
+`dispatched`. Queued and running provider work stays `dispatched`; newer status
+observations must advance time. Only a terminal effect observation bound to the
+same external receipt identity and a terminal provider response can move the
+operation to `completed`, and closure still requires a later independent
+verification receipt against a newer source revision. A request with no
+trustworthy provider receipt moves through `outcome_unknown` and reconciliation
+instead of being replayed as new work.
+
+Rust includes a bounded access-approvals provider client that derives its exact
+request from a validated `ActionDispatch`, disables redirects, never retries a
+mutation, content-digests request and response bytes, and classifies ambiguous
+submission separately from definitive rejection. Provider responses must echo
+the tenant, finding, target, action, and idempotency bindings before they can
+become a lifecycle observation. The client does not manufacture effect evidence
+or a completion command.
+
+When access-approvals is configured, the Rust Action command handler commits the
+start-execution transition and immutable dispatch before it submits that exact
+dispatch through the Rust client. A bound provider receipt becomes a second
+durable Rust transition. Any unsuccessful or unbound response moves the Action
+to `outcome_unknown`; the handler does not retry the mutation. Provider receipt,
+outcome, completion, reconciliation, verification, verification-rejection, and
+rollback commands are not accepted from the public HTTP command schema. A
+signed principal cannot close or roll back an Action by submitting an
+`effective` flag, a source revision string, or evidence URNs. A signed execution
+principal can start the provider mutation. A separate signed reconciliation
+principal with
+`cerebro:actions:reconcile` can ask the Rust runtime to refresh an existing
+provider receipt; the runtime performs the GET, revalidates every dispatch
+binding, and commits the observation itself. Execution authority does not grant
+reconciliation authority.
+
+The provider-receipt commit also creates a tenant-scoped reconciliation job in
+the same PostgreSQL transaction. A signed call to
+`POST /v1/action-reconciliation-runs` does not name an Action. Rust claims at
+most ten due jobs using expiring leases and `SKIP LOCKED`, performs each
+provider read, and owns the next poll time. Transient provider failures return
+the job to the durable schedule; terminal provider status retires the polling
+job. A terminal provider status remains evidence only: it does not manufacture
+an observed effect or complete the Action.
+
+This code path does not by itself prove deployment cutover. Until deployment
+receipts show the Rust handler serves Action execution traffic,
+`internal/graphactions` remains a legacy provider network path. Rust provider
+reconciliation wake-up deployment, first-party device mutation, independent
+effect observation, and removal of the Go route remain separate boundaries.
 
 A2A discovery, outbound event subscription metadata, and public idempotency
 semantics also live in `internal/agentplatform`. The bootstrap budget includes
@@ -299,6 +367,12 @@ boundary mapping. The budget includes only `view`, `limit`, and `cursor` query
 parsing plus compact and paginated response shaping over the existing connector
 library response; catalog assembly, runtime state, and credential-store behavior
 stay behind the registry, catalog, and store boundaries.
+
+Credential and certificate lifecycle policy, pagination, findings, and
+verification remain Rust-owned. The bootstrap budget includes only strict HTTP
+selector parsing and transport mapping that preserves invalid lifecycle
+selectors as HTTP 400, reports an unavailable graph authority as HTTP 503, and
+keeps unexpected upstream failures distinct as HTTP 502.
 
 ## Postgres migrations
 

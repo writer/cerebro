@@ -210,9 +210,11 @@ func runtimeTestEvent(id string, sourceID string, kind string) *cerebrov1.EventE
 }
 
 type projector struct {
-	err    error
-	result ports.ProjectionResult
-	events []*cerebrov1.EventEnvelope
+	err         error
+	manifestErr error
+	result      ports.ProjectionResult
+	events      []*cerebrov1.EventEnvelope
+	manifests   []ports.SourceCollectionManifest
 }
 
 func (p *projector) Project(_ context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
@@ -221,6 +223,14 @@ func (p *projector) Project(_ context.Context, event *cerebrov1.EventEnvelope) (
 	}
 	p.events = append(p.events, proto.Clone(event).(*cerebrov1.EventEnvelope))
 	return p.result, nil
+}
+
+func (p *projector) RecordSourceCollection(_ context.Context, manifest ports.SourceCollectionManifest) error {
+	if p.manifestErr != nil {
+		return p.manifestErr
+	}
+	p.manifests = append(p.manifests, manifest)
+	return nil
 }
 
 type emptyPageSource struct{}
@@ -1548,6 +1558,19 @@ func TestSyncRuntimeUsesPageLedgerWhenStoreSupportsIt(t *testing.T) {
 	if len(log.events) != 1 || len(projector.events) != 1 {
 		t.Fatalf("append/project counts = %d/%d, want 1/1", len(log.events), len(projector.events))
 	}
+	if len(projector.manifests) != 1 {
+		t.Fatalf("collection manifests = %d, want 1", len(projector.manifests))
+	}
+	manifest := projector.manifests[0]
+	if manifest.Status != "complete" ||
+		manifest.RuntimeID != "writer-github" ||
+		manifest.PagesRead != 1 ||
+		manifest.RecordsScanned != 1 ||
+		manifest.RecordsAccepted != 1 ||
+		len(manifest.ObservedFamilyIDs) != 1 ||
+		manifest.ObservedFamilyIDs[0] != "pull_request" {
+		t.Fatalf("collection manifest = %#v", manifest)
+	}
 	if len(store.attempts) != 1 {
 		t.Fatalf("ledger attempts = %d, want 1", len(store.attempts))
 	}
@@ -1557,6 +1580,44 @@ func TestSyncRuntimeUsesPageLedgerWhenStoreSupportsIt(t *testing.T) {
 	}
 	if !strings.HasPrefix(admission.ContractsSHA256, "sha256:") || !strings.HasPrefix(admission.ScannedSHA256, "sha256:") || !strings.HasPrefix(admission.ResultSHA256, "sha256:") {
 		t.Fatalf("ledger admission digests = %#v; want SHA-256 receipts", admission)
+	}
+}
+
+func TestSyncRuntimeManifestFailurePreservesCompletedRuntimeProgress(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {
+				Id:       "writer-github",
+				SourceId: "github",
+				Config:   map[string]string{"token": "test"},
+			},
+		},
+	}
+	log := &appendLog{}
+	manifestFailure := errors.New("manifest unavailable")
+	projector := &projector{
+		manifestErr: manifestFailure,
+		result:      ports.ProjectionResult{EntitiesProjected: 1, LinksProjected: 2},
+	}
+	service := New(registry, store, log, projector)
+
+	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-github"})
+	if !errors.Is(err, manifestFailure) {
+		t.Fatalf("Sync() error = %v, want %v", err, manifestFailure)
+	}
+	stored := store.runtimes["writer-github"]
+	if got := stored.GetConfig()[runtimeStatusConfigKey]; got != "completed" {
+		t.Fatalf("runtime status after manifest failure = %q, want completed", got)
+	}
+	if store.putCount != 1 {
+		t.Fatalf("PutSourceRuntime calls = %d, want only the completed page commit", store.putCount)
+	}
+	if len(log.events) != 1 || len(projector.events) != 1 {
+		t.Fatalf("append/project counts = %d/%d, want 1/1", len(log.events), len(projector.events))
 	}
 }
 

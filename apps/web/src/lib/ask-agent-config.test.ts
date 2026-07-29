@@ -30,7 +30,21 @@ describe("ask agent runtime config", () => {
     })).toEqual({
       canRunAgent: false,
       mcpUrl: "",
+      mcpToken: "",
+      modelOverride: "",
       openAIConfigured: false,
+    });
+  });
+
+  it("normalizes the model override and MCP credential without exposing env access elsewhere", () => {
+    expect(askAgentRuntimeConfig({
+      OPENAI_API_KEY: "present",
+      CEREBRO_MCP_URL: "https://api.example.com/mcp",
+      CEREBRO_AGENT_MODEL: " gpt-5.6-sol ",
+      CEREBRO_MCP_TOKEN: " token ",
+    })).toMatchObject({
+      modelOverride: "gpt-5.6-sol",
+      mcpToken: "token",
     });
   });
 });

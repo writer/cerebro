@@ -55,6 +55,27 @@ semantics.
 - Temporal queries reconstruct bounded history from the ledger and log. They
   do not make Neo4j authoritative.
 - Simulations are read-only. Mutations use governed Action contracts.
+- An Action proposal binds the validated finding revision, action-definition
+  revision, target, simulation, rollback, and verification plan. A worker can
+  claim it only after an independent decision receipt approves that exact
+  proposal digest. The SDK computes that versioned digest from every
+  execution-relevant proposal field and rejects any record whose stored digest
+  no longer matches.
+- `cerebro-action-catalog` is the closed runtime registry for new proposals.
+  Its reviewed source is `crates/action-catalog/action_catalog.yaml`; the
+  generator assigns a
+  content digest to every provider operation, and rejects unknown Action kinds,
+  altered definition digests, mismatched effects, and effects aimed at a
+  different target. Historical ledger rows keep their committed definition
+  digest even after the active catalog changes.
+- A new Action also requires an append-only Rust finding-validation receipt.
+  The receipt binds the tenant, finding revision, graph revision, policy
+  definition, evidence, decision, validator, and expiry. The ledger checks that
+  receipt in the same PostgreSQL transaction that commits the Action and rejects
+  rejected, expired, self-validated, missing, or mismatched receipts.
+- Provider completion is not verification. The verified transition requires a
+  receipt bound to the operation, proposal, observed effect, and executor, with
+  a different verifier, a fresh source revision, and evidence.
 - Subscriptions use durable cursors and typed filters. They do not expose
   arbitrary Cypher.
 - Analysis plugins remain first-party, release-provenanced, zero-import,

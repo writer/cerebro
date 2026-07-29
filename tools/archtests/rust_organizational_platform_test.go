@@ -57,6 +57,9 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 			if err != nil {
 				return err
 			}
+			if entry.IsDir() && entry.Name() == "generated" {
+				return filepath.SkipDir
+			}
 			if entry.IsDir() || filepath.Ext(path) != ".rs" {
 				return nil
 			}
@@ -164,6 +167,7 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	replacementWorkflow := readText(t, filepath.Join(root, ".github/workflows/rust-graph-replacement.yml"))
 	for _, required := range []string{
 		"name: Rust-only persisted product read",
+		`- "crates/action-catalog/**"`,
 		"--target replacement-test-runtime",
 		"--entrypoint /usr/local/bin/organizational-graph-e2e",
 		`receipt.json)" -eq 14`,

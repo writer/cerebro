@@ -13,7 +13,7 @@ entries:
             reference_only: true
             required: true
             secret: true
-        model: duo_hmac
+        model: duo_hmac_v5
         requires_references: true
       categories:
         - saas
@@ -23,6 +23,15 @@ entries:
           key: base_url
           label: API host
           required: true
+        - help: Earliest Unix timestamp included in administrator and authentication log reads.
+          key: mintime
+          label: Earliest log timestamp
+        - help: Latest Unix timestamp included in administrator and authentication log reads.
+          key: maxtime
+          label: Latest log timestamp
+        - help: Provider log order. Use asc or desc.
+          key: sort
+          label: Log order
       description: Collects Duo users, groups, administrators, endpoints, phones, hardware tokens, WebAuthn credentials, administrator roles, protected applications, activity logs, and authentication logs from the Duo Admin API and projects them into the Cerebro graph for inventory, access review, MFA posture, application ownership, audit review, and operational context.
       display_name: Duo
       id: builtin-duo
@@ -340,9 +349,7 @@ entries:
               policy_type: administrator_role
             template: policy
           record_selector: $.response[*]
-        - config:
-            auth_model: duo_hmac_v5
-          coverage:
+        - coverage:
             - control_domains:
                 - asset_inventory
                 - identity_access

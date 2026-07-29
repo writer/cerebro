@@ -6,7 +6,7 @@ mod append_log;
 mod http;
 mod mapper;
 
-pub use append_log::{AppendLogDecodeError, CommittedSourceEvent};
+pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
 pub use http::{HttpConnectorError, HttpSourceConnector, ResolvedAuth};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
 
@@ -24,6 +24,63 @@ pub struct CollectionRequest {
     pub tenant_id: TenantId,
     pub source_runtime_id: SourceRuntimeId,
     pub cursor: Option<String>,
+}
+
+/// A durable database fence for one source-runtime execution.
+///
+/// The generation changes whenever lease ownership changes. A provider result
+/// may commit only while the exact tenant, runtime, owner, and generation still
+/// hold the source-runtime row. The database remains the authority; this value
+/// contains no credential material.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceRuntimeLeaseFence {
+    tenant_id: TenantId,
+    source_runtime_id: SourceRuntimeId,
+    owner: String,
+    generation: u64,
+}
+
+impl SourceRuntimeLeaseFence {
+    pub fn new(
+        tenant_id: TenantId,
+        source_runtime_id: SourceRuntimeId,
+        owner: impl Into<String>,
+        generation: u64,
+    ) -> Result<Self, &'static str> {
+        let owner = owner.into();
+        if owner.is_empty()
+            || owner.trim() != owner
+            || owner.len() > 255
+            || owner.chars().any(char::is_control)
+        {
+            return Err("source runtime lease owner is invalid");
+        }
+        if generation == 0 {
+            return Err("source runtime lease generation must be positive");
+        }
+        Ok(Self {
+            tenant_id,
+            source_runtime_id,
+            owner,
+            generation,
+        })
+    }
+
+    pub fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
+    }
+
+    pub fn source_runtime_id(&self) -> &SourceRuntimeId {
+        &self.source_runtime_id
+    }
+
+    pub fn owner(&self) -> &str {
+        &self.owner
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -82,6 +139,17 @@ pub trait GraphSink: Send {
         &mut self,
         batch: &CollectedBatch,
         delta: GraphDelta,
+    ) -> Result<GraphWriteReceipt, Self::Error>;
+}
+
+#[async_trait]
+pub trait FencedGraphSink: GraphSink {
+    /// Commit only while the exact durable source-runtime lease still exists.
+    async fn apply_fenced(
+        &mut self,
+        batch: &CollectedBatch,
+        delta: GraphDelta,
+        fence: &SourceRuntimeLeaseFence,
     ) -> Result<GraphWriteReceipt, Self::Error>;
 }
 
@@ -187,6 +255,47 @@ where
             .map_err(RuntimeError::Store)
     }
 
+    /// Collect and commit under one database-checked source-runtime lease.
+    ///
+    /// The fence is checked before provider I/O and again inside the durable
+    /// graph transaction. Losing the lease therefore prevents a stale worker
+    /// from committing provider results after another worker takes ownership.
+    pub async fn sync_fenced(
+        &mut self,
+        request: CollectionRequest,
+        fence: &SourceRuntimeLeaseFence,
+    ) -> Result<GraphWriteReceipt, SyncError<Connector, Mapper, Store>>
+    where
+        Store: FencedGraphSink,
+    {
+        let requested_tenant = request.tenant_id.clone();
+        let requested_runtime = request.source_runtime_id.clone();
+        if fence.tenant_id() != &requested_tenant || fence.source_runtime_id() != &requested_runtime
+        {
+            return Err(RuntimeError::ScopeMismatch);
+        }
+        let batch = self
+            .connector
+            .collect(request)
+            .await
+            .map_err(RuntimeError::Collect)?;
+        if batch.scope.receipt().tenant_id() != &requested_tenant
+            || batch.scope.receipt().source_runtime_id() != &requested_runtime
+        {
+            return Err(RuntimeError::ScopeMismatch);
+        }
+        let delta = self.mapper.map(&batch).map_err(RuntimeError::Map)?;
+        if delta.collection().tenant_id() != &requested_tenant
+            || delta.collection().source_runtime_id() != &requested_runtime
+        {
+            return Err(RuntimeError::ScopeMismatch);
+        }
+        self.store
+            .apply_fenced(&batch, delta, fence)
+            .await
+            .map_err(RuntimeError::Store)
+    }
+
     pub fn into_store(self) -> Store {
         self.store
     }
@@ -194,7 +303,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{convert::Infallible, error::Error};
+    use std::{
+        convert::Infallible,
+        error::Error,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+    };
 
     use cerebro_organizational_model::{
         CollectionId, Entity, EntityId, EntityKind, GraphAssertion, ModelError, ObservationId,
@@ -269,6 +385,94 @@ mod tests {
             builder.add_assertion(GraphAssertion::Relationship(assertion))?;
             Ok(builder.build())
         }
+    }
+
+    struct CountingSource(Arc<AtomicUsize>);
+
+    #[async_trait]
+    impl SourceConnector for CountingSource {
+        type Error = Infallible;
+
+        async fn collect(
+            &mut self,
+            request: CollectionRequest,
+        ) -> Result<CollectedBatch, Self::Error> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            let mut source = FixtureSource;
+            source.collect(request).await
+        }
+    }
+
+    struct FencedFixtureStore;
+
+    #[async_trait]
+    impl GraphSink for FencedFixtureStore {
+        type Error = Infallible;
+
+        async fn apply(
+            &mut self,
+            _batch: &CollectedBatch,
+            _delta: GraphDelta,
+        ) -> Result<GraphWriteReceipt, Self::Error> {
+            unreachable!("scope mismatch must fail before the store")
+        }
+    }
+
+    #[async_trait]
+    impl FencedGraphSink for FencedFixtureStore {
+        async fn apply_fenced(
+            &mut self,
+            _batch: &CollectedBatch,
+            _delta: GraphDelta,
+            _fence: &SourceRuntimeLeaseFence,
+        ) -> Result<GraphWriteReceipt, Self::Error> {
+            unreachable!("scope mismatch must fail before the store")
+        }
+    }
+
+    #[test]
+    fn source_runtime_lease_fence_rejects_unbounded_identity() {
+        let tenant = TenantId::parse("tenant-a").unwrap();
+        let runtime = SourceRuntimeId::parse("runtime-a").unwrap();
+        assert!(SourceRuntimeLeaseFence::new(tenant.clone(), runtime.clone(), "", 1).is_err());
+        assert!(
+            SourceRuntimeLeaseFence::new(tenant.clone(), runtime.clone(), " owner", 1).is_err()
+        );
+        assert!(SourceRuntimeLeaseFence::new(tenant.clone(), runtime.clone(), "owner", 0).is_err());
+        assert_eq!(
+            SourceRuntimeLeaseFence::new(tenant, runtime, "worker:one", 7)
+                .unwrap()
+                .generation(),
+            7
+        );
+    }
+
+    #[tokio::test]
+    async fn mismatched_lease_fence_fails_before_provider_collection() {
+        let collections = Arc::new(AtomicUsize::new(0));
+        let mut runtime = SourceRuntime::new(
+            CountingSource(collections.clone()),
+            FixtureMapper,
+            FencedFixtureStore,
+        );
+        let result = runtime
+            .sync_fenced(
+                CollectionRequest {
+                    tenant_id: TenantId::parse("tenant-a").unwrap(),
+                    source_runtime_id: SourceRuntimeId::parse("runtime-a").unwrap(),
+                    cursor: None,
+                },
+                &SourceRuntimeLeaseFence::new(
+                    TenantId::parse("tenant-b").unwrap(),
+                    SourceRuntimeId::parse("runtime-a").unwrap(),
+                    "worker:one",
+                    1,
+                )
+                .unwrap(),
+            )
+            .await;
+        assert!(matches!(result, Err(RuntimeError::ScopeMismatch)));
+        assert_eq!(collections.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

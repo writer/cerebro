@@ -117,6 +117,7 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 			return fail(fmt.Errorf("open Rust organizational graph reads: %w", err))
 		}
 		deps.GraphQueries = queryStore
+		deps.SecurityLifecycleQueries = queryStore
 	}
 	if err := pingDependency(ctx, "append log", deps.AppendLog); err != nil {
 		return fail(err)

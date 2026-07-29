@@ -1133,7 +1133,7 @@ Files:
 
 - policy schema and loader;
 - `policies/identity/identity-okta-terminated-active-account.yaml`;
-- `internal/graphactions/action_catalog.yaml`;
+- `crates/action-catalog/action_catalog.yaml`;
 - generators and generated registries;
 - catalog checks and fixtures.
 

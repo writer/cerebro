@@ -13,24 +13,26 @@ const (
 )
 
 type ActionMetadata struct {
-	ID             string `json:"id"`
-	Provider       string `json:"provider"`
-	ProviderAction string `json:"provider_action"`
-	TargetKind     string `json:"target_kind"`
-	Effect         string `json:"effect"`
-	Destructive    bool   `json:"destructive"`
-	ReversibleBy   string `json:"reversible_by,omitempty"`
+	ID               string `json:"id"`
+	Provider         string `json:"provider"`
+	ProviderAction   string `json:"provider_action"`
+	TargetKind       string `json:"target_kind"`
+	Effect           string `json:"effect"`
+	Destructive      bool   `json:"destructive"`
+	ReversibleBy     string `json:"reversible_by,omitempty"`
+	DefinitionDigest string `json:"definition_digest"`
 }
 
 func (s ActionSpec) Metadata() ActionMetadata {
 	return ActionMetadata{
-		ID:             strings.TrimSpace(s.ID),
-		Provider:       strings.TrimSpace(s.Provider),
-		ProviderAction: strings.TrimSpace(s.ProviderAction),
-		TargetKind:     strings.TrimSpace(s.TargetKind),
-		Effect:         strings.TrimSpace(s.Effect),
-		Destructive:    s.Destructive,
-		ReversibleBy:   strings.TrimSpace(s.ReversibleBy),
+		ID:               strings.TrimSpace(s.ID),
+		Provider:         strings.TrimSpace(s.Provider),
+		ProviderAction:   strings.TrimSpace(s.ProviderAction),
+		TargetKind:       strings.TrimSpace(s.TargetKind),
+		Effect:           strings.TrimSpace(s.Effect),
+		Destructive:      s.Destructive,
+		ReversibleBy:     strings.TrimSpace(s.ReversibleBy),
+		DefinitionDigest: strings.TrimSpace(s.DefinitionDigest),
 	}
 }
 

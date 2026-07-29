@@ -1,0 +1,45 @@
+{
+  "schema_version": "cerebro.web-agent-quality/v1",
+  "scenarios": [
+    {
+      "id": "direct-risk-summary",
+      "question": "What is the current risk summary?",
+      "agent_mode": "auto",
+      "context": {
+        "route": "/risk",
+        "routeLabel": "Risk"
+      },
+      "requires_tool": true,
+      "requires_citation": false,
+      "expected_profile": "fast",
+      "max_total_ms": 60000
+    },
+    {
+      "id": "finding-investigation",
+      "question": "Investigate this finding, trace its supporting evidence, and identify the next bounded action.",
+      "agent_mode": "deep",
+      "context": {
+        "route": "/findings/eval-finding",
+        "routeLabel": "Finding",
+        "findingId": "eval-finding"
+      },
+      "requires_tool": true,
+      "requires_citation": true,
+      "expected_profile": "deep",
+      "max_total_ms": 180000
+    },
+    {
+      "id": "source-health",
+      "question": "Explain why this source may be stale and name the evidence still needed.",
+      "agent_mode": "auto",
+      "context": {
+        "route": "/sources",
+        "routeLabel": "Sources"
+      },
+      "requires_tool": true,
+      "requires_citation": false,
+      "expected_profile": "balanced",
+      "max_total_ms": 90000
+    }
+  ]
+}

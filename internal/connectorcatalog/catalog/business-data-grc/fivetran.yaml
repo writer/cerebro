@@ -1451,6 +1451,8 @@ entries:
             template: asset
           read:
             path_params: [service]
+            path_param_fanout:
+              service: connector_services
             singleton: true
             disable_page_size: true
           config:

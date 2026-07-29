@@ -22,6 +22,7 @@ var ensureSourceRuntimeStatements = []string{`CREATE TABLE IF NOT EXISTS source_
 )`,
 	`ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_owner TEXT`,
 	`ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`,
+	`ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_generation BIGINT NOT NULL DEFAULT 0 CHECK (lease_generation >= 0)`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_updated_idx ON source_runtimes ((runtime_json->>'tenant_id'), updated_at ASC, id ASC)`,
 	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_source_updated_idx ON source_runtimes ((runtime_json->>'tenant_id'), (runtime_json->>'source_id'), updated_at ASC, id ASC)`,
 }
@@ -200,7 +201,14 @@ func (s *Store) AcquireSourceRuntimeLease(ctx context.Context, runtimeID string,
 	}
 	result, err := s.db.ExecContext(ctx, `
 UPDATE source_runtimes
-SET lease_owner = $2,
+SET lease_generation = CASE
+      WHEN lease_owner = $2
+       AND lease_expires_at > NOW()
+       AND lease_generation > 0
+      THEN lease_generation
+      ELSE lease_generation + 1
+    END,
+    lease_owner = $2,
     lease_expires_at = NOW() + $3::interval,
     updated_at = NOW()
 WHERE id = $1
@@ -229,7 +237,8 @@ func (s *Store) RenewSourceRuntimeLease(ctx context.Context, runtimeID string, o
 UPDATE source_runtimes
 SET lease_expires_at = NOW() + $3::interval
 WHERE id = $1
-  AND lease_owner = $2`, id, leaseOwner, sourceRuntimeLeaseInterval(ttl))
+  AND lease_owner = $2
+  AND lease_expires_at > NOW()`, id, leaseOwner, sourceRuntimeLeaseInterval(ttl))
 	if err != nil {
 		return false, fmt.Errorf("renew source runtime lease %q: %w", id, err)
 	}

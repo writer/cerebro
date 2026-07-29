@@ -47,7 +47,17 @@ cerebro-source-catalog --> cerebro-source-runtime-next
 
 `cerebro-organizational-store` commits raw observations, admitted entities, assertions, retractions, the tenant graph revision, parity receipts, and a projection outbox row in one PostgreSQL transaction. PostgreSQL is the transactional authority for organizational current state. Neo4j is an idempotent, rebuildable current-state projection written in batches.
 
-During migration, the Go source runtime remains the append-log owner. It commits the source event first and then calls the Rust projection endpoint. The endpoint checks the persisted family authority before mapping anything. A legacy family returns to the Go projector; a Rust family commits through Rust and cannot fall back to Go if that commit fails. Replay, refetch, device, CLI, and orchestrator paths use the same authority check, so an alternate Go entry point cannot restore a retired writer. The `append_log_committed` field is an internal handoff assertion, not a public trust boundary; deployment must restrict the projection endpoint to the source-runtime workload until Rust consumes the event log directly.
+During migration, the Go source runtime may still collect legacy families and publish their events, but it cannot submit an event payload to the Rust projector. The Rust runtime consumes committed events directly from JetStream. Go asks Rust only for the persisted family authority: a legacy family returns to the Go projector and records a bounded compatibility delta, while a Rust-authoritative family returns no Go projection result and is committed only by the Rust consumer. Replay, refetch, device, CLI, and orchestrator paths use the same authority check, so an alternate Go entry point cannot restore a retired writer. The remaining projection HTTP routes accept legacy parity deltas, collection manifests, and authority reads; they do not provide a Rust-authoritative event write path.
+
+The Rust-native provider sync also requires the stored source runtime's durable
+lease before it makes a provider request. Go and Rust advance the same
+`lease_generation` whenever ownership changes. The Rust PostgreSQL graph
+transaction locks that runtime row and verifies the exact tenant, runtime,
+owner, unexpired lease, and generation before committing a collected batch.
+Renewal loss cancels collection, and a stale worker cannot commit or release a
+successor's lease. This fences the Rust collection write path; stored runtime
+configuration, secret-reference resolution, cursor/checkpoint persistence, and
+legacy-family execution still need separate Rust ownership work.
 
 `cerebro-agent-context` exposes bounded search, lookup, expansion, path, and explanation operations. It does not expose Cypher or store mutation.
 
@@ -160,6 +170,27 @@ Repository conventions and review are not the security boundary. Store credentia
 
 Source migration is definition- and family-based, not package-by-package translation.
 
+The append log remains the source-event log of record throughout migration.
+Rust records every valid source event in a tenant-scoped, idempotent PostgreSQL
+receipt projection before it evaluates family authority. An event from a
+legacy or not-yet-cataloged family is retained and acknowledged as legacy; it
+is not silently discarded. Reusing an event ID with different content fails
+closed. The receipt contains event metadata and content digests, not a second
+copy of the raw payload or secret material.
+
+While a family remains legacy-authoritative, the shared Go projection boundary
+also sends Rust the exact normalized entities, links, entity retractions, link
+retractions, and scoped cleanup requests written for that event. These
+compatibility records preserve existing source coverage for parity and replay;
+they do not grant Rust graph-write authority and they are not another system of
+record.
+
+After each bounded source-runtime sync, the same boundary records a collection
+manifest with expected and observed families, page and record counts,
+projection counts, and deterministic incompleteness reasons. A completed sync
+receipt is coverage evidence only. It does not become an authoritative
+`CompleteCollection`, and therefore cannot enable missing-record retraction.
+
 For every existing source family, the parity corpus records:
 
 - provider request and pagination behavior;
@@ -189,7 +220,7 @@ The current checked-in catalog compiles to 794 sources and 3,891 families:
 | Activity | 738 | audit and operational events |
 | Bespoke | 3 | retained for source coverage but barred from authority |
 
-Based on exact provider method-and-path proof and auth support present in this Rust runtime, 33 sources and 238 families are authoritative; the other 761 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
+Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 46 sources and 328 families are authoritative; the other 748 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
 
 ## Family cutover
 
@@ -252,6 +283,12 @@ an explicit, separate `CEREBRO_ORGANIZATIONAL_CONSUMER_NAME`; it cannot reuse
 the live forward-only durable identity.
 
 Every server mode exposes Prometheus request counters and latency histograms on `/metrics`. Operation labels come from a fixed route vocabulary; tenant IDs, entity IDs, request paths, and evidence do not enter metric labels.
+
+Generated Rust protobuf and Connect modules are wire contracts, not
+compatibility authorities. Architecture scans enforce the forbidden legacy
+contract rule against handwritten Rust; generated modules may contain unused
+declarations from an imported protobuf package, while platform services expose
+only explicitly registered Rust-owned methods.
 
 ## Performance shape
 

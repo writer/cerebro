@@ -7,13 +7,27 @@ use cerebro_agent_context::{
     QueryMatch as ContextQueryMatch, QueryNode as ContextQueryNode,
 };
 use cerebro_organizational_model::{AssertionId, EntityId, TenantId};
+use cerebro_security_lifecycle::{
+    LifecycleQuery, LifecycleState, ProjectedResource, QueryResult as LifecycleQueryResult,
+    SubjectKind, query_records,
+};
 use cerebro_source_catalog::CatalogSummary;
 use connectrpc::{ConnectError, RequestContext, Response, Router, ServiceRequest, ServiceResult};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{AUTHORIZATION, TENANT_AUTH_HEADER, TenantRequestAuth};
 
 pub mod proto {
     pub mod cerebro {
+        #[allow(
+            clippy::derivable_impls,
+            clippy::wrong_self_convention,
+            unused_imports,
+            non_camel_case_types
+        )]
+        pub mod v1 {
+            include!("generated/buffa/cerebro.v1.rs");
+        }
         pub mod graph {
             #[allow(
                 clippy::derivable_impls,
@@ -30,6 +44,10 @@ pub mod proto {
 
 mod service {
     pub mod cerebro {
+        #[allow(clippy::match_single_binding, dead_code)]
+        pub mod v1 {
+            include!("generated/connect/cerebro.v1.mod.rs");
+        }
         pub mod graph {
             #[allow(clippy::match_single_binding, dead_code)]
             pub mod v1 {
@@ -41,21 +59,24 @@ mod service {
 
 use proto::cerebro::graph::v1::*;
 use service::cerebro::graph::v1::{OrganizationalGraphService, OrganizationalGraphServiceExt};
+use service::cerebro::v1::{SecurityLifecycleService, SecurityLifecycleServiceExt};
 
 // Bound every durable graph read independently of client-side deadlines.
 const GRAPH_RPC_TIMEOUT: Duration = Duration::from_secs(2);
+const MAX_SECURITY_LIFECYCLE_SCAN: usize = 500;
 
 pub(crate) fn router(
     graph: Arc<dyn AgentGraph>,
     catalog_summary: Option<CatalogSummary>,
     tenant_auth: TenantRequestAuth,
 ) -> Router {
-    Arc::new(GraphRpc {
+    let service = Arc::new(GraphRpc {
         graph,
         catalog_summary,
         tenant_auth,
-    })
-    .register(Router::new())
+    });
+    let router = OrganizationalGraphServiceExt::register(Arc::clone(&service), Router::new());
+    SecurityLifecycleServiceExt::register(service, router)
 }
 
 struct GraphRpc {
@@ -102,6 +123,58 @@ impl GraphRpc {
         operation: impl Future<Output = Result<T, ContextError>>,
     ) -> Result<T, ConnectError> {
         graph_call_with_timeout(GRAPH_RPC_TIMEOUT, operation).await
+    }
+
+    async fn lifecycle_records(
+        &self,
+        tenant: &TenantId,
+        query: &LifecycleQuery,
+    ) -> Result<LifecycleQueryResult, ConnectError> {
+        let resource_kinds = vec!["resource".to_owned()];
+        let entities: Vec<ProjectedResource> = self
+            .graph_call(
+                self.graph
+                    .search(tenant, "", &resource_kinds, MAX_SECURITY_LIFECYCLE_SCAN),
+            )
+            .await?
+            .into_iter()
+            .map(|entity| ProjectedResource {
+                agent_key: entity.agent_key,
+                label: entity.label,
+                properties: entity.properties,
+            })
+            .collect();
+        let as_of = OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .map_err(|error| ConnectError::internal(format!("Cannot format read time: {error}")))?;
+        let scan_truncated = entities.len() == MAX_SECURITY_LIFECYCLE_SCAN;
+        let mut result = query_records(tenant, query, entities, &as_of)
+            .map_err(|error| ConnectError::invalid_argument(error.to_string()))?;
+        result.truncated |= scan_truncated;
+        Ok(result)
+    }
+}
+
+#[allow(refining_impl_trait)]
+impl SecurityLifecycleService for GraphRpc {
+    async fn list_security_lifecycle(
+        &self,
+        context: RequestContext,
+        request: ServiceRequest<'_, proto::cerebro::v1::ListSecurityLifecycleRequest>,
+    ) -> ServiceResult<proto::cerebro::v1::ListSecurityLifecycleResponse> {
+        let owned_request = request.to_owned_message();
+        let requested_query = owned_request
+            .query
+            .as_option()
+            .ok_or_else(|| ConnectError::invalid_argument("query is required"))?;
+        let tenant = self.authorized_tenant(&context, &requested_query.tenant_id)?;
+        let query = lifecycle_query(requested_query)?;
+        let result = self.lifecycle_records(&tenant, &query).await?;
+        let response = lifecycle_query_result(result)?;
+        Response::ok(proto::cerebro::v1::ListSecurityLifecycleResponse {
+            result: response.into(),
+            ..Default::default()
+        })
     }
 }
 
@@ -374,6 +447,133 @@ fn count(value: usize) -> Result<u64, ConnectError> {
     u64::try_from(value).map_err(|_| ConnectError::internal("catalog count exceeds u64"))
 }
 
+fn lifecycle_query(
+    request: &proto::cerebro::v1::SecurityLifecycleQuery,
+) -> Result<LifecycleQuery, ConnectError> {
+    let subject_kinds = request
+        .subject_kinds
+        .iter()
+        .map(|value| match value.as_known() {
+            Some(proto::cerebro::v1::SecurityLifecycleSubjectKind::Credential) => {
+                Ok(SubjectKind::Credential)
+            }
+            Some(proto::cerebro::v1::SecurityLifecycleSubjectKind::Certificate) => {
+                Ok(SubjectKind::Certificate)
+            }
+            _ => Err(ConnectError::invalid_argument(
+                "subject_kinds contains an unspecified or unknown value",
+            )),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let states = request
+        .states
+        .iter()
+        .map(|value| match value.as_known() {
+            Some(proto::cerebro::v1::SecurityLifecycleState::Active) => Ok(LifecycleState::Active),
+            Some(proto::cerebro::v1::SecurityLifecycleState::Expiring) => {
+                Ok(LifecycleState::Expiring)
+            }
+            Some(proto::cerebro::v1::SecurityLifecycleState::Expired) => {
+                Ok(LifecycleState::Expired)
+            }
+            Some(proto::cerebro::v1::SecurityLifecycleState::Rotated) => {
+                Ok(LifecycleState::Rotated)
+            }
+            Some(proto::cerebro::v1::SecurityLifecycleState::Revoked) => {
+                Ok(LifecycleState::Revoked)
+            }
+            Some(proto::cerebro::v1::SecurityLifecycleState::Inactive) => {
+                Ok(LifecycleState::Inactive)
+            }
+            Some(proto::cerebro::v1::SecurityLifecycleState::Unknown) => {
+                Ok(LifecycleState::Unknown)
+            }
+            _ => Err(ConnectError::invalid_argument(
+                "states contains an unspecified or unknown value",
+            )),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let expires_before = request
+        .expires_before
+        .as_option()
+        .map(format_proto_timestamp)
+        .transpose()?;
+    let limit = (request.limit != 0)
+        .then(|| usize::try_from(request.limit))
+        .transpose()
+        .map_err(|_| ConnectError::invalid_argument("limit exceeds usize"))?;
+    Ok(LifecycleQuery {
+        subject_kinds,
+        states,
+        owner_urns: request.owner_urns.to_vec(),
+        expires_before,
+        findings_only: request.findings_only,
+        limit,
+        page_token: (!request.page_token.is_empty()).then(|| request.page_token.to_owned()),
+    })
+}
+
+fn format_proto_timestamp(
+    timestamp: &buffa_types::google::protobuf::Timestamp,
+) -> Result<String, ConnectError> {
+    let nanos = u32::try_from(timestamp.nanos)
+        .ok()
+        .filter(|nanos| *nanos < 1_000_000_000)
+        .ok_or_else(|| ConnectError::invalid_argument("timestamp nanos is out of range"))?;
+    let value = OffsetDateTime::from_unix_timestamp(timestamp.seconds)
+        .and_then(|value| value.replace_nanosecond(nanos))
+        .map_err(|error| ConnectError::invalid_argument(format!("invalid timestamp: {error}")))?;
+    value
+        .format(&Rfc3339)
+        .map_err(|error| ConnectError::invalid_argument(format!("invalid timestamp: {error}")))
+}
+
+fn lifecycle_query_result(
+    result: LifecycleQueryResult,
+) -> Result<proto::cerebro::v1::SecurityLifecycleQueryResult, ConnectError> {
+    let mut value = serde_json::to_value(&result).map_err(|error| {
+        ConnectError::internal(format!("Cannot encode lifecycle result: {error}"))
+    })?;
+    let records = value
+        .get_mut("records")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| ConnectError::internal("Lifecycle result has no records array"))?;
+    for record in records {
+        let observation = record
+            .get_mut("observation")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| ConnectError::internal("Lifecycle record has no observation"))?;
+        let subject_kind = match observation
+            .get("subject_kind")
+            .and_then(serde_json::Value::as_str)
+        {
+            Some("credential") => "SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL",
+            Some("certificate") => "SECURITY_LIFECYCLE_SUBJECT_KIND_CERTIFICATE",
+            _ => return Err(ConnectError::internal("Lifecycle subject kind is invalid")),
+        };
+        let state = match observation.get("state").and_then(serde_json::Value::as_str) {
+            Some("active") => "SECURITY_LIFECYCLE_STATE_ACTIVE",
+            Some("expiring") => "SECURITY_LIFECYCLE_STATE_EXPIRING",
+            Some("expired") => "SECURITY_LIFECYCLE_STATE_EXPIRED",
+            Some("rotated") => "SECURITY_LIFECYCLE_STATE_ROTATED",
+            Some("revoked") => "SECURITY_LIFECYCLE_STATE_REVOKED",
+            Some("inactive") => "SECURITY_LIFECYCLE_STATE_INACTIVE",
+            Some("unknown") => "SECURITY_LIFECYCLE_STATE_UNKNOWN",
+            _ => return Err(ConnectError::internal("Lifecycle state is invalid")),
+        };
+        observation.insert(
+            "subject_kind".to_owned(),
+            serde_json::Value::String(subject_kind.to_owned()),
+        );
+        observation.insert(
+            "state".to_owned(),
+            serde_json::Value::String(state.to_owned()),
+        );
+    }
+    serde_json::from_value(value)
+        .map_err(|error| ConnectError::internal(format!("Cannot encode lifecycle result: {error}")))
+}
+
 fn graph_entity(entity: ContextEntity) -> GraphEntity {
     let authority = entity.authority;
     GraphEntity {
@@ -495,6 +695,143 @@ mod tests {
         assert_eq!(
             error.message.as_deref(),
             Some("The graph backend exceeded its RPC deadline.")
+        );
+    }
+
+    #[test]
+    fn lifecycle_result_uses_proto_timestamp_and_page_token() {
+        let response = lifecycle_query_result(LifecycleQueryResult {
+            records: vec![cerebro_security_lifecycle::LifecycleRecord {
+                observation: cerebro_security_lifecycle::Observation {
+                    subject_ref: cerebro_security_lifecycle::ResourceRef {
+                        kind: "credential".to_owned(),
+                        id: "urn:cerebro:tenant-a:credential:aws%2Fproduction:deploy%2Fsigning"
+                            .to_owned(),
+                        revision: Some("key-2026-07".to_owned()),
+                        state: Some("expiring".to_owned()),
+                    },
+                    subject_kind: SubjectKind::Credential,
+                    provider: "aws".to_owned(),
+                    authority_id: "aws/production".to_owned(),
+                    stable_locator: "deploy/signing".to_owned(),
+                    display_name: "Deployment signing credential".to_owned(),
+                    state: LifecycleState::Expiring,
+                    observed_at: "2026-07-26T12:00:00Z".to_owned(),
+                    issued_at: None,
+                    expires_at: Some("2026-08-01T12:00:00Z".to_owned()),
+                    rotated_at: None,
+                    revoked_at: None,
+                    owner_urn: None,
+                    scope_refs: Vec::new(),
+                    evidence_claim_refs: Vec::new(),
+                    attributes: Default::default(),
+                },
+                policy_evaluations: Vec::new(),
+                findings: Vec::new(),
+                action_routes: Vec::new(),
+                projected_at: "2026-07-26T12:00:00Z".to_owned(),
+            }],
+            next_page_token: Some("v1.616263".to_owned()),
+            truncated: true,
+            as_of: "2026-07-26T12:00:00Z".to_owned(),
+        })
+        .unwrap();
+
+        assert_eq!(response.next_page_token, "v1.616263");
+        assert!(response.truncated);
+        assert_eq!(response.as_of.seconds, 1_785_067_200);
+        assert_eq!(
+            response.records[0].observation.subject_kind,
+            proto::cerebro::v1::SecurityLifecycleSubjectKind::Credential
+        );
+    }
+
+    #[test]
+    fn lifecycle_query_maps_every_filter_into_the_rust_authority() {
+        let request = proto::cerebro::v1::SecurityLifecycleQuery {
+            tenant_id: "tenant-a".to_owned(),
+            subject_kinds: vec![
+                proto::cerebro::v1::SecurityLifecycleSubjectKind::Credential.into(),
+                proto::cerebro::v1::SecurityLifecycleSubjectKind::Certificate.into(),
+            ],
+            states: vec![
+                proto::cerebro::v1::SecurityLifecycleState::Active.into(),
+                proto::cerebro::v1::SecurityLifecycleState::Expiring.into(),
+                proto::cerebro::v1::SecurityLifecycleState::Expired.into(),
+                proto::cerebro::v1::SecurityLifecycleState::Rotated.into(),
+                proto::cerebro::v1::SecurityLifecycleState::Revoked.into(),
+                proto::cerebro::v1::SecurityLifecycleState::Inactive.into(),
+                proto::cerebro::v1::SecurityLifecycleState::Unknown.into(),
+            ],
+            owner_urns: vec!["urn:cerebro:tenant-a:team:security".to_owned()],
+            expires_before: buffa_types::google::protobuf::Timestamp {
+                seconds: 1_785_067_200,
+                nanos: 123_000_000,
+                ..Default::default()
+            }
+            .into(),
+            findings_only: true,
+            limit: 37,
+            page_token: "v1.616263".to_owned(),
+            ..Default::default()
+        };
+
+        let query = lifecycle_query(&request).unwrap();
+
+        assert_eq!(
+            query.subject_kinds,
+            vec![SubjectKind::Credential, SubjectKind::Certificate]
+        );
+        assert_eq!(
+            query.states,
+            vec![
+                LifecycleState::Active,
+                LifecycleState::Expiring,
+                LifecycleState::Expired,
+                LifecycleState::Rotated,
+                LifecycleState::Revoked,
+                LifecycleState::Inactive,
+                LifecycleState::Unknown,
+            ]
+        );
+        assert_eq!(query.owner_urns, vec!["urn:cerebro:tenant-a:team:security"]);
+        assert_eq!(
+            query.expires_before.as_deref(),
+            Some("2026-07-26T12:00:00.123Z")
+        );
+        assert!(query.findings_only);
+        assert_eq!(query.limit, Some(37));
+        assert_eq!(query.page_token.as_deref(), Some("v1.616263"));
+    }
+
+    #[test]
+    fn lifecycle_query_rejects_unknown_enums_and_invalid_timestamps() {
+        let mut request = proto::cerebro::v1::SecurityLifecycleQuery {
+            subject_kinds: vec![buffa::EnumValue::from(99)],
+            ..Default::default()
+        };
+        assert_eq!(
+            lifecycle_query(&request).unwrap_err().code,
+            ErrorCode::InvalidArgument
+        );
+
+        request.subject_kinds.clear();
+        request.states = vec![buffa::EnumValue::from(99)];
+        assert_eq!(
+            lifecycle_query(&request).unwrap_err().code,
+            ErrorCode::InvalidArgument
+        );
+
+        request.states.clear();
+        request.expires_before = buffa_types::google::protobuf::Timestamp {
+            seconds: 0,
+            nanos: -1,
+            ..Default::default()
+        }
+        .into();
+        assert_eq!(
+            lifecycle_query(&request).unwrap_err().code,
+            ErrorCode::InvalidArgument
         );
     }
 }

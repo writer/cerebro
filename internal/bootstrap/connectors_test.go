@@ -1571,6 +1571,9 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 	if duo.CatalogStatus != connectorcatalog.StatusGenerateable || !duo.RuntimeExecutable || !duo.Callable {
 		t.Fatalf("duo status = %q executable=%v callable=%v, want canonical callable catalog source", duo.CatalogStatus, duo.RuntimeExecutable, duo.Callable)
 	}
+	if duo.AuthModel != "duo_hmac_v5" {
+		t.Fatalf("duo auth_model = %q, want source-wide duo_hmac_v5", duo.AuthModel)
+	}
 	duoFamilies := map[string]catalogResourceFamily{}
 	for _, family := range duo.ResourceFamilies {
 		duoFamilies[family.ID] = family
@@ -1583,8 +1586,8 @@ func TestConnectorCatalogIncludesBuiltinDefinitionCatalogWhenEnabled(t *testing.
 			t.Fatalf("duo family %q missing from /connectors resource family metadata: %#v", familyID, duoFamilies)
 		}
 	}
-	if got := duoFamilies["application"].AuthModel; got != "duo_hmac_v5" {
-		t.Fatalf("duo application auth_model = %q, want duo_hmac_v5", got)
+	if got := duoFamilies["application"].AuthModel; got != "" {
+		t.Fatalf("duo application auth_model override = %q, want source-wide auth inheritance", got)
 	}
 	if got := duoFamilies["audit_event"].RecordSelector; got != "$.response.items[*]" {
 		t.Fatalf("duo audit_event record_selector = %q, want $.response.items[*]", got)

@@ -13,10 +13,12 @@ import {
 import { useApiKey } from "@/components/providers";
 import {
   type AskAgentContext,
+  type AskAgentMode,
   type AskHistoryEntry,
   type AskRequest,
   type AskTurnState,
   askEmptyState,
+  deleteAgentConversation,
   defaultAskModel,
   markAskTurnAborted,
   normalizeAskModel,
@@ -52,6 +54,8 @@ type CerebroAgentContextValue = {
   setImages: (value: AskImageAttachment[]) => void;
   turns: AskTurnState[];
   activeTurnId: string | null;
+  agentMode: AskAgentMode;
+  setAgentMode: (value: AskAgentMode) => void;
   pageContext: AskAgentContext;
   openAgent: (options?: OpenAgentOptions) => void;
   runAgent: (input: RunAgentInput) => Promise<void>;
@@ -135,10 +139,6 @@ const mergeContext = (
   };
 };
 
-function createConversationId() {
-  return typeof crypto !== "undefined" ? crypto.randomUUID() : `c-${Date.now()}`;
-}
-
 export function CerebroAgentProvider({ children }: { children: React.ReactNode }) {
   const { apiKey } = useApiKey();
   const [isOpen, setOpen] = useState(false);
@@ -146,6 +146,7 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
   const [images, setImages] = useState<AskImageAttachment[]>([]);
   const [turns, setTurns] = useState<AskTurnState[]>([]);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
+  const [agentMode, setAgentMode] = useState<AskAgentMode>("auto");
   const [pageContext, setPageContext] = useState<AskAgentContext>(() => ({
     route: "/",
     routeLabel: "Cerebro",
@@ -153,10 +154,7 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
   }));
   const abortRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string | null>(null);
-  const getConversationId = useCallback(() => {
-    conversationIdRef.current ??= createConversationId();
-    return conversationIdRef.current;
-  }, []);
+  const conversationTenantRef = useRef("writer");
 
   useEffect(() => {
     const refresh = () => setPageContext(capturePageContext());
@@ -237,9 +235,11 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
         history,
         context,
         surface: input.surface ?? "agent_panel",
-        conversation_id: getConversationId(),
+        conversation_id: conversationIdRef.current ?? undefined,
+        agent_mode: agentMode,
         images: input.images,
       };
+      conversationTenantRef.current = tenantId;
 
       try {
         for await (const event of streamAgentAsk(request, apiKey, controller.signal)) {
@@ -248,6 +248,9 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
           );
           if (event.type === "done" || event.type === "error") {
             setActiveTurnId(null);
+          }
+          if (event.type === "done" && event.data.conversation_id) {
+            conversationIdRef.current = event.data.conversation_id;
           }
         }
       } catch (error) {
@@ -274,7 +277,7 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
         setActiveTurnId(null);
       }
     },
-    [apiKey, getConversationId, history],
+    [agentMode, apiKey, history],
   );
 
   const openAgent = useCallback(
@@ -319,8 +322,13 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
     setActiveTurnId(null);
     setDraft("");
     setImages([]);
+    const conversationId = conversationIdRef.current;
     conversationIdRef.current = null;
-  }, []);
+    if (conversationId) {
+      void deleteAgentConversation(conversationId, conversationTenantRef.current, apiKey)
+        .catch(() => undefined);
+    }
+  }, [apiKey]);
 
   const submitDraft = useCallback(() => {
     if (!draft.trim() || activeTurnId) return;
@@ -342,6 +350,8 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
       setImages,
       turns,
       activeTurnId,
+      agentMode,
+      setAgentMode,
       pageContext,
       openAgent,
       runAgent,
@@ -352,6 +362,7 @@ export function CerebroAgentProvider({ children }: { children: React.ReactNode }
     }),
     [
       activeTurnId,
+      agentMode,
       clearThread,
       draft,
       isOpen,

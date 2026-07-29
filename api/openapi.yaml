@@ -26,6 +26,102 @@ tags:
   - name: Telemetry
   - name: Workflow
 paths:
+  /v1/security/lifecycle:
+    get:
+      summary: List credential and certificate lifecycle records
+      description: Returns bounded tenant-scoped lifecycle observations, resource links, and correlated findings from the current graph projection.
+      tags:
+        - Findings
+      parameters:
+        - name: subject_kind
+          in: query
+          description: Select one or more credential or certificate record kinds.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - credential
+                - certificate
+        - name: state
+          in: query
+          description: Select one or more observed lifecycle states.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - active
+                - expiring
+                - expired
+                - rotated
+                - revoked
+                - inactive
+                - unknown
+        - name: owner_urn
+          in: query
+          description: Select records owned by one or more canonical tenant-scoped URNs.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+        - name: expires_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: findings_only
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: page_token
+          in: query
+          description: Opaque cursor returned by the preceding lifecycle page.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Bounded lifecycle records at one read time.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - records
+                  - truncated
+                  - as_of
+                properties:
+                  records:
+                    type: array
+                    items:
+                      type: object
+                  next_page_token:
+                    type: string
+                  truncated:
+                    type: boolean
+                  as_of:
+                    type: string
+                    format: date-time
+        '400':
+          description: Invalid lifecycle selector.
+        '401':
+          description: Tenant authentication is missing or invalid.
+        '503':
+          description: Graph read capability is unavailable.
   /health:
     get:
       summary: Readiness check
