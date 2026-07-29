@@ -2375,34 +2375,9 @@ func (s *Store) ListIngestRuns(ctx context.Context, filter IngestRunFilter) (_ [
 	if limit < 0 || limit > 500 {
 		return nil, fmt.Errorf("ingest run limit must be between 1 and 500")
 	}
-	where := make([]string, 0, 2)
-	params := map[string]any{}
-	runtimeIDs := normalizedNonEmptyStrings(append(filter.RuntimeIDs, filter.RuntimeID))
-	if len(runtimeIDs) == 1 {
-		where = append(where, "r.runtime_id = $runtime_id")
-		params["runtime_id"] = runtimeIDs[0]
-	} else if len(runtimeIDs) > 1 {
-		where = append(where, "r.runtime_id IN $runtime_ids")
-		params["runtime_ids"] = runtimeIDs
-	}
-	if status := strings.TrimSpace(filter.Status); status != "" {
-		if !validIngestRunStatus(status) {
-			return nil, fmt.Errorf("unsupported ingest run status %q", status)
-		}
-		where = append(where, "r.status = $status")
-		params["status"] = status
-	}
-	prefix := "MATCH (r:IngestRun)"
-	if len(where) > 0 {
-		prefix += " WHERE " + strings.Join(where, " AND ")
-	}
-	query := ingestRunReturnQuery(prefix) + fmt.Sprintf(" ORDER BY coalesce(r.started_at, '') DESC, r.id DESC LIMIT %d", limit)
-	if filter.LatestByRuntime {
-		query = prefix + `
-WITH coalesce(r.runtime_id, r.id) AS runtime_key, r
-ORDER BY runtime_key ASC, coalesce(r.started_at, '') DESC, r.id DESC
-WITH runtime_key, collect(r)[0] AS r
-` + ingestRunReturnQuery("WITH r") + fmt.Sprintf(" ORDER BY coalesce(r.started_at, '') DESC, r.id DESC LIMIT %d", limit)
+	query, params, err := ingestRunListQuery(filter, limit)
+	if err != nil {
+		return nil, err
 	}
 	var runs []IngestRun
 	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
@@ -2423,6 +2398,59 @@ WITH runtime_key, collect(r)[0] AS r
 		return nil, fmt.Errorf("list ingest runs: %w", err)
 	}
 	return runs, nil
+}
+
+func ingestRunListQuery(filter IngestRunFilter, limit int) (string, map[string]any, error) {
+	where := make([]string, 0, 2)
+	params := map[string]any{}
+	runtimeIDs := normalizedNonEmptyStrings(append(filter.RuntimeIDs, filter.RuntimeID))
+	status := strings.TrimSpace(filter.Status)
+	if status != "" && !validIngestRunStatus(status) {
+		return "", nil, fmt.Errorf("unsupported ingest run status %q", status)
+	}
+	if filter.LatestByRuntime && len(runtimeIDs) > 0 {
+		params["runtime_ids"] = runtimeIDs
+		statusPredicate := ""
+		if status != "" {
+			params["status"] = status
+			statusPredicate = "\nWHERE r.status = $status"
+		}
+		query := `
+UNWIND $runtime_ids AS runtime_id
+CALL {
+  WITH runtime_id
+  MATCH (r:IngestRun {runtime_id: runtime_id})` + statusPredicate + `
+  RETURN r
+  ORDER BY r.started_at DESC, r.id DESC
+  LIMIT 1
+}
+` + ingestRunReturnQuery("WITH r") + fmt.Sprintf(" ORDER BY r.started_at DESC, r.id DESC LIMIT %d", limit)
+		return query, params, nil
+	}
+	if len(runtimeIDs) == 1 {
+		where = append(where, "r.runtime_id = $runtime_id")
+		params["runtime_id"] = runtimeIDs[0]
+	} else if len(runtimeIDs) > 1 {
+		where = append(where, "r.runtime_id IN $runtime_ids")
+		params["runtime_ids"] = runtimeIDs
+	}
+	if status != "" {
+		where = append(where, "r.status = $status")
+		params["status"] = status
+	}
+	prefix := "MATCH (r:IngestRun)"
+	if len(where) > 0 {
+		prefix += " WHERE " + strings.Join(where, " AND ")
+	}
+	query := ingestRunReturnQuery(prefix) + fmt.Sprintf(" ORDER BY coalesce(r.started_at, '') DESC, r.id DESC LIMIT %d", limit)
+	if filter.LatestByRuntime {
+		query = prefix + `
+WITH coalesce(r.runtime_id, r.id) AS runtime_key, r
+ORDER BY runtime_key ASC, coalesce(r.started_at, '') DESC, r.id DESC
+WITH runtime_key, collect(r)[0] AS r
+` + ingestRunReturnQuery("WITH r") + fmt.Sprintf(" ORDER BY coalesce(r.started_at, '') DESC, r.id DESC LIMIT %d", limit)
+	}
+	return query, params, nil
 }
 
 func normalizedNonEmptyStrings(values []string) []string {
@@ -2458,10 +2486,28 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	if s.schemaReady {
 		return nil
 	}
-	statements := []string{
+	statements := neo4jSchemaStatements()
+	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		for _, statement := range statements {
+			if _, err := consume(ctx, tx, statement, nil); err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
+	}); err != nil {
+		return fmt.Errorf("ensure neo4j schema: %w", err)
+	}
+	s.schemaReady = true
+	return nil
+}
+
+func neo4jSchemaStatements() []string {
+	return []string{
 		"CREATE CONSTRAINT cerebro_entity_urn IF NOT EXISTS FOR (e:Entity) REQUIRE e.urn IS UNIQUE",
 		"CREATE CONSTRAINT cerebro_checkpoint_id IF NOT EXISTS FOR (c:IngestCheckpoint) REQUIRE c.id IS UNIQUE",
 		"CREATE CONSTRAINT cerebro_ingest_run_id IF NOT EXISTS FOR (r:IngestRun) REQUIRE r.id IS UNIQUE",
+		"CREATE INDEX cerebro_ingest_run_runtime IF NOT EXISTS FOR (r:IngestRun) ON (r.runtime_id)",
+		"CREATE INDEX cerebro_ingest_run_runtime_started IF NOT EXISTS FOR (r:IngestRun) ON (r.runtime_id, r.started_at)",
 		"CREATE INDEX cerebro_entity_tenant_runtime IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.runtime_id)",
 		"CREATE INDEX cerebro_entity_tenant_type IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.entity_type)",
 		"CREATE INDEX cerebro_entity_tenant_source IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.source_id)",
@@ -2476,18 +2522,6 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"CREATE INDEX cerebro_relation_assertion_identity IF NOT EXISTS FOR ()-[a:RELATION_ASSERTION]-() ON (a.tenant_id, a.relation, a.source_id, a.runtime_id)",
 		"CREATE FULLTEXT INDEX cerebro_entity_inventory_fulltext IF NOT EXISTS FOR (e:Entity) ON EACH [e.urn, e.label, e.entity_type, e.attributes_json]",
 	}
-	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
-		for _, statement := range statements {
-			if _, err := consume(ctx, tx, statement, nil); err != nil {
-				return nil, err
-			}
-		}
-		return nil, nil
-	}); err != nil {
-		return fmt.Errorf("ensure neo4j schema: %w", err)
-	}
-	s.schemaReady = true
-	return nil
 }
 
 func (s *Store) projectionBatchSizeOrDefault() int {

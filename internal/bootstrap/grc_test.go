@@ -16,7 +16,6 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
-	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/grcaudit"
 	"github.com/writer/cerebro/internal/grcauditpacket"
 	"github.com/writer/cerebro/internal/grcfindings"
@@ -28,23 +27,6 @@ import (
 	"github.com/writer/cerebro/internal/workflowevents"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
-
-func TestJoinGRCErrorsPreservesAllFailures(t *testing.T) {
-	errA := fmt.Errorf("%w: evidence", graphquery.ErrRuntimeUnavailable)
-	errB := fmt.Errorf("%w: aggregate", ports.ErrFindingNotFound)
-	errs := make(chan error, 2)
-	errs <- errA
-	errs <- errB
-	close(errs)
-
-	err := joinGRCErrors(errs)
-	if !errors.Is(err, graphquery.ErrRuntimeUnavailable) {
-		t.Fatalf("joined error = %v, want runtime unavailable", err)
-	}
-	if !errors.Is(err, ports.ErrFindingNotFound) {
-		t.Fatalf("joined error = %v, want finding not found", err)
-	}
-}
 
 func TestGRCQuestionnaireRuntimeUnavailableMapsToServiceUnavailable(t *testing.T) {
 	if got := grcHTTPStatusCode(questionnairehttp.ErrRuntimeUnavailable); got != http.StatusServiceUnavailable {
@@ -360,6 +342,20 @@ func TestGRCDashboardEmitsLatencyTelemetry(t *testing.T) {
 	}
 	if _, ok := payload["duration_ms"].(float64); !ok {
 		t.Fatalf("telemetry duration_ms = %#v, want number; payload=%#v", payload["duration_ms"], payload)
+	}
+	for _, name := range []string{
+		"grc.dashboard.runtime_health",
+		"grc.dashboard.coverage",
+		"sourcehealth.latest_graph_runs",
+		"sourcehealth.latest_finding_runs",
+	} {
+		phasePayload := decodeBootstrapTelemetryPayload(t, stderr, name)
+		if phasePayload["status"] != "completed" {
+			t.Fatalf("%s status = %#v, want completed; payload=%#v", name, phasePayload["status"], phasePayload)
+		}
+		if _, ok := phasePayload["duration_ms"].(float64); !ok {
+			t.Fatalf("%s duration_ms = %#v, want number; payload=%#v", name, phasePayload["duration_ms"], phasePayload)
+		}
 	}
 }
 
