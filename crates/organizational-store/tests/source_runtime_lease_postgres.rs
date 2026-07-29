@@ -58,6 +58,111 @@ async fn source_runtime_lease_generation_fences_stale_and_cross_tenant_commits()
         Some("env:CEREBRO_SOURCE_FIXTURE_TOKEN")
     );
 
+    let vault_runtime = SourceRuntimeId::parse("runtime-rust-vault-vector")?;
+    let vault_tenant = TenantId::parse("tenant-rust-vault-vector")?;
+    admin
+        .execute(
+            "INSERT INTO source_runtimes (id, runtime_json)
+             VALUES ($1, $2)
+             ON CONFLICT (id) DO UPDATE
+             SET runtime_json = EXCLUDED.runtime_json,
+                 lease_owner = NULL,
+                 lease_expires_at = NULL",
+            &[
+                &vault_runtime.as_str(),
+                &serde_json::json!({
+                    "id": vault_runtime.as_str(),
+                    "tenant_id": vault_tenant.as_str(),
+                    "source_id": "fixture",
+                    "config": {
+                        "family": "resources",
+                        "base_url": "https://provider.example.test",
+                        "token": "credential:cred_rust_vault_vector:token"
+                    }
+                }),
+            ],
+        )
+        .await?;
+    let sealed = br#"{"algorithm":"AES-256-GCM","nonce":"AQEBAQEBAQEBAQEB","ciphertext":"WVIkjmqCn2b0Tnckdm9i17GWVkHlpoJhplPvYIkQXqDrIeD5w1o39L5GQmuOCeB5OTZpfeTLQxaxMJEk1c8gCPYa38JQ9p8H4eQx"}"#;
+    admin
+        .execute(
+            "INSERT INTO connector_credentials (
+               id, tenant_id, source_id, runtime_id, credential_store_id,
+               status, key_id, fields_json, sealed
+             )
+             VALUES ($1, $2, $3, $4, 'cerebro_vault', 'valid', $5, $6, $7)
+             ON CONFLICT (id) DO UPDATE
+             SET tenant_id = EXCLUDED.tenant_id,
+                 source_id = EXCLUDED.source_id,
+                 runtime_id = EXCLUDED.runtime_id,
+                 credential_store_id = EXCLUDED.credential_store_id,
+                 status = EXCLUDED.status,
+                 key_id = EXCLUDED.key_id,
+                 fields_json = EXCLUDED.fields_json,
+                 sealed = EXCLUDED.sealed,
+                 last_used_at = NULL",
+            &[
+                &"cred_rust_vault_vector",
+                &vault_tenant.as_str(),
+                &"fixture",
+                &vault_runtime.as_str(),
+                &"connector-vault-14035dbb6492f0ed",
+                &serde_json::json!(["other", "token"]),
+                &sealed.as_slice(),
+            ],
+        )
+        .await?;
+    admin
+        .execute(
+            "DELETE FROM connector_credential_audit_events WHERE credential_id = $1",
+            &[&"cred_rust_vault_vector"],
+        )
+        .await?;
+    let vault_stored = ledger.load_source_runtime(&vault_runtime).await?;
+    let resolved = ledger
+        .resolve_connector_credential_references(
+            &vault_stored,
+            vault_stored.config(),
+            "test-vault-key",
+        )
+        .await?;
+    assert_eq!(
+        resolved.get("token").map(String::as_str),
+        Some("secret-token")
+    );
+    ledger
+        .resolve_connector_credential_references(
+            &vault_stored,
+            vault_stored.config(),
+            "test-vault-key",
+        )
+        .await?;
+    let audit_count: i64 = admin
+        .query_one(
+            "SELECT COUNT(*) FROM connector_credential_audit_events
+             WHERE credential_id = $1 AND event_type = 'used'",
+            &[&"cred_rust_vault_vector"],
+        )
+        .await?
+        .get(0);
+    assert_eq!(audit_count, 1);
+    admin
+        .execute(
+            "UPDATE connector_credentials SET status = 'revoked' WHERE id = $1",
+            &[&"cred_rust_vault_vector"],
+        )
+        .await?;
+    assert!(
+        ledger
+            .resolve_connector_credential_references(
+                &vault_stored,
+                vault_stored.config(),
+                "test-vault-key",
+            )
+            .await
+            .is_err()
+    );
+
     assert!(
         ledger
             .acquire_source_runtime_lease(&other_tenant, &runtime, "worker:wrong-tenant", 60_000)

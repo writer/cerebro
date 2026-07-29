@@ -580,6 +580,8 @@ name = "cerebro-organizational-store"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "aws-lc-rs",
+ "base64",
  "cerebro-agent-context",
  "cerebro-organizational-graph",
  "cerebro-organizational-model",
@@ -593,6 +595,7 @@ dependencies = [
  "sha2 0.11.0",
  "tokio",
  "tokio-postgres",
+ "zeroize",
 ]
 
 [[package]]
@@ -639,6 +642,7 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tower",
+ "zeroize",
 ]
 
 [[package]]

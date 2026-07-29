@@ -2,6 +2,7 @@
 
 //! Durable organizational ledger and Neo4j current-state projection.
 
+mod credential_vault;
 mod cutover;
 mod neo4j;
 mod parity;

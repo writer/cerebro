@@ -10,7 +10,10 @@ mod runtime_config;
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
 pub use http::{HttpConnectorError, HttpSourceConnector, ResolvedAuth};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
-pub use runtime_config::{RuntimeConfigError, resolve_environment_references};
+pub use runtime_config::{
+    RuntimeConfigError, contains_credential_references, parse_credential_reference,
+    resolve_environment_references,
+};
 
 use std::{collections::BTreeMap, error::Error, fmt};
 

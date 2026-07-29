@@ -58,10 +58,13 @@ Renewal loss cancels collection, and a stale worker cannot commit or release a
 successor's lease. Rust loads the runtime's tenant, source, family, base URL,
 cursor, and config from the shared PostgreSQL runtime record instead of
 accepting parallel process arguments. Canonical and explicitly allowlisted
-`env:` references resolve in Rust, and credential-store reference kinds fail
-closed without a Go fallback. Connector-vault and native secret-store
-references, cursor/checkpoint persistence, and legacy-family execution still
-need separate Rust ownership work.
+`env:` references resolve in Rust without a Go fallback. Rust resolves
+`credential:` references directly from the shared connector vault with exact
+tenant, source, runtime, status, key, and authenticated-envelope checks.
+Successful use commits the existing throttled usage receipt without exposing
+credential material. Native secret-store references, cursor/checkpoint
+persistence, and legacy-family execution still need separate Rust ownership
+work.
 
 API-key collection authority also requires an explicit checked-in header and
 scheme contract. A provider proof manifest does not make a source

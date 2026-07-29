@@ -65,7 +65,7 @@ use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
     CatalogGraphMapper, CollectionRequest, CommittedSourceEvent, GraphMapper, GraphSink,
     HttpSourceConnector, ResolvedAuth, SourceRuntime, SourceRuntimeLeaseFence,
-    resolve_environment_references,
+    contains_credential_references, resolve_environment_references,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
@@ -73,6 +73,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::sync::{Mutex, oneshot};
+use zeroize::Zeroize;
 
 const TENANT_AUTH_HEADER: &str = "x-cerebro-tenant";
 const TENANT_AUTH_CONTEXT: &[u8] = b"cerebro-organizational-graph/tenant/v1\0";
@@ -1345,6 +1346,14 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
         &source_config_environment_allowlist(),
         |name| env::var(name).ok(),
     )?;
+    if contains_credential_references(&config) {
+        let mut vault_key = required_secret_env_or_file("CEREBRO_CONNECTOR_CREDENTIAL_KEY")?;
+        let resolved = lease_ledger
+            .resolve_connector_credential_references(&stored_runtime, &config, &vault_key)
+            .await;
+        vault_key.zeroize();
+        config = resolved?;
+    }
     let family_id = required_config(&config, "family")?;
     let base_url = required_config(&config, "base_url")?;
 
@@ -3183,6 +3192,22 @@ fn optional_env(name: &str) -> Result<Option<String>, env::VarError> {
     }
 }
 
+fn required_secret_env_or_file(name: &str) -> Result<String, Box<dyn Error>> {
+    let direct = optional_env(name)?
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    let file_name = format!("{name}_FILE");
+    let file = optional_env(&file_name)?
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    match (direct, file) {
+        (Some(_), Some(_)) => Err(format!("configure only one of {name} and {file_name}").into()),
+        (Some(value), None) => Ok(value),
+        (None, Some(path)) => read_bounded_secret_file(&path),
+        (None, None) => Err(format!("one of {name} and {file_name} is required").into()),
+    }
+}
+
 fn read_bounded_secret_file(path: &str) -> Result<String, Box<dyn Error>> {
     use std::io::Read as _;
 
@@ -3192,14 +3217,19 @@ fn read_bounded_secret_file(path: &str) -> Result<String, Box<dyn Error>> {
         .take((MAX_SECRET_FILE_BYTES + 1) as u64)
         .read_to_end(&mut bytes)?;
     if bytes.is_empty() || bytes.len() > MAX_SECRET_FILE_BYTES {
-        return Err("access-approvals bearer token file is empty or too large".into());
+        return Err("secret file is empty or too large".into());
     }
     let token = String::from_utf8(bytes)?;
-    Ok(token
+    let token = token
         .strip_suffix("\r\n")
         .or_else(|| token.strip_suffix('\n'))
         .unwrap_or(&token)
-        .to_owned())
+        .trim()
+        .to_owned();
+    if token.is_empty() {
+        return Err("secret file is empty or too large".into());
+    }
+    Ok(token)
 }
 
 fn parse_provider_timeout(value: &str) -> Result<Duration, Box<dyn Error>> {

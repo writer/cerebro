@@ -8,14 +8,9 @@ const MAX_CONFIG_ENTRIES: usize = 256;
 const MAX_CONFIG_KEY_BYTES: usize = 128;
 const MAX_CONFIG_VALUE_BYTES: usize = 64 * 1024;
 const ENV_PREFIX: &str = "env:";
-const UNSUPPORTED_REFERENCE_PREFIXES: [&str; 6] = [
-    "credential:",
-    "aws-sm:",
-    "gsm:",
-    "azkv:",
-    "vault:",
-    "infisical:",
-];
+const UNSUPPORTED_REFERENCE_PREFIXES: [&str; 5] =
+    ["aws-sm:", "gsm:", "azkv:", "vault:", "infisical:"];
+const CREDENTIAL_PREFIX: &str = "credential:";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RuntimeConfigError {
@@ -26,6 +21,7 @@ pub enum RuntimeConfigError {
     DisallowedEnvironmentReference { key: String, name: String },
     MissingEnvironmentReference { key: String, name: String },
     EmptySensitiveEnvironmentValue(String),
+    InvalidCredentialReference(String),
     UnsupportedReference { key: String, prefix: &'static str },
 }
 
@@ -57,6 +53,10 @@ impl fmt::Display for RuntimeConfigError {
             Self::EmptySensitiveEnvironmentValue(key) => write!(
                 formatter,
                 "stored source runtime config {key:?} resolved to an empty sensitive value"
+            ),
+            Self::InvalidCredentialReference(key) => write!(
+                formatter,
+                "stored source runtime config {key:?} has an invalid credential reference"
             ),
             Self::UnsupportedReference { key, prefix } => write!(
                 formatter,
@@ -121,6 +121,13 @@ pub fn resolve_environment_references(
             resolved.insert(key.clone(), secret);
             continue;
         }
+        if trimmed.starts_with(CREDENTIAL_PREFIX) {
+            if parse_credential_reference(trimmed).is_none() {
+                return Err(RuntimeConfigError::InvalidCredentialReference(key.clone()));
+            }
+            resolved.insert(key.clone(), value.clone());
+            continue;
+        }
         if let Some(prefix) = UNSUPPORTED_REFERENCE_PREFIXES
             .into_iter()
             .find(|prefix| trimmed.starts_with(prefix))
@@ -133,6 +140,29 @@ pub fn resolve_environment_references(
         resolved.insert(key.clone(), value.clone());
     }
     Ok(resolved)
+}
+
+/// Return whether a stored runtime config contains an exact connector-vault
+/// reference that still needs durable resolution.
+pub fn contains_credential_references(values: &BTreeMap<String, String>) -> bool {
+    values
+        .values()
+        .any(|value| parse_credential_reference(value).is_some())
+}
+
+/// Parse the closed `credential:<id>:<field>` reference shape shared with the
+/// compatibility runtime. IDs and fields are bounded to safe reference
+/// components before they may reach storage.
+pub fn parse_credential_reference(value: &str) -> Option<(&str, &str)> {
+    let value = value.trim();
+    let rest = value.strip_prefix(CREDENTIAL_PREFIX)?;
+    let (id, field) = rest.split_once(':')?;
+    let id = id.trim();
+    let field = field.trim();
+    if field.contains(':') || !valid_reference_part(id) || !valid_reference_part(field) {
+        return None;
+    }
+    Some((id, field))
 }
 
 fn validate_entry(key: &str, value: &str) -> Result<(), RuntimeConfigError> {
@@ -191,6 +221,14 @@ fn sensitive_key(key: &str) -> bool {
         .any(|part| normalized.contains(part))
 }
 
+fn valid_reference_part(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_CONFIG_KEY_BYTES
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,7 +275,7 @@ mod tests {
         ));
         assert!(!disallowed.to_string().contains("must-not-appear"));
 
-        let unsupported = resolve_environment_references(
+        let credential = resolve_environment_references(
             "github",
             &BTreeMap::from([(
                 "token".to_owned(),
@@ -246,15 +284,60 @@ mod tests {
             &BTreeSet::new(),
             |_| None,
         )
+        .unwrap();
+        assert_eq!(
+            credential.get("token").map(String::as_str),
+            Some("credential:credential-id:token")
+        );
+
+        let unsupported = resolve_environment_references(
+            "github",
+            &BTreeMap::from([("token".to_owned(), "aws-sm:region:secret#token".to_owned())]),
+            &BTreeSet::new(),
+            |_| None,
+        )
         .unwrap_err();
         assert!(matches!(
             unsupported,
             RuntimeConfigError::UnsupportedReference {
-                prefix: "credential:",
+                prefix: "aws-sm:",
                 ..
             }
         ));
-        assert!(!unsupported.to_string().contains("credential-id"));
+        assert!(!unsupported.to_string().contains("secret#token"));
+    }
+
+    #[test]
+    fn credential_references_are_exact_and_bounded() {
+        let values = BTreeMap::from([(
+            "token".to_owned(),
+            " credential:credential-id:token ".to_owned(),
+        )]);
+        assert!(contains_credential_references(&values));
+        assert_eq!(
+            parse_credential_reference(values.get("token").unwrap()),
+            Some(("credential-id", "token"))
+        );
+        for invalid in [
+            "credential::token",
+            "credential:id:",
+            "credential:id:token:extra",
+            "credential:id/other:token",
+            "credential:id:token/value",
+        ] {
+            assert_eq!(parse_credential_reference(invalid), None);
+            let error = resolve_environment_references(
+                "github",
+                &BTreeMap::from([("token".to_owned(), invalid.to_owned())]),
+                &BTreeSet::new(),
+                |_| None,
+            )
+            .unwrap_err();
+            assert!(matches!(
+                error,
+                RuntimeConfigError::InvalidCredentialReference(_)
+            ));
+        }
     }
 
     #[test]

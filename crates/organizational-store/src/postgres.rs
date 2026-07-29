@@ -1,4 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use cerebro_organizational_graph::GraphWriteReceipt;
 use cerebro_organizational_model::{
@@ -9,6 +11,7 @@ use cerebro_organizational_model::{
 use cerebro_source_catalog::SourceCatalog;
 use cerebro_source_runtime_next::{
     CollectedBatch, CommittedSourceEvent, IdentityResolutionSnapshot, SourceRuntimeLeaseFence,
+    parse_credential_reference,
 };
 use postgres_native_tls::MakeTlsConnector;
 use serde::{Deserialize, Serialize};
@@ -16,13 +19,17 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_postgres::Client;
 
-use crate::StoreError;
 use crate::{
     CutoverDecision, CutoverGate, ParityReceipt, ParityStatus, ProjectionAuthority,
     ProjectionAuthorityRecord, ProjectionPromotionRequest,
 };
+use crate::{
+    StoreError,
+    credential_vault::{ConnectorVaultKey, CredentialVaultRecord},
+};
 
 const MAX_SOURCE_RUNTIME_LEASE_TTL_MILLIS: u64 = 24 * 60 * 60 * 1_000;
+static CREDENTIAL_AUDIT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 pub const POSTGRES_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS source_runtimes (
@@ -36,6 +43,50 @@ ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPT
 ALTER TABLE source_runtimes
   ADD COLUMN IF NOT EXISTS lease_generation BIGINT NOT NULL DEFAULT 0
   CHECK (lease_generation >= 0);
+CREATE TABLE IF NOT EXISTS connector_credentials (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  runtime_id TEXT NOT NULL,
+  credential_store_id TEXT NOT NULL DEFAULT 'cerebro_vault',
+  auth_method TEXT NOT NULL DEFAULT 'encrypted_submission',
+  status TEXT NOT NULL DEFAULT 'valid',
+  key_id TEXT NOT NULL,
+  fields_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  sealed BYTEA NOT NULL,
+  created_by TEXT NOT NULL DEFAULT '',
+  updated_by TEXT NOT NULL DEFAULT '',
+  revoked_by TEXT NOT NULL DEFAULT '',
+  previous_credential_id TEXT NOT NULL DEFAULT '',
+  idempotency_key TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  revoked_at TIMESTAMPTZ,
+  last_used_at TIMESTAMPTZ,
+  last_validated_at TIMESTAMPTZ
+);
+ALTER TABLE connector_credentials
+  ADD COLUMN IF NOT EXISTS credential_store_id TEXT NOT NULL DEFAULT 'cerebro_vault';
+ALTER TABLE connector_credentials
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'valid';
+ALTER TABLE connector_credentials
+  ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS connector_credentials_runtime_idx
+  ON connector_credentials (runtime_id, updated_at DESC);
+CREATE TABLE IF NOT EXISTS connector_credential_audit_events (
+  id TEXT PRIMARY KEY,
+  credential_id TEXT NOT NULL,
+  tenant_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  runtime_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  actor TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT '',
+  detail TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS connector_credential_audit_credential_idx
+  ON connector_credential_audit_events (credential_id, created_at DESC);
 CREATE TABLE IF NOT EXISTS organizational_graph_revisions (
   tenant_id TEXT PRIMARY KEY,
   revision BIGINT NOT NULL CHECK (revision >= 0)
@@ -601,6 +652,91 @@ impl PostgresLedger {
             ));
         };
         decode_stored_source_runtime(source_runtime_id, row.get(0))
+    }
+
+    /// Resolve connector-vault references against the exact durable runtime
+    /// scope. The database lookup binds credential ID, tenant, source, runtime,
+    /// store, and usable status in one predicate, so a foreign or revoked
+    /// record cannot be distinguished from a missing record.
+    pub async fn resolve_connector_credential_references(
+        &self,
+        runtime: &StoredSourceRuntime,
+        values: &BTreeMap<String, String>,
+        key_material: &str,
+    ) -> Result<BTreeMap<String, String>, StoreError> {
+        let mut references = BTreeMap::<String, Vec<(String, String)>>::new();
+        for (config_key, value) in values {
+            let Some((credential_id, field)) = parse_credential_reference(value) else {
+                continue;
+            };
+            references
+                .entry(credential_id.to_owned())
+                .or_default()
+                .push((config_key.clone(), field.to_owned()));
+        }
+        if references.is_empty() {
+            return Ok(values.clone());
+        }
+
+        let vault_key = ConnectorVaultKey::parse(key_material)?;
+        let client = self.client.lock().await;
+        let mut resolved = values.clone();
+        let mut used_credentials = Vec::with_capacity(references.len());
+        for (credential_id, requested_fields) in references {
+            let row = client
+                .query_opt(
+                    "SELECT id, tenant_id, source_id, runtime_id, key_id, sealed
+                     FROM connector_credentials
+                     WHERE id = $1
+                       AND tenant_id = $2
+                       AND source_id = $3
+                       AND runtime_id = $4
+                       AND credential_store_id = 'cerebro_vault'
+                       AND status IN ('valid', 'rotating')",
+                    &[
+                        &credential_id,
+                        &runtime.tenant_id.as_str(),
+                        &runtime.source_id,
+                        &runtime.runtime_id.as_str(),
+                    ],
+                )
+                .await?;
+            let Some(row) = row else {
+                return Err(StoreError::Conflict(
+                    "connector credential is unavailable for this runtime".to_owned(),
+                ));
+            };
+            let record = CredentialVaultRecord {
+                id: row.get(0),
+                tenant_id: row.get(1),
+                source_id: row.get(2),
+                runtime_id: row.get(3),
+                key_id: row.get(4),
+                sealed: row.get(5),
+            };
+            let fields = vault_key.open(&record)?;
+            for (config_key, field) in requested_fields {
+                let Some(secret) = fields.get(&field) else {
+                    return Err(StoreError::Conflict(
+                        "connector credential field is unavailable".to_owned(),
+                    ));
+                };
+                resolved.insert(config_key, secret.to_owned());
+            }
+            used_credentials.push(credential_id);
+        }
+
+        for credential_id in used_credentials {
+            track_connector_credential_use(
+                &client,
+                &credential_id,
+                runtime.tenant_id.as_str(),
+                &runtime.source_id,
+                runtime.runtime_id.as_str(),
+            )
+            .await?;
+        }
+        Ok(resolved)
     }
 
     /// Acquire the shared source-runtime lease and return its durable fencing
@@ -1950,6 +2086,54 @@ fn decode_stored_source_runtime(
         config: wire.config,
         cursor,
     })
+}
+
+async fn track_connector_credential_use(
+    client: &Client,
+    credential_id: &str,
+    tenant_id: &str,
+    source_id: &str,
+    runtime_id: &str,
+) -> Result<(), StoreError> {
+    let sequence = CREDENTIAL_AUDIT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let unix_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let audit_id = format!(
+        "credential-audit-rust-{}-{unix_nanos}-{sequence}",
+        std::process::id()
+    );
+    client
+        .execute(
+            "WITH used AS (
+               UPDATE connector_credentials
+               SET last_used_at = NOW(), updated_at = NOW()
+               WHERE id = $1
+                 AND tenant_id = $2
+                 AND source_id = $3
+                 AND runtime_id = $4
+                 AND credential_store_id = 'cerebro_vault'
+                 AND status IN ('valid', 'rotating')
+                 AND (last_used_at IS NULL OR last_used_at <= NOW() - INTERVAL '1 hour')
+               RETURNING status
+             )
+             INSERT INTO connector_credential_audit_events (
+               id, credential_id, tenant_id, source_id, runtime_id,
+               event_type, actor, status, detail, created_at
+             )
+             SELECT $5, $1, $2, $3, $4, 'used', '', status, '', NOW()
+             FROM used",
+            &[
+                &credential_id,
+                &tenant_id,
+                &source_id,
+                &runtime_id,
+                &audit_id,
+            ],
+        )
+        .await?;
+    Ok(())
 }
 
 fn resumable_checkpoint_cursor(cursor: &str) -> bool {
