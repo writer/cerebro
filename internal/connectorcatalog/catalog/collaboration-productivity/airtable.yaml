@@ -10,6 +10,11 @@ entries:
       categories:
         - saas
         - collaboration
+      config_fields:
+        - help: Enterprise account ID used to scope user and audit-log requests.
+          key: enterprise_account_id
+          label: Enterprise account ID
+          required: true
       description: Collects enterprise users, bases, and audit log events from Airtable and maps them into the Cerebro graph as users, assets, and audit events for workspace, base, and collaboration context.
       display_name: Airtable
       id: builtin-airtable
@@ -36,7 +41,7 @@ entries:
           id_field: id
           label: Users
           method: GET
-          path: /v0/meta/enterpriseAccounts/{enterpriseAccountId}/users
+          path: /v0/meta/enterpriseAccounts/${config.enterprise_account_id}/users
           projection:
             fields:
               email: email|primary_email|profile.email
@@ -106,7 +111,7 @@ entries:
             page_size: 100
             page_size_param: pageSize
             type: cursor
-          path: /v0/meta/enterpriseAccounts/{enterpriseAccountId}/auditLogEvents
+          path: /v0/meta/enterpriseAccounts/${config.enterprise_account_id}/auditLogEvents
           projection:
             fields:
               actor_email: actor.user.email

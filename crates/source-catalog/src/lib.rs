@@ -1222,6 +1222,8 @@ mod tests {
             "akeneo",
             "apacta",
             "appwrite",
+            "airtable",
+            "anchore",
             "azure_openai",
             "beezup",
             "box",
@@ -1240,13 +1242,6 @@ mod tests {
                 "{source_id} has verified parameterized provider paths"
             );
         }
-        for source_id in ["airtable", "anchore"] {
-            assert_eq!(
-                catalog.get(source_id).unwrap().authority(),
-                CollectionAuthority::ShadowOnly,
-                "{source_id} has an unresolved request scope"
-            );
-        }
         for source_id in ["airbrake", "akeyless", "alchemer"] {
             assert_eq!(
                 catalog.get(source_id).unwrap().authority(),
@@ -1258,6 +1253,49 @@ mod tests {
             catalog.get("agiloft").unwrap().authority(),
             CollectionAuthority::ShadowOnly
         );
+    }
+
+    #[test]
+    fn scoped_provider_paths_bind_only_declared_runtime_config() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+
+        let airtable = catalog.get("airtable").unwrap();
+        assert_eq!(airtable.authority(), CollectionAuthority::Authoritative);
+        for family_id in ["users", "audit_events"] {
+            let family = airtable
+                .families()
+                .iter()
+                .find(|family| family.id() == family_id)
+                .unwrap();
+            assert_eq!(
+                family.path_parameters().get("enterprise_account_id"),
+                Some(&PathParameterBinding::ScalarConfig {
+                    field: "enterprise_account_id".to_owned()
+                })
+            );
+        }
+
+        let anchore = catalog.get("anchore").unwrap();
+        assert_eq!(anchore.authority(), CollectionAuthority::Authoritative);
+        for family in anchore.families() {
+            assert_eq!(
+                family.path_parameters().get("app_id"),
+                Some(&PathParameterBinding::ScalarConfig {
+                    field: "app_id".to_owned()
+                })
+            );
+            assert_eq!(
+                family.path_parameters().get("version_id"),
+                Some(&PathParameterBinding::ScalarConfig {
+                    field: "version_id".to_owned()
+                })
+            );
+        }
     }
 
     #[test]
