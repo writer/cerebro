@@ -4,13 +4,15 @@ use std::{
     fmt,
 };
 
+use crate::aws_secret_store::parse_aws_secret_reference;
+
 const MAX_CONFIG_ENTRIES: usize = 256;
 const MAX_CONFIG_KEY_BYTES: usize = 128;
 const MAX_CONFIG_VALUE_BYTES: usize = 64 * 1024;
 const ENV_PREFIX: &str = "env:";
-const UNSUPPORTED_REFERENCE_PREFIXES: [&str; 5] =
-    ["aws-sm:", "gsm:", "azkv:", "vault:", "infisical:"];
+const UNSUPPORTED_REFERENCE_PREFIXES: [&str; 4] = ["gsm:", "azkv:", "vault:", "infisical:"];
 const CREDENTIAL_PREFIX: &str = "credential:";
+const AWS_SECRET_PREFIX: &str = "aws-sm:";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RuntimeConfigError {
@@ -22,6 +24,7 @@ pub enum RuntimeConfigError {
     MissingEnvironmentReference { key: String, name: String },
     EmptySensitiveEnvironmentValue(String),
     InvalidCredentialReference(String),
+    InvalidAwsSecretReference(String),
     UnsupportedReference { key: String, prefix: &'static str },
 }
 
@@ -57,6 +60,10 @@ impl fmt::Display for RuntimeConfigError {
             Self::InvalidCredentialReference(key) => write!(
                 formatter,
                 "stored source runtime config {key:?} has an invalid credential reference"
+            ),
+            Self::InvalidAwsSecretReference(key) => write!(
+                formatter,
+                "stored source runtime config {key:?} has an invalid aws-sm reference"
             ),
             Self::UnsupportedReference { key, prefix } => write!(
                 formatter,
@@ -124,6 +131,13 @@ pub fn resolve_environment_references(
         if trimmed.starts_with(CREDENTIAL_PREFIX) {
             if parse_credential_reference(trimmed).is_none() {
                 return Err(RuntimeConfigError::InvalidCredentialReference(key.clone()));
+            }
+            resolved.insert(key.clone(), value.clone());
+            continue;
+        }
+        if trimmed.starts_with(AWS_SECRET_PREFIX) {
+            if parse_aws_secret_reference(trimmed).is_err() {
+                return Err(RuntimeConfigError::InvalidAwsSecretReference(key.clone()));
             }
             resolved.insert(key.clone(), value.clone());
             continue;
@@ -292,19 +306,16 @@ mod tests {
 
         let unsupported = resolve_environment_references(
             "github",
-            &BTreeMap::from([("token".to_owned(), "aws-sm:region:secret#token".to_owned())]),
+            &BTreeMap::from([("token".to_owned(), "gsm:project/secret#token".to_owned())]),
             &BTreeSet::new(),
             |_| None,
         )
         .unwrap_err();
         assert!(matches!(
             unsupported,
-            RuntimeConfigError::UnsupportedReference {
-                prefix: "aws-sm:",
-                ..
-            }
+            RuntimeConfigError::UnsupportedReference { prefix: "gsm:", .. }
         ));
-        assert!(!unsupported.to_string().contains("secret#token"));
+        assert!(!unsupported.to_string().contains("project/secret#token"));
     }
 
     #[test]
@@ -337,6 +348,35 @@ mod tests {
                 error,
                 RuntimeConfigError::InvalidCredentialReference(_)
             ));
+        }
+    }
+
+    #[test]
+    fn aws_secret_references_are_preserved_only_when_well_formed() {
+        let reference = "aws-sm:us-east-1:cerebro/tenant-a/github/runtime-a/credentials#token";
+        let values = BTreeMap::from([("token".to_owned(), reference.to_owned())]);
+        let resolved =
+            resolve_environment_references("github", &values, &BTreeSet::new(), |_| None).unwrap();
+        assert_eq!(resolved, values);
+
+        for invalid in [
+            "aws-sm:",
+            "aws-sm:us-east-1:",
+            "aws-sm:us-east-1:secret#",
+            "aws-sm:us-east-1:secret#field/other",
+        ] {
+            let error = resolve_environment_references(
+                "github",
+                &BTreeMap::from([("token".to_owned(), invalid.to_owned())]),
+                &BTreeSet::new(),
+                |_| None,
+            )
+            .unwrap_err();
+            assert!(matches!(
+                error,
+                RuntimeConfigError::InvalidAwsSecretReference(_)
+            ));
+            assert!(!error.to_string().contains(invalid));
         }
     }
 

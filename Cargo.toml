@@ -37,8 +37,10 @@ license = "Apache-2.0"
 axum = "0.8.9"
 async-nats = "0.50.0"
 async-trait = "0.1.91"
+aws-config = { version = "=1.8.18", default-features = false, features = ["behavior-version-latest", "credentials-process", "default-https-client", "rt-tokio", "sso"] }
 aws-lc-rs = "1.17.3"
 aws-credential-types = "=1.2.14"
+aws-sdk-secretsmanager = { version = "=1.108.0", default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio"] }
 aws-sigv4 = { version = "=1.4.5", default-features = false, features = ["http1", "sign-http"] }
 aws-smithy-async = "=1.2.14"
 aws-smithy-runtime-api = { version = "=1.12.3", features = ["client"] }

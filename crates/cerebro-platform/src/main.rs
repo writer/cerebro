@@ -16,6 +16,9 @@ use std::{
 };
 
 use async_trait::async_trait;
+use aws_config::{BehaviorVersion, Region, sts::AssumeRoleProvider};
+use aws_credential_types::provider::SharedCredentialsProvider;
+use aws_sdk_secretsmanager::Client as AwsSecretsManagerClient;
 use axum::{
     Extension, Json, Router,
     extract::{Path, Query, Request, State},
@@ -63,9 +66,10 @@ use cerebro_security_lifecycle::{
 };
 use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
-    CatalogGraphMapper, CollectionRequest, CommittedSourceEvent, GraphMapper, GraphSink,
-    HttpSourceConnector, ResolvedAuth, SourceRuntime, SourceRuntimeLeaseFence,
-    contains_credential_references, resolve_environment_references,
+    AwsSecretReadError, AwsSecretReader, AwsSecretValue, CatalogGraphMapper, CollectionRequest,
+    CommittedSourceEvent, GraphMapper, GraphSink, HttpSourceConnector, ResolvedAuth, SourceRuntime,
+    SourceRuntimeLeaseFence, contains_aws_secret_references, contains_credential_references,
+    resolve_aws_secret_references, resolve_environment_references,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
@@ -106,6 +110,116 @@ struct AppState {
 struct ActionProviders {
     access_approvals: Option<AccessApprovalsClient>,
     cerebro_device: Option<CerebroDeviceClient>,
+}
+
+struct AwsSecretsManagerReader {
+    default_region: String,
+    profile: Option<String>,
+    role_arn: Option<String>,
+    external_id: Option<String>,
+    endpoint: Option<String>,
+    credentials_provider: Option<SharedCredentialsProvider>,
+}
+
+impl AwsSecretsManagerReader {
+    fn from_env() -> Result<Self, Box<dyn Error>> {
+        let stores = required_secret_env_or_file("CEREBRO_CONNECTOR_SECRET_STORES")?;
+        if !stores
+            .split(',')
+            .map(str::trim)
+            .any(|store| store == "aws_secrets_manager")
+        {
+            return Err("AWS Secrets Manager connector resolution is not enabled".into());
+        }
+        let default_region = required_env("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION")?
+            .trim()
+            .to_owned();
+        if default_region.len() > 128 {
+            return Err("AWS Secrets Manager region is invalid".into());
+        }
+        let endpoint = optional_trimmed_env("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ENDPOINT")?;
+        if let Some(endpoint) = endpoint.as_deref() {
+            validate_aws_secrets_manager_endpoint(endpoint)?;
+        }
+        Ok(Self {
+            default_region,
+            profile: optional_trimmed_env("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_PROFILE")?,
+            role_arn: optional_trimmed_env("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ROLE_ARN")?,
+            external_id: optional_trimmed_env("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_EXTERNAL_ID")?,
+            endpoint,
+            credentials_provider: None,
+        })
+    }
+
+    async fn client(
+        &self,
+        region: Option<&str>,
+    ) -> Result<AwsSecretsManagerClient, AwsSecretReadError> {
+        let region = region.unwrap_or(&self.default_region).trim();
+        if region.is_empty() || region.len() > 128 {
+            return Err(AwsSecretReadError);
+        }
+        let mut loader =
+            aws_config::defaults(BehaviorVersion::latest()).region(Region::new(region.to_owned()));
+        if let Some(profile) = self.profile.as_deref() {
+            loader = loader.profile_name(profile);
+        }
+        if let Some(provider) = self.credentials_provider.as_ref() {
+            loader = loader.credentials_provider(provider.clone());
+        }
+        let mut shared_config = loader.load().await;
+        if let Some(role_arn) = self.role_arn.as_deref() {
+            let mut builder = AssumeRoleProvider::builder(role_arn)
+                .configure(&shared_config)
+                .session_name("cerebro-connector-secret-store");
+            if let Some(external_id) = self.external_id.as_deref() {
+                builder = builder.external_id(external_id);
+            }
+            let provider = builder.build().await;
+            shared_config = shared_config
+                .to_builder()
+                .credentials_provider(SharedCredentialsProvider::new(provider))
+                .build();
+        }
+        let mut service_config = aws_sdk_secretsmanager::config::Builder::from(&shared_config);
+        if let Some(endpoint) = self.endpoint.as_deref() {
+            service_config = service_config.endpoint_url(endpoint);
+        }
+        Ok(AwsSecretsManagerClient::from_conf(service_config.build()))
+    }
+}
+
+impl Drop for AwsSecretsManagerReader {
+    fn drop(&mut self) {
+        if let Some(external_id) = self.external_id.as_mut() {
+            external_id.zeroize();
+        }
+    }
+}
+
+#[async_trait]
+impl AwsSecretReader for AwsSecretsManagerReader {
+    async fn read_secret(
+        &self,
+        region: Option<&str>,
+        secret_id: &str,
+    ) -> Result<AwsSecretValue, AwsSecretReadError> {
+        let output = self
+            .client(region)
+            .await?
+            .get_secret_value()
+            .secret_id(secret_id)
+            .send()
+            .await
+            .map_err(|_| AwsSecretReadError)?;
+        if let Some(value) = output.secret_string {
+            return Ok(AwsSecretValue::String(value));
+        }
+        if let Some(value) = output.secret_binary {
+            return Ok(AwsSecretValue::Binary(value.into_inner()));
+        }
+        Err(AwsSecretReadError)
+    }
 }
 
 #[async_trait]
@@ -1353,6 +1467,17 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
             .await;
         vault_key.zeroize();
         config = resolved?;
+    }
+    if contains_aws_secret_references(&config) {
+        let reader = AwsSecretsManagerReader::from_env()?;
+        config = resolve_aws_secret_references(
+            tenant_id.as_str(),
+            &source_id,
+            runtime_id.as_str(),
+            &config,
+            &reader,
+        )
+        .await?;
     }
     let family_id = required_config(&config, "family")?;
     let base_url = required_config(&config, "base_url")?;
@@ -3192,6 +3317,45 @@ fn optional_env(name: &str) -> Result<Option<String>, env::VarError> {
     }
 }
 
+fn optional_trimmed_env(name: &str) -> Result<Option<String>, Box<dyn Error>> {
+    const MAX_CONFIG_BYTES: usize = 4 * 1_024;
+    let value = optional_env(name)?
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if value
+        .as_ref()
+        .is_some_and(|value| value.len() > MAX_CONFIG_BYTES)
+    {
+        return Err(format!("{name} is too large").into());
+    }
+    Ok(value)
+}
+
+fn validate_aws_secrets_manager_endpoint(endpoint: &str) -> Result<(), Box<dyn Error>> {
+    let url =
+        reqwest::Url::parse(endpoint).map_err(|_| "AWS Secrets Manager endpoint is invalid")?;
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("AWS Secrets Manager endpoint is invalid".into());
+    }
+    let secure = url.scheme() == "https";
+    let loopback_http = url.scheme() == "http"
+        && url.host_str().is_some_and(|host| {
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .trim_matches(['[', ']'])
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|address| address.is_loopback())
+        });
+    if !secure && !loopback_http {
+        return Err("AWS Secrets Manager endpoint must use HTTPS or loopback HTTP".into());
+    }
+    Ok(())
+}
+
 fn required_secret_env_or_file(name: &str) -> Result<String, Box<dyn Error>> {
     let direct = optional_env(name)?
         .map(|value| value.trim().to_owned())
@@ -3330,13 +3494,19 @@ fn demo_graph() -> Result<(OrganizationalGraph, TenantId, EntityId), Box<dyn Err
 mod tests {
     use std::{
         collections::BTreeSet,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
         time::{SystemTime, UNIX_EPOCH},
     };
 
     use async_trait::async_trait;
+    use aws_credential_types::Credentials;
     use axum::{
-        body::Body,
-        http::{Request, StatusCode},
+        body::{Body, Bytes},
+        http::{HeaderMap, Request, StatusCode, header::CONTENT_TYPE},
+        routing::post,
     };
     use cerebro_agent_context::ContextEdge;
     use cerebro_platform_sdk::{ActionEffect, GraphRevision};
@@ -3345,6 +3515,118 @@ mod tests {
     use super::*;
 
     const TEST_SHARED_SECRET: &str = "test-organizational-graph-secret-32-bytes";
+
+    #[test]
+    fn aws_secrets_manager_endpoint_requires_a_safe_transport() {
+        for endpoint in [
+            "https://secretsmanager.us-east-1.amazonaws.com",
+            "http://localhost:4566",
+            "http://127.0.0.1:4566",
+            "http://[::1]:4566",
+        ] {
+            validate_aws_secrets_manager_endpoint(endpoint)
+                .unwrap_or_else(|error| panic!("{endpoint} must be accepted: {error}"));
+        }
+        for endpoint in [
+            "http://secretsmanager.example.com",
+            "https://user:password@secretsmanager.example.com",
+            "https://secretsmanager.example.com?token=secret",
+            "https://secretsmanager.example.com#secret",
+            "ftp://localhost/secrets",
+            "not-a-url",
+        ] {
+            assert!(
+                validate_aws_secrets_manager_endpoint(endpoint).is_err(),
+                "{endpoint} must fail closed"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn aws_secrets_manager_reader_signs_one_scoped_backend_request() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let fixture_reads = Arc::clone(&reads);
+        let fixture = Router::new().route(
+            "/",
+            post(move |headers: HeaderMap, body: Bytes| {
+                let fixture_reads = Arc::clone(&fixture_reads);
+                async move {
+                    fixture_reads.fetch_add(1, Ordering::Relaxed);
+                    assert_eq!(
+                        headers
+                            .get("x-amz-target")
+                            .and_then(|value| value.to_str().ok()),
+                        Some("secretsmanager.GetSecretValue")
+                    );
+                    assert!(
+                        headers
+                            .get(AUTHORIZATION)
+                            .and_then(|value| value.to_str().ok())
+                            .is_some_and(|value| value.starts_with("AWS4-HMAC-SHA256 "))
+                    );
+                    assert_eq!(
+                        serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+                        serde_json::json!({
+                            "SecretId": "cerebro/tenant-a/github/runtime-a/credentials"
+                        })
+                    );
+                    (
+                        [(CONTENT_TYPE, "application/x-amz-json-1.1")],
+                        serde_json::json!({
+                            "ARN": "arn:aws:secretsmanager:us-east-1:123456789012:secret:cerebro/tenant-a/github/runtime-a/credentials",
+                            "Name": "cerebro/tenant-a/github/runtime-a/credentials",
+                            "SecretString": "{\"token\":\"resolved-token\",\"username\":\"runtime-user\"}"
+                        })
+                        .to_string(),
+                    )
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, fixture).await.unwrap();
+        });
+        let reader = AwsSecretsManagerReader {
+            default_region: "us-east-1".to_owned(),
+            profile: None,
+            role_arn: None,
+            external_id: None,
+            endpoint: Some(format!("http://{address}")),
+            credentials_provider: Some(SharedCredentialsProvider::new(Credentials::new(
+                "test-access-key",
+                "test-secret-key",
+                None,
+                None,
+                "test",
+            ))),
+        };
+        let config = BTreeMap::from([
+            (
+                "token".to_owned(),
+                "aws-sm:us-east-1:cerebro/tenant-a/github/runtime-a/credentials#token".to_owned(),
+            ),
+            (
+                "username".to_owned(),
+                "aws-sm:us-east-1:cerebro/tenant-a/github/runtime-a/credentials#username"
+                    .to_owned(),
+            ),
+        ]);
+        let resolved =
+            resolve_aws_secret_references("tenant-a", "github", "runtime-a", &config, &reader)
+                .await
+                .unwrap();
+        assert_eq!(reads.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            resolved.get("token").map(String::as_str),
+            Some("resolved-token")
+        );
+        assert_eq!(
+            resolved.get("username").map(String::as_str),
+            Some("runtime-user")
+        );
+        server.abort();
+    }
 
     #[test]
     fn rust_source_sync_accepts_only_the_stored_runtime_selector() {
