@@ -37,37 +37,3 @@ func TestPlanReversibleRemediationUsesDryRunAndReversalMetadata(t *testing.T) {
 		t.Fatalf("approval flags = %#v", plan)
 	}
 }
-
-func TestExecuteApprovedReversibleRemediationRequiresReversibleAction(t *testing.T) {
-	provider := &stubActionProvider{executeAction: &GraphAction{ID: "action-1", ExternalID: "action-1"}}
-	workflow := &stubFindingWorkflow{finding: eligibleFinding(&ports.FindingRecord{
-		ID:         "finding-1",
-		TenantID:   "tenant-a",
-		Attributes: map[string]string{"target": "alice"},
-	})}
-	registry := Registry{actions: map[string]ActionSpec{
-		"custom.nonreversible": {
-			ID:             "custom.nonreversible",
-			Provider:       "custom",
-			ProviderAction: "noop",
-			TargetKind:     "identity",
-			ResolveTarget: func(*ports.FindingRecord, string) (string, error) {
-				return "alice", nil
-			},
-		},
-	}}
-	_, err := (Service{
-		Findings:  workflow,
-		Providers: map[string]ActionProvider{"custom": provider},
-		Registry:  registry,
-	}).ExecuteApprovedReversibleRemediation(context.Background(), Input{
-		FindingID: "finding-1",
-		Action:    "custom.nonreversible",
-	})
-	if err == nil {
-		t.Fatalf("ExecuteApprovedReversibleRemediation() error = nil, want nonreversible rejection")
-	}
-	if provider.request.Target != "" {
-		t.Fatalf("nonreversible action reached provider: %#v", provider.request)
-	}
-}

@@ -14,13 +14,14 @@ func TestAccessRevocationLifecycleClosesAndReopensWithDurableReceipts(t *testing
 	proposed := mustPropose(t)
 	preflighted := mustPreflight(t, proposed.Record)
 	approved := mustApprove(t, proposed.Record.Digest, preflighted.Record)
-	executed := mustExecute(t, proposed.Record.Digest, approved.Record)
+	claimed := mustClaim(t, proposed.Record.Digest, approved.Record)
+	executed := mustExecute(t, proposed.Record.Digest, claimed.Record)
 	closed := mustVerify(t, executed.Record)
 
 	if closed.Record.Status != StatusClosed || !closed.Metrics.VerificationClosed || closed.Metrics.ResultCode != ResultVerifiedClosed {
 		t.Fatalf("closed = %#v", closed)
 	}
-	transitions := []TransitionReceipt{proposed.Transition, preflighted.Transition, approved.Transition, executed.Transition, closed.Transition}
+	transitions := []TransitionReceipt{proposed.Transition, preflighted.Transition, approved.Transition, claimed.Transition, executed.Transition, closed.Transition}
 	for i := 1; i < len(transitions); i++ {
 		if transitions[i].PreviousTransitionDigest != transitions[i-1].Digest {
 			t.Fatalf("transition %d previous = %q, want %q", i, transitions[i].PreviousTransitionDigest, transitions[i-1].Digest)
@@ -79,7 +80,8 @@ func TestExportedReceiptDigestHelpersMatchLifecycleBindings(t *testing.T) {
 	}
 	preflighted := mustPreflight(t, proposed.Record)
 	approved := mustApprove(t, proposed.Record.Digest, preflighted.Record)
-	execution := executionInput(proposed.Record.Digest, approved.Record)
+	claimed := mustClaim(t, proposed.Record.Digest, approved.Record)
+	execution := executionInput(proposed.Record.Digest, claimed.Record)
 	if execution.ProviderReceiptDigest != GraphActionReceiptDigest(execution.GraphAction) {
 		t.Fatalf("GraphActionReceiptDigest() = %q, want %q", GraphActionReceiptDigest(execution.GraphAction), execution.ProviderReceiptDigest)
 	}
@@ -141,16 +143,17 @@ func TestExecutionReceiptRejectsTargetRevisionAndActorMismatch(t *testing.T) {
 	proposed := mustPropose(t)
 	preflighted := mustPreflight(t, proposed.Record)
 	approved := mustApprove(t, proposed.Record.Digest, preflighted.Record)
-	input := executionInput(proposed.Record.Digest, approved.Record)
+	claimed := mustClaim(t, proposed.Record.Digest, approved.Record)
+	input := executionInput(proposed.Record.Digest, claimed.Record)
 	input.GraphAction.Metadata["source_revision"] = "changed-after-approval"
 	input.ProviderReceiptDigest = digestGraphAction(input.GraphAction)
-	if _, err := IngestExecution(approved.Record, input); !errors.Is(err, ErrStale) {
+	if _, err := IngestExecution(claimed.Record, input); !errors.Is(err, ErrStale) {
 		t.Fatalf("stale IngestExecution() error = %v", err)
 	}
-	input = executionInput(proposed.Record.Digest, approved.Record)
+	input = executionInput(proposed.Record.Digest, claimed.Record)
 	input.GraphAction.ActorSubject = "different-executor"
 	input.ProviderReceiptDigest = digestGraphAction(input.GraphAction)
-	if _, err := IngestExecution(approved.Record, input); !errors.Is(err, ErrVerificationMismatch) {
+	if _, err := IngestExecution(claimed.Record, input); !errors.Is(err, ErrVerificationMismatch) {
 		t.Fatalf("actor IngestExecution() error = %v", err)
 	}
 }
@@ -160,17 +163,75 @@ func TestExecutionReceiptRejectsOccurrenceTimeOutsideProviderReceipt(t *testing.
 	proposed := mustPropose(t)
 	preflighted := mustPreflight(t, proposed.Record)
 	approved := mustApprove(t, proposed.Record.Digest, preflighted.Record)
-	input := executionInput(proposed.Record.Digest, approved.Record)
+	claimed := mustClaim(t, proposed.Record.Digest, approved.Record)
+	input := executionInput(proposed.Record.Digest, claimed.Record)
 	input.GraphAction.CompletedAtUnix = approved.Record.Approval.ApprovedAt.Add(-time.Minute).Unix()
 	input.ProviderReceiptDigest = digestGraphAction(input.GraphAction)
 	input.OccurredAt = approved.Record.Approval.ApprovedAt.Add(time.Minute)
-	if _, err := IngestExecution(approved.Record, input); !errors.Is(err, ErrStale) {
+	if _, err := IngestExecution(claimed.Record, input); !errors.Is(err, ErrStale) {
 		t.Fatalf("IngestExecution() error = %v, want ErrStale for caller time outside provider receipt", err)
 	}
-	input = executionInput(proposed.Record.Digest, approved.Record)
+	input = executionInput(proposed.Record.Digest, claimed.Record)
 	input.OccurredAt = input.OccurredAt.Add(500 * time.Millisecond)
-	if _, err := IngestExecution(approved.Record, input); err != nil {
+	if _, err := IngestExecution(claimed.Record, input); err != nil {
 		t.Fatalf("IngestExecution() error = %v for subsecond occurrence precision", err)
+	}
+}
+
+func TestExecutionRequiresFreshSingleClaim(t *testing.T) {
+	t.Parallel()
+	proposed := mustPropose(t)
+	preflighted := mustPreflight(t, proposed.Record)
+	approved := mustApprove(t, proposed.Record.Digest, preflighted.Record)
+
+	input := executionClaimInput(proposed.Record.Digest, approved.Record)
+	input.ApprovalDigest = "sha256:stale"
+	if _, err := ClaimExecution(approved.Record, input); !errors.Is(err, ErrStale) {
+		t.Fatalf("stale ClaimExecution() error = %v", err)
+	}
+
+	claimed := mustClaim(t, proposed.Record.Digest, approved.Record)
+	if _, err := ClaimExecution(claimed.Record, executionClaimInput(proposed.Record.Digest, claimed.Record)); !errors.Is(err, ErrState) {
+		t.Fatalf("replayed ClaimExecution() error = %v", err)
+	}
+	if _, err := IngestExecution(approved.Record, ExecutionInput{}); !errors.Is(err, ErrState) {
+		t.Fatalf("unclaimed IngestExecution() error = %v", err)
+	}
+}
+
+func TestUnknownSubmissionReconcilesOnlyToAClaimBoundReceipt(t *testing.T) {
+	t.Parallel()
+	proposed := mustPropose(t)
+	preflighted := mustPreflight(t, proposed.Record)
+	approved := mustApprove(t, proposed.Record.Digest, preflighted.Record)
+	claimed := mustClaim(t, proposed.Record.Digest, approved.Record)
+
+	unknownInput := submissionUnknownInput(claimed.Record)
+	unknownInput.ErrorClass = "provider returned raw details"
+	if _, err := RecordSubmissionUnknown(claimed.Record, unknownInput); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unclassified submission error = %v", err)
+	}
+	unknownInput = submissionUnknownInput(claimed.Record)
+	unknown, err := RecordSubmissionUnknown(claimed.Record, unknownInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unknown.Record.Status != StatusUnknown || !unknown.Metrics.SubmissionUnknown {
+		t.Fatalf("unknown = %#v", unknown)
+	}
+
+	execution := executionInput(proposed.Record.Digest, unknown.Record)
+	execution.ExecutionClaimDigest = "sha256:stale"
+	if _, err := IngestExecution(unknown.Record, execution); !errors.Is(err, ErrStale) {
+		t.Fatalf("stale reconciliation error = %v", err)
+	}
+	execution = executionInput(proposed.Record.Digest, unknown.Record)
+	reconciled, err := IngestExecution(unknown.Record, execution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reconciled.Record.Status != StatusExecuted || reconciled.Transition.FromStatus != StatusUnknown {
+		t.Fatalf("reconciled = %#v", reconciled)
 	}
 }
 
@@ -244,7 +305,19 @@ func mustApprove(t *testing.T, proposalDigest string, record Record) Outcome {
 
 func mustExecute(t *testing.T, proposalDigest string, record Record) Outcome {
 	t.Helper()
+	if record.Status == StatusApproved {
+		record = mustClaim(t, proposalDigest, record).Record
+	}
 	outcome, err := IngestExecution(record, executionInput(proposalDigest, record))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return outcome
+}
+
+func mustClaim(t *testing.T, proposalDigest string, record Record) Outcome {
+	t.Helper()
+	outcome, err := ClaimExecution(record, executionClaimInput(proposalDigest, record))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,6 +338,7 @@ func proposalInput() ProposalInput {
 	at := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
 	return ProposalInput{
 		TenantID:   "tenant-one",
+		FindingID:  "finding-one",
 		Definition: ActionDefinition{Metadata: graphactions.ActionMetadata{ID: graphactions.ActionIdentityOktaSuspendUser, Provider: graphactions.ProviderAccessApprovals, ProviderAction: graphactions.AccessApprovalsActionSuspend, TargetKind: graphactions.TargetKindOktaUser, Effect: "deny_access", Destructive: true, ReversibleBy: graphactions.ActionIdentityOktaUnsuspendUser}, Version: "2026-07-14"},
 		Binding:    TargetBinding{TargetID: "provider-user-1", SubjectURN: "urn:cerebro:tenant-one:identity:user-1", SubjectRevision: "subject-revision-1", ResourceURN: "urn:cerebro:tenant-one:application:one", ResourceRevision: "resource-revision-1", SourceRuntimeID: "runtime-one", SourceRevision: "source-revision-1"},
 		Parameters: map[string]string{"session_policy": "revoke_active"}, Proposer: Actor{Type: "human", ID: "operator-one"}, IdempotencyKey: "access-revocation-one",
@@ -281,9 +355,29 @@ func approvalInput(proposalDigest string, record Record) ApprovalInput {
 	return ApprovalInput{ProposalDigest: proposalDigest, PreflightDigest: record.Preflight.Digest, Actor: Actor{Type: "human", ID: "approver-one"}, Reason: "The exact target, change, and rollback were reviewed.", ApprovedAt: record.Preflight.SimulatedAt.Add(time.Minute)}
 }
 
+func executionClaimInput(proposalDigest string, record Record) ExecutionClaimInput {
+	return ExecutionClaimInput{
+		ProposalDigest: proposalDigest, PreflightDigest: record.Preflight.Digest,
+		ApprovalDigest: record.Approval.Digest, ParametersDigest: digestValue(record.Parameters),
+		Binding: record.Binding, DefinitionVersion: record.Definition.Version,
+		Actor:     Actor{Type: "service", ID: "action-executor"},
+		ClaimedAt: record.Approval.ApprovedAt.Add(time.Minute),
+	}
+}
+
+func submissionUnknownInput(record Record) SubmissionUnknownInput {
+	return SubmissionUnknownInput{
+		ExecutionClaimDigest: record.ExecutionClaim.Digest,
+		ProviderRequestID:    "provider-request-one", ErrorClass: SubmissionErrorTransportTimeout,
+		Actor:           Actor{Type: "service", ID: "action-executor"},
+		ObservedAt:      record.ExecutionClaim.ClaimedAt.Add(time.Minute),
+		NextReconcileAt: record.ExecutionClaim.ClaimedAt.Add(2 * time.Minute),
+	}
+}
+
 func executionInput(proposalDigest string, record Record) ExecutionInput {
-	action := graphactions.GraphAction{ID: "provider-receipt-one", ExternalID: "provider-receipt-one", Action: record.Definition.Metadata.ID, Provider: record.Definition.Metadata.Provider, Status: graphactions.ActionStatusSucceeded, ExternalStatus: graphactions.ActionStatusSucceeded, Target: record.Binding.TargetID, IdempotencyKey: record.IdempotencyKey, ActorType: "human", ActorSubject: "executor-one", CreatedAtUnix: record.Approval.ApprovedAt.Add(time.Minute).Unix(), UpdatedAtUnix: record.Approval.ApprovedAt.Add(2 * time.Minute).Unix(), CompletedAtUnix: record.Approval.ApprovedAt.Add(2 * time.Minute).Unix(), Metadata: map[string]string{"tenant_id": record.TenantID, "subject_urn": record.Binding.SubjectURN, "resource_urn": record.Binding.ResourceURN, "source_runtime_id": record.Binding.SourceRuntimeID, "source_revision": record.Binding.SourceRevision, "definition_version": record.Definition.Version}}
-	return ExecutionInput{GraphAction: action, DefinitionVersion: record.Definition.Version, ProposalDigest: proposalDigest, PreflightDigest: record.Preflight.Digest, ApprovalDigest: record.Approval.Digest, ParametersDigest: digestValue(record.Parameters), Binding: record.Binding, ExecutedBy: Actor{Type: "human", ID: "executor-one"}, IngestedBy: Actor{Type: "service", ID: "receipt-ingestor"}, ProviderReceiptDigest: digestGraphAction(action), OccurredAt: time.Unix(action.CompletedAtUnix, 0).UTC()}
+	action := graphactions.GraphAction{ID: "provider-receipt-one", ExternalID: "provider-receipt-one", Action: record.Definition.Metadata.ID, Provider: record.Definition.Metadata.Provider, Status: graphactions.ActionStatusSucceeded, ExternalStatus: graphactions.ActionStatusSucceeded, Target: record.Binding.TargetID, IdempotencyKey: record.IdempotencyKey, ActorType: "human", ActorSubject: "executor-one", CreatedAtUnix: record.ExecutionClaim.ClaimedAt.Unix(), UpdatedAtUnix: record.ExecutionClaim.ClaimedAt.Add(time.Minute).Unix(), CompletedAtUnix: record.ExecutionClaim.ClaimedAt.Add(time.Minute).Unix(), Metadata: map[string]string{"tenant_id": record.TenantID, "subject_urn": record.Binding.SubjectURN, "resource_urn": record.Binding.ResourceURN, "source_runtime_id": record.Binding.SourceRuntimeID, "source_revision": record.Binding.SourceRevision, "definition_version": record.Definition.Version}}
+	return ExecutionInput{GraphAction: action, ExecutionClaimDigest: record.ExecutionClaim.Digest, DefinitionVersion: record.Definition.Version, ProposalDigest: proposalDigest, PreflightDigest: record.Preflight.Digest, ApprovalDigest: record.Approval.Digest, ParametersDigest: digestValue(record.Parameters), Binding: record.Binding, ExecutedBy: Actor{Type: "human", ID: "executor-one"}, IngestedBy: Actor{Type: "service", ID: "receipt-ingestor"}, ProviderReceiptDigest: digestGraphAction(action), OccurredAt: time.Unix(action.CompletedAtUnix, 0).UTC()}
 }
 
 func verificationInput(record Record, sourceRevision, subjectRevision string, at time.Time) VerificationInput {
