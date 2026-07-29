@@ -3,6 +3,7 @@ package findings
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -155,6 +156,34 @@ func TestBuiltinPublicDetectionCatalogPreservesFingerprintFieldOrder(t *testing.
 	t.Fatalf("BuiltinPublicDetectionCatalog() missing %s", githubAppIntegrationInstalledRuleID)
 }
 
+func TestBuiltinPublicDetectionCatalogPublishesLifecycleSemantics(t *testing.T) {
+	wantByID := map[string]PublicDetectionLifecycle{
+		runtimeActiveThreatEvidenceRuleID: {
+			Kind:       LifecycleTTLEvidence,
+			Anchor:     AnchorNone,
+			TTLSeconds: int64((24 * time.Hour) / time.Second),
+		},
+		tailscaleTailnetDeviceApprovalDisabledRuleID: {
+			Kind:   LifecycleDurableState,
+			Anchor: AnchorSourceState,
+		},
+	}
+	catalog := BuiltinPublicDetectionCatalog()
+	for _, detection := range catalog.Detections {
+		want, ok := wantByID[detection.ID]
+		if !ok {
+			continue
+		}
+		if detection.Lifecycle != want {
+			t.Fatalf("%s Lifecycle = %#v, want %#v", detection.ID, detection.Lifecycle, want)
+		}
+		delete(wantByID, detection.ID)
+	}
+	if len(wantByID) != 0 {
+		t.Fatalf("BuiltinPublicDetectionCatalog() missing lifecycle detections: %#v", wantByID)
+	}
+}
+
 func TestBuiltinPublicDetectionCatalogPublishesPolicyAuditDepth(t *testing.T) {
 	catalog := BuiltinPublicDetectionCatalog()
 	for _, detection := range catalog.Detections {
@@ -193,6 +222,8 @@ func TestEnrichPublicDetectionCatalogWithSourceCoverageLinksPolicyRules(t *testi
 			PublicDetectionAuditDepth: PublicDetectionAuditDepth{EvidenceType: "cloud_configuration"},
 			ControlRefs:               []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
 			MITREAttack:               []MITREAttackRef{{Tactic: "Initial Access", Technique: "T1190"}},
+			MITREDefend:               []MITREDefendRef{{Tactic: "Harden", Technique: "D3-PH"}},
+			Lifecycle:                 PublicDetectionLifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 		}},
 	}
 	contracts := []sourcecdk.CoverageContract{{
@@ -219,6 +250,12 @@ func TestEnrichPublicDetectionCatalogWithSourceCoverageLinksPolicyRules(t *testi
 	ref := enriched.Detections[0].SourceCoverageRefs[0]
 	if ref.SourceID != "aws" || ref.DimensionID != "s3_bucket" {
 		t.Fatalf("SourceCoverageRefs[0] = %#v, want aws/s3_bucket", ref)
+	}
+	if got := enriched.Detections[0].Lifecycle; got != catalog.Detections[0].Lifecycle {
+		t.Fatalf("Lifecycle = %#v, want %#v", got, catalog.Detections[0].Lifecycle)
+	}
+	if got := enriched.Detections[0].MITREDefend; !slices.Equal(got, catalog.Detections[0].MITREDefend) {
+		t.Fatalf("MITREDefend = %#v, want %#v", got, catalog.Detections[0].MITREDefend)
 	}
 	if got, want := ref.MatchedControlRefs, []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.6"}, {FrameworkName: "SOC 2", ControlID: "CC6.7"}}; !slices.Equal(got, want) {
 		t.Fatalf("MatchedControlRefs = %#v, want %#v", got, want)

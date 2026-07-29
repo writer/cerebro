@@ -847,9 +847,11 @@ func clonePublicDetection(detection PublicDetection) PublicDetection {
 		RequiredAttributes:       cloneStringSlice(detection.RequiredAttributes),
 		RequiredAttributesByKind: cloneStringSliceMap(detection.RequiredAttributesByKind),
 		FingerprintFields:        cloneStringSlice(detection.FingerprintFields),
+		Lifecycle:                detection.Lifecycle,
 		ControlRefs:              cloneFindingControlRefs(detection.ControlRefs),
 		SourceCoverageRefs:       cloneSourceCoverageRefs(detection.SourceCoverageRefs),
 		MITREAttack:              cloneMITREAttackRefs(detection.MITREAttack),
+		MITREDefend:              cloneMITREDefendRefs(detection.MITREDefend),
 	}
 }
 
