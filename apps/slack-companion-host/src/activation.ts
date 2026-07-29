@@ -53,6 +53,12 @@ export function verifyCanonicalWorkHostEvidence(
   }
   const observed = Date.parse(evidence.observed_at);
   if (!Number.isFinite(observed)) return blocked("invalid_observed_at");
+  if (
+    !Array.isArray(evidence.tool_ids) ||
+    evidence.tool_ids.some((toolId) => typeof toolId !== "string")
+  ) {
+    return blocked("tool_pack_incomplete");
+  }
   const toolIds = [...new Set(evidence.tool_ids)].sort();
   if (
     toolIds.length !== evidence.tool_ids.length ||

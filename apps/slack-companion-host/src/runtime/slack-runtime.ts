@@ -324,10 +324,7 @@ export class SlackCompanionRuntime {
     if (this.outcomeTimer) clearInterval(this.outcomeTimer);
     await Promise.all([
       this.app.stop(),
-      new Promise<void>((resolve, reject) => {
-        if (!this.healthServer) return resolve();
-        this.healthServer.close((error) => error ? reject(error) : resolve());
-      }),
+      closeHealthServer(this.healthServer),
     ]);
   }
 
@@ -476,6 +473,13 @@ export class SlackCompanionRuntime {
       })}\n`);
     }
   }
+}
+
+export async function closeHealthServer(server?: Server): Promise<void> {
+  if (!server?.listening) return;
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
 }
 
 function logArchetypeFailure(operation: string, error: unknown): void {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -8,6 +9,7 @@ import { loadSlackRuntimeConfig, SlackRuntimeConfigError } from "../src/runtime/
 import { FileOutcomeStore } from "../src/runtime/outcome-store.js";
 import {
   AssistantQuestionService,
+  closeHealthServer,
   contextualQuestion,
   createAssistantTurnHost,
   environmentHomeView,
@@ -17,6 +19,12 @@ import {
   readSlackThreadContext,
   slackDeliveryReferences,
 } from "../src/runtime/slack-runtime.js";
+
+test("health server cleanup is safe before listen succeeds", async () => {
+  const server = createServer();
+  await closeHealthServer(server);
+  assert.equal(server.listening, false);
+});
 
 test("runtime config accepts environment-held bindings and an allowlisted workspace", () => {
   const config = loadSlackRuntimeConfig({

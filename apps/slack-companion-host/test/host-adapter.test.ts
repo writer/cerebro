@@ -210,6 +210,20 @@ describe("private canonical-work host", () => {
     assert.equal(
       verifyCanonicalWorkHostEvidence({
         ...evidence,
+        tool_ids: null,
+      } as unknown as CanonicalWorkHostRuntimeEvidenceV1).reason_code,
+      "tool_pack_incomplete",
+    );
+    assert.equal(
+      verifyCanonicalWorkHostEvidence({
+        ...evidence,
+        tool_ids: [...evidence.tool_ids, 17],
+      } as unknown as CanonicalWorkHostRuntimeEvidenceV1).reason_code,
+      "tool_pack_incomplete",
+    );
+    assert.equal(
+      verifyCanonicalWorkHostEvidence({
+        ...evidence,
         receipt_refs: {},
       } as unknown as CanonicalWorkHostRuntimeEvidenceV1).reason_code,
       "runtime_receipt_missing",
