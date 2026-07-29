@@ -426,15 +426,7 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 	if err := s.authorizeRequest(ctx, settings, req); err != nil {
 		return nil, err
 	}
-	client := s.client
-	if client == nil {
-		client = sourcehttp.NewClient(sourcehttp.ClientOptions{
-			SourceID:                 s.options.SourceID,
-			AllowLoopback:            s.AllowLoopbackBaseURL,
-			PrivateEndpointAllowlist: settings.privateEndpointAllowlist,
-			LookupIPAddrs:            lookupIPAddrs(s),
-		})
-	}
+	client := s.requestClient(settings)
 	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
 	if err != nil {
 		return nil, err
@@ -462,6 +454,20 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 		return resp.Header, fmt.Errorf("decode %s response: %w", s.options.SourceID, err)
 	}
 	return resp.Header, nil
+}
+
+func (s *Source) requestClient(settings settings) *http.Client {
+	client := sourcehttp.HardenClient(s.client, sourcehttp.ClientOptions{
+		SourceID:                 s.options.SourceID,
+		Timeout:                  settings.request.timeout,
+		AllowLoopback:            s.AllowLoopbackBaseURL,
+		PrivateEndpointAllowlist: settings.privateEndpointAllowlist,
+		LookupIPAddrs:            lookupIPAddrs(s),
+	})
+	// A supplied client may already carry a timeout. The source configuration is
+	// authoritative for every request in this source, including auth exchanges.
+	client.Timeout = settings.request.timeout
+	return client
 }
 
 func requestEndpoint(sourceID string, baseURL string, defaultPath string, path string) (string, error) {

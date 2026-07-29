@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/telemetry"
 )
 
@@ -22,6 +23,7 @@ const DefaultTimeout = 30 * time.Second
 const DefaultRetryMaxAttempts = 3
 const DefaultRetryBackoff = 250 * time.Millisecond
 const MaxRetryAfter = 5 * time.Second
+const MaxConfigurableRequestTimeout = 5 * time.Minute
 
 var ErrTransportPinningUnsupported = errors.New("source transport must support pinned host dialing")
 var ErrUnsafeHostAddress = errors.New("source host must not target unsafe addresses")
@@ -108,6 +110,28 @@ func firstDuration(values ...time.Duration) time.Duration {
 		}
 	}
 	return 0
+}
+
+// ParseRequestTimeout keeps source-specific timeout overrides bounded while
+// preserving the shared default when the runtime does not configure one.
+func ParseRequestTimeout(sourceID, raw string, defaultTimeout time.Duration) (time.Duration, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return defaultTimeout, nil
+	}
+	timeout, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s request_timeout must be a duration: %w", sourcecdk.ErrInvalidConfig, sourceID, err)
+	}
+	if timeout < time.Second || timeout > MaxConfigurableRequestTimeout {
+		return 0, fmt.Errorf(
+			"%w: %s request_timeout must be between 1s and %s",
+			sourcecdk.ErrInvalidConfig,
+			sourceID,
+			MaxConfigurableRequestTimeout,
+		)
+	}
+	return timeout, nil
 }
 
 // NormalizeBaseURL validates source-configured API origins before credentials are

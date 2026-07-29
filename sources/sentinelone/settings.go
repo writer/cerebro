@@ -5,8 +5,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 const (
@@ -24,17 +26,11 @@ const (
 )
 
 type settings struct {
-	family   string
-	baseURL  string
-	host     string
-	token    string
-	siteID   string
-	groupID  string
-	agentID  string
-	since    string
-	until    string
-	activity string
-	perPage  int
+	family, baseURL, host, token string
+	siteID, groupID, agentID     string
+	since, until, activity       string
+	perPage                      int
+	requestTimeout               time.Duration
 }
 
 func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
@@ -54,6 +50,11 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 		activity: sourcecdk.ConfigValue(cfg, "activity_type"),
 		perPage:  defaultPageSize,
 	}
+	timeout, err := sourcehttp.ParseRequestTimeout("sentinelone", sourcecdk.ConfigValue(cfg, "request_timeout"), httpTimeout)
+	if err != nil {
+		return resolved, err
+	}
+	resolved.requestTimeout = timeout
 	if resolved.family == "" {
 		resolved.family = defaultFamily
 	}
