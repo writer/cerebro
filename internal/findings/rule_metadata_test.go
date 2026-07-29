@@ -223,7 +223,9 @@ func TestEnrichPublicDetectionCatalogWithSourceCoverageLinksPolicyRules(t *testi
 			ControlRefs:               []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6"}},
 			MITREAttack:               []MITREAttackRef{{Tactic: "Initial Access", Technique: "T1190"}},
 			MITREDefend:               []MITREDefendRef{{Tactic: "Harden", Technique: "D3-PH"}},
-			Lifecycle:                 PublicDetectionLifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
+			PublicDetectionRuntimeContract: PublicDetectionRuntimeContract{
+				Lifecycle: PublicDetectionLifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
+			},
 		}},
 	}
 	contracts := []sourcecdk.CoverageContract{{

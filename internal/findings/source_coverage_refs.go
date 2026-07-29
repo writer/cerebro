@@ -844,14 +844,16 @@ func clonePublicDetection(detection PublicDetection) PublicDetection {
 			RiskStatement:     strings.TrimSpace(detection.RiskStatement),
 			RemediationIntent: strings.TrimSpace(detection.RemediationIntent),
 		},
-		RequiredAttributes:       cloneStringSlice(detection.RequiredAttributes),
-		RequiredAttributesByKind: cloneStringSliceMap(detection.RequiredAttributesByKind),
-		FingerprintFields:        cloneStringSlice(detection.FingerprintFields),
-		Lifecycle:                detection.Lifecycle,
-		ControlRefs:              cloneFindingControlRefs(detection.ControlRefs),
-		SourceCoverageRefs:       cloneSourceCoverageRefs(detection.SourceCoverageRefs),
-		MITREAttack:              cloneMITREAttackRefs(detection.MITREAttack),
-		MITREDefend:              cloneMITREDefendRefs(detection.MITREDefend),
+		PublicDetectionRuntimeContract: PublicDetectionRuntimeContract{
+			RequiredAttributes:       cloneStringSlice(detection.RequiredAttributes),
+			RequiredAttributesByKind: cloneStringSliceMap(detection.RequiredAttributesByKind),
+			FingerprintFields:        cloneStringSlice(detection.FingerprintFields),
+			Lifecycle:                detection.Lifecycle,
+		},
+		ControlRefs:        cloneFindingControlRefs(detection.ControlRefs),
+		SourceCoverageRefs: cloneSourceCoverageRefs(detection.SourceCoverageRefs),
+		MITREAttack:        cloneMITREAttackRefs(detection.MITREAttack),
+		MITREDefend:        cloneMITREDefendRefs(detection.MITREDefend),
 	}
 }
 
