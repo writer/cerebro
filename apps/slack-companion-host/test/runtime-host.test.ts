@@ -387,6 +387,7 @@ test("Cerebro ask returns after done without waiting for the SSE response to clo
   assert.deepEqual(result, {
     citationValidationPassed: true,
     markdown: "Current evidence is verified.",
+    safeRefusal: false,
     traceId: "trace-complete",
   });
   assert.equal(cancelCount, 1);
@@ -423,6 +424,7 @@ test("Cerebro ask ignores an error event sent after done", async () => {
   assert.deepEqual(result, {
     citationValidationPassed: true,
     markdown: "Current evidence is verified.",
+    safeRefusal: false,
     traceId: "trace-complete",
   });
   assert.equal(cancelCount, 1);
@@ -482,6 +484,121 @@ test("Cerebro ask rejects a summary whose citations did not validate", async () 
       && error.sourceState === "unavailable"
       && /without validated citations/u.test(error.message),
   );
+});
+
+test("Cerebro ask accepts a structured safe refusal without citations", async () => {
+  const client = new CerebroAskClient({
+    apiKey: "bound-at-runtime",
+    baseUrl: "https://cerebro.example.com",
+    fetchImpl: async () => sseResponse([
+      ["summary", {
+        citation_validation: {
+          ok: false,
+          referenced_urn_count: 0,
+          row_urn_count: 0,
+        },
+        markdown: "Narrow the request to one source or finding.",
+        unsupported_query: {
+          code: "post_processing_candidate_limit",
+          reason: "The request matched more rows than can be processed safely.",
+          suggested_rewrites: ["Show connector health for Okta."],
+          supported_intents: ["source_health"],
+          trace_id: "trace-safe-refusal",
+        },
+      }],
+      ["done", { trace_id: "trace-safe-refusal" }],
+    ]),
+    tenantId: "writer",
+  });
+
+  assert.deepEqual(
+    await client.ask("Show everything.", new AbortController().signal),
+    {
+      citationValidationPassed: false,
+      markdown: "Narrow the request to one source or finding.",
+      safeRefusal: true,
+      traceId: "trace-safe-refusal",
+    },
+  );
+});
+
+test("Cerebro ask rejects an unstructured refusal marker without citations", async () => {
+  const client = new CerebroAskClient({
+    apiKey: "bound-at-runtime",
+    baseUrl: "https://cerebro.example.com",
+    fetchImpl: async () => sseResponse([
+      ["summary", {
+        citation_validation: { ok: false },
+        markdown: "Trust me and retry later.",
+        unsupported_query: {
+          code: "claimed_refusal",
+        },
+      }],
+      ["done", { trace_id: "trace-unstructured-refusal" }],
+    ]),
+    tenantId: "writer",
+  });
+
+  await assert.rejects(
+    client.ask("Show everything.", new AbortController().signal),
+    (error: unknown) => error instanceof CerebroAskError
+      && error.sourceState === "unavailable"
+      && /without validated citations/u.test(error.message),
+  );
+});
+
+test("a structured safe refusal does not open the source failure cooldown", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
+  try {
+    let fetchCount = 0;
+    const service = new AssistantQuestionService(
+      createAssistantTurnHost(new FileOutcomeStore(root)),
+      new CerebroAskClient({
+        apiKey: "bound-at-runtime",
+        baseUrl: "https://cerebro.example.com",
+        fetchImpl: async () => {
+          fetchCount += 1;
+          return sseResponse([
+            ["summary", {
+              citation_validation: { ok: false },
+              markdown: "Narrow the request to one source or finding.",
+              unsupported_query: {
+                code: "post_processing_candidate_limit",
+                reason: "The request matched more rows than can be processed safely.",
+                suggested_rewrites: ["Show connector health for Okta."],
+                supported_intents: ["source_health"],
+                trace_id: `trace-safe-refusal-${fetchCount}`,
+              },
+            }],
+            ["done", { trace_id: `trace-safe-refusal-${fetchCount}` }],
+          ]);
+        },
+        tenantId: "writer",
+      }),
+      {
+        clock: () => new Date("2026-07-29T22:00:00.000Z"),
+        timeoutSignal: () => new AbortController().signal,
+      },
+    );
+
+    const first = await service.answer({
+      requestKey: "safe-refusal-one",
+      text: "Show everything.",
+    });
+    const second = await service.answer({
+      requestKey: "safe-refusal-two",
+      text: "Show everything now.",
+    });
+
+    assert.equal(fetchCount, 2);
+    assert.equal(first.pending.outcome_state, "completed");
+    assert.equal(first.pending.verified, false);
+    assert.equal(first.verifiedTurn, undefined);
+    assert.equal(second.pending.outcome_state, "completed");
+    assert.match(second.text, /Narrow the request/u);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
 });
 
 test("question service gives a bounded recovery action after a source timeout", async () => {

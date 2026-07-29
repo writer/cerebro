@@ -8,6 +8,7 @@ export type AssistantTurnSourceGapState =
 export interface CerebroAskResult {
   citationValidationPassed: boolean;
   markdown: string;
+  safeRefusal: boolean;
   traceId?: string;
 }
 
@@ -74,6 +75,7 @@ export class CerebroAskClient {
                   && typeof event.data.citation_validation === "object"
                   && (event.data.citation_validation as Record<string, unknown>).ok === true,
               markdown,
+              safeRefusal: isStructuredSafeRefusal(event.data.unsupported_query),
             };
           }
         }
@@ -97,11 +99,26 @@ export class CerebroAskClient {
     if (!done || !summary) {
       throw new CerebroAskError("unavailable", "Cerebro ended the response before a verified summary was available.");
     }
-    if (!summary.citationValidationPassed) {
+    if (!summary.citationValidationPassed && !summary.safeRefusal) {
       throw new CerebroAskError("unavailable", "Cerebro returned an answer without validated citations.");
     }
     return summary;
   }
+}
+
+function isStructuredSafeRefusal(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const refusal = value as Record<string, unknown>;
+  return text(refusal.code) !== ""
+    && text(refusal.reason) !== ""
+    && text(refusal.trace_id) !== ""
+    && stringArray(refusal.supported_intents)
+    && stringArray(refusal.suggested_rewrites);
+}
+
+function stringArray(value: unknown): boolean {
+  return Array.isArray(value)
+    && value.every((item) => typeof item === "string" && item.trim() !== "");
 }
 
 interface SseEvent {

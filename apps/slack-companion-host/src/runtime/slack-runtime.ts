@@ -229,7 +229,7 @@ export class AssistantQuestionService {
           verified: answer.citationValidationPassed,
         }),
         text: boundedSlackText(answer.markdown),
-        ...(answer.traceId
+        ...(answer.citationValidationPassed && answer.traceId
           ? {
               verifiedTurn: {
                 answer: answer.markdown,
