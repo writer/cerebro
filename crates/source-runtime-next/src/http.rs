@@ -53,6 +53,9 @@ pub enum ResolvedAuth {
         name: String,
         value: String,
     },
+    QueryParameters {
+        parameters: BTreeMap<String, String>,
+    },
     AwsSigV4 {
         access_key_id: String,
         secret_access_key: String,
@@ -78,6 +81,11 @@ impl fmt::Debug for ResolvedAuth {
                 .debug_struct("Header")
                 .field("name", name)
                 .field("value", &"[REDACTED]")
+                .finish(),
+            Self::QueryParameters { parameters } => formatter
+                .debug_struct("QueryParameters")
+                .field("names", &parameters.keys().collect::<Vec<_>>())
+                .field("values", &"[REDACTED]")
                 .finish(),
             Self::AwsSigV4 { session_token, .. } => formatter
                 .debug_struct("AwsSigV4")
@@ -109,6 +117,11 @@ impl Drop for ResolvedAuth {
                 password.zeroize();
             }
             Self::Header { value, .. } => value.zeroize(),
+            Self::QueryParameters { parameters } => {
+                for value in parameters.values_mut() {
+                    value.zeroize();
+                }
+            }
             Self::AwsSigV4 {
                 access_key_id,
                 secret_access_key,
@@ -135,6 +148,7 @@ pub enum HttpConnectorError {
     InvalidConfiguration(String),
     InvalidUrl(String),
     Request(reqwest::Error),
+    RedactedRequest,
     ProviderStatus(StatusCode),
     InvalidResponse(String),
     Domain(ModelError),
@@ -147,6 +161,7 @@ impl fmt::Display for HttpConnectorError {
             Self::InvalidConfiguration(message) => formatter.write_str(message),
             Self::InvalidUrl(message) => write!(formatter, "invalid provider URL: {message}"),
             Self::Request(error) => write!(formatter, "provider request failed: {error}"),
+            Self::RedactedRequest => formatter.write_str("provider request failed"),
             Self::ProviderStatus(status) => write!(formatter, "provider returned HTTP {status}"),
             Self::InvalidResponse(message) => {
                 write!(formatter, "invalid provider response: {message}")
@@ -491,9 +506,21 @@ impl SourceConnector for HttpSourceConnector {
                         builder.basic_auth(username, Some(password))
                     }
                     ResolvedAuth::Header { name, value } => builder.header(name, value),
-                    ResolvedAuth::AwsSigV4 { .. } | ResolvedAuth::DuoHmacV5 { .. } => builder,
+                    ResolvedAuth::QueryParameters { .. }
+                    | ResolvedAuth::AwsSigV4 { .. }
+                    | ResolvedAuth::DuoHmacV5 { .. } => builder,
                 };
-                let mut provider_request = builder.build().map_err(HttpConnectorError::Request)?;
+                let sensitive_query = matches!(self.auth, ResolvedAuth::QueryParameters { .. });
+                let mut provider_request = builder.build().map_err(|error| {
+                    if sensitive_query {
+                        HttpConnectorError::RedactedRequest
+                    } else {
+                        HttpConnectorError::Request(error)
+                    }
+                })?;
+                if sensitive_query {
+                    apply_auth_query_parameters(&mut provider_request, &self.auth)?;
+                }
                 match self.auth {
                     ResolvedAuth::AwsSigV4 { .. } => {
                         sign_aws_sigv4(&mut provider_request, &self.auth, SystemTime::now())?;
@@ -507,7 +534,13 @@ impl SourceConnector for HttpSourceConnector {
                     .client
                     .execute(provider_request)
                     .await
-                    .map_err(HttpConnectorError::Request)?;
+                    .map_err(|error| {
+                        if sensitive_query {
+                            HttpConnectorError::RedactedRequest
+                        } else {
+                            HttpConnectorError::Request(error)
+                        }
+                    })?;
                 let status = response.status();
                 if !status.is_success() {
                     return Err(HttpConnectorError::ProviderStatus(status));
@@ -694,7 +727,10 @@ fn validate_auth(expected: &AuthModel, actual: &ResolvedAuth) -> Result<(), Http
     let valid = match expected {
         AuthModel::None => matches!(actual, ResolvedAuth::None),
         AuthModel::Basic => matches!(actual, ResolvedAuth::Basic { .. }),
-        AuthModel::ApiKey => matches!(actual, ResolvedAuth::Header { .. }),
+        AuthModel::ApiKey => matches!(
+            actual,
+            ResolvedAuth::Header { .. } | ResolvedAuth::QueryParameters { .. }
+        ),
         AuthModel::BearerToken
         | AuthModel::OauthAuthorizationCode
         | AuthModel::OauthClientCredentials
@@ -714,6 +750,55 @@ fn validate_auth(expected: &AuthModel, actual: &ResolvedAuth) -> Result<(), Http
             "resolved credential does not match the source auth model".to_owned(),
         ))
     }
+}
+
+fn apply_auth_query_parameters(
+    request: &mut Request,
+    auth: &ResolvedAuth,
+) -> Result<(), HttpConnectorError> {
+    let ResolvedAuth::QueryParameters { parameters } = auth else {
+        return Err(HttpConnectorError::InvalidConfiguration(
+            "query authentication requires query parameters".to_owned(),
+        ));
+    };
+    if parameters.is_empty() {
+        return Err(HttpConnectorError::InvalidConfiguration(
+            "query authentication requires at least one parameter".to_owned(),
+        ));
+    }
+    if parameters.len() > 16 {
+        return Err(HttpConnectorError::InvalidConfiguration(
+            "query authentication exceeds the 16-parameter limit".to_owned(),
+        ));
+    }
+    for (name, value) in parameters {
+        if !valid_auth_query_parameter_name(name) || value.is_empty() {
+            return Err(HttpConnectorError::InvalidConfiguration(
+                "query authentication parameters are invalid".to_owned(),
+            ));
+        }
+    }
+    let retained = request
+        .url()
+        .query_pairs()
+        .filter(|(name, _)| !parameters.contains_key(name.as_ref()))
+        .map(|(name, value)| (name.into_owned(), value.into_owned()))
+        .collect::<Vec<_>>();
+    let mut query = request.url_mut().query_pairs_mut();
+    query.clear();
+    query.extend_pairs(retained);
+    for (name, value) in parameters {
+        query.append_pair(name, value);
+    }
+    Ok(())
+}
+
+fn valid_auth_query_parameter_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 128
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~'))
 }
 
 fn sign_duo_hmac_v5(
@@ -1790,6 +1875,129 @@ mod tests {
         assert!(matches!(batch.scope, CollectedScope::Complete(_)));
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "user-1");
+    }
+
+    #[tokio::test]
+    async fn query_credentials_are_encoded_redacted_and_never_stored_in_runtime_config() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            let request_line = request.lines().next().unwrap();
+            assert!(request_line.starts_with("GET /v5/account?"));
+            assert!(request_line.contains("api_token=token%26admin%3Dtrue"));
+            assert!(request_line.contains("api_token_secret=secret%23fragment"));
+            assert!(!request_line.contains("&admin=true"));
+            assert!(!request_line.contains("#fragment"));
+            let body = r#"{"data":{"id":"account-1","organization":"Example"}}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let auth = ResolvedAuth::QueryParameters {
+            parameters: BTreeMap::from([
+                ("api_token".to_owned(), "token&admin=true".to_owned()),
+                ("api_token_secret".to_owned(), "secret#fragment".to_owned()),
+            ]),
+        };
+        let debug = format!("{auth:?}");
+        assert!(!debug.contains("token&admin=true"));
+        assert!(!debug.contains("secret#fragment"));
+        let mut shadowed = Client::new()
+            .get("https://api.example.test/v5/account?api_token=attacker&public=kept")
+            .build()
+            .unwrap();
+        apply_auth_query_parameters(&mut shadowed, &auth).unwrap();
+        let query = shadowed
+            .url()
+            .query_pairs()
+            .map(|(name, value)| (name.into_owned(), value.into_owned()))
+            .collect::<Vec<_>>();
+        let api_token_values = query
+            .iter()
+            .filter(|(name, _)| name == "api_token")
+            .map(|(_, value)| value.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(api_token_values, vec!["token&admin=true"]);
+        assert!(query.contains(&("public".to_owned(), "kept".to_owned())));
+
+        let mut invalid_name = Client::new()
+            .get("https://api.example.test/v5/account")
+            .build()
+            .unwrap();
+        assert!(matches!(
+            apply_auth_query_parameters(
+                &mut invalid_name,
+                &ResolvedAuth::QueryParameters {
+                    parameters: BTreeMap::from([(
+                        "api_token&admin".to_owned(),
+                        "secret".to_owned()
+                    )]),
+                }
+            ),
+            Err(HttpConnectorError::InvalidConfiguration(_))
+        ));
+        assert!(invalid_name.url().query().is_none());
+        let mut connector = HttpSourceConnector::new(
+            catalog.get("alchemer").unwrap().clone(),
+            "account",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            auth,
+        )
+        .unwrap();
+        assert!(connector.config.is_empty());
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("alchemer-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "account-1");
+
+        let closed_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let closed_address = closed_listener.local_addr().unwrap();
+        drop(closed_listener);
+        let mut failing = HttpSourceConnector::new(
+            catalog.get("alchemer").unwrap().clone(),
+            "account",
+            &format!("http://{closed_address}"),
+            BTreeMap::new(),
+            ResolvedAuth::QueryParameters {
+                parameters: BTreeMap::from([
+                    ("api_token".to_owned(), "token&admin=true".to_owned()),
+                    ("api_token_secret".to_owned(), "secret#fragment".to_owned()),
+                ]),
+            },
+        )
+        .unwrap();
+        let error = failing
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("alchemer-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), "provider request failed");
+        assert!(!format!("{error:?}").contains("token&admin=true"));
+        assert!(!format!("{error:?}").contains("secret#fragment"));
     }
 
     #[tokio::test]
