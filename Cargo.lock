@@ -479,16 +479,20 @@ dependencies = [
 name = "cerebro-action-provider"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "cerebro-action-catalog",
  "cerebro-action-store",
  "cerebro-platform-engine",
  "cerebro-platform-sdk",
  "futures-util",
+ "native-tls",
+ "postgres-native-tls",
  "reqwest",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-postgres",
 ]
 
 [[package]]

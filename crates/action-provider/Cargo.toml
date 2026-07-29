@@ -7,18 +7,22 @@ license.workspace = true
 publish = false
 
 [dependencies]
+async-trait.workspace = true
 cerebro-action-store.workspace = true
 cerebro-platform-engine.workspace = true
 cerebro-platform-sdk.workspace = true
 futures-util.workspace = true
+native-tls.workspace = true
+postgres-native-tls.workspace = true
 reqwest = { workspace = true, features = ["stream"] }
 serde.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
+tokio-postgres.workspace = true
 
 [dev-dependencies]
 axum.workspace = true
 cerebro-action-catalog.workspace = true
-tokio.workspace = true
 
 [lints]
 workspace = true
