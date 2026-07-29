@@ -7,8 +7,10 @@ license.workspace = true
 publish = false
 
 [dependencies]
+cerebro-action-catalog.workspace = true
 cerebro-platform-engine.workspace = true
 cerebro-platform-sdk.workspace = true
+cerebro-policy-catalog.workspace = true
 native-tls.workspace = true
 postgres-native-tls.workspace = true
 serde.workspace = true

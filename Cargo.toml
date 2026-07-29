@@ -1,5 +1,7 @@
 [workspace]
 members = [
+    "crates/action-catalog",
+    "crates/action-provider",
     "crates/action-store",
     "crates/agent-context",
     "crates/cerebro-platform",
@@ -9,6 +11,7 @@ members = [
     "crates/organizational-store",
     "crates/platform-engine",
     "crates/platform-sdk",
+    "crates/policy-catalog",
     "crates/security-lifecycle",
     "crates/source-catalog",
     "crates/security-path-kernel",
@@ -21,6 +24,7 @@ members = [
     "internal/sourceruntime/recordkernel",
     "internal/wasmguest",
     "tools/graphactiongen",
+    "tools/policycataloggen",
 ]
 resolver = "2"
 
@@ -43,6 +47,8 @@ base64 = "0.22.1"
 buffa = { version = "=0.9.1", features = ["json"] }
 buffa-types = { version = "=0.9.1", features = ["json"] }
 cerebro-agent-context = { version = "0.1.0", path = "crates/agent-context" }
+cerebro-action-catalog = { version = "0.1.0", path = "crates/action-catalog" }
+cerebro-action-provider = { version = "0.1.0", path = "crates/action-provider" }
 cerebro-action-store = { version = "0.1.0", path = "crates/action-store" }
 cerebro-control-kernel = { version = "0.1.0", path = "crates/control-kernel" }
 cerebro-organizational-graph = { version = "0.1.0", path = "crates/organizational-graph" }
@@ -50,6 +56,7 @@ cerebro-organizational-model = { version = "0.1.0", path = "crates/organizationa
 cerebro-organizational-store = { version = "0.1.0", path = "crates/organizational-store" }
 cerebro-platform-engine = { version = "0.1.0", path = "crates/platform-engine" }
 cerebro-platform-sdk = { version = "0.1.0", path = "crates/platform-sdk" }
+cerebro-policy-catalog = { version = "0.1.0", path = "crates/policy-catalog" }
 cerebro-security-lifecycle = { version = "0.1.0", path = "crates/security-lifecycle" }
 cerebro-source-catalog = { version = "0.1.0", path = "crates/source-catalog" }
 cerebro-source-runtime-next = { version = "0.1.0", path = "crates/source-runtime-next" }

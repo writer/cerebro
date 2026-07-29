@@ -12,6 +12,7 @@ type EligibilityChecker func(string, *ports.FindingRecord) error
 
 type ActionSpec struct {
 	ID               string
+	DefinitionDigest string
 	Provider         string
 	ProviderAction   string
 	TargetKind       string
