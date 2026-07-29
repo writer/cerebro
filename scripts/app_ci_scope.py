@@ -12,7 +12,7 @@ from typing import TextIO
 
 
 ROOT_NPM_PATHS = frozenset({"package.json", "package-lock.json"})
-MAPPED_APP_DIRS = frozenset({"slack-companion", "web"})
+MAPPED_APP_DIRS = frozenset({"slack-companion", "slack-companion-host", "web"})
 CI_CONTROLLER_PATHS = frozenset(
     {
         ".github/workflows/ci.yml",
@@ -141,6 +141,7 @@ def select_scope(paths: list[str], *, run_all: bool = False) -> CIScope:
     web_integration = any(is_web_integration_path(path) for path in normalized)
     slack = root_npm_changed or any(
         path.startswith("apps/slack-companion/")
+        or path.startswith("apps/slack-companion-host/")
         or path.startswith("sdk/typescript/")
         or path.startswith(SLACK_CONTRACT_PREFIXES)
         for path in normalized
