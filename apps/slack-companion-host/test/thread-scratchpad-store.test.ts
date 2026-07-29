@@ -82,6 +82,53 @@ test("file scratchpad redacts credential-shaped content before persistence", asy
   }
 });
 
+test("file scratchpad updates one working state without replacing saved notes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-scratchpad-"));
+  try {
+    let now = new Date("2026-07-29T10:00:00.000Z");
+    const store = new FileThreadScratchpadStore(root, { clock: () => now });
+    const threadRef = slackThreadScratchpadRef(
+      "T-ONE",
+      "C-ONE",
+      "1710000000.000001",
+    );
+    await store.add({
+      author_ref: slackScratchpadAuthorRef("T-ONE", "U-ONE"),
+      content: "Keep the incident timeline.",
+      idempotency_key: "event-note",
+      source: "human",
+      thread_ref: threadRef,
+    });
+    await store.recordWorkingTurn({
+      current_request: "What is the most material risk?",
+      outcome: "completed",
+      thread_ref: threadRef,
+    });
+    now = new Date("2026-07-29T10:01:00.000Z");
+    await store.recordWorkingTurn({
+      blocker: "Graph evidence was timed out.",
+      current_request: "Give me another.",
+      outcome: "blocked",
+      thread_ref: threadRef,
+    });
+
+    const scratchpad = await store.read(threadRef);
+    assert.deepEqual(
+      scratchpad.notes.map((note) => note.content),
+      ["Keep the incident timeline."],
+    );
+    assert.deepEqual(scratchpad.working_state?.recent_requests, [
+      "Give me another.",
+      "What is the most material risk?",
+    ]);
+    assert.equal(scratchpad.working_state?.last_outcome, "blocked");
+    assert.equal(await store.clear(threadRef), 2);
+    assert.equal((await store.read(threadRef)).working_state, undefined);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("file scratchpad removes expired notes during retrieval", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-scratchpad-"));
   try {
@@ -224,6 +271,8 @@ test("Slack remember saves a note that the next question uses only in that threa
       remembered.notes[1]?.evidence_ref ?? "",
       /^cerebro-ask:\/\/sha256\/[a-f0-9]{64}$/u,
     );
+    assert.deepEqual(remembered.working_state?.recent_requests, ["who owns it?"]);
+    assert.equal(remembered.working_state?.last_outcome, "completed");
 
     assert.equal(await handleSlackMention({
       client,
@@ -241,6 +290,8 @@ test("Slack remember saves a note that the next question uses only in that threa
     assert.equal(graphRequest.question, "what was the verified answer?");
     assert.match(graphRequest.history?.[0]?.content ?? "", /verified Cerebro turn/u);
     assert.match(graphRequest.history?.[0]?.content ?? "", /current owner is Security Operations/u);
+    assert.match(graphRequest.history?.[0]?.content ?? "", /Current working state \(unverified; context only\)/u);
+    assert.match(graphRequest.history?.[0]?.content ?? "", /who owns it\?/u);
   } finally {
     await rm(root, { force: true, recursive: true });
   }

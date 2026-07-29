@@ -43,6 +43,13 @@ holds at most 20 notes and 8 KB of text. Credential-shaped values are redacted
 before storage, and saved text is treated as untrusted context: it cannot grant
 tool authority or override current Cerebro evidence.
 
+After each delivered question, the host also updates one expiring working-state
+record for that thread. It keeps up to three recent requests, the last outcome,
+and the last bounded source blocker. This lets a later request such as “give me
+another” retain the operation and subject from the prior turn. The record is
+unverified context, uses the same credential redaction as notes, and does not
+store model reasoning.
+
 Scratchpads use `CEREBRO_SLACK_RUNTIME_MEMORY_DIR` alongside the durable outcome
 store. The deployment must mount that directory on persistent storage if notes
 must survive a task or container replacement.

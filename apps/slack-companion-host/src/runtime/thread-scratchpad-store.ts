@@ -4,15 +4,20 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promise
 import { dirname, join } from "node:path";
 import {
   normalizeScratchpadContent,
+  recordSlackThreadWorkingTurn,
   SLACK_THREAD_SCRATCHPAD_LIMITS,
   SlackThreadScratchpadError,
   validateSlackThreadScratchpad,
   type AddSlackThreadScratchpadNote,
   type AddSlackThreadScratchpadNoteResult,
+  type RecordSlackThreadWorkingTurn,
   type SlackThreadScratchpadNoteV1,
   type SlackThreadScratchpadPort,
   type SlackThreadScratchpadV1,
+  type SlackThreadWorkingStateV1,
 } from "@writer/cerebro-slack-companion";
+
+const WORKING_STATE_FILE = "working-state.json";
 
 export interface FileThreadScratchpadStoreOptions {
   clock?: () => Date;
@@ -81,6 +86,14 @@ export class FileThreadScratchpadStore implements SlackThreadScratchpadPort {
         source: input.source,
         thread_ref: input.thread_ref,
       });
+      validateSlackThreadScratchpad({
+        notes: [...scratchpad.notes, note],
+        schema_version: "slack-thread-scratchpad/v1",
+        thread_ref: input.thread_ref,
+        ...(scratchpad.working_state === undefined
+          ? {}
+          : { working_state: scratchpad.working_state }),
+      }, createdAt);
       await this.atomicWrite(this.notePath(input.thread_ref, note.note_id), note);
       return { created: true, note, redacted };
     });
@@ -90,7 +103,37 @@ export class FileThreadScratchpadStore implements SlackThreadScratchpadPort {
     return this.serialize(async () => {
       const scratchpad = await this.read(threadRef);
       await rm(this.threadDirectory(threadRef), { force: true, recursive: true });
-      return scratchpad.notes.length;
+      return scratchpad.notes.length + (scratchpad.working_state === undefined ? 0 : 1);
+    });
+  }
+
+  async recordWorkingTurn(
+    input: RecordSlackThreadWorkingTurn,
+  ): Promise<SlackThreadWorkingStateV1> {
+    return this.serialize(async () => {
+      const scratchpad = await this.read(input.thread_ref);
+      const now = this.clock();
+      const state = recordSlackThreadWorkingTurn(
+        scratchpad.working_state,
+        {
+          ...(input.blocker === undefined ? {} : { blocker: input.blocker }),
+          currentRequest: input.current_request,
+          now,
+          outcome: input.outcome,
+          threadRef: input.thread_ref,
+        },
+      );
+      validateSlackThreadScratchpad({
+        notes: scratchpad.notes,
+        schema_version: "slack-thread-scratchpad/v1",
+        thread_ref: input.thread_ref,
+        working_state: state,
+      }, now);
+      await this.atomicWrite(
+        join(this.threadDirectory(input.thread_ref), WORKING_STATE_FILE),
+        state,
+      );
+      return state;
     });
   }
 
@@ -98,7 +141,9 @@ export class FileThreadScratchpadStore implements SlackThreadScratchpadPort {
     const directory = this.threadDirectory(threadRef);
     let files: string[];
     try {
-      files = (await readdir(directory)).filter((file) => file.endsWith(".json"));
+      files = (await readdir(directory)).filter((file) =>
+        file.endsWith(".json") && file !== WORKING_STATE_FILE
+      );
     } catch (error) {
       if (errorCode(error) === "ENOENT") return emptyScratchpad(threadRef);
       throw error;
@@ -119,11 +164,25 @@ export class FileThreadScratchpadStore implements SlackThreadScratchpadPort {
       }
       notes.push(candidate.notes[0]!);
     }
-    return validateSlackThreadScratchpad({
+    const workingStatePath = join(directory, WORKING_STATE_FILE);
+    let workingState: SlackThreadWorkingStateV1 | undefined;
+    try {
+      workingState = JSON.parse(
+        await readFile(workingStatePath, "utf8"),
+      ) as SlackThreadWorkingStateV1;
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") throw error;
+    }
+    const scratchpad = validateSlackThreadScratchpad({
       notes,
       schema_version: "slack-thread-scratchpad/v1",
       thread_ref: threadRef,
+      ...(workingState === undefined ? {} : { working_state: workingState }),
     }, now);
+    if (workingState !== undefined && scratchpad.working_state === undefined) {
+      await rm(workingStatePath, { force: true });
+    }
+    return scratchpad;
   }
 
   private async atomicWrite(path: string, value: unknown): Promise<void> {

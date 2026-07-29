@@ -93,6 +93,13 @@ scratchpad limits and cannot replace human-authored notes. This autonomy is
 limited to working-memory maintenance; it does not authorize another tool,
 external effect, approval, or cross-thread write.
 
+The scratchpad also carries one expiring working-state record with the three
+most recent distinct requests, the last turn outcome, and a bounded blocker
+when the turn did not complete. The record helps later turns resolve short
+follow-ups without treating the thread as authority. It contains no hidden
+reasoning, tool credentials, or new evidence; the storage boundary applies the
+same redaction and expiry policy as saved notes.
+
 Durable schedule definitions keep a stable schedule identity, revision, work
 digest, cadence anchor, and misfire policy. The portable planner derives the
 same due times after a restart or topology change and materializes occurrences
