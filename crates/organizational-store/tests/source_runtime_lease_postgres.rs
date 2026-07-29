@@ -42,6 +42,10 @@ async fn source_runtime_lease_generation_fences_stale_and_cross_tenant_commits()
                         "base_url": "https://provider.example.test",
                         "token": "env:CEREBRO_SOURCE_FIXTURE_TOKEN"
                     },
+                    "checkpoint": {
+                        "watermark": "2026-07-28T00:00:00Z",
+                        "cursor_opaque": "{\"token\":\"page:1\",\"resumable_checkpoint\":true}"
+                    },
                     "next_cursor": {"opaque": "page:2"}
                 }),
             ],
@@ -234,10 +238,52 @@ async fn source_runtime_lease_generation_fences_stale_and_cross_tenant_commits()
         Err(StoreError::Conflict(message))
             if message == "source runtime lease was lost before commit"
     ));
+    let stale_progress: serde_json::Value = admin
+        .query_one(
+            "SELECT runtime_json FROM source_runtimes WHERE id = $1",
+            &[&runtime.as_str()],
+        )
+        .await?
+        .get(0);
+    assert_eq!(
+        stale_progress
+            .pointer("/next_cursor/opaque")
+            .and_then(serde_json::Value::as_str),
+        Some("page:2")
+    );
+    assert!(stale_progress.get("last_synced_at").is_none());
+
     let receipt = ledger
         .commit_pending_fenced(&batch, &delta, &successor)
         .await?;
     assert_eq!(receipt.tenant_id, tenant);
+    let committed_progress: serde_json::Value = admin
+        .query_one(
+            "SELECT runtime_json FROM source_runtimes WHERE id = $1",
+            &[&runtime.as_str()],
+        )
+        .await?
+        .get(0);
+    assert!(committed_progress.get("next_cursor").is_none());
+    assert_eq!(
+        committed_progress
+            .pointer("/checkpoint/cursor_opaque")
+            .and_then(serde_json::Value::as_str),
+        Some("")
+    );
+    assert_eq!(
+        committed_progress
+            .pointer("/checkpoint/watermark")
+            .and_then(serde_json::Value::as_str),
+        Some("2026-07-28T00:00:00Z")
+    );
+    assert!(
+        committed_progress
+            .get("last_synced_at")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|timestamp| timestamp.contains('T'))
+    );
+
     assert!(!ledger.release_source_runtime_lease(&first).await?);
     assert!(ledger.release_source_runtime_lease(&successor).await?);
     assert!(matches!(
@@ -247,5 +293,13 @@ async fn source_runtime_lease_generation_fences_stale_and_cross_tenant_commits()
         Err(StoreError::Conflict(message))
             if message == "source runtime lease was lost before commit"
     ));
+    let after_rejected_replay: serde_json::Value = admin
+        .query_one(
+            "SELECT runtime_json FROM source_runtimes WHERE id = $1",
+            &[&runtime.as_str()],
+        )
+        .await?
+        .get(0);
+    assert_eq!(after_rejected_replay, committed_progress);
     Ok(())
 }

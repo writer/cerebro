@@ -54,17 +54,20 @@ lease before it makes a provider request. Go and Rust advance the same
 `lease_generation` whenever ownership changes. The Rust PostgreSQL graph
 transaction locks that runtime row and verifies the exact tenant, runtime,
 owner, unexpired lease, and generation before committing a collected batch.
-Renewal loss cancels collection, and a stale worker cannot commit or release a
-successor's lease. Rust loads the runtime's tenant, source, family, base URL,
-cursor, and config from the shared PostgreSQL runtime record instead of
-accepting parallel process arguments. Canonical and explicitly allowlisted
+Graph state, the projection outbox, terminal continuation cleanup, terminal
+resumable-checkpoint token cleanup, and `last_synced_at` advance in that same
+transaction.
+Renewal loss cancels collection, and a stale worker cannot commit progress or
+release a successor's lease. Rust loads the runtime's tenant, source, family,
+base URL, cursor, and config from the shared PostgreSQL runtime record instead
+of accepting parallel process arguments. Canonical and explicitly allowlisted
 `env:` references resolve in Rust without a Go fallback. Rust resolves
 `credential:` references directly from the shared connector vault with exact
 tenant, source, runtime, status, key, and authenticated-envelope checks.
 Successful use commits the existing throttled usage receipt without exposing
-credential material. Native secret-store references, cursor/checkpoint
-persistence, and legacy-family execution still need separate Rust ownership
-work.
+credential material. Native secret-store references, provider-specific
+checkpoint contents, and legacy-family execution still need separate Rust
+ownership work.
 
 API-key collection authority also requires an explicit checked-in header and
 scheme contract. A provider proof manifest does not make a source

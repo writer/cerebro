@@ -823,7 +823,7 @@ WHERE id = $1
   AND runtime_json->>'tenant_id' = $2
   AND lease_owner = $3
   AND lease_generation = $4
-  AND lease_expires_at > NOW()
+  AND lease_expires_at > clock_timestamp()
 "#,
                 &[
                     &fence.source_runtime_id().as_str(),
@@ -1354,6 +1354,9 @@ WHERE id = $1
             ));
         }
         validate_observations(batch, delta)?;
+        if fence.is_some() {
+            validate_source_runtime_cursor(batch.next_cursor.as_deref())?;
+        }
 
         let mut client = self.client.lock().await;
         let transaction = client.transaction().await?;
@@ -1535,6 +1538,9 @@ WHERE id = $1
                 &[&tenant_id, &revision],
             )
             .await?;
+        if let Some(fence) = fence {
+            advance_source_runtime_progress(&transaction, batch, fence).await?;
+        }
         transaction.commit().await?;
         Ok(StoredCommit {
             receipt,
@@ -2194,7 +2200,7 @@ async fn require_source_runtime_lease(
     let row = transaction
         .query_opt(
             r#"
-SELECT lease_owner, lease_generation, lease_expires_at > NOW()
+SELECT lease_owner, lease_generation, lease_expires_at > clock_timestamp()
 FROM source_runtimes
 WHERE id = $1
   AND runtime_json->>'tenant_id' = $2
@@ -2214,6 +2220,95 @@ FOR UPDATE
     if !valid {
         return Err(StoreError::Conflict(
             "source runtime lease was lost before commit".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_source_runtime_cursor(cursor: Option<&str>) -> Result<(), StoreError> {
+    if cursor.is_some_and(|cursor| cursor.trim().is_empty() || cursor.len() > 64 * 1024) {
+        return Err(StoreError::Conflict(
+            "source runtime continuation cursor is invalid".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn advance_source_runtime_progress(
+    transaction: &tokio_postgres::Transaction<'_>,
+    batch: &CollectedBatch,
+    fence: &SourceRuntimeLeaseFence,
+) -> Result<(), StoreError> {
+    let generation = storage_generation(fence.generation())?;
+    let next_cursor = batch
+        .next_cursor
+        .as_ref()
+        .map(|cursor| serde_json::json!({"opaque": cursor}));
+    let checkpoint_row = transaction
+        .query_opt(
+            "SELECT runtime_json->'checkpoint'->>'cursor_opaque'
+             FROM source_runtimes
+             WHERE id = $1 AND runtime_json->>'tenant_id' = $2",
+            &[
+                &fence.source_runtime_id().as_str(),
+                &fence.tenant_id().as_str(),
+            ],
+        )
+        .await?;
+    let Some(checkpoint_row) = checkpoint_row else {
+        return Err(StoreError::Conflict(
+            "source runtime was removed before progress commit".to_owned(),
+        ));
+    };
+    let checkpoint_cursor: Option<String> = checkpoint_row.get(0);
+    let clear_checkpoint_cursor = next_cursor.is_none()
+        && checkpoint_cursor
+            .as_deref()
+            .is_some_and(resumable_checkpoint_cursor);
+    let updated = transaction
+        .execute(
+            r#"
+UPDATE source_runtimes
+SET runtime_json = jsonb_set(
+      CASE
+        WHEN $5::jsonb IS NULL THEN
+          CASE
+            WHEN $6::BOOLEAN
+              AND jsonb_typeof(runtime_json->'checkpoint') = 'object' THEN
+              jsonb_set(
+                runtime_json - 'next_cursor',
+                '{checkpoint,cursor_opaque}',
+                '""'::jsonb,
+                TRUE
+              )
+            ELSE runtime_json - 'next_cursor'
+          END
+        ELSE jsonb_set(runtime_json, '{next_cursor}', $5::jsonb, TRUE)
+      END,
+      '{last_synced_at}',
+      to_jsonb(clock_timestamp()),
+      TRUE
+    ),
+    updated_at = clock_timestamp()
+WHERE id = $1
+  AND runtime_json->>'tenant_id' = $2
+  AND lease_owner = $3
+  AND lease_generation = $4
+  AND lease_expires_at > clock_timestamp()
+"#,
+            &[
+                &fence.source_runtime_id().as_str(),
+                &fence.tenant_id().as_str(),
+                &fence.owner(),
+                &generation,
+                &next_cursor,
+                &clear_checkpoint_cursor,
+            ],
+        )
+        .await?;
+    if updated != 1 {
+        return Err(StoreError::Conflict(
+            "source runtime lease was lost before progress commit".to_owned(),
         ));
     }
     Ok(())
