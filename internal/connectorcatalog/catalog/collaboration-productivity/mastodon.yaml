@@ -79,6 +79,7 @@ entries:
         kind: mastodon.activity
         required_payload_fields:
         - logins
+        - week
         schema_ref: mastodon/activity/v1
         urn_kind: mastodon_activity
       event_kind: activity
