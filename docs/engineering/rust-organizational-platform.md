@@ -65,9 +65,15 @@ of accepting parallel process arguments. Canonical and explicitly allowlisted
 `credential:` references directly from the shared connector vault with exact
 tenant, source, runtime, status, key, and authenticated-envelope checks.
 Successful use commits the existing throttled usage receipt without exposing
-credential material. Native secret-store references, provider-specific
-checkpoint contents, and legacy-family execution still need separate Rust
-ownership work.
+credential material. Rust also resolves `aws-sm:` references directly through
+AWS Secrets Manager. The reference must name the exact
+`cerebro/<tenant>/<source>/<runtime>/credentials` secret, or a secret beneath
+that namespace with a hyphenated suffix, before Rust makes a backend request.
+Rust groups fields from one secret into one read and scrubs the returned
+material after auth construction.
+Google Secret Manager, Azure Key Vault, Vault, and Infisical references still
+fail closed; provider-specific checkpoint contents and legacy-family execution
+also need separate Rust ownership work.
 
 API-key collection authority also requires an explicit checked-in header and
 scheme contract. A provider proof manifest does not make a source

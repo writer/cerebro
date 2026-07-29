@@ -29,6 +29,7 @@ use reqwest::{
 use serde_json::Value;
 use sha2::{Digest, Sha256, Sha512};
 use time::OffsetDateTime;
+use zeroize::Zeroize;
 
 use crate::{CollectedBatch, CollectedScope, CollectionRequest, SourceConnector, SourceRecord};
 
@@ -94,6 +95,37 @@ impl fmt::Debug for ResolvedAuth {
                 .field("integration_key", &"[REDACTED]")
                 .field("secret_key", &"[REDACTED]")
                 .finish(),
+        }
+    }
+}
+
+impl Drop for ResolvedAuth {
+    fn drop(&mut self) {
+        match self {
+            Self::None => {}
+            Self::Bearer { token } => token.zeroize(),
+            Self::Basic { username, password } => {
+                username.zeroize();
+                password.zeroize();
+            }
+            Self::Header { value, .. } => value.zeroize(),
+            Self::AwsSigV4 {
+                access_key_id,
+                secret_access_key,
+                session_token,
+                ..
+            } => {
+                access_key_id.zeroize();
+                secret_access_key.zeroize();
+                session_token.zeroize();
+            }
+            Self::DuoHmacV5 {
+                integration_key,
+                secret_key,
+            } => {
+                integration_key.zeroize();
+                secret_key.zeroize();
+            }
         }
     }
 }
