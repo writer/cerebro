@@ -54,14 +54,26 @@ lease before it makes a provider request. Go and Rust advance the same
 `lease_generation` whenever ownership changes. The Rust PostgreSQL graph
 transaction locks that runtime row and verifies the exact tenant, runtime,
 owner, unexpired lease, and generation before committing a collected batch.
-Renewal loss cancels collection, and a stale worker cannot commit or release a
-successor's lease. Rust loads the runtime's tenant, source, family, base URL,
-cursor, and config from the shared PostgreSQL runtime record instead of
-accepting parallel process arguments. Canonical and explicitly allowlisted
-`env:` references resolve in Rust, and credential-store reference kinds fail
-closed without a Go fallback. Connector-vault and native secret-store
-references, cursor/checkpoint persistence, and legacy-family execution still
-need separate Rust ownership work.
+Graph state, the projection outbox, terminal continuation cleanup, terminal
+resumable-checkpoint token cleanup, and `last_synced_at` advance in that same
+transaction.
+Renewal loss cancels collection, and a stale worker cannot commit progress or
+release a successor's lease. Rust loads the runtime's tenant, source, family,
+base URL, cursor, and config from the shared PostgreSQL runtime record instead
+of accepting parallel process arguments. Canonical and explicitly allowlisted
+`env:` references resolve in Rust without a Go fallback. Rust resolves
+`credential:` references directly from the shared connector vault with exact
+tenant, source, runtime, status, key, and authenticated-envelope checks.
+Successful use commits the existing throttled usage receipt without exposing
+credential material. Rust also resolves `aws-sm:` references directly through
+AWS Secrets Manager. The reference must name the exact
+`cerebro/<tenant>/<source>/<runtime>/credentials` secret, or a secret beneath
+that namespace with a hyphenated suffix, before Rust makes a backend request.
+Rust groups fields from one secret into one read and scrubs the returned
+material after auth construction.
+Google Secret Manager, Azure Key Vault, Vault, and Infisical references still
+fail closed; provider-specific checkpoint contents and legacy-family execution
+also need separate Rust ownership work.
 
 API-key collection authority also requires an explicit checked-in header and
 scheme contract. A provider proof manifest does not make a source
@@ -228,7 +240,7 @@ The current checked-in catalog compiles to 794 sources and 3,891 families:
 | Activity | 738 | audit and operational events |
 | Bespoke | 3 | retained for source coverage but barred from authority |
 
-Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 46 sources and 328 families are authoritative; the other 748 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
+Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 51 sources and 347 families are authoritative; the other 743 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
 
 ## Family cutover
 

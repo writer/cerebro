@@ -54,7 +54,8 @@
       "sitemap_only": "sitemap_only",
       "source_id": "botify",
       "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
+      "updated_at": "2026-06-01T00:00:00Z",
+      "url": "https://example.test/sitemap-only"
     },
     "schema_ref": "botify/sitemap_only/v1",
     "source_id": "botify",

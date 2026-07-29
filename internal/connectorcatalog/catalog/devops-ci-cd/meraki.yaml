@@ -10,6 +10,8 @@ entries:
         secret: true
       model: api_key
       requires_references: true
+      token_header: Authorization
+      token_scheme: Bearer
     categories:
     - saas
     config_fields:
@@ -37,12 +39,12 @@ entries:
       event:
         kind: meraki.eventtype
         required_payload_fields:
-        - id
+        - type
         schema_ref: meraki/eventtype/v1
         urn_kind: meraki_eventtype
       event_kind: eventtype
       id: eventtype
-      id_field: id
+      id_field: type
       label: Eventtype
       method: GET
       pagination:
@@ -52,8 +54,11 @@ entries:
       - meraki_api_key
       projection:
         fields:
-          id: id
-          provider_id: id
+          description: description
+          event_type: type
+          id: type
+          provider_id: type
+          resource_name: description
         template: audit_event
       record_selector: "$[*]"
     - coverage:
@@ -81,16 +86,22 @@ entries:
       label: Organization
       method: GET
       pagination:
-        type: none
+        link_header: Link
+        type: link
       path: "/organizations"
       permissions_needed:
       - meraki_api_key
       projection:
         fields:
+          group_id: id
+          group_name: name
           id: id
+          name: name
           provider_id: id
         template: identity_group
       record_selector: "$[*]"
+      static_query:
+        perPage: "9000"
     - coverage:
       - families:
         - merakiauthuser
@@ -122,8 +133,12 @@ entries:
       - meraki_api_key
       projection:
         fields:
+          display_name: name
+          email: email
           id: id
+          name: name
           provider_id: id
+          user_id: id
         template: identity_user
       record_selector: "$[*]"
     - coverage:
@@ -142,24 +157,24 @@ entries:
       event:
         kind: meraki.accesspolicy
         required_payload_fields:
-        - id
+        - accessPolicyNumber
         schema_ref: meraki/accesspolicy/v1
         urn_kind: meraki_accesspolicy
       event_kind: accesspolicy
       id: accesspolicy
-      id_field: id
+      id_field: accessPolicyNumber
       label: Accesspolicy
       method: GET
       pagination:
         type: none
-      path: "/networks/${config.networkid}/accessPolicies"
+      path: "/networks/${config.networkid}/switch/accessPolicies"
       permissions_needed:
       - meraki_api_key
       projection:
         fields:
-          id: id
-          policy_id: id
-          policy_name: id
+          id: accessPolicyNumber
+          policy_id: accessPolicyNumber
+          policy_name: name
           policy_type: accesspolicy
         template: policy
       record_selector: "$[*]"
@@ -188,7 +203,7 @@ entries:
     source_id: meraki
     tenant_id: builtin_catalog
     transport:
-      base_url: https://api.meraki.com/api/v0
+      base_url: https://api.meraki.com/api/v1
       retry:
         backoff: exponential
         max_attempts: 3

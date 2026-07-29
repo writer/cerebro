@@ -8,6 +8,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"os"
 	"sort"
 	"testing"
 	"time"
@@ -21,6 +22,36 @@ type memoryStore struct {
 	metadataUpdates int
 	putErr          error
 	putErrRecord    *ports.ConnectorCredentialRecord
+}
+
+func TestRustVaultVectorMatchesGoEnvelope(t *testing.T) {
+	sealed, err := os.ReadFile("../../crates/organizational-store/testdata/go_connector_vault_vector.json")
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	vault, err := NewVault(&memoryStore{}, "test-vault-key")
+	if err != nil {
+		t.Fatalf("NewVault() error = %v", err)
+	}
+	record := &ports.ConnectorCredentialRecord{
+		ID:        "cred_vector",
+		TenantID:  "tenant-a",
+		SourceID:  "github",
+		RuntimeID: "runtime-a",
+		KeyID:     vault.keyID,
+		Sealed:    sealed,
+	}
+	fields, err := vault.open(record)
+	if err != nil {
+		t.Fatalf("open() error = %v", err)
+	}
+	if fields["token"] != "secret-token" {
+		t.Fatalf("token = %q, want Go-compatible vector", fields["token"])
+	}
+	record.TenantID = "tenant-b"
+	if _, err := vault.open(record); err == nil {
+		t.Fatal("open() with wrong tenant error = nil, want authenticated-data failure")
+	}
 }
 
 func (s *memoryStore) Ping(context.Context) error { return nil }
