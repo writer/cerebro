@@ -405,9 +405,11 @@ impl CatalogGraphMapper {
         builder: &mut GraphDeltaBuilder<Mode>,
     ) -> Result<(), CatalogMapperError> {
         let group_id =
-            first(&projected, &["group_id"]).ok_or_else(|| CatalogMapperError::MissingField {
-                family: family.id().to_owned(),
-                field: "group_id".to_owned(),
+            first(&projected, &["group_id", "channel_id", "usergroup_id"]).ok_or_else(|| {
+                CatalogMapperError::MissingField {
+                    family: family.id().to_owned(),
+                    field: "group_id".to_owned(),
+                }
             })?;
         let member_id = first(
             &projected,
@@ -437,7 +439,11 @@ impl CatalogGraphMapper {
             projected
                 .iter()
                 .filter(|(key, _)| {
-                    !key.starts_with("group_") && key.as_str() != "role" && key.as_str() != "id"
+                    !key.starts_with("group_")
+                        && key.as_str() != "role"
+                        && key.as_str() != "id"
+                        && key.as_str() != "channel_id"
+                        && key.as_str() != "usergroup_id"
                 })
                 .map(|(key, value)| (key.clone(), value.clone()))
                 .collect(),
@@ -446,7 +452,9 @@ impl CatalogGraphMapper {
             group,
             projected
                 .into_iter()
-                .filter(|(key, _)| !key.starts_with("member_") && key != "role" && key != "id")
+                .filter(|(key, _)| {
+                    !key.starts_with("member_") && key != "role" && key != "id" && key != "user_id"
+                })
                 .collect(),
         )?;
         let assertion = RelationshipAssertion::new(

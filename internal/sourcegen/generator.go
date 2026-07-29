@@ -843,7 +843,10 @@ func familyConfig(resource connectordefinitions.ResourceFamily) familyConfigData
 	}
 	config.BaseURL = strings.TrimSpace(resource.Config.BaseURL)
 	config.StaticQuery = mergeStringMaps(config.StaticQuery, resource.Config.StaticQuery)
-	config.ConfigQuery = mergeStringMaps(config.ConfigQuery, resource.Config.ConfigQuery)
+	config.ConfigQuery = mergeStringMaps(
+		config.ConfigQuery,
+		mergeStringMaps(resource.Config.ConfigQuery, resource.Config.RequiredConfigQuery),
+	)
 	config.ConfigAttributes = cloneStringMap(resource.Config.ConfigAttributes)
 	config.IdentityKeys = append([]string(nil), resource.Config.IdentityKeys...)
 	return config
