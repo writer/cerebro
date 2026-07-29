@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -8,8 +9,14 @@ import (
 
 	"connectrpc.com/connect"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/securitylifecyclehttp"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+type securityLifecycleQueryReader interface {
+	ListSecurityLifecycle(context.Context, *cerebrov1.SecurityLifecycleQuery) (*cerebrov1.SecurityLifecycleQueryResult, error)
+	ResolveSecurityLifecycleFinding(context.Context, string, string) (*cerebrov1.ResolveSecurityLifecycleFindingResponse, error)
+}
 
 func (a *App) handleListSecurityLifecycle(w http.ResponseWriter, r *http.Request) {
 	if a.deps.SecurityLifecycleQueries == nil {
@@ -43,8 +50,16 @@ func (a *App) handleListSecurityLifecycle(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
+	if err := securitylifecyclehttp.SetSubjectLocator(
+		query,
+		strings.TrimSpace(r.URL.Query().Get("authority_id")),
+		strings.TrimSpace(r.URL.Query().Get("stable_locator")),
+	); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	for _, value := range trimmedQueryValues(r, "state") {
-		state, ok := lifecycleState(value)
+		state, ok := securitylifecyclehttp.State(value)
 		if !ok {
 			http.Error(w, "state is not a recognized lifecycle state", http.StatusBadRequest)
 			return
@@ -91,25 +106,4 @@ func trimmedQueryValues(r *http.Request, name string) []string {
 		}
 	}
 	return result
-}
-
-func lifecycleState(value string) (cerebrov1.SecurityLifecycleState, bool) {
-	switch value {
-	case "active":
-		return cerebrov1.SecurityLifecycleState_SECURITY_LIFECYCLE_STATE_ACTIVE, true
-	case "expiring":
-		return cerebrov1.SecurityLifecycleState_SECURITY_LIFECYCLE_STATE_EXPIRING, true
-	case "expired":
-		return cerebrov1.SecurityLifecycleState_SECURITY_LIFECYCLE_STATE_EXPIRED, true
-	case "rotated":
-		return cerebrov1.SecurityLifecycleState_SECURITY_LIFECYCLE_STATE_ROTATED, true
-	case "revoked":
-		return cerebrov1.SecurityLifecycleState_SECURITY_LIFECYCLE_STATE_REVOKED, true
-	case "inactive":
-		return cerebrov1.SecurityLifecycleState_SECURITY_LIFECYCLE_STATE_INACTIVE, true
-	case "unknown":
-		return cerebrov1.SecurityLifecycleState_SECURITY_LIFECYCLE_STATE_UNKNOWN, true
-	default:
-		return cerebrov1.SecurityLifecycleState_SECURITY_LIFECYCLE_STATE_UNSPECIFIED, false
-	}
 }

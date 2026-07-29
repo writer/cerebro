@@ -1609,7 +1609,13 @@ func metadataJSON(value map[string]any) string {
 }
 
 func findingURN(tenantID string, findingID string) string {
-	return fmt.Sprintf("urn:cerebro:%s:finding:%s", strings.TrimSpace(tenantID), strings.TrimSpace(findingID))
+	tenantID = strings.TrimSpace(tenantID)
+	findingID = strings.TrimSpace(findingID)
+	canonicalPrefix := fmt.Sprintf("urn:cerebro:%s:finding:", tenantID)
+	if strings.HasPrefix(findingID, canonicalPrefix) {
+		return findingID
+	}
+	return canonicalPrefix + findingID
 }
 
 func findingAnnotationURN(tenantID string, findingID string, noteID string, body string, createdAt string) string {

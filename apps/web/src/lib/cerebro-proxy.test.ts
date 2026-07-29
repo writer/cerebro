@@ -133,6 +133,13 @@ describe("cerebro proxy cache headers", () => {
     expect(isCacheableCerebroPath("grc/program-readiness")).toBe(true);
   });
 
+  it("keeps live finding previews fresh while immutable packets remain cacheable", () => {
+    expect(isCacheableCerebroPath("/grc/findings/finding-123/audit-preview")).toBe(false);
+    expect(isCacheableCerebroPath("/grc/findings/finding-123")).toBe(false);
+    expect(isCacheableCerebroPath("/grc/findings/finding-123/audit-preview/export")).toBe(false);
+    expect(isCacheableCerebroPath("/grc/audit-packets/packet-123")).toBe(true);
+  });
+
   it("propagates trace headers upstream without logging auth or query strings", async () => {
     let upstreamHeaders = new Headers();
     vi.stubGlobal("fetch", vi.fn(async (_target: URL | RequestInfo, init?: RequestInit) => {

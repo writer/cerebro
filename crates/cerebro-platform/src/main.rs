@@ -58,8 +58,9 @@ use cerebro_platform_sdk::{
 use cerebro_policy_catalog::{definitions as policy_definitions, validate_finding_receipt};
 use cerebro_security_lifecycle::{
     CERTIFICATE_EVENT_KIND, CREDENTIAL_EVENT_KIND, LifecycleQuery, LifecycleState,
-    ProjectedResource, SubjectKind, decode_protobuf_observation, project_observation,
-    query_records,
+    ProjectedResource, QuerySource, SubjectKind, SubjectLocator, canonical_resource_urn,
+    decode_protobuf_observation, finalize_indexed_query, prepare_indexed_query,
+    project_observation, query_records_with_source,
 };
 use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
@@ -95,9 +96,16 @@ struct AppState {
     action_providers: ActionProviders,
     actions: Option<Arc<dyn ActionAuthority>>,
     graph: Arc<dyn AgentGraph>,
+    lifecycle_projection: Option<Arc<Neo4jProjector>>,
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
     metrics: PlatformMetrics,
+}
+
+#[derive(Clone, Default)]
+struct ActionBackends {
+    actions: Option<Arc<dyn ActionAuthority>>,
+    providers: ActionProviders,
 }
 
 #[derive(Clone, Default)]
@@ -533,6 +541,7 @@ fn bounded_operation(method: &Method, path: &str) -> &'static str {
         "/v1/actions" => "propose_action",
         "/v1/projections/legacy-deltas" => "record_legacy_projection",
         "/v1/projections/collections" => "record_source_collection",
+        _ if path.starts_with("/v1/projections/collections/") => "get_source_collection",
         "/v1/projections/authority" => "projection_authority",
         _ if path.starts_with("/v1/entities/") => "get_entity",
         _ if path.starts_with("/v1/finding-validations/") => "get_finding_validation",
@@ -801,6 +810,24 @@ impl ProjectionRuntime {
         })
     }
 
+    async fn source_collection(
+        &self,
+        tenant_id: &TenantId,
+        source_runtime_id: &SourceRuntimeId,
+        collection_id: &CollectionId,
+    ) -> Result<Option<SourceCollectionRequest>, StoreError> {
+        self.authority
+            .source_collection_manifest(
+                tenant_id.as_str(),
+                source_runtime_id.as_str(),
+                collection_id.as_str(),
+            )
+            .await?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(StoreError::from)
+    }
+
     async fn project_security_lifecycle(
         &self,
         event: CommittedSourceEvent,
@@ -881,6 +908,12 @@ struct TenantQuery {
     tenant_id: String,
 }
 
+#[derive(Deserialize)]
+struct SourceCollectionQuery {
+    tenant_id: String,
+    source_runtime_id: String,
+}
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ActionListQuery {
@@ -914,10 +947,25 @@ struct HttpLifecycleQuery {
     limit: Option<usize>,
     #[serde(default)]
     page_token: Option<String>,
+    #[serde(default)]
+    authority_id: Option<String>,
+    #[serde(default)]
+    stable_locator: Option<String>,
 }
 
 impl From<HttpLifecycleQuery> for LifecycleQuery {
     fn from(value: HttpLifecycleQuery) -> Self {
+        let subject_locator =
+            value
+                .authority_id
+                .zip(value.stable_locator)
+                .map(|(authority_id, stable_locator)| SubjectLocator {
+                    subject_kind: value
+                        .subject_kind
+                        .expect("subject locator validated before conversion"),
+                    authority_id,
+                    stable_locator,
+                });
         Self {
             subject_kinds: value.subject_kind.into_iter().collect(),
             states: value.state.into_iter().collect(),
@@ -926,6 +974,7 @@ impl From<HttpLifecycleQuery> for LifecycleQuery {
             findings_only: value.findings_only,
             limit: value.limit,
             page_token: value.page_token,
+            subject_locator,
         }
     }
 }
@@ -1251,6 +1300,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("serve-neo4j-consumer") => serve_neo4j_consumer().await,
         Some("consume-append-log") => consume_append_log().await,
         Some("migrate-stores") => migrate_stores().await,
+        Some("rebuild-lifecycle-projection") => rebuild_lifecycle_projection().await,
         Some("sync-source") => sync_source().await,
         Some("catalog-summary") => catalog_summary(),
         Some("compare-projection") => parity_command::compare_projection().await,
@@ -1259,7 +1309,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("show-authority") => cutover_command::show_authority().await,
         Some("--help" | "-h") => {
             println!(
-                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-neo4j|serve-neo4j-consumer|consume-append-log|migrate-stores|sync-source|catalog-summary|compare-projection|evaluate-family|promote-family|show-authority>"
+                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-neo4j|serve-neo4j-consumer|consume-append-log|migrate-stores|rebuild-lifecycle-projection|sync-source|catalog-summary|compare-projection|evaluate-family|promote-family|show-authority>"
             );
             Ok(())
         }
@@ -1268,7 +1318,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 async fn serve_memory(graph: OrganizationalGraph) -> Result<(), Box<dyn Error>> {
-    serve(Arc::new(MemoryAgentGraph::new(graph)), None).await
+    serve(Arc::new(MemoryAgentGraph::new(graph)), None, None).await
 }
 
 async fn serve_neo4j_readonly() -> Result<(), Box<dyn Error>> {
@@ -1278,17 +1328,29 @@ async fn serve_neo4j_readonly() -> Result<(), Box<dyn Error>> {
         &required_env("CEREBRO_NEO4J_PASSWORD")?,
     )
     .await?;
-    serve(Arc::new(graph), None).await
+    let lifecycle_projection = Arc::new(graph.clone());
+    serve(Arc::new(graph), Some(lifecycle_projection), None).await
 }
 
 async fn serve_neo4j() -> Result<(), Box<dyn Error>> {
     let (graph, projection) = neo4j_runtime().await?;
-    serve(Arc::new(graph), Some(projection)).await
+    let lifecycle_projection = Arc::new(graph.clone());
+    serve(
+        Arc::new(graph),
+        Some(lifecycle_projection),
+        Some(projection),
+    )
+    .await
 }
 
 async fn serve_neo4j_consumer() -> Result<(), Box<dyn Error>> {
     let (graph, projection) = neo4j_runtime().await?;
-    let server = serve(Arc::new(graph), Some(projection.clone()));
+    let lifecycle_projection = Arc::new(graph.clone());
+    let server = serve(
+        Arc::new(graph),
+        Some(lifecycle_projection),
+        Some(projection.clone()),
+    );
     let consumer = append_log_consumer::run(projection);
     tokio::select! {
         result = server => result,
@@ -1326,6 +1388,23 @@ async fn migrate_stores() -> Result<(), Box<dyn Error>> {
     let graph = connect_neo4j().await?;
     graph.migrate().await?;
     println!("organizational stores migrated");
+    Ok(())
+}
+
+async fn rebuild_lifecycle_projection() -> Result<(), Box<dyn Error>> {
+    let tenant_id = TenantId::parse(required_env("CEREBRO_TENANT_ID")?)?;
+    let graph = connect_neo4j().await?;
+    graph.migrate().await?;
+    let rebuilt = graph
+        .rebuild_lifecycle_projection(&tenant_id, 1_000)
+        .await?;
+    println!(
+        "{}",
+        serde_json::json!({
+            "tenant_id": tenant_id.as_str(),
+            "entities_rebuilt": rebuilt,
+        })
+    );
     Ok(())
 }
 
@@ -1547,6 +1626,7 @@ fn remove_nonempty(config: &mut BTreeMap<String, String>, key: &str) -> Option<S
 
 async fn serve(
     graph: Arc<dyn AgentGraph>,
+    lifecycle_projection: Option<Arc<Neo4jProjector>>,
     projection: Option<Arc<ProjectionRuntime>>,
 ) -> Result<(), Box<dyn Error>> {
     let bind = env::var("CEREBRO_RUST_BIND").unwrap_or_else(|_| "127.0.0.1:8080".to_owned());
@@ -1584,10 +1664,13 @@ async fn serve(
         listener,
         router_with_backend(
             graph,
+            lifecycle_projection,
             load_catalog_summary().ok(),
             projection,
-            actions,
-            action_providers,
+            ActionBackends {
+                actions,
+                providers: action_providers,
+            },
             tenant_auth,
             oidc,
         ),
@@ -1603,7 +1686,7 @@ fn router(graph: OrganizationalGraph) -> Router {
         None,
         None,
         None,
-        ActionProviders::default(),
+        ActionBackends::default(),
         TenantRequestAuth::new("test-organizational-graph-secret-32-bytes".to_owned()).unwrap(),
         None,
     )
@@ -1611,15 +1694,20 @@ fn router(graph: OrganizationalGraph) -> Router {
 
 fn router_with_backend(
     graph: Arc<dyn AgentGraph>,
+    lifecycle_projection: Option<Arc<Neo4jProjector>>,
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
-    actions: Option<Arc<dyn ActionAuthority>>,
-    action_providers: ActionProviders,
+    action_backends: ActionBackends,
     tenant_auth: TenantRequestAuth,
     oidc: Option<OidcAuthenticator>,
 ) -> Router {
     let platform_metrics = PlatformMetrics::default();
-    let connect = rpc::router(graph.clone(), catalog_summary.clone(), tenant_auth.clone());
+    let connect = rpc::router(
+        graph.clone(),
+        lifecycle_projection.clone(),
+        catalog_summary.clone(),
+        tenant_auth.clone(),
+    );
     let protected = Router::new()
         .route(
             "/platform/graph/neighborhood",
@@ -1639,6 +1727,10 @@ fn router_with_backend(
         .route(
             "/v1/projections/collections",
             post(record_source_collection),
+        )
+        .route(
+            "/v1/projections/collections/{collection_id}",
+            get(get_source_collection),
         )
         .route("/v1/projections/authority", get(projection_authority));
     let protected = if let Some(oidc) = oidc {
@@ -1689,9 +1781,10 @@ fn router_with_backend(
         .merge(protected)
         .fallback_service(connect.into_axum_service())
         .with_state(AppState {
-            action_providers,
-            actions,
+            action_providers: action_backends.providers,
+            actions: action_backends.actions,
             graph,
+            lifecycle_projection,
             catalog_summary,
             projection,
             metrics: platform_metrics.clone(),
@@ -1785,6 +1878,37 @@ async fn record_source_collection(
         .await
         .map(Json)
         .map_err(store_error)
+}
+
+async fn get_source_collection(
+    State(state): State<AppState>,
+    Extension(authenticated): Extension<AuthenticatedTenant>,
+    Path(collection_id): Path<String>,
+    Query(query): Query<SourceCollectionQuery>,
+) -> Result<Json<SourceCollectionRequest>, (StatusCode, Json<ErrorResponse>)> {
+    let runtime = state.projection.ok_or_else(|| {
+        service_unavailable(
+            "projection_runtime_unavailable",
+            "The organizational projection runtime is not configured.",
+        )
+    })?;
+    let tenant_id = authorized_tenant(&authenticated, query.tenant_id)?;
+    let source_runtime_id = SourceRuntimeId::parse(query.source_runtime_id).map_err(model_error)?;
+    let collection_id = CollectionId::parse(collection_id).map_err(model_error)?;
+    runtime
+        .source_collection(&tenant_id, &source_runtime_id, &collection_id)
+        .await
+        .map_err(store_error)?
+        .map(Json)
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: "source_collection_not_found",
+                    message: "The source collection receipt was not found.".to_owned(),
+                }),
+            )
+        })
 }
 
 fn validate_source_collection(
@@ -2587,12 +2711,85 @@ async fn security_lifecycle(
     Query(query): Query<HttpLifecycleQuery>,
 ) -> Result<Json<cerebro_security_lifecycle::QueryResult>, (StatusCode, Json<ErrorResponse>)> {
     let tenant_id = authenticated.0;
-    let resource_kinds = vec!["resource".to_owned()];
-    let entities = state
-        .graph
-        .search(&tenant_id, "", &resource_kinds, MAX_SECURITY_LIFECYCLE_SCAN)
+    if query.authority_id.is_some() != query.stable_locator.is_some()
+        || (query.authority_id.is_some() && query.subject_kind.is_none())
+    {
+        return Err(bad_request(
+            "invalid_security_lifecycle_locator",
+            "authority_id, stable_locator, and subject_kind are required together.",
+        ));
+    }
+    let lifecycle_query: LifecycleQuery = query.into();
+    if let Some(projection) = state.lifecycle_projection.as_ref() {
+        let graph_revision = state
+            .graph
+            .revision(&tenant_id)
+            .await
+            .map_err(context_error)?;
+        let as_of = OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .map_err(|error| {
+                service_unavailable(
+                    "clock_format_failed",
+                    format!("Cannot format read time: {error}"),
+                )
+            })?;
+        let prepared = prepare_indexed_query(&tenant_id, &lifecycle_query, &as_of, graph_revision)
+            .map_err(|error| bad_request("invalid_security_lifecycle_query", error.to_string()))?;
+        let indexed = tokio::time::timeout(
+            Duration::from_secs(2),
+            projection.query_lifecycle(&tenant_id, &prepared),
+        )
         .await
-        .map_err(context_error)?
+        .map_err(|_| {
+            service_unavailable(
+                "lifecycle_projection_timeout",
+                "The lifecycle projection read exceeded 2 seconds.",
+            )
+        })?;
+        match indexed {
+            Ok(page) => {
+                return finalize_indexed_query(&tenant_id, &prepared, page)
+                    .map(Json)
+                    .map_err(|error| {
+                        service_unavailable("lifecycle_projection_invalid", error.to_string())
+                    });
+            }
+            Err(StoreError::LifecycleProjectionUnavailable { .. }) => {}
+            Err(error) => return Err(store_error(error)),
+        }
+    }
+    let revision_before = state
+        .graph
+        .revision(&tenant_id)
+        .await
+        .map_err(context_error)?;
+    let (entities, scan_truncated) = if let Some(locator) = lifecycle_query.subject_locator.as_ref()
+    {
+        let subject_urn = canonical_resource_urn(
+            tenant_id.as_str(),
+            locator.subject_kind,
+            &locator.authority_id,
+            &locator.stable_locator,
+        )
+        .map_err(|error| bad_request("invalid_security_lifecycle_locator", error.to_string()))?;
+        match state.graph.resolve(&tenant_id, &subject_urn).await {
+            Ok(entity) => (vec![entity], false),
+            Err(ContextError::EntityNotFound) => (Vec::new(), false),
+            Err(error) => return Err(context_error(error)),
+        }
+    } else {
+        let resource_kinds = vec!["resource".to_owned()];
+        let entities = state
+            .graph
+            .search(&tenant_id, "", &resource_kinds, MAX_SECURITY_LIFECYCLE_SCAN)
+            .await
+            .map_err(context_error)?;
+        let scan_truncated = entities.len() == MAX_SECURITY_LIFECYCLE_SCAN;
+        (entities, scan_truncated)
+    };
+    let scanned_entities = entities.len();
+    let entities = entities
         .into_iter()
         .map(|entity| ProjectedResource {
             agent_key: entity.agent_key,
@@ -2600,6 +2797,11 @@ async fn security_lifecycle(
             properties: entity.properties,
         })
         .collect();
+    let revision_after = state
+        .graph
+        .revision(&tenant_id)
+        .await
+        .map_err(context_error)?;
     let as_of = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|error| {
@@ -2608,9 +2810,20 @@ async fn security_lifecycle(
                 format!("Cannot format read time: {error}"),
             )
         })?;
-    query_records(&tenant_id, &query.into(), entities, &as_of)
-        .map(Json)
-        .map_err(|error| bad_request("invalid_security_lifecycle_query", error.to_string()))
+    query_records_with_source(
+        &tenant_id,
+        &lifecycle_query,
+        entities,
+        &as_of,
+        QuerySource {
+            scanned_entities,
+            truncated: scan_truncated,
+            graph_revision: revision_after,
+            graph_changed: revision_before != revision_after,
+        },
+    )
+    .map(Json)
+    .map_err(|error| bad_request("invalid_security_lifecycle_query", error.to_string()))
 }
 
 async fn explain_assertion(
@@ -4091,7 +4304,7 @@ mod tests {
             None,
             None,
             None,
-            ActionProviders::default(),
+            ActionBackends::default(),
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
             None,
         );
@@ -4430,6 +4643,7 @@ mod tests {
             action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
+            lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
             metrics: PlatformMetrics::default(),
@@ -4559,6 +4773,7 @@ mod tests {
             action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
+            lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
             metrics: PlatformMetrics::default(),
@@ -4673,6 +4888,7 @@ mod tests {
             action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
+            lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
             metrics: PlatformMetrics::default(),
@@ -4714,6 +4930,7 @@ mod tests {
             action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
+            lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
             metrics: PlatformMetrics::default(),
@@ -4743,6 +4960,7 @@ mod tests {
             action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
+            lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
             metrics: PlatformMetrics::default(),
@@ -4802,6 +5020,7 @@ mod tests {
             action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
+            lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
             metrics: PlatformMetrics::default(),
@@ -4836,6 +5055,7 @@ mod tests {
             action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
+            lifecycle_projection: None,
             catalog_summary: None,
             projection: None,
             metrics: PlatformMetrics::default(),
@@ -5124,7 +5344,7 @@ mod tests {
             None,
             None,
             None,
-            ActionProviders::default(),
+            ActionBackends::default(),
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
             None,
         );

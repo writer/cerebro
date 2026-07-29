@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use async_trait::async_trait;
 use cerebro_agent_context::{
@@ -7,13 +7,18 @@ use cerebro_agent_context::{
 };
 use cerebro_organizational_graph::GraphWriteReceipt;
 use cerebro_organizational_model::{AssertionId, EntityId, GraphDelta, TenantId};
-use neo4rs::{BoltList, BoltMap, BoltType, Graph, query};
+use cerebro_security_lifecycle::{
+    IndexedLifecyclePage, KeysetDirection, LifecycleAggregates, LifecycleState, PolicyState,
+    PolicyStateCount, PreparedLifecycleQuery, ProjectedResource, StateCount, SubjectKind,
+    SubjectKindCount,
+};
+use neo4rs::{BoltList, BoltMap, BoltType, Graph, Row, query};
 
 use crate::{
     StoreError,
     postgres::{
         ProjectionAssertion, ProjectionCommit, ProjectionEntity, ProjectionRetraction,
-        projection_commit,
+        lifecycle_finding_projection, lifecycle_projection, projection_commit,
     },
 };
 
@@ -28,7 +33,62 @@ SET entity.entity_kind = row.entity_kind,
     entity.label = row.label,
     entity.properties_json = row.properties_json,
     entity.external_id = row.external_id,
-    entity.graph_revision = $graph_revision
+    entity.graph_revision = $graph_revision,
+    entity.lifecycle_subject_urn = CASE WHEN row.lifecycle_subject THEN row.lifecycle_subject_urn ELSE null END,
+    entity.lifecycle_subject_kind = CASE WHEN row.lifecycle_subject THEN row.lifecycle_subject_kind ELSE null END,
+    entity.lifecycle_observed_state = CASE WHEN row.lifecycle_subject THEN row.lifecycle_observed_state ELSE null END,
+    entity.lifecycle_owner_urn = CASE WHEN row.lifecycle_owner_urn = '' THEN null ELSE row.lifecycle_owner_urn END,
+    entity.lifecycle_observed_at_unix_ms = CASE WHEN row.lifecycle_subject THEN row.lifecycle_observed_at_unix_ms ELSE null END,
+    entity.lifecycle_expires_at_unix_ms = CASE WHEN row.lifecycle_expires_at_unix_ms < 0 THEN null ELSE row.lifecycle_expires_at_unix_ms END,
+    entity.lifecycle_source_runtime_id = CASE WHEN row.lifecycle_projected AND row.lifecycle_source_runtime_id <> '' THEN row.lifecycle_source_runtime_id ELSE null END,
+    entity.lifecycle_source_collection_id = CASE WHEN row.lifecycle_projected AND row.lifecycle_source_collection_id <> '' THEN row.lifecycle_source_collection_id ELSE null END
+FOREACH (_ IN CASE WHEN row.lifecycle_subject THEN [1] ELSE [] END |
+  SET entity:SecurityLifecycleSubject
+)
+FOREACH (_ IN CASE WHEN row.lifecycle_subject THEN [] ELSE [1] END |
+  REMOVE entity:SecurityLifecycleSubject
+)
+FOREACH (_ IN CASE WHEN row.lifecycle_finding THEN [1] ELSE [] END |
+  SET entity:SecurityLifecycleFinding
+)
+FOREACH (_ IN CASE WHEN row.lifecycle_finding THEN [] ELSE [1] END |
+  REMOVE entity:SecurityLifecycleFinding
+)
+SET entity.lifecycle_finding_urn = CASE WHEN row.lifecycle_finding THEN row.lifecycle_finding_urn ELSE null END
+"#;
+
+const REBUILD_LIFECYCLE_ENTITY_QUERY: &str = r#"
+MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id})
+WHERE revision.graph_revision = $graph_revision
+WITH revision
+UNWIND $rows AS row
+MATCH (entity:OrganizationalEntity {
+  tenant_id: $tenant_id,
+  entity_id: row.entity_id
+})
+WHERE coalesce(entity.graph_revision, 0) = row.source_graph_revision
+SET entity.lifecycle_subject_urn = CASE WHEN row.lifecycle_subject THEN row.lifecycle_subject_urn ELSE null END,
+    entity.lifecycle_subject_kind = CASE WHEN row.lifecycle_subject THEN row.lifecycle_subject_kind ELSE null END,
+    entity.lifecycle_observed_state = CASE WHEN row.lifecycle_subject THEN row.lifecycle_observed_state ELSE null END,
+    entity.lifecycle_owner_urn = CASE WHEN row.lifecycle_owner_urn = '' THEN null ELSE row.lifecycle_owner_urn END,
+    entity.lifecycle_observed_at_unix_ms = CASE WHEN row.lifecycle_subject THEN row.lifecycle_observed_at_unix_ms ELSE null END,
+    entity.lifecycle_expires_at_unix_ms = CASE WHEN row.lifecycle_expires_at_unix_ms < 0 THEN null ELSE row.lifecycle_expires_at_unix_ms END,
+    entity.lifecycle_source_runtime_id = CASE WHEN row.lifecycle_projected AND row.lifecycle_source_runtime_id <> '' THEN row.lifecycle_source_runtime_id ELSE null END,
+    entity.lifecycle_source_collection_id = CASE WHEN row.lifecycle_projected AND row.lifecycle_source_collection_id <> '' THEN row.lifecycle_source_collection_id ELSE null END
+FOREACH (_ IN CASE WHEN row.lifecycle_subject THEN [1] ELSE [] END |
+  SET entity:SecurityLifecycleSubject
+)
+FOREACH (_ IN CASE WHEN row.lifecycle_subject THEN [] ELSE [1] END |
+  REMOVE entity:SecurityLifecycleSubject
+)
+FOREACH (_ IN CASE WHEN row.lifecycle_finding THEN [1] ELSE [] END |
+  SET entity:SecurityLifecycleFinding
+)
+FOREACH (_ IN CASE WHEN row.lifecycle_finding THEN [] ELSE [1] END |
+  REMOVE entity:SecurityLifecycleFinding
+)
+SET entity.lifecycle_finding_urn = CASE WHEN row.lifecycle_finding THEN row.lifecycle_finding_urn ELSE null END
+RETURN count(entity) AS rebuilt
 "#;
 
 const ASSERTION_QUERY: &str = r#"
@@ -68,7 +128,35 @@ SET revision.graph_revision = $graph_revision,
     revision.delta_digest = $delta_digest
 "#;
 
+const ADVANCE_LIFECYCLE_PROJECTION_QUERY: &str = r#"
+MATCH (state:SecurityLifecycleProjectionState {tenant_id: $tenant_id})
+WHERE state.ready = true
+  AND state.schema_version = 1
+  AND state.graph_revision IN [$graph_revision, $graph_revision - 1]
+SET state.graph_revision = $graph_revision
+"#;
+
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
+const PROJECTION_BATCH_SIZE: usize = 1_000;
+
+const LIFECYCLE_FILTER: &str = r#"
+(size($subject_kinds) = 0 OR entity.lifecycle_subject_kind IN $subject_kinds)
+AND (size($states) = 0 OR entity.lifecycle_observed_state IN $states)
+AND (size($owner_urns) = 0 OR entity.lifecycle_owner_urn IN $owner_urns)
+AND ($expires_before_unix_ms < 0 OR (
+  entity.lifecycle_expires_at_unix_ms IS NOT NULL
+  AND entity.lifecycle_expires_at_unix_ms < $expires_before_unix_ms
+))
+AND ($locator_urn = '' OR entity.lifecycle_subject_urn = $locator_urn)
+AND (NOT $findings_only OR (
+  entity.lifecycle_observed_state IN ['expiring', 'expired']
+  OR (
+    entity.lifecycle_observed_state = 'active'
+    AND entity.lifecycle_expires_at_unix_ms IS NOT NULL
+    AND entity.lifecycle_expires_at_unix_ms <= $warning_cutoff_unix_ms
+  )
+))
+"#;
 
 const ONE_HOP_BATCH_QUERY: &str = r#"
 UNWIND $root_keys AS root_key
@@ -222,11 +310,26 @@ const NEO4J_SCHEMA: &[&str] = &[
     "CREATE INDEX organizational_entity_external_id IF NOT EXISTS FOR (entity:OrganizationalEntity) ON (entity.tenant_id, entity.external_id)",
     "CREATE INDEX organizational_relation_identity IF NOT EXISTS FOR ()-[assertion:ORGANIZATIONAL_RELATION]-() ON (assertion.tenant_id, assertion.assertion_id)",
     "CREATE INDEX organizational_relation_kind IF NOT EXISTS FOR ()-[assertion:ORGANIZATIONAL_RELATION]-() ON (assertion.tenant_id, assertion.relation)",
+    "CREATE CONSTRAINT security_lifecycle_subject_identity IF NOT EXISTS FOR (entity:SecurityLifecycleSubject) REQUIRE (entity.tenant_id, entity.lifecycle_subject_urn) IS UNIQUE",
+    "CREATE INDEX security_lifecycle_subject_kind IF NOT EXISTS FOR (entity:SecurityLifecycleSubject) ON (entity.tenant_id, entity.lifecycle_subject_kind)",
+    "CREATE INDEX security_lifecycle_observed_state IF NOT EXISTS FOR (entity:SecurityLifecycleSubject) ON (entity.tenant_id, entity.lifecycle_observed_state)",
+    "CREATE INDEX security_lifecycle_owner IF NOT EXISTS FOR (entity:SecurityLifecycleSubject) ON (entity.tenant_id, entity.lifecycle_owner_urn)",
+    "CREATE INDEX security_lifecycle_expiry IF NOT EXISTS FOR (entity:SecurityLifecycleSubject) ON (entity.tenant_id, entity.lifecycle_expires_at_unix_ms)",
+    "CREATE CONSTRAINT security_lifecycle_finding_identity IF NOT EXISTS FOR (finding:SecurityLifecycleFinding) REQUIRE (finding.tenant_id, finding.lifecycle_finding_urn) IS UNIQUE",
+    "CREATE CONSTRAINT security_lifecycle_projection_state IF NOT EXISTS FOR (state:SecurityLifecycleProjectionState) REQUIRE state.tenant_id IS UNIQUE",
 ];
 
 #[derive(Clone)]
 pub struct Neo4jProjector {
     graph: Graph,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedLifecycleFinding {
+    pub resource: ProjectedResource,
+    pub graph_revision: u64,
+    pub source_runtime_id: String,
+    pub source_collection_id: String,
 }
 
 impl Neo4jProjector {
@@ -245,6 +348,721 @@ impl Neo4jProjector {
             self.graph.run(query(statement)).await?;
         }
         Ok(())
+    }
+
+    pub async fn query_lifecycle(
+        &self,
+        tenant_id: &TenantId,
+        prepared: &PreparedLifecycleQuery,
+    ) -> Result<IndexedLifecyclePage, StoreError> {
+        let mut transaction = self.graph.start_txn().await?;
+        let mut revision_rows = transaction
+            .execute(
+                query(
+                    "OPTIONAL MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id}) OPTIONAL MATCH (state:SecurityLifecycleProjectionState {tenant_id: $tenant_id}) RETURN coalesce(revision.graph_revision, 0) AS graph_revision, coalesce(state.ready, false) AS projection_ready, coalesce(state.schema_version, 0) AS schema_version, coalesce(state.graph_revision, -1) AS projection_revision",
+                )
+                .param("tenant_id", tenant_id.as_str()),
+            )
+            .await?;
+        let revision_row = revision_rows
+            .next(transaction.handle())
+            .await?
+            .ok_or_else(|| {
+                StoreError::Conflict(
+                    "lifecycle projection revision query returned no row".to_owned(),
+                )
+            })?;
+        drop(revision_rows);
+        let start_graph_revision = u64::try_from(
+            revision_row
+                .get::<i64>("graph_revision")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?,
+        )
+        .map_err(|_| StoreError::Conflict("lifecycle graph revision is negative".to_owned()))?;
+        let projection_ready: bool = revision_row
+            .get("projection_ready")
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        let schema_version: i64 = revision_row
+            .get("schema_version")
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        let projection_revision: i64 = revision_row
+            .get("projection_revision")
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        if !projection_ready
+            || schema_version != 1
+            || projection_revision < 0
+            || u64::try_from(projection_revision).ok() != Some(start_graph_revision)
+        {
+            return Err(StoreError::LifecycleProjectionUnavailable {
+                graph_revision: start_graph_revision,
+                projection_revision: projection_ready
+                    .then(|| u64::try_from(projection_revision).ok())
+                    .flatten(),
+            });
+        }
+
+        let subject_kinds = prepared
+            .subject_kinds()
+            .iter()
+            .map(|kind| kind.as_str().to_owned())
+            .collect::<Vec<_>>();
+        let states = prepared
+            .states()
+            .iter()
+            .map(|state| cerebro_security_lifecycle::lifecycle_state_name(*state).to_owned())
+            .collect::<Vec<_>>();
+        let aggregate_statement = format!(
+            r#"
+MATCH (entity:SecurityLifecycleSubject {{tenant_id: $tenant_id}})
+WHERE {LIFECYCLE_FILTER}
+RETURN count(entity) AS matched_records,
+       coalesce(sum(CASE WHEN entity.lifecycle_subject_kind = 'credential' THEN 1 ELSE 0 END), 0) AS credential_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_subject_kind = 'certificate' THEN 1 ELSE 0 END), 0) AS certificate_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'active' THEN 1 ELSE 0 END), 0) AS active_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'expiring' THEN 1 ELSE 0 END), 0) AS expiring_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'expired' THEN 1 ELSE 0 END), 0) AS expired_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'rotated' THEN 1 ELSE 0 END), 0) AS rotated_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'revoked' THEN 1 ELSE 0 END), 0) AS revoked_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'inactive' THEN 1 ELSE 0 END), 0) AS inactive_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'unknown' THEN 1 ELSE 0 END), 0) AS unknown_count,
+       coalesce(sum(CASE WHEN (
+         entity.lifecycle_observed_state IN ['rotated', 'revoked', 'inactive']
+         OR (
+           entity.lifecycle_observed_state = 'active'
+           AND entity.lifecycle_expires_at_unix_ms > $warning_cutoff_unix_ms
+         )
+       ) THEN 1 ELSE 0 END), 0) AS policy_compliant_count,
+       coalesce(sum(CASE WHEN (
+         entity.lifecycle_observed_state = 'expiring'
+         OR (
+           entity.lifecycle_observed_state = 'active'
+           AND entity.lifecycle_expires_at_unix_ms > $as_of_unix_ms
+           AND entity.lifecycle_expires_at_unix_ms <= $warning_cutoff_unix_ms
+         )
+       ) THEN 1 ELSE 0 END), 0) AS policy_expiring_count,
+       coalesce(sum(CASE WHEN (
+         entity.lifecycle_observed_state = 'expired'
+         OR (
+           entity.lifecycle_observed_state = 'active'
+           AND entity.lifecycle_expires_at_unix_ms <= $as_of_unix_ms
+         )
+       ) THEN 1 ELSE 0 END), 0) AS policy_expired_count,
+       coalesce(sum(CASE WHEN (
+         entity.lifecycle_observed_state = 'unknown'
+         OR (
+           entity.lifecycle_observed_state = 'active'
+           AND entity.lifecycle_expires_at_unix_ms IS NULL
+         )
+       ) THEN 1 ELSE 0 END), 0) AS policy_unknown_count,
+       coalesce(sum(CASE WHEN (
+         entity.lifecycle_observed_state IN ['expiring', 'expired']
+         OR (
+           entity.lifecycle_observed_state = 'active'
+           AND entity.lifecycle_expires_at_unix_ms IS NOT NULL
+           AND entity.lifecycle_expires_at_unix_ms <= $warning_cutoff_unix_ms
+         )
+       ) THEN 1 ELSE 0 END), 0) AS matched_findings,
+       coalesce(min(entity.lifecycle_observed_at_unix_ms), -1) AS oldest_observed_at,
+       coalesce(max(entity.lifecycle_observed_at_unix_ms), -1) AS newest_observed_at
+"#
+        );
+        let mut aggregate_rows = transaction
+            .execute(
+                query(&aggregate_statement)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("subject_kinds", string_list(&subject_kinds))
+                    .param("states", string_list(&states))
+                    .param("owner_urns", string_list(prepared.owner_urns()))
+                    .param(
+                        "expires_before_unix_ms",
+                        prepared.expires_before_unix_ms().unwrap_or(-1),
+                    )
+                    .param("locator_urn", prepared.locator_urn().unwrap_or(""))
+                    .param("findings_only", prepared.findings_only())
+                    .param("as_of_unix_ms", prepared.effective_as_of_unix_ms())
+                    .param("warning_cutoff_unix_ms", prepared.warning_cutoff_unix_ms()),
+            )
+            .await?;
+        let aggregate = aggregate_rows
+            .next(transaction.handle())
+            .await?
+            .ok_or_else(|| {
+                StoreError::Conflict("lifecycle aggregate query returned no row".to_owned())
+            })?;
+        drop(aggregate_rows);
+
+        let mut lifecycle_count_rows = transaction
+            .execute(
+                query(
+                    "MATCH (entity:SecurityLifecycleSubject {tenant_id: $tenant_id}) RETURN count(entity) AS lifecycle_entities",
+                )
+                .param("tenant_id", tenant_id.as_str()),
+            )
+            .await?;
+        let lifecycle_count_row = lifecycle_count_rows
+            .next(transaction.handle())
+            .await?
+            .ok_or_else(|| {
+                StoreError::Conflict("lifecycle entity count query returned no row".to_owned())
+            })?;
+        drop(lifecycle_count_rows);
+        let lifecycle_entities = row_u64(&lifecycle_count_row, "lifecycle_entities")?;
+
+        let keyset_predicate = match (
+            prepared.direction(),
+            prepared.cursor_subject_urn().is_some(),
+        ) {
+            (KeysetDirection::Forward, true) => {
+                "AND entity.lifecycle_subject_urn > $cursor_subject_urn"
+            }
+            (KeysetDirection::Backward, true) => {
+                "AND entity.lifecycle_subject_urn < $cursor_subject_urn"
+            }
+            _ => "",
+        };
+        let order = match prepared.direction() {
+            KeysetDirection::Forward => "ASC",
+            KeysetDirection::Backward => "DESC",
+        };
+        let page_statement = format!(
+            r#"
+MATCH (entity:SecurityLifecycleSubject {{tenant_id: $tenant_id}})
+WHERE {LIFECYCLE_FILTER}
+{keyset_predicate}
+RETURN entity.lifecycle_subject_urn AS subject_urn,
+       entity.label AS label,
+       entity.properties_json AS properties_json,
+       entity.lifecycle_source_runtime_id AS source_runtime_id,
+       entity.lifecycle_source_collection_id AS source_collection_id
+ORDER BY entity.lifecycle_subject_urn {order}
+LIMIT $row_limit
+"#
+        );
+        let mut page_rows = transaction
+            .execute(
+                query(&page_statement)
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("subject_kinds", string_list(&subject_kinds))
+                    .param("states", string_list(&states))
+                    .param("owner_urns", string_list(prepared.owner_urns()))
+                    .param(
+                        "expires_before_unix_ms",
+                        prepared.expires_before_unix_ms().unwrap_or(-1),
+                    )
+                    .param("locator_urn", prepared.locator_urn().unwrap_or(""))
+                    .param("findings_only", prepared.findings_only())
+                    .param("as_of_unix_ms", prepared.effective_as_of_unix_ms())
+                    .param("warning_cutoff_unix_ms", prepared.warning_cutoff_unix_ms())
+                    .param(
+                        "cursor_subject_urn",
+                        prepared.cursor_subject_urn().unwrap_or(""),
+                    )
+                    .param("row_limit", row_limit(prepared.limit())),
+            )
+            .await?;
+        let mut resources = Vec::with_capacity(prepared.limit().saturating_add(1));
+        while let Some(row) = page_rows.next(transaction.handle()).await? {
+            let subject_urn: String = row
+                .get("subject_urn")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+            let label: String = row
+                .get("label")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+            let properties_json: String = row
+                .get("properties_json")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+            let mut properties: BTreeMap<String, String> = serde_json::from_str(&properties_json)?;
+            if let Some(source_runtime_id) = row
+                .get::<Option<String>>("source_runtime_id")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?
+            {
+                properties.insert("source_runtime_id".to_owned(), source_runtime_id);
+            }
+            if let Some(source_collection_id) = row
+                .get::<Option<String>>("source_collection_id")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?
+            {
+                properties.insert("source_collection_id".to_owned(), source_collection_id);
+            }
+            resources.push(ProjectedResource {
+                agent_key: subject_urn,
+                label,
+                properties,
+            });
+        }
+        drop(page_rows);
+        let mut end_revision_rows = transaction
+            .execute(
+                query(
+                    "OPTIONAL MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id}) OPTIONAL MATCH (state:SecurityLifecycleProjectionState {tenant_id: $tenant_id}) RETURN coalesce(revision.graph_revision, 0) AS graph_revision, coalesce(state.ready, false) AS projection_ready, coalesce(state.schema_version, 0) AS schema_version, coalesce(state.graph_revision, -1) AS projection_revision",
+                )
+                .param("tenant_id", tenant_id.as_str()),
+            )
+            .await?;
+        let end_revision_row = end_revision_rows
+            .next(transaction.handle())
+            .await?
+            .ok_or_else(|| {
+                StoreError::Conflict(
+                    "lifecycle projection end revision query returned no row".to_owned(),
+                )
+            })?;
+        let graph_revision = u64::try_from(
+            end_revision_row
+                .get::<i64>("graph_revision")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?,
+        )
+        .map_err(|_| StoreError::Conflict("lifecycle graph revision is negative".to_owned()))?;
+        let end_projection_ready: bool = end_revision_row
+            .get("projection_ready")
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        let end_schema_version: i64 = end_revision_row
+            .get("schema_version")
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        let end_projection_revision: i64 = end_revision_row
+            .get("projection_revision")
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        let projection_changed = !end_projection_ready
+            || end_schema_version != 1
+            || u64::try_from(end_projection_revision).ok() != Some(graph_revision);
+        drop(end_revision_rows);
+        transaction.commit().await?;
+
+        let extra_row = resources.len() > prepared.limit();
+        resources.truncate(prepared.limit());
+        let cursor_present = prepared.cursor_subject_urn().is_some();
+        let (has_previous, has_next) = match prepared.direction() {
+            KeysetDirection::Forward => (cursor_present, extra_row),
+            KeysetDirection::Backward => {
+                resources.reverse();
+                (extra_row, cursor_present)
+            }
+        };
+        let oldest_observed_at = optional_timestamp(&aggregate, "oldest_observed_at")?;
+        let newest_observed_at = optional_timestamp(&aggregate, "newest_observed_at")?;
+        Ok(IndexedLifecyclePage {
+            resources,
+            aggregates: LifecycleAggregates {
+                counts_are_exact: start_graph_revision == graph_revision
+                    && graph_revision == prepared.graph_revision()
+                    && !projection_changed,
+                matched_records: row_u64(&aggregate, "matched_records")?,
+                matched_findings: row_u64(&aggregate, "matched_findings")?,
+                subject_kind_counts: vec![
+                    SubjectKindCount {
+                        subject_kind: SubjectKind::Credential,
+                        count: row_u64(&aggregate, "credential_count")?,
+                    },
+                    SubjectKindCount {
+                        subject_kind: SubjectKind::Certificate,
+                        count: row_u64(&aggregate, "certificate_count")?,
+                    },
+                ],
+                state_counts: [
+                    (LifecycleState::Active, "active_count"),
+                    (LifecycleState::Expiring, "expiring_count"),
+                    (LifecycleState::Expired, "expired_count"),
+                    (LifecycleState::Rotated, "rotated_count"),
+                    (LifecycleState::Revoked, "revoked_count"),
+                    (LifecycleState::Inactive, "inactive_count"),
+                    (LifecycleState::Unknown, "unknown_count"),
+                ]
+                .into_iter()
+                .map(|(state, field)| {
+                    Ok(StateCount {
+                        state,
+                        count: row_u64(&aggregate, field)?,
+                    })
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?,
+                policy_state_counts: [
+                    (PolicyState::Compliant, "policy_compliant_count"),
+                    (PolicyState::Expiring, "policy_expiring_count"),
+                    (PolicyState::Expired, "policy_expired_count"),
+                    (PolicyState::Unknown, "policy_unknown_count"),
+                ]
+                .into_iter()
+                .map(|(policy_state, field)| {
+                    Ok(PolicyStateCount {
+                        policy_state,
+                        count: row_u64(&aggregate, field)?,
+                    })
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?,
+            },
+            lifecycle_entities,
+            oldest_observed_at,
+            newest_observed_at,
+            has_previous,
+            has_next,
+            graph_revision,
+            graph_changed: start_graph_revision != graph_revision || projection_changed,
+        })
+    }
+
+    pub async fn rebuild_lifecycle_projection(
+        &self,
+        tenant_id: &TenantId,
+        batch_size: usize,
+    ) -> Result<usize, StoreError> {
+        let batch_size = batch_size.clamp(1, 1_000);
+        let start_revision = self
+            .revision(tenant_id)
+            .await
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        let graph_revision = i64::try_from(start_revision)
+            .map_err(|_| StoreError::Conflict("graph revision overflow".to_owned()))?;
+        let mut invalidate_transaction = self.graph.start_txn().await?;
+        let mut invalidation_rows = invalidate_transaction
+            .execute(
+                query(
+                    "MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id}) WHERE revision.graph_revision = $graph_revision MERGE (state:SecurityLifecycleProjectionState {tenant_id: $tenant_id}) SET state.schema_version = 1, state.graph_revision = $graph_revision, state.ready = false RETURN state.ready AS ready",
+                )
+                .param("tenant_id", tenant_id.as_str())
+                .param("graph_revision", graph_revision),
+            )
+            .await?;
+        let invalidated = invalidation_rows
+            .next(invalidate_transaction.handle())
+            .await?
+            .map(|row| {
+                row.get::<bool>("ready")
+                    .map(|ready| !ready)
+                    .map_err(|error| StoreError::Conflict(error.to_string()))
+            })
+            .transpose()?
+            .unwrap_or(false);
+        drop(invalidation_rows);
+        if !invalidated {
+            return Err(StoreError::Conflict(
+                "graph revision changed before lifecycle projection rebuild".to_owned(),
+            ));
+        }
+        invalidate_transaction.commit().await?;
+        let mut after_entity_id = String::new();
+        let mut rebuilt = 0_usize;
+        loop {
+            let mut stream = self
+                .graph
+                .execute(
+                    query(
+                        "MATCH (entity:OrganizationalEntity {tenant_id: $tenant_id}) WHERE entity.entity_kind IN ['resource', 'finding'] AND entity.entity_id > $after_entity_id RETURN entity.entity_id AS entity_id, entity.entity_kind AS entity_kind, entity.authority_json AS authority_json, entity.label AS label, entity.properties_json AS properties_json, entity.external_id AS external_id, coalesce(entity.graph_revision, 0) AS source_graph_revision ORDER BY entity.entity_id LIMIT $limit",
+                    )
+                    .param("tenant_id", tenant_id.as_str())
+                    .param("after_entity_id", after_entity_id.clone())
+                    .param("limit", i64::try_from(batch_size).unwrap_or(1_000)),
+                )
+                .await?;
+            let mut entities = Vec::with_capacity(batch_size);
+            while let Some(row) = stream.next().await? {
+                let entity_id: String = row
+                    .get("entity_id")
+                    .map_err(|error| StoreError::Conflict(error.to_string()))?;
+                after_entity_id = entity_id.clone();
+                entities.push((
+                    ProjectionEntity {
+                        entity_id,
+                        entity_kind: row
+                            .get("entity_kind")
+                            .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                        authority_json: row
+                            .get("authority_json")
+                            .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                        label: row
+                            .get("label")
+                            .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                        properties_json: row
+                            .get("properties_json")
+                            .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                        external_id: Some(
+                            row.get("external_id")
+                                .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                        ),
+                        lifecycle: None,
+                        lifecycle_finding_urn: None,
+                        lifecycle_source_runtime_id: None,
+                        lifecycle_source_collection_id: None,
+                    },
+                    row.get::<i64>("source_graph_revision")
+                        .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                ));
+            }
+            if entities.is_empty() {
+                break;
+            }
+            let row_count = entities.len();
+            let entity_rows = entities
+                .iter()
+                .map(|(entity, source_graph_revision)| {
+                    let mut row = refreshed_entity_row(tenant_id, entity)?;
+                    row.put(
+                        "source_graph_revision".into(),
+                        (*source_graph_revision).into(),
+                    );
+                    Ok(row)
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?;
+            let mut transaction = self.graph.start_txn().await?;
+            let mut rebuilt_rows = transaction
+                .execute(
+                    query(REBUILD_LIFECYCLE_ENTITY_QUERY)
+                        .param("tenant_id", tenant_id.as_str())
+                        .param("graph_revision", graph_revision)
+                        .param("rows", rows(entity_rows)),
+                )
+                .await?;
+            let rebuilt_batch = rebuilt_rows
+                .next(transaction.handle())
+                .await?
+                .map(|row| {
+                    row.get::<i64>("rebuilt")
+                        .map_err(|error| StoreError::Conflict(error.to_string()))
+                })
+                .transpose()?
+                .and_then(|count| usize::try_from(count).ok())
+                .unwrap_or(0);
+            drop(rebuilt_rows);
+            if rebuilt_batch != row_count {
+                transaction.rollback().await?;
+                return Err(StoreError::Conflict(
+                    "graph revision or entity changed during lifecycle projection rebuild"
+                        .to_owned(),
+                ));
+            }
+            transaction.commit().await?;
+            rebuilt = rebuilt.saturating_add(row_count);
+            if row_count < batch_size {
+                break;
+            }
+        }
+        let end_revision = self
+            .revision(tenant_id)
+            .await
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        if start_revision != end_revision {
+            return Err(StoreError::Conflict(
+                "graph revision changed during lifecycle projection rebuild".to_owned(),
+            ));
+        }
+        let mut transaction = self.graph.start_txn().await?;
+        let mut readiness_rows = transaction
+            .execute(
+                query(
+                    "MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id}) WHERE revision.graph_revision = $graph_revision MERGE (state:SecurityLifecycleProjectionState {tenant_id: $tenant_id}) SET state.schema_version = 1, state.graph_revision = $graph_revision, state.ready = true RETURN state.graph_revision AS graph_revision",
+                )
+                .param("tenant_id", tenant_id.as_str())
+                .param("graph_revision", graph_revision),
+            )
+            .await?;
+        let readiness_set = readiness_rows.next(transaction.handle()).await?.is_some();
+        drop(readiness_rows);
+        if !readiness_set {
+            return Err(StoreError::Conflict(
+                "graph revision changed before lifecycle projection readiness".to_owned(),
+            ));
+        }
+        transaction.commit().await?;
+        let verified_revision = self
+            .revision(tenant_id)
+            .await
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        if verified_revision != start_revision {
+            return Err(StoreError::Conflict(
+                "graph revision changed while lifecycle projection became ready".to_owned(),
+            ));
+        }
+        Ok(rebuilt)
+    }
+
+    pub async fn resolve_lifecycle_finding(
+        &self,
+        tenant_id: &TenantId,
+        finding_urn: &str,
+    ) -> Result<Option<ResolvedLifecycleFinding>, StoreError> {
+        let expected_prefix =
+            cerebro_security_lifecycle::canonical_finding_urn_prefix(tenant_id.as_str())
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        if finding_urn.len() > 4_096 || !finding_urn.starts_with(&expected_prefix) {
+            return Err(StoreError::Conflict(
+                "invalid tenant-scoped lifecycle finding URN".to_owned(),
+            ));
+        }
+        let mut transaction = self.graph.start_txn().await?;
+        let mut start_rows = transaction
+            .execute(
+                query(
+                    "OPTIONAL MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id}) OPTIONAL MATCH (state:SecurityLifecycleProjectionState {tenant_id: $tenant_id}) RETURN coalesce(revision.graph_revision, 0) AS graph_revision, coalesce(state.ready, false) AS projection_ready, coalesce(state.schema_version, 0) AS schema_version, coalesce(state.graph_revision, -1) AS projection_revision",
+                )
+                .param("tenant_id", tenant_id.as_str()),
+            )
+            .await?;
+        let start = start_rows
+            .next(transaction.handle())
+            .await?
+            .ok_or_else(|| {
+                StoreError::Conflict("lifecycle finding revision query returned no row".to_owned())
+            })?;
+        drop(start_rows);
+        let graph_revision = row_u64(&start, "graph_revision")?;
+        let projection_ready: bool = start
+            .get("projection_ready")
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        let schema_version: i64 = start
+            .get("schema_version")
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        let projection_revision: i64 = start
+            .get("projection_revision")
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        if !projection_ready
+            || schema_version != 1
+            || u64::try_from(projection_revision).ok() != Some(graph_revision)
+        {
+            return Err(StoreError::LifecycleProjectionUnavailable {
+                graph_revision,
+                projection_revision: projection_ready
+                    .then(|| u64::try_from(projection_revision).ok())
+                    .flatten(),
+            });
+        }
+        let mut finding_rows = transaction
+            .execute(
+                query(
+                    "MATCH (finding:SecurityLifecycleFinding {tenant_id: $tenant_id, lifecycle_finding_urn: $finding_urn})-[assertion:ORGANIZATIONAL_RELATION]->(subject:SecurityLifecycleSubject {tenant_id: $tenant_id}) WHERE assertion.tenant_id = $tenant_id AND assertion.relation = 'affects' AND assertion.observed_at_unix_ms = subject.lifecycle_observed_at_unix_ms RETURN finding.properties_json AS finding_properties_json, finding.lifecycle_source_runtime_id AS finding_source_runtime_id, assertion.source_runtime_id AS assertion_source_runtime_id, subject.lifecycle_source_runtime_id AS subject_source_runtime_id, finding.lifecycle_source_collection_id AS finding_source_collection_id, subject.lifecycle_source_collection_id AS subject_source_collection_id, subject.lifecycle_subject_urn AS subject_urn, subject.label AS label, subject.properties_json AS properties_json ORDER BY assertion.assertion_id LIMIT 2",
+                )
+                .param("tenant_id", tenant_id.as_str())
+                .param("finding_urn", finding_urn),
+            )
+            .await?;
+        let mut resolved = Vec::with_capacity(2);
+        while let Some(row) = finding_rows.next(transaction.handle()).await? {
+            let finding_properties_json: String = row
+                .get("finding_properties_json")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+            let finding_properties: std::collections::BTreeMap<String, String> =
+                serde_json::from_str(&finding_properties_json)?;
+            if finding_properties.get("resource_urn").map(String::as_str) != Some(finding_urn)
+                || finding_properties.get("policy_id").map(String::as_str)
+                    != Some(cerebro_security_lifecycle::EXPIRY_POLICY_ID)
+            {
+                return Err(StoreError::Conflict(
+                    "lifecycle finding projection does not match its durable identity".to_owned(),
+                ));
+            }
+            let properties_json: String = row
+                .get("properties_json")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+            let source_runtime_id: String = row
+                .get("assertion_source_runtime_id")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+            if source_runtime_id.trim().is_empty() {
+                return Err(StoreError::Conflict(
+                    "lifecycle finding has no source runtime provenance".to_owned(),
+                ));
+            }
+            for field in ["finding_source_runtime_id", "subject_source_runtime_id"] {
+                let projected: Option<String> = row
+                    .get(field)
+                    .map_err(|error| StoreError::Conflict(error.to_string()))?;
+                if projected
+                    .as_deref()
+                    .is_some_and(|projected| projected != source_runtime_id)
+                {
+                    return Err(StoreError::Conflict(format!(
+                        "lifecycle finding {field} does not match assertion provenance"
+                    )));
+                }
+            }
+            let finding_source_collection_id: Option<String> = row
+                .get("finding_source_collection_id")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+            let subject_source_collection_id: Option<String> = row
+                .get("subject_source_collection_id")
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+            if finding_source_collection_id.is_some()
+                && subject_source_collection_id.is_some()
+                && finding_source_collection_id != subject_source_collection_id
+            {
+                return Err(StoreError::Conflict(
+                    "lifecycle finding source collection provenance does not match its subject"
+                        .to_owned(),
+                ));
+            }
+            let source_collection_id = subject_source_collection_id
+                .or(finding_source_collection_id)
+                .unwrap_or_default();
+            let mut properties: BTreeMap<String, String> = serde_json::from_str(&properties_json)?;
+            properties.insert("source_runtime_id".to_owned(), source_runtime_id.clone());
+            if !source_collection_id.is_empty() {
+                properties.insert(
+                    "source_collection_id".to_owned(),
+                    source_collection_id.clone(),
+                );
+            }
+            resolved.push((
+                ProjectedResource {
+                    agent_key: row
+                        .get("subject_urn")
+                        .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                    label: row
+                        .get("label")
+                        .map_err(|error| StoreError::Conflict(error.to_string()))?,
+                    properties,
+                },
+                source_runtime_id,
+                source_collection_id,
+            ));
+        }
+        drop(finding_rows);
+        if resolved.len() > 1 {
+            return Err(StoreError::Conflict(
+                "lifecycle finding resolves to multiple subjects".to_owned(),
+            ));
+        }
+        let mut end_rows = transaction
+            .execute(
+                query(
+                    "OPTIONAL MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id}) OPTIONAL MATCH (state:SecurityLifecycleProjectionState {tenant_id: $tenant_id}) RETURN coalesce(revision.graph_revision, 0) AS graph_revision, coalesce(state.ready, false) AS projection_ready, coalesce(state.schema_version, 0) AS schema_version, coalesce(state.graph_revision, -1) AS projection_revision",
+                )
+                .param("tenant_id", tenant_id.as_str()),
+            )
+            .await?;
+        let end = end_rows.next(transaction.handle()).await?.ok_or_else(|| {
+            StoreError::Conflict("lifecycle finding end revision query returned no row".to_owned())
+        })?;
+        let end_revision = row_u64(&end, "graph_revision")?;
+        let end_ready: bool = end
+            .get("projection_ready")
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        let end_schema: i64 = end
+            .get("schema_version")
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        let end_projection_revision: i64 = end
+            .get("projection_revision")
+            .map_err(|error| StoreError::Conflict(error.to_string()))?;
+        drop(end_rows);
+        transaction.commit().await?;
+        if end_revision != graph_revision
+            || !end_ready
+            || end_schema != 1
+            || u64::try_from(end_projection_revision).ok() != Some(end_revision)
+        {
+            return Err(StoreError::LifecycleProjectionUnavailable {
+                graph_revision: end_revision,
+                projection_revision: end_ready
+                    .then(|| u64::try_from(end_projection_revision).ok())
+                    .flatten(),
+            });
+        }
+        Ok(resolved
+            .pop()
+            .map(
+                |(resource, source_runtime_id, source_collection_id)| ResolvedLifecycleFinding {
+                    resource,
+                    graph_revision,
+                    source_runtime_id,
+                    source_collection_id,
+                },
+            ))
     }
 
     pub async fn project(
@@ -267,34 +1085,74 @@ impl Neo4jProjector {
         let mut transaction = self.graph.start_txn().await?;
         let graph_revision = i64::try_from(commit.graph_revision)
             .map_err(|_| StoreError::Conflict("graph revision overflow".to_owned()))?;
+        let mut lifecycle_runtime_by_entity = BTreeMap::<&str, &str>::new();
+        for assertion in commit
+            .assertions
+            .iter()
+            .filter(|assertion| assertion.relation == "affects")
+        {
+            for entity_id in [
+                assertion.from_entity_id.as_str(),
+                assertion.to_entity_id.as_str(),
+            ] {
+                if let Some(existing) = lifecycle_runtime_by_entity
+                    .insert(entity_id, assertion.source_runtime_id.as_str())
+                    && existing != assertion.source_runtime_id
+                {
+                    return Err(StoreError::Conflict(format!(
+                        "lifecycle entity {entity_id} has ambiguous source runtime provenance"
+                    )));
+                }
+            }
+        }
         if !commit.entities.is_empty() {
-            transaction
-                .run(
-                    query(ENTITY_QUERY)
-                        .param("tenant_id", commit.tenant_id.clone())
-                        .param("graph_revision", graph_revision)
-                        .param("rows", rows(commit.entities.iter().map(entity_row))),
-                )
-                .await?;
+            let tenant_id = TenantId::parse(commit.tenant_id.clone())
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
+            for batch in commit.entities.chunks(PROJECTION_BATCH_SIZE) {
+                let entity_rows = batch
+                    .iter()
+                    .map(|entity| {
+                        let mut entity = entity.clone();
+                        if entity.lifecycle_source_runtime_id.is_none() {
+                            entity.lifecycle_source_runtime_id = lifecycle_runtime_by_entity
+                                .get(entity.entity_id.as_str())
+                                .map(|runtime_id| (*runtime_id).to_owned());
+                        }
+                        refreshed_entity_row(&tenant_id, &entity)
+                    })
+                    .collect::<Result<Vec<_>, StoreError>>()?;
+                transaction
+                    .run(
+                        query(ENTITY_QUERY)
+                            .param("tenant_id", commit.tenant_id.clone())
+                            .param("graph_revision", graph_revision)
+                            .param("rows", rows(entity_rows)),
+                    )
+                    .await?;
+            }
         }
         if !commit.assertions.is_empty() {
-            transaction
-                .run(
-                    query(ASSERTION_QUERY)
-                        .param("tenant_id", commit.tenant_id.clone())
-                        .param("graph_revision", graph_revision)
-                        .param("rows", rows(commit.assertions.iter().map(assertion_row))),
-                )
-                .await?;
+            for batch in commit.assertions.chunks(PROJECTION_BATCH_SIZE) {
+                transaction
+                    .run(
+                        query(ASSERTION_QUERY)
+                            .param("tenant_id", commit.tenant_id.clone())
+                            .param("graph_revision", graph_revision)
+                            .param("rows", rows(batch.iter().map(assertion_row))),
+                    )
+                    .await?;
+            }
         }
         if !commit.retractions.is_empty() {
-            transaction
-                .run(
-                    query(RETRACTION_QUERY)
-                        .param("tenant_id", commit.tenant_id.clone())
-                        .param("rows", rows(commit.retractions.iter().map(retraction_row))),
-                )
-                .await?;
+            for batch in commit.retractions.chunks(PROJECTION_BATCH_SIZE) {
+                transaction
+                    .run(
+                        query(RETRACTION_QUERY)
+                            .param("tenant_id", commit.tenant_id.clone())
+                            .param("rows", rows(batch.iter().map(retraction_row))),
+                    )
+                    .await?;
+            }
         }
         transaction
             .run(
@@ -302,6 +1160,13 @@ impl Neo4jProjector {
                     .param("tenant_id", commit.tenant_id.clone())
                     .param("graph_revision", graph_revision)
                     .param("delta_digest", commit.delta_digest.clone()),
+            )
+            .await?;
+        transaction
+            .run(
+                query(ADVANCE_LIFECYCLE_PROJECTION_QUERY)
+                    .param("tenant_id", commit.tenant_id.clone())
+                    .param("graph_revision", graph_revision),
             )
             .await?;
         transaction.commit().await?;
@@ -830,6 +1695,24 @@ fn row_limit(limit: usize) -> i64 {
     i64::try_from(limit.saturating_add(1)).unwrap_or(i64::MAX)
 }
 
+fn row_u64(row: &Row, field: &str) -> Result<u64, StoreError> {
+    let value: i64 = row
+        .get(field)
+        .map_err(|error| StoreError::Conflict(error.to_string()))?;
+    u64::try_from(value)
+        .map_err(|_| StoreError::Conflict(format!("{field} is negative or exceeds u64")))
+}
+
+fn optional_timestamp(row: &Row, field: &str) -> Result<Option<String>, StoreError> {
+    let value: i64 = row
+        .get(field)
+        .map_err(|error| StoreError::Conflict(error.to_string()))?;
+    (value >= 0)
+        .then(|| cerebro_security_lifecycle::rfc3339_from_timestamp_millis(value))
+        .transpose()
+        .map_err(|error| StoreError::Conflict(format!("invalid {field}: {error}")))
+}
+
 fn truncate_to_limit<T>(values: &mut Vec<T>, limit: usize) -> bool {
     let truncated = values.len() > limit;
     values.truncate(limit);
@@ -928,6 +1811,7 @@ fn string_list(values: &[String]) -> BoltType {
 }
 
 fn entity_row(entity: &ProjectionEntity) -> BoltMap {
+    let lifecycle = entity.lifecycle.as_ref();
     map([
         ("entity_id", entity.entity_id.clone().into()),
         ("entity_kind", entity.entity_kind.clone().into()),
@@ -938,7 +1822,108 @@ fn entity_row(entity: &ProjectionEntity) -> BoltMap {
             "external_id",
             entity.external_id.clone().unwrap_or_default().into(),
         ),
+        ("lifecycle_subject", lifecycle.is_some().into()),
+        (
+            "lifecycle_subject_urn",
+            lifecycle
+                .map(|value| value.subject_urn.clone())
+                .unwrap_or_default()
+                .into(),
+        ),
+        (
+            "lifecycle_subject_kind",
+            lifecycle
+                .map(|value| value.subject_kind.clone())
+                .unwrap_or_default()
+                .into(),
+        ),
+        (
+            "lifecycle_observed_state",
+            lifecycle
+                .map(|value| value.observed_state.clone())
+                .unwrap_or_default()
+                .into(),
+        ),
+        (
+            "lifecycle_owner_urn",
+            lifecycle
+                .and_then(|value| value.owner_urn.clone())
+                .unwrap_or_default()
+                .into(),
+        ),
+        (
+            "lifecycle_observed_at_unix_ms",
+            lifecycle
+                .map(|value| value.observed_at_unix_ms)
+                .unwrap_or(-1)
+                .into(),
+        ),
+        (
+            "lifecycle_expires_at_unix_ms",
+            lifecycle
+                .and_then(|value| value.expires_at_unix_ms)
+                .unwrap_or(-1)
+                .into(),
+        ),
+        (
+            "lifecycle_finding",
+            entity.lifecycle_finding_urn.is_some().into(),
+        ),
+        (
+            "lifecycle_finding_urn",
+            entity
+                .lifecycle_finding_urn
+                .clone()
+                .unwrap_or_default()
+                .into(),
+        ),
+        (
+            "lifecycle_projected",
+            (entity.lifecycle.is_some() || entity.lifecycle_finding_urn.is_some()).into(),
+        ),
+        (
+            "lifecycle_source_runtime_id",
+            entity
+                .lifecycle_source_runtime_id
+                .clone()
+                .unwrap_or_default()
+                .into(),
+        ),
+        (
+            "lifecycle_source_collection_id",
+            entity
+                .lifecycle_source_collection_id
+                .clone()
+                .unwrap_or_default()
+                .into(),
+        ),
     ])
+}
+
+fn refreshed_entity_row(
+    tenant_id: &TenantId,
+    entity: &ProjectionEntity,
+) -> Result<BoltMap, StoreError> {
+    let properties = serde_json::from_str(&entity.properties_json)?;
+    let mut refreshed = entity.clone();
+    let agent_key = refreshed
+        .external_id
+        .as_deref()
+        .unwrap_or(refreshed.entity_id.as_str());
+    refreshed.lifecycle =
+        lifecycle_projection(tenant_id, agent_key, &refreshed.label, &properties)?;
+    refreshed.lifecycle_finding_urn =
+        lifecycle_finding_projection(tenant_id, &refreshed.entity_kind, &properties)?;
+    if refreshed.lifecycle.is_some() || refreshed.lifecycle_finding_urn.is_some() {
+        refreshed.lifecycle_source_runtime_id = refreshed
+            .lifecycle_source_runtime_id
+            .or_else(|| properties.get("source_runtime_id").cloned());
+        refreshed.lifecycle_source_collection_id = properties.get("source_collection_id").cloned();
+    } else {
+        refreshed.lifecycle_source_runtime_id = None;
+        refreshed.lifecycle_source_collection_id = None;
+    }
+    Ok(entity_row(&refreshed))
 }
 
 fn assertion_row(assertion: &ProjectionAssertion) -> BoltMap {
@@ -971,6 +1956,8 @@ fn map<const N: usize>(values: [(&str, BoltType); N]) -> BoltMap {
 
 #[cfg(test)]
 mod tests {
+    use std::{env, error::Error};
+
     use cerebro_agent_context::{FactQuery, QueryAbsentEdge, QueryDirection, QueryEdge, QueryNode};
 
     use super::*;
@@ -986,12 +1973,146 @@ mod tests {
             assert!(query.contains("$graph_revision"));
             assert!(!query.contains("row.graph_revision"));
         }
+        assert!(
+            REBUILD_LIFECYCLE_ENTITY_QUERY
+                .contains("WHERE revision.graph_revision = $graph_revision")
+        );
+        assert!(
+            REBUILD_LIFECYCLE_ENTITY_QUERY
+                .contains("coalesce(entity.graph_revision, 0) = row.source_graph_revision")
+        );
+        assert!(REBUILD_LIFECYCLE_ENTITY_QUERY.contains("RETURN count(entity) AS rebuilt"));
+        assert!(!REBUILD_LIFECYCLE_ENTITY_QUERY.contains("entity.properties_json ="));
+        assert!(!REBUILD_LIFECYCLE_ENTITY_QUERY.contains("entity.label ="));
+        assert!(!REBUILD_LIFECYCLE_ENTITY_QUERY.contains("entity.authority_json ="));
         assert!(ASSERTION_QUERY.contains("ORGANIZATIONAL_RELATION"));
         assert!(
             NEO4J_SCHEMA
                 .iter()
                 .any(|statement| statement.contains("IS UNIQUE"))
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a disposable Neo4j instance"]
+    async fn lifecycle_rebuild_batch_rejects_revision_drift_without_base_overwrite()
+    -> Result<(), Box<dyn Error>> {
+        let graph = Graph::new(
+            env::var("CEREBRO_TEST_NEO4J_URI")?,
+            env::var("CEREBRO_TEST_NEO4J_USERNAME")?,
+            env::var("CEREBRO_TEST_NEO4J_PASSWORD")?,
+        )
+        .await?;
+        let tenant_id = format!("tenant-lifecycle-rebuild-race-{}", std::process::id());
+        graph
+            .run(
+                query(
+                    "CREATE (:OrganizationalGraphRevision {tenant_id: $tenant_id, graph_revision: 1}) CREATE (:OrganizationalEntity {tenant_id: $tenant_id, entity_id: 'resource-1', entity_kind: 'resource', authority_json: '{\"current\":false}', label: 'Old label', properties_json: '{\"current\":false}', external_id: 'resource-1', graph_revision: 1})",
+                )
+                .param("tenant_id", tenant_id.clone()),
+            )
+            .await?;
+        graph
+            .run(
+                query(
+                    "MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id}) SET revision.graph_revision = 2 WITH revision MATCH (entity:OrganizationalEntity {tenant_id: $tenant_id, entity_id: 'resource-1'}) SET entity.graph_revision = 2, entity.authority_json = '{\"current\":true}', entity.label = 'Current label', entity.properties_json = '{\"current\":true}'",
+                )
+                .param("tenant_id", tenant_id.clone()),
+            )
+            .await?;
+
+        let rebuild_row = || {
+            map([
+                ("entity_id", "resource-1".into()),
+                ("source_graph_revision", 1_i64.into()),
+                ("lifecycle_subject", false.into()),
+                ("lifecycle_subject_urn", "".into()),
+                ("lifecycle_subject_kind", "".into()),
+                ("lifecycle_observed_state", "".into()),
+                ("lifecycle_owner_urn", "".into()),
+                ("lifecycle_observed_at_unix_ms", (-1_i64).into()),
+                ("lifecycle_expires_at_unix_ms", (-1_i64).into()),
+                ("lifecycle_projected", false.into()),
+                ("lifecycle_source_runtime_id", "".into()),
+                ("lifecycle_source_collection_id", "".into()),
+                ("lifecycle_finding", false.into()),
+                ("lifecycle_finding_urn", "".into()),
+            ])
+        };
+        let mut transaction = graph.start_txn().await?;
+        let mut result = transaction
+            .execute(
+                query(REBUILD_LIFECYCLE_ENTITY_QUERY)
+                    .param("tenant_id", tenant_id.clone())
+                    .param("graph_revision", 1_i64)
+                    .param("rows", rows(vec![rebuild_row()])),
+            )
+            .await?;
+        let rebuilt = result
+            .next(transaction.handle())
+            .await?
+            .expect("aggregate row")
+            .get::<i64>("rebuilt")?;
+        assert_eq!(
+            rebuilt, 0,
+            "a changed tenant revision must prevent the batch from matching"
+        );
+        drop(result);
+        transaction.rollback().await?;
+
+        graph
+            .run(
+                query(
+                    "MATCH (revision:OrganizationalGraphRevision {tenant_id: $tenant_id}) SET revision.graph_revision = 1",
+                )
+                .param("tenant_id", tenant_id.clone()),
+            )
+            .await?;
+        let mut transaction = graph.start_txn().await?;
+        let mut result = transaction
+            .execute(
+                query(REBUILD_LIFECYCLE_ENTITY_QUERY)
+                    .param("tenant_id", tenant_id.clone())
+                    .param("graph_revision", 1_i64)
+                    .param("rows", rows(vec![rebuild_row()])),
+            )
+            .await?;
+        let rebuilt = result
+            .next(transaction.handle())
+            .await?
+            .expect("aggregate row")
+            .get::<i64>("rebuilt")?;
+        assert_eq!(rebuilt, 0, "a changed entity revision must reject the row");
+        drop(result);
+        transaction.rollback().await?;
+
+        let mut result = graph
+            .execute(
+                query(
+                    "MATCH (entity:OrganizationalEntity {tenant_id: $tenant_id, entity_id: 'resource-1'}) RETURN entity.graph_revision AS graph_revision, entity.authority_json AS authority_json, entity.label AS label, entity.properties_json AS properties_json, entity:SecurityLifecycleSubject AS lifecycle_subject",
+                )
+                .param("tenant_id", tenant_id.clone()),
+            )
+            .await?;
+        let entity = result.next().await?.expect("current entity");
+        assert_eq!(entity.get::<i64>("graph_revision")?, 2);
+        assert_eq!(
+            entity.get::<String>("authority_json")?,
+            "{\"current\":true}"
+        );
+        assert_eq!(entity.get::<String>("label")?, "Current label");
+        assert_eq!(
+            entity.get::<String>("properties_json")?,
+            "{\"current\":true}"
+        );
+        assert!(!entity.get::<bool>("lifecycle_subject")?);
+        graph
+            .run(
+                query("MATCH (node {tenant_id: $tenant_id}) DETACH DELETE node")
+                    .param("tenant_id", tenant_id),
+            )
+            .await?;
+        Ok(())
     }
 
     #[test]

@@ -83,7 +83,33 @@ describe("cerebro fixture proxy responses", () => {
       searchParams: new URLSearchParams("severity=high"),
     });
     const payload = parseFixture(response!);
-    expect(payload.findings).toMatchObject([{ id: "demo-finding-high" }]);
+    expect(payload.findings).toContainEqual(expect.objectContaining({ id: "demo-finding-high" }));
+  });
+
+  it("does not fabricate an audit packet for an opaque lifecycle finding reference", () => {
+    withFixtureMode();
+    const lifecycle = parseFixture(cerebroFixtureResponseFor({
+      method: "GET",
+      path: "v1/security/lifecycle",
+    })!);
+    const response = cerebroFixtureResponseFor({
+      method: "GET",
+      path: "grc/audit-packets/deploy-signing-expiry",
+    })!;
+    const lifecycleRecord = lifecycle.records[0];
+
+    expect(lifecycleRecord.findings[0]).toMatchObject({
+      finding_ref: {
+        kind: "finding",
+        id: "urn:cerebro:demo-tenant:finding:deploy-signing-expiry",
+      },
+      evidence_claim_refs: [{
+        kind: "claim",
+        id: "urn:cerebro:demo-tenant:claim:deploy-signing-expiry",
+      }],
+    });
+    expect(response.status).toBe(404);
+    expect(parseFixture(response)).toEqual({ error: "Audit packet not found" });
   });
 
   it("uses operator-readable plural labels for inventory categories", () => {

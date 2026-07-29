@@ -171,6 +171,36 @@ describe("product UI contract", () => {
     expect(reportsSource).not.toContain("applyScope");
   });
 
+  it("keeps lifecycle details modal and lifecycle records usable at mobile width", () => {
+    const lifecycleSource = readProjectFile("src/app/security/lifecycle/page.tsx");
+
+    expect(lifecycleSource).toContain('role="dialog"');
+    expect(lifecycleSource).toContain('aria-modal="true"');
+    expect(lifecycleSource).toContain('event.key === "Escape"');
+    expect(lifecycleSource).toContain("data-lifecycle-mobile-records");
+    expect(lifecycleSource).toContain("space-y-3 md:hidden");
+    expect(lifecycleSource).toContain("data-lifecycle-desktop-table");
+    expect(lifecycleSource).toContain("hidden overflow-auto md:block");
+    expect(lifecycleSource).toContain("Open lifecycle details");
+    expect(lifecycleSource).toContain("opaque finding references");
+    expect(lifecycleSource).toContain("opaque claim references");
+    expect(lifecycleSource).toContain('label="Finding reference"');
+    expect(lifecycleSource).toContain('label="Evidence claim reference"');
+    expect(lifecycleSource).not.toContain("/findings/");
+    expect(lifecycleSource).not.toContain("/evidence?finding_id=");
+    expect(lifecycleSource).toContain("aggregates?.policy_state_counts");
+    expect(lifecycleSource).not.toContain("aggregates?.state_counts");
+    expect(lifecycleSource).toContain('coverageReason === "graph_changed"');
+    expect(lifecycleSource).toContain("setFallbackPreviousTokens([])");
+    expect(lifecycleSource).toContain("otherPagesAvailable");
+    expect(lifecycleSource).not.toContain('completeness.pageTruncated ? "Other pages available"');
+    expect(lifecycleSource).toContain("if (pageToken || pageParam)");
+    expect(lifecycleSource).toMatch(/if \(pageToken \|\| pageParam\)[\s\S]*?return;[\s\S]*?void query\.reload\(\);/);
+    for (const label of ["Expires", "Owner", "Finding", "Route", "Revision"]) {
+      expect(lifecycleSource).toContain(`>${label}<`);
+    }
+  });
+
   it("keeps Ask readiness public-safe and visible before a question runs", () => {
     const routeSource = readProjectFile("src/app/api/agent/ask/status/route.ts");
     const pageSource = readProjectFile("src/app/ask/page.tsx");

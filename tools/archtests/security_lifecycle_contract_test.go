@@ -22,6 +22,9 @@ func TestSecurityLifecycleContractPreservesAuthorityBoundary(t *testing.T) {
 		"SecurityLifecycleActionRoute",
 		"SecurityLifecycleVerificationBinding",
 		"SecurityLifecycleQuery",
+		"SecurityLifecycleAggregates",
+		"SecurityLifecycleQueryMetadata",
+		"SecurityLifecycleSubjectLocator",
 	} {
 		if !strings.Contains(protoText, required) {
 			t.Fatalf("security lifecycle proto missing %q", required)
@@ -51,12 +54,14 @@ func TestSecurityLifecycleProjectorPolicyAndReadAreWired(t *testing.T) {
 			"pub fn bind_verification(",
 			"fresh && source_complete && !source_truncated && compliant",
 			`"verified_closed"`,
-			"pub fn query_records(",
+			"pub fn query_records_with_source(",
+			"page_token graph revision is stale",
+			"page_token does not match lifecycle filters",
 		},
 		filepath.Join(root, "crates", "cerebro-platform", "src", "main.rs"): {
 			`"/v1/security/lifecycle"`,
 			"project_security_lifecycle",
-			"query_records(&tenant_id",
+			"query_records_with_source(",
 		},
 		filepath.Join(root, "crates", "source-runtime-next", "src", "append_log.rs"): {
 			"CREDENTIAL_EVENT_KIND",

@@ -71,6 +71,16 @@ paths:
             type: array
             items:
               type: string
+        - name: authority_id
+          in: query
+          description: Provider authority for a direct stable subject lookup. Requires stable_locator and one subject_kind.
+          schema:
+            type: string
+        - name: stable_locator
+          in: query
+          description: Governed slot or deployment target for a direct subject lookup. Material revisions are not locators.
+          schema:
+            type: string
         - name: expires_before
           in: query
           schema:
@@ -111,11 +121,17 @@ paths:
                       type: object
                   next_page_token:
                     type: string
+                  previous_page_token:
+                    type: string
                   truncated:
                     type: boolean
                   as_of:
                     type: string
                     format: date-time
+                  aggregates:
+                    $ref: '#/components/schemas/SecurityLifecycleAggregates'
+                  metadata:
+                    $ref: '#/components/schemas/SecurityLifecycleQueryMetadata'
         '400':
           description: Invalid lifecycle selector.
         '401':
@@ -5550,6 +5566,39 @@ paths:
             text/markdown:
               schema:
                 type: string
+  /grc/findings/{findingID}/security-lifecycle/reconcile:
+    post:
+      operationId: reconcileSecurityLifecycleFinding
+      summary: Reconcile one lifecycle finding against current source evidence
+      tags:
+        - GRC
+      parameters:
+        - $ref: '#/components/parameters/findingID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tenant_id
+              properties:
+                tenant_id:
+                  type: string
+                  description: Authorized tenant that owns the lifecycle finding.
+      responses:
+        '200':
+          description: Durable finding state after an open observation or verified closure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityLifecycleFindingReconcileResponse'
+        '202':
+          description: Verification is pending because current provenance or source coverage is incomplete.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityLifecycleFindingReconcileResponse'
   /grc/findings/{findingID}/audit-preview:
     get:
       operationId: previewGRCAuditPacket
@@ -7569,6 +7618,117 @@ components:
       schema:
         type: string
   schemas:
+    SecurityLifecycleAggregates:
+      type: object
+      required: [counts_are_exact, matched_records, matched_findings, subject_kind_counts, state_counts, policy_state_counts]
+      properties:
+        counts_are_exact:
+          type: boolean
+        matched_records:
+          type: integer
+          format: int64
+          minimum: 0
+        matched_findings:
+          type: integer
+          format: int64
+          minimum: 0
+        subject_kind_counts:
+          type: array
+          items:
+            type: object
+            required: [subject_kind, count]
+            properties:
+              subject_kind:
+                type: string
+                enum:
+                  - SECURITY_LIFECYCLE_SUBJECT_KIND_CREDENTIAL
+                  - SECURITY_LIFECYCLE_SUBJECT_KIND_CERTIFICATE
+              count:
+                type: integer
+                format: int64
+                minimum: 0
+        state_counts:
+          type: array
+          items:
+            type: object
+            required: [state, count]
+            properties:
+              state:
+                type: string
+                enum:
+                  - SECURITY_LIFECYCLE_STATE_ACTIVE
+                  - SECURITY_LIFECYCLE_STATE_EXPIRING
+                  - SECURITY_LIFECYCLE_STATE_EXPIRED
+                  - SECURITY_LIFECYCLE_STATE_ROTATED
+                  - SECURITY_LIFECYCLE_STATE_REVOKED
+                  - SECURITY_LIFECYCLE_STATE_INACTIVE
+                  - SECURITY_LIFECYCLE_STATE_UNKNOWN
+              count:
+                type: integer
+                format: int64
+                minimum: 0
+        policy_state_counts:
+          type: array
+          items:
+            type: object
+            required: [policy_state, count]
+            properties:
+              policy_state:
+                type: string
+                enum:
+                  - SECURITY_LIFECYCLE_POLICY_STATE_COMPLIANT
+                  - SECURITY_LIFECYCLE_POLICY_STATE_EXPIRING
+                  - SECURITY_LIFECYCLE_POLICY_STATE_EXPIRED
+                  - SECURITY_LIFECYCLE_POLICY_STATE_UNKNOWN
+              count:
+                type: integer
+                format: int64
+                minimum: 0
+    SecurityLifecycleQueryMetadata:
+      type: object
+      required: [coverage, freshness, page_truncated]
+      properties:
+        coverage:
+          type: object
+          required: [complete, truncated, scanned_entities, lifecycle_entities, graph_revision, reason]
+          properties:
+            complete:
+              type: boolean
+            truncated:
+              type: boolean
+            scanned_entities:
+              type: integer
+              format: int64
+              minimum: 0
+            lifecycle_entities:
+              type: integer
+              format: int64
+              minimum: 0
+            graph_revision:
+              type: integer
+              format: int64
+              minimum: 0
+            reason:
+              type: string
+              enum:
+                - SECURITY_LIFECYCLE_COVERAGE_REASON_COMPLETE
+                - SECURITY_LIFECYCLE_COVERAGE_REASON_SCAN_LIMIT
+                - SECURITY_LIFECYCLE_COVERAGE_REASON_GRAPH_CHANGED
+        freshness:
+          type: object
+          required: [as_of]
+          properties:
+            as_of:
+              type: string
+              format: date-time
+            oldest_observed_at:
+              type: string
+              format: date-time
+            newest_observed_at:
+              type: string
+              format: date-time
+        page_truncated:
+          type: boolean
     AuditEventActorV1:
       type: object
       additionalProperties: false
@@ -9585,6 +9745,25 @@ components:
           items:
             type: object
             additionalProperties: true
+    SecurityLifecycleFindingReconcileResponse:
+      type: object
+      required: [finding_id, status, verification, audit_preview_url]
+      properties:
+        finding_id:
+          type: string
+          description: Stable lifecycle finding URN.
+        status:
+          type: string
+          enum: [open, resolved]
+        verification:
+          type: string
+          description: Current reconciliation outcome.
+        reason:
+          type: string
+          description: Operator action or evidence condition when verification is pending.
+        audit_preview_url:
+          type: string
+          description: Live audit-preview path for this exact durable finding.
     GRCFindingsResponse:
       type: object
       required: [findings, meta, generated_at]

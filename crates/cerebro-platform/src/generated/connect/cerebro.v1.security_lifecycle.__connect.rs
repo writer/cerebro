@@ -10,6 +10,18 @@ pub type OwnedListSecurityLifecycleResponseView = ::buffa::view::OwnedView<
         'static,
     >,
 >;
+///Shorthand for `OwnedView<ResolveSecurityLifecycleFindingRequestView<'static>>`.
+pub type OwnedResolveSecurityLifecycleFindingRequestView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::v1::__buffa::view::ResolveSecurityLifecycleFindingRequestView<
+        'static,
+    >,
+>;
+///Shorthand for `OwnedView<ResolveSecurityLifecycleFindingResponseView<'static>>`.
+pub type OwnedResolveSecurityLifecycleFindingResponseView = ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::v1::__buffa::view::ResolveSecurityLifecycleFindingResponseView<
+        'static,
+    >,
+>;
 impl ::connectrpc::Encodable<
     crate::rpc::proto::cerebro::v1::ListSecurityLifecycleResponse,
 >
@@ -52,6 +64,48 @@ for ::buffa::view::OwnedView<
         )
     }
 }
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::v1::ResolveSecurityLifecycleFindingResponse,
+>
+for crate::rpc::proto::cerebro::v1::__buffa::view::ResolveSecurityLifecycleFindingResponseView<
+    '_,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self, codec)
+    }
+}
+impl ::connectrpc::Encodable<
+    crate::rpc::proto::cerebro::v1::ResolveSecurityLifecycleFindingResponse,
+>
+for ::buffa::view::OwnedView<
+    crate::rpc::proto::cerebro::v1::__buffa::view::ResolveSecurityLifecycleFindingResponseView<
+        'static,
+    >,
+> {
+    fn encode(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::buffa::bytes::Bytes, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body(self.reborrow(), codec)
+    }
+    /// An `OwnedView` still holds the buffer it was decoded from, so
+    /// its large fields can be handed to the response body by
+    /// reference count instead of copied. The bare view impl above
+    /// cannot do this: it has borrows but no buffer to name.
+    fn encode_segments(
+        &self,
+        codec: ::connectrpc::CodecFormat,
+    ) -> ::std::result::Result<::connectrpc::EncodedBody, ::connectrpc::ConnectError> {
+        ::connectrpc::__codegen::encode_view_body_segments(
+            self.reborrow(),
+            self.bytes(),
+            codec,
+        )
+    }
+}
 /// Full service name for this service.
 pub const SECURITY_LIFECYCLE_SERVICE_SERVICE_NAME: &str = "cerebro.v1.SecurityLifecycleService";
 /// Static [`Spec`](::connectrpc::Spec) for the server-side `ListSecurityLifecycle` RPC.
@@ -60,6 +114,15 @@ pub const SECURITY_LIFECYCLE_SERVICE_SERVICE_NAME: &str = "cerebro.v1.SecurityLi
 /// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
 pub const SECURITY_LIFECYCLE_SERVICE_LIST_SECURITY_LIFECYCLE_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
         "/cerebro.v1.SecurityLifecycleService/ListSecurityLifecycle",
+        ::connectrpc::StreamType::Unary,
+    )
+    .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
+/// Static [`Spec`](::connectrpc::Spec) for the server-side `ResolveSecurityLifecycleFinding` RPC.
+///
+/// The dispatcher surfaces this on
+/// [`RequestContext::spec`](::connectrpc::RequestContext::spec).
+pub const SECURITY_LIFECYCLE_SERVICE_RESOLVE_SECURITY_LIFECYCLE_FINDING_SPEC: ::connectrpc::Spec = ::connectrpc::Spec::server(
+        "/cerebro.v1.SecurityLifecycleService/ResolveSecurityLifecycleFinding",
         ::connectrpc::StreamType::Unary,
     )
     .with_idempotency_level(::connectrpc::IdempotencyLevel::Unknown);
@@ -138,6 +201,29 @@ pub trait SecurityLifecycleService: Send + Sync + 'static {
             > + Send + use<'a, Self>,
         >,
     > + Send;
+    /// Handle the ResolveSecurityLifecycleFinding RPC.
+    ///
+    /// `'a` lets the response body borrow from `&self` (e.g. server-resident state).
+    ///
+    /// `request` is borrowed from the request body and is valid for the
+    /// duration of the call; message fields are read directly on it
+    /// (zero-copy). The response cannot borrow from `request` — use
+    /// `.to_owned_message()` (or copy the specific fields) for anything
+    /// returned, stored, or moved into `tokio::spawn`.
+    fn resolve_security_lifecycle_finding<'a>(
+        &'a self,
+        ctx: ::connectrpc::RequestContext,
+        request: ::connectrpc::ServiceRequest<
+            '_,
+            crate::rpc::proto::cerebro::v1::ResolveSecurityLifecycleFindingRequest,
+        >,
+    ) -> impl ::std::future::Future<
+        Output = ::connectrpc::ServiceResult<
+            impl ::connectrpc::Encodable<
+                crate::rpc::proto::cerebro::v1::ResolveSecurityLifecycleFindingResponse,
+            > + Send + use<'a, Self>,
+        >,
+    > + Send;
 }
 /// Extension trait for registering a service implementation with a Router.
 ///
@@ -199,6 +285,37 @@ impl<S: SecurityLifecycleService> SecurityLifecycleServiceExt for S {
                 },
             )
             .with_spec(SECURITY_LIFECYCLE_SERVICE_LIST_SECURITY_LIFECYCLE_SPEC)
+            .route_view(
+                SECURITY_LIFECYCLE_SERVICE_SERVICE_NAME,
+                "ResolveSecurityLifecycleFinding",
+                {
+                    let svc = ::std::sync::Arc::clone(&self);
+                    ::connectrpc::view_handler_fn(move |
+                        ctx,
+                        req: ::buffa::view::OwnedView<
+                            crate::rpc::proto::cerebro::v1::__buffa::view::ResolveSecurityLifecycleFindingRequestView<
+                                'static,
+                            >,
+                        >,
+                        format|
+                    {
+                        let svc = ::std::sync::Arc::clone(&svc);
+                        async move {
+                            let sreq = ::connectrpc::ServiceRequest::<
+                                crate::rpc::proto::cerebro::v1::ResolveSecurityLifecycleFindingRequest,
+                            >::from_parts(req.reborrow(), req.bytes());
+                            svc.resolve_security_lifecycle_finding(ctx, sreq)
+                                .await?
+                                .encode::<
+                                    crate::rpc::proto::cerebro::v1::ResolveSecurityLifecycleFindingResponse,
+                                >(format)
+                        }
+                    })
+                },
+            )
+            .with_spec(
+                SECURITY_LIFECYCLE_SERVICE_RESOLVE_SECURITY_LIFECYCLE_FINDING_SPEC,
+            )
     }
 }
 /// Type-inference marker used by [`Router::add_service`](::connectrpc::Router::add_service).
@@ -264,6 +381,14 @@ for SecurityLifecycleServiceServer<T> {
                         ),
                 )
             }
+            "ResolveSecurityLifecycleFinding" => {
+                Some(
+                    ::connectrpc::dispatcher::codegen::MethodDescriptor::unary(false)
+                        .with_spec(
+                            SECURITY_LIFECYCLE_SERVICE_RESOLVE_SECURITY_LIFECYCLE_FINDING_SPEC,
+                        ),
+                )
+            }
             _ => None,
         }
     }
@@ -299,6 +424,28 @@ for SecurityLifecycleServiceServer<T> {
                         .await?
                         .encode::<
                             crate::rpc::proto::cerebro::v1::ListSecurityLifecycleResponse,
+                        >(format)
+                })
+            }
+            "ResolveSecurityLifecycleFinding" => {
+                let svc = ::std::sync::Arc::clone(&self.inner);
+                Box::pin(async move {
+                    let body = ::connectrpc::dispatcher::codegen::request_proto_bytes::<
+                        crate::rpc::proto::cerebro::v1::ResolveSecurityLifecycleFindingRequest,
+                    >(request.encoded()?, format)?;
+                    let req: crate::rpc::proto::cerebro::v1::__buffa::view::ResolveSecurityLifecycleFindingRequestView<
+                        '_,
+                    > = ::connectrpc::dispatcher::codegen::decode_borrowed_request_view(
+                        &body,
+                        ctx.decode_options(),
+                    )?;
+                    let req = ::connectrpc::ServiceRequest::<
+                        crate::rpc::proto::cerebro::v1::ResolveSecurityLifecycleFindingRequest,
+                    >::from_parts(&req, &body);
+                    svc.resolve_security_lifecycle_finding(ctx, req)
+                        .await?
+                        .encode::<
+                            crate::rpc::proto::cerebro::v1::ResolveSecurityLifecycleFindingResponse,
                         >(format)
                 })
             }
@@ -473,6 +620,51 @@ where
                 &self.config,
                 SECURITY_LIFECYCLE_SERVICE_SERVICE_NAME,
                 "ListSecurityLifecycle",
+                request,
+                options,
+            )
+            .await
+    }
+    /// Call the ResolveSecurityLifecycleFinding RPC. Sends a request to /cerebro.v1.SecurityLifecycleService/ResolveSecurityLifecycleFinding.
+    pub async fn resolve_security_lifecycle_finding(
+        &self,
+        request: crate::rpc::proto::cerebro::v1::ResolveSecurityLifecycleFindingRequest,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::v1::__buffa::view::ResolveSecurityLifecycleFindingResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        self.resolve_security_lifecycle_finding_with_options(
+                request,
+                ::connectrpc::client::CallOptions::default(),
+            )
+            .await
+    }
+    /// Call the ResolveSecurityLifecycleFinding RPC with explicit per-call options. Options override [`ClientConfig`](::connectrpc::client::ClientConfig) defaults.
+    pub async fn resolve_security_lifecycle_finding_with_options(
+        &self,
+        request: crate::rpc::proto::cerebro::v1::ResolveSecurityLifecycleFindingRequest,
+        options: ::connectrpc::client::CallOptions,
+    ) -> Result<
+        ::connectrpc::client::UnaryResponse<
+            ::buffa::view::OwnedView<
+                crate::rpc::proto::cerebro::v1::__buffa::view::ResolveSecurityLifecycleFindingResponseView<
+                    'static,
+                >,
+            >,
+        >,
+        ::connectrpc::ConnectError,
+    > {
+        ::connectrpc::client::call_unary(
+                &self.transport,
+                &self.config,
+                SECURITY_LIFECYCLE_SERVICE_SERVICE_NAME,
+                "ResolveSecurityLifecycleFinding",
                 request,
                 options,
             )
