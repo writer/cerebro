@@ -501,7 +501,8 @@ jobs:
           if-no-files-found: error
 
   web-image:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     needs: resolve
     permissions:
       contents: read
@@ -512,8 +513,10 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
+            runner: ubuntu-24.04
           - arch: arm64
             platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -524,7 +527,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Build and publish candidate web image
         env:
