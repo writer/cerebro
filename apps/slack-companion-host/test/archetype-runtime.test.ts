@@ -105,6 +105,28 @@ test("runtime config activates Archetype only with complete private bindings", (
     ["writer.com"],
   );
 
+  const bareDomain = loadSlackRuntimeConfig({
+    ...base,
+    ARCHETYPE_ALLOWED_EMAIL_DOMAINS: "writer.com",
+    ARCHETYPE_BASE_URL: "https://archetype.internal",
+    ARCHETYPE_WORKSPACE_ENABLED: "true",
+    OKTA_API_TOKEN: "bound-at-runtime",
+    OKTA_DOMAIN: "writer.okta.com",
+  });
+  assert.equal(bareDomain.archetype?.oktaDomain, "https://writer.okta.com");
+
+  assert.throws(
+    () => loadSlackRuntimeConfig({
+      ...base,
+      ARCHETYPE_ALLOWED_EMAIL_DOMAINS: "writer.com",
+      ARCHETYPE_BASE_URL: "https://archetype.internal",
+      ARCHETYPE_WORKSPACE_ENABLED: "true",
+      OKTA_API_TOKEN: "bound-at-runtime",
+      OKTA_DOMAIN: "http://writer.okta.com",
+    }),
+    /Cerebro service binding is invalid/,
+  );
+
   assert.throws(
     () => loadSlackRuntimeConfig({
       ...base,
