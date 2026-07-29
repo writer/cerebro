@@ -2403,7 +2403,7 @@ func (s *Store) ListIngestRuns(ctx context.Context, filter IngestRunFilter) (_ [
 func ingestRunListQuery(filter IngestRunFilter, limit int) (string, map[string]any, error) {
 	where := make([]string, 0, 2)
 	params := map[string]any{}
-	runtimeIDs := normalizedNonEmptyStrings(append(filter.RuntimeIDs, filter.RuntimeID))
+	runtimeIDs := normalizedNonEmptyStrings(append(slices.Clone(filter.RuntimeIDs), filter.RuntimeID))
 	status := strings.TrimSpace(filter.Status)
 	if status != "" && !validIngestRunStatus(status) {
 		return "", nil, fmt.Errorf("unsupported ingest run status %q", status)
