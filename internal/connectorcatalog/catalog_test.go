@@ -618,15 +618,15 @@ func TestBuiltinSlackMembershipFamiliesCarryContainerContext(t *testing.T) {
 		t.Fatal("BuiltinEntry(slack) ok = false, want true")
 	}
 	channelMember := catalogFamily(t, entry.Definition.ResourceFamilies, "channel_member")
-	if channelMember.ConfigQuery["channel"] != "channel_id" {
-		t.Fatalf("channel_member config_query = %#v, want channel from channel_id", channelMember.ConfigQuery)
+	if channelMember.Config == nil || channelMember.Config.RequiredConfigQuery["channel"] != "channel_id" {
+		t.Fatalf("channel_member config = %#v, want required channel from channel_id", channelMember.Config)
 	}
 	if channelMember.Read == nil || len(channelMember.Read.PathParams) != 1 || channelMember.Read.PathParams[0] != "channel_id" {
 		t.Fatalf("channel_member read = %#v, want channel_id path param", channelMember.Read)
 	}
 	userGroupMember := catalogFamily(t, entry.Definition.ResourceFamilies, "user_group_member")
-	if userGroupMember.ConfigQuery["usergroup"] != "usergroup_id" {
-		t.Fatalf("user_group_member config_query = %#v, want usergroup from usergroup_id", userGroupMember.ConfigQuery)
+	if userGroupMember.Config == nil || userGroupMember.Config.RequiredConfigQuery["usergroup"] != "usergroup_id" {
+		t.Fatalf("user_group_member config = %#v, want required usergroup from usergroup_id", userGroupMember.Config)
 	}
 	if userGroupMember.Read == nil || len(userGroupMember.Read.PathParams) != 1 || userGroupMember.Read.PathParams[0] != "usergroup_id" {
 		t.Fatalf("user_group_member read = %#v, want usergroup_id path param", userGroupMember.Read)

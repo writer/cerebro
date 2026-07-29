@@ -1359,7 +1359,10 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 				ConfigQuery:    map[string]string{"author": "organization"},
 				StaticHeaders:  map[string]string{"Accept": "application/json;version=2"},
 				Config: &connectordefinitions.FamilyConfigSpec{
-					BaseURL:          "https://huggingface.co/api/models",
+					BaseURL: "https://huggingface.co/api/models",
+					RequiredConfigQuery: map[string]string{
+						"required_author": "organization",
+					},
 					ConfigAttributes: map[string]string{"owner": "organization"},
 					IdentityKeys:     []string{"id"},
 				},
@@ -1432,7 +1435,7 @@ func TestGenerateDefinitionSupportsFamilyQueryBindings(t *testing.T) {
 		`Config: jsonapi.FamilyConfig{`,
 		`BaseURL:          "https://huggingface.co/api/models"`,
 		`StaticQuery:      map[string]string{"full": "true"}`,
-		`ConfigQuery:      map[string]string{"author": "organization"}`,
+		`ConfigQuery:      map[string]string{"author": "organization", "required_author": "organization"}`,
 		`ConfigAttributes: map[string]string{"owner": "organization"}`,
 		`StaticHeaders:    map[string]string{"Accept": "application/json;version=2"}`,
 		`IdentityKeys:     []string{"id"}`,

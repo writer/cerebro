@@ -633,10 +633,14 @@ func TestValidateBlocksUnsafeDeclarativeRuntimeFields(t *testing.T) {
 			IDField:        "id",
 			Read: &ResourceReadSpec{
 				DetailPath: "//evil.example/users/{id}",
-				PathParams: []string{"account id", "AccountID"},
+				PathParams: []string{"account id", "1AccountID"},
+				PathParamConfig: map[string]string{
+					"missing_config": "missing",
+					"1AccountID":     "bad config",
+				},
 				PathParamFanout: map[string]string{
 					"missing_id": "account_ids",
-					"AccountID":  "bad config",
+					"1AccountID": "bad config",
 				},
 			},
 			Pagination: &PaginationSpec{
@@ -654,14 +658,71 @@ func TestValidateBlocksUnsafeDeclarativeRuntimeFields(t *testing.T) {
 	for _, want := range []string{
 		"detail_path_users",
 		"path_param_users_account-id",
-		"path_param_users_accountid",
+		"path_param_users_1accountid",
+		"path_param_config_users_missing_config",
+		"path_param_config_declared_users_missing_config",
+		"path_param_config_field_users_1accountid",
 		"path_param_fanout_users_missing_id",
 		"path_param_fanout_field_users_missing_id",
-		"path_param_fanout_config_users_accountid",
+		"path_param_fanout_config_users_1accountid",
 		"pagination_users",
 		"pagination_page_size_users",
 		"incremental_users",
 		"incremental_cursor_users",
+	} {
+		if !hasBlockingCheck(definition.Validation.Checks, want) {
+			t.Fatalf("validation checks = %#v, want blocker %q", definition.Validation.Checks, want)
+		}
+	}
+}
+
+func TestValidateBlocksAmbiguousPathParameterBinding(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID:     "tenant-a",
+		SourceID:     "example",
+		Auth:         AuthSpec{Model: "none"},
+		ConfigFields: []Field{{Key: "account_id"}, {Key: "account_ids"}},
+		ResourceFamilies: []ResourceFamily{{
+			ID:      "users",
+			Path:    "/v1/accounts/{account_id}/users",
+			IDField: "id",
+			Read: &ResourceReadSpec{
+				PathParams:      []string{"account_id"},
+				PathParamConfig: map[string]string{"account_id": "account_id"},
+				PathParamFanout: map[string]string{"account_id": "account_ids"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if !hasBlockingCheck(definition.Validation.Checks, "path_param_binding_users_account_id") {
+		t.Fatalf("validation checks = %#v, want ambiguous binding blocker", definition.Validation.Checks)
+	}
+}
+
+func TestValidateBlocksAmbiguousOrUndeclaredRequiredQueryBinding(t *testing.T) {
+	definition, err := Normalize(Definition{
+		TenantID:     "tenant-a",
+		SourceID:     "example",
+		Auth:         AuthSpec{Model: "none"},
+		ConfigFields: []Field{{Key: "scope"}},
+		ResourceFamilies: []ResourceFamily{{
+			ID:          "users",
+			Path:        "/v1/users",
+			IDField:     "id",
+			ConfigQuery: map[string]string{"scope": "scope"},
+			Config: &FamilyConfigSpec{
+				RequiredConfigQuery: map[string]string{"scope": "scope", "tenant": "tenant_id"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	for _, want := range []string{
+		"query_binding_users_scope",
+		"required_config_query_field_users_tenant",
 	} {
 		if !hasBlockingCheck(definition.Validation.Checks, want) {
 			t.Fatalf("validation checks = %#v, want blocker %q", definition.Validation.Checks, want)
@@ -916,7 +977,7 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 		SourceID:      "example",
 		DisplayName:   "Example",
 		Categories:    []string{"identity", "identity", "audit"},
-		ConfigFields:  []Field{{Key: "account_ids"}},
+		ConfigFields:  []Field{{Key: "account_ids"}, {Key: "region"}},
 		//nolint:gosec // Test auth descriptor only; no credential value is stored.
 		Auth: AuthSpec{
 			Model:            "oauth_authorization_code",
@@ -942,12 +1003,13 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 		},
 		ResourceFamilies: []ResourceFamily{{
 			ID:             "users",
-			Path:           "/v1/accounts/{account_id}/users",
+			Path:           "/v1/regions/{region_id}/accounts/{account_id}/users",
 			RecordSelector: "$.data[*]",
 			Read: &ResourceReadSpec{
 				DetailPath:            "/v1/users/{id}",
 				AllowBareDetailRecord: true,
-				PathParams:            []string{"account_id", "account_id"},
+				PathParams:            []string{"region_id", "account_id", "account_id"},
+				PathParamConfig:       map[string]string{" region_id ": " region ", "": "ignored"},
 				PathParamFanout:       map[string]string{" account_id ": " account_ids ", "": "ignored"},
 				MapRecords:            map[string]string{"": "ignored", "members": "items"},
 			},
@@ -967,9 +1029,10 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 				CursorField: "updated_at",
 			},
 			Config: &FamilyConfigSpec{
-				StaticQuery:      map[string]string{"include": "members", "empty": ""},
-				ConfigQuery:      map[string]string{"scope[]": "scopes"},
-				ConfigAttributes: map[string]string{"account_label": "account_label"},
+				StaticQuery:         map[string]string{"include": "members", "empty": ""},
+				ConfigQuery:         map[string]string{"scope[]": "scopes"},
+				RequiredConfigQuery: map[string]string{" region ": " region ", "": "ignored"},
+				ConfigAttributes:    map[string]string{"account_label": "account_label"},
 			},
 			Projection: &ProjectionSpec{
 				Template: "identity_user",
@@ -1000,14 +1063,20 @@ func TestNormalizeIntegrationDefinition(t *testing.T) {
 		t.Fatalf("coverage id = %q, want users_entity_family", got)
 	}
 	family := definition.ResourceFamilies[0]
-	if family.Read == nil || len(family.Read.PathParams) != 1 || family.Read.PathParams[0] != "account_id" {
-		t.Fatalf("read spec = %#v, want deduped account_id path param", family.Read)
+	if family.Read == nil || len(family.Read.PathParams) != 2 || family.Read.PathParams[0] != "region_id" || family.Read.PathParams[1] != "account_id" {
+		t.Fatalf("read spec = %#v, want ordered and deduped path params", family.Read)
 	}
 	if family.Read.MapRecords["members"] != "items" || len(family.Read.MapRecords) != 1 {
 		t.Fatalf("map records = %#v, want members->items", family.Read.MapRecords)
 	}
 	if family.Read.PathParamFanout["account_id"] != "account_ids" || len(family.Read.PathParamFanout) != 1 {
 		t.Fatalf("path param fanout = %#v, want account_id->account_ids", family.Read.PathParamFanout)
+	}
+	if family.Read.PathParamConfig["region_id"] != "region" || len(family.Read.PathParamConfig) != 1 {
+		t.Fatalf("path param config = %#v, want region_id->region", family.Read.PathParamConfig)
+	}
+	if family.Config.RequiredConfigQuery["region"] != "region" || len(family.Config.RequiredConfigQuery) != 1 {
+		t.Fatalf("required config query = %#v, want region->region", family.Config.RequiredConfigQuery)
 	}
 	if family.Pagination == nil || len(family.Pagination.NextCursorKeys) != 1 || family.Pagination.NextCursorKeys[0] != "next_cursor" || family.Pagination.HasMoreKey != "has_more" {
 		t.Fatalf("pagination = %#v, want next cursor and has_more metadata", family.Pagination)
