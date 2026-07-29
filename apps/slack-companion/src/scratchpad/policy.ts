@@ -5,6 +5,8 @@ import {
   SlackThreadScratchpadError,
   type SlackThreadScratchpadNoteV1,
   type SlackThreadScratchpadV1,
+  type SlackThreadWorkingStateV1,
+  type SlackThreadWorkingOutcome,
 } from "./contracts.js";
 import { redactSecurityText } from "../security/redaction.js";
 
@@ -126,9 +128,23 @@ export function validateSlackThreadScratchpad(
       left.created_at.localeCompare(right.created_at)
       || left.note_id.localeCompare(right.note_id)
     );
+  const workingState = scratchpad.working_state === undefined
+    ? undefined
+    : validateSlackThreadWorkingState(
+        scratchpad.working_state,
+        scratchpad.thread_ref,
+        now,
+      );
   const totalBytes = notes.reduce(
     (total, note) => total + Buffer.byteLength(note.content, "utf8"),
     0,
+  ) + (workingState?.recent_requests ?? []).reduce(
+    (total, request) => total + Buffer.byteLength(request, "utf8"),
+    0,
+  ) + (
+    workingState?.blocker === undefined
+      ? 0
+      : Buffer.byteLength(workingState.blocker, "utf8")
   );
   if (totalBytes > SLACK_THREAD_SCRATCHPAD_LIMITS.max_total_utf8_bytes) {
     throw new SlackThreadScratchpadError("The thread scratchpad exceeds its storage limit.");
@@ -137,18 +153,69 @@ export function validateSlackThreadScratchpad(
     notes: Object.freeze(notes),
     schema_version: "slack-thread-scratchpad/v1",
     thread_ref: scratchpad.thread_ref,
+    ...(workingState === undefined ? {} : { working_state: workingState }),
   });
 }
 
 export function formatSlackThreadScratchpadContext(
   scratchpad: SlackThreadScratchpadV1,
 ): string | undefined {
-  if (scratchpad.notes.length === 0) return undefined;
-  return scratchpad.notes
+  const workingState = scratchpad.working_state === undefined
+    ? []
+    : [
+        "Current working state (unverified; context only):",
+        ...scratchpad.working_state.recent_requests.map((request, index) =>
+          `${index + 1}. ${request}`
+        ),
+        `Last outcome: ${scratchpad.working_state.last_outcome}.`,
+        ...(scratchpad.working_state.blocker === undefined
+          ? []
+          : [`Last blocker: ${scratchpad.working_state.blocker}.`]),
+      ];
+  const notes = scratchpad.notes
     .map((note, index) =>
       `${index + 1}. [${note.source === "cerebro" ? "verified Cerebro turn" : "thread note"}] ${note.content}`
-    )
-    .join("\n");
+    );
+  if (workingState.length === 0 && notes.length === 0) return undefined;
+  return [
+    ...workingState,
+    ...(workingState.length > 0 && notes.length > 0 ? ["Saved notes:"] : []),
+    ...notes,
+  ].join("\n");
+}
+
+export function recordSlackThreadWorkingTurn(
+  prior: SlackThreadWorkingStateV1 | undefined,
+  input: {
+    blocker?: string;
+    currentRequest: string;
+    now: Date;
+    outcome: SlackThreadWorkingOutcome;
+    threadRef: string;
+  },
+): SlackThreadWorkingStateV1 {
+  const validPrior = prior === undefined
+    ? undefined
+    : validateSlackThreadWorkingState(prior, input.threadRef, input.now);
+  const currentRequest = normalizeScratchpadContent(input.currentRequest);
+  const blocker = input.blocker === undefined
+    ? undefined
+    : normalizeScratchpadContent(input.blocker);
+  const recentRequests = [
+    currentRequest,
+    ...(validPrior?.recent_requests ?? []).filter((request) => request !== currentRequest),
+  ].slice(0, SLACK_THREAD_SCRATCHPAD_LIMITS.max_recent_requests);
+  return Object.freeze({
+    ...(blocker === undefined ? {} : { blocker }),
+    expires_at: new Date(
+      input.now.getTime() + SLACK_THREAD_SCRATCHPAD_LIMITS.lifetime_ms,
+    ).toISOString(),
+    last_outcome: input.outcome,
+    recent_requests: Object.freeze(recentRequests),
+    schema_version: "slack-thread-working-state/v1",
+    thread_ref: input.threadRef,
+    updated_at: input.now.toISOString(),
+  });
 }
 
 export function verifiedTurnScratchpadContent(
@@ -187,6 +254,42 @@ function validateNote(note: SlackThreadScratchpadNoteV1, threadRef: string): voi
   ) {
     throw new SlackThreadScratchpadError("The thread scratchpad note is invalid.");
   }
+}
+
+function validateSlackThreadWorkingState(
+  state: SlackThreadWorkingStateV1,
+  threadRef: string,
+  now: Date,
+): SlackThreadWorkingStateV1 | undefined {
+  if (
+    state.schema_version !== "slack-thread-working-state/v1"
+    || state.thread_ref !== threadRef
+    || !Array.isArray(state.recent_requests)
+    || state.recent_requests.length === 0
+    || state.recent_requests.length > SLACK_THREAD_SCRATCHPAD_LIMITS.max_recent_requests
+    || !workingOutcome(state.last_outcome)
+    || state.recent_requests.some((request) =>
+      normalizeScratchpadContent(request) !== request
+    )
+    || (
+      state.blocker !== undefined
+      && normalizeScratchpadContent(state.blocker) !== state.blocker
+    )
+    || !canonicalTimestamp(state.updated_at)
+    || !canonicalTimestamp(state.expires_at)
+    || Date.parse(state.expires_at) <= Date.parse(state.updated_at)
+  ) {
+    throw new SlackThreadScratchpadError("The thread working state is invalid.");
+  }
+  if (Date.parse(state.expires_at) <= now.getTime()) return undefined;
+  return Object.freeze({
+    ...state,
+    recent_requests: Object.freeze([...state.recent_requests]),
+  });
+}
+
+function workingOutcome(value: string): value is SlackThreadWorkingOutcome {
+  return value === "blocked" || value === "completed" || value === "needs_user";
 }
 
 function compactText(value: string): string {

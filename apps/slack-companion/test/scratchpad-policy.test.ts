@@ -5,6 +5,7 @@ import {
   formatSlackThreadScratchpadContext,
   normalizeScratchpadContent,
   parseSlackThreadScratchpadCommand,
+  recordSlackThreadWorkingTurn,
   slackScratchpadAuthorRef,
   slackThreadScratchpadRef,
   validateSlackThreadScratchpad,
@@ -87,4 +88,69 @@ test("verified turns become bounded autonomous working memory", () => {
   assert.match(content, /^Question: Who owns the checkout finding\? Verified answer:/u);
   assert.ok(Buffer.byteLength(content, "utf8") <= 900);
   assert.match(content, /\.\.\.$/u);
+});
+
+test("working state preserves recent requests and the last bounded outcome", () => {
+  const threadRef = "slack-scratchpad://sha256/thread";
+  const first = recordSlackThreadWorkingTurn(undefined, {
+    currentRequest: "What is the most material risk this week?",
+    now: new Date("2026-07-29T10:00:00.000Z"),
+    outcome: "completed",
+    threadRef,
+  });
+  const second = recordSlackThreadWorkingTurn(first, {
+    blocker: "Graph evidence was timed out.",
+    currentRequest: "Give me another.",
+    now: new Date("2026-07-29T10:01:00.000Z"),
+    outcome: "blocked",
+    threadRef,
+  });
+
+  assert.deepEqual(second.recent_requests, [
+    "Give me another.",
+    "What is the most material risk this week?",
+  ]);
+  assert.equal(second.last_outcome, "blocked");
+  assert.equal(second.blocker, "Graph evidence was timed out.");
+  assert.match(
+    formatSlackThreadScratchpadContext({
+      notes: [],
+      schema_version: "slack-thread-scratchpad/v1",
+      thread_ref: threadRef,
+      working_state: second,
+    }) ?? "",
+    /Current working state \(unverified; context only\):[\s\S]*Give me another\.[\s\S]*most material risk[\s\S]*Last outcome: blocked\.[\s\S]*Last blocker: Graph evidence was timed out\./u,
+  );
+});
+
+test("working state redacts secrets and retains only three distinct requests", () => {
+  const threadRef = "slack-scratchpad://sha256/thread";
+  let state = recordSlackThreadWorkingTurn(undefined, {
+    currentRequest: "first request",
+    now: new Date("2026-07-29T10:00:00.000Z"),
+    outcome: "completed",
+    threadRef,
+  });
+  for (const [index, request] of ["second request", "third request", "fourth request"].entries()) {
+    state = recordSlackThreadWorkingTurn(state, {
+      currentRequest: request,
+      now: new Date(`2026-07-29T10:0${index + 1}:00.000Z`),
+      outcome: "completed",
+      threadRef,
+    });
+  }
+  const credential = ["xoxb", "fixture", "value"].join("-");
+  state = recordSlackThreadWorkingTurn(state, {
+    currentRequest: `inspect token=${credential}`,
+    now: new Date("2026-07-29T10:04:00.000Z"),
+    outcome: "needs_user",
+    threadRef,
+  });
+
+  assert.deepEqual(state.recent_requests, [
+    "inspect token=[redacted_secret]",
+    "fourth request",
+    "third request",
+  ]);
+  assert.doesNotMatch(JSON.stringify(state), new RegExp(credential, "u"));
 });

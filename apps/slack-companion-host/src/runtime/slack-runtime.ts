@@ -18,6 +18,7 @@ import {
   verifiedTurnScratchpadContent,
   type SlackThreadScratchpadCommandV1,
   type SlackThreadScratchpadPort,
+  type SlackThreadWorkingOutcome,
 } from "@writer/cerebro-slack-companion";
 import {
   AssistantTurnHostAdapter,
@@ -129,6 +130,11 @@ export interface AssistantQuestionResult {
     question: string;
     traceId: string;
   };
+  workingTurn?: {
+    blocker?: string;
+    currentRequest: string;
+    outcome: SlackThreadWorkingOutcome;
+  };
 }
 
 export interface AssistantQuestionServiceOptions {
@@ -209,6 +215,11 @@ export class AssistantQuestionService {
           verified: false,
         }),
         text: renderOutput(output),
+        workingTurn: {
+          blocker: "Request authority or source health did not pass preflight.",
+          currentRequest,
+          outcome: "blocked",
+        },
       };
     }
 
@@ -231,6 +242,10 @@ export class AssistantQuestionService {
           verified: answer.citationValidationPassed,
         }),
         text: boundedSlackText(answer.markdown),
+        workingTurn: {
+          currentRequest,
+          outcome: "completed",
+        },
         ...(answer.citationValidationPassed && answer.traceId
           ? {
               verifiedTurn: {
@@ -263,6 +278,11 @@ export class AssistantQuestionService {
           verified: false,
         }),
         text: renderOutput(output),
+        workingTurn: {
+          blocker: `Graph evidence was ${state.replaceAll("_", " ")}.`,
+          currentRequest,
+          outcome: "blocked",
+        },
       };
     }
   }
@@ -771,6 +791,25 @@ export async function handleSlackMention(input: {
       state: "completed",
       updated_at: deliveredAt,
     });
+    if (input.scratchpads && result.workingTurn) {
+      try {
+        await input.scratchpads.recordWorkingTurn({
+          ...(result.workingTurn.blocker === undefined
+            ? {}
+            : { blocker: result.workingTurn.blocker }),
+          current_request: result.workingTurn.currentRequest,
+          outcome: result.workingTurn.outcome,
+          thread_ref: scratchpadRef,
+        });
+      } catch (error) {
+        process.stderr.write(`${JSON.stringify({
+          component: "slack-scratchpad",
+          error_kind: error instanceof Error ? error.name : "unknown",
+          operation: "record_working_turn",
+          state: "failed",
+        })}\n`);
+      }
+    }
     if (input.scratchpads && result.verifiedTurn) {
       try {
         await input.scratchpads.add({
@@ -1001,7 +1040,7 @@ export function contextualHistory(
   const context = [
     threadContext ? "Earlier messages in the same thread:" : undefined,
     threadContext,
-    scratchpadContext ? "Explicit notes saved in this thread's scratchpad:" : undefined,
+    scratchpadContext ? "Thread scratchpad context:" : undefined,
     scratchpadContext,
   ].filter((value): value is string => Boolean(value)).join("\n\n");
   if (!context) return [];
@@ -1060,19 +1099,32 @@ async function executeScratchpadCommand(
     const cleared = await scratchpads.clear(context.threadRef);
     return cleared === 0
       ? "This thread's scratchpad is already empty."
-      : `Cleared ${cleared} ${cleared === 1 ? "note" : "notes"} from this thread's scratchpad.`;
+      : `Cleared ${cleared} ${cleared === 1 ? "entry" : "entries"} from this thread's scratchpad.`;
   }
   const scratchpad = await scratchpads.read(context.threadRef);
-  if (scratchpad.notes.length === 0) {
+  if (scratchpad.notes.length === 0 && scratchpad.working_state === undefined) {
     return "This thread's scratchpad is empty. Use `@Cerebro remember <note>` to add one.";
   }
   return [
     "*This thread's scratchpad*",
+    ...(scratchpad.working_state === undefined
+      ? []
+      : [
+          "*Working state — unverified context*",
+          `Recent requests:\n${scratchpad.working_state.recent_requests.map((request, index) =>
+            `${index + 1}. ${escapeSlackText(request)}`
+          ).join("\n")}`,
+          `Last outcome: ${scratchpad.working_state.last_outcome}`,
+          ...(scratchpad.working_state.blocker === undefined
+            ? []
+            : [`Last blocker: ${escapeSlackText(scratchpad.working_state.blocker)}`]),
+        ]),
+    ...(scratchpad.notes.length === 0 ? [] : ["*Saved notes*"]),
     ...scratchpad.notes.map((note, index) =>
       `${index + 1}. *${note.source === "cerebro" ? "Cerebro" : "Thread"}:* ${escapeSlackText(note.content)}`
     ),
     "",
-    "Notes expire 7 days after they are saved. Use `@Cerebro clear scratchpad` to remove them now.",
+    "Entries expire after 7 days. Use `@Cerebro clear scratchpad` to remove them now.",
   ].join("\n\n");
 }
 
