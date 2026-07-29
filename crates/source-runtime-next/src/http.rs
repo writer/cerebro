@@ -36,6 +36,7 @@ use crate::{CollectedBatch, CollectedScope, CollectionRequest, SourceConnector, 
 const MAX_PAGES: usize = 10_000;
 const MAX_FANOUT_SCOPES: usize = 1_000;
 const MAX_RESPONSE_BYTES: usize = 16 << 20;
+const MAX_PROVIDER_ID_BYTES: usize = 1 << 10;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -593,14 +594,17 @@ impl SourceConnector for HttpSourceConnector {
                     let value =
                         normalize_selected_record(value, self.family.scalar_record_field())?;
                     validate_record_scope(self.family.id(), &value, &record_attributes)?;
-                    let provider_id =
+                    let provider_id = if let Some(template) = self.family.id_template() {
+                        render_id_template(self.family.id(), template, &value, &record_attributes)?
+                    } else {
                         scalar_at(&value, self.family.id_field()).ok_or_else(|| {
                             HttpConnectorError::InvalidResponse(format!(
                                 "family {} record is missing {}",
                                 self.family.id(),
                                 self.family.id_field()
                             ))
-                        })?;
+                        })?
+                    };
                     let mut fields = flatten_scalars(&value);
                     fields.extend(record_attributes.clone());
                     records.push(SourceRecord {
@@ -1409,6 +1413,55 @@ fn scalar_at(value: &Value, field: &str) -> Option<String> {
     scalar_at_path(value, field)
 }
 
+fn render_id_template(
+    family_id: &str,
+    template: &str,
+    value: &Value,
+    record_attributes: &BTreeMap<String, String>,
+) -> Result<String, HttpConnectorError> {
+    let mut rendered = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(start) = rest.find("${") {
+        rendered.push_str(&rest[..start]);
+        let field_start = start + 2;
+        let field_end = rest[field_start..].find('}').ok_or_else(|| {
+            HttpConnectorError::InvalidConfiguration(format!(
+                "family {family_id} has an invalid id template"
+            ))
+        })? + field_start;
+        let field = &rest[field_start..field_end];
+        let field_value = scalar_at_path(value, field)
+            .or_else(|| record_attributes.get(field).cloned())
+            .ok_or_else(|| {
+                HttpConnectorError::InvalidResponse(format!(
+                    "family {family_id} id template is missing {field}"
+                ))
+            })?;
+        if field_value.trim().is_empty()
+            || field_value.trim() != field_value
+            || field_value.len() > MAX_PROVIDER_ID_BYTES
+            || field_value.chars().any(char::is_control)
+        {
+            return Err(HttpConnectorError::InvalidResponse(format!(
+                "family {family_id} id template has an invalid {field}"
+            )));
+        }
+        rendered.push_str(&field_value);
+        rest = &rest[field_end + 1..];
+    }
+    rendered.push_str(rest);
+    if rendered.trim().is_empty()
+        || rendered.trim() != rendered
+        || rendered.len() > MAX_PROVIDER_ID_BYTES
+        || rendered.chars().any(char::is_control)
+    {
+        return Err(HttpConnectorError::InvalidResponse(format!(
+            "family {family_id} rendered an invalid provider id"
+        )));
+    }
+    Ok(rendered)
+}
+
 fn scalar_at_path(value: &Value, path: &str) -> Option<String> {
     let path = path.trim().trim_start_matches("$.").trim_start_matches('$');
     value_at_path(value, path).and_then(scalar)
@@ -1650,6 +1703,41 @@ mod tests {
             normalize_selected_record(object.clone(), None).unwrap(),
             object
         );
+    }
+
+    #[test]
+    fn composite_provider_ids_require_every_bounded_scalar() {
+        let payload = serde_json::json!({
+            "reportedAt": "2026-07-29T00:00:00Z",
+            "reporter": {"id": 43121}
+        });
+        let attributes = BTreeMap::from([("scope".to_owned(), "tenant-a".to_owned())]);
+        assert_eq!(
+            render_id_template(
+                "reports",
+                "${reportedAt}:${reporter.id}:${scope}",
+                &payload,
+                &attributes,
+            )
+            .unwrap(),
+            "2026-07-29T00:00:00Z:43121:tenant-a"
+        );
+        assert!(matches!(
+            render_id_template("reports", "${reportedAt}:${missing}", &payload, &attributes),
+            Err(HttpConnectorError::InvalidResponse(_))
+        ));
+        for invalid in ["", " ", " padded", "line\nbreak"] {
+            let payload = serde_json::json!({"id": invalid});
+            assert!(matches!(
+                render_id_template("reports", "report:${id}", &payload, &BTreeMap::new()),
+                Err(HttpConnectorError::InvalidResponse(_))
+            ));
+        }
+        let oversized = serde_json::json!({"id": "x".repeat(MAX_PROVIDER_ID_BYTES + 1)});
+        assert!(matches!(
+            render_id_template("reports", "${id}", &oversized, &BTreeMap::new()),
+            Err(HttpConnectorError::InvalidResponse(_))
+        ));
     }
 
     #[test]
@@ -2200,6 +2288,204 @@ mod tests {
         server.await.unwrap();
         assert_eq!(batch.records.len(), 1);
         assert_eq!(batch.records[0].provider_id, "group-1");
+    }
+
+    #[tokio::test]
+    async fn abuseipdb_reports_use_required_scope_pages_and_composite_ids() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for page in 1..=2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                let request_line = request.lines().next().unwrap();
+                assert!(request_line.starts_with("GET /reports?"));
+                assert!(request_line.contains("ipAddress=203.0.113.9"));
+                assert!(request_line.contains("maxAgeInDays=90"));
+                assert!(request_line.contains("perPage=100"));
+                assert!(request_line.contains(&format!("page={page}")));
+                assert!(
+                    request
+                        .lines()
+                        .any(|line| line.eq_ignore_ascii_case("key: abuseipdb-secret"))
+                );
+                let results = if page == 1 {
+                    (1..=100)
+                        .map(|reporter_id| {
+                            serde_json::json!({
+                                "reportedAt": "2026-07-29T00:00:00Z",
+                                "reporterId": reporter_id,
+                                "comment": format!("Report {reporter_id}")
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![serde_json::json!({
+                        "reportedAt": "2026-07-29T00:00:00Z",
+                        "reporterId": 101,
+                        "comment": "Report 101"
+                    })]
+                };
+                let body = serde_json::json!({
+                    "data": {
+                        "page": page,
+                        "perPage": 100,
+                        "results": results
+                    }
+                })
+                .to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("abuseipdb")
+        .unwrap()
+        .clone();
+        assert_eq!(
+            source.authority(),
+            cerebro_source_catalog::CollectionAuthority::Authoritative
+        );
+        assert!(matches!(
+            HttpSourceConnector::new(
+                source.clone(),
+                "reports",
+                &format!("http://{address}"),
+                BTreeMap::new(),
+                ResolvedAuth::Header {
+                    name: "Key".to_owned(),
+                    value: "abuseipdb-secret".to_owned(),
+                },
+            )
+            .unwrap()
+            .request_scopes(),
+            Err(HttpConnectorError::InvalidConfiguration(_))
+        ));
+        let mut connector = HttpSourceConnector::new(
+            source.clone(),
+            "reports",
+            &format!("http://{address}"),
+            BTreeMap::from([
+                ("ip_address".to_owned(), "203.0.113.9".to_owned()),
+                ("max_age_in_days".to_owned(), "90".to_owned()),
+            ]),
+            ResolvedAuth::Header {
+                name: "Key".to_owned(),
+                value: "abuseipdb-secret".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("abuseipdb-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(batch.records.len(), 101);
+        assert_eq!(batch.records[0].provider_id, "2026-07-29T00:00:00Z:1");
+        assert_eq!(batch.records[99].provider_id, "2026-07-29T00:00:00Z:100");
+        assert_eq!(batch.records[100].provider_id, "2026-07-29T00:00:00Z:101");
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+        assert_eq!(delta.entities().len(), 101);
+        assert_eq!(
+            delta
+                .entities()
+                .iter()
+                .map(|entity| entity.id())
+                .collect::<BTreeSet<_>>()
+                .len(),
+            101
+        );
+    }
+
+    #[tokio::test]
+    async fn abuseipdb_blacklist_is_one_bounded_filtered_response() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            let request_line = request.lines().next().unwrap();
+            assert!(request_line.starts_with("GET /blacklist?"));
+            assert!(request_line.contains("confidenceMinimum=75"));
+            assert!(request_line.contains("ipVersion=6"));
+            assert!(request_line.contains("limit=10000"));
+            assert!(!request_line.contains("cursor="));
+            assert!(!request_line.contains("page="));
+            assert!(
+                request
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("key: abuseipdb-secret"))
+            );
+            let body = r#"{"meta":{"generatedAt":"2026-07-29T00:00:00Z"},"data":[{"ipAddress":"2607:ff10:c8:594::9","abuseConfidenceScore":100,"lastReportedAt":"2026-07-28T23:59:00Z"},{"ipAddress":"2001:db8::1","abuseConfidenceScore":99,"lastReportedAt":"2026-07-28T23:58:00Z"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("abuseipdb")
+        .unwrap()
+        .clone();
+        let mut connector = HttpSourceConnector::new(
+            source,
+            "ip_addresses",
+            &format!("http://{address}"),
+            BTreeMap::from([
+                ("confidence_minimum".to_owned(), "75".to_owned()),
+                ("ip_version".to_owned(), "6".to_owned()),
+            ]),
+            ResolvedAuth::Header {
+                name: "Key".to_owned(),
+                value: "abuseipdb-secret".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("abuseipdb-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(
+            batch
+                .records
+                .iter()
+                .map(|record| record.provider_id.as_str())
+                .collect::<Vec<_>>(),
+            ["2607:ff10:c8:594::9", "2001:db8::1"]
+        );
     }
 
     #[tokio::test]

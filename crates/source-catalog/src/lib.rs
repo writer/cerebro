@@ -229,6 +229,7 @@ pub struct CompiledFamily {
     path: String,
     record_selector: String,
     scalar_record_field: Option<String>,
+    id_template: Option<String>,
     id_field: String,
     name_field: Option<String>,
     static_query: BTreeMap<String, String>,
@@ -261,6 +262,10 @@ impl CompiledFamily {
 
     pub fn scalar_record_field(&self) -> Option<&str> {
         self.scalar_record_field.as_deref()
+    }
+
+    pub fn id_template(&self) -> Option<&str> {
+        self.id_template.as_deref()
     }
 
     pub fn id_field(&self) -> &str {
@@ -483,6 +488,8 @@ struct DefinitionWire {
 #[derive(Deserialize)]
 struct ConfigFieldWire {
     key: String,
+    #[serde(default)]
+    required: bool,
 }
 
 #[derive(Deserialize)]
@@ -538,6 +545,8 @@ struct FamilyConfigWire {
     config_query: BTreeMap<String, String>,
     #[serde(default)]
     config_attributes: BTreeMap<String, String>,
+    #[serde(default)]
+    id_template: String,
 }
 
 #[derive(Default, Deserialize)]
@@ -774,8 +783,8 @@ fn compile_source(
         .definition
         .config_fields
         .iter()
-        .map(|field| field.key.as_str())
-        .collect::<BTreeSet<_>>();
+        .map(|field| (field.key.as_str(), field.required))
+        .collect::<BTreeMap<_, _>>();
     let generic_runtime_supported = classifier_supported
         && auth.supports_generic_runtime()
         && (auth != AuthModel::ApiKey
@@ -844,7 +853,7 @@ fn compile_family(
     family: FamilyWire,
     verified: &BTreeSet<(String, String, String)>,
     generic_runtime_supported: bool,
-    config_fields: &BTreeSet<&str>,
+    config_fields: &BTreeMap<&str, bool>,
 ) -> Result<CompiledFamily, CatalogError> {
     let method = match family.method.trim() {
         "" | "GET" => HttpMethod::Get,
@@ -909,11 +918,11 @@ fn compile_family(
         .iter()
         .filter_map(|parameter| {
             let binding = if let Some(field) = explicit_path_fanout.get(*parameter) {
-                config_fields
-                    .contains(field.as_str())
-                    .then(|| PathParameterBinding::CsvFanout {
+                config_fields.contains_key(field.as_str()).then(|| {
+                    PathParameterBinding::CsvFanout {
                         field: field.clone(),
-                    })
+                    }
+                })
             } else {
                 config_binding(parameter, config_fields)
             };
@@ -969,6 +978,19 @@ fn compile_family(
                 .entry(config_field.clone())
                 .or_insert_with(|| binding.clone());
         }
+    }
+    let id_template = family
+        .config
+        .as_ref()
+        .and_then(|config| optional(config.id_template.clone()));
+    if id_template
+        .as_deref()
+        .is_some_and(|template| !valid_id_template(template))
+    {
+        return invalid(
+            path,
+            &format!("family {} id_template is invalid", family.id),
+        );
     }
     let projection = family.projection.ok_or_else(|| CatalogError::Invalid {
         path: path.to_path_buf(),
@@ -1031,6 +1053,7 @@ fn compile_family(
         path: family.path,
         record_selector,
         scalar_record_field,
+        id_template,
         id_field: nonempty(path, "family id_field", family.id_field)?,
         name_field: optional(family.name_field),
         static_query: family.static_query,
@@ -1048,31 +1071,77 @@ fn compile_family(
     })
 }
 
-fn config_binding(requested: &str, config_fields: &BTreeSet<&str>) -> Option<PathParameterBinding> {
-    if config_fields.contains(requested) {
+fn config_binding(
+    requested: &str,
+    config_fields: &BTreeMap<&str, bool>,
+) -> Option<PathParameterBinding> {
+    if config_fields.contains_key(requested) {
         return Some(PathParameterBinding::ScalarConfig {
             field: requested.to_owned(),
         });
     }
     let plural = format!("{requested}s");
     config_fields
-        .contains(plural.as_str())
+        .contains_key(plural.as_str())
         .then_some(PathParameterBinding::CsvFanout { field: plural })
 }
 
 fn config_query_binding(
     requested: &str,
-    config_fields: &BTreeSet<&str>,
+    config_fields: &BTreeMap<&str, bool>,
 ) -> Option<PathParameterBinding> {
     let plural = format!("{requested}s");
-    if config_fields.contains(plural.as_str()) {
+    if config_fields.contains_key(plural.as_str()) {
         return Some(PathParameterBinding::CsvFanout { field: plural });
     }
-    config_fields
-        .contains(requested)
-        .then(|| PathParameterBinding::OptionalScalarConfig {
-            field: requested.to_owned(),
-        })
+    config_fields.get(requested).map(|required| {
+        if *required {
+            PathParameterBinding::ScalarConfig {
+                field: requested.to_owned(),
+            }
+        } else {
+            PathParameterBinding::OptionalScalarConfig {
+                field: requested.to_owned(),
+            }
+        }
+    })
+}
+
+fn valid_id_template(template: &str) -> bool {
+    if template.is_empty()
+        || template.len() > 1_024
+        || template.trim() != template
+        || template.chars().any(char::is_control)
+    {
+        return false;
+    }
+    let mut rest = template;
+    let mut placeholders = 0usize;
+    while let Some(start) = rest.find("${") {
+        if rest[..start].contains('{') || rest[..start].contains('}') {
+            return false;
+        }
+        let field_start = start + 2;
+        let Some(relative_end) = rest[field_start..].find('}') else {
+            return false;
+        };
+        let field_end = field_start + relative_end;
+        let field = &rest[field_start..field_end];
+        if field.is_empty()
+            || field.len() > 128
+            || field.split('.').any(|part| {
+                part.is_empty()
+                    || !part
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            })
+        {
+            return false;
+        }
+        placeholders += 1;
+        rest = &rest[field_end + 1..];
+    }
+    placeholders > 0 && !rest.contains('{') && !rest.contains('}')
 }
 
 fn compile_pagination(
@@ -1935,6 +2004,56 @@ mod tests {
                 .map(String::as_str),
             Some("status.id|account.id|id")
         );
+        let abuseipdb = catalog.get("abuseipdb").unwrap();
+        let abuseipdb_reports = abuseipdb
+            .families()
+            .iter()
+            .find(|family| family.id() == "reports")
+            .unwrap();
+        assert_eq!(
+            abuseipdb_reports.pagination(),
+            &Pagination::Page {
+                parameter: "page".to_owned(),
+                start: 1,
+                page_size_parameter: Some("perPage".to_owned()),
+                page_size: 100,
+            }
+        );
+        assert_eq!(
+            abuseipdb_reports.id_template(),
+            Some("${reportedAt}:${reporterId}")
+        );
+        assert_eq!(
+            abuseipdb_reports.config_query().get("ipAddress"),
+            Some(&PathParameterBinding::ScalarConfig {
+                field: "ip_address".to_owned()
+            })
+        );
+        assert_eq!(
+            abuseipdb_reports.config_query().get("maxAgeInDays"),
+            Some(&PathParameterBinding::OptionalScalarConfig {
+                field: "max_age_in_days".to_owned()
+            })
+        );
+        assert!(
+            !abuseipdb_reports
+                .projection()
+                .fields()
+                .contains_key("finding_id")
+        );
+        let abuseipdb_blacklist = abuseipdb
+            .families()
+            .iter()
+            .find(|family| family.id() == "ip_addresses")
+            .unwrap();
+        assert_eq!(abuseipdb_blacklist.pagination(), &Pagination::None);
+        assert_eq!(
+            abuseipdb_blacklist.static_query(),
+            &BTreeMap::from([
+                ("confidenceMinimum".to_owned(), "90".to_owned()),
+                ("limit".to_owned(), "10000".to_owned()),
+            ])
+        );
         for family in catalog.get("akeyless").unwrap().families() {
             assert_eq!(
                 family.cursor_in_json_body(),
@@ -1966,6 +2085,7 @@ mod tests {
             CollectionAuthority::Authoritative
         );
         for source_id in [
+            "abuseipdb",
             "akeneo",
             "akeyless",
             "apacta",
@@ -2000,6 +2120,33 @@ mod tests {
             catalog.get("agiloft").unwrap().authority(),
             CollectionAuthority::ShadowOnly
         );
+    }
+
+    #[test]
+    fn composite_id_templates_are_closed_and_bounded() {
+        for valid in [
+            "${reportedAt}:${reporterId}",
+            "${namespace}/${name}",
+            "prefix-${nested.value}",
+        ] {
+            assert!(valid_id_template(valid), "{valid}");
+        }
+        for invalid in [
+            "",
+            "literal-only",
+            "${}",
+            "${missing",
+            "${bad field}",
+            "${nested..value}",
+            "${field}}",
+            " ${field}",
+        ] {
+            assert!(!valid_id_template(invalid), "{invalid}");
+        }
+        assert!(!valid_id_template(&format!(
+            "${{field}}{}",
+            "x".repeat(1_024)
+        )));
     }
 
     #[test]

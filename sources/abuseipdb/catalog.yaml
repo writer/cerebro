@@ -15,16 +15,13 @@ kind_lifecycle:
 provider_api:
   status: verified
   basis: declared
-  verified_at: 2026-07-06T00:00:00Z
+  verified_at: 2026-07-29T00:00:00Z
   transport: rest
   auth: api_key
   auth_mechanics: key_header
   base_url: https://api.abuseipdb.com/api/v2
-  spec_url: https://raw.githubusercontent.com/api-evangelist/abuseipdb/main/openapi/abuseipdb-apiv2-openapi.yml
-  spec_kind: openapi
   references:
     - https://docs.abuseipdb.com/
-    - https://www.abuseipdb.com/api.html
   families:
     - id: ip_addresses
       method: GET
@@ -47,7 +44,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Reads documented AbuseIPDB blacklist entries from GET /blacklist.
+        - Official API documentation verifies GET /blacklist, Key header authentication, the bounded limit response, optional confidence and IP-version filters, and stable ipAddress identity.
     - id: reports
       type: remediation_state
       title: "Reports"
@@ -57,7 +54,7 @@ coverage_contract:
       evidence_types: [remediation_state]
       control_domains: [remediation]
       notes:
-        - Reads documented AbuseIPDB report history for a configured IP address from GET /reports.
+        - Official API documentation verifies GET /reports, required ipAddress scope, numbered page and perPage pagination, and the reportedAt plus reporterId record identity.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync
