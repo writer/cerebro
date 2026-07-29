@@ -127,6 +127,7 @@ test("question service preflights one governed graph lookup and returns its veri
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
     let request: Request | undefined;
+    let timeoutMs: number | undefined;
     const askClient = new CerebroAskClient({
       apiKey: "bound-at-runtime",
       baseUrl: "https://cerebro.example.com",
@@ -153,7 +154,10 @@ test("question service preflights one governed graph lookup and returns its veri
       askClient,
       {
         clock: () => clockValues.shift() ?? new Date("2026-07-18T10:00:01.000Z"),
-        timeoutSignal: () => new AbortController().signal,
+        timeoutSignal: (milliseconds) => {
+          timeoutMs = milliseconds;
+          return new AbortController().signal;
+        },
       },
     );
 
@@ -167,6 +171,7 @@ test("question service preflights one governed graph lookup and returns its veri
     assert.equal(result.pending.verified, true);
     assert.equal(request?.url, "https://cerebro.example.com/grc/ask");
     assert.equal(request?.headers.get("x-cerebro-tenant"), "writer");
+    assert.equal(timeoutMs, 59_900);
     assert.deepEqual(await request?.json(), {
       question: "Which current findings are open?",
       tenant_id: "writer",

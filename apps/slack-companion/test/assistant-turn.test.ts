@@ -16,7 +16,13 @@ test("assistant turn budgets bind model-selected lanes to proportional work", ()
     max_tool_calls: 0,
     schema_version: "assistant-turn-budget/v1",
   });
-  assert.equal(assistantTurnBudget("lookup").max_tool_calls, 3);
+  assert.deepEqual(assistantTurnBudget("lookup"), {
+    execution_lane: "lookup",
+    latency_budget_ms: 60_000,
+    max_selected_capabilities: 4,
+    max_tool_calls: 3,
+    schema_version: "assistant-turn-budget/v1",
+  });
   assert.equal(assistantTurnBudget("investigate").max_tool_calls, 8);
   assert.equal(assistantTurnBudget("act").max_tool_calls, 12);
 });

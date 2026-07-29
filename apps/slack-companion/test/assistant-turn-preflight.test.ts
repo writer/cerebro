@@ -39,8 +39,8 @@ test("preflight allows one healthy authorized invocation inside the lane", () =>
   assert.deepEqual(result, {
     allowed: true,
     blockers: [],
-    cutoff_ms: 24_000,
-    remaining_ms: 20_000,
+    cutoff_ms: 48_000,
+    remaining_ms: 50_000,
     schema_version: "assistant-turn-plan-preflight/v1",
     tool_calls_after_start: 1,
   });
@@ -51,7 +51,7 @@ test("preflight stops new tools at 80 percent of the lane budget", () => {
     budget: assistantTurnBudget("lookup"),
     catalog,
     completed_tool_calls: 1,
-    elapsed_ms: 24_000,
+    elapsed_ms: 48_000,
     invocation: invocation(),
     observed_at: "2026-07-21T12:00:01.000Z",
     replan_count: 1,
@@ -69,7 +69,7 @@ test("preflight rejects blocked plans before execution", () => {
     budget: assistantTurnBudget("lookup"),
     catalog,
     completed_tool_calls: 3,
-    elapsed_ms: 25_000,
+    elapsed_ms: 50_000,
     invocation: {
       ...planned,
       authority: { ...planned.authority!, request_digest: `sha256:${"b".repeat(64)}` },
