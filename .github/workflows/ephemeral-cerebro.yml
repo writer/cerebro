@@ -1,0 +1,196 @@
+name: Ephemeral Cerebro
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact repository commit with successful CI and Rust replacement proof
+        required: true
+        type: string
+      image_source:
+        description: Build the exact commit in this run or use signed main candidate images
+        required: true
+        default: source
+        type: choice
+        options:
+          - source
+          - published
+      soak_seconds:
+        description: Sustained shadow-read exercise duration (60-1800 seconds)
+        required: false
+        default: 60
+        type: number
+
+permissions:
+  actions: read
+  attestations: read
+  contents: read
+  packages: read
+
+concurrency:
+  group: ephemeral-cerebro-${{ inputs.candidate_sha || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  topology:
+    name: Seeded Go and Rust graph
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate_sha || github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install 1.93.1 --profile minimal
+
+      - name: Restore Rust qualification build cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: pr-rust-graph-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}
+          restore-keys: |
+            pr-rust-graph-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Log in to GHCR for published candidates
+        if: inputs.image_source == 'published'
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve candidate images
+        id: candidate
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.candidate_sha || github.event.pull_request.head.sha }}
+          IMAGE_SOURCE: ${{ inputs.image_source || 'source' }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "${REQUESTED_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          git fetch origin "${REQUESTED_SHA}"
+          git cat-file -e "${REQUESTED_SHA}^{commit}"
+
+          if [[ "${IMAGE_SOURCE}" == source ]]; then
+            {
+              echo "api_image=cerebro-source:${REQUESTED_SHA}"
+              echo "rust_image=cerebro-rust-source:${REQUESTED_SHA}"
+            } >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          [[ "${IMAGE_SOURCE}" == published ]]
+          api_image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro:candidate-${REQUESTED_SHA}"
+          rust_image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/cerebro-rust:candidate-${REQUESTED_SHA}"
+          api_digest=""
+          rust_digest=""
+          for attempt in $(seq 1 90); do
+            api_digest="$(docker buildx imagetools inspect "${api_image}" --format '{{.Manifest.Digest}}' 2>/dev/null || true)"
+            rust_digest="$(docker buildx imagetools inspect "${rust_image}" --format '{{.Manifest.Digest}}' 2>/dev/null || true)"
+            if [[ "${api_digest}" =~ ^sha256:[0-9a-f]{64}$ ]] \
+              && [[ "${rust_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              break
+            fi
+            test "${attempt}" -lt 90
+            sleep 10
+          done
+          [[ "${api_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${rust_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+
+          {
+            echo "api_image=${api_image%@*}@${api_digest}"
+            echo "rust_image=${rust_image%@*}@${rust_digest}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Build exact source images
+        if: inputs.image_source != 'published'
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || github.event.pull_request.head.sha }}
+          API_IMAGE: ${{ steps.candidate.outputs.api_image }}
+          RUST_IMAGE: ${{ steps.candidate.outputs.rust_image }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach candidate-source "${CANDIDATE_SHA}"
+          docker buildx build \
+            --file candidate-source/Dockerfile \
+            --load \
+            --provenance=false \
+            --tag "${API_IMAGE}" \
+            candidate-source
+          docker buildx build \
+            --file candidate-source/Dockerfile.rust \
+            --load \
+            --provenance=false \
+            --tag "${RUST_IMAGE}" \
+            candidate-source
+
+      - name: Verify candidate attestations
+        if: inputs.image_source == 'published'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          API_IMAGE: ${{ steps.candidate.outputs.api_image }}
+          RUST_IMAGE: ${{ steps.candidate.outputs.rust_image }}
+        run: |
+          set -euo pipefail
+          gh attestation verify "oci://${API_IMAGE}" --repo "${GITHUB_REPOSITORY}"
+          gh attestation verify "oci://${RUST_IMAGE}" --repo "${GITHUB_REPOSITORY}"
+
+      - name: Require exact-head replay and replacement proofs
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          IMAGE_SOURCE: ${{ inputs.image_source }}
+        run: |
+          set -euo pipefail
+          workflows=(ci.yml rust-graph-replacement.yml)
+          if [[ "${IMAGE_SOURCE}" == published ]]; then
+            workflows+=(rust-only-candidate.yml)
+          fi
+          for workflow in "${workflows[@]}"; do
+            conclusion="$(
+              gh api --method GET \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs" \
+                -f head_sha="${CANDIDATE_SHA}" \
+                -f per_page=20 \
+                --jq '[.workflow_runs[] | select(.event != "pull_request_target")] | sort_by(.created_at) | last | .conclusion // ""'
+            )"
+            if [[ "${conclusion}" != success ]]; then
+              echo "${workflow} has no successful exact-head proof for ${CANDIDATE_SHA}"
+              exit 1
+            fi
+          done
+
+      - name: Process and qualify the disposable graph
+        shell: bash
+        env:
+          CEREBRO_IMAGE: ${{ steps.candidate.outputs.api_image }}
+          CEREBRO_RUST_IMAGE: ${{ steps.candidate.outputs.rust_image }}
+          CEREBRO_QUALIFICATION_SHA: ${{ inputs.candidate_sha || github.event.pull_request.head.sha }}
+          CEREBRO_QUALIFICATION_PLATFORM: linux/arm64
+          CEREBRO_QUALIFICATION_OUTPUT: ${{ github.workspace }}/.dist/pr-rust-graph
+          CEREBRO_REPOSITORY_ROOT: ${{ github.workspace }}
+          COMPOSE_PROJECT_NAME: ephemeral-cerebro-${{ github.run_id }}
+          SOAK_SECONDS: ${{ inputs.soak_seconds || 60 }}
+        run: scripts/qualify-rust-graph.sh
+
+      - name: Upload graph qualification receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pr-rust-graph-${{ inputs.candidate_sha || github.event.pull_request.head.sha }}
+          path: |
+            .dist/pr-rust-graph
+          if-no-files-found: error

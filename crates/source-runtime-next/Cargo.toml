@@ -8,16 +8,25 @@ publish = false
 
 [dependencies]
 async-trait.workspace = true
+aws-credential-types.workspace = true
+aws-sigv4.workspace = true
+aws-smithy-async.workspace = true
+aws-smithy-runtime-api.workspace = true
+aws-smithy-runtime-api-macros.workspace = true
+aws-smithy-types.workspace = true
+base64.workspace = true
 cerebro-organizational-graph.workspace = true
 cerebro-organizational-model.workspace = true
 cerebro-source-catalog.workspace = true
 futures-util.workspace = true
+hmac.workspace = true
 prost.workspace = true
 prost-types.workspace = true
 reqwest = { workspace = true, features = ["stream"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+time.workspace = true
 tokio = { workspace = true, features = ["time"] }
 
 [lints]

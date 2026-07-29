@@ -91,7 +91,14 @@ func (s *Service) RegisterConnectorDefinition(definition connectordefinitions.De
 }
 
 // Project applies one source event to the configured state and graph stores.
-func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (result ports.ProjectionResult, err error) {
+func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
+	result, _, err := s.ProjectWithDelta(ctx, event)
+	return result, err
+}
+
+// ProjectWithDelta applies one source event and returns the exact normalized
+// compatibility records used for the write.
+func (s *Service) ProjectWithDelta(ctx context.Context, event *cerebrov1.EventEnvelope) (result ports.ProjectionResult, delta ports.SourceProjectionDelta, err error) {
 	ctx = telemetry.EnsureTraceContext(ctx)
 	started := time.Now()
 	defer func() {
@@ -132,39 +139,46 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		})
 	}()
 	if event == nil {
-		return ports.ProjectionResult{}, fmt.Errorf("event is required")
+		return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, fmt.Errorf("event is required")
 	}
 	if s == nil || (s.state == nil && s.graph == nil) {
-		return ports.ProjectionResult{}, nil
+		return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, nil
 	}
 	entities, links, err := s.ProjectRecordsContext(ctx, event)
 	if err != nil {
-		return ports.ProjectionResult{}, err
+		return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
 	}
 	cleanupURNs, err := s.ProjectCleanupRecords(event)
 	if err != nil {
-		return ports.ProjectionResult{}, err
-	}
-	entitiesDeleted, err := s.deleteProjectedEntities(ctx, cleanupURNs)
-	if err != nil {
-		return ports.ProjectionResult{}, err
+		return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
 	}
 	cleanupRequests, err := s.ProjectCleanupRequests(event)
 	if err != nil {
-		return ports.ProjectionResult{}, err
+		return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
+	}
+	retractedLinks, err := s.ProjectRetractions(event)
+	if err != nil {
+		return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
+	}
+	delta = ports.SourceProjectionDelta{
+		Entities:          entities,
+		Links:             links,
+		EntityRetractions: cleanupURNs,
+		LinkRetractions:   retractedLinks,
+		CleanupRequests:   cleanupRequests,
+	}
+	entitiesDeleted, err := s.deleteProjectedEntities(ctx, cleanupURNs)
+	if err != nil {
+		return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
 	}
 	cleanupDeleted, err := s.cleanupProjectedEntities(ctx, cleanupRequests)
 	if err != nil {
-		return ports.ProjectionResult{}, err
+		return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
 	}
 	entitiesDeleted += cleanupDeleted.EntitiesDeleted
-	retractedLinks, err := s.ProjectRetractions(event)
-	if err != nil {
-		return ports.ProjectionResult{}, err
-	}
 	retractedLinksDeleted, err := s.deleteProjectedLinks(ctx, retractedLinks)
 	if err != nil {
-		return ports.ProjectionResult{}, err
+		return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
 	}
 	if len(retractedLinks) != 0 {
 		attrs := telemetry.Attrs(
@@ -184,29 +198,29 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	}
 	if conflictCategory, err := s.detectRuntimeEvidenceConflict(ctx, event, entities); err != nil {
 		emitRuntimeEvidenceTelemetry(ctx, event, entities, links, "conflict", conflictCategory)
-		return ports.ProjectionResult{}, err
+		return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
 	}
 	for _, entity := range entities {
 		if s.state != nil {
 			if err := s.state.UpsertProjectedEntity(ctx, entity); err != nil {
-				return ports.ProjectionResult{}, err
+				return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
 			}
 		}
 		if s.graph != nil {
 			if err := s.graph.UpsertProjectedEntity(ctx, entity); err != nil {
-				return ports.ProjectionResult{}, err
+				return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
 			}
 		}
 	}
 	for _, link := range links {
 		if s.state != nil {
 			if err := s.state.UpsertProjectedLink(ctx, link); err != nil {
-				return ports.ProjectionResult{}, err
+				return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
 			}
 		}
 		if s.graph != nil {
 			if err := s.graph.UpsertProjectedLink(ctx, link); err != nil {
-				return ports.ProjectionResult{}, err
+				return ports.ProjectionResult{}, ports.SourceProjectionDelta{}, err
 			}
 		}
 	}
@@ -216,7 +230,7 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		LinksProjected:    boundedUint32(len(links)),
 		EntitiesDeleted:   entitiesDeleted,
 		LinksDeleted:      cleanupDeleted.LinksDeleted + retractedLinksDeleted,
-	}, nil
+	}, delta, nil
 }
 
 func sourceProjectionDiagnosticContext(event *cerebrov1.EventEnvelope) observability.SourceProjectionDiagnosticContext {

@@ -5,7 +5,9 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use cerebro_agent_context::AgentGraph;
+use cerebro_agent_context::{
+    AgentGraph, FactQuery, QueryAbsentEdge, QueryDirection, QueryEdge, QueryNode,
+};
 use cerebro_organizational_model::{
     AssertionProvenance, CollectionId, CompleteCollection, Entity, EntityKind, GraphAssertion,
     ObservationId, ObservationRef, ProviderKind, RelationKind, RelationshipAssertion,
@@ -136,6 +138,67 @@ async fn benchmark_durable_store_and_traversal() -> Result<(), Box<dyn Error>> {
             micros_per_operation: elapsed.as_secs_f64() * 1_000_000.0 / iterations as f64,
         })?;
     }
+
+    let fact_query = FactQuery::new(
+        vec![
+            QueryNode {
+                variable: "start".to_owned(),
+                kinds: vec!["resource".to_owned()],
+                keys: vec![path_entities[0].id().to_string()],
+            },
+            QueryNode {
+                variable: "middle".to_owned(),
+                kinds: vec!["resource".to_owned()],
+                keys: Vec::new(),
+            },
+            QueryNode {
+                variable: "end".to_owned(),
+                kinds: vec!["resource".to_owned()],
+                keys: vec![path_entities[2].id().to_string()],
+            },
+        ],
+        vec![
+            QueryEdge {
+                variable: "first_dependency".to_owned(),
+                from_variable: "start".to_owned(),
+                relation: "depends_on".to_owned(),
+                to_variable: "middle".to_owned(),
+            },
+            QueryEdge {
+                variable: "second_dependency".to_owned(),
+                from_variable: "middle".to_owned(),
+                relation: "depends_on".to_owned(),
+                to_variable: "end".to_owned(),
+            },
+        ],
+        vec![QueryAbsentEdge {
+            bound_variable: "end".to_owned(),
+            direction: QueryDirection::Incoming,
+            relation: "owns".to_owned(),
+            other_kinds: vec!["team".to_owned()],
+        }],
+        10,
+    )?;
+    let iterations = 200;
+    let started = Instant::now();
+    for _ in 0..iterations {
+        let result = reader
+            .query(path_batch.scope.receipt().tenant_id(), &fact_query)
+            .await?;
+        if result.matches.len() != 1
+            || result.matches[0].entities["middle"].entity_id != *path_entities[1].id()
+        {
+            return Err("typed fact query returned the wrong binding".into());
+        }
+    }
+    let elapsed = started.elapsed();
+    emit(Measurement {
+        operation: "typed_fact_query_two_join_not_exists",
+        records: 3,
+        iterations,
+        total_ms: millis(elapsed),
+        micros_per_operation: elapsed.as_secs_f64() * 1_000_000.0 / iterations as f64,
+    })?;
 
     let root_keys = path_entities
         .iter()

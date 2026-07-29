@@ -42,8 +42,10 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={active}
       onClick={onClick}
-      className={`border-b-2 px-4 py-2 text-[13px] font-medium transition ${
+      className={`shrink-0 border-b-2 px-4 py-2 text-[13px] font-medium transition ${
         active ? "border-[var(--primary)] text-[var(--primary)]" : "border-transparent text-[var(--text-muted)] hover:border-[color:var(--border-strong)] hover:text-[var(--text-primary)]"
       }`}
     >
@@ -107,8 +109,8 @@ function OverviewPane({ data, setTab }: { data: GRCInventoryAssetDetail; setTab:
     scopeState(data.asset) === "out_of_scope" ? "is scoped out of compliance review" : "is in scope",
   ].join(", ");
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="space-y-6">
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="min-w-0 space-y-6">
         <section className="surface-panel overflow-hidden">
           <div className="p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -176,7 +178,7 @@ function OverviewPane({ data, setTab }: { data: GRCInventoryAssetDetail; setTab:
         </Panel>
 
         <Panel title="Relationships" action={<Link href={`/explore?root_urn=${encodeURIComponent(data.asset.urn)}`} className="text-[12px] font-medium text-indigo-600 hover:text-indigo-800">Open graph</Link>}>
-          <GraphViewer graph={data.graph} />
+          <RelationshipGraph graph={data.graph} />
         </Panel>
       </div>
       <aside>
@@ -197,6 +199,20 @@ function OverviewPane({ data, setTab }: { data: GRCInventoryAssetDetail; setTab:
           <DetailRow label="Source" value={data.asset.source_id || "Not set"} />
         </dl>
       </aside>
+    </div>
+  );
+}
+
+function RelationshipGraph({ graph }: { graph: GRCInventoryAssetDetail["graph"] }) {
+  const [open, setOpen] = useState(false);
+  if (open) return <GraphViewer graph={graph} />;
+  return (
+    <div className="rounded-lg border border-dashed border-[color:var(--border)] bg-[var(--surface-muted)] px-4 py-8 text-center">
+      <p className="text-[13px] font-medium text-[var(--text-primary)]">Relationships are not loaded</p>
+      <p className="mt-1 text-[12px] text-[var(--text-muted)]">Load relationships to inspect neighboring records.</p>
+      <button type="button" onClick={() => setOpen(true)} className="primary-button mt-4 px-3 py-1.5 text-[13px]">
+        Load relationships
+      </button>
     </div>
   );
 }
@@ -505,13 +521,15 @@ export default function InventoryAssetPage() {
             <span>Last refreshed: {displayDate(attr(asset, "updated_at", "last_seen_at", "last_synced_at"))}</span>
             <span>{scopeCopy(scopeState(data.asset))}</span>
           </div>
-          <div className="flex items-center gap-4 border-b border-[color:var(--border)]">
-            <TabButton label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
-            <TabButton label="Vulnerabilities" active={tab === "vulnerabilities"} onClick={() => setTab("vulnerabilities")} />
-            <TabButton label={`Tests (${data.tests.length})`} active={tab === "tests"} onClick={() => setTab("tests")} />
-            <TabButton label="Framework scope" active={tab === "framework"} onClick={() => setTab("framework")} />
-            <TabButton label={`Reports (${data.asset_reports?.length ?? 0})`} active={tab === "reports"} onClick={() => setTab("reports")} />
-            <TabButton label={`Timeline (${data.timeline?.length ?? 0})`} active={tab === "timeline"} onClick={() => setTab("timeline")} />
+          <div className="overflow-x-auto border-b border-[color:var(--border)]" role="tablist" aria-label="Asset detail sections">
+            <div className="flex min-w-max items-center gap-1">
+              <TabButton label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
+              <TabButton label="Vulnerabilities" active={tab === "vulnerabilities"} onClick={() => setTab("vulnerabilities")} />
+              <TabButton label={`Tests (${data.tests.length})`} active={tab === "tests"} onClick={() => setTab("tests")} />
+              <TabButton label="Framework scope" active={tab === "framework"} onClick={() => setTab("framework")} />
+              <TabButton label={`Reports (${data.asset_reports?.length ?? 0})`} active={tab === "reports"} onClick={() => setTab("reports")} />
+              <TabButton label={`Timeline (${data.timeline?.length ?? 0})`} active={tab === "timeline"} onClick={() => setTab("timeline")} />
+            </div>
           </div>
           {tab === "overview" && <OverviewPane data={data} setTab={setTab} />}
           {tab === "vulnerabilities" && <VulnerabilitiesPane vulnerabilities={data.vulnerabilities} />}

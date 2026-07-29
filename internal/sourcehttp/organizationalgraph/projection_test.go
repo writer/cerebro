@@ -23,6 +23,20 @@ type sourceProjectorStub struct {
 	err   error
 }
 
+type sourceProjectorWithDeltaStub struct {
+	calls int
+	delta ports.SourceProjectionDelta
+}
+
+func (s *sourceProjectorWithDeltaStub) Project(context.Context, *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
+	return ports.ProjectionResult{}, errors.New("Project must not be called when ProjectWithDelta is available")
+}
+
+func (s *sourceProjectorWithDeltaStub) ProjectWithDelta(context.Context, *cerebrov1.EventEnvelope) (ports.ProjectionResult, ports.SourceProjectionDelta, error) {
+	s.calls++
+	return ports.ProjectionResult{EntitiesProjected: 1}, s.delta, nil
+}
+
 func (s *sourceProjectorStub) Project(context.Context, *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -38,28 +52,18 @@ func (s *sourceProjectorStub) callCount() int {
 
 func TestAppendLogProjectorUsesExactlyOneAuthority(t *testing.T) {
 	var authority = projectionAuthorityLegacy
+	var authorityRequests int
+	var projectionRequests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(tenantAuthHeader) != "tenant-a" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 			t.Fatalf("tenant authentication headers are missing")
 		}
 		switch r.URL.Path {
 		case "/v1/projections/events":
-			var request projectEventRequest
-			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-				t.Fatalf("decode request: %v", err)
-			}
-			if !request.AppendLogCommitted || request.FamilyID != "content_assets" || request.SourceRuntimeID != "box-runtime" {
-				t.Fatalf("request = %#v", request)
-			}
-			response := projectEventResponse{Authority: authority}
-			if authority == projectionAuthorityRust {
-				revision := uint64(11)
-				response.Projected = true
-				response.GraphRevision = &revision
-				response.EntitiesUpserted = 1
-			}
-			_ = json.NewEncoder(w).Encode(response)
+			projectionRequests++
+			http.Error(w, "event payload handoff is retired", http.StatusGone)
 		case "/v1/projections/authority":
+			authorityRequests++
 			_ = json.NewEncoder(w).Encode(authorityResponse{Authority: authority})
 		default:
 			http.NotFound(w, r)
@@ -80,8 +84,11 @@ func TestAppendLogProjectorUsesExactlyOneAuthority(t *testing.T) {
 	}
 	authority = projectionAuthorityRust
 	result, err = projector.Project(context.Background(), event)
-	if err != nil || result.EntitiesProjected != 1 || legacy.callCount() != 1 {
+	if err != nil || result != (ports.ProjectionResult{}) || legacy.callCount() != 1 {
 		t.Fatalf("Rust Project() = %#v, %v calls=%d", result, err, legacy.callCount())
+	}
+	if authorityRequests != 2 || projectionRequests != 0 {
+		t.Fatalf("authority_requests=%d projection_requests=%d", authorityRequests, projectionRequests)
 	}
 }
 
@@ -97,6 +104,94 @@ func TestProjectionClientRequiresAFixedHTTPOrigin(t *testing.T) {
 		if _, err := NewProjectionClient(value, testSharedSecret, time.Second); err == nil {
 			t.Fatalf("NewProjectionClient(%q) error = nil", value)
 		}
+	}
+}
+
+func TestAppendLogProjectorRecordsExactLegacyDelta(t *testing.T) {
+	var deltaRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/projections/authority":
+			_ = json.NewEncoder(w).Encode(authorityResponse{Authority: projectionAuthorityLegacy})
+		case "/v1/projections/legacy-deltas":
+			deltaRequests++
+			var request legacyProjectionRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatalf("decode legacy delta: %v", err)
+			}
+			if request.EventID != "event-1" ||
+				len(request.Delta.Entities) != 1 ||
+				request.Delta.Entities[0].URN != "urn:cerebro:tenant-a:asset:one" ||
+				request.Delta.Entities[0].RuntimeID != "box-runtime" {
+				t.Fatalf("legacy delta request = %#v", request)
+			}
+			_ = json.NewEncoder(w).Encode(legacyProjectionResponse{
+				Recorded:    true,
+				DeltaDigest: strings.Repeat("a", 64),
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	legacy := &sourceProjectorWithDeltaStub{delta: ports.SourceProjectionDelta{
+		Entities: []*ports.ProjectedEntity{{
+			URN:        "urn:cerebro:tenant-a:asset:one",
+			TenantID:   "tenant-a",
+			SourceID:   "box",
+			RuntimeID:  "box-runtime",
+			EntityType: "box.asset",
+			Label:      "One",
+		}},
+	}}
+	result, err := NewAppendLogProjector(legacy, client).Project(context.Background(), projectionEvent())
+	if err != nil || result.EntitiesProjected != 1 || legacy.calls != 1 || deltaRequests != 1 {
+		t.Fatalf("Project() = %#v, %v legacy_calls=%d delta_requests=%d", result, err, legacy.calls, deltaRequests)
+	}
+}
+
+func TestAppendLogProjectorRecordsCollectionManifest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/projections/collections" {
+			http.NotFound(w, r)
+			return
+		}
+		var request sourceCollectionRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode collection: %v", err)
+		}
+		if request.CollectionID != "collection-1" ||
+			request.Status != "complete" ||
+			len(request.ObservedFamilyIDs) != 1 ||
+			request.ObservedFamilyIDs[0] != "content_assets" {
+			t.Fatalf("collection request = %#v", request)
+		}
+		_ = json.NewEncoder(w).Encode(sourceCollectionResponse{
+			Recorded:       true,
+			ManifestDigest: strings.Repeat("b", 64),
+		})
+	}))
+	defer server.Close()
+	client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewProjectionClient() error = %v", err)
+	}
+	err = NewAppendLogProjector(nil, client).RecordSourceCollection(context.Background(), ports.SourceCollectionManifest{
+		CollectionID:      "collection-1",
+		TenantID:          "tenant-a",
+		SourceID:          "box",
+		RuntimeID:         "box-runtime",
+		StartedAtUnixMS:   100,
+		CompletedAtUnixMS: 200,
+		Status:            "complete",
+		ObservedFamilyIDs: []string{"content_assets"},
+	})
+	if err != nil {
+		t.Fatalf("RecordSourceCollection() error = %v", err)
 	}
 }
 
@@ -151,12 +246,49 @@ func TestProjectionRejectsMissingOccurrenceTimeBeforeCallingEitherWriter(t *test
 	}
 }
 
+func TestProjectionRejectsInvalidCommittedEventsBeforeAuthorityLookup(t *testing.T) {
+	for name, mutate := range map[string]func(*cerebrov1.EventEnvelope){
+		"missing runtime": func(event *cerebrov1.EventEnvelope) {
+			delete(event.Attributes, ports.EventAttributeSourceRuntimeID)
+		},
+		"invalid payload": func(event *cerebrov1.EventEnvelope) {
+			event.Payload = []byte(`{"unterminated"`)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			serverCalled := false
+			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				serverCalled = true
+			}))
+			defer server.Close()
+			client, err := NewProjectionClient(server.URL, testSharedSecret, time.Second)
+			if err != nil {
+				t.Fatalf("NewProjectionClient() error = %v", err)
+			}
+			legacy := &sourceProjectorStub{}
+			event := projectionEvent()
+			mutate(event)
+
+			_, err = NewAppendLogProjector(legacy, client).Project(context.Background(), event)
+			if err == nil || serverCalled || legacy.callCount() != 0 {
+				t.Fatalf(
+					"Project() error = %v server_called=%t legacy_calls=%d",
+					err,
+					serverCalled,
+					legacy.callCount(),
+				)
+			}
+		})
+	}
+}
+
 func projectionEvent() *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:         "event-1",
 		TenantId:   "tenant-a",
 		SourceId:   "box",
 		Kind:       "box.content_assets",
+		SchemaRef:  "box/content_assets/v1",
 		OccurredAt: timestamppb.New(time.Unix(100, 0)),
 		Payload:    []byte(`{"id":"asset-1"}`),
 		Attributes: map[string]string{

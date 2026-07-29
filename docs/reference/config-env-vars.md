@@ -17,9 +17,9 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_RATE_LIMIT_RPS` | `100` | Global API rate-limit refill rate. |
 | `CEREBRO_RATE_LIMIT_BURST` | `150` | Global API rate-limit burst size. |
 | `CEREBRO_RATE_LIMIT_EXEMPT_PATHS` | liveness, metrics, and well-known metadata paths | Optional comma-separated path prefixes that bypass rate limiting. |
-| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL` | unset | Base URL for the access-approvals service. Required for access-approvals backed graph actions and reconciliation such as `identity.okta.suspend_user`. |
-| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN` | unset | Bearer token Cerebro uses to call access-approvals graph action create/read endpoints. Supports `_FILE` via `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE`. |
-| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT` | `10s` | HTTP timeout for access-approvals graph action requests. |
+| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL` | unset | Base URL the Rust Action runtime and legacy Go adapter use for access-approvals requests. Rust Action execution fails closed before storage when this provider is not configured. |
+| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN` | unset | Bearer token the Rust Action runtime and legacy Go adapter use for access-approvals create/read endpoints. Supports `_FILE` via `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE`; configure only one source. |
+| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT` | `10s` | Access-approvals HTTP timeout. The Rust runtime accepts bounded values with an `ms` or `s` suffix. |
 | `CEREBRO_APPEND_LOG_DRIVER` | inferred | Append-log driver. Supported: `jetstream`. |
 | `CEREBRO_JETSTREAM_URL` | unset | NATS JetStream URL. Setting this infers `jetstream`. |
 | `CEREBRO_JETSTREAM_STREAM_NAME` | unset | Optional stream name for publish and replay readiness checks. Set this when one logical append-log stream is expected. |
@@ -68,8 +68,14 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_NEO4J_PASSWORD` | unset | Neo4j/Aura password. |
 | `CEREBRO_NEO4J_DATABASE` | unset | Optional Neo4j database name. |
 | `CEREBRO_NEO4J_QUERY_TIMEOUT` | unset | Optional timeout applied to Neo4j read transactions. |
-| `CEREBRO_ORGANIZATIONAL_GRAPH_URL` | unset | Rust organizational graph service origin. When set, bounded graph reads run in shadow and source projection uses the persisted family authority. |
-| `CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET` | unset | Shared secret used to sign tenant-bound requests to the Rust organizational graph service. Required with `CEREBRO_ORGANIZATIONAL_GRAPH_URL`; minimum 32 bytes. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_URL` | unset | Legacy combined Rust graph origin. Prefer the separate read and projection origins so observing reads cannot activate a writer path. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL` | unset | Rust bounded graph read origin. This does not configure Rust projection writes. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL` | unset | Rust family-authority and projection origin. Leave unset until the Rust writer path is intentionally enabled. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE` | `authority` | `shadow` returns the legacy result and compares sampled Rust reads; `canary` returns Rust for a stable sample; `authority` returns the Rust result and fails closed. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT` | `0` | Stable percentage from 1 through 100 of typed reads compared in shadow mode. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT` | `0` | Stable percentage from 1 through 99 of tenants assigned to Rust for typed reads in canary mode. This is tenant allocation, not exact request share; measure actual Go and Rust request volume with `cerebro.organizational_graph.canary.routes`. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT` | `0` | Stable percentage from 0 through 100 of Rust-authority canary reads also compared with Go. Verification uses bounded background work, records parity evidence, and never delays or changes authority. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET` | unset | Shared secret used to sign tenant-bound requests to the Rust organizational graph service. Required with any Rust graph origin; minimum 32 bytes. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT` | `1s` | Timeout for Rust organizational graph reads and projection-authority requests. |
 
 `CEREBRO_KUZU_PATH` is rejected. Kuzu is no longer a supported graph backend.

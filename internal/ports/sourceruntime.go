@@ -56,6 +56,33 @@ type SourceRuntimePageProjection struct {
 	LinksProjected    uint32
 }
 
+// SourceCollectionManifest records one bounded sync run without treating a
+// completed incremental run as an authoritative full snapshot.
+type SourceCollectionManifest struct {
+	CollectionID          string
+	TenantID              string
+	SourceID              string
+	RuntimeID             string
+	StartedAtUnixMS       int64
+	CompletedAtUnixMS     int64
+	Status                string
+	IncompletenessReasons []string
+	ExpectedFamilyIDs     []string
+	ObservedFamilyIDs     []string
+	PagesRead             uint32
+	RecordsScanned        uint32
+	RecordsAccepted       uint32
+	RecordsRejected       uint32
+	EntitiesProjected     uint32
+	LinksProjected        uint32
+}
+
+// SourceCollectionRecorder retains collection-level coverage and completeness
+// at the Rust migration boundary.
+type SourceCollectionRecorder interface {
+	RecordSourceCollection(context.Context, SourceCollectionManifest) error
+}
+
 // SourceRuntimePageLedgerStore durably records page commit state and outbox
 // events. CommitSourceRuntimePage must atomically persist runtime progress and
 // mark the page committed.

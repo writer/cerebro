@@ -149,9 +149,17 @@ type GraphStoreConfig struct {
 
 // OrganizationalGraphConfig controls the Rust-owned bounded graph read plane.
 type OrganizationalGraphConfig struct {
-	BaseURL      string
-	SharedSecret string
-	Timeout      time.Duration
+	// BaseURL is the legacy combined endpoint. Prefer separate read and
+	// projection endpoints so pre-cutover reads cannot activate a writer.
+	BaseURL             string
+	ReadBaseURL         string
+	ProjectionBaseURL   string
+	ReadMode            string
+	ShadowPercent       int
+	AuthorityPercent    int
+	CanaryVerifyPercent int
+	SharedSecret        string
+	Timeout             time.Duration
 }
 
 // CacheConfig controls optional shared query/response caching.
@@ -493,7 +501,16 @@ func Load() (Config, error) {
 			Neo4jDatabase: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_DATABASE")),
 		},
 		OrganizationalGraph: OrganizationalGraphConfig{
-			BaseURL:      strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_ORGANIZATIONAL_GRAPH_URL")), "/"),
+			BaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_ORGANIZATIONAL_GRAPH_URL")), "/"),
+			ReadBaseURL: strings.TrimRight(
+				strings.TrimSpace(os.Getenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL")),
+				"/",
+			),
+			ProjectionBaseURL: strings.TrimRight(
+				strings.TrimSpace(os.Getenv("CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL")),
+				"/",
+			),
+			ReadMode:     strings.ToLower(strings.TrimSpace(os.Getenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE"))),
 			SharedSecret: organizationalGraphSharedSecret,
 		},
 		Cache: CacheConfig{
@@ -671,16 +688,81 @@ func Load() (Config, error) {
 	if cfg.OrganizationalGraph.Timeout <= 0 {
 		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT must be greater than zero")
 	}
-	if cfg.OrganizationalGraph.BaseURL != "" {
-		if len([]byte(cfg.OrganizationalGraph.SharedSecret)) < 32 {
-			return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET must be at least 32 bytes when CEREBRO_ORGANIZATIONAL_GRAPH_URL is set")
+	if cfg.OrganizationalGraph.ReadBaseURL == "" {
+		cfg.OrganizationalGraph.ReadBaseURL = cfg.OrganizationalGraph.BaseURL
+	}
+	if cfg.OrganizationalGraph.ProjectionBaseURL == "" {
+		cfg.OrganizationalGraph.ProjectionBaseURL = cfg.OrganizationalGraph.BaseURL
+	}
+	if cfg.OrganizationalGraph.ReadMode == "" {
+		cfg.OrganizationalGraph.ReadMode = "authority"
+	}
+	if cfg.OrganizationalGraph.ReadMode != "authority" &&
+		cfg.OrganizationalGraph.ReadMode != "shadow" &&
+		cfg.OrganizationalGraph.ReadMode != "canary" {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE must be authority, shadow, or canary")
+	}
+	if cfg.OrganizationalGraph.ShadowPercent, err = parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.OrganizationalGraph.ShadowPercent < 0 || cfg.OrganizationalGraph.ShadowPercent > 100 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be between 0 and 100")
+	}
+	if cfg.OrganizationalGraph.ReadMode == "shadow" && cfg.OrganizationalGraph.ReadBaseURL == "" {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL is required in shadow mode")
+	}
+	if cfg.OrganizationalGraph.ReadMode == "canary" && cfg.OrganizationalGraph.ReadBaseURL == "" {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL is required in canary mode")
+	}
+	if cfg.OrganizationalGraph.ReadMode == "shadow" && cfg.OrganizationalGraph.ShadowPercent == 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be greater than zero in shadow mode")
+	}
+	if cfg.OrganizationalGraph.ReadMode != "shadow" && cfg.OrganizationalGraph.ShadowPercent != 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be zero unless read mode is shadow")
+	}
+	if cfg.OrganizationalGraph.AuthorityPercent, err = parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.OrganizationalGraph.AuthorityPercent < 0 || cfg.OrganizationalGraph.AuthorityPercent > 100 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT must be between 0 and 100")
+	}
+	if cfg.OrganizationalGraph.ReadMode == "canary" &&
+		(cfg.OrganizationalGraph.AuthorityPercent == 0 || cfg.OrganizationalGraph.AuthorityPercent == 100) {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT must be between 1 and 99 in canary mode")
+	}
+	if cfg.OrganizationalGraph.ReadMode != "canary" && cfg.OrganizationalGraph.AuthorityPercent != 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT must be zero unless read mode is canary")
+	}
+	if cfg.OrganizationalGraph.CanaryVerifyPercent, err = parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.OrganizationalGraph.CanaryVerifyPercent < 0 || cfg.OrganizationalGraph.CanaryVerifyPercent > 100 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT must be between 0 and 100")
+	}
+	if cfg.OrganizationalGraph.ReadMode != "canary" && cfg.OrganizationalGraph.CanaryVerifyPercent != 0 {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT must be zero unless read mode is canary")
+	}
+	for _, configured := range []struct {
+		name     string
+		endpoint string
+	}{
+		{"CEREBRO_ORGANIZATIONAL_GRAPH_URL", cfg.OrganizationalGraph.BaseURL},
+		{"CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", cfg.OrganizationalGraph.ReadBaseURL},
+		{"CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL", cfg.OrganizationalGraph.ProjectionBaseURL},
+	} {
+		name, endpoint := configured.name, configured.endpoint
+		if endpoint == "" {
+			continue
 		}
-		parsed, parseErr := url.Parse(cfg.OrganizationalGraph.BaseURL)
+		if len([]byte(cfg.OrganizationalGraph.SharedSecret)) < 32 {
+			return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET must be at least 32 bytes when %s is set", name)
+		}
+		parsed, parseErr := url.Parse(endpoint)
 		if parseErr != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
-			return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_URL must be an http or https origin without credentials")
+			return Config{}, fmt.Errorf("%s must be an http or https origin without credentials", name)
 		}
 		if parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
-			return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_URL must not include a path, query, or fragment")
+			return Config{}, fmt.Errorf("%s must not include a path, query, or fragment", name)
 		}
 	}
 	if cfg.GraphAgentLLM.Temperature, err = parseFloatEnv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", 0); err != nil {

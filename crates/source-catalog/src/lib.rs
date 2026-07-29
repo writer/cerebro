@@ -95,6 +95,8 @@ impl AuthModel {
                 | Self::OauthClientCredentials
                 | Self::TwoStep
                 | Self::Jwt
+                | Self::AwsSigV4
+                | Self::DuoHmacV5
         )
     }
 }
@@ -103,6 +105,23 @@ impl AuthModel {
 pub enum HttpMethod {
     Get,
     Post,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PathParameterBinding {
+    ScalarConfig { field: String },
+    OptionalScalarConfig { field: String },
+    CsvFanout { field: String },
+}
+
+impl PathParameterBinding {
+    pub fn field(&self) -> &str {
+        match self {
+            Self::ScalarConfig { field }
+            | Self::OptionalScalarConfig { field }
+            | Self::CsvFanout { field } => field,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -212,7 +231,10 @@ pub struct CompiledFamily {
     id_field: String,
     name_field: Option<String>,
     static_query: BTreeMap<String, String>,
+    config_query: BTreeMap<String, PathParameterBinding>,
+    config_attributes: BTreeMap<String, PathParameterBinding>,
     pagination: Pagination,
+    path_parameters: BTreeMap<String, PathParameterBinding>,
     projection: Projection,
     authoritative: bool,
     projection_authoritative: bool,
@@ -247,8 +269,20 @@ impl CompiledFamily {
         &self.static_query
     }
 
+    pub fn config_query(&self) -> &BTreeMap<String, PathParameterBinding> {
+        &self.config_query
+    }
+
+    pub fn config_attributes(&self) -> &BTreeMap<String, PathParameterBinding> {
+        &self.config_attributes
+    }
+
     pub fn pagination(&self) -> &Pagination {
         &self.pagination
+    }
+
+    pub fn path_parameters(&self) -> &BTreeMap<String, PathParameterBinding> {
+        &self.path_parameters
     }
 
     pub fn projection(&self) -> &Projection {
@@ -406,7 +440,14 @@ struct DefinitionWire {
     display_name: String,
     auth: AuthWire,
     #[serde(default)]
+    config_fields: Vec<ConfigFieldWire>,
+    #[serde(default)]
     resource_families: Vec<FamilyWire>,
+}
+
+#[derive(Deserialize)]
+struct ConfigFieldWire {
+    key: String,
 }
 
 #[derive(Deserialize)]
@@ -429,8 +470,28 @@ struct FamilyWire {
     name_field: String,
     #[serde(default)]
     static_query: BTreeMap<String, String>,
+    #[serde(default)]
+    config_query: BTreeMap<String, String>,
+    #[serde(default)]
+    config: Option<FamilyConfigWire>,
+    #[serde(default)]
+    read: Option<FamilyReadWire>,
     pagination: Option<PaginationWire>,
     projection: Option<ProjectionWire>,
+}
+
+#[derive(Default, Deserialize)]
+struct FamilyConfigWire {
+    #[serde(default)]
+    config_query: BTreeMap<String, String>,
+    #[serde(default)]
+    config_attributes: BTreeMap<String, String>,
+}
+
+#[derive(Default, Deserialize)]
+struct FamilyReadWire {
+    #[serde(default)]
+    path_param_fanout: BTreeMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -515,6 +576,12 @@ fn compile_source(
             message: format!("unsupported auth model {}", entry.definition.auth.model),
         }
     })?;
+    let config_fields = entry
+        .definition
+        .config_fields
+        .iter()
+        .map(|field| field.key.as_str())
+        .collect::<BTreeSet<_>>();
     let generic_runtime_supported = classifier_supported && auth.supports_generic_runtime();
     let verified_families = verified_families(proofs.get(&id));
     let mut family_ids = BTreeSet::new();
@@ -528,6 +595,7 @@ fn compile_source(
             family,
             &verified_families,
             generic_runtime_supported,
+            &config_fields,
         )?);
     }
     if families.is_empty() {
@@ -553,6 +621,7 @@ fn compile_family(
     family: FamilyWire,
     verified: &BTreeSet<(String, String, String)>,
     generic_runtime_supported: bool,
+    config_fields: &BTreeSet<&str>,
 ) -> Result<CompiledFamily, CatalogError> {
     let method = match family.method.trim() {
         "" | "GET" => HttpMethod::Get,
@@ -569,6 +638,96 @@ fn compile_family(
             path,
             &format!("family {} path must start with /", family.id),
         );
+    }
+    let path_parameter_names = family
+        .path
+        .split_once('?')
+        .map_or(family.path.as_str(), |(path, _)| path)
+        .split('/')
+        .filter_map(path_parameter)
+        .collect::<BTreeSet<_>>();
+    let explicit_path_fanout = family
+        .read
+        .as_ref()
+        .map(|read| &read.path_param_fanout)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(parameter) = explicit_path_fanout
+        .keys()
+        .find(|parameter| !path_parameter_names.contains(parameter.as_str()))
+    {
+        return invalid(
+            path,
+            &format!(
+                "family {} fanout binding references unknown path parameter {parameter}",
+                family.id
+            ),
+        );
+    }
+    let path_parameters = path_parameter_names
+        .iter()
+        .filter_map(|parameter| {
+            let binding = if let Some(field) = explicit_path_fanout.get(*parameter) {
+                config_fields
+                    .contains(field.as_str())
+                    .then(|| PathParameterBinding::CsvFanout {
+                        field: field.clone(),
+                    })
+            } else {
+                config_binding(parameter, config_fields)
+            };
+            binding.map(|binding| ((*parameter).to_owned(), binding))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let path_parameters_configured = path_parameters.len() == path_parameter_names.len();
+    let mut config_query_wire = family
+        .config
+        .as_ref()
+        .map(|config| config.config_query.clone())
+        .unwrap_or_default();
+    for (parameter, field) in &family.config_query {
+        if config_query_wire
+            .insert(parameter.clone(), field.clone())
+            .is_some_and(|existing| existing != *field)
+        {
+            return invalid(
+                path,
+                &format!(
+                    "family {} defines conflicting config query parameter {parameter}",
+                    family.id
+                ),
+            );
+        }
+    }
+    let config_query = config_query_wire
+        .iter()
+        .filter_map(|(query_parameter, config_field)| {
+            config_query_binding(config_field, config_fields)
+                .map(|binding| (query_parameter.clone(), binding))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let config_query_configured = config_query.len() == config_query_wire.len();
+    let config_attributes_wire = family
+        .config
+        .as_ref()
+        .map(|config| &config.config_attributes)
+        .cloned()
+        .unwrap_or_default();
+    let mut config_attributes = config_attributes_wire
+        .iter()
+        .filter_map(|(attribute, config_field)| {
+            config_binding(config_field, config_fields)
+                .or_else(|| path_parameters.get(config_field).cloned())
+                .map(|binding| (attribute.clone(), binding))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let config_attributes_configured = config_attributes.len() == config_attributes_wire.len();
+    for (query_parameter, config_field) in &config_query_wire {
+        if let Some(binding) = config_query.get(query_parameter) {
+            config_attributes
+                .entry(config_field.clone())
+                .or_insert_with(|| binding.clone());
+        }
     }
     let projection = family.projection.ok_or_else(|| CatalogError::Invalid {
         path: path.to_path_buf(),
@@ -596,16 +755,22 @@ fn compile_family(
     } else {
         "$[*]".to_owned()
     };
-    let provider_contract_verified = verified.contains(&(
-        family.id.clone(),
-        match method {
-            HttpMethod::Get => "GET".to_owned(),
-            HttpMethod::Post => "POST".to_owned(),
-        },
-        family.path.clone(),
-    ));
+    let provider_contract_verified = canonical_path_template(&family.path).is_some_and(|path| {
+        verified.contains(&(
+            family.id.clone(),
+            match method {
+                HttpMethod::Get => "GET".to_owned(),
+                HttpMethod::Post => "POST".to_owned(),
+            },
+            path,
+        ))
+    });
     Ok(CompiledFamily {
-        authoritative: generic_runtime_supported && provider_contract_verified,
+        authoritative: generic_runtime_supported
+            && provider_contract_verified
+            && path_parameters_configured
+            && config_query_configured
+            && config_attributes_configured,
         projection_authoritative: provider_contract_verified
             && projection_class.can_be_authoritative(),
         id: nonempty(path, "family id", family.id)?,
@@ -615,7 +780,10 @@ fn compile_family(
         id_field: nonempty(path, "family id_field", family.id_field)?,
         name_field: optional(family.name_field),
         static_query: family.static_query,
+        config_query,
+        config_attributes,
         pagination: compile_pagination(path, family.pagination)?,
+        path_parameters,
         projection: Projection {
             class: projection_class,
             template,
@@ -623,6 +791,33 @@ fn compile_family(
             static_fields: projection.static_fields,
         },
     })
+}
+
+fn config_binding(requested: &str, config_fields: &BTreeSet<&str>) -> Option<PathParameterBinding> {
+    if config_fields.contains(requested) {
+        return Some(PathParameterBinding::ScalarConfig {
+            field: requested.to_owned(),
+        });
+    }
+    let plural = format!("{requested}s");
+    config_fields
+        .contains(plural.as_str())
+        .then_some(PathParameterBinding::CsvFanout { field: plural })
+}
+
+fn config_query_binding(
+    requested: &str,
+    config_fields: &BTreeSet<&str>,
+) -> Option<PathParameterBinding> {
+    let plural = format!("{requested}s");
+    if config_fields.contains(plural.as_str()) {
+        return Some(PathParameterBinding::CsvFanout { field: plural });
+    }
+    config_fields
+        .contains(requested)
+        .then(|| PathParameterBinding::OptionalScalarConfig {
+            field: requested.to_owned(),
+        })
 }
 
 fn compile_pagination(
@@ -717,18 +912,67 @@ fn verified_families(proof: Option<&ProofManifestWire>) -> BTreeSet<(String, Str
                 && !family.path.is_empty()
                 && (family.method.is_empty() || family.method == "GET" || family.method == "POST")
         })
-        .map(|family| {
-            (
-                family.id.clone(),
-                if family.method.is_empty() {
-                    "GET".to_owned()
-                } else {
-                    family.method.clone()
-                },
-                family.path.clone(),
-            )
+        .filter_map(|family| {
+            canonical_path_template(&family.path).map(|path| {
+                (
+                    family.id.clone(),
+                    if family.method.is_empty() {
+                        "GET".to_owned()
+                    } else {
+                        family.method.clone()
+                    },
+                    path,
+                )
+            })
         })
         .collect()
+}
+
+fn canonical_path_template(path: &str) -> Option<String> {
+    let (path, query) = path
+        .split_once('?')
+        .map_or((path, None), |(path, query)| (path, Some(query)));
+    if !path.starts_with('/') {
+        return None;
+    }
+    let mut canonical = String::with_capacity(path.len());
+    for (index, segment) in path.split('/').enumerate() {
+        if index > 0 {
+            canonical.push('/');
+        }
+        if path_parameter(segment).is_some() {
+            canonical.push_str("{}");
+        } else {
+            if segment.contains('{') || segment.contains('}') {
+                return None;
+            }
+            canonical.push_str(segment);
+        }
+    }
+    if let Some(query) = query {
+        if query.contains('{') || query.contains('}') {
+            return None;
+        }
+        canonical.push('?');
+        canonical.push_str(query);
+    }
+    Some(canonical)
+}
+
+fn path_parameter(segment: &str) -> Option<&str> {
+    let parameter = segment
+        .strip_prefix("${config.")
+        .and_then(|value| value.strip_suffix('}'))
+        .or_else(|| {
+            segment
+                .strip_prefix('{')
+                .and_then(|value| value.strip_suffix('}'))
+        })?;
+    (!parameter.is_empty()
+        && parameter
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')))
+    .then_some(parameter)
 }
 
 fn load_proofs(root: &Path) -> Result<BTreeMap<String, ProofManifestWire>, CatalogError> {
@@ -914,12 +1158,118 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            catalog.get("box").unwrap().authority(),
+            catalog.get("aws_bedrock").unwrap().authority(),
             CollectionAuthority::Authoritative
         );
         assert_eq!(
+            catalog.get("duo").unwrap().authority(),
+            CollectionAuthority::Authoritative
+        );
+        assert_eq!(
+            catalog.get("telnyx").unwrap().authority(),
+            CollectionAuthority::Authoritative
+        );
+        for source_id in [
+            "akeneo",
+            "apacta",
+            "appwrite",
+            "azure_openai",
+            "beezup",
+            "box",
+            "cloudflare_workers_ai",
+            "elevenlabs",
+            "fivetran",
+            "google_vertex_ai",
+            "jira",
+            "onelogin",
+            "qdrant_cloud",
+            "snyk",
+        ] {
+            assert_eq!(
+                catalog.get(source_id).unwrap().authority(),
+                CollectionAuthority::Authoritative,
+                "{source_id} has verified parameterized provider paths"
+            );
+        }
+        for source_id in ["airtable", "anchore"] {
+            assert_eq!(
+                catalog.get(source_id).unwrap().authority(),
+                CollectionAuthority::ShadowOnly,
+                "{source_id} has an unresolved request scope"
+            );
+        }
+        assert_eq!(
             catalog.get("agiloft").unwrap().authority(),
             CollectionAuthority::ShadowOnly
+        );
+    }
+
+    #[test]
+    fn plural_config_fields_compile_to_explicit_csv_fanout_bindings() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let family = catalog
+            .get("box")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "group_memberships")
+            .unwrap();
+        assert_eq!(
+            family.path_parameters().get("group_id"),
+            Some(&PathParameterBinding::CsvFanout {
+                field: "group_ids".to_owned()
+            })
+        );
+    }
+
+    #[test]
+    fn undeclared_query_scope_cannot_become_collection_authority() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let family = catalog
+            .get("slack")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "channel_member")
+            .unwrap();
+        assert!(!family.is_authoritative());
+        assert!(family.config_query().is_empty());
+    }
+
+    #[test]
+    fn explicit_fanout_binding_maps_a_provider_slot_to_its_configured_list() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let family = catalog
+            .get("fivetran")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "connector_metadata_details")
+            .unwrap();
+        assert_eq!(
+            family.path_parameters().get("service"),
+            Some(&PathParameterBinding::CsvFanout {
+                field: "connector_services".to_owned()
+            })
+        );
+        assert_eq!(
+            family.config_attributes().get("service"),
+            family.path_parameters().get("service")
         );
     }
 
@@ -940,5 +1290,23 @@ mod tests {
             .unwrap();
         assert!(!grants.is_authoritative());
         assert!(grants.is_projection_authoritative());
+    }
+
+    #[test]
+    fn provider_path_templates_match_slots_but_not_literal_scope() {
+        assert_eq!(
+            canonical_path_template("/sim_cards/{id}/wireless_connectivity_logs"),
+            Some("/sim_cards/{}/wireless_connectivity_logs".to_owned())
+        );
+        assert_eq!(
+            canonical_path_template("/sim_cards/${config.sim_card_id}/wireless_connectivity_logs"),
+            Some("/sim_cards/{}/wireless_connectivity_logs".to_owned())
+        );
+        assert_ne!(
+            canonical_path_template("/accounts/{id}/users"),
+            canonical_path_template("/organizations/{id}/users")
+        );
+        assert_eq!(canonical_path_template("/accounts/prefix-{id}/users"), None);
+        assert_eq!(canonical_path_template("/accounts/${config.id/users"), None);
     }
 }

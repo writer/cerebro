@@ -1,11 +1,18 @@
 [workspace]
 members = [
+    "crates/action-catalog",
+    "crates/action-provider",
+    "crates/action-store",
     "crates/agent-context",
     "crates/cerebro-platform",
     "crates/control-kernel",
     "crates/organizational-graph",
     "crates/organizational-model",
     "crates/organizational-store",
+    "crates/platform-engine",
+    "crates/platform-sdk",
+    "crates/policy-catalog",
+    "crates/security-lifecycle",
     "crates/source-catalog",
     "crates/security-path-kernel",
     "crates/source-runtime-next",
@@ -17,6 +24,7 @@ members = [
     "internal/sourceruntime/recordkernel",
     "internal/wasmguest",
     "tools/graphactiongen",
+    "tools/policycataloggen",
 ]
 resolver = "2"
 
@@ -29,17 +37,36 @@ license = "Apache-2.0"
 axum = "0.8.9"
 async-nats = "0.50.0"
 async-trait = "0.1.91"
+aws-credential-types = "=1.2.14"
+aws-sigv4 = { version = "=1.4.5", default-features = false, features = ["http1", "sign-http"] }
+aws-smithy-async = "=1.2.14"
+aws-smithy-runtime-api = { version = "=1.12.3", features = ["client"] }
+aws-smithy-runtime-api-macros = "=1.0.0"
+aws-smithy-types = "=1.5.0"
+base64 = "0.22.1"
+buffa = { version = "=0.9.1", features = ["json"] }
+buffa-types = { version = "=0.9.1", features = ["json"] }
 cerebro-agent-context = { version = "0.1.0", path = "crates/agent-context" }
+cerebro-action-catalog = { version = "0.1.0", path = "crates/action-catalog" }
+cerebro-action-provider = { version = "0.1.0", path = "crates/action-provider" }
+cerebro-action-store = { version = "0.1.0", path = "crates/action-store" }
+cerebro-control-kernel = { version = "0.1.0", path = "crates/control-kernel" }
 cerebro-organizational-graph = { version = "0.1.0", path = "crates/organizational-graph" }
 cerebro-organizational-model = { version = "0.1.0", path = "crates/organizational-model" }
 cerebro-organizational-store = { version = "0.1.0", path = "crates/organizational-store" }
+cerebro-platform-engine = { version = "0.1.0", path = "crates/platform-engine" }
+cerebro-platform-sdk = { version = "0.1.0", path = "crates/platform-sdk" }
+cerebro-policy-catalog = { version = "0.1.0", path = "crates/policy-catalog" }
+cerebro-security-lifecycle = { version = "0.1.0", path = "crates/security-lifecycle" }
 cerebro-source-catalog = { version = "0.1.0", path = "crates/source-catalog" }
 cerebro-source-runtime-next = { version = "0.1.0", path = "crates/source-runtime-next" }
 cerebro-wasm-guest = { version = "0.1.0", path = "internal/wasmguest" }
 ciborium = "0.2.2"
+connectrpc = { git = "https://github.com/connectrpc/connect-rust.git", rev = "8b3c3b05d3b54af547477a9e3b3a77d62f68e229", version = "=0.8.1", features = ["axum"] }
 libc = "0.2.180"
 futures-util = "0.3.31"
 hmac = "0.13.0"
+jsonwebtoken = { version = "11.0.0", default-features = false, features = ["aws_lc_rs"] }
 prost = "0.14.4"
 prost-types = "0.14.4"
 regex = { version = "1.12.3", default-features = false, features = ["perf", "std"] }
@@ -54,7 +81,7 @@ reqwest = { version = "0.13.4", default-features = false, features = ["json", "r
 tokio = { version = "1.53.1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync"] }
 tokio-postgres = { version = "0.7.18", features = ["with-serde_json-1"] }
 tower = "0.5.3"
-time = { version = "0.3.53", features = ["parsing"] }
+time = { version = "0.3.53", features = ["formatting", "parsing"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

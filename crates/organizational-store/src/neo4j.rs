@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use cerebro_agent_context::{
-    AgentGraph, ContextEdge, ContextEntity, ContextError, GraphPath, Neighborhood, validate_bounds,
-    validate_root_keys,
+    AgentGraph, ContextEdge, ContextEntity, ContextError, FactQuery, GraphPath, Neighborhood,
+    QueryDirection, QueryMatch, QueryResult, validate_bounds, validate_root_keys,
 };
 use cerebro_organizational_graph::GraphWriteReceipt;
 use cerebro_organizational_model::{AssertionId, EntityId, GraphDelta, TenantId};
@@ -123,6 +123,87 @@ fn paths_statement(max_depth: usize) -> String {
     )
 }
 
+fn fact_query_statement(fact_query: &FactQuery) -> String {
+    let node_indexes = fact_query
+        .nodes()
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.variable.as_str(), index))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut parts = vec![
+        "MATCH (query_revision:OrganizationalGraphRevision {tenant_id: $tenant_id})".to_owned(),
+    ];
+    for index in 0..fact_query.nodes().len() {
+        parts.push(format!(
+            "MATCH (node_{index}:OrganizationalEntity {{tenant_id: $tenant_id}})"
+        ));
+    }
+    for (index, edge) in fact_query.edges().iter().enumerate() {
+        let from = node_indexes[edge.from_variable.as_str()];
+        let to = node_indexes[edge.to_variable.as_str()];
+        parts.push(format!(
+            "MATCH (node_{from})-[edge_{index}:ORGANIZATIONAL_RELATION]->(node_{to})"
+        ));
+    }
+    let mut predicates = Vec::new();
+    for index in 0..fact_query.nodes().len() {
+        predicates.push(format!(
+            "(size($node_{index}_kinds) = 0 OR node_{index}.entity_kind IN $node_{index}_kinds)"
+        ));
+        predicates.push(format!(
+            "(size($node_{index}_keys) = 0 OR node_{index}.entity_id IN $node_{index}_keys OR node_{index}.external_id IN $node_{index}_keys)"
+        ));
+    }
+    for index in 0..fact_query.edges().len() {
+        predicates.push(format!(
+            "edge_{index}.tenant_id = $tenant_id AND edge_{index}.relation = $edge_{index}_relation"
+        ));
+    }
+    for (index, absence) in fact_query.absent_edges().iter().enumerate() {
+        let bound = node_indexes[absence.bound_variable.as_str()];
+        let pattern = match absence.direction {
+            QueryDirection::Outgoing => format!(
+                "(node_{bound})-[absence_edge_{index}:ORGANIZATIONAL_RELATION]->(absence_other_{index}:OrganizationalEntity)"
+            ),
+            QueryDirection::Incoming => format!(
+                "(absence_other_{index}:OrganizationalEntity)-[absence_edge_{index}:ORGANIZATIONAL_RELATION]->(node_{bound})"
+            ),
+        };
+        predicates.push(format!(
+            "NOT EXISTS {{ MATCH {pattern} WHERE absence_edge_{index}.tenant_id = $tenant_id AND absence_edge_{index}.relation = $absence_{index}_relation AND absence_other_{index}.tenant_id = $tenant_id AND (size($absence_{index}_kinds) = 0 OR absence_other_{index}.entity_kind IN $absence_{index}_kinds) }}"
+        ));
+    }
+    parts.push(format!("WHERE {}", predicates.join(" AND ")));
+    let mut returns = vec!["query_revision.graph_revision AS graph_revision".to_owned()];
+    let mut order = Vec::new();
+    for index in 0..fact_query.nodes().len() {
+        returns.extend([
+            format!("node_{index}.entity_id AS node_{index}_id"),
+            format!("node_{index}.entity_kind AS node_{index}_kind"),
+            format!("node_{index}.authority_json AS node_{index}_authority"),
+            format!("node_{index}.label AS node_{index}_label"),
+            format!("node_{index}.properties_json AS node_{index}_properties"),
+        ]);
+        order.push(format!("node_{index}.entity_id"));
+    }
+    for (index, edge) in fact_query.edges().iter().enumerate() {
+        let from = node_indexes[edge.from_variable.as_str()];
+        let to = node_indexes[edge.to_variable.as_str()];
+        returns.extend([
+            format!("edge_{index}.assertion_id AS edge_{index}_assertion_id"),
+            format!("node_{from}.entity_id AS edge_{index}_from_id"),
+            format!("edge_{index}.relation AS edge_{index}_relation"),
+            format!("node_{to}.entity_id AS edge_{index}_to_id"),
+            format!("edge_{index}.source_runtime_id AS edge_{index}_source_runtime_id"),
+        ]);
+        order.push(format!("edge_{index}.assertion_id"));
+    }
+    parts.push(format!("RETURN DISTINCT {}", returns.join(", ")));
+    parts.push(format!("ORDER BY {}", order.join(", ")));
+    parts.push("LIMIT $row_limit".to_owned());
+    parts.join(" ")
+}
+
 const PATH_ENDPOINTS_STATEMENT: &str = r#"
 OPTIONAL MATCH (source:OrganizationalEntity {
     tenant_id: $tenant_id,
@@ -239,6 +320,10 @@ impl AgentGraph for Neo4jProjector {
                 )
             })?
             .map_err(context_backend)
+    }
+
+    async fn revision(&self, tenant_id: &TenantId) -> Result<u64, ContextError> {
+        Neo4jProjector::revision(self, tenant_id).await
     }
 
     async fn search(
@@ -530,6 +615,100 @@ impl AgentGraph for Neo4jProjector {
             identity_binding: relation == "represents",
         })
     }
+
+    async fn query(
+        &self,
+        tenant_id: &TenantId,
+        fact_query: &FactQuery,
+    ) -> Result<QueryResult, ContextError> {
+        let statement = fact_query_statement(fact_query);
+        let mut query_value = query(&statement).param("tenant_id", tenant_id.as_str());
+        for (index, node) in fact_query.nodes().iter().enumerate() {
+            query_value = query_value
+                .param(&format!("node_{index}_kinds"), string_list(&node.kinds))
+                .param(&format!("node_{index}_keys"), string_list(&node.keys));
+        }
+        for (index, edge) in fact_query.edges().iter().enumerate() {
+            query_value =
+                query_value.param(&format!("edge_{index}_relation"), edge.relation.as_str());
+        }
+        for (index, absence) in fact_query.absent_edges().iter().enumerate() {
+            query_value = query_value
+                .param(
+                    &format!("absence_{index}_relation"),
+                    absence.relation.as_str(),
+                )
+                .param(
+                    &format!("absence_{index}_kinds"),
+                    string_list(&absence.other_kinds),
+                );
+        }
+        query_value = query_value.param("row_limit", row_limit(fact_query.limit()));
+        let mut stream = self
+            .graph
+            .execute(query_value)
+            .await
+            .map_err(context_backend)?;
+        let mut matches = Vec::new();
+        let mut query_revision = None;
+        while let Some(row) = stream.next().await.map_err(context_backend)? {
+            let row_revision: i64 = row.get("graph_revision").map_err(context_decode)?;
+            let row_revision = u64::try_from(row_revision).map_err(|_| {
+                ContextError::BackendUnavailable("Neo4j graph revision is negative".to_owned())
+            })?;
+            if query_revision
+                .replace(row_revision)
+                .is_some_and(|revision| revision != row_revision)
+            {
+                return Err(ContextError::BackendUnavailable(
+                    "Neo4j graph revision changed within one fact query".to_owned(),
+                ));
+            }
+            let mut entities = std::collections::BTreeMap::new();
+            for (index, node) in fact_query.nodes().iter().enumerate() {
+                entities.insert(
+                    node.variable.clone(),
+                    context_entity_prefix(&row, &format!("node_{index}"))?,
+                );
+            }
+            let mut edges = std::collections::BTreeMap::new();
+            for (index, pattern) in fact_query.edges().iter().enumerate() {
+                let relation = row_string(&row, &format!("edge_{index}_relation"))?;
+                edges.insert(
+                    pattern.variable.clone(),
+                    ContextEdge {
+                        assertion_id: AssertionId::parse(row_string(
+                            &row,
+                            &format!("edge_{index}_assertion_id"),
+                        )?)
+                        .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
+                        from: EntityId::parse(row_string(&row, &format!("edge_{index}_from_id"))?)
+                            .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
+                        relation: relation.clone(),
+                        to: EntityId::parse(row_string(&row, &format!("edge_{index}_to_id"))?)
+                            .map_err(|error| ContextError::BackendUnavailable(error.to_string()))?,
+                        source_runtime_id: row_string(
+                            &row,
+                            &format!("edge_{index}_source_runtime_id"),
+                        )?,
+                        identity_binding: relation == "represents",
+                    },
+                );
+            }
+            matches.push(QueryMatch { entities, edges });
+        }
+        let truncated = truncate_to_limit(&mut matches, fact_query.limit());
+        let graph_revision = match query_revision {
+            Some(revision) => revision,
+            None => self.revision(tenant_id).await?,
+        };
+        Ok(QueryResult {
+            tenant_id: tenant_id.clone(),
+            graph_revision,
+            matches,
+            truncated,
+        })
+    }
 }
 
 impl Neo4jProjector {
@@ -792,6 +971,8 @@ fn map<const N: usize>(values: [(&str, BoltType); N]) -> BoltMap {
 
 #[cfg(test)]
 mod tests {
+    use cerebro_agent_context::{FactQuery, QueryAbsentEdge, QueryDirection, QueryEdge, QueryNode};
+
     use super::*;
 
     #[test]
@@ -830,5 +1011,48 @@ mod tests {
         assert!(truncate_to_limit(&mut overflow, 2));
         assert_eq!(overflow, [1, 2]);
         assert_eq!(row_limit(500), 501);
+    }
+
+    #[test]
+    fn fact_query_compiles_only_validated_structure_and_hard_bounds() {
+        let query = FactQuery::new(
+            vec![
+                QueryNode {
+                    variable: "finding".to_owned(),
+                    kinds: vec!["finding".to_owned()],
+                    keys: Vec::new(),
+                },
+                QueryNode {
+                    variable: "control".to_owned(),
+                    kinds: vec!["control".to_owned()],
+                    keys: vec!["control-1".to_owned()],
+                },
+            ],
+            vec![QueryEdge {
+                variable: "mapping".to_owned(),
+                from_variable: "finding".to_owned(),
+                relation: "mapped_to_control".to_owned(),
+                to_variable: "control".to_owned(),
+            }],
+            vec![QueryAbsentEdge {
+                bound_variable: "finding".to_owned(),
+                direction: QueryDirection::Incoming,
+                relation: "evidence_for".to_owned(),
+                other_kinds: vec!["evidence".to_owned()],
+            }],
+            25,
+        )
+        .unwrap();
+
+        let statement = fact_query_statement(&query);
+
+        assert!(statement.contains("MATCH (node_0:OrganizationalEntity"));
+        assert!(statement.contains("MATCH (node_0)-[edge_0:ORGANIZATIONAL_RELATION]->(node_1)"));
+        assert!(statement.contains("NOT EXISTS"));
+        assert!(statement.contains("$edge_0_relation"));
+        assert!(statement.contains("$absence_0_relation"));
+        assert!(statement.ends_with("LIMIT $row_limit"));
+        assert!(!statement.contains("mapped_to_control"));
+        assert!(!statement.contains("control-1"));
     }
 }

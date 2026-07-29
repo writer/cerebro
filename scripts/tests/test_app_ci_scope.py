@@ -109,6 +109,19 @@ class AppCIScopeTests(unittest.TestCase):
             "internal/sourcehttp/responseview/response_view.go",
             "internal/sourceruntime/runtime.go",
             "internal/statestore/postgres/store.go",
+            "crates/action-catalog/src/lib.rs",
+            "crates/action-provider/src/lib.rs",
+            "crates/action-store/src/lib.rs",
+            "crates/cerebro-platform/src/main.rs",
+            "crates/organizational-graph/src/lib.rs",
+            "crates/organizational-model/src/lib.rs",
+            "crates/organizational-store/src/lib.rs",
+            "crates/platform-engine/src/lib.rs",
+            "crates/platform-sdk/src/lib.rs",
+            "crates/policy-catalog/src/lib.rs",
+            "crates/security-lifecycle/src/lib.rs",
+            "crates/source-catalog/src/lib.rs",
+            "crates/source-runtime-next/src/lib.rs",
         ):
             with self.subTest(path=path):
                 self.assertTrue(select_scope([path]).web_integration)

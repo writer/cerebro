@@ -35,6 +35,19 @@ WEB_INTEGRATION_EXACT_PATHS = frozenset(
     }
 )
 WEB_INTEGRATION_PREFIXES = (
+    "crates/action-catalog/",
+    "crates/action-provider/",
+    "crates/action-store/",
+    "crates/cerebro-platform/",
+    "crates/organizational-graph/",
+    "crates/organizational-model/",
+    "crates/organizational-store/",
+    "crates/platform-engine/",
+    "crates/platform-sdk/",
+    "crates/policy-catalog/",
+    "crates/security-lifecycle/",
+    "crates/source-catalog/",
+    "crates/source-runtime-next/",
     "cmd/cerebro/",
     "gen/cerebro/v1/",
     "internal/bootstrap/",

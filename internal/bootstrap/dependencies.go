@@ -87,21 +87,37 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 	default:
 		return fail(fmt.Errorf("unsupported graph store driver %q", cfg.GraphStore.Driver))
 	}
-	if cfg.OrganizationalGraph.BaseURL != "" {
-		projectionClient, err := organizationalgraph.NewProjectionClient(cfg.OrganizationalGraph.BaseURL, cfg.OrganizationalGraph.SharedSecret, cfg.OrganizationalGraph.Timeout)
+	projectionBaseURL := cfg.OrganizationalGraph.ProjectionBaseURL
+	if projectionBaseURL == "" {
+		projectionBaseURL = cfg.OrganizationalGraph.BaseURL
+	}
+	readBaseURL := cfg.OrganizationalGraph.ReadBaseURL
+	if readBaseURL == "" {
+		readBaseURL = cfg.OrganizationalGraph.BaseURL
+	}
+	if projectionBaseURL != "" {
+		projectionClient, err := organizationalgraph.NewProjectionClient(projectionBaseURL, cfg.OrganizationalGraph.SharedSecret, cfg.OrganizationalGraph.Timeout)
 		if err != nil {
 			return fail(fmt.Errorf("open Rust organizational graph projection: %w", err))
 		}
 		deps.OrganizationalProjector = projectionClient
-		primary, ok := deps.GraphStore.(ports.GraphQueryStore)
-		if !ok || isNilInterface(primary) {
-			return fail(errors.New("rust organizational graph reads require a configured compatibility query store"))
+	}
+	if readBaseURL != "" {
+		var compatibility ports.GraphQueryStore
+		if primary, ok := deps.GraphStore.(ports.GraphQueryStore); ok && !isNilInterface(primary) {
+			compatibility = primary
 		}
-		queryStore, err := organizationalgraph.NewQueryStore(primary, cfg.OrganizationalGraph.BaseURL, cfg.OrganizationalGraph.SharedSecret, cfg.OrganizationalGraph.Timeout)
+		queryStore, err := organizationalgraph.NewConfiguredQueryStore(
+			compatibility, readBaseURL, cfg.OrganizationalGraph.SharedSecret,
+			cfg.OrganizationalGraph.Timeout, cfg.OrganizationalGraph.ReadMode,
+			cfg.OrganizationalGraph.ShadowPercent, cfg.OrganizationalGraph.AuthorityPercent,
+			cfg.OrganizationalGraph.CanaryVerifyPercent,
+		)
 		if err != nil {
 			return fail(fmt.Errorf("open Rust organizational graph reads: %w", err))
 		}
 		deps.GraphQueries = queryStore
+		deps.SecurityLifecycleQueries = queryStore
 	}
 	if err := pingDependency(ctx, "append log", deps.AppendLog); err != nil {
 		return fail(err)

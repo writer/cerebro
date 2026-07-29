@@ -305,6 +305,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		eventContracts         []sourcecdk.EventContract
 		contractConfigured     bool
 		runtimeLoadedForRun    bool
+		runtimeSyncCompleted   bool
 		eventsAppended         uint32
 		pagesRead              uint32
 		recordsScanned         uint32
@@ -316,13 +317,14 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		eventLimitReached      bool
 		shortCircuitReason     string
 		reconciliationReason   string
+		observedFamilies       = map[string]struct{}{}
 	)
 	defer func() {
 		if err != nil {
 			status = "failed"
 			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: sourceRuntimeTelemetryErrorKind(err)})
 			telemetry.IncrementMain(ctx, "source_runtime.sync.error.count", 1)
-			if runtimeLoadedForRun {
+			if runtimeLoadedForRun && !runtimeSyncCompleted {
 				_ = s.recordRuntimeSyncFailure(context.WithoutCancel(ctx), runtime, err, contractConfigured)
 			}
 		}
@@ -573,6 +575,11 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				eventsAppended++
 			}
 		}
+		for _, syncedEvent := range acceptedEvents {
+			if familyID := sourceEventFamilyID(syncedEvent); familyID != "" {
+				observedFamilies[familyID] = struct{}{}
+			}
+		}
 		if ledgerEnabled {
 			if err := ledger.MarkSourceRuntimePageAppended(ctx, attemptID); err != nil {
 				return nil, err
@@ -655,6 +662,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		cursor = cloneCursor(pull.NextCursor)
 	}
+	runtimeSyncCompleted = true
 	status = "completed"
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "pages_read", Value: pagesRead})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "records_scanned", Value: recordsScanned})
@@ -675,6 +683,37 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "source_runtime_watermark_lag_seconds", Value: lagSeconds})
 	}
 	emitSourceRuntimeContractProbe(ctx, runtime)
+	if recorder, ok := s.projector.(ports.SourceCollectionRecorder); ok {
+		reasons := CollectionIncompletenessReasons(runtime)
+		if eventLimitReached {
+			reasons = append(reasons, CollectionIncompleteEventLimitReached)
+		}
+		sort.Strings(reasons)
+		collectionStatus := "complete"
+		if len(reasons) != 0 {
+			collectionStatus = "incomplete"
+		}
+		if err := recorder.RecordSourceCollection(ctx, ports.SourceCollectionManifest{
+			CollectionID:          sourceRuntimeCollectionID(runtime.GetId(), started),
+			TenantID:              strings.TrimSpace(runtime.GetTenantId()),
+			SourceID:              strings.TrimSpace(runtime.GetSourceId()),
+			RuntimeID:             strings.TrimSpace(runtime.GetId()),
+			StartedAtUnixMS:       started.UTC().UnixMilli(),
+			CompletedAtUnixMS:     time.Now().UTC().UnixMilli(),
+			Status:                collectionStatus,
+			IncompletenessReasons: reasons,
+			ExpectedFamilyIDs:     expectedSourceFamilyIDs(runtime.GetSourceId(), eventContracts),
+			ObservedFamilyIDs:     sortedStringSet(observedFamilies),
+			PagesRead:             pagesRead,
+			RecordsScanned:        recordsScanned,
+			RecordsAccepted:       eventsAppended,
+			RecordsRejected:       recordsRejected,
+			EntitiesProjected:     entitiesProjected,
+			LinksProjected:        linksProjected,
+		}); err != nil {
+			return nil, fmt.Errorf("record source collection: %w", err)
+		}
+	}
 	return &cerebrov1.SyncSourceRuntimeResponse{
 		Runtime:              redactRuntime(runtime),
 		Source:               source.Spec(),
@@ -1499,6 +1538,47 @@ func sourceRuntimePageAttemptID(runtimeID string, pageNumber uint32, started tim
 	hash.Write([]byte{0})
 	hash.Write([]byte(strconv.FormatUint(uint64(pageNumber), 10)))
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func sourceRuntimeCollectionID(runtimeID string, started time.Time) string {
+	hash := sha256.New()
+	hash.Write([]byte(strings.TrimSpace(runtimeID)))
+	hash.Write([]byte{0})
+	hash.Write([]byte(started.UTC().Format(time.RFC3339Nano)))
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func sourceEventFamilyID(event *cerebrov1.EventEnvelope) string {
+	if event == nil {
+		return ""
+	}
+	sourceID := strings.TrimSpace(event.GetSourceId())
+	kind := strings.TrimSpace(event.GetKind())
+	prefix := sourceID + "."
+	if sourceID == "" || !strings.HasPrefix(kind, prefix) {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(kind, prefix))
+}
+
+func expectedSourceFamilyIDs(sourceID string, contracts []sourcecdk.EventContract) []string {
+	families := map[string]struct{}{}
+	for _, contract := range contracts {
+		event := &cerebrov1.EventEnvelope{SourceId: sourceID, Kind: contract.Kind}
+		if familyID := sourceEventFamilyID(event); familyID != "" {
+			families[familyID] = struct{}{}
+		}
+	}
+	return sortedStringSet(families)
+}
+
+func sortedStringSet(values map[string]struct{}) []string {
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func progressHashSensitiveConfigKey(key string) bool {

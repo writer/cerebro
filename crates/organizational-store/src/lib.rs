@@ -16,14 +16,19 @@ pub use parity::{
     MismatchSide, ParityError, ParityReceipt, ParityStatus, SemanticFact, SemanticFactKind,
     SemanticMismatch, SemanticSnapshot,
 };
-pub use postgres::{POSTGRES_SCHEMA, PostgresLedger};
+pub use postgres::{
+    LegacyProjectionReceipt, POSTGRES_SCHEMA, PostgresLedger, SourceCollectionReceipt,
+    SourceEventReceipt,
+};
 
 use std::{error::Error, fmt};
 
 use async_trait::async_trait;
 use cerebro_organizational_graph::GraphWriteReceipt;
 use cerebro_organizational_model::{GraphDelta, TenantId};
-use cerebro_source_runtime_next::{CollectedBatch, GraphSink};
+use cerebro_source_runtime_next::{
+    CollectedBatch, FencedGraphSink, GraphSink, SourceRuntimeLeaseFence,
+};
 
 #[derive(Debug)]
 pub enum StoreError {
@@ -130,18 +135,11 @@ impl DurableGraphStore {
         }
         Ok(Some(committed.receipt))
     }
-}
 
-#[async_trait]
-impl GraphSink for DurableGraphStore {
-    type Error = StoreError;
-
-    async fn apply(
-        &mut self,
-        batch: &CollectedBatch,
-        delta: GraphDelta,
-    ) -> Result<GraphWriteReceipt, Self::Error> {
-        let commit = self.ledger.commit(batch, &delta).await?;
+    async fn project_commit(
+        &self,
+        commit: postgres::StoredCommit,
+    ) -> Result<GraphWriteReceipt, StoreError> {
         if let Err(error) = self.projector.project_wire(&commit.projection).await {
             return Err(StoreError::ProjectionPending {
                 receipt: commit.receipt,
@@ -155,6 +153,33 @@ impl GraphSink for DurableGraphStore {
             )
             .await?;
         Ok(commit.receipt)
+    }
+}
+
+#[async_trait]
+impl GraphSink for DurableGraphStore {
+    type Error = StoreError;
+
+    async fn apply(
+        &mut self,
+        batch: &CollectedBatch,
+        delta: GraphDelta,
+    ) -> Result<GraphWriteReceipt, Self::Error> {
+        let commit = self.ledger.commit(batch, &delta).await?;
+        self.project_commit(commit).await
+    }
+}
+
+#[async_trait]
+impl FencedGraphSink for DurableGraphStore {
+    async fn apply_fenced(
+        &mut self,
+        batch: &CollectedBatch,
+        delta: GraphDelta,
+        fence: &SourceRuntimeLeaseFence,
+    ) -> Result<GraphWriteReceipt, Self::Error> {
+        let commit = self.ledger.commit_fenced(batch, &delta, fence).await?;
+        self.project_commit(commit).await
     }
 }
 

@@ -4,7 +4,7 @@
 .PHONY: app-workspace-check web-docker-smoke
 .PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
 .PHONY: rust-event-admission-benchmark rust-organizational-platform-benchmark rust-organizational-store-benchmark sourceruntime-event-admission-generate sourceruntime-event-admission-check
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test source-fixture-check openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity projection-parity-test
+.PHONY: help build build-go serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test source-fixture-check openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate rust-proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-catalog-generate policy-catalog-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity projection-parity-test
 .PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence
 .PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 .PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke rust-security-path-properties rust-security-path-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence security-path-evaluator-generate security-path-evaluator-check
@@ -36,6 +36,10 @@ GO_TEST_SHARD_DEFAULT_WEIGHT ?= 1
 GO_RACE_SHARD_WEIGHTS ?= scripts/go_package_race_weights.json
 GO_RACE_SHARD_DEFAULT_WEIGHT ?= 5
 BUF := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
+CONNECTRPC_CODEGEN_REV := 8b3c3b05d3b54af547477a9e3b3a77d62f68e229
+CONNECTRPC_CODEGEN_ROOT := tmp/connectrpc-codegen
+CONNECTRPC_CODEGEN := $(CONNECTRPC_CODEGEN_ROOT)/bin/protoc-gen-connect-rust
+BUFFA_CODEGEN := $(CONNECTRPC_CODEGEN_ROOT)/bin/protoc-gen-buffa
 GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.5 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
 PROTO_BREAKING_BASE ?= origin/main
@@ -169,10 +173,13 @@ help: ## Show this help message.
 
 # ==== Build ====
 ##@ Build
-build: ## Build the Cerebro CLI and native source event admission worker.
+build: build-go ## Build the Cerebro CLI and native source event admission worker.
 	$(CARGO) build --locked --release -p cerebro-sourceruntime-eventadmission --bin cerebro-event-admission-worker
 	mkdir -p bin
 	cp $(EVENT_ADMISSION_WORKER) bin/cerebro-event-admission-worker
+
+build-go: ## Build only the Go compatibility CLI.
+	mkdir -p bin
 	go build -o bin/cerebro ./cmd/cerebro
 
 serve: build ## Build and run the local HTTP server.
@@ -404,12 +411,37 @@ lint-bootstrap: ## Install golangci-lint if missing.
 proto-lint: ## Lint protobuf definitions.
 	$(BUF) lint
 
-proto-generate: ## Generate protobuf-derived code.
+$(CONNECTRPC_CODEGEN):
+	CARGO_TARGET_DIR=tmp/connectrpc-codegen-target $(CARGO) install --locked \
+		--git https://github.com/connectrpc/connect-rust.git \
+		--rev $(CONNECTRPC_CODEGEN_REV) \
+		--root $(CONNECTRPC_CODEGEN_ROOT) \
+		connectrpc-codegen
+
+$(BUFFA_CODEGEN):
+	CARGO_TARGET_DIR=tmp/buffa-codegen-target $(CARGO) install --locked \
+		--version 0.9.1 \
+		--root $(CONNECTRPC_CODEGEN_ROOT) \
+		protoc-gen-buffa
+
+rust-proto-generate: $(CONNECTRPC_CODEGEN) $(BUFFA_CODEGEN) ## Generate the Rust agent-facing RPC contract.
+	PATH="$(CURDIR)/$(CONNECTRPC_CODEGEN_ROOT)/bin:$$PATH" \
+		$(BUF) generate --template buf.gen.rust.yaml \
+		--path proto/cerebro/graph/v1/organizational_graph.proto \
+		--path proto/cerebro/v1/primitives.proto \
+		--path proto/cerebro/v1/security_lifecycle.proto
+
+proto-generate: rust-proto-generate ## Generate protobuf-derived code.
 	$(BUF) generate
-	$(BUF) generate --template buf.gen.sdk.yaml --path proto/cerebro/v1/primitives.proto
+	$(BUF) generate --template buf.gen.sdk.yaml \
+		--path proto/cerebro/v1/primitives.proto \
+		--path proto/cerebro/v1/security_lifecycle.proto \
+		--path proto/cerebro/graph/v1/organizational_graph.proto
 
 proto-generate-check: proto-generate ## Verify protobuf generated files are current.
-	git diff --exit-code -- gen sdk/python/cerebro/v1 sdk/go/cerebroapi/genproto
+	git diff --exit-code -- gen sdk/python/cerebro sdk/go/cerebroapi/genproto \
+		sdk/typescript/src/generated/proto \
+		crates/cerebro-platform/src/generated
 
 proto-breaking: ## Check protobuf compatibility against PROTO_BREAKING_BASE.
 	$(BUF) breaking --against '.git#branch=$(PROTO_BREAKING_BASE)'
@@ -466,6 +498,7 @@ connector-import-promote: ## Append supported candidate connector definitions in
 
 graph-action-generate: ## Regenerate graph action registry from the action catalog.
 	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --write
+	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --format rust --output crates/action-catalog/src/generated.rs --write
 
 rust-fmt-check: ## Verify Rust source formatting.
 	$(CARGO) fmt --all -- --check
@@ -494,8 +527,14 @@ rust-validator-fuzz-smoke: ## Run a bounded static validator fuzz session (requi
 rust-coverage: ## Enforce the Rust workspace line-coverage floor with the pinned coverage tool.
 	@actual="$$($(CARGO) llvm-cov --version 2>/dev/null || true)"; \
 		test "$$actual" = "cargo-llvm-cov 0.8.7" || { echo "rust-coverage: install cargo-llvm-cov 0.8.7 with 'cargo install cargo-llvm-cov --version 0.8.7 --locked'"; exit 1; }
-	# Database drivers, connector HTTP, and process entrypoints are exercised by live integration tests.
-	$(CARGO) llvm-cov --workspace --all-features --locked --ignore-filename-regex '(^|/)(wasm_abi\.rs|crates/cerebro-platform/src/(main|append_log_consumer|cutover_command|parity_command)\.rs|crates/organizational-store/src/(lib|neo4j|postgres)\.rs|crates/source-runtime-next/src/http\.rs)$$' --fail-under-lines 90 --summary-only
+	# Generated RPC bindings and codegen process entrypoints are checked by regeneration;
+	# database drivers, connector/auth HTTP, and runtime process entrypoints use live tests.
+	$(CARGO) llvm-cov --workspace --all-features --locked --ignore-filename-regex '(^|/)(wasm_abi\.rs|crates/action-store/src/lib\.rs|crates/cerebro-platform/src/(generated/.*|main|oidc|append_log_consumer|cutover_command|parity_command)\.rs|crates/organizational-store/src/(lib|neo4j|postgres)\.rs|crates/source-runtime-next/src/http\.rs|tools/policycataloggen/src/main\.rs)$$' --fail-under-lines 90 --summary-only
+
+rust-platform-engine-coverage: ## Enforce focused coverage for reusable platform engines.
+	@actual="$$($(CARGO) llvm-cov --version 2>/dev/null || true)"; \
+		test "$$actual" = "cargo-llvm-cov 0.8.7" || { echo "rust-platform-engine-coverage: install cargo-llvm-cov 0.8.7 with 'cargo install cargo-llvm-cov --version 0.8.7 --locked'"; exit 1; }
+	$(CARGO) llvm-cov -p cerebro-platform-engine --all-features --locked --fail-under-lines 90 --summary-only
 
 rust-benchmark-smoke: ## Run bounded embedded Wasm host benchmarks and record their output.
 	@mkdir -p tmp
@@ -512,6 +551,10 @@ rust-organizational-platform-benchmark: ## Compare the Go and Rust organizationa
 	@mkdir -p tmp
 	@GOMAXPROCS=1 go test ./internal/graphrebuild ./internal/sourceruntime -run '^TestOrganizationalPlatform.*BenchmarkCorpus$$' -bench '^BenchmarkOrganizationalPlatformGo' -benchmem -benchtime=$(ORGANIZATIONAL_BENCH_SAMPLE_MS)ms -count=$(ORGANIZATIONAL_BENCH_SAMPLES) -cpu=1 > tmp/organizational-platform-go-benchmark.txt 2>&1; status=$$?; cat tmp/organizational-platform-go-benchmark.txt; test $$status -eq 0
 	@ORGANIZATIONAL_BENCH_SAMPLE_MS=$(ORGANIZATIONAL_BENCH_SAMPLE_MS) ORGANIZATIONAL_BENCH_SAMPLES=$(ORGANIZATIONAL_BENCH_SAMPLES) $(CARGO) bench --locked -p cerebro-source-runtime-next --bench organizational_platform > tmp/organizational-platform-rust-benchmark.txt 2>&1; status=$$?; cat tmp/organizational-platform-rust-benchmark.txt; exit $$status
+
+rust-platform-engine-benchmark: ## Measure reusable platform diff, assertion, and simulation engines.
+	@mkdir -p tmp
+	@$(CARGO) bench --locked -p cerebro-platform-engine --bench platform_engine > tmp/rust-platform-engine-benchmark.txt 2>&1; status=$$?; cat tmp/rust-platform-engine-benchmark.txt; exit $$status
 
 rust-organizational-store-benchmark: ## Measure durable commits, recovery, traversal, and tenant concurrency against disposable stores.
 	@test -n "$(CEREBRO_TEST_POSTGRES_DSN)" || { echo "CEREBRO_TEST_POSTGRES_DSN is required" >&2; exit 2; }
@@ -535,6 +578,7 @@ rust-security-path-fuzz-smoke: ## Run a bounded security path kernel fuzz sessio
 
 graph-action-check: rust-fmt-check rust-clippy rust-test rust-doc-check ## Verify generated graph action registry is current.
 	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --check
+	$(CARGO) run --locked --quiet -p cerebro-graphactiongen -- --format rust --output crates/action-catalog/src/generated.rs --check
 
 graphagent-static-validator-generate: ## Rebuild the embedded static Cypher validator.
 	CARGO="$(CARGO)" $(PYTHON) scripts/embedded_wasm.py generate graphagent-static-validator
@@ -612,10 +656,16 @@ finding-dsl-schema-check: ## Verify PolicyFindingRule JSON Schema is current.
 finding-dsl-check: finding-dsl-schema-check finding-dsl-test finding-dsl-lint ## Validate PolicyFindingRule DSL authoring files.
 	go run ./tools/findingdsl --check
 
-policy-rule-generate: ## Regenerate generated policy rule catalog.
+policy-catalog-generate: ## Regenerate the Rust policy definition catalog.
+	$(CARGO) run --locked --quiet -p cerebro-policycataloggen -- --write
+
+policy-catalog-check: ## Verify the Rust policy definition catalog is current.
+	$(CARGO) run --locked --quiet -p cerebro-policycataloggen -- --check
+
+policy-rule-generate: policy-catalog-generate ## Regenerate generated policy rule catalogs.
 	go run ./tools/policyrulegen --write
 
-policy-rule-check: finding-dsl-check ## Verify generated policy rule catalog is current.
+policy-rule-check: finding-dsl-check policy-catalog-check ## Verify generated policy rule catalogs are current.
 	go run ./tools/policyrulegen --check
 
 policy-mapping-export: policy-rule-generate detection-catalog-generate ## Regenerate policy compliance mapping CSVs.

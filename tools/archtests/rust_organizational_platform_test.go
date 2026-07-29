@@ -57,6 +57,9 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 			if err != nil {
 				return err
 			}
+			if entry.IsDir() && entry.Name() == "generated" {
+				return filepath.SkipDir
+			}
 			if entry.IsDir() || filepath.Ext(path) != ".rs" {
 				return nil
 			}
@@ -130,17 +133,71 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 
 	queryAdapter := readText(t, filepath.Join(root, "internal/sourcehttp/organizationalgraph/query.go"))
 	for _, required := range []string{
-		`"/v1/graph/expand-batch"`,
+		"NewOrganizationalGraphServiceClient",
+		".ExpandBatch(ctx, request)",
 		"compatibility.ExecuteReadCypher",
+		"ErrGraphTypedOperationRequired",
 		"maxBatchRoots",
-		"AgentKey",
+		"GetAgentKey",
 	} {
 		if !strings.Contains(queryAdapter, required) {
 			t.Errorf("Rust graph read adapter missing enforced boundary %q", required)
 		}
 	}
-	if strings.Contains(queryAdapter, "ShadowQueryStore") {
-		t.Error("bounded product graph reads must not restore the Go-primary shadow adapter")
+	for _, forbidden := range []string{
+		`"/v1/graph/expand"`,
+		`"/v1/graph/expand-batch"`,
+		"type rustNeighborhood struct",
+		"type expandBatchRequest struct",
+	} {
+		if strings.Contains(queryAdapter, forbidden) {
+			t.Errorf("Rust graph read adapter restored handwritten wire contract %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"NewShadowQueryStore",
+		"return legacy, nil",
+		"RecordOrganizationalGraphShadow",
+	} {
+		if !strings.Contains(queryAdapter, required) {
+			t.Errorf("bounded shadow comparison missing enforced safety boundary %q", required)
+		}
+	}
+
+	replacementWorkflow := readText(t, filepath.Join(root, ".github/workflows/rust-graph-replacement.yml"))
+	for _, required := range []string{
+		"name: Rust-only persisted product read",
+		`- "crates/action-catalog/**"`,
+		"--target replacement-test-runtime",
+		"--entrypoint /usr/local/bin/organizational-graph-e2e",
+		`receipt.json)" -eq 14`,
+	} {
+		if !strings.Contains(replacementWorkflow, required) {
+			t.Errorf("Rust graph replacement workflow missing proof %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"actions/setup-go",
+		"make build-go",
+		"go test",
+		"./bin/cerebro serve",
+		"CEREBRO_GRAPH_STORE_DRIVER",
+		"CEREBRO_NEO4J_DATABASE",
+	} {
+		if strings.Contains(replacementWorkflow, forbidden) {
+			t.Errorf("Rust graph replacement workflow restored non-Rust path %q", forbidden)
+		}
+	}
+
+	rustImage := readText(t, filepath.Join(root, "Dockerfile.rust"))
+	for _, required := range []string{
+		"FROM runtime AS replacement-test-runtime",
+		"/out/organizational-graph-e2e",
+		"FROM runtime AS final",
+	} {
+		if !strings.Contains(rustImage, required) {
+			t.Errorf("Rust replacement test image missing boundary %q", required)
+		}
 	}
 }
 

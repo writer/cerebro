@@ -958,8 +958,25 @@ export default function InventoryPage() {
             <div className="grid gap-6 min-[1800px]:grid-cols-[minmax(0,1fr)_340px]">
               <main className="space-y-4">
                 {!assetsQuery.loading && !assetsQuery.error && (
-                  <div className="surface-panel overflow-x-auto">
-                    <table className="data-table min-w-[1180px]">
+                  <div className="surface-panel overflow-hidden">
+                    <div className="flex items-center justify-between border-b border-[color:var(--border)] px-4 py-3 md:hidden">
+                      <span className="text-[12px] font-semibold text-[var(--text-secondary)]">
+                        {visibleAssets.length.toLocaleString()} records on this page
+                      </span>
+                      <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+                        <input
+                          type="checkbox"
+                          aria-label="Select current page assets"
+                          checked={allVisibleSelected}
+                          disabled={selectableVisibleAssets.length === 0}
+                          onChange={toggleAllVisible}
+                          className="h-4 w-4 rounded border-[color:var(--border)]"
+                        />
+                        Select page
+                      </label>
+                    </div>
+                    <div className="overflow-x-auto">
+                    <table className="data-table inventory-results min-w-0 md:min-w-[1180px]" data-testid="inventory-results">
                       <thead>
                         <tr>
                           <th className="w-10">
@@ -984,7 +1001,7 @@ export default function InventoryPage() {
                       <tbody>
                         {visibleAssets.map((asset) => (
                           <tr key={asset.urn} className={selectedAssetURNSet.has(asset.urn) ? "bg-[var(--surface-hover)]" : ""}>
-                            <td>
+                            <td className="inventory-select-cell">
                               <input
                                 type="checkbox"
                                 aria-label={`Select ${asset.label || shortEntity(asset.urn)}`}
@@ -994,7 +1011,7 @@ export default function InventoryPage() {
                                 className="h-4 w-4 rounded border-[color:var(--border)]"
                               />
                             </td>
-                            <td>
+                            <td className="inventory-record-cell">
                               <div className="flex items-center gap-3">
                                 <SourceMark asset={asset} />
                                 <div className="min-w-0">
@@ -1004,17 +1021,17 @@ export default function InventoryPage() {
                                 </div>
                               </div>
                             </td>
-                            <td>
+                            <td data-label="Review">
                               <div className="space-y-1">
                                 <ReviewBadge asset={asset} />
                                 <div className="max-w-[190px] text-[11px] leading-4 text-[var(--text-muted)]">{inventoryReviewDetail(asset)}</div>
                               </div>
                             </td>
-                            <td>
+                            <td data-label="Risk">
                               <RiskBadge score={asset.risk_score} level={asset.risk_level} />
                               {asset.risk_reasons && asset.risk_reasons.length > 0 && <div className="mt-1 max-w-[180px] text-[11px] leading-4 text-[var(--text-muted)]">{asset.risk_reasons.slice(0, 2).map(humanize).join(", ")}</div>}
                             </td>
-                            <td>
+                            <td data-label="Accountability">
                               <div className="max-w-[170px] truncate font-medium text-[var(--text-primary)]">{ownerDisplay(asset)}</div>
                               {isReviewableAsset(asset) && inventoryOwnerLabel(asset) === "Unassigned" && (
                                 <div className="mt-1 text-[11px] text-[var(--text-muted)]">
@@ -1025,7 +1042,7 @@ export default function InventoryPage() {
                                 <button type="button" onClick={() => openAccountabilityModal([asset], "known")} className="mt-1 text-[11px] font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)]">Edit owner</button>
                               )}
                             </td>
-                            <td>
+                            <td data-label="Framework scope">
                               <div className="space-y-1">
                                 <Badge value={inventoryScopeCopy(inventoryScopeState(asset))} />
                                 {asset.scope_reason && <div className="max-w-[170px] truncate text-[11px] text-[var(--text-muted)]">{asset.scope_reason}</div>}
@@ -1037,8 +1054,8 @@ export default function InventoryPage() {
                                 ) : null}
                               </div>
                             </td>
-                            <td>{regionLabel(asset)}</td>
-                            <td>
+                            <td data-label="Account / region">{regionLabel(asset)}</td>
+                            <td className="inventory-actions-cell" data-label="Actions">
                               <div className="flex flex-wrap items-center gap-2">
                                 {isReviewableAsset(asset) && (
                                   <button type="button" onClick={() => void updateScope(asset, inventoryScopeState(asset) === "out_of_scope" ? "in_scope" : "out_of_scope")} disabled={scopeSavingURN === asset.urn} className="secondary-button px-2.5 py-1 text-[12px] disabled:opacity-50">
@@ -1055,6 +1072,7 @@ export default function InventoryPage() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                     {assets.length === 0 && <div className="flex items-center justify-center p-8 text-[13px] text-[var(--text-muted)]">No {recordNoun} match this view.</div>}
                     {assets.length > 0 && totalAssetPages > 1 && (
                       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] px-4 py-3 text-[12px] text-[var(--text-muted)]">

@@ -38,6 +38,26 @@ Plain Compose initializes the local Postgres volume with the compose-file passwo
 
 Use `docker compose -f docker-compose.yml -f docker-compose.build.yml up --build -d` when you need the durable stack to run the current checkout instead of the published image.
 
+To run the Go API with a separate Rust graph authority, set exact candidate
+images and add the Rust overlay:
+
+```bash
+export CEREBRO_IMAGE='ghcr.io/writer/cerebro@sha256:<api-digest>'
+export CEREBRO_RUST_IMAGE='ghcr.io/writer/cerebro-rust@sha256:<rust-digest>'
+export CEREBRO_RUST_GRAPH_SECRET="$(openssl rand -hex 32)"
+docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d --wait
+```
+
+Keep the generated graph secret in the same shell for every Compose command
+against the running stack. This stack creates its own Postgres, Neo4j,
+JetStream, and Docker volumes. Stop
+it with `docker compose -f docker-compose.yml -f docker-compose.rust.yml down --volumes`.
+The `Ephemeral Cerebro` GitHub workflow runs the same topology on an ARM64
+runner for a main commit with successful standard and Rust-only candidate
+builds. It verifies image attestations, Go-to-Rust graph reads, dependency
+failure, recovery, and complete volume removal. It does not connect to a shared
+development graph.
+
 The compose stack uses service-local `CEREBRO_*` variables. For a standalone local template, start from `.env.example`.
 
 ## Common Commands

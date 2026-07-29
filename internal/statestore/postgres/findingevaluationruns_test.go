@@ -106,9 +106,12 @@ func TestFindingEvaluationRunListQuerySelectsLatestForEachRuntime(t *testing.T) 
 		t.Fatalf("findingEvaluationRunListQuery() error = %v", err)
 	}
 	for _, fragment := range []string{
-		"SELECT DISTINCT ON (runtime_id)",
-		"runtime_id IN ($1, $2)",
-		"ORDER BY runtime_id, started_at DESC, id DESC",
+		"FROM (VALUES ($1::text, 0), ($2::text, 1)) AS requested(runtime_id, ordinal)",
+		"CROSS JOIN LATERAL",
+		"run.runtime_id = requested.runtime_id",
+		"ORDER BY run.started_at DESC, run.id DESC",
+		"LIMIT 1",
+		"ORDER BY requested.ordinal",
 		"LIMIT $3",
 	} {
 		if !strings.Contains(query, fragment) {
@@ -117,5 +120,43 @@ func TestFindingEvaluationRunListQuerySelectsLatestForEachRuntime(t *testing.T) 
 	}
 	if len(args) != 3 || args[0] != "runtime-b" || args[1] != "runtime-a" || args[2] != int64(2) {
 		t.Fatalf("findingEvaluationRunListQuery().args = %#v", args)
+	}
+}
+
+func TestFindingEvaluationRunListQueryAppliesLatestFiltersInsideRuntimeProbe(t *testing.T) {
+	cutoff := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
+	query, args, err := findingEvaluationRunListQuery(ports.ListFindingEvaluationRunsRequest{
+		RuntimeIDs:         []string{"runtime-a", "runtime-b"},
+		RuleID:             "rule-a",
+		Status:             "completed",
+		FinishedAtOrBefore: cutoff,
+		LatestByRuntime:    true,
+	})
+	if err != nil {
+		t.Fatalf("findingEvaluationRunListQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"run.rule_id = $3",
+		"run.status = $4",
+		"run.finished_at <= $5",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingEvaluationRunListQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	if len(args) != 5 || args[2] != "rule-a" || args[3] != "completed" || args[4] != cutoff {
+		t.Fatalf("findingEvaluationRunListQuery().args = %#v", args)
+	}
+}
+
+func TestFindingEvaluationRunSchemaIncludesLatestRuntimeIndex(t *testing.T) {
+	joined := strings.Join(ensureFindingEvaluationRunStatements, "\n")
+	for _, fragment := range []string{
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evaluation_runs_runtime_latest_idx",
+		"(runtime_id, started_at DESC, id DESC)",
+	} {
+		if !strings.Contains(joined, fragment) {
+			t.Fatalf("finding evaluation run schema missing %q:\n%s", fragment, joined)
+		}
 	}
 }

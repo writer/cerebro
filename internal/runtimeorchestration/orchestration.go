@@ -26,7 +26,6 @@ type OrchestrationRequest struct {
 	RuleIDs                  []string
 	EventLimit               uint32
 	CaptureSecurityPathDelta bool
-	SecurityPathRustShadow   bool
 	SecurityPathAccountID    string
 	ObservationID            string
 	LeaseOwner               string
@@ -50,14 +49,14 @@ type JobPayload struct {
 // SecurityPathJobPayload records comparison and verification outputs from one
 // orchestrated security-path capture.
 type SecurityPathJobPayload struct {
-	Before                  securitypathdelta.Snapshot           `json:"before"`
-	After                   securitypathdelta.Snapshot           `json:"after"`
-	Delta                   securitypathdelta.Delta              `json:"delta"`
-	RustShadow              []securitypathdelta.RustShadowResult `json:"rust_shadow,omitempty"`
-	VerificationGraphIngest *graphingest.RunResult               `json:"verification_graph_ingest,omitempty"`
-	VerificationGraphRuns   []RuntimeGraphRun                    `json:"verification_graph_ingests,omitempty"`
-	VerificationSnapshot    *securitypathdelta.Snapshot          `json:"verification_snapshot,omitempty"`
-	Verification            *securitypathdelta.Verification      `json:"verification,omitempty"`
+	Before                  securitypathdelta.Snapshot               `json:"before"`
+	After                   securitypathdelta.Snapshot               `json:"after"`
+	Delta                   securitypathdelta.Delta                  `json:"delta"`
+	RustAuthority           []securitypathdelta.RustAuthorityReceipt `json:"rust_authority"`
+	VerificationGraphIngest *graphingest.RunResult                   `json:"verification_graph_ingest,omitempty"`
+	VerificationGraphRuns   []RuntimeGraphRun                        `json:"verification_graph_ingests,omitempty"`
+	VerificationSnapshot    *securitypathdelta.Snapshot              `json:"verification_snapshot,omitempty"`
+	Verification            *securitypathdelta.Verification          `json:"verification,omitempty"`
 }
 
 // JobResult is the storage shape accepted by the platform job service.
@@ -85,7 +84,7 @@ func (s *SecurityPathService) Orchestrate(ctx context.Context, evaluator finding
 	if request.CaptureSecurityPathDelta {
 		capture, captureErr := s.Capture(ctx, SecurityPathRequest{
 			RuntimeID: request.RuntimeID, AccountID: request.SecurityPathAccountID, ObservationID: request.ObservationID,
-			SourcePageLimit: request.SourcePageLimit, GraphPageLimit: request.GraphPageLimit, LeaseOwner: request.LeaseOwner, RustShadow: request.SecurityPathRustShadow,
+			SourcePageLimit: request.SourcePageLimit, GraphPageLimit: request.GraphPageLimit, LeaseOwner: request.LeaseOwner,
 		})
 		result.Sync, result.Graph, result.SecurityPath = capture.Sync, capture.Graph, &capture
 		if result.Graph != nil && evaluator != nil {
@@ -147,7 +146,7 @@ func (result OrchestrationResult) JobPayload() (JobPayload, map[string]string, e
 	capture := result.SecurityPath
 	securityPath := &SecurityPathJobPayload{
 		Before: capture.Before, After: capture.After, Delta: capture.Delta,
-		RustShadow: capture.RustShadow,
+		RustAuthority: capture.RustAuthority,
 	}
 	payload.SecurityPathDelta = securityPath
 	refs["security_path_delta_id"] = capture.Delta.ID

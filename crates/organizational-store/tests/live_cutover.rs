@@ -47,18 +47,28 @@ async fn persisted_cutover_requires_three_matching_receipts_and_is_irreversible(
         root.join("internal/connectorcatalog/catalog"),
         root.join("sources"),
     )?;
+    let request = ProjectionPromotionRequest::new(
+        tenant_id.clone(),
+        "box",
+        "users",
+        CutoverPolicy::new(3, 0)?,
+        0,
+        100,
+    )?;
+    let decision = ledger
+        .evaluate_projection_authority(&catalog, &request)
+        .await?;
+    assert!(decision.is_allowed());
+    assert_eq!(
+        ledger
+            .projection_authority(&tenant_id, "box", "users")
+            .await?
+            .authority,
+        ProjectionAuthority::Legacy,
+        "evaluation must not change authority"
+    );
     let authority = ledger
-        .evaluate_and_promote_projection_authority(
-            &catalog,
-            &ProjectionPromotionRequest::new(
-                tenant_id.clone(),
-                "box",
-                "users",
-                CutoverPolicy::new(3, 0)?,
-                0,
-                100,
-            )?,
-        )
+        .evaluate_and_promote_projection_authority(&catalog, &request)
         .await?;
     assert_eq!(authority.authority, ProjectionAuthority::Rust);
     assert_eq!(

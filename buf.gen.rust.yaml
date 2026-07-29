@@ -1,0 +1,12 @@
+version: v2
+plugins:
+  - local: protoc-gen-buffa
+    out: crates/cerebro-platform/src/generated/buffa
+    opt:
+      - file_per_package=true
+      - json=true
+      - views=true
+  - local: protoc-gen-connect-rust
+    out: crates/cerebro-platform/src/generated/connect
+    opt:
+      - buffa_module=crate::rpc::proto
