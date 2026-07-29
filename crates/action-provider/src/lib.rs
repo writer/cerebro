@@ -5,6 +5,10 @@
 //! A provider response is execution evidence, not finding closure. This crate
 //! never retries a mutation and never manufactures an observed-effect digest.
 
+mod cerebro_device;
+
+pub use cerebro_device::CerebroDeviceClient;
+
 use std::{error::Error, fmt, net::IpAddr, time::Duration};
 
 use cerebro_action_store::ActionDispatch;

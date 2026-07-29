@@ -28,7 +28,10 @@ use cerebro_action_catalog::{
     ActionCatalogError, definitions as action_definitions, lookup as lookup_action,
     validate_proposal,
 };
-use cerebro_action_provider::{AccessApprovalsClient, AccessApprovalsConfig, ProviderError};
+use cerebro_action_provider::{
+    AccessApprovalsClient, AccessApprovalsConfig, CerebroDeviceClient, ProviderError,
+    ProviderReceipt,
+};
 use cerebro_action_store::{
     ActionDispatch, ActionDispatchPage, ActionEvent, ActionPage, ActionReconciliationDisposition,
     ActionReconciliationJob, ActionStoreError, PostgresActionLedger,
@@ -87,12 +90,18 @@ const ACTION_RECONCILIATION_POLL_DELAY_MS: u64 = 15 * 1_000;
 
 #[derive(Clone)]
 struct AppState {
-    access_approvals: Option<AccessApprovalsClient>,
+    action_providers: ActionProviders,
     actions: Option<Arc<dyn ActionAuthority>>,
     graph: Arc<dyn AgentGraph>,
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
     metrics: PlatformMetrics,
+}
+
+#[derive(Clone, Default)]
+struct ActionProviders {
+    access_approvals: Option<AccessApprovalsClient>,
+    cerebro_device: Option<CerebroDeviceClient>,
 }
 
 #[async_trait]
@@ -1441,16 +1450,24 @@ async fn serve(
         OidcConfiguration::Disabled => None,
         OidcConfiguration::Configured(authenticator) => Some(authenticator),
     };
-    let actions: Option<Arc<dyn ActionAuthority>> = match env::var("CEREBRO_POSTGRES_DSN") {
+    let (actions, cerebro_device): (
+        Option<Arc<dyn ActionAuthority>>,
+        Option<CerebroDeviceClient>,
+    ) = match env::var("CEREBRO_POSTGRES_DSN") {
         Ok(connection_string) => {
             let ledger = PostgresActionLedger::connect_tls(&connection_string).await?;
             ledger.migrate().await?;
-            Some(Arc::new(ledger))
+            let device = CerebroDeviceClient::connect_tls(&connection_string).await?;
+            (Some(Arc::new(ledger)), Some(device))
         }
-        Err(env::VarError::NotPresent) => None,
+        Err(env::VarError::NotPresent) => (None, None),
         Err(error) => return Err(error.into()),
     };
     let access_approvals = access_approvals_from_env()?;
+    let action_providers = ActionProviders {
+        access_approvals,
+        cerebro_device,
+    };
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     println!("cerebro Rust platform listening on {bind}");
     axum::serve(
@@ -1460,7 +1477,7 @@ async fn serve(
             load_catalog_summary().ok(),
             projection,
             actions,
-            access_approvals,
+            action_providers,
             tenant_auth,
             oidc,
         ),
@@ -1476,7 +1493,7 @@ fn router(graph: OrganizationalGraph) -> Router {
         None,
         None,
         None,
-        None,
+        ActionProviders::default(),
         TenantRequestAuth::new("test-organizational-graph-secret-32-bytes".to_owned()).unwrap(),
         None,
     )
@@ -1487,7 +1504,7 @@ fn router_with_backend(
     catalog_summary: Option<CatalogSummary>,
     projection: Option<Arc<ProjectionRuntime>>,
     actions: Option<Arc<dyn ActionAuthority>>,
-    access_approvals: Option<AccessApprovalsClient>,
+    action_providers: ActionProviders,
     tenant_auth: TenantRequestAuth,
     oidc: Option<OidcAuthenticator>,
 ) -> Router {
@@ -1562,7 +1579,7 @@ fn router_with_backend(
         .merge(protected)
         .fallback_service(connect.into_axum_service())
         .with_state(AppState {
-            access_approvals,
+            action_providers,
             actions,
             graph,
             catalog_summary,
@@ -2038,25 +2055,22 @@ async fn transition_action_route(
     let starts_execution = matches!(&request.command, HttpActionCommand::StartExecution { .. });
     let authority = action_authority(&state)?.clone();
     let provider = if starts_execution {
-        let provider = state.access_approvals.clone().ok_or_else(|| {
-            service_unavailable(
+        if state.action_providers.access_approvals.is_none()
+            && state.action_providers.cerebro_device.is_none()
+        {
+            return Err(service_unavailable(
                 "action_provider_unavailable",
-                "The access-approvals provider is not configured in the Rust runtime.",
-            )
-        })?;
+                "No Action provider is configured in the Rust runtime.",
+            ));
+        }
         let current = authority
             .get(&identity.tenant, &operation_id)
             .await
             .map_err(action_store_error)?;
         let definition =
             lookup_action(&current.proposal.action_kind).map_err(action_catalog_error)?;
-        if definition.provider != "access-approvals" {
-            return Err(service_unavailable(
-                "action_provider_unavailable",
-                "The Action provider is not available in the Rust runtime.",
-            ));
-        }
-        Some(provider)
+        require_configured_action_provider(&state, definition.provider)?;
+        Some(definition.provider)
     } else {
         None
     };
@@ -2076,7 +2090,7 @@ async fn transition_action_route(
         )
         .await
         .map_err(action_store_error)?;
-    let Some(provider) = provider else {
+    let Some(_provider) = provider else {
         return Ok(Json(operation));
     };
 
@@ -2084,7 +2098,7 @@ async fn transition_action_route(
         .get_dispatch(&identity.tenant, &operation_id)
         .await
         .map_err(action_store_error)?;
-    let provider_result = provider.dispatch(&dispatch).await;
+    let provider_result = dispatch_action_provider(&state, &dispatch).await;
     if let Err(error) = &provider_result {
         eprintln!(
             "Action provider dispatch returned no receipt: operation_id={operation_id} error={error}"
@@ -2111,12 +2125,6 @@ async fn run_action_reconciliation(
 ) -> Result<Json<ActionReconciliationRun>, (StatusCode, Json<ErrorResponse>)> {
     require_action_scope(&identity, ACTION_RECONCILE_SCOPE)?;
     let actor_id = authenticated_action_actor(&identity)?;
-    let provider = state.access_approvals.clone().ok_or_else(|| {
-        service_unavailable(
-            "action_provider_unavailable",
-            "The access-approvals provider is not configured in the Rust runtime.",
-        )
-    })?;
     let authority = action_authority(&state)?.clone();
     let mut result = ActionReconciliationRun {
         claimed: 0,
@@ -2142,11 +2150,7 @@ async fn run_action_reconciliation(
                 "Action reconciliation job has no provider receipt".to_owned(),
             ))
         })?;
-        let receipt = if job.dispatch.provider == "access-approvals" {
-            provider.observe(&job.dispatch, external_id).await
-        } else {
-            Err(ProviderError::ObservationUnavailable)
-        };
+        let receipt = observe_action_provider(&state, &job.dispatch, external_id).await;
         let receipt = match receipt {
             Ok(receipt) => receipt,
             Err(_) => {
@@ -2230,12 +2234,14 @@ async fn observe_action_provider_route(
     let actor_id = authenticated_action_actor(&identity)?;
     let operation_id = ActionOperationId::parse(operation_id)
         .map_err(|error| bad_request("invalid_action_operation_id", error.to_string()))?;
-    let provider = state.access_approvals.clone().ok_or_else(|| {
-        service_unavailable(
+    if state.action_providers.access_approvals.is_none()
+        && state.action_providers.cerebro_device.is_none()
+    {
+        return Err(service_unavailable(
             "action_provider_unavailable",
-            "The access-approvals provider is not configured in the Rust runtime.",
-        )
-    })?;
+            "No Action provider is configured in the Rust runtime.",
+        ));
+    }
     let authority = action_authority(&state)?.clone();
     let operation = authority
         .get(&identity.tenant, &operation_id)
@@ -2253,8 +2259,8 @@ async fn observe_action_provider_route(
         .get_dispatch(&identity.tenant, &operation_id)
         .await
         .map_err(action_store_error)?;
-    let receipt = provider
-        .observe(&dispatch, external_id)
+    require_configured_action_provider(&state, &dispatch.provider)?;
+    let receipt = observe_action_provider(&state, &dispatch, external_id)
         .await
         .map_err(action_provider_error)?;
     let observed_at = next_provider_observation_time(previous_observation, current_unix_millis()?)
@@ -2300,8 +2306,82 @@ fn action_clock_overflow() -> (StatusCode, Json<ErrorResponse>) {
     )
 }
 
+fn require_configured_action_provider(
+    state: &AppState,
+    provider: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let configured = match provider {
+        "access-approvals" => state.action_providers.access_approvals.is_some(),
+        "cerebro-device-auth" => state.action_providers.cerebro_device.is_some(),
+        _ => false,
+    };
+    if configured {
+        Ok(())
+    } else {
+        Err(service_unavailable(
+            "action_provider_unavailable",
+            "The Action provider is not configured in the Rust runtime.",
+        ))
+    }
+}
+
+async fn dispatch_action_provider(
+    state: &AppState,
+    dispatch: &ActionDispatch,
+) -> Result<ProviderReceipt, ProviderError> {
+    match dispatch.provider.as_str() {
+        "access-approvals" => {
+            state
+                .action_providers
+                .access_approvals
+                .as_ref()
+                .ok_or(ProviderError::InvalidConfiguration("access-approvals"))?
+                .dispatch(dispatch)
+                .await
+        }
+        "cerebro-device-auth" => {
+            state
+                .action_providers
+                .cerebro_device
+                .as_ref()
+                .ok_or(ProviderError::InvalidConfiguration("cerebro-device-auth"))?
+                .dispatch(dispatch)
+                .await
+        }
+        _ => Err(ProviderError::InvalidDispatch("provider")),
+    }
+}
+
+async fn observe_action_provider(
+    state: &AppState,
+    dispatch: &ActionDispatch,
+    external_id: &OpaqueId,
+) -> Result<ProviderReceipt, ProviderError> {
+    match dispatch.provider.as_str() {
+        "access-approvals" => {
+            state
+                .action_providers
+                .access_approvals
+                .as_ref()
+                .ok_or(ProviderError::ObservationUnavailable)?
+                .observe(dispatch, external_id)
+                .await
+        }
+        "cerebro-device-auth" => {
+            state
+                .action_providers
+                .cerebro_device
+                .as_ref()
+                .ok_or(ProviderError::ObservationUnavailable)?
+                .observe(dispatch, external_id)
+                .await
+        }
+        _ => Err(ProviderError::ObservationUnavailable),
+    }
+}
+
 fn provider_dispatch_command(
-    result: Result<cerebro_action_provider::ProviderReceipt, ProviderError>,
+    result: Result<ProviderReceipt, ProviderError>,
     actor_id: ActorId,
     observed_at_unix_ms: u64,
 ) -> ActionCommand {
@@ -3901,7 +3981,7 @@ mod tests {
             None,
             None,
             None,
-            None,
+            ActionProviders::default(),
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
             None,
         );
@@ -4237,7 +4317,7 @@ mod tests {
 
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
-            access_approvals: None,
+            action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
             catalog_summary: None,
@@ -4366,7 +4446,7 @@ mod tests {
         );
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
-            access_approvals: None,
+            action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
             catalog_summary: None,
@@ -4480,7 +4560,7 @@ mod tests {
     async fn start_execution_fails_before_storage_when_rust_provider_is_unconfigured() {
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
-            access_approvals: None,
+            action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
             catalog_summary: None,
@@ -4521,7 +4601,7 @@ mod tests {
     async fn action_proposals_reject_spoofed_tenants_and_actors_before_storage() {
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
-            access_approvals: None,
+            action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
             catalog_summary: None,
@@ -4550,7 +4630,7 @@ mod tests {
     async fn action_proposals_reject_unregistered_or_tampered_definitions_before_storage() {
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
-            access_approvals: None,
+            action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
             catalog_summary: None,
@@ -4609,7 +4689,7 @@ mod tests {
     async fn finding_validation_rejects_unknown_or_tampered_policies_before_storage() {
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
-            access_approvals: None,
+            action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
             catalog_summary: None,
@@ -4643,7 +4723,7 @@ mod tests {
     async fn finding_validation_rejects_spoofed_identity_before_storage() {
         let (graph, _, _) = demo_graph().unwrap();
         let state = AppState {
-            access_approvals: None,
+            action_providers: ActionProviders::default(),
             actions: Some(Arc::new(UnreachableActionAuthority)),
             graph: Arc::new(MemoryAgentGraph::new(graph)),
             catalog_summary: None,
@@ -4934,7 +5014,7 @@ mod tests {
             None,
             None,
             None,
-            None,
+            ActionProviders::default(),
             TenantRequestAuth::new(TEST_SHARED_SECRET.to_owned()).unwrap(),
             None,
         );
