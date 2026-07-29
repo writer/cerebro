@@ -456,3 +456,28 @@ func TestSafeResolvedHostAddrsRejectsLoopbackAndLinkLocalEvenWhenAllowlisted(t *
 		})
 	}
 }
+
+func TestParseRequestTimeout(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		raw     string
+		want    time.Duration
+		wantErr bool
+	}{
+		{name: "default", want: 30 * time.Second},
+		{name: "configured", raw: "2m", want: 2 * time.Minute},
+		{name: "too short", raw: "500ms", wantErr: true},
+		{name: "too long", raw: "6m", wantErr: true},
+		{name: "invalid", raw: "later", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := ParseRequestTimeout("example", test.raw, 30*time.Second)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("ParseRequestTimeout() error = %v, wantErr %v", err, test.wantErr)
+			}
+			if !test.wantErr && got != test.want {
+				t.Fatalf("ParseRequestTimeout() = %s, want %s", got, test.want)
+			}
+		})
+	}
+}

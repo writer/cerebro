@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
@@ -41,6 +42,7 @@ type settings struct {
 	region                   string
 	service                  string
 	familyMethod             string
+	requestTimeout           time.Duration
 }
 
 type requestSettings struct {
@@ -76,6 +78,14 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		region:                  sourcecdk.ConfigValue(cfg, "region"),
 		service:                 sourcecdk.ConfigValue(cfg, "service"),
 		apiKey:                  sourcecdk.ConfigValue(cfg, "api_key"),
+	}
+	resolved.requestTimeout, err = sourcehttp.ParseRequestTimeout(
+		s.options.SourceID,
+		sourcecdk.ConfigValue(cfg, "request_timeout"),
+		sourcehttp.DefaultTimeout,
+	)
+	if err != nil {
+		return resolved, err
 	}
 	if resolved.family == "" {
 		resolved.family = strings.TrimSpace(s.options.DefaultFamily)

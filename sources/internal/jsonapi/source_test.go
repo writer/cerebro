@@ -2816,6 +2816,22 @@ func TestPrivateEndpointAllowlistAllowsConfiguredJSONAPISource(t *testing.T) {
 	}
 }
 
+func TestParseSettingsAcceptsBoundedRequestTimeout(t *testing.T) {
+	source := newTestSource(t, "https://example.com")
+	settings, err := source.parseSettings(sourcecdk.NewConfig(map[string]string{
+		"tenant_id":       "writer",
+		"token":           "token-1",
+		"base_url":        "https://example.com",
+		"request_timeout": "2m",
+	}))
+	if err != nil {
+		t.Fatalf("parseSettings() error = %v", err)
+	}
+	if settings.requestTimeout != 2*time.Minute {
+		t.Fatalf("requestTimeout = %s, want 2m", settings.requestTimeout)
+	}
+}
+
 func TestSafeRoundTripperPinsValidatedHostnameAddress(t *testing.T) {
 	var dialed string
 	rt := sourcehttp.SafeRoundTripper{

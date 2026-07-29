@@ -402,3 +402,16 @@ func TestRejectsUnsafeBucket(t *testing.T) {
 		t.Fatal("Read() error = nil, want invalid bucket error")
 	}
 }
+
+func TestRejectsUnboundedRequestTimeout(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_, err = source.configForInner(sourcecdk.NewConfig(map[string]string{
+		"request_timeout": "10m",
+	}))
+	if err == nil {
+		t.Fatal("configForInner() error = nil, want bounded timeout rejection")
+	}
+}

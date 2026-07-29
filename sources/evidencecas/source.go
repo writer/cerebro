@@ -145,6 +145,13 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 
 func (s *Source) configForInner(cfg sourcecdk.Config) (sourcecdk.Config, error) {
 	values := cfg.Values()
+	if _, err := sourcehttp.ParseRequestTimeout(
+		sourceID,
+		values["request_timeout"],
+		sourcehttp.DefaultTimeout,
+	); err != nil {
+		return sourcecdk.Config{}, err
+	}
 	if strings.TrimSpace(values["path"]) == "" && strings.TrimSpace(values[familyObject+"_path"]) == "" {
 		bucket := strings.TrimSpace(values["bucket"])
 		if bucket == "" {
@@ -233,7 +240,7 @@ func (s *Source) getControlJSON(ctx context.Context, cfg sourcecdk.Config, path 
 		SourceID:                 sourceID,
 		AllowLoopback:            s != nil && s.allowLoopback,
 		PrivateEndpointAllowlist: privateEndpointAllowlist,
-		Timeout:                  10 * time.Second,
+		Timeout:                  controlRequestTimeout(cfg),
 	})
 	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
 	if err != nil {
@@ -246,6 +253,15 @@ func (s *Source) getControlJSON(ctx context.Context, cfg sourcecdk.Config, path 
 		return fmt.Errorf("decode %s control response: %w", sourceID, err)
 	}
 	return nil
+}
+
+func controlRequestTimeout(cfg sourcecdk.Config) time.Duration {
+	timeout, _ := sourcehttp.ParseRequestTimeout(
+		sourceID,
+		sourcecdk.ConfigValue(cfg, "request_timeout"),
+		10*time.Second,
+	)
+	return timeout
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {

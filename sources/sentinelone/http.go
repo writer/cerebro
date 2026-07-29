@@ -64,12 +64,10 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "ApiToken "+settings.token)
 
-	client := s.client
-	if client == nil {
-		client = httpClientNoRedirect(nil, s != nil && s.allowLoopbackBaseURL, lookupIPAddrs(s))
-	} else {
-		client = httpClientNoRedirect(client, s != nil && s.allowLoopbackBaseURL, lookupIPAddrs(s))
-	}
+	client := sourcehttp.HardenSourceClient(
+		s.client, "sentinelone", settings.requestTimeout,
+		s != nil && s.allowLoopbackBaseURL, lookupIPAddrs(s),
+	)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("request %s: %w", requestPath, err)
@@ -92,10 +90,6 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 		return fmt.Errorf("decode %s response: %w", requestPath, err)
 	}
 	return nil
-}
-
-func httpClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
-	return sourcehttp.HardenSourceClient(client, "sentinelone", httpTimeout, allowLoopback, lookupIPAddrs)
 }
 
 func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {

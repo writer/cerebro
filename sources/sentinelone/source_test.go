@@ -9,9 +9,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -90,6 +92,19 @@ func TestParseSettingsRejectsUnknownFamily(t *testing.T) {
 	}))
 	if err == nil {
 		t.Fatal("Check(unknown) error = nil, want non-nil")
+	}
+}
+
+func TestParseSettingsAcceptsBoundedRequestTimeout(t *testing.T) {
+	settings, err := parseSettings(
+		sourcecdk.NewConfig(newFixtureConfig("threat", map[string]string{"request_timeout": "2m"})),
+		false,
+	)
+	if err != nil {
+		t.Fatalf("parseSettings() error = %v", err)
+	}
+	if settings.requestTimeout != 2*time.Minute {
+		t.Fatalf("requestTimeout = %s, want 2m", settings.requestTimeout)
 	}
 }
 
@@ -620,12 +635,12 @@ func TestGetJSONDoesNotFollowRedirects(t *testing.T) {
 
 func TestHTTPClientRejectsHostsResolvingToPrivateIPs(t *testing.T) {
 	called := false
-	client := httpClientNoRedirect(&http.Client{
+	client := sourcehttp.HardenSourceClient(&http.Client{
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			called = true
 			return nil, errors.New("unexpected round trip")
 		}),
-	}, false, func(context.Context, string) ([]net.IPAddr, error) {
+	}, "sentinelone", httpTimeout, false, func(context.Context, string) ([]net.IPAddr, error) {
 		return []net.IPAddr{{IP: net.ParseIP("169.254.169.254")}}, nil
 	})
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://attacker.example/web/api/v2.1/threats", nil)
@@ -646,12 +661,12 @@ func TestHTTPClientRejectsHostsResolvingToPrivateIPs(t *testing.T) {
 
 func TestHTTPClientFailsClosedWhenHostResolutionFails(t *testing.T) {
 	called := false
-	client := httpClientNoRedirect(&http.Client{
+	client := sourcehttp.HardenSourceClient(&http.Client{
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			called = true
 			return nil, errors.New("unexpected round trip")
 		}),
-	}, false, func(context.Context, string) ([]net.IPAddr, error) {
+	}, "sentinelone", httpTimeout, false, func(context.Context, string) ([]net.IPAddr, error) {
 		return nil, errors.New("dns failed")
 	})
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://attacker.example/web/api/v2.1/threats", nil)

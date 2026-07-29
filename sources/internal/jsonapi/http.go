@@ -430,6 +430,7 @@ func (s *Source) doRequest(ctx context.Context, settings settings, path string, 
 	if client == nil {
 		client = sourcehttp.NewClient(sourcehttp.ClientOptions{
 			SourceID:                 s.options.SourceID,
+			Timeout:                  settings.requestTimeout,
 			AllowLoopback:            s.AllowLoopbackBaseURL,
 			PrivateEndpointAllowlist: settings.privateEndpointAllowlist,
 			LookupIPAddrs:            lookupIPAddrs(s),
