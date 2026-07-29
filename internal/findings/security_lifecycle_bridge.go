@@ -284,6 +284,8 @@ func securityLifecycleFindingRecord(input SecurityLifecycleFindingObservation) *
 	}
 	attributes := map[string]string{
 		"primary_resource_urn":                  input.SubjectURN,
+		"resource_urn":                          input.FindingURN,
+		"subject_urn":                           input.SubjectURN,
 		securityLifecycleAttributeAuthorityID:   input.AuthorityID,
 		securityLifecycleAttributeStableLocator: input.StableLocator,
 		securityLifecycleAttributeSubjectKind:   input.SubjectKind,

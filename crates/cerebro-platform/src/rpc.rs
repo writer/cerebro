@@ -255,7 +255,14 @@ impl SecurityLifecycleService for GraphRpc {
         if finding_urn.is_empty() {
             return Err(ConnectError::invalid_argument("finding_urn is required"));
         }
-        let expected_prefix = format!("urn:cerebro:{}:finding:", tenant.as_str());
+        let expected_prefix = cerebro_security_lifecycle::canonical_finding_urn_prefix(
+            tenant.as_str(),
+        )
+        .map_err(|_| {
+            ConnectError::invalid_argument(
+                "finding_urn must be a bounded finding URN for the requested tenant",
+            )
+        })?;
         if finding_urn.len() > 4_096 || !finding_urn.starts_with(&expected_prefix) {
             return Err(ConnectError::invalid_argument(
                 "finding_urn must be a bounded finding URN for the requested tenant",

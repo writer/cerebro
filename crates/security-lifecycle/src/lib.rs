@@ -1903,6 +1903,16 @@ pub fn canonical_finding_urn(tenant_id: &str, finding_id: &str) -> Result<String
     canonical_single_id_urn(tenant_id, "finding", finding_id)
 }
 
+pub fn canonical_finding_urn_prefix(tenant_id: &str) -> Result<String, LifecycleError> {
+    if tenant_id.trim().is_empty() {
+        return Err(LifecycleError::Invalid("URN component"));
+    }
+    Ok(format!(
+        "urn:cerebro:{}:finding:",
+        encode_segment(tenant_id)
+    ))
+}
+
 pub fn canonical_remediation_outcome_urn(
     tenant_id: &str,
     outcome_id: &str,
@@ -2191,6 +2201,10 @@ mod tests {
             )
             .unwrap(),
             "urn:cerebro:tenant-a:certificate:vault%2Fprod:api%20cert"
+        );
+        assert_eq!(
+            canonical_finding_urn_prefix("tenant:regional/prod").unwrap(),
+            "urn:cerebro:tenant%3Aregional%2Fprod:finding:"
         );
     }
 

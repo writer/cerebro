@@ -52,6 +52,12 @@ func TestSecurityLifecycleFindingBridgeRequiresRealRuntimeAndVerifiedClosure(t *
 	if stored.RuntimeID != runtimeID {
 		t.Fatalf("runtime id = %q, want resolver provenance %q", stored.RuntimeID, runtimeID)
 	}
+	if got := stored.Attributes["resource_urn"]; got != findingURN {
+		t.Fatalf("resource_urn attribute = %q, want finding urn %q", got, findingURN)
+	}
+	if got := stored.Attributes["subject_urn"]; got != subjectURN {
+		t.Fatalf("subject_urn attribute = %q, want lifecycle subject urn %q", got, subjectURN)
+	}
 	openFingerprint := stored.Fingerprint
 
 	// A provider execution receipt is supporting evidence only. The resolver

@@ -150,6 +150,45 @@ async fn lifecycle_projection_backfills_pages_matches_scan_and_removes_stale_row
     assert_eq!(indexed.metadata.coverage.scanned_entities, 0);
     assert_eq!(indexed.metadata.coverage.lifecycle_entities, 3);
 
+    let empty_filter = LifecycleQuery {
+        owner_urns: vec![format!(
+            "urn:cerebro:{}:team:no-matching-owner",
+            tenant.as_str()
+        )],
+        limit: Some(10),
+        ..LifecycleQuery::default()
+    };
+    let empty_prepared = prepare_indexed_query(&tenant, &empty_filter, "2026-07-26T12:00:00Z", 3)?;
+    let empty = finalize_indexed_query(
+        &tenant,
+        &empty_prepared,
+        projector.query_lifecycle(&tenant, &empty_prepared).await?,
+    )?;
+    assert!(empty.records.is_empty());
+    assert_eq!(empty.aggregates.matched_records, 0);
+    assert_eq!(empty.aggregates.matched_findings, 0);
+    assert!(
+        empty
+            .aggregates
+            .subject_kind_counts
+            .iter()
+            .all(|count| count.count == 0)
+    );
+    assert!(
+        empty
+            .aggregates
+            .state_counts
+            .iter()
+            .all(|count| count.count == 0)
+    );
+    assert!(
+        empty
+            .aggregates
+            .policy_state_counts
+            .iter()
+            .all(|count| count.count == 0)
+    );
+
     for parity_filter in [
         LifecycleQuery {
             subject_kinds: vec![SubjectKind::Credential],

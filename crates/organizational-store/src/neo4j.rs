@@ -416,52 +416,52 @@ impl Neo4jProjector {
 MATCH (entity:SecurityLifecycleSubject {{tenant_id: $tenant_id}})
 WHERE {LIFECYCLE_FILTER}
 RETURN count(entity) AS matched_records,
-       sum(CASE WHEN entity.lifecycle_subject_kind = 'credential' THEN 1 ELSE 0 END) AS credential_count,
-       sum(CASE WHEN entity.lifecycle_subject_kind = 'certificate' THEN 1 ELSE 0 END) AS certificate_count,
-       sum(CASE WHEN entity.lifecycle_observed_state = 'active' THEN 1 ELSE 0 END) AS active_count,
-       sum(CASE WHEN entity.lifecycle_observed_state = 'expiring' THEN 1 ELSE 0 END) AS expiring_count,
-       sum(CASE WHEN entity.lifecycle_observed_state = 'expired' THEN 1 ELSE 0 END) AS expired_count,
-       sum(CASE WHEN entity.lifecycle_observed_state = 'rotated' THEN 1 ELSE 0 END) AS rotated_count,
-       sum(CASE WHEN entity.lifecycle_observed_state = 'revoked' THEN 1 ELSE 0 END) AS revoked_count,
-       sum(CASE WHEN entity.lifecycle_observed_state = 'inactive' THEN 1 ELSE 0 END) AS inactive_count,
-       sum(CASE WHEN entity.lifecycle_observed_state = 'unknown' THEN 1 ELSE 0 END) AS unknown_count,
-       sum(CASE WHEN (
+       coalesce(sum(CASE WHEN entity.lifecycle_subject_kind = 'credential' THEN 1 ELSE 0 END), 0) AS credential_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_subject_kind = 'certificate' THEN 1 ELSE 0 END), 0) AS certificate_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'active' THEN 1 ELSE 0 END), 0) AS active_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'expiring' THEN 1 ELSE 0 END), 0) AS expiring_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'expired' THEN 1 ELSE 0 END), 0) AS expired_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'rotated' THEN 1 ELSE 0 END), 0) AS rotated_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'revoked' THEN 1 ELSE 0 END), 0) AS revoked_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'inactive' THEN 1 ELSE 0 END), 0) AS inactive_count,
+       coalesce(sum(CASE WHEN entity.lifecycle_observed_state = 'unknown' THEN 1 ELSE 0 END), 0) AS unknown_count,
+       coalesce(sum(CASE WHEN (
          entity.lifecycle_observed_state IN ['rotated', 'revoked', 'inactive']
          OR (
            entity.lifecycle_observed_state = 'active'
            AND entity.lifecycle_expires_at_unix_ms > $warning_cutoff_unix_ms
          )
-       ) THEN 1 ELSE 0 END) AS policy_compliant_count,
-       sum(CASE WHEN (
+       ) THEN 1 ELSE 0 END), 0) AS policy_compliant_count,
+       coalesce(sum(CASE WHEN (
          entity.lifecycle_observed_state = 'expiring'
          OR (
            entity.lifecycle_observed_state = 'active'
            AND entity.lifecycle_expires_at_unix_ms > $as_of_unix_ms
            AND entity.lifecycle_expires_at_unix_ms <= $warning_cutoff_unix_ms
          )
-       ) THEN 1 ELSE 0 END) AS policy_expiring_count,
-       sum(CASE WHEN (
+       ) THEN 1 ELSE 0 END), 0) AS policy_expiring_count,
+       coalesce(sum(CASE WHEN (
          entity.lifecycle_observed_state = 'expired'
          OR (
            entity.lifecycle_observed_state = 'active'
            AND entity.lifecycle_expires_at_unix_ms <= $as_of_unix_ms
          )
-       ) THEN 1 ELSE 0 END) AS policy_expired_count,
-       sum(CASE WHEN (
+       ) THEN 1 ELSE 0 END), 0) AS policy_expired_count,
+       coalesce(sum(CASE WHEN (
          entity.lifecycle_observed_state = 'unknown'
          OR (
            entity.lifecycle_observed_state = 'active'
            AND entity.lifecycle_expires_at_unix_ms IS NULL
          )
-       ) THEN 1 ELSE 0 END) AS policy_unknown_count,
-       sum(CASE WHEN (
+       ) THEN 1 ELSE 0 END), 0) AS policy_unknown_count,
+       coalesce(sum(CASE WHEN (
          entity.lifecycle_observed_state IN ['expiring', 'expired']
          OR (
            entity.lifecycle_observed_state = 'active'
            AND entity.lifecycle_expires_at_unix_ms IS NOT NULL
            AND entity.lifecycle_expires_at_unix_ms <= $warning_cutoff_unix_ms
          )
-       ) THEN 1 ELSE 0 END) AS matched_findings,
+       ) THEN 1 ELSE 0 END), 0) AS matched_findings,
        coalesce(min(entity.lifecycle_observed_at_unix_ms), -1) AS oldest_observed_at,
        coalesce(max(entity.lifecycle_observed_at_unix_ms), -1) AS newest_observed_at
 "#
@@ -879,7 +879,9 @@ LIMIT $row_limit
         tenant_id: &TenantId,
         finding_urn: &str,
     ) -> Result<Option<ResolvedLifecycleFinding>, StoreError> {
-        let expected_prefix = format!("urn:cerebro:{}:finding:", tenant_id.as_str());
+        let expected_prefix =
+            cerebro_security_lifecycle::canonical_finding_urn_prefix(tenant_id.as_str())
+                .map_err(|error| StoreError::Conflict(error.to_string()))?;
         if finding_urn.len() > 4_096 || !finding_urn.starts_with(&expected_prefix) {
             return Err(StoreError::Conflict(
                 "invalid tenant-scoped lifecycle finding URN".to_owned(),
