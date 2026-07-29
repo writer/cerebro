@@ -357,6 +357,42 @@ test("Cerebro ask returns after done without waiting for the SSE response to clo
   reader.releaseLock();
 });
 
+test("Cerebro ask ignores an error event sent after done", async () => {
+  let cancelCount = 0;
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      cancelCount += 1;
+    },
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(
+        'event: summary\ndata: {"citation_validation":{"ok":true},"markdown":"Current evidence is verified."}\n\n'
+          + 'event: done\ndata: {"trace_id":"trace-complete"}\n\n'
+          + 'event: error\ndata: {"message":"post-completion cleanup failed"}\n\n',
+      ));
+    },
+  });
+  const client = new CerebroAskClient({
+    apiKey: "bound-at-runtime",
+    baseUrl: "https://cerebro.example.com",
+    fetchImpl: async () => new Response(body, {
+      headers: { "content-type": "text/event-stream" },
+      status: 200,
+    }),
+    tenantId: "writer",
+  });
+
+  const result = await client.ask("What changed?", new AbortController().signal);
+
+  assert.deepEqual(result, {
+    citationValidationPassed: true,
+    markdown: "Current evidence is verified.",
+    traceId: "trace-complete",
+  });
+  assert.equal(cancelCount, 1);
+  const reader = body.getReader();
+  reader.releaseLock();
+});
+
 test("Cerebro ask classifies a mid-stream deadline as timed out", async () => {
   const controller = new AbortController();
   const body = new ReadableStream<Uint8Array>({
