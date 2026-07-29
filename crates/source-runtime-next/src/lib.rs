@@ -3,12 +3,23 @@
 //! Rust-native source collection and graph admission boundary.
 
 mod append_log;
+mod aws_secret_store;
 mod http;
 mod mapper;
+mod runtime_config;
 
 pub use append_log::{AppendLogDecodeError, CommittedSourceEvent, CommittedSourceInput};
+pub use aws_secret_store::{
+    AwsSecretReadError, AwsSecretReader, AwsSecretReference, AwsSecretResolutionError,
+    AwsSecretValue, contains_aws_secret_references, parse_aws_secret_reference,
+    resolve_aws_secret_references,
+};
 pub use http::{HttpConnectorError, HttpSourceConnector, ResolvedAuth};
 pub use mapper::{CatalogGraphMapper, CatalogMapperError, IdentityResolutionSnapshot};
+pub use runtime_config::{
+    RuntimeConfigError, contains_credential_references, parse_credential_reference,
+    resolve_environment_references,
+};
 
 use std::{collections::BTreeMap, error::Error, fmt};
 

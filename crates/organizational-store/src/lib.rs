@@ -2,6 +2,7 @@
 
 //! Durable organizational ledger and Neo4j current-state projection.
 
+mod credential_vault;
 mod cutover;
 mod neo4j;
 mod parity;
@@ -18,7 +19,7 @@ pub use parity::{
 };
 pub use postgres::{
     LegacyProjectionReceipt, POSTGRES_SCHEMA, PostgresLedger, SourceCollectionReceipt,
-    SourceEventReceipt,
+    SourceEventReceipt, StoredSourceRuntime,
 };
 
 use std::{error::Error, fmt};

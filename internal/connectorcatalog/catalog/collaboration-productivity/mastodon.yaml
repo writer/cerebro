@@ -17,7 +17,7 @@ entries:
       key: id
       label: Id
       required: true
-    description: "Collects account, activity, verify credential, and notification from Mastodon and projects them into the Cerebro graph as users, audit events, secrets, and alerts for workspace, document, message, and collaboration context."
+    description: "Collects list accounts, instance activity, the authenticated account, and notifications from Mastodon and projects them into the Cerebro graph as users, audit events, and alerts."
     display_name: Mastodon
     id: builtin_catalog-mastodon
     resource_families:
@@ -47,9 +47,8 @@ entries:
       method: GET
       name_field: display_name
       pagination:
-        page_size: 100
-        page_size_param: limit
-        type: page
+        link_header: Link
+        type: link
       path: "/api/v1/lists/${config.id}/accounts"
       permissions_needed:
       - bearerAuth
@@ -58,8 +57,11 @@ entries:
           id: id
           name: display_name
           provider_id: id
+          user_id: id
         template: identity_user
       record_selector: "$[*]"
+      static_query:
+        limit: "80"
     - coverage:
       - families:
         - activity
@@ -77,22 +79,26 @@ entries:
         kind: mastodon.activity
         required_payload_fields:
         - logins
+        - week
         schema_ref: mastodon/activity/v1
         urn_kind: mastodon_activity
       event_kind: activity
       id: activity
-      id_field: logins
+      id_field: week
       label: Activity
       method: GET
-      name_field: logins
+      name_field: week
       pagination:
         type: none
       path: "/api/v1/instance/activity"
       projection:
         fields:
-          id: logins
-          name: logins
-          provider_id: logins
+          id: week
+          name: week
+          provider_id: week
+        static_fields:
+          actor_id: mastodon_instance
+          event_type: instance_activity
         template: audit_event
       record_selector: "$[*]"
     - coverage:
@@ -111,16 +117,15 @@ entries:
       event:
         kind: mastodon.verify_credential
         required_payload_fields:
-        - category
+        - id
         schema_ref: mastodon/verify_credential/v1
         urn_kind: mastodon_verify_credential
       event_kind: verify_credential
       id: verify_credential
-      id_field: category
+      id_field: id
       label: Verify Credential
-      list_key: emojis
       method: GET
-      name_field: url
+      name_field: display_name
       pagination:
         type: none
       path: "/api/v1/accounts/verify_credentials"
@@ -128,13 +133,14 @@ entries:
       - bearerAuth
       projection:
         fields:
-          id: category
-          name: url
-          secret_id: category
-          secret_name: url
-          secret_type: verify_credential
-        template: secret
-      record_selector: "$.emojis[*]"
+          display_name: display_name|username|acct
+          id: id
+          login: acct|username
+          name: display_name|username|acct
+          provider_id: id
+          user_id: id
+        template: identity_user
+      record_selector: "$"
     - coverage:
       - families:
         - notification
@@ -160,24 +166,27 @@ entries:
       id_field: id
       label: Notification
       method: GET
-      name_field: account
+      name_field: type
       pagination:
-        page_size: 100
-        page_size_param: limit
-        type: page
+        link_header: Link
+        type: link
       path: "/api/v1/notifications"
       permissions_needed:
       - bearerAuth
       projection:
         fields:
           alert_id: id
-          alert_name: account
-          alert_severity: account
-          alert_status: status
+          alert_name: type|group_key
+          alert_source: status.url|account.url
+          alert_type: type
           id: id
-          name: account
+          name: type|group_key
+          resource_id: status.id|account.id|id
+          resource_name: status.url|account.acct|type
         template: alert
       record_selector: "$[*]"
+      static_query:
+        limit: "80"
     schema_version: cerebro.integration/v1
     scope_options:
     - default_enabled: true

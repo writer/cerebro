@@ -7,7 +7,7 @@ mod parity_command;
 mod rpc;
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     env,
     error::Error,
     path::PathBuf,
@@ -16,6 +16,9 @@ use std::{
 };
 
 use async_trait::async_trait;
+use aws_config::{BehaviorVersion, Region, sts::AssumeRoleProvider};
+use aws_credential_types::provider::SharedCredentialsProvider;
+use aws_sdk_secretsmanager::Client as AwsSecretsManagerClient;
 use axum::{
     Extension, Json, Router,
     extract::{Path, Query, Request, State},
@@ -64,8 +67,10 @@ use cerebro_security_lifecycle::{
 };
 use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
-    CatalogGraphMapper, CollectionRequest, CommittedSourceEvent, GraphMapper, GraphSink,
-    HttpSourceConnector, ResolvedAuth, SourceRuntime, SourceRuntimeLeaseFence,
+    AwsSecretReadError, AwsSecretReader, AwsSecretValue, CatalogGraphMapper, CollectionRequest,
+    CommittedSourceEvent, GraphMapper, GraphSink, HttpSourceConnector, ResolvedAuth, SourceRuntime,
+    SourceRuntimeLeaseFence, contains_aws_secret_references, contains_credential_references,
+    resolve_aws_secret_references, resolve_environment_references,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
@@ -73,6 +78,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::sync::{Mutex, oneshot};
+use zeroize::Zeroize;
 
 const TENANT_AUTH_HEADER: &str = "x-cerebro-tenant";
 const TENANT_AUTH_CONTEXT: &[u8] = b"cerebro-organizational-graph/tenant/v1\0";
@@ -112,6 +118,116 @@ struct ActionBackends {
 struct ActionProviders {
     access_approvals: Option<AccessApprovalsClient>,
     cerebro_device: Option<CerebroDeviceClient>,
+}
+
+struct AwsSecretsManagerReader {
+    default_region: String,
+    profile: Option<String>,
+    role_arn: Option<String>,
+    external_id: Option<String>,
+    endpoint: Option<String>,
+    credentials_provider: Option<SharedCredentialsProvider>,
+}
+
+impl AwsSecretsManagerReader {
+    fn from_env() -> Result<Self, Box<dyn Error>> {
+        let stores = required_secret_env_or_file("CEREBRO_CONNECTOR_SECRET_STORES")?;
+        if !stores
+            .split(',')
+            .map(str::trim)
+            .any(|store| store == "aws_secrets_manager")
+        {
+            return Err("AWS Secrets Manager connector resolution is not enabled".into());
+        }
+        let default_region = required_env("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_REGION")?
+            .trim()
+            .to_owned();
+        if default_region.len() > 128 {
+            return Err("AWS Secrets Manager region is invalid".into());
+        }
+        let endpoint = optional_trimmed_env("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ENDPOINT")?;
+        if let Some(endpoint) = endpoint.as_deref() {
+            validate_aws_secrets_manager_endpoint(endpoint)?;
+        }
+        Ok(Self {
+            default_region,
+            profile: optional_trimmed_env("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_PROFILE")?,
+            role_arn: optional_trimmed_env("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_ROLE_ARN")?,
+            external_id: optional_trimmed_env("CEREBRO_CONNECTOR_AWS_SECRETS_MANAGER_EXTERNAL_ID")?,
+            endpoint,
+            credentials_provider: None,
+        })
+    }
+
+    async fn client(
+        &self,
+        region: Option<&str>,
+    ) -> Result<AwsSecretsManagerClient, AwsSecretReadError> {
+        let region = region.unwrap_or(&self.default_region).trim();
+        if region.is_empty() || region.len() > 128 {
+            return Err(AwsSecretReadError);
+        }
+        let mut loader =
+            aws_config::defaults(BehaviorVersion::latest()).region(Region::new(region.to_owned()));
+        if let Some(profile) = self.profile.as_deref() {
+            loader = loader.profile_name(profile);
+        }
+        if let Some(provider) = self.credentials_provider.as_ref() {
+            loader = loader.credentials_provider(provider.clone());
+        }
+        let mut shared_config = loader.load().await;
+        if let Some(role_arn) = self.role_arn.as_deref() {
+            let mut builder = AssumeRoleProvider::builder(role_arn)
+                .configure(&shared_config)
+                .session_name("cerebro-connector-secret-store");
+            if let Some(external_id) = self.external_id.as_deref() {
+                builder = builder.external_id(external_id);
+            }
+            let provider = builder.build().await;
+            shared_config = shared_config
+                .to_builder()
+                .credentials_provider(SharedCredentialsProvider::new(provider))
+                .build();
+        }
+        let mut service_config = aws_sdk_secretsmanager::config::Builder::from(&shared_config);
+        if let Some(endpoint) = self.endpoint.as_deref() {
+            service_config = service_config.endpoint_url(endpoint);
+        }
+        Ok(AwsSecretsManagerClient::from_conf(service_config.build()))
+    }
+}
+
+impl Drop for AwsSecretsManagerReader {
+    fn drop(&mut self) {
+        if let Some(external_id) = self.external_id.as_mut() {
+            external_id.zeroize();
+        }
+    }
+}
+
+#[async_trait]
+impl AwsSecretReader for AwsSecretsManagerReader {
+    async fn read_secret(
+        &self,
+        region: Option<&str>,
+        secret_id: &str,
+    ) -> Result<AwsSecretValue, AwsSecretReadError> {
+        let output = self
+            .client(region)
+            .await?
+            .get_secret_value()
+            .secret_id(secret_id)
+            .send()
+            .await
+            .map_err(|_| AwsSecretReadError)?;
+        if let Some(value) = output.secret_string {
+            return Ok(AwsSecretValue::String(value));
+        }
+        if let Some(value) = output.secret_binary {
+            return Ok(AwsSecretValue::Binary(value.into_inner()));
+        }
+        Err(AwsSecretReadError)
+    }
 }
 
 #[async_trait]
@@ -1409,31 +1525,57 @@ async fn rebuild_lifecycle_projection() -> Result<(), Box<dyn Error>> {
 }
 
 async fn sync_source() -> Result<(), Box<dyn Error>> {
+    let runtime_id = SourceRuntimeId::parse(required_env("CEREBRO_SOURCE_RUNTIME_ID")?)?;
+    let postgres_dsn = required_env("CEREBRO_POSTGRES_DSN")?;
+    let lease_ledger = Arc::new(PostgresLedger::connect_tls(&postgres_dsn).await?);
+    lease_ledger.migrate().await?;
+    let stored_runtime = lease_ledger.load_source_runtime(&runtime_id).await?;
+    let tenant_id = stored_runtime.tenant_id().clone();
+    let source_id = stored_runtime.source_id().to_owned();
+    let cursor = stored_runtime.cursor().map(str::to_owned);
+    let mut config = resolve_environment_references(
+        &source_id,
+        stored_runtime.config(),
+        &source_config_environment_allowlist(),
+        |name| env::var(name).ok(),
+    )?;
+    if contains_credential_references(&config) {
+        let mut vault_key = required_secret_env_or_file("CEREBRO_CONNECTOR_CREDENTIAL_KEY")?;
+        let resolved = lease_ledger
+            .resolve_connector_credential_references(&stored_runtime, &config, &vault_key)
+            .await;
+        vault_key.zeroize();
+        config = resolved?;
+    }
+    if contains_aws_secret_references(&config) {
+        let reader = AwsSecretsManagerReader::from_env()?;
+        config = resolve_aws_secret_references(
+            tenant_id.as_str(),
+            &source_id,
+            runtime_id.as_str(),
+            &config,
+            &reader,
+        )
+        .await?;
+    }
+    let family_id = required_config(&config, "family")?;
+    let base_url = required_config(&config, "base_url")?;
+
     let catalog = load_catalog()?;
-    let source_id = required_env("CEREBRO_SOURCE_ID")?;
-    let family_id = required_env("CEREBRO_SOURCE_FAMILY")?;
-    let tenant_id = TenantId::parse(required_env("CEREBRO_TENANT_ID")?)?;
     let source = catalog
         .get(&source_id)
         .ok_or_else(|| format!("source {source_id} is not in the catalog"))?
         .clone();
-    let mut config = env::var("CEREBRO_SOURCE_CONFIG_JSON")
-        .ok()
-        .map(|value| serde_json::from_str::<BTreeMap<String, String>>(&value))
-        .transpose()?
-        .unwrap_or_default();
-    let auth = resolved_auth(source.auth(), &mut config)?;
-    let connector = HttpSourceConnector::new(
-        source.clone(),
-        &family_id,
-        &required_env("CEREBRO_SOURCE_BASE_URL")?,
-        config,
-        auth,
+    let auth = resolved_auth(
+        source.auth(),
+        source.token_header(),
+        source.token_scheme(),
+        source.auth_header_parameters(),
+        source.auth_query_parameters(),
+        source.auth_json_body_parameters(),
+        &mut config,
     )?;
-    let postgres_dsn = required_env("CEREBRO_POSTGRES_DSN")?;
-    let runtime_id = SourceRuntimeId::parse(required_env("CEREBRO_SOURCE_RUNTIME_ID")?)?;
-    let lease_ledger = Arc::new(PostgresLedger::connect_tls(&postgres_dsn).await?);
-    lease_ledger.migrate().await?;
+    let connector = HttpSourceConnector::new(source.clone(), &family_id, &base_url, config, auth)?;
     let lease_ttl_millis = source_runtime_lease_ttl_millis()?;
     let lease_owner = source_runtime_lease_owner();
 
@@ -1453,7 +1595,7 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
     let request = CollectionRequest {
         tenant_id,
         source_runtime_id: runtime_id,
-        cursor: env::var("CEREBRO_SOURCE_CURSOR").ok(),
+        cursor,
     };
     let (stop_renewal, renewal_failure, renewal_task) =
         start_source_runtime_lease_renewal(lease_ledger.clone(), fence.clone(), lease_ttl_millis);
@@ -1487,6 +1629,21 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
     let receipt = outcome.map_err(|error| -> Box<dyn Error> { error.into() })?;
     println!("{}", serde_json::to_string_pretty(&receipt)?);
     Ok(())
+}
+
+fn source_config_environment_allowlist() -> BTreeSet<String> {
+    env::var("CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST")
+        .ok()
+        .into_iter()
+        .flat_map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 fn source_runtime_lease_ttl_millis() -> Result<u64, Box<dyn Error>> {
@@ -1569,17 +1726,55 @@ async fn connect_neo4j() -> Result<Neo4jProjector, Box<dyn Error>> {
 
 fn resolved_auth(
     model: &AuthModel,
+    token_header: &str,
+    token_scheme: &str,
+    header_parameters: &BTreeMap<String, String>,
+    query_parameters: &BTreeMap<String, String>,
+    json_body_parameters: &BTreeMap<String, String>,
     config: &mut BTreeMap<String, String>,
 ) -> Result<ResolvedAuth, Box<dyn Error>> {
     Ok(match model {
         AuthModel::None => ResolvedAuth::None,
         AuthModel::Basic => ResolvedAuth::Basic {
-            username: required_env("CEREBRO_SOURCE_USERNAME")?,
-            password: required_env("CEREBRO_SOURCE_PASSWORD")?,
+            username: take_required_config(config, "username")?,
+            password: take_required_config(config, "password")?,
         },
+        AuthModel::ApiKey if !header_parameters.is_empty() => {
+            let mut parameters = BTreeMap::new();
+            for (header, credential_field) in header_parameters {
+                parameters.insert(
+                    header.clone(),
+                    take_required_config(config, credential_field)?,
+                );
+            }
+            ResolvedAuth::HeaderParameters { parameters }
+        }
+        AuthModel::ApiKey if !json_body_parameters.is_empty() => {
+            let mut parameters = BTreeMap::new();
+            for (parameter, credential_field) in json_body_parameters {
+                parameters.insert(
+                    parameter.clone(),
+                    take_required_config(config, credential_field)?,
+                );
+            }
+            ResolvedAuth::JsonBodyParameters { parameters }
+        }
+        AuthModel::ApiKey if !query_parameters.is_empty() => {
+            let mut parameters = BTreeMap::new();
+            for (parameter, credential_field) in query_parameters {
+                parameters.insert(
+                    parameter.clone(),
+                    take_required_config(config, credential_field)?,
+                );
+            }
+            ResolvedAuth::QueryParameters { parameters }
+        }
         AuthModel::ApiKey => ResolvedAuth::Header {
-            name: required_env("CEREBRO_SOURCE_AUTH_HEADER")?,
-            value: required_env("CEREBRO_SOURCE_AUTH_VALUE")?,
+            name: nonempty_catalog_auth_value(token_header, "token_header")?,
+            value: apply_auth_scheme(
+                token_scheme,
+                take_first_required_config(config, &["token", "api_key", "auth_value"])?,
+            ),
         },
         AuthModel::AwsSigV4 => ResolvedAuth::AwsSigV4 {
             access_key_id: take_required_config(config, "access_key")?,
@@ -1596,9 +1791,29 @@ fn resolved_auth(
             return Err("source auth requires a bespoke Rust connector".into());
         }
         _ => ResolvedAuth::Bearer {
-            token: required_env("CEREBRO_SOURCE_TOKEN")?,
+            token: take_first_required_config(
+                config,
+                &["token", "access_token", "api_token", "bearer_token"],
+            )?,
         },
     })
+}
+
+fn nonempty_catalog_auth_value(value: &str, field: &str) -> Result<String, Box<dyn Error>> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(format!("source catalog auth {field} is required").into());
+    }
+    Ok(value.to_owned())
+}
+
+fn apply_auth_scheme(scheme: &str, value: String) -> String {
+    let scheme = scheme.trim();
+    if scheme.is_empty() {
+        value
+    } else {
+        format!("{scheme} {value}")
+    }
 }
 
 fn required_config(config: &BTreeMap<String, String>, key: &str) -> Result<String, Box<dyn Error>> {
@@ -1606,7 +1821,7 @@ fn required_config(config: &BTreeMap<String, String>, key: &str) -> Result<Strin
         .get(key)
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| format!("CEREBRO_SOURCE_CONFIG_JSON.{key} is required").into())
+        .ok_or_else(|| format!("stored source runtime config {key:?} is required").into())
 }
 
 fn take_required_config(
@@ -1614,7 +1829,26 @@ fn take_required_config(
     key: &str,
 ) -> Result<String, Box<dyn Error>> {
     remove_nonempty(config, key)
-        .ok_or_else(|| format!("CEREBRO_SOURCE_CONFIG_JSON.{key} is required").into())
+        .ok_or_else(|| format!("stored source runtime config {key:?} is required").into())
+}
+
+fn take_first_required_config(
+    config: &mut BTreeMap<String, String>,
+    keys: &[&str],
+) -> Result<String, Box<dyn Error>> {
+    for key in keys {
+        if let Some(value) = remove_nonempty(config, key) {
+            return Ok(value);
+        }
+    }
+    Err(format!(
+        "stored source runtime config requires one of {}",
+        keys.iter()
+            .map(|key| format!("{key:?}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+    .into())
 }
 
 fn remove_nonempty(config: &mut BTreeMap<String, String>, key: &str) -> Option<String> {
@@ -3332,6 +3566,61 @@ fn optional_env(name: &str) -> Result<Option<String>, env::VarError> {
     }
 }
 
+fn optional_trimmed_env(name: &str) -> Result<Option<String>, Box<dyn Error>> {
+    const MAX_CONFIG_BYTES: usize = 4 * 1_024;
+    let value = optional_env(name)?
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if value
+        .as_ref()
+        .is_some_and(|value| value.len() > MAX_CONFIG_BYTES)
+    {
+        return Err(format!("{name} is too large").into());
+    }
+    Ok(value)
+}
+
+fn validate_aws_secrets_manager_endpoint(endpoint: &str) -> Result<(), Box<dyn Error>> {
+    let url =
+        reqwest::Url::parse(endpoint).map_err(|_| "AWS Secrets Manager endpoint is invalid")?;
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("AWS Secrets Manager endpoint is invalid".into());
+    }
+    let secure = url.scheme() == "https";
+    let loopback_http = url.scheme() == "http"
+        && url.host_str().is_some_and(|host| {
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .trim_matches(['[', ']'])
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|address| address.is_loopback())
+        });
+    if !secure && !loopback_http {
+        return Err("AWS Secrets Manager endpoint must use HTTPS or loopback HTTP".into());
+    }
+    Ok(())
+}
+
+fn required_secret_env_or_file(name: &str) -> Result<String, Box<dyn Error>> {
+    let direct = optional_env(name)?
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    let file_name = format!("{name}_FILE");
+    let file = optional_env(&file_name)?
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    match (direct, file) {
+        (Some(_), Some(_)) => Err(format!("configure only one of {name} and {file_name}").into()),
+        (Some(value), None) => Ok(value),
+        (None, Some(path)) => read_bounded_secret_file(&path),
+        (None, None) => Err(format!("one of {name} and {file_name} is required").into()),
+    }
+}
+
 fn read_bounded_secret_file(path: &str) -> Result<String, Box<dyn Error>> {
     use std::io::Read as _;
 
@@ -3341,14 +3630,19 @@ fn read_bounded_secret_file(path: &str) -> Result<String, Box<dyn Error>> {
         .take((MAX_SECRET_FILE_BYTES + 1) as u64)
         .read_to_end(&mut bytes)?;
     if bytes.is_empty() || bytes.len() > MAX_SECRET_FILE_BYTES {
-        return Err("access-approvals bearer token file is empty or too large".into());
+        return Err("secret file is empty or too large".into());
     }
     let token = String::from_utf8(bytes)?;
-    Ok(token
+    let token = token
         .strip_suffix("\r\n")
         .or_else(|| token.strip_suffix('\n'))
         .unwrap_or(&token)
-        .to_owned())
+        .trim()
+        .to_owned();
+    if token.is_empty() {
+        return Err("secret file is empty or too large".into());
+    }
+    Ok(token)
 }
 
 fn parse_provider_timeout(value: &str) -> Result<Duration, Box<dyn Error>> {
@@ -3449,13 +3743,19 @@ fn demo_graph() -> Result<(OrganizationalGraph, TenantId, EntityId), Box<dyn Err
 mod tests {
     use std::{
         collections::BTreeSet,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
         time::{SystemTime, UNIX_EPOCH},
     };
 
     use async_trait::async_trait;
+    use aws_credential_types::Credentials;
     use axum::{
-        body::Body,
-        http::{Request, StatusCode},
+        body::{Body, Bytes},
+        http::{HeaderMap, Request, StatusCode, header::CONTENT_TYPE},
+        routing::post,
     };
     use cerebro_agent_context::ContextEdge;
     use cerebro_platform_sdk::{ActionEffect, GraphRevision};
@@ -3464,6 +3764,147 @@ mod tests {
     use super::*;
 
     const TEST_SHARED_SECRET: &str = "test-organizational-graph-secret-32-bytes";
+
+    #[test]
+    fn aws_secrets_manager_endpoint_requires_a_safe_transport() {
+        for endpoint in [
+            "https://secretsmanager.us-east-1.amazonaws.com",
+            "http://localhost:4566",
+            "http://127.0.0.1:4566",
+            "http://[::1]:4566",
+        ] {
+            validate_aws_secrets_manager_endpoint(endpoint)
+                .unwrap_or_else(|error| panic!("{endpoint} must be accepted: {error}"));
+        }
+        for endpoint in [
+            "http://secretsmanager.example.com",
+            "https://user:password@secretsmanager.example.com",
+            "https://secretsmanager.example.com?token=secret",
+            "https://secretsmanager.example.com#secret",
+            "ftp://localhost/secrets",
+            "not-a-url",
+        ] {
+            assert!(
+                validate_aws_secrets_manager_endpoint(endpoint).is_err(),
+                "{endpoint} must fail closed"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn aws_secrets_manager_reader_signs_one_scoped_backend_request() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let fixture_reads = Arc::clone(&reads);
+        let fixture = Router::new().route(
+            "/",
+            post(move |headers: HeaderMap, body: Bytes| {
+                let fixture_reads = Arc::clone(&fixture_reads);
+                async move {
+                    fixture_reads.fetch_add(1, Ordering::Relaxed);
+                    assert_eq!(
+                        headers
+                            .get("x-amz-target")
+                            .and_then(|value| value.to_str().ok()),
+                        Some("secretsmanager.GetSecretValue")
+                    );
+                    assert!(
+                        headers
+                            .get(AUTHORIZATION)
+                            .and_then(|value| value.to_str().ok())
+                            .is_some_and(|value| value.starts_with("AWS4-HMAC-SHA256 "))
+                    );
+                    assert_eq!(
+                        serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+                        serde_json::json!({
+                            "SecretId": "cerebro/tenant-a/github/runtime-a/credentials"
+                        })
+                    );
+                    (
+                        [(CONTENT_TYPE, "application/x-amz-json-1.1")],
+                        serde_json::json!({
+                            "ARN": "arn:aws:secretsmanager:us-east-1:123456789012:secret:cerebro/tenant-a/github/runtime-a/credentials",
+                            "Name": "cerebro/tenant-a/github/runtime-a/credentials",
+                            "SecretString": "{\"token\":\"resolved-token\",\"username\":\"runtime-user\"}"
+                        })
+                        .to_string(),
+                    )
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, fixture).await.unwrap();
+        });
+        let reader = AwsSecretsManagerReader {
+            default_region: "us-east-1".to_owned(),
+            profile: None,
+            role_arn: None,
+            external_id: None,
+            endpoint: Some(format!("http://{address}")),
+            credentials_provider: Some(SharedCredentialsProvider::new(Credentials::new(
+                "test-access-key",
+                "test-secret-key",
+                None,
+                None,
+                "test",
+            ))),
+        };
+        let config = BTreeMap::from([
+            (
+                "token".to_owned(),
+                "aws-sm:us-east-1:cerebro/tenant-a/github/runtime-a/credentials#token".to_owned(),
+            ),
+            (
+                "username".to_owned(),
+                "aws-sm:us-east-1:cerebro/tenant-a/github/runtime-a/credentials#username"
+                    .to_owned(),
+            ),
+        ]);
+        let resolved =
+            resolve_aws_secret_references("tenant-a", "github", "runtime-a", &config, &reader)
+                .await
+                .unwrap();
+        assert_eq!(reads.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            resolved.get("token").map(String::as_str),
+            Some("resolved-token")
+        );
+        assert_eq!(
+            resolved.get("username").map(String::as_str),
+            Some("runtime-user")
+        );
+        server.abort();
+    }
+
+    #[test]
+    fn rust_source_sync_accepts_only_the_stored_runtime_selector() {
+        let source = include_str!("main.rs");
+        let sync_source = source
+            .split("async fn sync_source()")
+            .nth(1)
+            .and_then(|body| {
+                body.split("fn source_config_environment_allowlist()")
+                    .next()
+            })
+            .expect("sync-source implementation");
+        assert!(sync_source.contains("CEREBRO_SOURCE_RUNTIME_ID"));
+        for deprecated in [
+            ["CEREBRO", "SOURCE", "ID"].join("_"),
+            ["CEREBRO", "SOURCE", "FAMILY"].join("_"),
+            ["CEREBRO", "TENANT", "ID"].join("_"),
+            ["CEREBRO", "SOURCE", "BASE", "URL"].join("_"),
+            ["CEREBRO", "SOURCE", "CONFIG", "JSON"].join("_"),
+            ["CEREBRO", "SOURCE", "CURSOR"].join("_"),
+            ["CEREBRO", "SOURCE", "TOKEN"].join("_"),
+            ["CEREBRO", "SOURCE", "AUTH", "VALUE"].join("_"),
+        ] {
+            assert!(
+                !sync_source.contains(&deprecated),
+                "sync-source still accepts deprecated authority input {deprecated}"
+            );
+        }
+    }
 
     #[test]
     fn aws_sigv4_resolution_scrubs_secrets_but_preserves_runtime_config() {
@@ -3475,7 +3916,16 @@ mod tests {
             ("service".to_owned(), "bedrock".to_owned()),
             ("account".to_owned(), "account-a".to_owned()),
         ]);
-        let auth = resolved_auth(&AuthModel::AwsSigV4, &mut config).unwrap();
+        let auth = resolved_auth(
+            &AuthModel::AwsSigV4,
+            "",
+            "",
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &mut config,
+        )
+        .unwrap();
         assert!(matches!(
             auth,
             ResolvedAuth::AwsSigV4 {
@@ -3505,7 +3955,16 @@ mod tests {
             ("client_secret".to_owned(), "secret-example".to_owned()),
             ("base_url".to_owned(), "https://api.example.test".to_owned()),
         ]);
-        let auth = resolved_auth(&AuthModel::DuoHmacV5, &mut config).unwrap();
+        let auth = resolved_auth(
+            &AuthModel::DuoHmacV5,
+            "",
+            "",
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &mut config,
+        )
+        .unwrap();
         assert!(matches!(
             auth,
             ResolvedAuth::DuoHmacV5 {
@@ -3519,6 +3978,167 @@ mod tests {
             config.get("base_url").map(String::as_str),
             Some("https://api.example.test")
         );
+    }
+
+    #[test]
+    fn stored_basic_and_api_key_auth_scrub_credentials_from_connector_config() {
+        let mut basic = BTreeMap::from([
+            ("username".to_owned(), "service-account".to_owned()),
+            ("password".to_owned(), "secret-example".to_owned()),
+            ("family".to_owned(), "users".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(
+                &AuthModel::Basic,
+                "",
+                "",
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+                &mut basic
+            )
+            .unwrap(),
+            ResolvedAuth::Basic {
+                ref username,
+                ref password,
+            } if username == "service-account" && password == "secret-example"
+        ));
+        assert!(!basic.contains_key("username"));
+        assert!(!basic.contains_key("password"));
+
+        let mut api_key = BTreeMap::from([
+            ("token".to_owned(), "secret-example".to_owned()),
+            ("family".to_owned(), "resources".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(
+                &AuthModel::ApiKey,
+                "X-API-Key",
+                "Token",
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+                &mut api_key
+            )
+            .unwrap(),
+            ResolvedAuth::Header {
+                ref name,
+                ref value,
+            } if name == "X-API-Key" && value == "Token secret-example"
+        ));
+        assert!(!api_key.contains_key("token"));
+
+        let mut header_api_keys = BTreeMap::from([
+            ("api_key".to_owned(), "account-secret".to_owned()),
+            ("store_key".to_owned(), "store-secret".to_owned()),
+            ("family".to_owned(), "attributes".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(
+                &AuthModel::ApiKey,
+                "",
+                "",
+                &BTreeMap::from([
+                    ("x-api-key".to_owned(), "api_key".to_owned()),
+                    ("x-store-key".to_owned(), "store_key".to_owned()),
+                ]),
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+                &mut header_api_keys
+            )
+            .unwrap(),
+            ResolvedAuth::HeaderParameters { ref parameters }
+                if parameters.get("x-api-key").map(String::as_str) == Some("account-secret")
+                    && parameters.get("x-store-key").map(String::as_str)
+                        == Some("store-secret")
+        ));
+        assert!(!header_api_keys.contains_key("api_key"));
+        assert!(!header_api_keys.contains_key("store_key"));
+        assert_eq!(
+            header_api_keys.get("family").map(String::as_str),
+            Some("attributes")
+        );
+
+        let mut query_api_key = BTreeMap::from([
+            ("api_token".to_owned(), "token-example".to_owned()),
+            ("api_token_secret".to_owned(), "secret-example".to_owned()),
+            ("family".to_owned(), "surveys".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(
+                &AuthModel::ApiKey,
+                "",
+                "",
+                &BTreeMap::new(),
+                &BTreeMap::from([
+                    ("api_token".to_owned(), "api_token".to_owned()),
+                    (
+                        "api_token_secret".to_owned(),
+                        "api_token_secret".to_owned()
+                    ),
+                ]),
+                &BTreeMap::new(),
+                &mut query_api_key
+            )
+            .unwrap(),
+            ResolvedAuth::QueryParameters { ref parameters }
+                if parameters.get("api_token").map(String::as_str) == Some("token-example")
+                    && parameters.get("api_token_secret").map(String::as_str)
+                        == Some("secret-example")
+        ));
+        assert!(!query_api_key.contains_key("api_token"));
+        assert!(!query_api_key.contains_key("api_token_secret"));
+        assert_eq!(
+            query_api_key.get("family").map(String::as_str),
+            Some("surveys")
+        );
+
+        let mut body_api_key = BTreeMap::from([
+            ("api_token".to_owned(), "token-example".to_owned()),
+            ("family".to_owned(), "items".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(
+                &AuthModel::ApiKey,
+                "",
+                "",
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+                &BTreeMap::from([("token".to_owned(), "api_token".to_owned())]),
+                &mut body_api_key
+            )
+            .unwrap(),
+            ResolvedAuth::JsonBodyParameters { ref parameters }
+                if parameters.get("token").map(String::as_str) == Some("token-example")
+        ));
+        assert!(!body_api_key.contains_key("api_token"));
+        assert_eq!(
+            body_api_key.get("family").map(String::as_str),
+            Some("items")
+        );
+    }
+
+    #[test]
+    fn stored_bearer_auth_scrubs_token_from_connector_config() {
+        let mut config = BTreeMap::from([
+            ("token".to_owned(), "secret-example".to_owned()),
+            ("family".to_owned(), "resources".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(
+                &AuthModel::BearerToken,
+                "",
+                "",
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+                &mut config
+            )
+            .unwrap(),
+            ResolvedAuth::Bearer { ref token } if token == "secret-example"
+        ));
+        assert!(!config.contains_key("token"));
+        assert_eq!(config.get("family").map(String::as_str), Some("resources"));
     }
 
     struct UnavailableGraph;

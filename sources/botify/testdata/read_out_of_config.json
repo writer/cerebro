@@ -54,7 +54,8 @@
       "schema_ref": "botify/out_of_config/v1",
       "source_id": "botify",
       "tenant_id": "tenant",
-      "updated_at": "2026-06-01T00:00:00Z"
+      "updated_at": "2026-06-01T00:00:00Z",
+      "url": "https://example.test/out-of-config"
     },
     "schema_ref": "botify/out_of_config/v1",
     "source_id": "botify",

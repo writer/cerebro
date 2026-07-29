@@ -14,15 +14,16 @@ kind_lifecycle:
     status: active
 provider_api:
   status: verified
-  basis: discovered
+  basis: declared
   verified_at: 2026-07-04T00:00:00Z
   transport: rest
   auth: api_key
-  auth_mechanics: token_authorization_header
+  auth_mechanics: x_api_key_and_x_store_key_headers
   base_url: https://api.api2cart.com/v1.1
   spec_url: https://api.apis.guru/v2/specs/api2cart.com/1.1/openapi.json
   spec_kind: openapi
   references:
+    - https://api2cart.com/docs/response-fields-filtering/
     - https://api.apis.guru/v2/specs/api2cart.com/1.1/openapi.json
     - https://app.api2cart.com/default/index/swagger-json
   families:

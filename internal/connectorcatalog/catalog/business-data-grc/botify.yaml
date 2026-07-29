@@ -10,6 +10,8 @@ entries:
         secret: true
       model: api_key
       requires_references: true
+      token_header: Authorization
+      token_scheme: Token
     categories:
     - saas
     config_fields:
@@ -70,6 +72,7 @@ entries:
       pagination:
         inject_first_page: true
         page_param: page
+        page_size_param: size
         page_size: 100
         start_page: 1
         type: page
@@ -99,12 +102,12 @@ entries:
       event:
         kind: botify.export
         required_payload_fields:
-        - area
+        - job_id
         schema_ref: botify/export/v1
         urn_kind: botify_export
       event_kind: export
       id: export
-      id_field: area
+      id_field: job_id
       label: Export
       list_key: results
       method: GET
@@ -112,6 +115,7 @@ entries:
       pagination:
         inject_first_page: true
         page_param: page
+        page_size_param: size
         page_size: 100
         start_page: 1
         type: page
@@ -120,9 +124,9 @@ entries:
       - DjangoRestToken
       projection:
         fields:
-          id: area
+          id: job_id
           name: area
-          resource_id: area
+          resource_id: job_id
           resource_name: area
           resource_type: export
         template: asset
@@ -141,18 +145,19 @@ entries:
       event:
         kind: botify.out_of_config
         required_payload_fields:
-        - id
+        - url
         schema_ref: botify/out_of_config/v1
         urn_kind: botify_out_of_config
       event_kind: out_of_config
       id: out_of_config
-      id_field: id
+      id_field: url
       label: Out Of Config
       list_key: results
       method: GET
       pagination:
         inject_first_page: true
         page_param: page
+        page_size_param: size
         page_size: 100
         start_page: 1
         type: page
@@ -161,11 +166,13 @@ entries:
       - DjangoRestToken
       projection:
         fields:
-          id: id
-          resource_id: id
-          resource_name: id
+          id: url
+          resource_id: url
+          resource_name: url
           resource_type: out_of_config
         template: asset
+      read:
+        scalar_record_field: url
       record_selector: "$.results[*]"
     - coverage:
       - control_domains:
@@ -181,18 +188,19 @@ entries:
       event:
         kind: botify.sitemap_only
         required_payload_fields:
-        - id
+        - url
         schema_ref: botify/sitemap_only/v1
         urn_kind: botify_sitemap_only
       event_kind: sitemap_only
       id: sitemap_only
-      id_field: id
+      id_field: url
       label: Sitemap Only
       list_key: results
       method: GET
       pagination:
         inject_first_page: true
         page_param: page
+        page_size_param: size
         page_size: 100
         start_page: 1
         type: page
@@ -201,11 +209,13 @@ entries:
       - DjangoRestToken
       projection:
         fields:
-          id: id
-          resource_id: id
-          resource_name: id
+          id: url
+          resource_id: url
+          resource_name: url
           resource_type: sitemap_only
         template: asset
+      read:
+        scalar_record_field: url
       record_selector: "$.results[*]"
     - coverage:
       - control_domains:
@@ -223,12 +233,12 @@ entries:
       event:
         kind: botify.report
         required_payload_fields:
-        - error
+        - url
         schema_ref: botify/report/v1
         urn_kind: botify_report
       event_kind: report
       id: report
-      id_field: error
+      id_field: url
       label: Report
       list_key: errors
       method: GET
@@ -240,9 +250,9 @@ entries:
       - DjangoRestToken
       projection:
         fields:
-          id: error
+          id: url
           name: url
-          resource_id: error
+          resource_id: url
           resource_name: url
           resource_type: report
         template: asset
@@ -274,6 +284,7 @@ entries:
       pagination:
         inject_first_page: true
         page_param: page
+        page_size_param: size
         page_size: 100
         start_page: 1
         type: page
@@ -303,12 +314,12 @@ entries:
       event:
         kind: botify.analyses
         required_payload_fields:
-        - id
+        - slug
         schema_ref: botify/analyses/v1
         urn_kind: botify_analyses
       event_kind: analyses
       id: analyses
-      id_field: id
+      id_field: slug
       label: Analyses
       list_key: results
       method: GET
@@ -316,6 +327,7 @@ entries:
       pagination:
         inject_first_page: true
         page_param: page
+        page_size_param: size
         page_size: 100
         start_page: 1
         type: page
@@ -324,9 +336,9 @@ entries:
       - DjangoRestToken
       projection:
         fields:
-          id: id
+          id: slug
           name: name
-          resource_id: id
+          resource_id: slug
           resource_name: name
           resource_type: analyses
         template: asset
@@ -345,12 +357,12 @@ entries:
       event:
         kind: botify.url
         required_payload_fields:
-        - id
+        - url
         schema_ref: botify/url/v1
         urn_kind: botify_url
       event_kind: url
       id: url
-      id_field: id
+      id_field: url
       label: Url
       method: GET
       pagination:
@@ -360,9 +372,9 @@ entries:
       - DjangoRestToken
       projection:
         fields:
-          id: id
-          resource_id: id
-          resource_name: id
+          id: url
+          resource_id: url
+          resource_name: url
           resource_type: url
         template: asset
       record_selector: "$[*]"
@@ -393,6 +405,7 @@ entries:
       pagination:
         inject_first_page: true
         page_param: page
+        page_size_param: size
         page_size: 100
         start_page: 1
         type: page
@@ -473,6 +486,7 @@ entries:
       pagination:
         inject_first_page: true
         page_param: page
+        page_size_param: size
         page_size: 100
         start_page: 1
         type: page

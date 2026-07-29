@@ -7,6 +7,7 @@ entries:
             reference_only: true
             secret: true
         model: api_key
+        token_header: API-Key
       categories:
         - observability
       description: Collects New Relic monitored entities, AI issues, and NrAuditEvent records through NerdGraph for asset inventory, finding review, and audit context.

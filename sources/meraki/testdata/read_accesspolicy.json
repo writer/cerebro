@@ -2,7 +2,7 @@
   {
     "attributes": {
       "api_method": "GET",
-      "api_path": "/networks/${config.networkid}/accessPolicies",
+      "api_path": "/networks/${config.networkid}/switch/accessPolicies",
       "evidence_cas_commit_id": "evidence-cas-commit-id-source-meraki-accesspolicy-1",
       "evidence_cas_digest": "sha256:test",
       "evidence_cas_merkle_root": "evidence-cas-merkle-root-source-meraki-accesspolicy-1",
@@ -38,7 +38,8 @@
     "payload": {
       "accesspolicy": "accesspolicy",
       "api_method": "GET",
-      "api_path": "/networks/${config.networkid}/accessPolicies",
+      "accessPolicyNumber": "source-meraki-accesspolicy-1",
+      "api_path": "/networks/${config.networkid}/switch/accessPolicies",
       "created_at": "2026-06-01T00:00:00Z",
       "description": "Meraki Accesspolicy Fixture policy",
       "event_id": "source-meraki-accesspolicy-1",

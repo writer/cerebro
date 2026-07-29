@@ -1,27 +1,62 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use cerebro_organizational_graph::GraphWriteReceipt;
 use cerebro_organizational_model::{
     CanonicalIdentityId, CollectionCompleteness, GraphAssertion, GraphDelta,
-    IdentityBindingAssertion, IdentityBindingState, IdentityResolutionMethod, TenantId,
+    IdentityBindingAssertion, IdentityBindingState, IdentityResolutionMethod, SourceRuntimeId,
+    TenantId,
 };
 use cerebro_source_catalog::SourceCatalog;
 use cerebro_source_runtime_next::{
     CollectedBatch, CommittedSourceEvent, IdentityResolutionSnapshot, SourceRuntimeLeaseFence,
+    parse_credential_reference,
 };
 use postgres_native_tls::MakeTlsConnector;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_postgres::Client;
+use zeroize::Zeroize;
 
-use crate::StoreError;
 use crate::{
     CutoverDecision, CutoverGate, ParityReceipt, ParityStatus, ProjectionAuthority,
     ProjectionAuthorityRecord, ProjectionPromotionRequest,
 };
+use crate::{
+    StoreError,
+    credential_vault::{ConnectorVaultKey, CredentialVaultRecord},
+};
 
 const MAX_SOURCE_RUNTIME_LEASE_TTL_MILLIS: u64 = 24 * 60 * 60 * 1_000;
+static CREDENTIAL_AUDIT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+struct SensitiveValues(BTreeMap<String, String>);
+
+impl SensitiveValues {
+    fn new(values: &BTreeMap<String, String>) -> Self {
+        Self(values.clone())
+    }
+
+    fn insert(&mut self, key: String, value: String) {
+        if let Some(mut replaced) = self.0.insert(key, value) {
+            replaced.zeroize();
+        }
+    }
+
+    fn into_inner(mut self) -> BTreeMap<String, String> {
+        std::mem::take(&mut self.0)
+    }
+}
+
+impl Drop for SensitiveValues {
+    fn drop(&mut self) {
+        for value in self.0.values_mut() {
+            value.zeroize();
+        }
+    }
+}
 
 pub const POSTGRES_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS source_runtimes (
@@ -35,6 +70,50 @@ ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPT
 ALTER TABLE source_runtimes
   ADD COLUMN IF NOT EXISTS lease_generation BIGINT NOT NULL DEFAULT 0
   CHECK (lease_generation >= 0);
+CREATE TABLE IF NOT EXISTS connector_credentials (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  runtime_id TEXT NOT NULL,
+  credential_store_id TEXT NOT NULL DEFAULT 'cerebro_vault',
+  auth_method TEXT NOT NULL DEFAULT 'encrypted_submission',
+  status TEXT NOT NULL DEFAULT 'valid',
+  key_id TEXT NOT NULL,
+  fields_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  sealed BYTEA NOT NULL,
+  created_by TEXT NOT NULL DEFAULT '',
+  updated_by TEXT NOT NULL DEFAULT '',
+  revoked_by TEXT NOT NULL DEFAULT '',
+  previous_credential_id TEXT NOT NULL DEFAULT '',
+  idempotency_key TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  revoked_at TIMESTAMPTZ,
+  last_used_at TIMESTAMPTZ,
+  last_validated_at TIMESTAMPTZ
+);
+ALTER TABLE connector_credentials
+  ADD COLUMN IF NOT EXISTS credential_store_id TEXT NOT NULL DEFAULT 'cerebro_vault';
+ALTER TABLE connector_credentials
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'valid';
+ALTER TABLE connector_credentials
+  ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS connector_credentials_runtime_idx
+  ON connector_credentials (runtime_id, updated_at DESC);
+CREATE TABLE IF NOT EXISTS connector_credential_audit_events (
+  id TEXT PRIMARY KEY,
+  credential_id TEXT NOT NULL,
+  tenant_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  runtime_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  actor TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT '',
+  detail TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS connector_credential_audit_credential_idx
+  ON connector_credential_audit_events (credential_id, created_at DESC);
 CREATE TABLE IF NOT EXISTS organizational_graph_revisions (
   tenant_id TEXT PRIMARY KEY,
   revision BIGINT NOT NULL CHECK (revision >= 0)
@@ -508,6 +587,61 @@ pub struct SourceCollectionReceipt {
     pub manifest_digest: String,
 }
 
+/// One stored source-runtime definition admitted from the shared PostgreSQL
+/// current-state table. The config may contain unresolved secret references,
+/// so this type deliberately does not implement `Debug` or `Serialize`.
+#[derive(Clone)]
+pub struct StoredSourceRuntime {
+    runtime_id: SourceRuntimeId,
+    tenant_id: TenantId,
+    source_id: String,
+    config: BTreeMap<String, String>,
+    cursor: Option<String>,
+}
+
+impl StoredSourceRuntime {
+    pub fn runtime_id(&self) -> &SourceRuntimeId {
+        &self.runtime_id
+    }
+
+    pub fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
+    }
+
+    pub fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    pub fn config(&self) -> &BTreeMap<String, String> {
+        &self.config
+    }
+
+    pub fn cursor(&self) -> Option<&str> {
+        self.cursor.as_deref()
+    }
+}
+
+#[derive(Deserialize)]
+struct StoredSourceRuntimeWire {
+    id: String,
+    source_id: String,
+    tenant_id: String,
+    #[serde(default)]
+    config: BTreeMap<String, String>,
+    next_cursor: Option<StoredSourceCursorWire>,
+    checkpoint: Option<StoredSourceCheckpointWire>,
+}
+
+#[derive(Deserialize)]
+struct StoredSourceCursorWire {
+    opaque: String,
+}
+
+#[derive(Deserialize)]
+struct StoredSourceCheckpointWire {
+    cursor_opaque: String,
+}
+
 pub struct PostgresLedger {
     client: Mutex<Client>,
 }
@@ -542,6 +676,114 @@ impl PostgresLedger {
             .batch_execute(POSTGRES_SCHEMA)
             .await?;
         Ok(())
+    }
+
+    /// Load one durable runtime definition. Runtime identity comes only from
+    /// the stored record; callers cannot override its tenant or source.
+    pub async fn load_source_runtime(
+        &self,
+        source_runtime_id: &SourceRuntimeId,
+    ) -> Result<StoredSourceRuntime, StoreError> {
+        let row = self
+            .client
+            .lock()
+            .await
+            .query_opt(
+                "SELECT runtime_json FROM source_runtimes WHERE id = $1",
+                &[&source_runtime_id.as_str()],
+            )
+            .await?;
+        let Some(row) = row else {
+            return Err(StoreError::Conflict(
+                "source runtime is not stored".to_owned(),
+            ));
+        };
+        decode_stored_source_runtime(source_runtime_id, row.get(0))
+    }
+
+    /// Resolve connector-vault references against the exact durable runtime
+    /// scope. The database lookup binds credential ID, tenant, source, runtime,
+    /// store, and usable status in one predicate, so a foreign or revoked
+    /// record cannot be distinguished from a missing record.
+    pub async fn resolve_connector_credential_references(
+        &self,
+        runtime: &StoredSourceRuntime,
+        values: &BTreeMap<String, String>,
+        key_material: &str,
+    ) -> Result<BTreeMap<String, String>, StoreError> {
+        let mut references = BTreeMap::<String, Vec<(String, String)>>::new();
+        for (config_key, value) in values {
+            let Some((credential_id, field)) = parse_credential_reference(value) else {
+                continue;
+            };
+            references
+                .entry(credential_id.to_owned())
+                .or_default()
+                .push((config_key.clone(), field.to_owned()));
+        }
+        if references.is_empty() {
+            return Ok(values.clone());
+        }
+
+        let vault_key = ConnectorVaultKey::parse(key_material)?;
+        let client = self.client.lock().await;
+        let mut resolved = SensitiveValues::new(values);
+        let mut used_credentials = Vec::with_capacity(references.len());
+        for (credential_id, requested_fields) in references {
+            let row = client
+                .query_opt(
+                    "SELECT id, tenant_id, source_id, runtime_id, key_id, sealed
+                     FROM connector_credentials
+                     WHERE id = $1
+                       AND tenant_id = $2
+                       AND source_id = $3
+                       AND runtime_id = $4
+                       AND credential_store_id = 'cerebro_vault'
+                       AND status IN ('valid', 'rotating')",
+                    &[
+                        &credential_id,
+                        &runtime.tenant_id.as_str(),
+                        &runtime.source_id,
+                        &runtime.runtime_id.as_str(),
+                    ],
+                )
+                .await?;
+            let Some(row) = row else {
+                return Err(StoreError::Conflict(
+                    "connector credential is unavailable for this runtime".to_owned(),
+                ));
+            };
+            let record = CredentialVaultRecord {
+                id: row.get(0),
+                tenant_id: row.get(1),
+                source_id: row.get(2),
+                runtime_id: row.get(3),
+                key_id: row.get(4),
+                sealed: row.get(5),
+            };
+            let fields = vault_key.open(&record)?;
+            for (config_key, field) in requested_fields {
+                let Some(secret) = fields.get(&field) else {
+                    return Err(StoreError::Conflict(
+                        "connector credential field is unavailable".to_owned(),
+                    ));
+                };
+                resolved.insert(config_key, secret.to_owned());
+            }
+            used_credentials.push(credential_id);
+        }
+
+        for credential_id in used_credentials {
+            track_connector_credential_use(
+                &client,
+                &credential_id,
+                runtime.tenant_id.as_str(),
+                &runtime.source_id,
+                runtime.runtime_id.as_str(),
+            )
+            .await?;
+        }
+        Ok(resolved.into_inner())
     }
 
     /// Acquire the shared source-runtime lease and return its durable fencing
@@ -628,7 +870,7 @@ WHERE id = $1
   AND runtime_json->>'tenant_id' = $2
   AND lease_owner = $3
   AND lease_generation = $4
-  AND lease_expires_at > NOW()
+  AND lease_expires_at > clock_timestamp()
 "#,
                 &[
                     &fence.source_runtime_id().as_str(),
@@ -1178,6 +1420,9 @@ WHERE id = $1
             ));
         }
         validate_observations(batch, delta)?;
+        if fence.is_some() {
+            validate_source_runtime_cursor(batch.next_cursor.as_deref())?;
+        }
 
         let mut client = self.client.lock().await;
         let transaction = client.transaction().await?;
@@ -1359,6 +1604,9 @@ WHERE id = $1
                 &[&tenant_id, &revision],
             )
             .await?;
+        if let Some(fence) = fence {
+            advance_source_runtime_progress(&transaction, batch, fence).await?;
+        }
         transaction.commit().await?;
         Ok(StoredCommit {
             receipt,
@@ -1951,6 +2199,114 @@ fn enum_name<T: Serialize>(value: &T) -> Result<String, StoreError> {
     }
 }
 
+fn decode_stored_source_runtime(
+    expected_runtime_id: &SourceRuntimeId,
+    value: Value,
+) -> Result<StoredSourceRuntime, StoreError> {
+    let wire: StoredSourceRuntimeWire = serde_json::from_value(value).map_err(|_| {
+        StoreError::Conflict("stored source runtime definition is invalid".to_owned())
+    })?;
+    let runtime_id = SourceRuntimeId::parse(wire.id)
+        .map_err(|_| StoreError::Conflict("stored source runtime id is invalid".to_owned()))?;
+    if &runtime_id != expected_runtime_id {
+        return Err(StoreError::Conflict(
+            "stored source runtime id does not match its row".to_owned(),
+        ));
+    }
+    let tenant_id = TenantId::parse(wire.tenant_id)
+        .map_err(|_| StoreError::Conflict("stored source runtime tenant is invalid".to_owned()))?;
+    let source_id = wire.source_id;
+    if source_id.is_empty()
+        || source_id.trim() != source_id
+        || source_id.len() > 128
+        || source_id.chars().any(char::is_control)
+    {
+        return Err(StoreError::Conflict(
+            "stored source runtime source is invalid".to_owned(),
+        ));
+    }
+    let cursor = wire
+        .next_cursor
+        .map(|cursor| cursor.opaque)
+        .filter(|cursor| !cursor.is_empty())
+        .or_else(|| {
+            wire.checkpoint
+                .map(|checkpoint| checkpoint.cursor_opaque)
+                .map(|cursor| cursor.trim().to_owned())
+                .filter(|cursor| resumable_checkpoint_cursor(cursor))
+        });
+    if cursor
+        .as_ref()
+        .is_some_and(|cursor| cursor.len() > 64 * 1024)
+    {
+        return Err(StoreError::Conflict(
+            "stored source runtime cursor is too large".to_owned(),
+        ));
+    }
+    Ok(StoredSourceRuntime {
+        runtime_id,
+        tenant_id,
+        source_id,
+        config: wire.config,
+        cursor,
+    })
+}
+
+async fn track_connector_credential_use(
+    client: &Client,
+    credential_id: &str,
+    tenant_id: &str,
+    source_id: &str,
+    runtime_id: &str,
+) -> Result<(), StoreError> {
+    let sequence = CREDENTIAL_AUDIT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let unix_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let audit_id = format!(
+        "credential-audit-rust-{}-{unix_nanos}-{sequence}",
+        std::process::id()
+    );
+    client
+        .execute(
+            "WITH used AS (
+               UPDATE connector_credentials
+               SET last_used_at = NOW(), updated_at = NOW()
+               WHERE id = $1
+                 AND tenant_id = $2
+                 AND source_id = $3
+                 AND runtime_id = $4
+                 AND credential_store_id = 'cerebro_vault'
+                 AND status IN ('valid', 'rotating')
+                 AND (last_used_at IS NULL OR last_used_at <= NOW() - INTERVAL '1 hour')
+               RETURNING status
+             )
+             INSERT INTO connector_credential_audit_events (
+               id, credential_id, tenant_id, source_id, runtime_id,
+               event_type, actor, status, detail, created_at
+             )
+             SELECT $5, $1, $2, $3, $4, 'used', '', status, '', NOW()
+             FROM used",
+            &[
+                &credential_id,
+                &tenant_id,
+                &source_id,
+                &runtime_id,
+                &audit_id,
+            ],
+        )
+        .await?;
+    Ok(())
+}
+
+fn resumable_checkpoint_cursor(cursor: &str) -> bool {
+    serde_json::from_str::<Value>(cursor)
+        .ok()
+        .and_then(|value| value.as_object()?.get("resumable_checkpoint")?.as_bool())
+        .unwrap_or(false)
+}
+
 fn validate_lease_request(owner: &str, ttl_millis: u64) -> Result<(), StoreError> {
     if owner.is_empty()
         || owner.trim() != owner
@@ -2002,7 +2358,7 @@ async fn require_source_runtime_lease(
     let row = transaction
         .query_opt(
             r#"
-SELECT lease_owner, lease_generation, lease_expires_at > NOW()
+SELECT lease_owner, lease_generation, lease_expires_at > clock_timestamp()
 FROM source_runtimes
 WHERE id = $1
   AND runtime_json->>'tenant_id' = $2
@@ -2022,6 +2378,95 @@ FOR UPDATE
     if !valid {
         return Err(StoreError::Conflict(
             "source runtime lease was lost before commit".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_source_runtime_cursor(cursor: Option<&str>) -> Result<(), StoreError> {
+    if cursor.is_some_and(|cursor| cursor.trim().is_empty() || cursor.len() > 64 * 1024) {
+        return Err(StoreError::Conflict(
+            "source runtime continuation cursor is invalid".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn advance_source_runtime_progress(
+    transaction: &tokio_postgres::Transaction<'_>,
+    batch: &CollectedBatch,
+    fence: &SourceRuntimeLeaseFence,
+) -> Result<(), StoreError> {
+    let generation = storage_generation(fence.generation())?;
+    let next_cursor = batch
+        .next_cursor
+        .as_ref()
+        .map(|cursor| serde_json::json!({"opaque": cursor}));
+    let checkpoint_row = transaction
+        .query_opt(
+            "SELECT runtime_json->'checkpoint'->>'cursor_opaque'
+             FROM source_runtimes
+             WHERE id = $1 AND runtime_json->>'tenant_id' = $2",
+            &[
+                &fence.source_runtime_id().as_str(),
+                &fence.tenant_id().as_str(),
+            ],
+        )
+        .await?;
+    let Some(checkpoint_row) = checkpoint_row else {
+        return Err(StoreError::Conflict(
+            "source runtime was removed before progress commit".to_owned(),
+        ));
+    };
+    let checkpoint_cursor: Option<String> = checkpoint_row.get(0);
+    let clear_checkpoint_cursor = next_cursor.is_none()
+        && checkpoint_cursor
+            .as_deref()
+            .is_some_and(resumable_checkpoint_cursor);
+    let updated = transaction
+        .execute(
+            r#"
+UPDATE source_runtimes
+SET runtime_json = jsonb_set(
+      CASE
+        WHEN $5::jsonb IS NULL THEN
+          CASE
+            WHEN $6::BOOLEAN
+              AND jsonb_typeof(runtime_json->'checkpoint') = 'object' THEN
+              jsonb_set(
+                runtime_json - 'next_cursor',
+                '{checkpoint,cursor_opaque}',
+                '""'::jsonb,
+                TRUE
+              )
+            ELSE runtime_json - 'next_cursor'
+          END
+        ELSE jsonb_set(runtime_json, '{next_cursor}', $5::jsonb, TRUE)
+      END,
+      '{last_synced_at}',
+      to_jsonb(clock_timestamp()),
+      TRUE
+    ),
+    updated_at = clock_timestamp()
+WHERE id = $1
+  AND runtime_json->>'tenant_id' = $2
+  AND lease_owner = $3
+  AND lease_generation = $4
+  AND lease_expires_at > clock_timestamp()
+"#,
+            &[
+                &fence.source_runtime_id().as_str(),
+                &fence.tenant_id().as_str(),
+                &fence.owner(),
+                &generation,
+                &next_cursor,
+                &clear_checkpoint_cursor,
+            ],
+        )
+        .await?;
+    if updated != 1 {
+        return Err(StoreError::Conflict(
+            "source runtime lease was lost before progress commit".to_owned(),
         ));
     }
     Ok(())
@@ -2098,6 +2543,75 @@ mod tests {
                 "claim replacement query missing {required}"
             );
         }
+    }
+
+    #[test]
+    fn stored_source_runtime_identity_and_cursor_come_from_the_durable_record() {
+        let runtime_id = SourceRuntimeId::parse("runtime-a").unwrap();
+        let stored = decode_stored_source_runtime(
+            &runtime_id,
+            serde_json::json!({
+                "id": "runtime-a",
+                "source_id": "github",
+                "tenant_id": "tenant-a",
+                "config": {
+                    "family": "repository",
+                    "token": "env:CEREBRO_SOURCE_GITHUB_TOKEN"
+                },
+                "checkpoint": {"cursor_opaque": "checkpoint"},
+                "next_cursor": {"opaque": "next"}
+            }),
+        )
+        .unwrap();
+        assert_eq!(stored.runtime_id(), &runtime_id);
+        assert_eq!(stored.tenant_id().as_str(), "tenant-a");
+        assert_eq!(stored.source_id(), "github");
+        assert_eq!(stored.cursor(), Some("next"));
+        assert_eq!(
+            stored.config().get("token").map(String::as_str),
+            Some("env:CEREBRO_SOURCE_GITHUB_TOKEN")
+        );
+
+        assert!(
+            decode_stored_source_runtime(
+                &runtime_id,
+                serde_json::json!({
+                    "id": "runtime-b",
+                    "source_id": "github",
+                    "tenant_id": "tenant-a"
+                }),
+            )
+            .is_err()
+        );
+
+        let checkpoint_only = decode_stored_source_runtime(
+            &runtime_id,
+            serde_json::json!({
+                "id": "runtime-a",
+                "source_id": "github",
+                "tenant_id": "tenant-a",
+                "checkpoint": {
+                    "cursor_opaque": "{\"token\":\"page:2\",\"resumable_checkpoint\":true}"
+                }
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            checkpoint_only.cursor(),
+            Some("{\"token\":\"page:2\",\"resumable_checkpoint\":true}")
+        );
+
+        let non_resumable = decode_stored_source_runtime(
+            &runtime_id,
+            serde_json::json!({
+                "id": "runtime-a",
+                "source_id": "github",
+                "tenant_id": "tenant-a",
+                "checkpoint": {"cursor_opaque": "{\"token\":\"page:2\"}"}
+            }),
+        )
+        .unwrap();
+        assert_eq!(non_resumable.cursor(), None);
     }
 
     #[test]

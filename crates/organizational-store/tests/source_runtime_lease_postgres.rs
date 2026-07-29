@@ -36,11 +36,136 @@ async fn source_runtime_lease_generation_fences_stale_and_cross_tenant_commits()
                 &serde_json::json!({
                     "id": runtime.as_str(),
                     "tenant_id": tenant.as_str(),
-                    "source_id": "fixture"
+                    "source_id": "fixture",
+                    "config": {
+                        "family": "resources",
+                        "base_url": "https://provider.example.test",
+                        "token": "env:CEREBRO_SOURCE_FIXTURE_TOKEN"
+                    },
+                    "checkpoint": {
+                        "watermark": "2026-07-28T00:00:00Z",
+                        "cursor_opaque": "{\"token\":\"page:1\",\"resumable_checkpoint\":true}"
+                    },
+                    "next_cursor": {"opaque": "page:2"}
                 }),
             ],
         )
         .await?;
+
+    let stored = ledger.load_source_runtime(&runtime).await?;
+    assert_eq!(stored.runtime_id(), &runtime);
+    assert_eq!(stored.tenant_id(), &tenant);
+    assert_eq!(stored.source_id(), "fixture");
+    assert_eq!(stored.cursor(), Some("page:2"));
+    assert_eq!(
+        stored.config().get("token").map(String::as_str),
+        Some("env:CEREBRO_SOURCE_FIXTURE_TOKEN")
+    );
+
+    let vault_runtime = SourceRuntimeId::parse("runtime-rust-vault-vector")?;
+    let vault_tenant = TenantId::parse("tenant-rust-vault-vector")?;
+    admin
+        .execute(
+            "INSERT INTO source_runtimes (id, runtime_json)
+             VALUES ($1, $2)
+             ON CONFLICT (id) DO UPDATE
+             SET runtime_json = EXCLUDED.runtime_json,
+                 lease_owner = NULL,
+                 lease_expires_at = NULL",
+            &[
+                &vault_runtime.as_str(),
+                &serde_json::json!({
+                    "id": vault_runtime.as_str(),
+                    "tenant_id": vault_tenant.as_str(),
+                    "source_id": "fixture",
+                    "config": {
+                        "family": "resources",
+                        "base_url": "https://provider.example.test",
+                        "token": "credential:cred_rust_vault_vector:token"
+                    }
+                }),
+            ],
+        )
+        .await?;
+    let sealed = br#"{"algorithm":"AES-256-GCM","nonce":"AQEBAQEBAQEBAQEB","ciphertext":"WVIkjmqCn2b0Tnckdm9i17GWVkHlpoJhplPvYIkQXqDrIeD5w1o39L5GQmuOCeB5OTZpfeTLQxaxMJEk1c8gCPYa38JQ9p8H4eQx"}"#;
+    admin
+        .execute(
+            "INSERT INTO connector_credentials (
+               id, tenant_id, source_id, runtime_id, credential_store_id,
+               status, key_id, fields_json, sealed
+             )
+             VALUES ($1, $2, $3, $4, 'cerebro_vault', 'valid', $5, $6, $7)
+             ON CONFLICT (id) DO UPDATE
+             SET tenant_id = EXCLUDED.tenant_id,
+                 source_id = EXCLUDED.source_id,
+                 runtime_id = EXCLUDED.runtime_id,
+                 credential_store_id = EXCLUDED.credential_store_id,
+                 status = EXCLUDED.status,
+                 key_id = EXCLUDED.key_id,
+                 fields_json = EXCLUDED.fields_json,
+                 sealed = EXCLUDED.sealed,
+                 last_used_at = NULL",
+            &[
+                &"cred_rust_vault_vector",
+                &vault_tenant.as_str(),
+                &"fixture",
+                &vault_runtime.as_str(),
+                &"connector-vault-14035dbb6492f0ed",
+                &serde_json::json!(["other", "token"]),
+                &sealed.as_slice(),
+            ],
+        )
+        .await?;
+    admin
+        .execute(
+            "DELETE FROM connector_credential_audit_events WHERE credential_id = $1",
+            &[&"cred_rust_vault_vector"],
+        )
+        .await?;
+    let vault_stored = ledger.load_source_runtime(&vault_runtime).await?;
+    let resolved = ledger
+        .resolve_connector_credential_references(
+            &vault_stored,
+            vault_stored.config(),
+            "test-vault-key",
+        )
+        .await?;
+    assert_eq!(
+        resolved.get("token").map(String::as_str),
+        Some("secret-token")
+    );
+    ledger
+        .resolve_connector_credential_references(
+            &vault_stored,
+            vault_stored.config(),
+            "test-vault-key",
+        )
+        .await?;
+    let audit_count: i64 = admin
+        .query_one(
+            "SELECT COUNT(*) FROM connector_credential_audit_events
+             WHERE credential_id = $1 AND event_type = 'used'",
+            &[&"cred_rust_vault_vector"],
+        )
+        .await?
+        .get(0);
+    assert_eq!(audit_count, 1);
+    admin
+        .execute(
+            "UPDATE connector_credentials SET status = 'revoked' WHERE id = $1",
+            &[&"cred_rust_vault_vector"],
+        )
+        .await?;
+    assert!(
+        ledger
+            .resolve_connector_credential_references(
+                &vault_stored,
+                vault_stored.config(),
+                "test-vault-key",
+            )
+            .await
+            .is_err()
+    );
 
     assert!(
         ledger
@@ -113,10 +238,52 @@ async fn source_runtime_lease_generation_fences_stale_and_cross_tenant_commits()
         Err(StoreError::Conflict(message))
             if message == "source runtime lease was lost before commit"
     ));
+    let stale_progress: serde_json::Value = admin
+        .query_one(
+            "SELECT runtime_json FROM source_runtimes WHERE id = $1",
+            &[&runtime.as_str()],
+        )
+        .await?
+        .get(0);
+    assert_eq!(
+        stale_progress
+            .pointer("/next_cursor/opaque")
+            .and_then(serde_json::Value::as_str),
+        Some("page:2")
+    );
+    assert!(stale_progress.get("last_synced_at").is_none());
+
     let receipt = ledger
         .commit_pending_fenced(&batch, &delta, &successor)
         .await?;
     assert_eq!(receipt.tenant_id, tenant);
+    let committed_progress: serde_json::Value = admin
+        .query_one(
+            "SELECT runtime_json FROM source_runtimes WHERE id = $1",
+            &[&runtime.as_str()],
+        )
+        .await?
+        .get(0);
+    assert!(committed_progress.get("next_cursor").is_none());
+    assert_eq!(
+        committed_progress
+            .pointer("/checkpoint/cursor_opaque")
+            .and_then(serde_json::Value::as_str),
+        Some("")
+    );
+    assert_eq!(
+        committed_progress
+            .pointer("/checkpoint/watermark")
+            .and_then(serde_json::Value::as_str),
+        Some("2026-07-28T00:00:00Z")
+    );
+    assert!(
+        committed_progress
+            .get("last_synced_at")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|timestamp| timestamp.contains('T'))
+    );
+
     assert!(!ledger.release_source_runtime_lease(&first).await?);
     assert!(ledger.release_source_runtime_lease(&successor).await?);
     assert!(matches!(
@@ -126,5 +293,13 @@ async fn source_runtime_lease_generation_fences_stale_and_cross_tenant_commits()
         Err(StoreError::Conflict(message))
             if message == "source runtime lease was lost before commit"
     ));
+    let after_rejected_replay: serde_json::Value = admin
+        .query_one(
+            "SELECT runtime_json FROM source_runtimes WHERE id = $1",
+            &[&runtime.as_str()],
+        )
+        .await?
+        .get(0);
+    assert_eq!(after_rejected_replay, committed_progress);
     Ok(())
 }

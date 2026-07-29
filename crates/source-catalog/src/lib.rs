@@ -228,12 +228,15 @@ pub struct CompiledFamily {
     method: HttpMethod,
     path: String,
     record_selector: String,
+    scalar_record_field: Option<String>,
+    id_template: Option<String>,
     id_field: String,
     name_field: Option<String>,
     static_query: BTreeMap<String, String>,
     config_query: BTreeMap<String, PathParameterBinding>,
     config_attributes: BTreeMap<String, PathParameterBinding>,
     pagination: Pagination,
+    cursor_in_json_body: bool,
     path_parameters: BTreeMap<String, PathParameterBinding>,
     projection: Projection,
     authoritative: bool,
@@ -255,6 +258,14 @@ impl CompiledFamily {
 
     pub fn record_selector(&self) -> &str {
         &self.record_selector
+    }
+
+    pub fn scalar_record_field(&self) -> Option<&str> {
+        self.scalar_record_field.as_deref()
+    }
+
+    pub fn id_template(&self) -> Option<&str> {
+        self.id_template.as_deref()
     }
 
     pub fn id_field(&self) -> &str {
@@ -279,6 +290,10 @@ impl CompiledFamily {
 
     pub fn pagination(&self) -> &Pagination {
         &self.pagination
+    }
+
+    pub fn cursor_in_json_body(&self) -> bool {
+        self.cursor_in_json_body
     }
 
     pub fn path_parameters(&self) -> &BTreeMap<String, PathParameterBinding> {
@@ -309,6 +324,11 @@ pub struct CompiledSource {
     id: String,
     display_name: String,
     auth: AuthModel,
+    token_header: String,
+    token_scheme: String,
+    auth_header_parameters: BTreeMap<String, String>,
+    auth_query_parameters: BTreeMap<String, String>,
+    auth_json_body_parameters: BTreeMap<String, String>,
     authority: CollectionAuthority,
     families: Vec<CompiledFamily>,
 }
@@ -324,6 +344,26 @@ impl CompiledSource {
 
     pub fn auth(&self) -> &AuthModel {
         &self.auth
+    }
+
+    pub fn token_header(&self) -> &str {
+        &self.token_header
+    }
+
+    pub fn token_scheme(&self) -> &str {
+        &self.token_scheme
+    }
+
+    pub fn auth_header_parameters(&self) -> &BTreeMap<String, String> {
+        &self.auth_header_parameters
+    }
+
+    pub fn auth_query_parameters(&self) -> &BTreeMap<String, String> {
+        &self.auth_query_parameters
+    }
+
+    pub fn auth_json_body_parameters(&self) -> &BTreeMap<String, String> {
+        &self.auth_json_body_parameters
     }
 
     pub fn authority(&self) -> CollectionAuthority {
@@ -448,11 +488,30 @@ struct DefinitionWire {
 #[derive(Deserialize)]
 struct ConfigFieldWire {
     key: String,
+    #[serde(default)]
+    required: bool,
 }
 
 #[derive(Deserialize)]
 struct AuthWire {
     model: String,
+    #[serde(default)]
+    credential_fields: Vec<CredentialFieldWire>,
+    #[serde(default)]
+    token_header: String,
+    #[serde(default)]
+    token_scheme: String,
+    #[serde(default)]
+    header_parameters: BTreeMap<String, String>,
+    #[serde(default)]
+    query_parameters: BTreeMap<String, String>,
+    #[serde(default)]
+    json_body_parameters: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct CredentialFieldWire {
+    key: String,
 }
 
 #[derive(Deserialize)]
@@ -486,12 +545,16 @@ struct FamilyConfigWire {
     config_query: BTreeMap<String, String>,
     #[serde(default)]
     config_attributes: BTreeMap<String, String>,
+    #[serde(default)]
+    id_template: String,
 }
 
 #[derive(Default, Deserialize)]
 struct FamilyReadWire {
     #[serde(default)]
     path_param_fanout: BTreeMap<String, String>,
+    #[serde(default)]
+    scalar_record_field: String,
 }
 
 #[derive(Deserialize)]
@@ -520,6 +583,8 @@ struct PaginationWire {
     start_page: usize,
     #[serde(default)]
     page_size: usize,
+    #[serde(default)]
+    cursor_in_json_body: bool,
 }
 
 #[derive(Deserialize)]
@@ -576,13 +641,157 @@ fn compile_source(
             message: format!("unsupported auth model {}", entry.definition.auth.model),
         }
     })?;
+    let token_header = entry.definition.auth.token_header.trim().to_owned();
+    if token_header.len() > 128
+        || token_header
+            .chars()
+            .any(|character| character.is_control() || matches!(character, ' ' | ':'))
+    {
+        return invalid(path, "auth token_header is invalid");
+    }
+    let token_scheme = entry.definition.auth.token_scheme.trim().to_owned();
+    if token_scheme.len() > 64 || token_scheme.chars().any(char::is_control) {
+        return invalid(path, "auth token_scheme is invalid");
+    }
+    let credential_fields = entry
+        .definition
+        .auth
+        .credential_fields
+        .iter()
+        .map(|field| field.key.trim())
+        .collect::<BTreeSet<_>>();
+    let mut auth_header_parameters = BTreeMap::new();
+    let mut normalized_header_names = BTreeSet::new();
+    for (header, credential_field) in entry.definition.auth.header_parameters {
+        let header = header.trim();
+        let credential_field = credential_field.trim();
+        if header.is_empty()
+            || header.len() > 128
+            || !header.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric()
+                    || matches!(
+                        byte,
+                        b'!' | b'#'
+                            | b'$'
+                            | b'%'
+                            | b'&'
+                            | b'\''
+                            | b'*'
+                            | b'+'
+                            | b'-'
+                            | b'.'
+                            | b'^'
+                            | b'_'
+                            | b'`'
+                            | b'|'
+                            | b'~'
+                    )
+            })
+        {
+            return invalid(path, "auth header parameter name is invalid");
+        }
+        if !normalized_header_names.insert(header.to_ascii_lowercase()) {
+            return invalid(path, "auth header parameter names must be unique");
+        }
+        if credential_field.is_empty() || !credential_fields.contains(credential_field) {
+            return invalid(
+                path,
+                &format!(
+                    "auth header {header} references undeclared credential field {credential_field}"
+                ),
+            );
+        }
+        auth_header_parameters.insert(header.to_owned(), credential_field.to_owned());
+    }
+    if auth_header_parameters.len() > 16 {
+        return invalid(path, "auth header parameters exceed the 16-header limit");
+    }
+    let mut auth_query_parameters = BTreeMap::new();
+    for (parameter, credential_field) in entry.definition.auth.query_parameters {
+        let parameter = parameter.trim();
+        let credential_field = credential_field.trim();
+        if parameter.is_empty()
+            || parameter.len() > 128
+            || !parameter.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~')
+            })
+        {
+            return invalid(path, "auth query parameter name is invalid");
+        }
+        if credential_field.is_empty() || !credential_fields.contains(credential_field) {
+            return invalid(
+                path,
+                &format!(
+                    "auth query parameter {parameter} references undeclared credential field {credential_field}"
+                ),
+            );
+        }
+        auth_query_parameters.insert(parameter.to_owned(), credential_field.to_owned());
+    }
+    if auth_query_parameters.len() > 16 {
+        return invalid(path, "auth query parameters exceed the 16-parameter limit");
+    }
+    let mut auth_json_body_parameters = BTreeMap::new();
+    for (parameter, credential_field) in entry.definition.auth.json_body_parameters {
+        let parameter = parameter.trim();
+        let credential_field = credential_field.trim();
+        if parameter.is_empty()
+            || parameter.len() > 128
+            || !parameter.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~')
+            })
+        {
+            return invalid(path, "auth JSON body parameter name is invalid");
+        }
+        if credential_field.is_empty() || !credential_fields.contains(credential_field) {
+            return invalid(
+                path,
+                &format!(
+                    "auth JSON body parameter {parameter} references undeclared credential field {credential_field}"
+                ),
+            );
+        }
+        auth_json_body_parameters.insert(parameter.to_owned(), credential_field.to_owned());
+    }
+    if auth_json_body_parameters.len() > 16 {
+        return invalid(
+            path,
+            "auth JSON body parameters exceed the 16-parameter limit",
+        );
+    }
+    if (!auth_header_parameters.is_empty()
+        || !auth_query_parameters.is_empty()
+        || !auth_json_body_parameters.is_empty())
+        && auth != AuthModel::ApiKey
+    {
+        return invalid(
+            path,
+            "auth request parameters are supported only for api_key authentication",
+        );
+    }
+    let api_key_placements = usize::from(!token_header.is_empty())
+        + usize::from(!auth_header_parameters.is_empty())
+        + usize::from(!auth_query_parameters.is_empty())
+        + usize::from(!auth_json_body_parameters.is_empty());
+    if api_key_placements > 1 {
+        return invalid(
+            path,
+            "api_key authentication must use exactly one credential placement",
+        );
+    }
     let config_fields = entry
         .definition
         .config_fields
         .iter()
-        .map(|field| field.key.as_str())
-        .collect::<BTreeSet<_>>();
-    let generic_runtime_supported = classifier_supported && auth.supports_generic_runtime();
+        .map(|field| (field.key.as_str(), field.required))
+        .collect::<BTreeMap<_, _>>();
+    let generic_runtime_supported = classifier_supported
+        && auth.supports_generic_runtime()
+        && (auth != AuthModel::ApiKey
+            || !token_header.is_empty()
+            || !auth_header_parameters.is_empty()
+            || !auth_query_parameters.is_empty()
+            || !auth_json_body_parameters.is_empty());
     let verified_families = verified_families(proofs.get(&id));
     let mut family_ids = BTreeSet::new();
     let mut families = Vec::with_capacity(entry.definition.resource_families.len());
@@ -598,6 +807,24 @@ fn compile_source(
             &config_fields,
         )?);
     }
+    if !auth_json_body_parameters.is_empty()
+        && families
+            .iter()
+            .any(|family| family.method() != HttpMethod::Post)
+    {
+        return invalid(
+            path,
+            "JSON body authentication requires POST for every source family",
+        );
+    }
+    if auth_json_body_parameters.is_empty()
+        && families.iter().any(CompiledFamily::cursor_in_json_body)
+    {
+        return invalid(
+            path,
+            "JSON body cursor placement requires JSON body authentication",
+        );
+    }
     if families.is_empty() {
         return invalid(path, "at least one resource family is required");
     }
@@ -611,6 +838,11 @@ fn compile_source(
         id,
         display_name: nonempty(path, "display_name", entry.definition.display_name)?,
         auth,
+        token_header,
+        token_scheme,
+        auth_header_parameters,
+        auth_query_parameters,
+        auth_json_body_parameters,
         authority,
         families,
     })
@@ -621,7 +853,7 @@ fn compile_family(
     family: FamilyWire,
     verified: &BTreeSet<(String, String, String)>,
     generic_runtime_supported: bool,
-    config_fields: &BTreeSet<&str>,
+    config_fields: &BTreeMap<&str, bool>,
 ) -> Result<CompiledFamily, CatalogError> {
     let method = match family.method.trim() {
         "" | "GET" => HttpMethod::Get,
@@ -633,6 +865,24 @@ fn compile_family(
             );
         }
     };
+    let cursor_in_json_body = family
+        .pagination
+        .as_ref()
+        .is_some_and(|pagination| pagination.cursor_in_json_body);
+    if cursor_in_json_body
+        && (method != HttpMethod::Post
+            || family.pagination.as_ref().is_none_or(|pagination| {
+                pagination.r#type != "cursor" || !pagination.page_size_param.is_empty()
+            }))
+    {
+        return invalid(
+            path,
+            &format!(
+                "family {} JSON-body cursor requires POST cursor pagination without a page-size parameter",
+                family.id
+            ),
+        );
+    }
     if !family.path.starts_with('/') {
         return invalid(
             path,
@@ -668,11 +918,11 @@ fn compile_family(
         .iter()
         .filter_map(|parameter| {
             let binding = if let Some(field) = explicit_path_fanout.get(*parameter) {
-                config_fields
-                    .contains(field.as_str())
-                    .then(|| PathParameterBinding::CsvFanout {
+                config_fields.contains_key(field.as_str()).then(|| {
+                    PathParameterBinding::CsvFanout {
                         field: field.clone(),
-                    })
+                    }
+                })
             } else {
                 config_binding(parameter, config_fields)
             };
@@ -729,6 +979,19 @@ fn compile_family(
                 .or_insert_with(|| binding.clone());
         }
     }
+    let id_template = family
+        .config
+        .as_ref()
+        .and_then(|config| optional(config.id_template.clone()));
+    if id_template
+        .as_deref()
+        .is_some_and(|template| !valid_id_template(template))
+    {
+        return invalid(
+            path,
+            &format!("family {} id_template is invalid", family.id),
+        );
+    }
     let projection = family.projection.ok_or_else(|| CatalogError::Invalid {
         path: path.to_path_buf(),
         message: format!("family {} requires a projection", family.id),
@@ -755,6 +1018,18 @@ fn compile_family(
     } else {
         "$[*]".to_owned()
     };
+    let scalar_record_field = family
+        .read
+        .as_ref()
+        .and_then(|read| optional(read.scalar_record_field.clone()));
+    if scalar_record_field.as_ref().is_some_and(|field| {
+        field.len() > 128
+            || !field
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    }) {
+        return invalid(path, "family scalar_record_field is invalid");
+    }
     let provider_contract_verified = canonical_path_template(&family.path).is_some_and(|path| {
         verified.contains(&(
             family.id.clone(),
@@ -777,12 +1052,15 @@ fn compile_family(
         method,
         path: family.path,
         record_selector,
+        scalar_record_field,
+        id_template,
         id_field: nonempty(path, "family id_field", family.id_field)?,
         name_field: optional(family.name_field),
         static_query: family.static_query,
         config_query,
         config_attributes,
         pagination: compile_pagination(path, family.pagination)?,
+        cursor_in_json_body,
         path_parameters,
         projection: Projection {
             class: projection_class,
@@ -793,31 +1071,77 @@ fn compile_family(
     })
 }
 
-fn config_binding(requested: &str, config_fields: &BTreeSet<&str>) -> Option<PathParameterBinding> {
-    if config_fields.contains(requested) {
+fn config_binding(
+    requested: &str,
+    config_fields: &BTreeMap<&str, bool>,
+) -> Option<PathParameterBinding> {
+    if config_fields.contains_key(requested) {
         return Some(PathParameterBinding::ScalarConfig {
             field: requested.to_owned(),
         });
     }
     let plural = format!("{requested}s");
     config_fields
-        .contains(plural.as_str())
+        .contains_key(plural.as_str())
         .then_some(PathParameterBinding::CsvFanout { field: plural })
 }
 
 fn config_query_binding(
     requested: &str,
-    config_fields: &BTreeSet<&str>,
+    config_fields: &BTreeMap<&str, bool>,
 ) -> Option<PathParameterBinding> {
     let plural = format!("{requested}s");
-    if config_fields.contains(plural.as_str()) {
+    if config_fields.contains_key(plural.as_str()) {
         return Some(PathParameterBinding::CsvFanout { field: plural });
     }
-    config_fields
-        .contains(requested)
-        .then(|| PathParameterBinding::OptionalScalarConfig {
-            field: requested.to_owned(),
-        })
+    config_fields.get(requested).map(|required| {
+        if *required {
+            PathParameterBinding::ScalarConfig {
+                field: requested.to_owned(),
+            }
+        } else {
+            PathParameterBinding::OptionalScalarConfig {
+                field: requested.to_owned(),
+            }
+        }
+    })
+}
+
+fn valid_id_template(template: &str) -> bool {
+    if template.is_empty()
+        || template.len() > 1_024
+        || template.trim() != template
+        || template.chars().any(char::is_control)
+    {
+        return false;
+    }
+    let mut rest = template;
+    let mut placeholders = 0usize;
+    while let Some(start) = rest.find("${") {
+        if rest[..start].contains('{') || rest[..start].contains('}') {
+            return false;
+        }
+        let field_start = start + 2;
+        let Some(relative_end) = rest[field_start..].find('}') else {
+            return false;
+        };
+        let field_end = field_start + relative_end;
+        let field = &rest[field_start..field_end];
+        if field.is_empty()
+            || field.len() > 128
+            || field.split('.').any(|part| {
+                part.is_empty()
+                    || !part
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            })
+        {
+            return false;
+        }
+        placeholders += 1;
+        rest = &rest[field_end + 1..];
+    }
+    placeholders > 0 && !rest.contains('{') && !rest.contains('}')
 }
 
 fn compile_pagination(
@@ -1102,6 +1426,249 @@ mod tests {
             .unwrap()
     }
 
+    fn compile_auth_fixture(
+        model: &str,
+        auth_fields: &str,
+        method: &str,
+        pagination: &str,
+    ) -> Result<CompiledSource, CatalogError> {
+        compile_auth_fixture_with_credential_fields(
+            model,
+            "      - key: api_token",
+            auth_fields,
+            method,
+            pagination,
+        )
+    }
+
+    fn compile_auth_fixture_with_credential_fields(
+        model: &str,
+        credential_fields: &str,
+        auth_fields: &str,
+        method: &str,
+        pagination: &str,
+    ) -> Result<CompiledSource, CatalogError> {
+        let yaml = format!(
+            r#"entries:
+- classifier_output: supported
+  definition:
+    id: builtin-test
+    source_id: test
+    display_name: Test
+    auth:
+      model: {model}
+      credential_fields:
+{credential_fields}
+{auth_fields}
+    resource_families:
+    - id: items
+      method: {method}
+      path: /items
+      id_field: id
+      pagination:
+{pagination}
+      projection:
+        template: asset
+"#
+        );
+        let mut file: EntryFileWire = serde_saphyr::from_slice(yaml.as_bytes()).unwrap();
+        compile_source(
+            Path::new("auth-fixture.yaml"),
+            file.entries.remove(0),
+            &BTreeMap::new(),
+        )
+    }
+
+    fn invalid_message(result: Result<CompiledSource, CatalogError>) -> String {
+        match result.unwrap_err() {
+            CatalogError::Invalid { message, .. } => message,
+            error => panic!("unexpected error: {error}"),
+        }
+    }
+
+    #[test]
+    fn request_auth_grammar_rejects_unsafe_ambiguous_and_unbound_bodies() {
+        let invalid_name = compile_auth_fixture(
+            "api_key",
+            "      json_body_parameters:\n        \"bad name\": api_token",
+            "POST",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(invalid_name),
+            "auth JSON body parameter name is invalid"
+        );
+
+        let undeclared = compile_auth_fixture(
+            "api_key",
+            "      json_body_parameters:\n        token: missing",
+            "POST",
+            "        type: none",
+        );
+        assert!(invalid_message(undeclared).contains("undeclared credential field missing"));
+
+        let wrong_model = compile_auth_fixture(
+            "bearer_token",
+            "      json_body_parameters:\n        token: api_token",
+            "POST",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(wrong_model),
+            "auth request parameters are supported only for api_key authentication"
+        );
+
+        let ambiguous = compile_auth_fixture(
+            "api_key",
+            "      query_parameters:\n        key: api_token\n      json_body_parameters:\n        token: api_token",
+            "POST",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(ambiguous),
+            "api_key authentication must use exactly one credential placement"
+        );
+
+        let get_body = compile_auth_fixture(
+            "api_key",
+            "      json_body_parameters:\n        token: api_token",
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(get_body),
+            "JSON body authentication requires POST for every source family"
+        );
+
+        let page_body_cursor = compile_auth_fixture(
+            "api_key",
+            "      json_body_parameters:\n        token: api_token",
+            "POST",
+            "        type: page\n        cursor_in_json_body: true",
+        );
+        assert!(
+            invalid_message(page_body_cursor)
+                .contains("JSON-body cursor requires POST cursor pagination")
+        );
+
+        let unbound_body_cursor = compile_auth_fixture(
+            "api_key",
+            "      token_header: X-API-Key",
+            "POST",
+            "        type: cursor\n        cursor_in_json_body: true",
+        );
+        assert_eq!(
+            invalid_message(unbound_body_cursor),
+            "JSON body cursor placement requires JSON body authentication"
+        );
+    }
+
+    #[test]
+    fn request_auth_grammar_rejects_unsafe_ambiguous_and_unbound_headers() {
+        let invalid_name = compile_auth_fixture(
+            "api_key",
+            "      header_parameters:\n        \"bad header\": api_token",
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(invalid_name),
+            "auth header parameter name is invalid"
+        );
+
+        let non_ascii_name = compile_auth_fixture(
+            "api_key",
+            "      header_parameters:\n        X-Api-Kéy: api_token",
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(non_ascii_name),
+            "auth header parameter name is invalid"
+        );
+
+        let duplicate_name = compile_auth_fixture(
+            "api_key",
+            "      header_parameters:\n        X-API-Key: api_token\n        x-api-key: api_token",
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(duplicate_name),
+            "auth header parameter names must be unique"
+        );
+
+        let undeclared = compile_auth_fixture(
+            "api_key",
+            "      header_parameters:\n        X-API-Key: missing",
+            "GET",
+            "        type: none",
+        );
+        assert!(
+            invalid_message(undeclared).contains("references undeclared credential field missing")
+        );
+
+        let empty_credential_field = compile_auth_fixture_with_credential_fields(
+            "api_key",
+            "      - key: \"\"",
+            "      header_parameters:\n        X-API-Key: \"\"",
+            "GET",
+            "        type: none",
+        );
+        assert!(
+            invalid_message(empty_credential_field)
+                .contains("references undeclared credential field")
+        );
+
+        let wrong_model = compile_auth_fixture(
+            "bearer_token",
+            "      header_parameters:\n        X-API-Key: api_token",
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(wrong_model),
+            "auth request parameters are supported only for api_key authentication"
+        );
+
+        let ambiguous = compile_auth_fixture(
+            "api_key",
+            "      token_header: X-API-Key\n      header_parameters:\n        X-Store-Key: api_token",
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(ambiguous),
+            "api_key authentication must use exactly one credential placement"
+        );
+
+        let too_many_headers = (0..17)
+            .map(|index| format!("        X-Key-{index}: api_token"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let over_limit = compile_auth_fixture(
+            "api_key",
+            &format!("      header_parameters:\n{too_many_headers}"),
+            "GET",
+            "        type: none",
+        );
+        assert_eq!(
+            invalid_message(over_limit),
+            "auth header parameters exceed the 16-header limit"
+        );
+
+        let invalid_scalar_field = compile_auth_fixture(
+            "api_key",
+            "      token_header: X-API-Key",
+            "GET",
+            "        type: none\n      read:\n        scalar_record_field: \"bad field\"",
+        );
+        assert_eq!(
+            invalid_message(invalid_scalar_field),
+            "family scalar_record_field is invalid"
+        );
+    }
+
     #[test]
     fn compiles_the_complete_checked_in_catalog() {
         let root = repository_root();
@@ -1147,6 +1714,354 @@ mod tests {
             summary.sources,
             summary.authoritative_sources + summary.shadow_only_sources
         );
+        let unresolved_api_key_placement = catalog
+            .sources()
+            .filter(|source| {
+                source.authority() == CollectionAuthority::Authoritative
+                    && source.auth() == &AuthModel::ApiKey
+                    && source.token_header().is_empty()
+                    && source.auth_header_parameters().is_empty()
+                    && source.auth_query_parameters().is_empty()
+                    && source.auth_json_body_parameters().is_empty()
+            })
+            .map(CompiledSource::id)
+            .collect::<Vec<_>>();
+        assert!(
+            unresolved_api_key_placement.is_empty(),
+            "authoritative API-key sources have no credential placement: {unresolved_api_key_placement:?}"
+        );
+        assert_eq!(
+            catalog.get("elevenlabs").unwrap().token_header(),
+            "xi-api-key"
+        );
+        assert_eq!(catalog.get("snyk").unwrap().token_header(), "Authorization");
+        assert_eq!(catalog.get("snyk").unwrap().token_scheme(), "Token");
+        assert_eq!(
+            catalog.get("airbrake").unwrap().auth_query_parameters(),
+            &BTreeMap::from([("key".to_owned(), "token".to_owned())])
+        );
+        assert_eq!(
+            catalog.get("alchemer").unwrap().auth_query_parameters(),
+            &BTreeMap::from([
+                ("api_token".to_owned(), "api_token".to_owned()),
+                ("api_token_secret".to_owned(), "api_token_secret".to_owned()),
+            ])
+        );
+        assert_eq!(
+            catalog.get("akeyless").unwrap().auth_json_body_parameters(),
+            &BTreeMap::from([("token".to_owned(), "api_token".to_owned())])
+        );
+        assert_eq!(
+            catalog.get("meraki").unwrap().token_header(),
+            "Authorization"
+        );
+        assert_eq!(catalog.get("meraki").unwrap().token_scheme(), "Bearer");
+        let meraki_event_type = catalog
+            .get("meraki")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "eventtype")
+            .unwrap();
+        assert_eq!(meraki_event_type.id_field(), "type");
+        assert_eq!(
+            meraki_event_type
+                .projection()
+                .fields()
+                .get("id")
+                .map(String::as_str),
+            Some("type")
+        );
+        assert_eq!(
+            meraki_event_type
+                .projection()
+                .fields()
+                .get("provider_id")
+                .map(String::as_str),
+            Some("type")
+        );
+        assert_eq!(
+            meraki_event_type
+                .projection()
+                .fields()
+                .get("event_type")
+                .map(String::as_str),
+            Some("type")
+        );
+        let meraki_organization = catalog
+            .get("meraki")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "organization")
+            .unwrap();
+        assert_eq!(
+            meraki_organization.pagination(),
+            &Pagination::Link {
+                header: "Link".to_owned()
+            }
+        );
+        assert_eq!(
+            meraki_organization.static_query(),
+            &BTreeMap::from([("perPage".to_owned(), "9000".to_owned())])
+        );
+        assert_eq!(
+            meraki_organization
+                .projection()
+                .fields()
+                .get("group_id")
+                .map(String::as_str),
+            Some("id")
+        );
+        assert_eq!(
+            meraki_organization
+                .projection()
+                .fields()
+                .get("group_name")
+                .map(String::as_str),
+            Some("name")
+        );
+        let meraki_auth_user = catalog
+            .get("meraki")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "merakiauthuser")
+            .unwrap();
+        assert_eq!(
+            meraki_auth_user
+                .projection()
+                .fields()
+                .get("user_id")
+                .map(String::as_str),
+            Some("id")
+        );
+        assert_eq!(
+            meraki_auth_user
+                .projection()
+                .fields()
+                .get("display_name")
+                .map(String::as_str),
+            Some("name")
+        );
+        assert_eq!(
+            meraki_auth_user
+                .projection()
+                .fields()
+                .get("email")
+                .map(String::as_str),
+            Some("email")
+        );
+        let meraki_access_policy = catalog
+            .get("meraki")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "accesspolicy")
+            .unwrap();
+        assert_eq!(meraki_access_policy.id_field(), "accessPolicyNumber");
+        assert_eq!(
+            meraki_access_policy
+                .projection()
+                .fields()
+                .get("id")
+                .map(String::as_str),
+            Some("accessPolicyNumber")
+        );
+        assert_eq!(
+            meraki_access_policy
+                .projection()
+                .fields()
+                .get("policy_id")
+                .map(String::as_str),
+            Some("accessPolicyNumber")
+        );
+        assert_eq!(
+            meraki_access_policy
+                .projection()
+                .fields()
+                .get("policy_name")
+                .map(String::as_str),
+            Some("name")
+        );
+        assert_eq!(
+            catalog.get("api2cart").unwrap().auth_header_parameters(),
+            &BTreeMap::from([
+                ("x-api-key".to_owned(), "api_key".to_owned()),
+                ("x-store-key".to_owned(), "store_key".to_owned()),
+            ])
+        );
+        assert_eq!(
+            catalog.get("botify").unwrap().token_header(),
+            "Authorization"
+        );
+        assert_eq!(catalog.get("botify").unwrap().token_scheme(), "Token");
+        let botify = catalog.get("botify").unwrap();
+        let out_of_config = botify
+            .families()
+            .iter()
+            .find(|family| family.id() == "out_of_config")
+            .unwrap();
+        assert_eq!(out_of_config.scalar_record_field(), Some("url"));
+        assert!(matches!(
+            out_of_config.pagination(),
+            Pagination::Page {
+                page_size_parameter: Some(parameter),
+                page_size: 100,
+                ..
+            } if parameter == "size"
+        ));
+        let mastodon = catalog.get("mastodon").unwrap();
+        let mastodon_account = mastodon
+            .families()
+            .iter()
+            .find(|family| family.id() == "account")
+            .unwrap();
+        assert_eq!(
+            mastodon_account.pagination(),
+            &Pagination::Link {
+                header: "Link".to_owned()
+            }
+        );
+        assert_eq!(
+            mastodon_account.static_query(),
+            &BTreeMap::from([("limit".to_owned(), "80".to_owned())])
+        );
+        assert_eq!(
+            mastodon_account
+                .projection()
+                .fields()
+                .get("user_id")
+                .map(String::as_str),
+            Some("id")
+        );
+        let mastodon_activity = mastodon
+            .families()
+            .iter()
+            .find(|family| family.id() == "activity")
+            .unwrap();
+        assert_eq!(mastodon_activity.id_field(), "week");
+        assert_eq!(
+            mastodon_activity
+                .projection()
+                .fields()
+                .get("provider_id")
+                .map(String::as_str),
+            Some("week")
+        );
+        assert_eq!(
+            mastodon_activity
+                .projection()
+                .static_fields()
+                .get("event_type")
+                .map(String::as_str),
+            Some("instance_activity")
+        );
+        let mastodon_credential = mastodon
+            .families()
+            .iter()
+            .find(|family| family.id() == "verify_credential")
+            .unwrap();
+        assert_eq!(mastodon_credential.record_selector(), "$");
+        assert_eq!(mastodon_credential.id_field(), "id");
+        assert_eq!(mastodon_credential.projection().template(), "identity_user");
+        assert_eq!(
+            mastodon_credential
+                .projection()
+                .fields()
+                .get("login")
+                .map(String::as_str),
+            Some("acct|username")
+        );
+        let mastodon_notification = mastodon
+            .families()
+            .iter()
+            .find(|family| family.id() == "notification")
+            .unwrap();
+        assert_eq!(
+            mastodon_notification.pagination(),
+            &Pagination::Link {
+                header: "Link".to_owned()
+            }
+        );
+        assert_eq!(
+            mastodon_notification.static_query(),
+            &BTreeMap::from([("limit".to_owned(), "80".to_owned())])
+        );
+        assert_eq!(
+            mastodon_notification
+                .projection()
+                .fields()
+                .get("alert_source")
+                .map(String::as_str),
+            Some("status.url|account.url")
+        );
+        assert_eq!(
+            mastodon_notification
+                .projection()
+                .fields()
+                .get("resource_id")
+                .map(String::as_str),
+            Some("status.id|account.id|id")
+        );
+        let abuseipdb = catalog.get("abuseipdb").unwrap();
+        let abuseipdb_reports = abuseipdb
+            .families()
+            .iter()
+            .find(|family| family.id() == "reports")
+            .unwrap();
+        assert_eq!(
+            abuseipdb_reports.pagination(),
+            &Pagination::Page {
+                parameter: "page".to_owned(),
+                start: 1,
+                page_size_parameter: Some("perPage".to_owned()),
+                page_size: 100,
+            }
+        );
+        assert_eq!(
+            abuseipdb_reports.id_template(),
+            Some("${reportedAt}:${reporterId}")
+        );
+        assert_eq!(
+            abuseipdb_reports.config_query().get("ipAddress"),
+            Some(&PathParameterBinding::ScalarConfig {
+                field: "ip_address".to_owned()
+            })
+        );
+        assert_eq!(
+            abuseipdb_reports.config_query().get("maxAgeInDays"),
+            Some(&PathParameterBinding::OptionalScalarConfig {
+                field: "max_age_in_days".to_owned()
+            })
+        );
+        assert!(
+            !abuseipdb_reports
+                .projection()
+                .fields()
+                .contains_key("finding_id")
+        );
+        let abuseipdb_blacklist = abuseipdb
+            .families()
+            .iter()
+            .find(|family| family.id() == "ip_addresses")
+            .unwrap();
+        assert_eq!(abuseipdb_blacklist.pagination(), &Pagination::None);
+        assert_eq!(
+            abuseipdb_blacklist.static_query(),
+            &BTreeMap::from([
+                ("confidenceMinimum".to_owned(), "90".to_owned()),
+                ("limit".to_owned(), "10000".to_owned()),
+            ])
+        );
+        for family in catalog.get("akeyless").unwrap().families() {
+            assert_eq!(
+                family.cursor_in_json_body(),
+                family.id() != "analytics",
+                "{} JSON-body cursor placement",
+                family.id()
+            );
+        }
     }
 
     #[test]
@@ -1170,17 +2085,27 @@ mod tests {
             CollectionAuthority::Authoritative
         );
         for source_id in [
+            "abuseipdb",
             "akeneo",
+            "akeyless",
             "apacta",
             "appwrite",
+            "airbrake",
+            "alchemer",
+            "airtable",
+            "anchore",
+            "api2cart",
             "azure_openai",
             "beezup",
+            "botify",
             "box",
             "cloudflare_workers_ai",
             "elevenlabs",
             "fivetran",
             "google_vertex_ai",
             "jira",
+            "mastodon",
+            "meraki",
             "onelogin",
             "qdrant_cloud",
             "snyk",
@@ -1191,17 +2116,80 @@ mod tests {
                 "{source_id} has verified parameterized provider paths"
             );
         }
-        for source_id in ["airtable", "anchore"] {
-            assert_eq!(
-                catalog.get(source_id).unwrap().authority(),
-                CollectionAuthority::ShadowOnly,
-                "{source_id} has an unresolved request scope"
-            );
-        }
         assert_eq!(
             catalog.get("agiloft").unwrap().authority(),
             CollectionAuthority::ShadowOnly
         );
+    }
+
+    #[test]
+    fn composite_id_templates_are_closed_and_bounded() {
+        for valid in [
+            "${reportedAt}:${reporterId}",
+            "${namespace}/${name}",
+            "prefix-${nested.value}",
+        ] {
+            assert!(valid_id_template(valid), "{valid}");
+        }
+        for invalid in [
+            "",
+            "literal-only",
+            "${}",
+            "${missing",
+            "${bad field}",
+            "${nested..value}",
+            "${field}}",
+            " ${field}",
+        ] {
+            assert!(!valid_id_template(invalid), "{invalid}");
+        }
+        assert!(!valid_id_template(&format!(
+            "${{field}}{}",
+            "x".repeat(1_024)
+        )));
+    }
+
+    #[test]
+    fn scoped_provider_paths_bind_only_declared_runtime_config() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+
+        let airtable = catalog.get("airtable").unwrap();
+        assert_eq!(airtable.authority(), CollectionAuthority::Authoritative);
+        for family_id in ["users", "audit_events"] {
+            let family = airtable
+                .families()
+                .iter()
+                .find(|family| family.id() == family_id)
+                .unwrap();
+            assert_eq!(
+                family.path_parameters().get("enterprise_account_id"),
+                Some(&PathParameterBinding::ScalarConfig {
+                    field: "enterprise_account_id".to_owned()
+                })
+            );
+        }
+
+        let anchore = catalog.get("anchore").unwrap();
+        assert_eq!(anchore.authority(), CollectionAuthority::Authoritative);
+        for family in anchore.families() {
+            assert_eq!(
+                family.path_parameters().get("app_id"),
+                Some(&PathParameterBinding::ScalarConfig {
+                    field: "app_id".to_owned()
+                })
+            );
+            assert_eq!(
+                family.path_parameters().get("version_id"),
+                Some(&PathParameterBinding::ScalarConfig {
+                    field: "version_id".to_owned()
+                })
+            );
+        }
     }
 
     #[test]

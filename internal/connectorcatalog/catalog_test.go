@@ -722,6 +722,172 @@ func stringsContain(values []string, want string) bool {
 	return false
 }
 
+func TestBuiltinBotifyPreservesScalarRecordAndPageSizeContracts(t *testing.T) {
+	entry, ok, err := BuiltinEntry("botify")
+	if err != nil {
+		t.Fatalf("BuiltinEntry(botify) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(botify) ok = false, want true")
+	}
+	if entry.Definition.Auth.TokenHeader != "Authorization" || entry.Definition.Auth.TokenScheme != "Token" {
+		t.Fatalf("botify auth = %#v, want Authorization Token", entry.Definition.Auth)
+	}
+	for _, familyID := range []string{"out_of_config", "sitemap_only"} {
+		family := catalogFamily(t, entry.Definition.ResourceFamilies, familyID)
+		if family.Read == nil || family.Read.ScalarRecordField != "url" {
+			t.Fatalf("%s scalar record mapping = %#v, want url", familyID, family.Read)
+		}
+		if family.IDField != "url" {
+			t.Fatalf("%s id field = %q, want url", familyID, family.IDField)
+		}
+	}
+	for _, familyID := range []string{
+		"filter",
+		"export",
+		"out_of_config",
+		"sitemap_only",
+		"project",
+		"analyses",
+		"orphan_url",
+		"domain",
+	} {
+		family := catalogFamily(t, entry.Definition.ResourceFamilies, familyID)
+		if family.Pagination == nil || family.Pagination.PageSizeParam != "size" || family.Pagination.PageSize != 100 {
+			t.Fatalf("%s pagination = %#v, want size=100", familyID, family.Pagination)
+		}
+	}
+}
+
+func TestBuiltinMastodonPreservesProviderContracts(t *testing.T) {
+	entry, ok, err := BuiltinEntry("mastodon")
+	if err != nil {
+		t.Fatalf("BuiltinEntry(mastodon) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(mastodon) ok = false, want true")
+	}
+	if entry.Definition.Auth.Model != "bearer_token" {
+		t.Fatalf("mastodon auth = %#v, want bearer_token", entry.Definition.Auth)
+	}
+
+	account := catalogFamily(t, entry.Definition.ResourceFamilies, "account")
+	if account.Pagination == nil || account.Pagination.Type != "link" || account.Pagination.LinkHeader != "Link" {
+		t.Fatalf("account pagination = %#v, want Link header pagination", account.Pagination)
+	}
+	if account.StaticQuery["limit"] != "80" || account.IDField != "id" {
+		t.Fatalf("account contract = %#v, want limit=80 and id_field=id", account)
+	}
+	if account.Projection == nil || account.Projection.Fields["user_id"] != "id" {
+		t.Fatalf("account projection = %#v, want user_id=id", account.Projection)
+	}
+
+	activity := catalogFamily(t, entry.Definition.ResourceFamilies, "activity")
+	if activity.IDField != "week" || activity.NameField != "week" {
+		t.Fatalf("activity identity = %#v, want week", activity)
+	}
+	if activity.Projection == nil ||
+		activity.Projection.Fields["id"] != "week" ||
+		activity.Projection.Fields["provider_id"] != "week" ||
+		activity.Projection.StaticFields["actor_id"] != "mastodon_instance" ||
+		activity.Projection.StaticFields["event_type"] != "instance_activity" {
+		t.Fatalf("activity projection = %#v, want stable weekly activity fields", activity.Projection)
+	}
+
+	credential := catalogFamily(t, entry.Definition.ResourceFamilies, "verify_credential")
+	if credential.RecordSelector != "$" || credential.IDField != "id" {
+		t.Fatalf("verify_credential contract = %#v, want singleton root account identified by id", credential)
+	}
+	if len(credential.Event.RequiredPayloadFields) != 1 || credential.Event.RequiredPayloadFields[0] != "id" {
+		t.Fatalf("verify_credential required payload = %#v, want id", credential.Event.RequiredPayloadFields)
+	}
+	if credential.Projection == nil ||
+		credential.Projection.Template != "identity_user" ||
+		credential.Projection.Fields["user_id"] != "id" ||
+		credential.Projection.Fields["login"] != "acct|username" {
+		t.Fatalf("verify_credential projection = %#v, want authenticated identity mapping", credential.Projection)
+	}
+
+	notification := catalogFamily(t, entry.Definition.ResourceFamilies, "notification")
+	if notification.Pagination == nil || notification.Pagination.Type != "link" || notification.Pagination.LinkHeader != "Link" {
+		t.Fatalf("notification pagination = %#v, want Link header pagination", notification.Pagination)
+	}
+	if notification.StaticQuery["limit"] != "80" || notification.NameField != "type" {
+		t.Fatalf("notification contract = %#v, want limit=80 and scalar name field", notification)
+	}
+	if notification.Projection == nil ||
+		notification.Projection.Fields["alert_type"] != "type" ||
+		notification.Projection.Fields["alert_source"] != "status.url|account.url" ||
+		notification.Projection.Fields["resource_id"] != "status.id|account.id|id" {
+		t.Fatalf("notification projection = %#v, want nested scalar notification fields", notification.Projection)
+	}
+	if _, ok := notification.Projection.Fields["alert_severity"]; ok {
+		t.Fatalf("notification projection = %#v, must not map an account object to severity", notification.Projection)
+	}
+	if _, ok := notification.Projection.Fields["alert_status"]; ok {
+		t.Fatalf("notification projection = %#v, must not map a status object to state", notification.Projection)
+	}
+}
+
+func TestBuiltinAbuseIPDBPreservesProviderContracts(t *testing.T) {
+	entry, ok, err := BuiltinEntry("abuseipdb")
+	if err != nil {
+		t.Fatalf("BuiltinEntry(abuseipdb) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("BuiltinEntry(abuseipdb) ok = false, want true")
+	}
+	if entry.Definition.Auth.Model != "api_key" ||
+		entry.Definition.Auth.TokenHeader != "Key" ||
+		entry.Definition.Auth.TokenScheme != "" {
+		t.Fatalf("abuseipdb auth = %#v, want exact Key header", entry.Definition.Auth)
+	}
+
+	reports := catalogFamily(t, entry.Definition.ResourceFamilies, "reports")
+	if reports.Pagination == nil ||
+		reports.Pagination.Type != "page" ||
+		reports.Pagination.PageParam != "page" ||
+		reports.Pagination.PageSizeParam != "perPage" ||
+		reports.Pagination.PageSize != 100 {
+		t.Fatalf("reports pagination = %#v, want page/perPage with 100 records", reports.Pagination)
+	}
+	if reports.Config == nil ||
+		reports.Config.ConfigQuery["ipAddress"] != "ip_address" ||
+		reports.Config.ConfigQuery["maxAgeInDays"] != "max_age_in_days" ||
+		reports.Config.ConfigAttributes["resource_id"] != "ip_address" ||
+		reports.Config.IDTemplate != "${reportedAt}:${reporterId}" {
+		t.Fatalf("reports config = %#v, want scoped query and composite identity", reports.Config)
+	}
+	if reports.Projection == nil ||
+		reports.Projection.Fields["title"] != "comment" ||
+		reports.Projection.StaticFields["status"] != "observed" ||
+		reports.Projection.StaticFields["severity"] != "reported" {
+		t.Fatalf("reports projection = %#v, want finding fields", reports.Projection)
+	}
+	if _, ok := reports.Projection.Fields["finding_id"]; ok {
+		t.Fatalf("reports projection = %#v, must not collapse findings by timestamp", reports.Projection)
+	}
+
+	blacklist := catalogFamily(t, entry.Definition.ResourceFamilies, "ip_addresses")
+	if blacklist.Pagination == nil || blacklist.Pagination.Type != "none" {
+		t.Fatalf("ip_addresses pagination = %#v, want one bounded response", blacklist.Pagination)
+	}
+	if blacklist.StaticQuery["confidenceMinimum"] != "90" || blacklist.StaticQuery["limit"] != "10000" {
+		t.Fatalf("ip_addresses static query = %#v, want bounded blacklist contract", blacklist.StaticQuery)
+	}
+	if blacklist.Config == nil ||
+		blacklist.Config.ConfigQuery["confidenceMinimum"] != "confidence_minimum" ||
+		blacklist.Config.ConfigQuery["ipVersion"] != "ip_version" {
+		t.Fatalf("ip_addresses config = %#v, want provider filters", blacklist.Config)
+	}
+	if blacklist.Projection == nil ||
+		blacklist.Projection.Fields["resource_id"] != "ipAddress" ||
+		blacklist.Projection.Fields["resource_name"] != "ipAddress" ||
+		blacklist.Projection.StaticFields["resource_type"] != "ip_address" {
+		t.Fatalf("ip_addresses projection = %#v, want IP resource fields", blacklist.Projection)
+	}
+}
+
 func TestBuiltinCatalogIncludesAdditionalGapEntries(t *testing.T) {
 	for sourceID, wantStatus := range map[string]string{
 		"checkr":        StatusGenerateable,

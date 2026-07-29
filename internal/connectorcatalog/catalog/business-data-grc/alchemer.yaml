@@ -14,6 +14,9 @@ entries:
             required: true
             secret: true
         model: api_key
+        query_parameters:
+          api_token: api_token
+          api_token_secret: api_token_secret
         requires_references: true
       categories:
         - saas

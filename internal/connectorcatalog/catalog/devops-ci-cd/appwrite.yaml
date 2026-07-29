@@ -9,6 +9,8 @@ entries:
         required: true
         secret: true
       model: api_key
+      token_header: Authorization
+      token_scheme: Token
       requires_references: true
     categories:
     - saas
