@@ -2285,6 +2285,232 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mastodon_verify_credentials_collects_the_single_authenticated_account() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /api/v1/accounts/verify_credentials HTTP/1.1\r\n"));
+            assert!(!request.lines().next().unwrap().contains('?'));
+            assert!(
+                request
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("authorization: Bearer mastodon-secret"))
+            );
+            let body = include_str!(
+                "../../../sources/mastodon/testdata/api/verify_credential/verify_credentials/response.json"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("mastodon")
+        .unwrap()
+        .clone();
+        assert_eq!(
+            source.authority(),
+            cerebro_source_catalog::CollectionAuthority::Authoritative
+        );
+        let mut connector = HttpSourceConnector::new(
+            source,
+            "verify_credential",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            ResolvedAuth::Bearer {
+                token: "mastodon-secret".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("mastodon-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].provider_id, "116387031229467654");
+        assert_eq!(
+            batch.records[0].payload.get("acct").and_then(Value::as_str),
+            Some("mastodonpy_test")
+        );
+        assert!(batch.records[0].payload.get("emojis").unwrap().is_array());
+    }
+
+    #[tokio::test]
+    async fn mastodon_activity_uses_week_instead_of_login_count_as_provider_id() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /api/v1/instance/activity HTTP/1.1\r\n"));
+            assert!(
+                request
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("authorization: Bearer mastodon-secret"))
+            );
+            let body = include_str!(
+                "../../../sources/mastodon/testdata/api/activity/instance_activity/response.json"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("mastodon")
+        .unwrap()
+        .clone();
+        let mut connector = HttpSourceConnector::new(
+            source,
+            "activity",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            ResolvedAuth::Bearer {
+                token: "mastodon-secret".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("mastodon-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_eq!(batch.records.len(), 12);
+        assert_eq!(batch.records[0].provider_id, "1775949325");
+        assert!(batch.records.iter().all(|record| record.provider_id != "4"));
+        assert_eq!(
+            batch
+                .records
+                .iter()
+                .map(|record| record.provider_id.as_str())
+                .collect::<BTreeSet<_>>()
+                .len(),
+            12
+        );
+    }
+
+    #[tokio::test]
+    async fn mastodon_notifications_follow_provider_links_without_page_numbers() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for page in 1..=2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                let request_line = request.lines().next().unwrap();
+                assert!(request_line.starts_with("GET /api/v1/notifications?"));
+                assert!(request_line.contains("limit=80"));
+                assert!(!request_line.contains("page="));
+                assert_eq!(request_line.contains("max_id=24"), page == 2);
+                assert!(request.lines().any(|line| {
+                    line.eq_ignore_ascii_case("authorization: Bearer mastodon-secret")
+                }));
+                let body = if page == 1 {
+                    r#"[{"id":"24","type":"mention","group_key":"ungrouped-24","account":{"id":"116387030920493064","acct":"admin","url":"https://mastodon.example/@admin"},"status":{"id":"status-24","url":"https://mastodon.example/@admin/24"}}]"#
+                } else {
+                    r#"[{"id":"23","type":"follow","group_key":"ungrouped-23","account":{"id":"116387031229467654","acct":"mastodonpy_test","url":"https://mastodon.example/@mastodonpy_test"},"status":null}]"#
+                };
+                let link = if page == 1 {
+                    format!(
+                        "link: <http://{address}/api/v1/notifications?max_id=24&limit=80>; rel=\"next\"\r\n"
+                    )
+                } else {
+                    String::new()
+                };
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n{link}content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+
+        let root = repository_root();
+        let source = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap()
+        .get("mastodon")
+        .unwrap()
+        .clone();
+        let mut connector = HttpSourceConnector::new(
+            source,
+            "notification",
+            &format!("http://{address}"),
+            BTreeMap::new(),
+            ResolvedAuth::Bearer {
+                token: "mastodon-secret".to_owned(),
+            },
+        )
+        .unwrap();
+        let batch = connector
+            .collect(CollectionRequest {
+                tenant_id: TenantId::parse("tenant-a").unwrap(),
+                source_runtime_id: SourceRuntimeId::parse("mastodon-prod").unwrap(),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert!(matches!(batch.scope, CollectedScope::Complete(_)));
+        assert_eq!(
+            batch
+                .records
+                .iter()
+                .map(|record| record.provider_id.as_str())
+                .collect::<Vec<_>>(),
+            ["24", "23"]
+        );
+        assert_eq!(
+            batch.records[0]
+                .payload
+                .pointer("/status/id")
+                .and_then(Value::as_str),
+            Some("status-24")
+        );
+        assert_eq!(
+            batch.records[1]
+                .payload
+                .pointer("/account/id")
+                .and_then(Value::as_str),
+            Some("116387031229467654")
+        );
+    }
+
+    #[tokio::test]
     async fn meraki_v1_access_policy_uses_the_proven_path_and_bearer_header() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();

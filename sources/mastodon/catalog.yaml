@@ -11,6 +11,38 @@ runtime_families:
   - activity
   - notification
   - verify_credential
+provider_api:
+  status: verified
+  basis: declared
+  verified_at: 2026-07-29T00:00:00Z
+  transport: rest
+  auth: bearer_token
+  auth_mechanics: authorization_bearer_header
+  base_url: https://mastodon.social
+  references:
+    - https://docs.joinmastodon.org/methods/lists/
+    - https://docs.joinmastodon.org/methods/instance/
+    - https://docs.joinmastodon.org/methods/accounts/
+    - https://docs.joinmastodon.org/methods/notifications/
+  auth_evidence:
+    - https://docs.joinmastodon.org/api/oauth-tokens/
+  families:
+    - id: account
+      method: GET
+      path: /api/v1/lists/{id}/accounts
+      operation: getListAccounts
+    - id: activity
+      method: GET
+      path: /api/v1/instance/activity
+      operation: getInstanceActivity
+    - id: verify_credential
+      method: GET
+      path: /api/v1/accounts/verify_credentials
+      operation: verifyAccountCredentials
+    - id: notification
+      method: GET
+      path: /api/v1/notifications
+      operation: getNotifications
 kind_lifecycle:
   - kind: mastodon.account
     status: active
@@ -33,7 +65,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Official API documentation and the captured provider response verify the list-scoped path, Link pagination, Account selector, and account identifier.
     - id: activity
       type: audit_event
       title: "Activity"
@@ -43,7 +75,7 @@ coverage_contract:
       evidence_types: [logging_configuration]
       control_domains: [logging_monitoring]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Official API documentation and the captured provider response verify the weekly activity path, array response, and week identifier.
     - id: verify_credential
       type: entity_family
       title: "Verify Credential"
@@ -53,7 +85,7 @@ coverage_contract:
       evidence_types: [source_snapshot]
       control_domains: [asset_inventory]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Official API documentation and the captured provider response verify the singleton CredentialAccount response and account identifier.
     - id: notification
       type: alert_state
       title: "Notification"
@@ -63,7 +95,7 @@ coverage_contract:
       evidence_types: [security_monitoring]
       control_domains: [logging_monitoring, security_operations]
       notes:
-        - Generated Source Runtime SDK mapping requires provider field review before certification.
+        - Official API documentation and the captured provider response verify Link pagination, notification identifiers, types, and nested account and status fields.
     - id: incremental_sync
       type: incremental_sync
       title: Incremental cursor sync

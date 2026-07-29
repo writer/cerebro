@@ -240,7 +240,7 @@ The current checked-in catalog compiles to 794 sources and 3,891 families:
 | Activity | 738 | audit and operational events |
 | Bespoke | 3 | retained for source coverage but barred from authority |
 
-Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 51 sources and 347 families are authoritative; the other 743 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
+Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 52 sources and 351 families are authoritative; the other 742 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
 
 ## Family cutover
 

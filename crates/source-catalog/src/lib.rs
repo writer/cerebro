@@ -1842,6 +1842,99 @@ mod tests {
                 ..
             } if parameter == "size"
         ));
+        let mastodon = catalog.get("mastodon").unwrap();
+        let mastodon_account = mastodon
+            .families()
+            .iter()
+            .find(|family| family.id() == "account")
+            .unwrap();
+        assert_eq!(
+            mastodon_account.pagination(),
+            &Pagination::Link {
+                header: "Link".to_owned()
+            }
+        );
+        assert_eq!(
+            mastodon_account.static_query(),
+            &BTreeMap::from([("limit".to_owned(), "80".to_owned())])
+        );
+        assert_eq!(
+            mastodon_account
+                .projection()
+                .fields()
+                .get("user_id")
+                .map(String::as_str),
+            Some("id")
+        );
+        let mastodon_activity = mastodon
+            .families()
+            .iter()
+            .find(|family| family.id() == "activity")
+            .unwrap();
+        assert_eq!(mastodon_activity.id_field(), "week");
+        assert_eq!(
+            mastodon_activity
+                .projection()
+                .fields()
+                .get("provider_id")
+                .map(String::as_str),
+            Some("week")
+        );
+        assert_eq!(
+            mastodon_activity
+                .projection()
+                .static_fields()
+                .get("event_type")
+                .map(String::as_str),
+            Some("instance_activity")
+        );
+        let mastodon_credential = mastodon
+            .families()
+            .iter()
+            .find(|family| family.id() == "verify_credential")
+            .unwrap();
+        assert_eq!(mastodon_credential.record_selector(), "$");
+        assert_eq!(mastodon_credential.id_field(), "id");
+        assert_eq!(mastodon_credential.projection().template(), "identity_user");
+        assert_eq!(
+            mastodon_credential
+                .projection()
+                .fields()
+                .get("login")
+                .map(String::as_str),
+            Some("acct|username")
+        );
+        let mastodon_notification = mastodon
+            .families()
+            .iter()
+            .find(|family| family.id() == "notification")
+            .unwrap();
+        assert_eq!(
+            mastodon_notification.pagination(),
+            &Pagination::Link {
+                header: "Link".to_owned()
+            }
+        );
+        assert_eq!(
+            mastodon_notification.static_query(),
+            &BTreeMap::from([("limit".to_owned(), "80".to_owned())])
+        );
+        assert_eq!(
+            mastodon_notification
+                .projection()
+                .fields()
+                .get("alert_source")
+                .map(String::as_str),
+            Some("status.url|account.url")
+        );
+        assert_eq!(
+            mastodon_notification
+                .projection()
+                .fields()
+                .get("resource_id")
+                .map(String::as_str),
+            Some("status.id|account.id|id")
+        );
         for family in catalog.get("akeyless").unwrap().families() {
             assert_eq!(
                 family.cursor_in_json_body(),
@@ -1891,6 +1984,7 @@ mod tests {
             "fivetran",
             "google_vertex_ai",
             "jira",
+            "mastodon",
             "meraki",
             "onelogin",
             "qdrant_cloud",
