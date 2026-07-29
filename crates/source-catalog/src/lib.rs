@@ -311,6 +311,7 @@ pub struct CompiledSource {
     auth: AuthModel,
     token_header: String,
     token_scheme: String,
+    auth_query_parameters: BTreeMap<String, String>,
     authority: CollectionAuthority,
     families: Vec<CompiledFamily>,
 }
@@ -334,6 +335,10 @@ impl CompiledSource {
 
     pub fn token_scheme(&self) -> &str {
         &self.token_scheme
+    }
+
+    pub fn auth_query_parameters(&self) -> &BTreeMap<String, String> {
+        &self.auth_query_parameters
     }
 
     pub fn authority(&self) -> CollectionAuthority {
@@ -464,9 +469,18 @@ struct ConfigFieldWire {
 struct AuthWire {
     model: String,
     #[serde(default)]
+    credential_fields: Vec<CredentialFieldWire>,
+    #[serde(default)]
     token_header: String,
     #[serde(default)]
     token_scheme: String,
+    #[serde(default)]
+    query_parameters: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct CredentialFieldWire {
+    key: String,
 }
 
 #[derive(Deserialize)]
@@ -602,6 +616,50 @@ fn compile_source(
     if token_scheme.len() > 64 || token_scheme.chars().any(char::is_control) {
         return invalid(path, "auth token_scheme is invalid");
     }
+    let credential_fields = entry
+        .definition
+        .auth
+        .credential_fields
+        .iter()
+        .map(|field| field.key.trim())
+        .collect::<BTreeSet<_>>();
+    let mut auth_query_parameters = BTreeMap::new();
+    for (parameter, credential_field) in entry.definition.auth.query_parameters {
+        let parameter = parameter.trim();
+        let credential_field = credential_field.trim();
+        if parameter.is_empty()
+            || parameter.len() > 128
+            || !parameter.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~')
+            })
+        {
+            return invalid(path, "auth query parameter name is invalid");
+        }
+        if credential_field.is_empty() || !credential_fields.contains(credential_field) {
+            return invalid(
+                path,
+                &format!(
+                    "auth query parameter {parameter} references undeclared credential field {credential_field}"
+                ),
+            );
+        }
+        auth_query_parameters.insert(parameter.to_owned(), credential_field.to_owned());
+    }
+    if auth_query_parameters.len() > 16 {
+        return invalid(path, "auth query parameters exceed the 16-parameter limit");
+    }
+    if !auth_query_parameters.is_empty() && auth != AuthModel::ApiKey {
+        return invalid(
+            path,
+            "auth query parameters are supported only for api_key authentication",
+        );
+    }
+    if !auth_query_parameters.is_empty() && !token_header.is_empty() {
+        return invalid(
+            path,
+            "api_key authentication cannot use both token_header and query_parameters",
+        );
+    }
     let config_fields = entry
         .definition
         .config_fields
@@ -610,7 +668,9 @@ fn compile_source(
         .collect::<BTreeSet<_>>();
     let generic_runtime_supported = classifier_supported
         && auth.supports_generic_runtime()
-        && (auth != AuthModel::ApiKey || !token_header.is_empty());
+        && (auth != AuthModel::ApiKey
+            || !token_header.is_empty()
+            || !auth_query_parameters.is_empty());
     let verified_families = verified_families(proofs.get(&id));
     let mut family_ids = BTreeSet::new();
     let mut families = Vec::with_capacity(entry.definition.resource_families.len());
@@ -641,6 +701,7 @@ fn compile_source(
         auth,
         token_header,
         token_scheme,
+        auth_query_parameters,
         authority,
         families,
     })
@@ -1177,18 +1238,19 @@ mod tests {
             summary.sources,
             summary.authoritative_sources + summary.shadow_only_sources
         );
-        let missing_api_key_headers = catalog
+        let unresolved_api_key_placement = catalog
             .sources()
             .filter(|source| {
                 source.authority() == CollectionAuthority::Authoritative
                     && source.auth() == &AuthModel::ApiKey
                     && source.token_header().is_empty()
+                    && source.auth_query_parameters().is_empty()
             })
             .map(CompiledSource::id)
             .collect::<Vec<_>>();
         assert!(
-            missing_api_key_headers.is_empty(),
-            "authoritative API-key sources have no token header: {missing_api_key_headers:?}"
+            unresolved_api_key_placement.is_empty(),
+            "authoritative API-key sources have no credential placement: {unresolved_api_key_placement:?}"
         );
         assert_eq!(
             catalog.get("elevenlabs").unwrap().token_header(),
@@ -1196,6 +1258,17 @@ mod tests {
         );
         assert_eq!(catalog.get("snyk").unwrap().token_header(), "Authorization");
         assert_eq!(catalog.get("snyk").unwrap().token_scheme(), "Token");
+        assert_eq!(
+            catalog.get("airbrake").unwrap().auth_query_parameters(),
+            &BTreeMap::from([("key".to_owned(), "token".to_owned())])
+        );
+        assert_eq!(
+            catalog.get("alchemer").unwrap().auth_query_parameters(),
+            &BTreeMap::from([
+                ("api_token".to_owned(), "api_token".to_owned()),
+                ("api_token_secret".to_owned(), "api_token_secret".to_owned()),
+            ])
+        );
     }
 
     #[test]
@@ -1222,6 +1295,8 @@ mod tests {
             "akeneo",
             "apacta",
             "appwrite",
+            "airbrake",
+            "alchemer",
             "airtable",
             "anchore",
             "azure_openai",
@@ -1242,13 +1317,11 @@ mod tests {
                 "{source_id} has verified parameterized provider paths"
             );
         }
-        for source_id in ["airbrake", "akeyless", "alchemer"] {
-            assert_eq!(
-                catalog.get(source_id).unwrap().authority(),
-                CollectionAuthority::ShadowOnly,
-                "{source_id} has no closed Rust API-key placement"
-            );
-        }
+        assert_eq!(
+            catalog.get("akeyless").unwrap().authority(),
+            CollectionAuthority::ShadowOnly,
+            "akeyless requires bespoke Rust authentication"
+        );
         assert_eq!(
             catalog.get("agiloft").unwrap().authority(),
             CollectionAuthority::ShadowOnly

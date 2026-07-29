@@ -1491,6 +1491,7 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
         source.auth(),
         source.token_header(),
         source.token_scheme(),
+        source.auth_query_parameters(),
         &mut config,
     )?;
     let connector = HttpSourceConnector::new(source.clone(), &family_id, &base_url, config, auth)?;
@@ -1646,6 +1647,7 @@ fn resolved_auth(
     model: &AuthModel,
     token_header: &str,
     token_scheme: &str,
+    query_parameters: &BTreeMap<String, String>,
     config: &mut BTreeMap<String, String>,
 ) -> Result<ResolvedAuth, Box<dyn Error>> {
     Ok(match model {
@@ -1654,6 +1656,16 @@ fn resolved_auth(
             username: take_required_config(config, "username")?,
             password: take_required_config(config, "password")?,
         },
+        AuthModel::ApiKey if !query_parameters.is_empty() => {
+            let mut parameters = BTreeMap::new();
+            for (parameter, credential_field) in query_parameters {
+                parameters.insert(
+                    parameter.clone(),
+                    take_required_config(config, credential_field)?,
+                );
+            }
+            ResolvedAuth::QueryParameters { parameters }
+        }
         AuthModel::ApiKey => ResolvedAuth::Header {
             name: nonempty_catalog_auth_value(token_header, "token_header")?,
             value: apply_auth_scheme(
@@ -3667,7 +3679,8 @@ mod tests {
             ("service".to_owned(), "bedrock".to_owned()),
             ("account".to_owned(), "account-a".to_owned()),
         ]);
-        let auth = resolved_auth(&AuthModel::AwsSigV4, "", "", &mut config).unwrap();
+        let auth =
+            resolved_auth(&AuthModel::AwsSigV4, "", "", &BTreeMap::new(), &mut config).unwrap();
         assert!(matches!(
             auth,
             ResolvedAuth::AwsSigV4 {
@@ -3697,7 +3710,8 @@ mod tests {
             ("client_secret".to_owned(), "secret-example".to_owned()),
             ("base_url".to_owned(), "https://api.example.test".to_owned()),
         ]);
-        let auth = resolved_auth(&AuthModel::DuoHmacV5, "", "", &mut config).unwrap();
+        let auth =
+            resolved_auth(&AuthModel::DuoHmacV5, "", "", &BTreeMap::new(), &mut config).unwrap();
         assert!(matches!(
             auth,
             ResolvedAuth::DuoHmacV5 {
@@ -3721,7 +3735,14 @@ mod tests {
             ("family".to_owned(), "users".to_owned()),
         ]);
         assert!(matches!(
-            resolved_auth(&AuthModel::Basic, "", "", &mut basic).unwrap(),
+            resolved_auth(
+                &AuthModel::Basic,
+                "",
+                "",
+                &BTreeMap::new(),
+                &mut basic
+            )
+            .unwrap(),
             ResolvedAuth::Basic {
                 ref username,
                 ref password,
@@ -3735,13 +3756,52 @@ mod tests {
             ("family".to_owned(), "resources".to_owned()),
         ]);
         assert!(matches!(
-            resolved_auth(&AuthModel::ApiKey, "X-API-Key", "Token", &mut api_key).unwrap(),
+            resolved_auth(
+                &AuthModel::ApiKey,
+                "X-API-Key",
+                "Token",
+                &BTreeMap::new(),
+                &mut api_key
+            )
+            .unwrap(),
             ResolvedAuth::Header {
                 ref name,
                 ref value,
             } if name == "X-API-Key" && value == "Token secret-example"
         ));
         assert!(!api_key.contains_key("token"));
+
+        let mut query_api_key = BTreeMap::from([
+            ("api_token".to_owned(), "token-example".to_owned()),
+            ("api_token_secret".to_owned(), "secret-example".to_owned()),
+            ("family".to_owned(), "surveys".to_owned()),
+        ]);
+        assert!(matches!(
+            resolved_auth(
+                &AuthModel::ApiKey,
+                "",
+                "",
+                &BTreeMap::from([
+                    ("api_token".to_owned(), "api_token".to_owned()),
+                    (
+                        "api_token_secret".to_owned(),
+                        "api_token_secret".to_owned()
+                    ),
+                ]),
+                &mut query_api_key
+            )
+            .unwrap(),
+            ResolvedAuth::QueryParameters { ref parameters }
+                if parameters.get("api_token").map(String::as_str) == Some("token-example")
+                    && parameters.get("api_token_secret").map(String::as_str)
+                        == Some("secret-example")
+        ));
+        assert!(!query_api_key.contains_key("api_token"));
+        assert!(!query_api_key.contains_key("api_token_secret"));
+        assert_eq!(
+            query_api_key.get("family").map(String::as_str),
+            Some("surveys")
+        );
     }
 
     #[test]
@@ -3751,7 +3811,14 @@ mod tests {
             ("family".to_owned(), "resources".to_owned()),
         ]);
         assert!(matches!(
-            resolved_auth(&AuthModel::BearerToken, "", "", &mut config).unwrap(),
+            resolved_auth(
+                &AuthModel::BearerToken,
+                "",
+                "",
+                &BTreeMap::new(),
+                &mut config
+            )
+            .unwrap(),
             ResolvedAuth::Bearer { ref token } if token == "secret-example"
         ));
         assert!(!config.contains_key("token"));
