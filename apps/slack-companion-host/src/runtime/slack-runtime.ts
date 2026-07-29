@@ -31,6 +31,11 @@ import {
   type PendingAssistantOutcome,
 } from "./outcome-store.js";
 import {
+  createReleaseNoticeStore,
+  type ReleaseNoticeMonitor,
+  startReleaseNoticeMonitor,
+} from "./release-notifier.js";
+import {
   archetypeErrorModal,
   archetypeLoadingModal,
   ArchetypeSlackWorkspace,
@@ -304,6 +309,7 @@ export class SlackCompanionRuntime {
   private readonly app: App;
   private healthServer?: Server;
   private outcomeTimer?: NodeJS.Timeout;
+  private releaseNoticeMonitor?: ReleaseNoticeMonitor;
   private ready = false;
 
   constructor(
@@ -343,6 +349,28 @@ export class SlackCompanionRuntime {
       this.healthServer?.listen(this.config.port, "0.0.0.0", resolve);
     });
     this.ready = true;
+    if (
+      this.config.lifecycleNoticesEnabled
+      && this.config.learningTableName
+      && this.config.lifecycleChannelIds.size > 0
+    ) {
+      this.releaseNoticeMonitor = startReleaseNoticeMonitor({
+        channels: this.config.lifecycleChannelIds,
+        client: this.app.client,
+        onError: (error) => {
+          process.stderr.write(`${JSON.stringify({
+            component: "slack-release-notifier",
+            error_kind: error instanceof Error ? error.name : "unknown",
+            operation: "poll",
+            state: "failed",
+          })}\n`);
+        },
+        store: createReleaseNoticeStore({
+          tableName: this.config.learningTableName,
+          tenantId: this.config.cerebroTenantId,
+        }),
+      });
+    }
     await this.assessOutcomes();
     this.outcomeTimer = setInterval(() => void this.assessOutcomes(), 60 * 60 * 1_000);
     this.outcomeTimer.unref();
@@ -350,6 +378,7 @@ export class SlackCompanionRuntime {
 
   async stop(): Promise<void> {
     this.ready = false;
+    this.releaseNoticeMonitor?.stop();
     if (this.outcomeTimer) clearInterval(this.outcomeTimer);
     await Promise.all([
       this.app.stop(),

@@ -16,6 +16,9 @@ export interface SlackRuntimeConfig {
   cerebroReadApiKey: string;
   cerebroTenantId: string;
   environmentLabel: string;
+  learningTableName?: string;
+  lifecycleChannelIds: ReadonlySet<string>;
+  lifecycleNoticesEnabled: boolean;
   memoryDirectory: string;
   port: number;
   production: boolean;
@@ -45,6 +48,22 @@ export function loadSlackRuntimeConfig(
   }
   const baseUrl = validatedBaseUrl(required(env.CEREBRO_BASE_URL));
   const archetype = archetypeConfig(env);
+  const lifecycleNoticesEnabled = optionalBooleanBinding(
+    env.SLACK_LIFECYCLE_NOTICES_ENABLED,
+    false,
+  );
+  const lifecycleChannelIds = new Set(
+    csv(env.SLACK_LIFECYCLE_CHANNEL_IDS?.trim() ?? ""),
+  );
+  const learningTableName = env.SECURITY_LEARNING_TABLE_NAME?.trim();
+  if (
+    lifecycleNoticesEnabled
+    && (lifecycleChannelIds.size === 0 || !learningTableName)
+  ) {
+    throw new SlackRuntimeConfigError(
+      "Slack lifecycle notices require a learning table and at least one channel.",
+    );
+  }
   return Object.freeze({
     allowedTeamIds,
     ...(archetype === undefined ? {} : { archetype }),
@@ -55,6 +74,9 @@ export function loadSlackRuntimeConfig(
     cerebroReadApiKey: required(env.CEREBRO_READ_API_KEY),
     cerebroTenantId: required(env.CEREBRO_TENANT_ID),
     environmentLabel: required(env.CEREBRO_SLACK_ENVIRONMENT_LABEL),
+    ...(learningTableName ? { learningTableName } : {}),
+    lifecycleChannelIds,
+    lifecycleNoticesEnabled,
     memoryDirectory: env.CEREBRO_SLACK_RUNTIME_MEMORY_DIR?.trim()
       || "/memory/slack-runtime",
     port: port(env.PORT),
