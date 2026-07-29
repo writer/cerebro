@@ -53,6 +53,7 @@
       "resource_type": "analyses",
       "resource_urn": "urn:cerebro:tenant:botify_analyses:source-botify-analyses-1",
       "schema_ref": "botify/analyses/v1",
+      "slug": "20260728",
       "source_id": "botify",
       "tenant_id": "tenant",
       "updated_at": "2026-06-01T00:00:00Z"
