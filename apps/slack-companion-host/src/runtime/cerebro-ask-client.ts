@@ -12,6 +12,11 @@ export interface CerebroAskResult {
   traceId?: string;
 }
 
+export interface CerebroAskHistoryMessage {
+  content: string;
+  role: "assistant" | "user";
+}
+
 export interface CerebroAskClientOptions {
   apiKey: string;
   baseUrl: string;
@@ -36,7 +41,11 @@ export class CerebroAskClient {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
-  async ask(question: string, signal: AbortSignal): Promise<CerebroAskResult> {
+  async ask(
+    question: string,
+    signal: AbortSignal,
+    history: readonly CerebroAskHistoryMessage[] = [],
+  ): Promise<CerebroAskResult> {
     const response = await this.fetchImpl(`${this.options.baseUrl}/grc/ask`, {
       method: "POST",
       headers: {
@@ -46,6 +55,7 @@ export class CerebroAskClient {
         "X-Cerebro-Tenant": this.options.tenantId,
       },
       body: JSON.stringify({
+        ...(history.length === 0 ? {} : { history }),
         question,
         tenant_id: this.options.tenantId,
       }),
