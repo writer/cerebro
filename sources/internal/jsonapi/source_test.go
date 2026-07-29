@@ -2832,6 +2832,25 @@ func TestParseSettingsAcceptsBoundedRequestTimeout(t *testing.T) {
 	}
 }
 
+func TestRequestClientAppliesConfiguredTimeoutToSuppliedClient(t *testing.T) {
+	source := newTestSource(t, "https://example.com")
+	source.client = &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	settings := settings{
+		request: requestSettings{timeout: 2 * time.Minute},
+	}
+
+	client := source.requestClient(settings)
+
+	if client.Timeout != 2*time.Minute {
+		t.Fatalf("client timeout = %s, want 2m", client.Timeout)
+	}
+	if source.client.Timeout != 10*time.Second {
+		t.Fatalf("supplied client timeout mutated to %s, want 10s", source.client.Timeout)
+	}
+}
+
 func TestSafeRoundTripperPinsValidatedHostnameAddress(t *testing.T) {
 	var dialed string
 	rt := sourcehttp.SafeRoundTripper{

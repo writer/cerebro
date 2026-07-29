@@ -210,15 +210,7 @@ func (s *Source) twoStepAccessToken(ctx context.Context, settings settings) (str
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	client := s.client
-	if client == nil {
-		client = sourcehttp.NewClient(sourcehttp.ClientOptions{
-			SourceID:                 s.options.SourceID,
-			AllowLoopback:            s.AllowLoopbackBaseURL,
-			PrivateEndpointAllowlist: settings.privateEndpointAllowlist,
-			LookupIPAddrs:            lookupIPAddrs(s),
-		})
-	}
+	client := s.requestClient(settings)
 	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
 	if err != nil {
 		return "", fmt.Errorf("%s two_step token exchange: %w", s.options.SourceID, err)
@@ -352,15 +344,7 @@ func (s *Source) exchangeOAuthToken(ctx context.Context, settings settings, gran
 	default:
 		return "", "", time.Time{}, fmt.Errorf("%s token_request_auth_method %q is not supported", s.options.SourceID, settings.oauthTokenRequestMethod)
 	}
-	client := s.client
-	if client == nil {
-		client = sourcehttp.NewClient(sourcehttp.ClientOptions{
-			SourceID:                 s.options.SourceID,
-			AllowLoopback:            s.AllowLoopbackBaseURL,
-			PrivateEndpointAllowlist: settings.privateEndpointAllowlist,
-			LookupIPAddrs:            lookupIPAddrs(s),
-		})
-	}
+	client := s.requestClient(settings)
 	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
 	if err != nil {
 		return "", "", time.Time{}, err
