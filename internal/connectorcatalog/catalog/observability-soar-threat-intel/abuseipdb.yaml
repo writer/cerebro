@@ -11,6 +11,20 @@ entries:
       categories:
         - threat_intel
         - security
+      config_fields:
+        - help: IP address whose report history will be collected.
+          key: ip_address
+          label: IP address
+          required: true
+        - help: Optional report lookback from 1 to 365 days.
+          key: max_age_in_days
+          label: Maximum age in days
+        - help: Optional blacklist confidence threshold from 25 to 100.
+          key: confidence_minimum
+          label: Confidence minimum
+        - help: Optional blacklist IP version, either 4 or 6.
+          key: ip_version
+          label: IP version
       description: Collects AbuseIPDB report history and blacklist IP reputation snapshots, then projects them into the Cerebro graph as findings and threat-intelligence assets for alert, incident, service health, and response context.
       display_name: AbuseIPDB
       id: builtin-abuseipdb
@@ -31,6 +45,7 @@ entries:
             kind: abuseipdb.reports
             required_payload_fields:
               - reportedAt
+              - reporterId
             schema_ref: abuseipdb/reports/v1
             urn_kind: abuseipdb_reports
           id: reports
@@ -38,17 +53,28 @@ entries:
           label: Reports
           method: GET
           pagination:
-            cursor_json_path: $.data.nextPageUrl
-            cursor_param: page
-            page_size: 25
+            page_param: page
+            page_size: 100
             page_size_param: perPage
-            type: cursor
+            start_page: 1
+            type: page
           path: /reports
+          config:
+            config_attributes:
+              resource_id: ip_address
+              resource_name: ip_address
+            config_query:
+              ipAddress: ip_address
+              maxAgeInDays: max_age_in_days
+            id_template: "${reportedAt}:${reporterId}"
           projection:
             fields:
               description: comment
-              finding_id: reportedAt
-              resource_id: ipAddress
+              title: comment
+            static_fields:
+              resource_type: abuseipdb_report
+              severity: reported
+              status: observed
             template: finding
           record_selector: $.data.results[*]
         - coverage:
@@ -74,19 +100,23 @@ entries:
           label: IP addresses
           method: GET
           pagination:
-            cursor_json_path: $.next_cursor
-            cursor_param: cursor
-            page_size: 100
-            page_size_param: limit
-            type: cursor
+            type: none
           path: /blacklist
+          config:
+            config_query:
+              confidenceMinimum: confidence_minimum
+              ipVersion: ip_version
           projection:
             fields:
               resource_id: ipAddress
-              resource_type: resource_type|type|kind
-              resource_urn: resource_urn|urn|metadata.resource_urn
+              resource_name: ipAddress
+            static_fields:
+              resource_type: ip_address
             template: asset
           record_selector: $.data[*]
+          static_query:
+            confidenceMinimum: "90"
+            limit: "10000"
       schema_version: cerebro.integration/v1
       source_id: abuseipdb
       tenant_id: builtin_catalog

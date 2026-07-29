@@ -78,6 +78,12 @@ also need separate Rust ownership work.
 API-key collection authority also requires an explicit checked-in header and
 scheme contract. A provider proof manifest does not make a source
 Rust-authoritative when credential placement is still implicit or bespoke.
+Required provider query scope is compiled from checked-in configuration and
+must resolve before Rust makes a provider request. Provider records may also
+use a checked-in composite identity template when the provider has no stable
+single-field identifier. Rust validates those templates at catalog load,
+requires every referenced record value, and rejects blank, control-bearing, or
+oversized rendered identities before mapping or graph admission.
 
 `cerebro-agent-context` exposes bounded search, lookup, expansion, path, and explanation operations. It does not expose Cypher or store mutation.
 
@@ -240,7 +246,7 @@ The current checked-in catalog compiles to 794 sources and 3,891 families:
 | Activity | 738 | audit and operational events |
 | Bespoke | 3 | retained for source coverage but barred from authority |
 
-Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 51 sources and 347 families are authoritative; the other 743 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
+Based on exact provider method-and-path proof, resolvable runtime path and query parameters, bounded fanout scopes, and auth support present in this Rust runtime, 52 sources and 351 families are authoritative; the other 742 sources remain shadow-only. This preserves source coverage without converting catalog presence into a false production claim.
 
 ## Family cutover
 
