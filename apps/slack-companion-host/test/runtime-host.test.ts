@@ -44,7 +44,31 @@ test("runtime config accepts environment-held bindings and an allowlisted worksp
   assert.equal(config.environmentLabel, "development");
   assert.equal(config.production, false);
   assert.equal(config.port, 3100);
+  assert.equal(config.lifecycleNoticesEnabled, false);
   assert.deepEqual([...config.allowedTeamIds], ["T-ONE", "T-TWO"]);
+});
+
+test("runtime config requires durable destinations for enabled lifecycle notices", () => {
+  const base = {
+    CEREBRO_BASE_URL: "https://cerebro.example.com",
+    CEREBRO_READ_API_KEY: "bound-at-runtime",
+    CEREBRO_SLACK_APP_NAME: "Cerebro Development",
+    CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
+    CEREBRO_SLACK_PRODUCTION: "false",
+    CEREBRO_TENANT_ID: "tenant-one",
+    SLACK_ALLOWED_TEAM_IDS: "T-ONE",
+    SLACK_APP_TOKEN: "bound-at-runtime",
+    SLACK_BOT_TOKEN: "bound-at-runtime",
+    SLACK_LIFECYCLE_NOTICES_ENABLED: "true",
+  };
+  assert.throws(() => loadSlackRuntimeConfig(base), SlackRuntimeConfigError);
+  const config = loadSlackRuntimeConfig({
+    ...base,
+    SECURITY_LEARNING_TABLE_NAME: "companion-learning",
+    SLACK_LIFECYCLE_CHANNEL_IDS: "C-ONE,C-TWO",
+  });
+  assert.equal(config.learningTableName, "companion-learning");
+  assert.deepEqual([...config.lifecycleChannelIds], ["C-ONE", "C-TWO"]);
 });
 
 test("runtime config rejects a missing workspace allowlist", () => {
