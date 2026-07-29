@@ -7,7 +7,7 @@ use cerebro_organizational_model::{
 };
 use cerebro_source_catalog::SourceCatalog;
 use cerebro_source_runtime_next::{
-    CollectedBatch, CommittedSourceEvent, IdentityResolutionSnapshot,
+    CollectedBatch, CommittedSourceEvent, IdentityResolutionSnapshot, SourceRuntimeLeaseFence,
 };
 use postgres_native_tls::MakeTlsConnector;
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,20 @@ use crate::{
     ProjectionAuthorityRecord, ProjectionPromotionRequest,
 };
 
+const MAX_SOURCE_RUNTIME_LEASE_TTL_MILLIS: u64 = 24 * 60 * 60 * 1_000;
+
 pub const POSTGRES_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS source_runtimes (
+  id TEXT PRIMARY KEY,
+  runtime_json JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_owner TEXT;
+ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ;
+ALTER TABLE source_runtimes
+  ADD COLUMN IF NOT EXISTS lease_generation BIGINT NOT NULL DEFAULT 0
+  CHECK (lease_generation >= 0);
 CREATE TABLE IF NOT EXISTS organizational_graph_revisions (
   tenant_id TEXT PRIMARY KEY,
   revision BIGINT NOT NULL CHECK (revision >= 0)
@@ -511,6 +524,137 @@ impl PostgresLedger {
         Ok(())
     }
 
+    /// Acquire the shared source-runtime lease and return its durable fencing
+    /// generation. A missing runtime, tenant mismatch, or active competing
+    /// owner all return `None` without disclosing which condition matched.
+    pub async fn acquire_source_runtime_lease(
+        &self,
+        tenant_id: &TenantId,
+        source_runtime_id: &cerebro_organizational_model::SourceRuntimeId,
+        owner: &str,
+        ttl_millis: u64,
+    ) -> Result<Option<SourceRuntimeLeaseFence>, StoreError> {
+        validate_lease_request(owner, ttl_millis)?;
+        let ttl_millis = i64::try_from(ttl_millis)
+            .map_err(|_| StoreError::Conflict("source runtime lease TTL overflow".to_owned()))?;
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        let row = transaction
+            .query_opt(
+                r#"
+UPDATE source_runtimes
+SET lease_generation = CASE
+      WHEN lease_owner = $3
+       AND lease_expires_at > NOW()
+       AND lease_generation > 0
+      THEN lease_generation
+      ELSE lease_generation + 1
+    END,
+    lease_owner = $3,
+    lease_expires_at = NOW() + ($4::BIGINT * INTERVAL '1 millisecond'),
+    updated_at = NOW()
+WHERE id = $1
+  AND runtime_json->>'tenant_id' = $2
+  AND (
+    lease_expires_at IS NULL
+    OR lease_expires_at <= NOW()
+    OR lease_owner = $3
+  )
+RETURNING lease_generation
+"#,
+                &[
+                    &source_runtime_id.as_str(),
+                    &tenant_id.as_str(),
+                    &owner,
+                    &ttl_millis,
+                ],
+            )
+            .await?;
+        transaction.commit().await?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let generation = positive_generation(row.get(0))?;
+        Ok(Some(
+            SourceRuntimeLeaseFence::new(
+                tenant_id.clone(),
+                source_runtime_id.clone(),
+                owner,
+                generation,
+            )
+            .map_err(|message| StoreError::Conflict(message.to_owned()))?,
+        ))
+    }
+
+    /// Renew only the exact, still-live fencing generation.
+    pub async fn renew_source_runtime_lease(
+        &self,
+        fence: &SourceRuntimeLeaseFence,
+        ttl_millis: u64,
+    ) -> Result<bool, StoreError> {
+        validate_lease_request(fence.owner(), ttl_millis)?;
+        let generation = storage_generation(fence.generation())?;
+        let ttl_millis = i64::try_from(ttl_millis)
+            .map_err(|_| StoreError::Conflict("source runtime lease TTL overflow".to_owned()))?;
+        let changed = self
+            .client
+            .lock()
+            .await
+            .execute(
+                r#"
+UPDATE source_runtimes
+SET lease_expires_at = NOW() + ($5::BIGINT * INTERVAL '1 millisecond')
+WHERE id = $1
+  AND runtime_json->>'tenant_id' = $2
+  AND lease_owner = $3
+  AND lease_generation = $4
+  AND lease_expires_at > NOW()
+"#,
+                &[
+                    &fence.source_runtime_id().as_str(),
+                    &fence.tenant_id().as_str(),
+                    &fence.owner(),
+                    &generation,
+                    &ttl_millis,
+                ],
+            )
+            .await?;
+        Ok(changed == 1)
+    }
+
+    /// Release only the exact fencing generation. A stale worker cannot
+    /// release a successor's lease.
+    pub async fn release_source_runtime_lease(
+        &self,
+        fence: &SourceRuntimeLeaseFence,
+    ) -> Result<bool, StoreError> {
+        let generation = storage_generation(fence.generation())?;
+        let changed = self
+            .client
+            .lock()
+            .await
+            .execute(
+                r#"
+UPDATE source_runtimes
+SET lease_owner = NULL,
+    lease_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND runtime_json->>'tenant_id' = $2
+  AND lease_owner = $3
+  AND lease_generation = $4
+"#,
+                &[
+                    &fence.source_runtime_id().as_str(),
+                    &fence.tenant_id().as_str(),
+                    &fence.owner(),
+                    &generation,
+                ],
+            )
+            .await?;
+        Ok(changed == 1)
+    }
+
     /// Records the rebuildable PostgreSQL receipt for one source event already
     /// committed to JetStream. Replays are idempotent; an event ID reused for
     /// different content fails closed.
@@ -954,10 +1098,39 @@ impl PostgresLedger {
         Ok(self.commit(batch, delta).await?.receipt)
     }
 
+    /// Commit current state under the exact source-runtime lease generation
+    /// without applying the rebuildable Neo4j projection.
+    pub async fn commit_pending_fenced(
+        &self,
+        batch: &CollectedBatch,
+        delta: &GraphDelta,
+        fence: &SourceRuntimeLeaseFence,
+    ) -> Result<GraphWriteReceipt, StoreError> {
+        Ok(self.commit_fenced(batch, delta, fence).await?.receipt)
+    }
+
     pub(crate) async fn commit(
         &self,
         batch: &CollectedBatch,
         delta: &GraphDelta,
+    ) -> Result<StoredCommit, StoreError> {
+        self.commit_with_fence(batch, delta, None).await
+    }
+
+    pub(crate) async fn commit_fenced(
+        &self,
+        batch: &CollectedBatch,
+        delta: &GraphDelta,
+        fence: &SourceRuntimeLeaseFence,
+    ) -> Result<StoredCommit, StoreError> {
+        self.commit_with_fence(batch, delta, Some(fence)).await
+    }
+
+    async fn commit_with_fence(
+        &self,
+        batch: &CollectedBatch,
+        delta: &GraphDelta,
+        fence: Option<&SourceRuntimeLeaseFence>,
     ) -> Result<StoredCommit, StoreError> {
         let tenant_id = delta.collection().tenant_id().as_str();
         if batch.scope.receipt() != delta.collection() {
@@ -970,6 +1143,9 @@ impl PostgresLedger {
         let mut client = self.client.lock().await;
         let transaction = client.transaction().await?;
         set_tenant(&transaction, tenant_id).await?;
+        if let Some(fence) = fence {
+            require_source_runtime_lease(&transaction, delta, fence).await?;
+        }
 
         if let Some(row) = transaction
             .query_opt(
@@ -1644,6 +1820,82 @@ fn enum_name<T: Serialize>(value: &T) -> Result<String, StoreError> {
     }
 }
 
+fn validate_lease_request(owner: &str, ttl_millis: u64) -> Result<(), StoreError> {
+    if owner.is_empty()
+        || owner.trim() != owner
+        || owner.len() > 255
+        || owner.chars().any(char::is_control)
+    {
+        return Err(StoreError::Conflict(
+            "source runtime lease owner is invalid".to_owned(),
+        ));
+    }
+    if ttl_millis == 0 || ttl_millis > MAX_SOURCE_RUNTIME_LEASE_TTL_MILLIS {
+        return Err(StoreError::Conflict(
+            "source runtime lease TTL is outside the supported range".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn positive_generation(value: i64) -> Result<u64, StoreError> {
+    let generation = u64::try_from(value).map_err(|_| {
+        StoreError::Conflict("source runtime lease generation is invalid".to_owned())
+    })?;
+    if generation == 0 {
+        return Err(StoreError::Conflict(
+            "source runtime lease generation is invalid".to_owned(),
+        ));
+    }
+    Ok(generation)
+}
+
+fn storage_generation(value: u64) -> Result<i64, StoreError> {
+    i64::try_from(value)
+        .map_err(|_| StoreError::Conflict("source runtime lease generation overflow".to_owned()))
+}
+
+async fn require_source_runtime_lease(
+    transaction: &tokio_postgres::Transaction<'_>,
+    delta: &GraphDelta,
+    fence: &SourceRuntimeLeaseFence,
+) -> Result<(), StoreError> {
+    if fence.tenant_id() != delta.collection().tenant_id()
+        || fence.source_runtime_id() != delta.collection().source_runtime_id()
+    {
+        return Err(StoreError::Conflict(
+            "source runtime lease does not match the collected scope".to_owned(),
+        ));
+    }
+    let generation = storage_generation(fence.generation())?;
+    let row = transaction
+        .query_opt(
+            r#"
+SELECT lease_owner, lease_generation, lease_expires_at > NOW()
+FROM source_runtimes
+WHERE id = $1
+  AND runtime_json->>'tenant_id' = $2
+FOR UPDATE
+"#,
+            &[
+                &fence.source_runtime_id().as_str(),
+                &fence.tenant_id().as_str(),
+            ],
+        )
+        .await?;
+    let valid = row.is_some_and(|row| {
+        row.get::<_, Option<String>>(0).as_deref() == Some(fence.owner())
+            && row.get::<_, i64>(1) == generation
+            && row.get::<_, Option<bool>>(2) == Some(true)
+    });
+    if !valid {
+        return Err(StoreError::Conflict(
+            "source runtime lease was lost before commit".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn stored_count(row: &tokio_postgres::Row, index: usize, field: &str) -> Result<usize, StoreError> {
     let value: i64 = row.get(index);
     usize::try_from(value)
@@ -1661,6 +1913,8 @@ mod tests {
     #[test]
     fn schema_enforces_tenant_scope_identity_uniqueness_and_outbox() {
         for required in [
+            "CREATE TABLE IF NOT EXISTS source_runtimes",
+            "lease_generation BIGINT NOT NULL DEFAULT 0",
             "FORCE ROW LEVEL SECURITY",
             "PRIMARY KEY (tenant_id, provider_identity_id)",
             "PRIMARY KEY (tenant_id, claim_kind, claim_value)",

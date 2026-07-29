@@ -49,6 +49,16 @@ cerebro-source-catalog --> cerebro-source-runtime-next
 
 During migration, the Go source runtime may still collect legacy families and publish their events, but it cannot submit an event payload to the Rust projector. The Rust runtime consumes committed events directly from JetStream. Go asks Rust only for the persisted family authority: a legacy family returns to the Go projector and records a bounded compatibility delta, while a Rust-authoritative family returns no Go projection result and is committed only by the Rust consumer. Replay, refetch, device, CLI, and orchestrator paths use the same authority check, so an alternate Go entry point cannot restore a retired writer. The remaining projection HTTP routes accept legacy parity deltas, collection manifests, and authority reads; they do not provide a Rust-authoritative event write path.
 
+The Rust-native provider sync also requires the stored source runtime's durable
+lease before it makes a provider request. Go and Rust advance the same
+`lease_generation` whenever ownership changes. The Rust PostgreSQL graph
+transaction locks that runtime row and verifies the exact tenant, runtime,
+owner, unexpired lease, and generation before committing a collected batch.
+Renewal loss cancels collection, and a stale worker cannot commit or release a
+successor's lease. This fences the Rust collection write path; stored runtime
+configuration, secret-reference resolution, cursor/checkpoint persistence, and
+legacy-family execution still need separate Rust ownership work.
+
 `cerebro-agent-context` exposes bounded search, lookup, expansion, path, and explanation operations. It does not expose Cypher or store mutation.
 
 `cerebro-platform` serves the bounded agent graph API against Neo4j in production and the in-memory graph in local demos. Web, Slack, MCP, reports, and the graph agent use this API as the authority for bounded neighborhood reads. One-hop requests, including batches of up to 100 roots, execute as one tenant-scoped Neo4j query. Go deployments can omit the graph store and every Neo4j credential once their callers use typed Rust operations. Any remaining raw Cypher caller then fails with `typed Rust graph operation required`; it cannot fall back to another graph reader. Raw Cypher is not exposed by the Rust API.

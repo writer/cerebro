@@ -64,14 +64,14 @@ use cerebro_security_lifecycle::{
 use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
 use cerebro_source_runtime_next::{
     CatalogGraphMapper, CollectionRequest, CommittedSourceEvent, GraphMapper, GraphSink,
-    HttpSourceConnector, ResolvedAuth, SourceRuntime,
+    HttpSourceConnector, ResolvedAuth, SourceRuntime, SourceRuntimeLeaseFence,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use oidc::{AuthenticatedIdentity, AuthenticationError, OidcAuthenticator, OidcConfiguration};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, oneshot};
 
 const TENANT_AUTH_HEADER: &str = "x-cerebro-tenant";
 const TENANT_AUTH_CONTEXT: &[u8] = b"cerebro-organizational-graph/tenant/v1\0";
@@ -87,6 +87,8 @@ const FINDING_VALIDATE_SCOPE: &str = "cerebro:findings:validate";
 const ACTION_RECONCILIATION_BATCH_LIMIT: usize = 10;
 const ACTION_RECONCILIATION_LEASE_MS: u64 = 2 * 60 * 1_000;
 const ACTION_RECONCILIATION_POLL_DELAY_MS: u64 = 15 * 1_000;
+const DEFAULT_SOURCE_RUNTIME_LEASE_TTL_MS: u64 = 30 * 60 * 1_000;
+const MAX_SOURCE_RUNTIME_LEASE_RENEWAL_INTERVAL_MS: u64 = 5 * 60 * 1_000;
 
 #[derive(Clone)]
 struct AppState {
@@ -1349,7 +1351,14 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
         config,
         auth,
     )?;
-    let ledger = PostgresLedger::connect_tls(&required_env("CEREBRO_POSTGRES_DSN")?).await?;
+    let postgres_dsn = required_env("CEREBRO_POSTGRES_DSN")?;
+    let runtime_id = SourceRuntimeId::parse(required_env("CEREBRO_SOURCE_RUNTIME_ID")?)?;
+    let lease_ledger = Arc::new(PostgresLedger::connect_tls(&postgres_dsn).await?);
+    lease_ledger.migrate().await?;
+    let lease_ttl_millis = source_runtime_lease_ttl_millis()?;
+    let lease_owner = source_runtime_lease_owner();
+
+    let ledger = PostgresLedger::connect_tls(&postgres_dsn).await?;
     ledger.migrate().await?;
     let identity_resolution = ledger.identity_resolution_snapshot(&tenant_id).await?;
     let mapper = CatalogGraphMapper::new(source, env!("CARGO_PKG_VERSION"))?
@@ -1358,15 +1367,116 @@ async fn sync_source() -> Result<(), Box<dyn Error>> {
     projector.migrate().await?;
     let store = DurableGraphStore::new(ledger, projector);
     let mut runtime = SourceRuntime::new(connector, mapper, store);
-    let receipt = runtime
-        .sync(CollectionRequest {
-            tenant_id,
-            source_runtime_id: SourceRuntimeId::parse(required_env("CEREBRO_SOURCE_RUNTIME_ID")?)?,
-            cursor: env::var("CEREBRO_SOURCE_CURSOR").ok(),
-        })
-        .await?;
+    let fence = lease_ledger
+        .acquire_source_runtime_lease(&tenant_id, &runtime_id, &lease_owner, lease_ttl_millis)
+        .await?
+        .ok_or("source runtime is missing, belongs to another tenant, or is already leased")?;
+    let request = CollectionRequest {
+        tenant_id,
+        source_runtime_id: runtime_id,
+        cursor: env::var("CEREBRO_SOURCE_CURSOR").ok(),
+    };
+    let (stop_renewal, renewal_failure, renewal_task) =
+        start_source_runtime_lease_renewal(lease_ledger.clone(), fence.clone(), lease_ttl_millis);
+    let mut renewal_failure = renewal_failure;
+    let outcome = {
+        let sync = runtime.sync_fenced(request, &fence);
+        tokio::pin!(sync);
+        tokio::select! {
+            biased;
+            result = &mut sync => result.map_err(|error| error.to_string()),
+            failure = &mut renewal_failure => Err(
+                failure.unwrap_or_else(|_| {
+                    "source runtime lease renewal stopped unexpectedly".to_owned()
+                })
+            ),
+        }
+    };
+    let _ = stop_renewal.send(());
+    if let Err(error) = renewal_task.await {
+        eprintln!("source runtime lease renewal task failed after commit: {error}");
+    }
+    match lease_ledger.release_source_runtime_lease(&fence).await {
+        Ok(true) => {}
+        Ok(false) => {
+            eprintln!(
+                "source runtime lease changed before release; the successor lease was preserved"
+            )
+        }
+        Err(error) => eprintln!("source runtime lease release failed after commit: {error}"),
+    }
+    let receipt = outcome.map_err(|error| -> Box<dyn Error> { error.into() })?;
     println!("{}", serde_json::to_string_pretty(&receipt)?);
     Ok(())
+}
+
+fn source_runtime_lease_ttl_millis() -> Result<u64, Box<dyn Error>> {
+    let value = env::var("CEREBRO_SOURCE_LEASE_TTL_MS")
+        .ok()
+        .map(|value| value.parse())
+        .transpose()?
+        .unwrap_or(DEFAULT_SOURCE_RUNTIME_LEASE_TTL_MS);
+    if value == 0 {
+        return Err("CEREBRO_SOURCE_LEASE_TTL_MS must be positive".into());
+    }
+    Ok(value)
+}
+
+fn source_runtime_lease_owner() -> String {
+    env::var("CEREBRO_SOURCE_LEASE_OWNER")
+        .ok()
+        .filter(|owner| !owner.trim().is_empty())
+        .unwrap_or_else(|| {
+            format!(
+                "cerebro-rust-source:{}:{}",
+                std::process::id(),
+                OffsetDateTime::now_utc().unix_timestamp_nanos()
+            )
+        })
+}
+
+fn start_source_runtime_lease_renewal(
+    ledger: Arc<PostgresLedger>,
+    fence: SourceRuntimeLeaseFence,
+    ttl_millis: u64,
+) -> (
+    oneshot::Sender<()>,
+    oneshot::Receiver<String>,
+    tokio::task::JoinHandle<()>,
+) {
+    let (stop_sender, mut stop_receiver) = oneshot::channel();
+    let (failure_sender, failure_receiver) = oneshot::channel();
+    let interval = Duration::from_millis(
+        (ttl_millis / 2).clamp(1, MAX_SOURCE_RUNTIME_LEASE_RENEWAL_INTERVAL_MS),
+    );
+    let task = tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        ticker.tick().await;
+        loop {
+            tokio::select! {
+                _ = &mut stop_receiver => return,
+                _ = ticker.tick() => {
+                    match ledger.renew_source_runtime_lease(&fence, ttl_millis).await {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            let _ = failure_sender.send(
+                                "source runtime lease was lost during collection".to_owned(),
+                            );
+                            return;
+                        }
+                        Err(error) => {
+                            let _ = failure_sender.send(format!(
+                                "source runtime lease renewal failed: {error}"
+                            ));
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    });
+    (stop_sender, failure_receiver, task)
 }
 
 async fn connect_neo4j() -> Result<Neo4jProjector, Box<dyn Error>> {

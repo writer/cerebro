@@ -68,6 +68,7 @@ func TestSourceRuntimeListOrderRotatesRecentlyUpdatedRows(t *testing.T) {
 func TestSourceRuntimeSchemaIndexesDashboardFilters(t *testing.T) {
 	joined := strings.Join(ensureSourceRuntimeStatements, "\n")
 	for _, fragment := range []string{
+		"lease_generation BIGINT NOT NULL DEFAULT 0",
 		"source_runtimes_tenant_updated_idx",
 		"CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_updated_idx",
 		"(runtime_json->>'tenant_id'), updated_at ASC, id ASC",
