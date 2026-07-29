@@ -10,7 +10,45 @@ use cerebro_platform_sdk::{FindingValidationReceipt, SdkError};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-const POLICY_DEFINITION_DIGEST_SCHEMA: &str = "cerebro.policy-definition.v1";
+const POLICY_DEFINITION_DIGEST_SCHEMA: &str = "cerebro.policy-definition.v2";
+const DETECTION_DEFINITION_DIGEST_SCHEMA: &str = "cerebro.detection-definition.v1";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvaluationMode {
+    Event,
+    Graph,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LifecycleKind {
+    DurableState,
+    AuditEvidence,
+    TtlEvidence,
+    Retired,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LifecycleAnchor {
+    GraphAnchored,
+    SourceState,
+    None,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub struct Lifecycle {
+    pub kind: LifecycleKind,
+    pub anchor: LifecycleAnchor,
+    pub ttl_seconds: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub struct RequiredAttributesByKind<'a> {
+    pub event_kind: &'a str,
+    pub attributes: &'a [&'a str],
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub struct PolicyDefinition<'a> {
@@ -21,6 +59,13 @@ pub struct PolicyDefinition<'a> {
     pub effect: &'a str,
     pub resource: &'a str,
     pub enabled: bool,
+    pub evaluation_mode: EvaluationMode,
+    pub event_kinds: &'a [&'a str],
+    pub output_kind: &'a str,
+    pub required_attributes: &'a [&'a str],
+    pub required_attributes_by_kind: &'a [RequiredAttributesByKind<'a>],
+    pub fingerprint_fields: &'a [&'a str],
+    pub lifecycle: Lifecycle,
     pub source_path: &'a str,
     pub source_digest: &'a str,
     pub definition_digest: &'a str,
@@ -38,6 +83,13 @@ impl PolicyDefinition<'_> {
             effect: &'a str,
             resource: &'a str,
             enabled: bool,
+            evaluation_mode: EvaluationMode,
+            event_kinds: &'a [&'a str],
+            output_kind: &'a str,
+            required_attributes: &'a [&'a str],
+            required_attributes_by_kind: &'a [RequiredAttributesByKind<'a>],
+            fingerprint_fields: &'a [&'a str],
+            lifecycle: Lifecycle,
             source_path: &'a str,
             source_digest: &'a str,
         }
@@ -51,8 +103,61 @@ impl PolicyDefinition<'_> {
             effect: self.effect,
             resource: self.resource,
             enabled: self.enabled,
+            evaluation_mode: self.evaluation_mode,
+            event_kinds: self.event_kinds,
+            output_kind: self.output_kind,
+            required_attributes: self.required_attributes,
+            required_attributes_by_kind: self.required_attributes_by_kind,
+            fingerprint_fields: self.fingerprint_fields,
+            lifecycle: self.lifecycle,
             source_path: self.source_path,
             source_digest: self.source_digest,
+        };
+        Ok(hex_digest(&serde_json::to_vec(&material)?))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub struct DetectionDefinition<'a> {
+    pub id: &'a str,
+    pub source_id: &'a str,
+    pub evaluation_mode: EvaluationMode,
+    pub event_kinds: &'a [&'a str],
+    pub output_kind: &'a str,
+    pub required_attributes: &'a [&'a str],
+    pub required_attributes_by_kind: &'a [RequiredAttributesByKind<'a>],
+    pub fingerprint_fields: &'a [&'a str],
+    pub lifecycle: Lifecycle,
+    pub definition_digest: &'a str,
+}
+
+impl DetectionDefinition<'_> {
+    pub fn computed_digest(&self) -> Result<String, serde_json::Error> {
+        #[derive(Serialize)]
+        struct DigestMaterial<'a> {
+            schema: &'static str,
+            id: &'a str,
+            source_id: &'a str,
+            evaluation_mode: EvaluationMode,
+            event_kinds: &'a [&'a str],
+            output_kind: &'a str,
+            required_attributes: &'a [&'a str],
+            required_attributes_by_kind: &'a [RequiredAttributesByKind<'a>],
+            fingerprint_fields: &'a [&'a str],
+            lifecycle: Lifecycle,
+        }
+
+        let material = DigestMaterial {
+            schema: DETECTION_DEFINITION_DIGEST_SCHEMA,
+            id: self.id,
+            source_id: self.source_id,
+            evaluation_mode: self.evaluation_mode,
+            event_kinds: self.event_kinds,
+            output_kind: self.output_kind,
+            required_attributes: self.required_attributes,
+            required_attributes_by_kind: self.required_attributes_by_kind,
+            fingerprint_fields: self.fingerprint_fields,
+            lifecycle: self.lifecycle,
         };
         Ok(hex_digest(&serde_json::to_vec(&material)?))
     }
@@ -62,6 +167,7 @@ impl PolicyDefinition<'_> {
 pub enum PolicyCatalogError {
     InvalidReceipt(SdkError),
     UnknownPolicy(String),
+    UnknownDetection(String),
     DefinitionDigestMismatch { policy_id: String },
 }
 
@@ -70,6 +176,9 @@ impl fmt::Display for PolicyCatalogError {
         match self {
             Self::InvalidReceipt(error) => write!(formatter, "{error}"),
             Self::UnknownPolicy(policy_id) => write!(formatter, "unknown policy {policy_id:?}"),
+            Self::UnknownDetection(detection_id) => {
+                write!(formatter, "unknown detection {detection_id:?}")
+            }
             Self::DefinitionDigestMismatch { policy_id } => {
                 write!(
                     formatter,
@@ -92,11 +201,24 @@ pub fn definitions() -> &'static [PolicyDefinition<'static>] {
     generated::POLICY_DEFINITIONS
 }
 
+pub fn detection_definitions() -> &'static [DetectionDefinition<'static>] {
+    generated::DETECTION_DEFINITIONS
+}
+
 pub fn lookup(policy_id: &str) -> Result<&'static PolicyDefinition<'static>, PolicyCatalogError> {
     definitions()
         .binary_search_by_key(&policy_id, |definition| definition.id)
         .map(|index| &definitions()[index])
         .map_err(|_| PolicyCatalogError::UnknownPolicy(policy_id.to_owned()))
+}
+
+pub fn lookup_detection(
+    detection_id: &str,
+) -> Result<&'static DetectionDefinition<'static>, PolicyCatalogError> {
+    detection_definitions()
+        .binary_search_by_key(&detection_id, |definition| definition.id)
+        .map(|index| &detection_definitions()[index])
+        .map_err(|_| PolicyCatalogError::UnknownDetection(detection_id.to_owned()))
 }
 
 pub fn validate_finding_receipt(
@@ -171,6 +293,71 @@ mod tests {
             );
             assert_eq!(definition.source_digest.len(), 64);
         }
+    }
+
+    #[test]
+    fn generated_detection_definitions_preserve_go_rule_semantics() {
+        assert_eq!(definitions().len() + detection_definitions().len(), 1_617);
+        assert_eq!(detection_definitions().len(), 86);
+
+        let mut ids = BTreeSet::new();
+        let mut previous = None;
+        for definition in detection_definitions() {
+            if let Some(previous) = previous {
+                assert!(previous < definition.id);
+            }
+            previous = Some(definition.id);
+            assert!(ids.insert(definition.id));
+            assert!(
+                !definition.fingerprint_fields.is_empty()
+                    || definition.lifecycle.kind == LifecycleKind::Retired
+            );
+            assert_eq!(
+                definition.computed_digest().expect("digest"),
+                definition.definition_digest
+            );
+        }
+
+        let runtime = lookup_detection("runtime-active-threat-evidence").unwrap();
+        assert_eq!(runtime.evaluation_mode, EvaluationMode::Event);
+        assert_eq!(runtime.event_kinds, &["runtime.evidence"]);
+        assert_eq!(
+            runtime.required_attributes,
+            &["evidence_id", "evidence_type"]
+        );
+        assert_eq!(runtime.fingerprint_fields, &["tenant_id", "evidence_id"]);
+        assert_eq!(
+            runtime.lifecycle,
+            Lifecycle {
+                kind: LifecycleKind::TtlEvidence,
+                anchor: LifecycleAnchor::None,
+                ttl_seconds: 86_400,
+            }
+        );
+
+        let source_state = lookup_detection("tailscale-tailnet-device-approval-disabled").unwrap();
+        assert_eq!(
+            source_state.lifecycle,
+            Lifecycle {
+                kind: LifecycleKind::DurableState,
+                anchor: LifecycleAnchor::SourceState,
+                ttl_seconds: 0,
+            }
+        );
+
+        let policy = lookup("aws-s3-bucket-no-public-access").unwrap();
+        assert_eq!(
+            policy.fingerprint_fields,
+            &["tenant_id", "policy_id", "resource_urn", "resource_id"]
+        );
+        assert_eq!(
+            policy.lifecycle,
+            Lifecycle {
+                kind: LifecycleKind::AuditEvidence,
+                anchor: LifecycleAnchor::None,
+                ttl_seconds: 0,
+            }
+        );
     }
 
     #[test]

@@ -140,6 +140,28 @@ NOT EXISTS (evidence)-[:evidence_for]->(finding)
 The proof fails unless the unsupported finding is returned and the
 evidence-backed finding is excluded both before and after restart.
 
+## Finding catalog migration
+
+The Go rule registry remains the evaluation authority while finding matchers
+move. Its generated public catalog is the migration contract for rule identity
+and lifecycle semantics. The catalog includes each rule's evaluation mode,
+input event kinds, output kind, required attributes, ordered fingerprint
+fields, and lifecycle kind, anchor, and TTL.
+
+`cerebro-policycataloggen` joins policy-backed detections to their policy YAML
+by exact rule ID and compiles the remaining native detections separately. Rust
+uses closed enums for evaluation mode, lifecycle kind, and lifecycle anchor.
+Generation fails on a missing policy join, duplicate rule ID, unknown enum
+value, empty fingerprint contract, invalid durable-state anchor, or invalid
+TTL. Both policy-backed and native detection definitions are content
+addressed, so changing lifecycle or fingerprint semantics changes the digest
+bound by later authority receipts.
+
+This catalog is migration input, not evaluation authority. A rule becomes
+Rust-authoritative only when its matcher, open/close behavior, fingerprint
+stability, required attributes, graph anchors, and replay corpus have parity
+receipts and the Go evaluation path is disabled for that rule.
+
 ## Production bypass prevention
 
 Language-level constraints prevent accidental bypass inside Rust. Production authority prevents deliberate bypass across processes:

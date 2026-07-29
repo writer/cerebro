@@ -96,13 +96,29 @@ type PublicDetection struct {
 	FalsePositives []string `json:"false_positives,omitempty"`
 	Runbook        string   `json:"runbook"`
 	PublicDetectionAuditDepth
-	RequiredAttributes       []string                  `json:"required_attributes,omitempty"`
-	RequiredAttributesByKind map[string][]string       `json:"required_attributes_by_kind,omitempty"`
-	FingerprintFields        []string                  `json:"fingerprint_fields,omitempty"`
-	ControlRefs              []ports.FindingControlRef `json:"control_refs,omitempty"`
-	SourceCoverageRefs       []SourceCoverageRef       `json:"source_coverage_refs,omitempty"`
-	MITREAttack              []MITREAttackRef          `json:"mitre_attack,omitempty"`
-	MITREDefend              []MITREDefendRef          `json:"mitre_defend,omitempty"`
+	PublicDetectionRuntimeContract
+	ControlRefs        []ports.FindingControlRef `json:"control_refs,omitempty"`
+	SourceCoverageRefs []SourceCoverageRef       `json:"source_coverage_refs,omitempty"`
+	MITREAttack        []MITREAttackRef          `json:"mitre_attack,omitempty"`
+	MITREDefend        []MITREDefendRef          `json:"mitre_defend,omitempty"`
+}
+
+// PublicDetectionRuntimeContract carries the rule semantics a runtime must
+// preserve when it takes evaluation authority.
+type PublicDetectionRuntimeContract struct {
+	RequiredAttributes       []string                 `json:"required_attributes,omitempty"`
+	RequiredAttributesByKind map[string][]string      `json:"required_attributes_by_kind,omitempty"`
+	FingerprintFields        []string                 `json:"fingerprint_fields,omitempty"`
+	Lifecycle                PublicDetectionLifecycle `json:"lifecycle"`
+}
+
+// PublicDetectionLifecycle is the stable wire representation of a rule's
+// finding lifecycle. TTL uses whole seconds so Go's time.Duration encoding
+// does not leak into the cross-language catalog.
+type PublicDetectionLifecycle struct {
+	Kind       LifecycleKind   `json:"kind"`
+	Anchor     LifecycleAnchor `json:"anchor"`
+	TTLSeconds int64           `json:"ttl_seconds,omitempty"`
 }
 
 type PublicDetectionAuditDepth struct {
@@ -404,12 +420,19 @@ func publicDetectionFromRule(pack RulePack, metadata RuleDefinition, mode string
 			RiskStatement:     strings.TrimSpace(metadata.RiskStatement),
 			RemediationIntent: strings.TrimSpace(metadata.RemediationIntent),
 		},
-		RequiredAttributes:       uniqueSortedStrings(metadata.RequiredAttributes),
-		RequiredAttributesByKind: normalizedStringSliceMap(metadata.RequiredAttributesByKind),
-		FingerprintFields:        uniqueTrimmedStringsPreserveOrder(metadata.FingerprintFields),
-		ControlRefs:              cloneFindingControlRefs(metadata.ControlRefs),
-		MITREAttack:              cloneMITREAttackRefs(metadata.MITREAttack),
-		MITREDefend:              mitreDefendRefsFromAttackRefs(metadata.MITREAttack),
+		PublicDetectionRuntimeContract: PublicDetectionRuntimeContract{
+			RequiredAttributes:       uniqueSortedStrings(metadata.RequiredAttributes),
+			RequiredAttributesByKind: normalizedStringSliceMap(metadata.RequiredAttributesByKind),
+			FingerprintFields:        uniqueTrimmedStringsPreserveOrder(metadata.FingerprintFields),
+			Lifecycle: PublicDetectionLifecycle{
+				Kind:       metadata.Lifecycle.Kind,
+				Anchor:     metadata.Lifecycle.Anchor,
+				TTLSeconds: int64(metadata.Lifecycle.TTL / time.Second),
+			},
+		},
+		ControlRefs: cloneFindingControlRefs(metadata.ControlRefs),
+		MITREAttack: cloneMITREAttackRefs(metadata.MITREAttack),
+		MITREDefend: mitreDefendRefsFromAttackRefs(metadata.MITREAttack),
 	}
 }
 
