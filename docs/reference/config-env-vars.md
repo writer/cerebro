@@ -17,9 +17,9 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_RATE_LIMIT_RPS` | `100` | Global API rate-limit refill rate. |
 | `CEREBRO_RATE_LIMIT_BURST` | `150` | Global API rate-limit burst size. |
 | `CEREBRO_RATE_LIMIT_EXEMPT_PATHS` | liveness, metrics, and well-known metadata paths | Optional comma-separated path prefixes that bypass rate limiting. |
-| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL` | unset | Base URL for the access-approvals service. Required for access-approvals backed graph actions and reconciliation such as `identity.okta.suspend_user`. |
-| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN` | unset | Bearer token Cerebro uses to call access-approvals graph action create/read endpoints. Supports `_FILE` via `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE`. |
-| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT` | `10s` | HTTP timeout for access-approvals graph action requests. |
+| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BASE_URL` | unset | Base URL the Rust Action runtime and legacy Go adapter use for access-approvals requests. Rust Action execution fails closed before storage when this provider is not configured. |
+| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN` | unset | Bearer token the Rust Action runtime and legacy Go adapter use for access-approvals create/read endpoints. Supports `_FILE` via `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_BEARER_TOKEN_FILE`; configure only one source. |
+| `CEREBRO_GRAPH_ACTIONS_ACCESS_APPROVALS_TIMEOUT` | `10s` | Access-approvals HTTP timeout. The Rust runtime accepts bounded values with an `ms` or `s` suffix. |
 | `CEREBRO_APPEND_LOG_DRIVER` | inferred | Append-log driver. Supported: `jetstream`. |
 | `CEREBRO_JETSTREAM_URL` | unset | NATS JetStream URL. Setting this infers `jetstream`. |
 | `CEREBRO_JETSTREAM_STREAM_NAME` | unset | Optional stream name for publish and replay readiness checks. Set this when one logical append-log stream is expected. |

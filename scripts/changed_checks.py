@@ -114,8 +114,11 @@ def select_commands(files: list[str], repo: Path) -> list[CommandPlan]:
             "Rust workspace dependency or lint policy changed.",
         )
 
-    if any(path_matches(path, prefixes=("internal/graphactions/", "tools/graphactiongen/"), exact=("Cargo.toml", "Cargo.lock", "rust-toolchain.toml")) for path in files):
+    if any(path_matches(path, prefixes=("crates/action-catalog/", "internal/graphactions/", "tools/graphactiongen/"), exact=("Cargo.toml", "Cargo.lock", "rust-toolchain.toml")) for path in files):
         add_command(commands, seen, "graph-action-check", ["make", "graph-action-check"], "Graph action catalog, generated registry, or generator changed.")
+
+    if any(path_matches(path, prefixes=("crates/policy-catalog/", "tools/policycataloggen/"), exact=("Cargo.toml", "Cargo.lock", "rust-toolchain.toml")) for path in files):
+        add_command(commands, seen, "policy-catalog-check", ["make", "policy-catalog-check"], "Policy catalog crate, generated definitions, or generator changed.")
 
     changed_wasm_modules = [
         module

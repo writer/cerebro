@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseArgs,
   portableEnvironment,
+  run,
   signedBearerToken,
 } from "./authenticated-rust-e2e.mjs";
 
@@ -64,10 +65,28 @@ describe("authenticated Rust web integration helpers", () => {
     expect(payload).toMatchObject({
       aud: "cerebro-local-web",
       iss: "http://127.0.0.1:41111",
-      scope: "cerebro:read identity:read",
+      scope: "cerebro:read cerebro:actions:read identity:read",
       sub: "rust-e2e-user",
       tenant_id: "tenant-demo",
     });
     expect(valid).toBe(true);
+  });
+
+  it("keeps command stderr out of machine-readable stdout", async () => {
+    const output = await run(
+      process.execPath,
+      [
+        "-e",
+        "process.stderr.write('runtime warning'); process.stdout.write('{\"ready\":true}')",
+      ],
+      {
+        capture: "stdout",
+        cwd: process.cwd(),
+        env: portableEnvironment(),
+      },
+      Date.now() + 5_000,
+    );
+
+    expect(JSON.parse(output)).toEqual({ ready: true });
   });
 });

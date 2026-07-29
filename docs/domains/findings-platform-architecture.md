@@ -38,6 +38,25 @@ The rule registry fixes that.
 
 The current findings platform now has six layers.
 
+### Rust policy authority boundary
+
+The Rust platform exposes a closed, content-addressed policy catalog at
+`GET /v1/policy-definitions`. The Rust generator reads every checked-in
+`PolicyFindingRule`, rejects malformed or duplicate identifiers, hashes the
+exact reviewed source, and emits definitions sorted by policy ID.
+
+A new finding-validation receipt names both `policy_id` and
+`policy_definition_digest`. The Rust Action ledger rejects the receipt before
+persistence unless that pair matches the generated catalog. PostgreSQL stores
+both values alongside the receipt JSON and enforces their agreement for every
+new write. An Action proposal still requires the exact append-only validation
+receipt in the same transaction as proposal insertion.
+
+This is policy identity and validation authority, not complete policy execution
+parity. The current Go rule evaluator still evaluates most policy definitions
+and remains a migration oracle until the Rust evaluator has fixture parity,
+durable run storage, lifecycle semantics, and production cutover receipts.
+
 ### 1. Runtime Replay
 
 `SourceRuntime` remains the control-plane boundary that scopes evaluation. The service replays runtime events through the append log for one runtime at a time.

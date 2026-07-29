@@ -46,6 +46,11 @@ func TestKnownActionContractHelpersExposeCatalogMetadata(t *testing.T) {
 	if device.Provider != ProviderCerebroDeviceAuth || device.TargetKind != TargetKindCerebroDevice || !device.Destructive {
 		t.Fatalf("device action metadata = %#v, want first-party destructive device action", device)
 	}
+	for _, action := range metadata {
+		if action.DefinitionDigest == "" {
+			t.Fatalf("action %q has no definition digest", action.ID)
+		}
+	}
 }
 
 func TestKnownActionContractHelpersReturnCopies(t *testing.T) {
