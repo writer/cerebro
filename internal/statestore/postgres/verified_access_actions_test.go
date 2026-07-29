@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -114,6 +116,73 @@ func TestVerifiedAccessActionPostgresGrantsOneExecutionClaim(t *testing.T) {
 	}
 	if len(transitions) != 4 {
 		t.Fatalf("transition count = %d, want 4", len(transitions))
+	}
+}
+
+func TestVerifiedAccessActionPostgresAppendPreservesDatabaseErrors(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("set CEREBRO_POSTGRES_DSN to run verified access action persistence integration test")
+	}
+	store, err := Open(config.StateStoreConfig{
+		Driver:      config.StateStoreDriverPostgres,
+		PostgresDSN: dsn,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	ctx := context.Background()
+	tenantID := fmt.Sprintf("verified-access-action-test-%d", time.Now().UnixNano())
+	defer func() {
+		_, _ = store.db.ExecContext(ctx,
+			`DELETE FROM verified_access_actions WHERE tenant_id = $1`,
+			tenantID,
+		)
+	}()
+
+	proposed := postgresTestProposal(t, tenantID)
+	preflighted := postgresTestPreflight(t, proposed.Record)
+	if applied, createErr := store.CreateAccessAction(ctx, proposed); createErr != nil || !applied {
+		t.Fatalf("create proposal = %v, %v", applied, createErr)
+	}
+	if applied, appendErr := store.AppendAccessAction(ctx, preflighted); appendErr != nil || !applied {
+		t.Fatalf("append preflight = %v, %v", applied, appendErr)
+	}
+	if applied, replayErr := store.AppendAccessAction(ctx, preflighted); replayErr != nil || applied {
+		t.Fatalf("idempotent replay = %v, %v", applied, replayErr)
+	}
+
+	// A diverged stored transition digest is a genuine CAS conflict and must
+	// keep reporting ErrConflict.
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE verified_access_action_transitions
+SET transition_digest = $3
+WHERE tenant_id = $1 AND action_id = $2`,
+		tenantID, proposed.Record.ID, "corrupted-"+preflighted.Transition.Digest); err != nil {
+		t.Fatal(err)
+	}
+	applied, err := store.AppendAccessAction(ctx, preflighted)
+	if applied || !errors.Is(err, verifiedaccessaction.ErrConflict) {
+		t.Fatalf("replay against diverged digest = %v, %v, want ErrConflict", applied, err)
+	}
+
+	// A genuine database failure on the idempotency read must surface the
+	// wrapped error instead of being masked as a persistence conflict.
+	if _, err := store.db.ExecContext(ctx, `
+DELETE FROM verified_access_action_transitions
+WHERE tenant_id = $1 AND action_id = $2`, tenantID, proposed.Record.ID); err != nil {
+		t.Fatal(err)
+	}
+	applied, err = store.AppendAccessAction(ctx, preflighted)
+	if applied {
+		t.Fatal("replay against missing transition row applied")
+	}
+	if errors.Is(err, verifiedaccessaction.ErrConflict) {
+		t.Fatalf("replay error = %v, must not mask database failure as ErrConflict", err)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("replay error = %v, want wrapped sql.ErrNoRows", err)
 	}
 }
 
