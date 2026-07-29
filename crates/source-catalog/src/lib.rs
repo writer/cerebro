@@ -1481,6 +1481,139 @@ mod tests {
             catalog.get("akeyless").unwrap().auth_json_body_parameters(),
             &BTreeMap::from([("token".to_owned(), "api_token".to_owned())])
         );
+        assert_eq!(
+            catalog.get("meraki").unwrap().token_header(),
+            "Authorization"
+        );
+        assert_eq!(catalog.get("meraki").unwrap().token_scheme(), "Bearer");
+        let meraki_event_type = catalog
+            .get("meraki")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "eventtype")
+            .unwrap();
+        assert_eq!(meraki_event_type.id_field(), "type");
+        assert_eq!(
+            meraki_event_type
+                .projection()
+                .fields()
+                .get("id")
+                .map(String::as_str),
+            Some("type")
+        );
+        assert_eq!(
+            meraki_event_type
+                .projection()
+                .fields()
+                .get("provider_id")
+                .map(String::as_str),
+            Some("type")
+        );
+        assert_eq!(
+            meraki_event_type
+                .projection()
+                .fields()
+                .get("event_type")
+                .map(String::as_str),
+            Some("type")
+        );
+        let meraki_organization = catalog
+            .get("meraki")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "organization")
+            .unwrap();
+        assert_eq!(
+            meraki_organization.pagination(),
+            &Pagination::Link {
+                header: "Link".to_owned()
+            }
+        );
+        assert_eq!(
+            meraki_organization.static_query(),
+            &BTreeMap::from([("perPage".to_owned(), "9000".to_owned())])
+        );
+        assert_eq!(
+            meraki_organization
+                .projection()
+                .fields()
+                .get("group_id")
+                .map(String::as_str),
+            Some("id")
+        );
+        assert_eq!(
+            meraki_organization
+                .projection()
+                .fields()
+                .get("group_name")
+                .map(String::as_str),
+            Some("name")
+        );
+        let meraki_auth_user = catalog
+            .get("meraki")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "merakiauthuser")
+            .unwrap();
+        assert_eq!(
+            meraki_auth_user
+                .projection()
+                .fields()
+                .get("user_id")
+                .map(String::as_str),
+            Some("id")
+        );
+        assert_eq!(
+            meraki_auth_user
+                .projection()
+                .fields()
+                .get("display_name")
+                .map(String::as_str),
+            Some("name")
+        );
+        assert_eq!(
+            meraki_auth_user
+                .projection()
+                .fields()
+                .get("email")
+                .map(String::as_str),
+            Some("email")
+        );
+        let meraki_access_policy = catalog
+            .get("meraki")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "accesspolicy")
+            .unwrap();
+        assert_eq!(meraki_access_policy.id_field(), "accessPolicyNumber");
+        assert_eq!(
+            meraki_access_policy
+                .projection()
+                .fields()
+                .get("id")
+                .map(String::as_str),
+            Some("accessPolicyNumber")
+        );
+        assert_eq!(
+            meraki_access_policy
+                .projection()
+                .fields()
+                .get("policy_id")
+                .map(String::as_str),
+            Some("accessPolicyNumber")
+        );
+        assert_eq!(
+            meraki_access_policy
+                .projection()
+                .fields()
+                .get("policy_name")
+                .map(String::as_str),
+            Some("name")
+        );
         for family in catalog.get("akeyless").unwrap().families() {
             assert_eq!(
                 family.cursor_in_json_body(),
@@ -1528,6 +1661,7 @@ mod tests {
             "fivetran",
             "google_vertex_ai",
             "jira",
+            "meraki",
             "onelogin",
             "qdrant_cloud",
             "snyk",
