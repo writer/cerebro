@@ -108,6 +108,23 @@ pub enum HttpMethod {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PathParameterBinding {
+    ScalarConfig { field: String },
+    OptionalScalarConfig { field: String },
+    CsvFanout { field: String },
+}
+
+impl PathParameterBinding {
+    pub fn field(&self) -> &str {
+        match self {
+            Self::ScalarConfig { field }
+            | Self::OptionalScalarConfig { field }
+            | Self::CsvFanout { field } => field,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Pagination {
     None,
     Cursor {
@@ -214,7 +231,10 @@ pub struct CompiledFamily {
     id_field: String,
     name_field: Option<String>,
     static_query: BTreeMap<String, String>,
+    config_query: BTreeMap<String, PathParameterBinding>,
+    config_attributes: BTreeMap<String, PathParameterBinding>,
     pagination: Pagination,
+    path_parameters: BTreeMap<String, PathParameterBinding>,
     projection: Projection,
     authoritative: bool,
     projection_authoritative: bool,
@@ -249,8 +269,20 @@ impl CompiledFamily {
         &self.static_query
     }
 
+    pub fn config_query(&self) -> &BTreeMap<String, PathParameterBinding> {
+        &self.config_query
+    }
+
+    pub fn config_attributes(&self) -> &BTreeMap<String, PathParameterBinding> {
+        &self.config_attributes
+    }
+
     pub fn pagination(&self) -> &Pagination {
         &self.pagination
+    }
+
+    pub fn path_parameters(&self) -> &BTreeMap<String, PathParameterBinding> {
+        &self.path_parameters
     }
 
     pub fn projection(&self) -> &Projection {
@@ -438,8 +470,28 @@ struct FamilyWire {
     name_field: String,
     #[serde(default)]
     static_query: BTreeMap<String, String>,
+    #[serde(default)]
+    config_query: BTreeMap<String, String>,
+    #[serde(default)]
+    config: Option<FamilyConfigWire>,
+    #[serde(default)]
+    read: Option<FamilyReadWire>,
     pagination: Option<PaginationWire>,
     projection: Option<ProjectionWire>,
+}
+
+#[derive(Default, Deserialize)]
+struct FamilyConfigWire {
+    #[serde(default)]
+    config_query: BTreeMap<String, String>,
+    #[serde(default)]
+    config_attributes: BTreeMap<String, String>,
+}
+
+#[derive(Default, Deserialize)]
+struct FamilyReadWire {
+    #[serde(default)]
+    path_param_fanout: BTreeMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -587,13 +639,96 @@ fn compile_family(
             &format!("family {} path must start with /", family.id),
         );
     }
-    let path_parameters_configured = family
+    let path_parameter_names = family
         .path
         .split_once('?')
         .map_or(family.path.as_str(), |(path, _)| path)
         .split('/')
         .filter_map(path_parameter)
-        .all(|parameter| config_fields.contains(parameter));
+        .collect::<BTreeSet<_>>();
+    let explicit_path_fanout = family
+        .read
+        .as_ref()
+        .map(|read| &read.path_param_fanout)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(parameter) = explicit_path_fanout
+        .keys()
+        .find(|parameter| !path_parameter_names.contains(parameter.as_str()))
+    {
+        return invalid(
+            path,
+            &format!(
+                "family {} fanout binding references unknown path parameter {parameter}",
+                family.id
+            ),
+        );
+    }
+    let path_parameters = path_parameter_names
+        .iter()
+        .filter_map(|parameter| {
+            let binding = if let Some(field) = explicit_path_fanout.get(*parameter) {
+                config_fields
+                    .contains(field.as_str())
+                    .then(|| PathParameterBinding::CsvFanout {
+                        field: field.clone(),
+                    })
+            } else {
+                config_binding(parameter, config_fields)
+            };
+            binding.map(|binding| ((*parameter).to_owned(), binding))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let path_parameters_configured = path_parameters.len() == path_parameter_names.len();
+    let mut config_query_wire = family
+        .config
+        .as_ref()
+        .map(|config| config.config_query.clone())
+        .unwrap_or_default();
+    for (parameter, field) in &family.config_query {
+        if config_query_wire
+            .insert(parameter.clone(), field.clone())
+            .is_some_and(|existing| existing != *field)
+        {
+            return invalid(
+                path,
+                &format!(
+                    "family {} defines conflicting config query parameter {parameter}",
+                    family.id
+                ),
+            );
+        }
+    }
+    let config_query = config_query_wire
+        .iter()
+        .filter_map(|(query_parameter, config_field)| {
+            config_query_binding(config_field, config_fields)
+                .map(|binding| (query_parameter.clone(), binding))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let config_query_configured = config_query.len() == config_query_wire.len();
+    let config_attributes_wire = family
+        .config
+        .as_ref()
+        .map(|config| &config.config_attributes)
+        .cloned()
+        .unwrap_or_default();
+    let mut config_attributes = config_attributes_wire
+        .iter()
+        .filter_map(|(attribute, config_field)| {
+            config_binding(config_field, config_fields)
+                .or_else(|| path_parameters.get(config_field).cloned())
+                .map(|binding| (attribute.clone(), binding))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let config_attributes_configured = config_attributes.len() == config_attributes_wire.len();
+    for (query_parameter, config_field) in &config_query_wire {
+        if let Some(binding) = config_query.get(query_parameter) {
+            config_attributes
+                .entry(config_field.clone())
+                .or_insert_with(|| binding.clone());
+        }
+    }
     let projection = family.projection.ok_or_else(|| CatalogError::Invalid {
         path: path.to_path_buf(),
         message: format!("family {} requires a projection", family.id),
@@ -633,7 +768,9 @@ fn compile_family(
     Ok(CompiledFamily {
         authoritative: generic_runtime_supported
             && provider_contract_verified
-            && path_parameters_configured,
+            && path_parameters_configured
+            && config_query_configured
+            && config_attributes_configured,
         projection_authoritative: provider_contract_verified
             && projection_class.can_be_authoritative(),
         id: nonempty(path, "family id", family.id)?,
@@ -643,7 +780,10 @@ fn compile_family(
         id_field: nonempty(path, "family id_field", family.id_field)?,
         name_field: optional(family.name_field),
         static_query: family.static_query,
+        config_query,
+        config_attributes,
         pagination: compile_pagination(path, family.pagination)?,
+        path_parameters,
         projection: Projection {
             class: projection_class,
             template,
@@ -651,6 +791,33 @@ fn compile_family(
             static_fields: projection.static_fields,
         },
     })
+}
+
+fn config_binding(requested: &str, config_fields: &BTreeSet<&str>) -> Option<PathParameterBinding> {
+    if config_fields.contains(requested) {
+        return Some(PathParameterBinding::ScalarConfig {
+            field: requested.to_owned(),
+        });
+    }
+    let plural = format!("{requested}s");
+    config_fields
+        .contains(plural.as_str())
+        .then_some(PathParameterBinding::CsvFanout { field: plural })
+}
+
+fn config_query_binding(
+    requested: &str,
+    config_fields: &BTreeSet<&str>,
+) -> Option<PathParameterBinding> {
+    let plural = format!("{requested}s");
+    if config_fields.contains(plural.as_str()) {
+        return Some(PathParameterBinding::CsvFanout { field: plural });
+    }
+    config_fields
+        .contains(requested)
+        .then(|| PathParameterBinding::OptionalScalarConfig {
+            field: requested.to_owned(),
+        })
 }
 
 fn compile_pagination(
@@ -1008,9 +1175,12 @@ mod tests {
             "appwrite",
             "azure_openai",
             "beezup",
+            "box",
             "cloudflare_workers_ai",
             "elevenlabs",
+            "fivetran",
             "google_vertex_ai",
+            "jira",
             "onelogin",
             "qdrant_cloud",
             "snyk",
@@ -1021,16 +1191,85 @@ mod tests {
                 "{source_id} has verified parameterized provider paths"
             );
         }
-        for source_id in ["airtable", "anchore", "box", "fivetran", "jira"] {
+        for source_id in ["airtable", "anchore"] {
             assert_eq!(
                 catalog.get(source_id).unwrap().authority(),
                 CollectionAuthority::ShadowOnly,
-                "{source_id} has a path parameter without a matching runtime config field"
+                "{source_id} has an unresolved request scope"
             );
         }
         assert_eq!(
             catalog.get("agiloft").unwrap().authority(),
             CollectionAuthority::ShadowOnly
+        );
+    }
+
+    #[test]
+    fn plural_config_fields_compile_to_explicit_csv_fanout_bindings() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let family = catalog
+            .get("box")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "group_memberships")
+            .unwrap();
+        assert_eq!(
+            family.path_parameters().get("group_id"),
+            Some(&PathParameterBinding::CsvFanout {
+                field: "group_ids".to_owned()
+            })
+        );
+    }
+
+    #[test]
+    fn undeclared_query_scope_cannot_become_collection_authority() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let family = catalog
+            .get("slack")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "channel_member")
+            .unwrap();
+        assert!(!family.is_authoritative());
+        assert!(family.config_query().is_empty());
+    }
+
+    #[test]
+    fn explicit_fanout_binding_maps_a_provider_slot_to_its_configured_list() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let family = catalog
+            .get("fivetran")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "connector_metadata_details")
+            .unwrap();
+        assert_eq!(
+            family.path_parameters().get("service"),
+            Some(&PathParameterBinding::CsvFanout {
+                field: "connector_services".to_owned()
+            })
+        );
+        assert_eq!(
+            family.config_attributes().get("service"),
+            family.path_parameters().get("service")
         );
     }
 
