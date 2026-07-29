@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -70,7 +73,27 @@ type Repository struct {
 	Name  string `json:"name"`
 }
 
+func ScanTime(scan Scan, fallback time.Time) time.Time {
+	for _, value := range []string{scan.CompletedAt, scan.StartedAt, scan.CreatedAt} {
+		if strings.TrimSpace(value) != "" {
+			return ParseTime(value, fallback)
+		}
+	}
+	return fallback.UTC()
+}
+
+func ParseTime(value string, fallback time.Time) time.Time {
+	if at, err := time.Parse(time.RFC3339, strings.TrimSpace(value)); err == nil {
+		return at.UTC()
+	}
+	return fallback.UTC()
+}
+
 func Get(ctx context.Context, st Settings, path string, out JSONTarget) error {
+	return GetWithQuery(ctx, st, path, nil, out)
+}
+
+func GetWithQuery(ctx context.Context, st Settings, path string, query url.Values, out JSONTarget) error {
 	requestPath, err := sourcehttp.NormalizeRequestPath(st.SourceID, st.APIPrefix+path)
 	if err != nil {
 		return err
@@ -79,6 +102,7 @@ func Get(ctx context.Context, st Settings, path string, out JSONTarget) error {
 	if err != nil {
 		return err
 	}
+	req.URL.RawQuery = query.Encode()
 	if st.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+st.Token)
 	}

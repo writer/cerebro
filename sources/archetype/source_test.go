@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -76,6 +77,252 @@ func TestSourceReadEmitsScanAndVulnerabilityEvents(t *testing.T) {
 	}
 	if got := pull.Checkpoint.GetCursorOpaque(); got != "1" {
 		t.Fatalf("checkpoint cursor = %q, want 1", got)
+	}
+}
+
+func TestSourceReadPaginatesScansWithoutSkippingCheckpointRange(t *testing.T) {
+	var scanRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/scans":
+			scanRequests++
+			if got := r.URL.Query().Get("limit"); got != strconv.Itoa(scanPageLimit) {
+				t.Fatalf("limit = %q, want %d", got, scanPageLimit)
+			}
+			before := 206
+			if raw := r.URL.Query().Get("before_id"); raw != "" {
+				var err error
+				before, err = strconv.Atoi(raw)
+				if err != nil {
+					t.Fatalf("before_id = %q: %v", raw, err)
+				}
+			}
+			scans := make([]map[string]any, 0, scanPageLimit)
+			for id := before - 1; id > 0 && len(scans) < scanPageLimit; id-- {
+				scans = append(scans, map[string]any{
+					"id":            id,
+					"repository_id": 7,
+					"status":        "completed",
+					"completed_at":  time.Date(2026, 7, 1, 0, id, 0, 0, time.UTC).Format(time.RFC3339),
+				})
+			}
+			writeJSON(t, w, scans)
+		case "/api/v1/repositories":
+			writeJSON(t, w, []map[string]any{{"id": 7, "owner": "WriterInternal", "name": "Archetype"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"family":    "scan",
+	})
+	var (
+		cursor     *cerebrov1.SourceCursor
+		checkpoint *cerebrov1.SourceCheckpoint
+		seen       = map[int]bool{}
+	)
+	for page := 0; page < 3; page++ {
+		pull, err := source.ReadWithCheckpoint(context.Background(), cfg, cursor, checkpoint)
+		if err != nil {
+			t.Fatalf("page %d ReadWithCheckpoint() error = %v", page+1, err)
+		}
+		for _, event := range pull.Events {
+			id, err := strconv.Atoi(event.GetAttributes()["scan_id"])
+			if err != nil {
+				t.Fatalf("page %d scan_id = %q: %v", page+1, event.GetAttributes()["scan_id"], err)
+			}
+			if seen[id] {
+				t.Fatalf("page %d repeated scan_id %d", page+1, id)
+			}
+			seen[id] = true
+		}
+		if page < 2 {
+			if pull.NextCursor == nil {
+				t.Fatalf("page %d NextCursor = nil", page+1)
+			}
+			if pull.Checkpoint != nil {
+				t.Fatalf("page %d checkpoint = %#v, want unadvanced", page+1, pull.Checkpoint)
+			}
+		} else {
+			if pull.NextCursor != nil {
+				t.Fatalf("terminal NextCursor = %#v, want nil", pull.NextCursor)
+			}
+			if got := pull.Checkpoint.GetCursorOpaque(); got != "205" {
+				t.Fatalf("terminal checkpoint = %q, want 205", got)
+			}
+		}
+		cursor = pull.NextCursor
+	}
+	if scanRequests != 3 {
+		t.Fatalf("scan requests = %d, want 3", scanRequests)
+	}
+	if len(seen) != 205 {
+		t.Fatalf("unique scans = %d, want 205", len(seen))
+	}
+	for id := 1; id <= 205; id++ {
+		if !seen[id] {
+			t.Fatalf("scan_id %d was skipped", id)
+		}
+	}
+}
+
+func TestSourceReadPaginationKeepsInitialHighWatermarkWhenNewScansArrive(t *testing.T) {
+	first, more, err := (sourcecdk.DescendingIDPage{
+		BaselineID:    50,
+		HighID:        205,
+		HighWatermark: time.Date(2026, 7, 1, 4, 0, 0, 0, time.UTC),
+	}).ContinuationCursor(scanPageLimit, scanPageLimit, 106, sourceID, "scan", "scan_id_desc")
+	if err != nil {
+		t.Fatalf("ContinuationCursor() error = %v", err)
+	}
+	if !more {
+		t.Fatal("ContinuationCursor() more = false")
+	}
+	state, err := sourcecdk.DescendingIDPageFrom(first, &cerebrov1.SourceCheckpoint{CursorOpaque: "50"}, sourceID, "scan_id_desc")
+	if err != nil {
+		t.Fatalf("DescendingIDPageFrom() error = %v", err)
+	}
+	if state.BaselineID != 50 || state.BeforeID != 106 || state.HighID != 205 {
+		t.Fatalf("state = %#v, want baseline 50, before 106, high 205", state)
+	}
+	if got := state.HighWatermark; !got.Equal(time.Date(2026, 7, 1, 4, 0, 0, 0, time.UTC)) {
+		t.Fatalf("high watermark = %v", got)
+	}
+}
+
+func TestSourceReadTreatsFullPageEndingAtBaselineAsTerminal(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/scans":
+			scans := make([]map[string]any, 0, scanPageLimit)
+			for id := scanPageLimit; id > 0; id-- {
+				scans = append(scans, map[string]any{
+					"id":            id,
+					"repository_id": 7,
+					"status":        "completed",
+					"completed_at":  "2026-07-01T04:00:00Z",
+				})
+			}
+			writeJSON(t, w, scans)
+		case "/api/v1/repositories":
+			writeJSON(t, w, []map[string]any{{"id": 7, "owner": "WriterInternal", "name": "Archetype"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"family":    "scan",
+	}), nil, nil)
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if pull.NextCursor != nil {
+		t.Fatalf("NextCursor = %#v, want terminal page", pull.NextCursor)
+	}
+	if got := pull.Checkpoint.GetCursorOpaque(); got != strconv.Itoa(scanPageLimit) {
+		t.Fatalf("checkpoint = %q, want %d", got, scanPageLimit)
+	}
+}
+
+func TestSourceReadFinalizesHighWatermarkAfterEmptyGapPage(t *testing.T) {
+	highWatermark := time.Date(2026, 7, 1, 4, 0, 0, 0, time.UTC)
+	cursor, more, err := (sourcecdk.DescendingIDPage{
+		BaselineID:    50,
+		HighID:        205,
+		HighWatermark: highWatermark,
+	}).ContinuationCursor(scanPageLimit, scanPageLimit, 75, sourceID, "scan", "scan_id_desc")
+	if err != nil {
+		t.Fatalf("ContinuationCursor() error = %v", err)
+	}
+	if !more {
+		t.Fatal("ContinuationCursor() more = false")
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/scans" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(t, w, []map[string]any{{"id": 49, "repository_id": 7, "status": "completed"}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"family":    "scan",
+	}), cursor, &cerebrov1.SourceCheckpoint{CursorOpaque: "50"})
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 0 || pull.NextCursor != nil {
+		t.Fatalf("pull = %#v, want terminal checkpoint-only page", pull)
+	}
+	if got := pull.Checkpoint.GetCursorOpaque(); got != "205" {
+		t.Fatalf("checkpoint = %q, want 205", got)
+	}
+	if got := pull.Checkpoint.GetWatermark().AsTime(); !got.Equal(highWatermark) {
+		t.Fatalf("checkpoint watermark = %v, want %v", got, highWatermark)
+	}
+}
+
+func TestSourceReadAdvancesExistingCheckpointToNewestScan(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/scans":
+			writeJSON(t, w, []map[string]any{
+				{"id": 52, "repository_id": 7, "status": "completed", "completed_at": "2026-07-01T04:02:00Z"},
+				{"id": 51, "repository_id": 7, "status": "completed", "completed_at": "2026-07-01T04:01:00Z"},
+				{"id": 50, "repository_id": 7, "status": "completed", "completed_at": "2026-07-01T04:00:00Z"},
+			})
+		case "/api/v1/repositories":
+			writeJSON(t, w, []map[string]any{{"id": 7, "owner": "WriterInternal", "name": "Archetype"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	pull, err := source.ReadWithCheckpoint(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"family":    "scan",
+	}), nil, &cerebrov1.SourceCheckpoint{CursorOpaque: "50"})
+	if err != nil {
+		t.Fatalf("ReadWithCheckpoint() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("events = %d, want scans 51 and 52", len(pull.Events))
+	}
+	if got := pull.Checkpoint.GetCursorOpaque(); got != "52" {
+		t.Fatalf("checkpoint = %q, want 52", got)
 	}
 }
 

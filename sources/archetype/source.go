@@ -29,6 +29,7 @@ const sourceID = "archetype"
 const (
 	defaultFanoutConcurrency = 4
 	maxFanoutConcurrency     = 16
+	scanPageLimit            = 100
 )
 
 type Source struct {
@@ -68,7 +69,7 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
-	return archetypeclient.Get(ctx, s.clientSettings(st), "/scans", new([]scanRecord))
+	return archetypeclient.GetWithQuery(ctx, s.clientSettings(st), "/scans", url.Values{"limit": {"1"}}, new([]scanRecord))
 }
 func (s *Source) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
 	return nil, nil
@@ -81,20 +82,33 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
+	pageState, err := sourcecdk.DescendingIDPageFrom(cursor, checkpoint, sourceID, "scan_id_desc")
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
 	var scans []scanRecord
 	clientSettings := s.clientSettings(st)
-	if err := archetypeclient.Get(ctx, clientSettings, "/scans", &scans); err != nil {
+	query := url.Values{"limit": {strconv.Itoa(scanPageLimit)}}
+	if pageState.BeforeID > 0 {
+		query.Set("before_id", strconv.FormatInt(pageState.BeforeID, 10))
+	}
+	if err := archetypeclient.GetWithQuery(ctx, clientSettings, "/scans", query, &scans); err != nil {
 		return sourcecdk.Pull{}, err
 	}
 	sort.Slice(scans, func(i, j int) bool { return scans[i].ID < scans[j].ID })
-	last := lastScanID(cursor, checkpoint)
+	if len(scans) > 0 {
+		pageState.CaptureHigh(int64(scans[len(scans)-1].ID), archetypeclient.ScanTime(scans[len(scans)-1], time.Now().UTC()))
+	}
 	newScans := make([]scanRecord, 0, len(scans))
 	for _, scan := range scans {
-		if scan.ID > last {
+		if int64(scan.ID) > pageState.BaselineID {
 			newScans = append(newScans, scan)
 		}
 	}
 	if len(newScans) == 0 {
+		if next := pageState.ProgressCheckpoint(); next != nil {
+			return sourcecdk.Pull{Checkpoint: next}, nil
+		}
 		return sourcecdk.NotModifiedPull(checkpoint), nil
 	}
 	repos := archetypeclient.Repositories(ctx, clientSettings)
@@ -132,8 +146,18 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 	if len(events) == 0 {
 		return sourcecdk.NotModifiedPull(checkpoint), nil
 	}
-	next := strconv.Itoa(scans[len(scans)-1].ID)
-	return sourcecdk.Pull{Events: events, Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: next, Watermark: events[len(events)-1].OccurredAt}}, nil
+	pull := sourcecdk.Pull{Events: events}
+	next, more, err := pageState.ContinuationCursor(len(scans), scanPageLimit, int64(scans[0].ID), sourceID, st.family, "scan_id_desc")
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	if more {
+		pull.NextCursor = next
+		pull.Checkpoint = checkpoint
+		return pull, nil
+	}
+	pull.Checkpoint = pageState.ProgressCheckpoint()
+	return pull, nil
 }
 func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 	st := settings{
@@ -199,11 +223,11 @@ func parseFanoutConcurrency(raw string) (int, error) {
 }
 func scanEvent(st settings, scan scanRecord, repo repositoryRecord) *primitives.Event {
 	attrs := map[string]string{"scan_id": strconv.Itoa(scan.ID), "repository_id": strconv.Itoa(scan.RepositoryID), "status": scan.Status, "owner": repo.Owner, "repo": repo.Name, "source_product": sourceID}
-	return event(st, "archetype.scan", "archetype-scan-"+strconv.Itoa(scan.ID), "archetype/scan/v1", scanTime(scan), attrs, scan)
+	return event(st, "archetype.scan", "archetype-scan-"+strconv.Itoa(scan.ID), "archetype/scan/v1", archetypeclient.ScanTime(scan, time.Now().UTC()), attrs, scan)
 }
 func vulnerabilityEvent(st settings, scan scanRecord, vuln vulnerabilityRecord, repo repositoryRecord) *primitives.Event {
 	attrs := map[string]string{"vulnerability_id": strconv.Itoa(vuln.ID), "scan_id": strconv.Itoa(vuln.ScanID), "repository_id": strconv.Itoa(scan.RepositoryID), "severity": vuln.Severity, "category": vuln.Category, "file_path": vuln.FilePath, "line_number": strconv.Itoa(vuln.LineNumber), "owner": repo.Owner, "repo": repo.Name, "source_product": sourceID}
-	return event(st, "archetype.vulnerability", "archetype-vulnerability-"+strconv.Itoa(vuln.ID), "archetype/vulnerability/v1", parseTime(vuln.CreatedAt, scanTime(scan)), attrs, vuln)
+	return event(st, "archetype.vulnerability", "archetype-vulnerability-"+strconv.Itoa(vuln.ID), "archetype/vulnerability/v1", archetypeclient.ParseTime(vuln.CreatedAt, archetypeclient.ScanTime(scan, time.Now().UTC())), attrs, vuln)
 }
 func libraryNoteEvent(st settings, scan scanRecord, entry knowledgeEntryRecord, repo repositoryRecord) *primitives.Event {
 	entry.Slug = first(entry.Slug)
@@ -236,26 +260,13 @@ func libraryNoteEvent(st settings, scan scanRecord, entry knowledgeEntryRecord, 
 		"repo":              entry.RepositoryName,
 	}
 	eventID := "archetype-library-" + strconv.Itoa(entry.RepositoryID) + "-" + url.QueryEscape(entry.Slug)
-	return event(st, "archetype.library_note", eventID, "archetype/library-note/v1", scanTime(scan), attrs, entry)
+	return event(st, "archetype.library_note", eventID, "archetype/library-note/v1", archetypeclient.ScanTime(scan, time.Now().UTC()), attrs, entry)
 }
 func event(st settings, kind, id, schema string, at time.Time, attrs map[string]string, payload any) *primitives.Event {
 	body, _ := json.Marshal(payload)
 	return &cerebrov1.EventEnvelope{Id: id, TenantId: st.tenantID, SourceId: sourceID, Kind: kind, SchemaRef: schema, OccurredAt: timestamppb.New(at), Payload: body, Attributes: compact(attrs)}
 }
-func lastScanID(cursor *cerebrov1.SourceCursor, checkpoint *cerebrov1.SourceCheckpoint) int {
-	value := first(sourcecdk.CursorToken(cursor), checkpoint.GetCursorOpaque())
-	id, _ := strconv.Atoi(value)
-	return id
-}
-func scanTime(scan scanRecord) time.Time {
-	return parseTime(first(scan.CompletedAt, scan.StartedAt, scan.CreatedAt), time.Now().UTC())
-}
-func parseTime(value string, fallback time.Time) time.Time {
-	if at, err := time.Parse(time.RFC3339, strings.TrimSpace(value)); err == nil {
-		return at.UTC()
-	}
-	return fallback.UTC()
-}
+
 func first(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
