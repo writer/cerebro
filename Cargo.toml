@@ -13,6 +13,7 @@ members = [
     "crates/platform-sdk",
     "crates/policy-catalog",
     "crates/security-lifecycle",
+    "crates/slack-authority",
     "crates/source-catalog",
     "crates/security-path-kernel",
     "crates/source-runtime-next",
@@ -61,6 +62,7 @@ cerebro-platform-engine = { version = "0.1.0", path = "crates/platform-engine" }
 cerebro-platform-sdk = { version = "0.1.0", path = "crates/platform-sdk" }
 cerebro-policy-catalog = { version = "0.1.0", path = "crates/policy-catalog" }
 cerebro-security-lifecycle = { version = "0.1.0", path = "crates/security-lifecycle" }
+cerebro-slack-authority = { version = "0.1.0", path = "crates/slack-authority" }
 cerebro-source-catalog = { version = "0.1.0", path = "crates/source-catalog" }
 cerebro-source-runtime-next = { version = "0.1.0", path = "crates/source-runtime-next" }
 cerebro-wasm-guest = { version = "0.1.0", path = "internal/wasmguest" }

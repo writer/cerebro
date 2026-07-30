@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 
 import { CerebroAskClient } from "./runtime/cerebro-ask-client.js";
+import { SlackAnswerAuthorityClient } from "./runtime/slack-answer-authority-client.js";
 
 const port = boundedPort(process.env.PORT);
 let ready = false;
@@ -17,6 +18,12 @@ const server = createServer((request, response) => {
 async function main(): Promise<void> {
   await listen(server, port);
   const client = new CerebroAskClient({
+    answerAuthority: new SlackAnswerAuthorityClient({
+      baseUrl: validatedLoopbackUrl(
+        process.env.CEREBRO_SLACK_ANSWER_AUTHORITY_URL?.trim()
+          || "http://127.0.0.1:8091",
+      ),
+    }),
     apiKey: required(process.env.CEREBRO_READ_API_KEY),
     baseUrl: validatedBaseUrl(required(process.env.CEREBRO_BASE_URL)),
     tenantId: required(process.env.CEREBRO_TENANT_ID),
@@ -63,6 +70,15 @@ function validatedBaseUrl(value: string): string {
   parsed.search = "";
   parsed.hash = "";
   return parsed.toString().replace(/\/$/, "");
+}
+
+function validatedLoopbackUrl(value: string): string {
+  const baseUrl = validatedBaseUrl(value);
+  const parsed = new URL(baseUrl);
+  if (parsed.protocol !== "http:" || (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost")) {
+    throw new Error("The Rust Slack answer authority must use a loopback HTTP binding.");
+  }
+  return baseUrl;
 }
 
 function boundedPort(value: string | undefined): number {
