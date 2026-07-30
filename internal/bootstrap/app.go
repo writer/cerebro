@@ -1854,7 +1854,7 @@ var knowledgeErrorMappings = []bootstrapErrorMapping{
 
 var graphQueryErrorMappings = []bootstrapErrorMapping{
 	{match: matchesAnyError(ports.ErrGraphEntityNotFound), httpStatus: http.StatusNotFound, code: connect.CodeNotFound},
-	{match: matchesAnyError(graphquery.ErrRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
+	{match: matchesAnyError(graphquery.ErrRuntimeUnavailable, ports.ErrGraphRuntimeUnavailable), httpStatus: http.StatusServiceUnavailable, code: connect.CodeUnavailable},
 	{match: matchesAnyError(graphquery.ErrInvalidRequest, errInvalidHTTPRequest), httpStatus: http.StatusBadRequest, code: connect.CodeInvalidArgument},
 }
 var graphIngestErrorMappings = []bootstrapErrorMapping{

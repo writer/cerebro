@@ -102,39 +102,50 @@ same redaction and expiry policy as saved notes.
 
 ### Working-state hillclimb
 
-`npm run --silent eval:hillclimb` runs offline and emits only its JSON receipt.
-It builds locally, starts the evaluator
-with Node's permission boundary, grants read access only to the package, and
-denies network access, child processes, workers, native addons, and filesystem
-writes. A runtime guard covers Node versions whose permission model does not
-deny network access directly. The command probes fetch, DNS, TCP, TLS, HTTP,
-HTTP/2, datagram, and child-process access before loading the corpus or
-candidate, then records the result in `offline_execution`.
+`npm run --silent eval:hillclimb` runs the public-safe corpus locally while
+calling AWS Bedrock for every baseline answer, candidate answer, and judge
+decision. It does not read Slack or mutate a production conversation. The
+default generator and judge are both the Opus 4.8 geo-inference profile bound
+to Cerebro's deployed sec-dev services:
 
-The evaluator replays the prior no-state policy and the working-state candidate
-against the same public-safe corpus. The corpus has separate held-out and shadow
-partitions and includes continuation, repeated retry, expiry, and
-bounded-eviction cases. The command prints a machine-readable receipt and exits
-non-zero unless the offline boundary is active and the candidate:
+```sh
+AWS_PROFILE=cerebro-sec-dev \
+CEREBRO_SLACK_HILLCLIMB_REGION=us-east-1 \
+npm run --silent eval:hillclimb
+```
 
-- satisfies the required, forbidden, and authority-labelling state contract for
-  every case (semantic state correctness);
-- recalls every required governing request, outcome, and blocker;
-- retains every evidence instruction and source-failure fact supplied by the
-  prior turns;
-- reduces the measured restatement-risk proxy to zero with at least a 0.50
-  recall gain over baseline;
-- keeps working state explicitly unverified;
-- introduces no case regression or context-size violation; and
-- builds context within a 5 ms p95 budget.
+The AWS identity running the command must have `bedrock:InvokeModel` for
+`us.anthropic.claude-opus-4-8`. The harness accepts explicit generator and
+judge overrides only for another AWS-hosted Claude Opus model; it never falls
+back to Nova or a local model.
 
-The receipt names five bounded dimensions: semantic state-contract correctness,
-continuity recall, evidence-context retention, context-build latency, and
-expected restatement burden. These measure whether the reasoning boundary
-receives the state needed to resolve a follow-up. They do not claim that a
-language-model answer is correct or that retained evidence was cited.
-Delivered-answer grounding and evidence use remain gated by the independent
-assistant-turn evaluation and outcome receipts described above.
+The evaluator sends each current request to the same hosted generator twice:
+once without retained state and once with the working-state candidate. A
+separate hosted judge scores both answers together so the rubric and judge
+version are identical for the pair. Opus 4.8 uses its AWS provider-default
+sampling because the model rejects the deprecated temperature parameter. The
+JSON receipt records that choice and binds the corpus digest, AWS region,
+generator and judge model IDs, answer text and digests, provider request IDs,
+token use, inference latency, rubric scores, and promotion decision. Missing
+credentials, unavailable models, malformed model responses, and malformed
+judge scores fail closed.
+
+The corpus has separate held-out and shadow partitions and includes
+continuation, repeated retry, expiry, bounded-eviction, and self-status cases.
+Promotion requires the hosted candidate to:
+
+- reach at least 0.90 semantic state correctness, continuity recall, and
+  evidence-context retention;
+- keep the unverified-state authority boundary on every case;
+- keep expected restatement burden at or below 0.10 per case;
+- gain at least 0.25 continuity recall over the hosted baseline;
+- introduce no case regression; and
+- keep candidate inference latency within a 10-second p95 budget.
+
+`npm run --silent eval:hillclimb:structural` retains the air-gapped structural
+preflight. It proves the local context policy, expiry, byte limit, and offline
+execution boundary, but it is not a model hillclimb and cannot authorize
+promotion by itself.
 
 Durable schedule definitions keep a stable schedule identity, revision, work
 digest, cadence anchor, and misfire policy. The portable planner derives the

@@ -27,7 +27,7 @@ var (
 )
 
 type Engine struct {
-	store ports.GraphQueryStore
+	store ports.RawCypherQueryStore
 	depth int
 }
 
@@ -103,7 +103,7 @@ type NodeRef struct {
 	Label      string `json:"label"`
 }
 
-func New(store ports.GraphQueryStore) *Engine {
+func New(store ports.RawCypherQueryStore) *Engine {
 	return &Engine{store: store, depth: DefaultDepth}
 }
 

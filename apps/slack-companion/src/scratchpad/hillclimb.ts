@@ -197,9 +197,7 @@ export function evaluateSlackWorkingStateCase(
 ): SlackWorkingStateEvalResultV1 {
   validateCase(evalCase);
   const startedAt = performance.now();
-  const context = policy === "candidate"
-    ? candidateContext(evalCase.prior_turns, evalCase.read_after_ms ?? 0)
-    : undefined;
+  const context = renderSlackWorkingStateContext(evalCase, policy);
   const contextBuildMs = performance.now() - startedAt;
   const rendered = context ?? "";
   const recalledRequiredCount = evalCase.required_context.filter((fragment) =>
@@ -240,6 +238,16 @@ export function evaluateSlackWorkingStateCase(
     required_context_count: evalCase.required_context.length,
     schema_version: "slack-working-state-eval-result/v1",
   });
+}
+
+export function renderSlackWorkingStateContext(
+  evalCase: SlackWorkingStateEvalCaseV1,
+  policy: SlackWorkingStatePolicy,
+): string | undefined {
+  validateCase(evalCase);
+  return policy === "candidate"
+    ? candidateContext(evalCase.prior_turns, evalCase.read_after_ms ?? 0)
+    : undefined;
 }
 
 function candidateContext(

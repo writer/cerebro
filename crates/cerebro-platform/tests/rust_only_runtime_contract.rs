@@ -10,6 +10,7 @@ const WORKSPACE_MANIFEST: &str = include_str!("../../../Cargo.toml");
 const WORKSPACE_LOCK: &str = include_str!("../../../Cargo.lock");
 const MAKEFILE: &str = include_str!("../../../Makefile");
 const RUST_CODEGEN: &str = include_str!("../../../buf.gen.rust.yaml");
+const QUALIFICATION_SCRIPT: &str = include_str!("../../../scripts/qualify-rust-graph.sh");
 const CONNECTRPC_REVISION: &str = "8b3c3b05d3b54af547477a9e3b3a77d62f68e229";
 const BUFFA_VERSION: &str = "0.9.1";
 
@@ -32,6 +33,17 @@ fn rust_runtime_image_has_no_go_executable_path() {
     );
     for required in [
         "cerebro-platform --bin cerebro-platform",
+        "ADD --checksum=sha256:e5bb2084ccf45087bda1c9bffdea0eb15ee67f0b91646106e466714f9de3c7e3",
+        "https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem",
+        "apk add --no-cache ca-certificates openssl",
+        "/usr/local/share/ca-certificates/aws-rds-root-%03d.crt",
+        "if (certificate != 108) exit 1",
+        "test \"${subject#subject=}\" = \"${issuer#issuer=}\" || exit 1",
+        "openssl verify -CAfile \"${certificate}\" \"${certificate}\" || exit 1",
+        "CN=Amazon RDS \"*\" Root CA RSA2048 G1",
+        "CN=Amazon RDS \"*\" Root CA RSA4096 G1",
+        "CN=Amazon RDS \"*\" Root CA ECC384 G1",
+        "update-ca-certificates",
         "/usr/local/bin/cerebro-event-admission-worker",
         "/usr/local/bin/cerebro-platform",
         "ENTRYPOINT [\"/usr/local/bin/cerebro-platform\"]",
@@ -43,6 +55,21 @@ fn rust_runtime_image_has_no_go_executable_path() {
             "Rust runtime Dockerfile is missing {required:?}"
         );
     }
+    for forbidden in [
+        "danger_accept_invalid_certs",
+        "danger_accept_invalid_hostnames",
+        "sslmode=disable",
+    ] {
+        assert!(
+            !DOCKERFILE.contains(forbidden),
+            "Rust runtime Dockerfile weakens TLS verification with {forbidden:?}"
+        );
+    }
+    assert_eq!(
+        DOCKERFILE.matches("-nameopt RFC2253)\" || exit 1").count(),
+        2,
+        "Rust runtime must fail closed when either certificate identity cannot be parsed"
+    );
 }
 
 fn contains_word_pair(input: &str, first: &str, second: &str) -> bool {
@@ -86,6 +113,35 @@ fn rust_candidate_build_never_invokes_go_or_emulation() {
         assert!(
             WORKFLOW.contains(required),
             "Rust-only candidate workflow is missing {required:?}"
+        );
+    }
+}
+
+#[test]
+fn graph_qualification_stays_on_retired_rust_authority_path() {
+    for required in [
+        "export CEREBRO_RUST_READ_MODE=authority",
+        "cmp \"${output_dir}/authority-graph-response-after-restart.canonical.json\"",
+        "assert_status 503 graph-authority-without-rust",
+    ] {
+        assert!(
+            QUALIFICATION_SCRIPT.contains(required),
+            "Rust graph qualification is missing retired authority setup {required:?}"
+        );
+    }
+    for forbidden in [
+        "CEREBRO_RUST_READ_MODE=canary",
+        "go_canary",
+        "rust_canary",
+        "CEREBRO_RUST_CANARY_API_KEYS",
+        "stable_authority_canary",
+        "verified_canary_restart",
+        "canary_legacy_isolation",
+        "canary_rust_fail_closed",
+    ] {
+        assert!(
+            !QUALIFICATION_SCRIPT.contains(forbidden),
+            "Rust graph qualification retained removed Go canary setup {forbidden:?}"
         );
     }
 }

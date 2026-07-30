@@ -17,7 +17,7 @@ on:
           - source
           - published
       soak_seconds:
-        description: Sustained shadow-read exercise duration (60-1800 seconds)
+        description: Sustained Rust-authority read exercise duration (60-1800 seconds)
         required: false
         default: 60
         type: number
