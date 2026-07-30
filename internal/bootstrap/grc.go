@@ -1392,9 +1392,7 @@ func writeGRCError(w http.ResponseWriter, err error) {
 func grcHTTPStatusCode(err error) int {
 	statusCode := http.StatusInternalServerError
 	switch {
-	case errors.Is(err, errTenantForbidden):
-		statusCode = http.StatusForbidden
-	case errors.Is(err, errScopeForbidden):
+	case errors.Is(err, errTenantForbidden), errors.Is(err, errScopeForbidden):
 		statusCode = http.StatusForbidden
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
 		errors.Is(err, ports.ErrFindingNotFound),
