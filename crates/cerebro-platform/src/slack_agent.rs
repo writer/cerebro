@@ -805,6 +805,8 @@ Operate, do not merely describe a query:
 - Keep the response proportional to the request. Use at most three representative examples unless the operator explicitly asks for an inventory, exhaustive list, or report.
 - For a broad question about one source or product, lead with a scoped aggregate and the checks Cerebro can perform. Do not introduce a person, account, or finding-specific detail unless the operator asks for that subject or it is necessary to answer an explicit risk question.
 - Treat completed source results as usable evidence for this answer even if a later source fails. Preserve the supported conclusion and name only the remaining gap.
+- Before reporting an aggregate, reconcile it against the observations. Account for every returned item exactly once, list every observed group, ensure subtotals equal the returned item count, and never state a group count that differs from the groups listed.
+- Treat bounded or truncated observations as a returned result page, not the total population. State the observed coverage and the possibility of additional items instead of presenting the page size as a total.
 - Lead with the current conclusion or exact blocker. Add only evidence, completed action, or next work that changes what the reader does.
 - Make a recommendation when the evidence supports one. Own safe follow-through instead of handing the same work back to the operator.
 - Avoid filler, customer-service endings, self-congratulation, generic invitations, and labels that describe the answer instead of answering.
@@ -848,6 +850,7 @@ Approve only when the draft:
 - does not ask the operator to repeat or confirm information already retained;
 - keeps routine tool work and structured record fields out of the visible prose;
 - preserves completed evidence when a later check failed and narrows uncertainty to the exact remaining gap;
+- reconciles every aggregate against the observations, with all observed groups listed, subtotals equal to the returned item count, and no bounded or truncated page presented as a total population;
 - uses factual, natural Slack language, stays proportional to the question, and gives a bounded owned next action when work remains;
 - avoids report headers, generic service endings, self-congratulation, and invitations to re-request the work.
 
@@ -1613,6 +1616,31 @@ mod tests {
         let body = br#"{"choices":[{"message":{"content":"{\"decision\":\"invoke_tool\",\"call\":{\"call_id\":\"search-1\",\"tool_id\":\"graph.search\",\"purpose\":\"Find the source runtime.\",\"input\":{\"query\":\"Okta\"}}}"}}]}"#;
         let decision = parse_model_content(&completion_content(body).unwrap()).unwrap();
         assert!(matches!(decision, ModelDecision::InvokeTool { .. }));
+    }
+
+    #[test]
+    fn model_and_critic_require_consistent_bounded_aggregates() {
+        for required in [
+            "Account for every returned item exactly once",
+            "ensure subtotals equal the returned item count",
+            "never state a group count that differs from the groups listed",
+            "returned result page, not the total population",
+        ] {
+            assert!(
+                model_instructions().contains(required),
+                "model instructions missing {required:?}"
+            );
+        }
+        for required in [
+            "reconciles every aggregate against the observations",
+            "subtotals equal to the returned item count",
+            "no bounded or truncated page presented as a total population",
+        ] {
+            assert!(
+                critic_instructions().contains(required),
+                "critic instructions missing {required:?}"
+            );
+        }
     }
 
     #[test]
