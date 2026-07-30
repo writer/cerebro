@@ -18,11 +18,12 @@ const (
 	slackConversationCriticMaxTokens = 65536
 	slackConversationDraftMaxTokens  = 65536
 	slackConversationRouterMaxTokens = 32768
-	slackLookupPlannerMaxTokens      = 65536
-	slackLookupSynthesisMaxTokens    = 65536
+	slackLookupGenerationMaxTokens   = 65536
+	slackLookupPlannerMaxTokens      = slackLookupGenerationMaxTokens
+	slackLookupSynthesisMaxTokens    = slackLookupGenerationMaxTokens
 )
 
-var errSlackConversationRouteUnavailable = errors.New("Slack conversation route is unavailable")
+var errSlackConversationRouteUnavailable = errors.New("slack conversation route is unavailable")
 
 var slackConversationPolicyChecks = []string{
 	"capability_scope_bounded",
@@ -179,7 +180,7 @@ func (s *Service) routeSlackTurn(
 		return route, attempt, nil
 	}
 	return slackTurnRoute{}, maxSlackConversationRouterRounds, fmt.Errorf(
-		"%w: %v",
+		"%w: %w",
 		errSlackConversationRouteUnavailable,
 		lastErr,
 	)

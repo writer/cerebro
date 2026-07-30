@@ -194,7 +194,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 			Question:  strings.TrimSpace(request.Question),
 			ScopeURN:  strings.TrimSpace(request.ScopeURN),
 			Model:     model,
-			MaxTokens: generationTokensForSurface(request.Surface, slackLookupPlannerMaxTokens),
+			MaxTokens: generationTokensForSurface(request.Surface),
 			History:   history,
 			MaxRows:   defaultMaxRows,
 			Schema:    graphAgentSchemaHint,
@@ -322,9 +322,9 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	return err
 }
 
-func generationTokensForSurface(surface string, slackTokens int) int {
+func generationTokensForSurface(surface string) int {
 	if strings.TrimSpace(surface) == slackSurface {
-		return slackTokens
+		return slackLookupGenerationMaxTokens
 	}
 	return 0
 }
