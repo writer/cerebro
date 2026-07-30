@@ -66,6 +66,22 @@ Do not run the forward projector at the same time. Historical replay after a
 newer forward event could regress current state; event-receipt idempotency does
 not prove stale-event rejection.
 
+If a replay has recorded any rejected message, retain that consumer run as
+failed audit evidence. A later candidate cannot turn its cumulative rejected
+counter back to zero. Retry the same immutable fence from its original
+`first_sequence` with a new consumer name and run ID, for example
+`organizational-graph-replay-sec-dev-cutover-v2` and `sec-dev-cutover-v2`.
+Do not delete or reset the failed run or its durable.
+
+Replay recognizes a bounded set of pre-canonical historical records as explicit
+skips: the legacy `asset.data_sensitivity` kind, invalid historical observation
+IDs for `gcp.iam_role_assignment`, `gcp.effective_permission`, and
+`aws.public_endpoint`, the catalog-owned `cerebro.health.jetstream_canary`
+without a source envelope, and the retired `okta.threat_insight` family. This
+compatibility applies only in replay mode. The forward consumer continues to
+reject every one of these shapes. Inspect the completed run and review the
+per-source-family skipped counters as the durable evidence for these records.
+
 ## Start the forward durable after replay
 
 After the replay receipt is `completed`, capture the stream state again. Fail
