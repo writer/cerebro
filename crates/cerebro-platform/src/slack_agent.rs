@@ -590,65 +590,41 @@ fn final_draft_schema() -> Value {
 
 fn model_decision_schema() -> Value {
     json!({
-        "oneOf": [
-            {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "decision": {"type": "string", "enum": ["invoke_tool", "finish"]},
+            "call": {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                    "decision": {"type": "string", "enum": ["invoke_tool"]},
-                    "call": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                            "call_id": {"type": "string", "minLength": 1},
-                            "tool_id": {"type": "string", "minLength": 1},
-                            "purpose": {"type": "string", "minLength": 1},
-                            "input": {"type": "object"}
-                        },
-                        "required": ["call_id", "tool_id", "purpose", "input"]
-                    }
+                    "call_id": {"type": "string", "minLength": 1},
+                    "tool_id": {"type": "string", "minLength": 1},
+                    "purpose": {"type": "string", "minLength": 1},
+                    "input": {"type": "object"}
                 },
-                "required": ["decision", "call"]
+                "required": ["call_id", "tool_id", "purpose", "input"]
             },
-            {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                    "decision": {"type": "string", "enum": ["finish"]},
-                    "draft": final_draft_schema()
-                },
-                "required": ["decision", "draft"]
-            }
-        ]
+            "draft": final_draft_schema()
+        },
+        "required": ["decision"]
     })
 }
 
 fn critique_decision_schema() -> Value {
     json!({
-        "oneOf": [
-            {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                    "decision": {"type": "string", "enum": ["approve"]}
-                },
-                "required": ["decision"]
-            },
-            {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                    "decision": {"type": "string", "enum": ["revise"]},
-                    "issues": {
-                        "type": "array",
-                        "minItems": 1,
-                        "maxItems": 16,
-                        "items": {"type": "string", "minLength": 1}
-                    }
-                },
-                "required": ["decision", "issues"]
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "decision": {"type": "string", "enum": ["approve", "revise"]},
+            "issues": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 16,
+                "items": {"type": "string", "minLength": 1}
             }
-        ]
+        },
+        "required": ["decision"]
     })
 }
 
