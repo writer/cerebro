@@ -414,6 +414,25 @@ test("thread context resolves a deictic mention without treating quoted text as 
   assert.doesNotMatch(history[0]!.content, /<@BOT>/u);
 });
 
+test("thread context bounds non-ASCII content by UTF-8 bytes", () => {
+  const context = formatSlackThreadContext([
+    {
+      text: "🙂".repeat(300_000),
+      ts: "1710000000.000001",
+      user: "U-ONE",
+    },
+  ], "1710000000.000002");
+
+  assert.ok(context);
+  assert.ok(Buffer.byteLength(context, "utf8") <= 1_048_000);
+  assert.doesNotMatch(context, /\uFFFD/u);
+
+  const history = contextualHistory(context, "證據".repeat(300_000));
+  assert.equal(history.length, 1);
+  assert.ok(Buffer.byteLength(history[0]!.content, "utf8") <= 1 << 20);
+  assert.doesNotMatch(history[0]!.content, /\uFFFD/u);
+});
+
 test("Slack delivery references satisfy the opaque URI contract", () => {
   const references = slackDeliveryReferences(
     "T-ONE",

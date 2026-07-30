@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -1155,6 +1156,29 @@ func TestNormalizeHistoryKeepsNewestMessagesWithinOneMiB(t *testing.T) {
 	}
 	if got := len(normalized[0].Content) + len(normalized[1].Content); got != 1<<20 {
 		t.Fatalf("normalized history bytes = %d, want %d", got, 1<<20)
+	}
+}
+
+func TestNormalizeHistoryPreservesUTF8AtByteLimit(t *testing.T) {
+	history := []HistoryMessage{
+		{Role: "user", Content: strings.Repeat("🙂", 262_145)},
+		{Role: "assistant", Content: "newest"},
+	}
+	normalized := normalizeHistory(history)
+	if len(normalized) != 2 {
+		t.Fatalf("normalized history length = %d, want 2", len(normalized))
+	}
+	for index, item := range normalized {
+		if !utf8.ValidString(item.Content) {
+			t.Fatalf("normalized history item %d contains invalid UTF-8", index)
+		}
+	}
+	totalBytes := len(normalized[0].Content) + len(normalized[1].Content)
+	if totalBytes > 1<<20 {
+		t.Fatalf("normalized history bytes = %d, want <= %d", totalBytes, 1<<20)
+	}
+	if strings.Contains(normalized[0].Content, "\uFFFD") {
+		t.Fatal("normalized history introduced a replacement character")
 	}
 }
 

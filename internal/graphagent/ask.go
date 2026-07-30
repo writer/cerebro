@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/writer/cerebro/internal/agentplatform"
 	"github.com/writer/cerebro/internal/ports"
@@ -1438,16 +1439,12 @@ func normalizeHistory(history []HistoryMessage) []HistoryMessage {
 		if content == "" {
 			continue
 		}
-		if len(content) > maxHistoryItemBytes {
-			content = content[:maxHistoryItemBytes]
-		}
+		content = truncateUTF8Bytes(content, maxHistoryItemBytes)
 		remaining := maxHistoryTotalBytes - totalBytes
 		if remaining <= 0 {
 			break
 		}
-		if len(content) > remaining {
-			content = content[:remaining]
-		}
+		content = truncateUTF8Bytes(content, remaining)
 		reversed = append(reversed, HistoryMessage{Role: role, Content: content})
 		totalBytes += len(content)
 	}
@@ -1456,6 +1453,20 @@ func normalizeHistory(history []HistoryMessage) []HistoryMessage {
 		result[len(reversed)-1-index] = reversed[index]
 	}
 	return result
+}
+
+func truncateUTF8Bytes(value string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(value) <= maxBytes {
+		return value
+	}
+	end := maxBytes
+	for end > 0 && !utf8.RuneStart(value[end]) {
+		end--
+	}
+	return value[:end]
 }
 
 func newTraceID() string {
