@@ -115,6 +115,11 @@ jobs:
             -e CEREBRO_NEO4J_PASSWORD=local-password \
             -e 'CEREBRO_POSTGRES_DSN=postgres://cerebro:cerebro@cerebro-rust-graph-postgres:5432/cerebro?sslmode=disable' \
             -e CEREBRO_JETSTREAM_URL=nats://cerebro-rust-graph-nats:4222 \
+            -e CEREBRO_ORGANIZATIONAL_CONSUMER_MODE=forward \
+            -e CEREBRO_ORGANIZATIONAL_CONSUMER_NAME=organizational-graph-v1 \
+            -e CEREBRO_ORGANIZATIONAL_CONSUMER_RUN_ID=forward-organizational-graph-v1 \
+            -e CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY=by_start_sequence \
+            -e CEREBRO_ORGANIZATIONAL_CONSUMER_START_SEQUENCE=1 \
             -e CEREBRO_RUST_BIND=0.0.0.0:8080 \
             -e CEREBRO_REPOSITORY_ROOT=/app \
             -e CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET="${GRAPH_SECRET}" \
