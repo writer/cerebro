@@ -144,6 +144,15 @@ describe("real-service E2E isolation", () => {
     expect(runner).toContain("CEREBRO_EVENT_ADMISSION_WORKER: eventAdmissionBinary");
   });
 
+  it("routes product graph reads through the Rust authority", async () => {
+    const runnerPath = fileURLToPath(new URL("./local-grc-e2e.mjs", import.meta.url));
+    const runner = await readFile(runnerPath, "utf8");
+    expect(runner).toContain('"serve-neo4j-readonly"');
+    expect(runner).toContain("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL: rustGraphBase");
+    expect(runner).toContain('CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE: "authority"');
+    expect(runner).toContain("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: rustGraphSharedSecret");
+  });
+
   it("requires visible seeded data and a successful API response in Chromium", () => {
     expect(browserDataContract("/risk-inbox")).toEqual({
       apiPath: "/api/cerebro/grc/findings",
