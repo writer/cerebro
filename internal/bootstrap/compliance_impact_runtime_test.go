@@ -35,6 +35,21 @@ func TestComplianceImpactServiceComposition(t *testing.T) {
 	}
 }
 
+func TestComplianceImpactUsesConfiguredReadAuthority(t *testing.T) {
+	t.Parallel()
+	app := &App{deps: Dependencies{
+		StateStore:   &monitorStateStub{},
+		GraphStore:   &projectionOnlyImpactGraphStub{},
+		GraphQueries: &queryOnlyImpactGraphStub{},
+		AppendLog:    bootstrapAppendOnlyLog{},
+	}}
+
+	monitors, projector, scheduler := app.newComplianceImpactServices(nil, nil)
+	if monitors == nil || projector == nil || scheduler == nil {
+		t.Fatalf("configured authority composition monitors=%v projector=%v scheduler=%v", monitors != nil, projector != nil, scheduler != nil)
+	}
+}
+
 func TestScheduledAssessmentRequesterCreatesCanonicalRun(t *testing.T) {
 	t.Parallel()
 	store := newAssessmentHTTPStore()
@@ -85,3 +100,15 @@ type impactGraphStub struct {
 }
 
 func (*impactGraphStub) Ping(context.Context) error { return nil }
+
+type projectionOnlyImpactGraphStub struct {
+	ports.ProjectionGraphStore
+}
+
+func (*projectionOnlyImpactGraphStub) Ping(context.Context) error { return nil }
+
+type queryOnlyImpactGraphStub struct {
+	ports.GraphQueryStore
+}
+
+func (*queryOnlyImpactGraphStub) Ping(context.Context) error { return nil }

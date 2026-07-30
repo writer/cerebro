@@ -418,6 +418,20 @@ func TestPrepareGRCReadModelsSkipsStoresWithoutPreparer(t *testing.T) {
 	}
 }
 
+func TestDependencyGraphQueryStorePrefersConfiguredAuthority(t *testing.T) {
+	legacy := &graphTestStore{}
+	authority := &graphTestStore{}
+	deps := bootstrap.Dependencies{GraphStore: legacy, GraphQueries: authority}
+
+	if got := dependencyGraphQueryStore(deps); got != authority {
+		t.Fatalf("dependencyGraphQueryStore() = %#v, want configured authority", got)
+	}
+	deps.GraphQueries = nil
+	if got := dependencyGraphQueryStore(deps); got != legacy {
+		t.Fatalf("dependencyGraphQueryStore() fallback = %#v, want compatibility store", got)
+	}
+}
+
 func TestPrepareGRCReadModelsCallsPreparer(t *testing.T) {
 	store := &preparingStateStore{}
 	if err := prepareGRCReadModels(context.Background(), store); err != nil {

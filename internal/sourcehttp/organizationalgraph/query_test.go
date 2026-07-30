@@ -2,8 +2,10 @@ package organizationalgraph
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,6 +26,10 @@ import (
 type queryStoreStub struct {
 	neighborhood *ports.EntityNeighborhood
 	err          error
+}
+
+type rawCypherOnlyStub struct {
+	rows []ports.CypherRow
 }
 
 type countingQueryStoreStub struct {
@@ -70,6 +76,12 @@ func newGraphTestServer(t *testing.T, service graphServiceStub) *httptest.Server
 }
 
 func (s queryStoreStub) Ping(context.Context) error { return s.err }
+
+func (s rawCypherOnlyStub) Ping(context.Context) error { return nil }
+
+func (s rawCypherOnlyStub) ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	return s.rows, nil
+}
 
 func (s queryStoreStub) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
 	return s.neighborhood, nil
@@ -181,6 +193,65 @@ func TestQueryStoreReturnsRustNeighborhoodAndDelegatesRawCypher(t *testing.T) {
 	rows, err := store.ExecuteReadCypher(context.Background(), ports.CypherQueryRequest{Query: "RETURN 1"})
 	if err != nil || len(rows) != 1 || rows[0].Values["authority"] != "go" {
 		t.Fatalf("ExecuteReadCypher() = %#v, %v", rows, err)
+	}
+}
+
+func TestAuthorityKeepsRawCypherWithoutGoTypedReads(t *testing.T) {
+	server := newGraphTestServer(t, graphServiceStub{
+		expand: func(_ context.Context, request *connect.Request[cerebrographv1.ExpandRequest]) (*connect.Response[cerebrographv1.ExpandResponse], error) {
+			return connect.NewResponse(&cerebrographv1.ExpandResponse{
+				TenantId: request.Msg.GetTenantId(),
+				Root: &cerebrographv1.GraphEntity{
+					EntityId:   "rust-root",
+					AgentKey:   request.Msg.GetRootKey(),
+					EntityKind: "resource",
+					Label:      "Rust",
+				},
+			}), nil
+		},
+	})
+	defer server.Close()
+
+	raw := rawCypherOnlyStub{rows: []ports.CypherRow{{Values: map[string]any{"compatibility": "go"}}}}
+	store, err := NewConfiguredQueryStoreWithCompatibility(
+		nil,
+		raw,
+		server.URL,
+		testSharedSecret,
+		time.Second,
+		"authority",
+		0,
+		0,
+		0,
+	)
+	if err != nil {
+		t.Fatalf("NewConfiguredQueryStoreWithCompatibility() error = %v", err)
+	}
+	root := "urn:cerebro:tenant-a:resource:one"
+	neighborhood, err := store.GetEntityNeighborhood(context.Background(), root, 10)
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhood() error = %v", err)
+	}
+	if neighborhood.Root == nil || neighborhood.Root.URN != root || neighborhood.Root.Label != "Rust" {
+		t.Fatalf("GetEntityNeighborhood() = %#v", neighborhood)
+	}
+	rows, err := store.ExecuteReadCypher(context.Background(), ports.CypherQueryRequest{Query: "RETURN 1"})
+	if err != nil || len(rows) != 1 || rows[0].Values["compatibility"] != "go" {
+		t.Fatalf("ExecuteReadCypher() = %#v, %v", rows, err)
+	}
+
+	if _, err := NewConfiguredQueryStoreWithCompatibility(
+		nil,
+		raw,
+		server.URL,
+		testSharedSecret,
+		time.Second,
+		"legacy",
+		0,
+		0,
+		0,
+	); err == nil {
+		t.Fatal("legacy mode without Go typed reads error = nil")
 	}
 }
 
@@ -654,26 +725,31 @@ func TestCanaryQueryStoreRequiresCompatibilityAndBoundedSampling(t *testing.T) {
 	}
 }
 
-func TestCanaryQueryStoreReadinessUsesCompatibilityAuthority(t *testing.T) {
+func TestCanaryQueryStoreReadinessRequiresBothAuthorities(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
 	store, err := NewCanaryQueryStore(
 		queryStoreStub{},
-		"http://127.0.0.1:1",
+		server.URL,
 		testSharedSecret,
-		10*time.Millisecond,
+		time.Second,
 		50,
 	)
 	if err != nil {
 		t.Fatalf("NewCanaryQueryStore() error = %v", err)
 	}
 	if err := store.Ping(context.Background()); err != nil {
-		t.Fatalf("Ping() error = %v, canary readiness must keep the compatibility cohort available", err)
+		t.Fatalf("Ping() error = %v, canary readiness requires both cohorts", err)
 	}
 
 	store, err = NewCanaryQueryStore(
 		queryStoreStub{err: errors.New("compatibility unavailable")},
-		"http://127.0.0.1:1",
+		server.URL,
 		testSharedSecret,
-		10*time.Millisecond,
+		time.Second,
 		50,
 	)
 	if err != nil {
@@ -705,7 +781,7 @@ func waitForRequestCount(t *testing.T, store *countingQueryStoreStub, want int) 
 	}
 }
 
-func TestQueryStoreHealthRequiresRustAndChecksCompatibilityWhenPresent(t *testing.T) {
+func TestAuthorityHealthRequiresOnlyRust(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
@@ -747,11 +823,11 @@ func TestQueryStoreHealthRequiresRustAndChecksCompatibilityWhenPresent(t *testin
 	if err != nil {
 		t.Fatalf("NewQueryStore(failing compatibility) error = %v", err)
 	}
-	if err := store.Ping(context.Background()); err == nil {
-		t.Fatal("Ping(failing compatibility) error = nil")
+	if err := store.Ping(context.Background()); err != nil {
+		t.Fatalf("Ping(failing compatibility) error = %v, Rust authority must not depend on Go health", err)
 	}
-	if requests != 2 {
-		t.Fatalf("health requests after compatibility failure = %d, want 2", requests)
+	if requests != 3 {
+		t.Fatalf("health requests after compatibility failure = %d, want 3", requests)
 	}
 
 	compatibility := queryStoreStub{}
@@ -760,6 +836,76 @@ func TestQueryStoreHealthRequiresRustAndChecksCompatibilityWhenPresent(t *testin
 	}
 	if got := ReadinessStore(compatibility, store); got != store {
 		t.Fatalf("ReadinessStore(compatibility, authority) = %#v", got)
+	}
+}
+
+func TestLegacyModeIsExplicitGoAuthorityAndDoesNotCallRust(t *testing.T) {
+	rustRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		rustRequests++
+		http.Error(w, "must not be called", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	legacy := &countingQueryStoreStub{
+		queryStoreStub: queryStoreStub{
+			neighborhood: &ports.EntityNeighborhood{Root: &ports.NeighborhoodNode{URN: "legacy"}},
+		},
+	}
+	store, err := NewConfiguredQueryStore(
+		legacy,
+		server.URL,
+		testSharedSecret,
+		time.Second,
+		"legacy",
+		0,
+		0,
+		0,
+	)
+	if err != nil {
+		t.Fatalf("NewConfiguredQueryStore(legacy) error = %v", err)
+	}
+	if err := store.Ping(context.Background()); err != nil {
+		t.Fatalf("Ping(legacy) error = %v", err)
+	}
+	got, err := store.GetEntityNeighborhood(context.Background(), "urn:cerebro:tenant-a:resource:one", 10)
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhood(legacy) error = %v", err)
+	}
+	if got == nil || got.Root == nil || got.Root.URN != "legacy" {
+		t.Fatalf("GetEntityNeighborhood(legacy) = %#v", got)
+	}
+	if legacy.requestCount() != 1 || rustRequests != 0 {
+		t.Fatalf("legacy requests = %d, Rust requests = %d", legacy.requestCount(), rustRequests)
+	}
+}
+
+func TestCanaryHealthFailsClosedWhenEitherAuthorityIsUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	store, err := NewCanaryQueryStore(queryStoreStub{}, server.URL, testSharedSecret, time.Second, 10)
+	if err != nil {
+		t.Fatalf("NewCanaryQueryStore() error = %v", err)
+	}
+	if err := store.Ping(context.Background()); err == nil {
+		t.Fatal("Ping(canary with Rust unavailable) error = nil")
+	}
+
+	store, err = NewCanaryQueryStore(
+		queryStoreStub{err: errors.New("compatibility unavailable")},
+		server.URL,
+		testSharedSecret,
+		time.Second,
+		10,
+	)
+	if err != nil {
+		t.Fatalf("NewCanaryQueryStore(failing compatibility) error = %v", err)
+	}
+	if err := store.Ping(context.Background()); err == nil {
+		t.Fatal("Ping(canary with compatibility unavailable) error = nil")
 	}
 }
 
@@ -1047,6 +1193,46 @@ func TestComparisonIgnoresSetOrderingButDetectsContentChanges(t *testing.T) {
 	rust.Neighbors[0] = &ports.NeighborhoodNode{URN: nodeTwo.URN, Label: "Changed"}
 	if status := comparisonStatus(legacy, nil, rust, nil); status != "mismatch" {
 		t.Fatalf("comparisonStatus(changed) = %q, want mismatch", status)
+	}
+}
+
+func TestComparisonReceiptEmitsSuccessfulBoundedEvidence(t *testing.T) {
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = writer
+	defer func() {
+		os.Stderr = oldStderr
+	}()
+
+	value := &ports.EntityNeighborhood{
+		Root: &ports.NeighborhoodNode{URN: "urn:cerebro:tenant-a:resource:root"},
+	}
+	logComparisonReceipt(context.Background(), "expand", "match", value, value, nil)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt map[string]any
+	if err := json.Unmarshal(encoded, &receipt); err != nil {
+		t.Fatalf("unmarshal receipt %q: %v", encoded, err)
+	}
+	if receipt["kind"] != "event" || receipt["name"] != "organizational_graph.parity_receipt" {
+		t.Fatalf("unexpected receipt identity: %#v", receipt)
+	}
+	if receipt["operation"] != "expand" || receipt["status"] != "match" {
+		t.Fatalf("unexpected receipt scope: %#v", receipt)
+	}
+	if receipt["legacy_sha256"] == "" || receipt["legacy_sha256"] != receipt["rust_sha256"] {
+		t.Fatalf("unexpected receipt digests: %#v", receipt)
+	}
+	if _, found := receipt["tenant_id"]; found {
+		t.Fatalf("receipt must not contain tenant identifiers: %#v", receipt)
 	}
 }
 

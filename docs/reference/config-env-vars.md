@@ -71,11 +71,19 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_ORGANIZATIONAL_GRAPH_URL` | unset | Legacy combined Rust graph origin. Prefer the separate read and projection origins so observing reads cannot activate a writer path. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL` | unset | Rust bounded graph read origin. This does not configure Rust projection writes. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_PROJECTION_URL` | unset | Rust family-authority and projection origin. Leave unset until the Rust writer path is intentionally enabled. |
-| `CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE` | `authority` | `shadow` returns the legacy result and compares sampled Rust reads; `canary` returns Rust for a stable sample; `authority` returns the Rust result and fails closed. |
+| `CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE` | `authority` | `legacy` keeps Go product reads authoritative without calling Rust; `shadow` returns the Go result and compares sampled Rust reads; `canary` assigns a stable tenant sample to Rust; `authority` returns Rust results and fails closed. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT` | `0` | Stable percentage from 1 through 100 of typed reads compared in shadow mode. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_AUTHORITY_PERCENT` | `0` | Stable percentage from 1 through 99 of tenants assigned to Rust for typed reads in canary mode. This is tenant allocation, not exact request share; measure actual Go and Rust request volume with `cerebro.organizational_graph.canary.routes`. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT` | `0` | Stable percentage from 0 through 100 of Rust-authority canary reads also compared with Go. Verification uses bounded background work, records parity evidence, and never delays or changes authority. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET` | unset | Shared secret used to sign tenant-bound requests to the Rust organizational graph service. Required with any Rust graph origin; minimum 32 bytes. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT` | `1s` | Timeout for Rust organizational graph reads and projection-authority requests. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_MODE` | `forward` | `forward` for durable projection or `replay` for a bounded retained-history run. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_NAME` | `organizational-graph-v1` | Durable JetStream consumer identity. Replay requires a distinct explicit name. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_RUN_ID` | mode-specific | Stable PostgreSQL receipt identity reused across bounded invocations. Replay requires it. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY` | `new` | `new`, `all`, or `by_start_sequence`; replay rejects `new` and forward rejects `all`. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_START_SEQUENCE` | unset | Positive stream sequence required by `by_start_sequence`. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_END_SEQUENCE` | captured stream head | Immutable replay upper fence; rejected in forward mode. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_MAX_MESSAGES` | `100000` | Replay messages processed per invocation before a resumable stopped receipt. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_MAX_RUNTIME_SECONDS` | `3600` | Replay seconds per invocation before a resumable stopped receipt. |
 
 `CEREBRO_KUZU_PATH` is rejected. Kuzu is no longer a supported graph backend.

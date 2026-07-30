@@ -290,6 +290,46 @@ CREATE TABLE IF NOT EXISTS organizational_projection_authority (
     (authority = 'rust' AND promoted_at_unix_ms > 0)
   )
 );
+CREATE TABLE IF NOT EXISTS organizational_consumer_runs (
+  consumer_name TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK (mode IN ('forward', 'replay')),
+  start_sequence BIGINT NOT NULL CHECK (start_sequence > 0),
+  end_sequence BIGINT,
+  last_delivered_sequence BIGINT NOT NULL DEFAULT 0 CHECK (last_delivered_sequence >= 0),
+  covered_sequence BIGINT NOT NULL DEFAULT 0 CHECK (covered_sequence >= 0),
+  messages_seen BIGINT NOT NULL DEFAULT 0 CHECK (messages_seen >= 0),
+  messages_projected BIGINT NOT NULL DEFAULT 0 CHECK (messages_projected >= 0),
+  messages_skipped BIGINT NOT NULL DEFAULT 0 CHECK (messages_skipped >= 0),
+  messages_rejected BIGINT NOT NULL DEFAULT 0 CHECK (messages_rejected >= 0),
+  status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'stopped', 'failed')),
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at TIMESTAMPTZ,
+  PRIMARY KEY (consumer_name, run_id),
+  CHECK (end_sequence IS NULL OR end_sequence >= start_sequence),
+  CHECK (
+    (mode = 'forward' AND end_sequence IS NULL) OR
+    (mode = 'replay' AND end_sequence IS NOT NULL)
+  )
+);
+CREATE TABLE IF NOT EXISTS organizational_consumer_family_progress (
+  consumer_name TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  family_id TEXT NOT NULL,
+  messages_seen BIGINT NOT NULL DEFAULT 0 CHECK (messages_seen >= 0),
+  messages_projected BIGINT NOT NULL DEFAULT 0 CHECK (messages_projected >= 0),
+  messages_skipped BIGINT NOT NULL DEFAULT 0 CHECK (messages_skipped >= 0),
+  messages_rejected BIGINT NOT NULL DEFAULT 0 CHECK (messages_rejected >= 0),
+  last_sequence BIGINT NOT NULL CHECK (last_sequence > 0),
+  latest_graph_revision BIGINT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (consumer_name, run_id, source_id, family_id),
+  FOREIGN KEY (consumer_name, run_id)
+    REFERENCES organizational_consumer_runs (consumer_name, run_id)
+    ON DELETE CASCADE
+);
 CREATE INDEX IF NOT EXISTS organizational_projection_pending_idx
   ON organizational_projection_outbox (graph_revision)
   WHERE projected_at IS NULL;
@@ -299,6 +339,9 @@ CREATE INDEX IF NOT EXISTS organizational_parity_latest_idx
 CREATE INDEX IF NOT EXISTS organizational_source_collection_latest_idx
   ON organizational_source_collection_receipts
     (tenant_id, source_runtime_id, completed_at_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS organizational_consumer_runs_readiness_idx
+  ON organizational_consumer_runs
+    (consumer_name, status, covered_sequence DESC, updated_at DESC);
 ALTER TABLE organizational_graph_revisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizational_graph_revisions FORCE ROW LEVEL SECURITY;
 ALTER TABLE organizational_collections ENABLE ROW LEVEL SECURITY;
@@ -573,6 +616,56 @@ pub struct SourceEventReceipt {
     pub record_digest: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConsumerMessageOutcome {
+    Projected,
+    Skipped,
+    Rejected,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ConsumerRunFence {
+    pub start_sequence: u64,
+    pub end_sequence: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ConsumerRunProgress {
+    pub last_delivered_sequence: u64,
+    pub covered_sequence: u64,
+    pub messages_seen: u64,
+    pub messages_projected: u64,
+    pub messages_skipped: u64,
+    pub messages_rejected: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ConsumerFamilyProgress {
+    pub source_id: String,
+    pub family_id: String,
+    pub messages_seen: u64,
+    pub messages_projected: u64,
+    pub messages_skipped: u64,
+    pub messages_rejected: u64,
+    pub last_sequence: u64,
+    pub latest_graph_revision: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ConsumerRunInspection {
+    pub consumer_name: String,
+    pub run_id: String,
+    pub mode: String,
+    pub start_sequence: u64,
+    pub end_sequence: Option<u64>,
+    pub status: String,
+    pub started_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+    pub completed_at_unix_ms: Option<u64>,
+    pub progress: ConsumerRunProgress,
+    pub families: Vec<ConsumerFamilyProgress>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LegacyProjectionReceipt {
     pub tenant_id: String,
@@ -597,6 +690,16 @@ pub struct StoredSourceRuntime {
     source_id: String,
     config: BTreeMap<String, String>,
     cursor: Option<String>,
+}
+
+fn sequence_i64(sequence: u64) -> Result<i64, StoreError> {
+    if sequence == 0 {
+        return Err(StoreError::Conflict(
+            "consumer stream sequence must be greater than zero".to_owned(),
+        ));
+    }
+    i64::try_from(sequence)
+        .map_err(|_| StoreError::Conflict("consumer stream sequence overflow".to_owned()))
 }
 
 impl StoredSourceRuntime {
@@ -676,6 +779,238 @@ impl PostgresLedger {
             .batch_execute(POSTGRES_SCHEMA)
             .await?;
         Ok(())
+    }
+
+    pub async fn start_consumer_run(
+        &self,
+        consumer_name: &str,
+        run_id: &str,
+        mode: &str,
+        start_sequence: u64,
+        end_sequence: Option<u64>,
+    ) -> Result<ConsumerRunFence, StoreError> {
+        let start_sequence = sequence_i64(start_sequence)?;
+        let end_sequence = end_sequence.map(sequence_i64).transpose()?;
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        let row = transaction
+            .query_opt(
+                "INSERT INTO organizational_consumer_runs (consumer_name, run_id, mode, start_sequence, end_sequence, status) VALUES ($1, $2, $3, $4, $5, 'running') ON CONFLICT (consumer_name, run_id) DO UPDATE SET status = 'running', updated_at = NOW(), completed_at = NULL WHERE organizational_consumer_runs.mode = EXCLUDED.mode AND (organizational_consumer_runs.mode = 'replay' OR organizational_consumer_runs.start_sequence = EXCLUDED.start_sequence) AND organizational_consumer_runs.status IN ('running', 'stopped', 'failed') RETURNING start_sequence, end_sequence",
+                &[&consumer_name, &run_id, &mode, &start_sequence, &end_sequence],
+            )
+            .await?;
+        let Some(row) = row else {
+            return Err(StoreError::Conflict(format!(
+                "consumer run {consumer_name}/{run_id} is complete or has another fence"
+            )));
+        };
+        transaction.commit().await?;
+        let stored_start: i64 = row.get(0);
+        let stored_end: Option<i64> = row.get(1);
+        Ok(ConsumerRunFence {
+            start_sequence: u64::try_from(stored_start).map_err(|_| {
+                StoreError::Conflict("stored consumer start sequence is invalid".to_owned())
+            })?,
+            end_sequence: stored_end.map(u64::try_from).transpose().map_err(|_| {
+                StoreError::Conflict("stored consumer end sequence is invalid".to_owned())
+            })?,
+        })
+    }
+
+    pub async fn record_consumer_progress(
+        &self,
+        consumer_name: &str,
+        run_id: &str,
+        stream_sequence: u64,
+        outcome: ConsumerMessageOutcome,
+        source_family: Option<(&str, &str)>,
+        graph_revision: Option<u64>,
+    ) -> Result<(), StoreError> {
+        let stream_sequence = sequence_i64(stream_sequence)?;
+        let graph_revision = graph_revision.map(sequence_i64).transpose()?;
+        let (projected, skipped, rejected): (i64, i64, i64) = match outcome {
+            ConsumerMessageOutcome::Projected => (1, 0, 0),
+            ConsumerMessageOutcome::Skipped => (0, 1, 0),
+            ConsumerMessageOutcome::Rejected => (0, 0, 1),
+        };
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        let changed = transaction
+            .execute(
+                "UPDATE organizational_consumer_runs SET last_delivered_sequence = $3, covered_sequence = $3, messages_seen = messages_seen + 1, messages_projected = messages_projected + $4, messages_skipped = messages_skipped + $5, messages_rejected = messages_rejected + $6, updated_at = NOW() WHERE consumer_name = $1 AND run_id = $2 AND status = 'running' AND last_delivered_sequence < $3 AND (end_sequence IS NULL OR $3 <= end_sequence)",
+                &[
+                    &consumer_name,
+                    &run_id,
+                    &stream_sequence,
+                    &projected,
+                    &skipped,
+                    &rejected,
+                ],
+            )
+            .await?;
+        if changed == 0 {
+            let already_covered = transaction
+                .query_opt(
+                    "SELECT 1 FROM organizational_consumer_runs WHERE consumer_name = $1 AND run_id = $2 AND status = 'running' AND last_delivered_sequence >= $3",
+                    &[&consumer_name, &run_id, &stream_sequence],
+                )
+                .await?
+                .is_some();
+            if !already_covered {
+                return Err(StoreError::Conflict(format!(
+                    "consumer run {consumer_name}/{run_id} rejected sequence {stream_sequence}"
+                )));
+            }
+        } else if let Some((source_id, family_id)) = source_family {
+            transaction
+                .execute(
+                    "INSERT INTO organizational_consumer_family_progress (consumer_name, run_id, source_id, family_id, messages_seen, messages_projected, messages_skipped, messages_rejected, last_sequence, latest_graph_revision) VALUES ($1, $2, $3, $4, 1, $5, $6, $7, $8, $9) ON CONFLICT (consumer_name, run_id, source_id, family_id) DO UPDATE SET messages_seen = organizational_consumer_family_progress.messages_seen + 1, messages_projected = organizational_consumer_family_progress.messages_projected + EXCLUDED.messages_projected, messages_skipped = organizational_consumer_family_progress.messages_skipped + EXCLUDED.messages_skipped, messages_rejected = organizational_consumer_family_progress.messages_rejected + EXCLUDED.messages_rejected, last_sequence = EXCLUDED.last_sequence, latest_graph_revision = COALESCE(EXCLUDED.latest_graph_revision, organizational_consumer_family_progress.latest_graph_revision), updated_at = NOW() WHERE organizational_consumer_family_progress.last_sequence < EXCLUDED.last_sequence",
+                    &[
+                        &consumer_name,
+                        &run_id,
+                        &source_id,
+                        &family_id,
+                        &projected,
+                        &skipped,
+                        &rejected,
+                        &stream_sequence,
+                        &graph_revision,
+                    ],
+                )
+                .await?;
+        }
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    pub async fn finish_consumer_run(
+        &self,
+        consumer_name: &str,
+        run_id: &str,
+        status: &str,
+        covered_sequence: Option<u64>,
+    ) -> Result<(), StoreError> {
+        if !matches!(status, "completed" | "stopped" | "failed") {
+            return Err(StoreError::Conflict(
+                "consumer terminal status is invalid".to_owned(),
+            ));
+        }
+        let covered_sequence = covered_sequence.map(sequence_i64).transpose()?;
+        let changed = self
+            .client
+            .lock()
+            .await
+            .execute(
+                "UPDATE organizational_consumer_runs SET status = $3, covered_sequence = GREATEST(covered_sequence, COALESCE($4, covered_sequence)), updated_at = NOW(), completed_at = CASE WHEN $3 = 'completed' THEN NOW() ELSE NULL END WHERE consumer_name = $1 AND run_id = $2 AND status = 'running' AND ($3 <> 'completed' OR ((end_sequence IS NULL OR $4 >= end_sequence) AND messages_projected > 0 AND messages_rejected = 0))",
+                &[&consumer_name, &run_id, &status, &covered_sequence],
+            )
+            .await?;
+        if changed == 0 {
+            return Err(StoreError::Conflict(format!(
+                "consumer run {consumer_name}/{run_id} cannot transition to {status}"
+            )));
+        }
+        Ok(())
+    }
+
+    pub async fn consumer_run_progress(
+        &self,
+        consumer_name: &str,
+        run_id: &str,
+    ) -> Result<ConsumerRunProgress, StoreError> {
+        let row = self
+            .client
+            .lock()
+            .await
+            .query_opt(
+                "SELECT last_delivered_sequence, covered_sequence, messages_seen, messages_projected, messages_skipped, messages_rejected FROM organizational_consumer_runs WHERE consumer_name = $1 AND run_id = $2",
+                &[&consumer_name, &run_id],
+            )
+            .await?
+            .ok_or_else(|| StoreError::Conflict("consumer run was not found".to_owned()))?;
+        Ok(ConsumerRunProgress {
+            last_delivered_sequence: stored_u64(&row, 0, "last_delivered_sequence")?,
+            covered_sequence: stored_u64(&row, 1, "covered_sequence")?,
+            messages_seen: stored_u64(&row, 2, "messages_seen")?,
+            messages_projected: stored_u64(&row, 3, "messages_projected")?,
+            messages_skipped: stored_u64(&row, 4, "messages_skipped")?,
+            messages_rejected: stored_u64(&row, 5, "messages_rejected")?,
+        })
+    }
+
+    pub async fn inspect_consumer_run(
+        &self,
+        consumer_name: &str,
+        run_id: &str,
+    ) -> Result<ConsumerRunInspection, StoreError> {
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        let row = transaction
+            .query_opt(
+                "SELECT mode, start_sequence, end_sequence, status, (EXTRACT(EPOCH FROM started_at) * 1000)::BIGINT, (EXTRACT(EPOCH FROM updated_at) * 1000)::BIGINT, (EXTRACT(EPOCH FROM completed_at) * 1000)::BIGINT, last_delivered_sequence, covered_sequence, messages_seen, messages_projected, messages_skipped, messages_rejected FROM organizational_consumer_runs WHERE consumer_name = $1 AND run_id = $2",
+                &[&consumer_name, &run_id],
+            )
+            .await?
+            .ok_or_else(|| StoreError::Conflict("consumer run was not found".to_owned()))?;
+        let family_rows = transaction
+            .query(
+                "SELECT source_id, family_id, messages_seen, messages_projected, messages_skipped, messages_rejected, last_sequence, latest_graph_revision FROM organizational_consumer_family_progress WHERE consumer_name = $1 AND run_id = $2 ORDER BY source_id, family_id",
+                &[&consumer_name, &run_id],
+            )
+            .await?;
+        transaction.commit().await?;
+        let families = family_rows
+            .into_iter()
+            .map(|family| {
+                let revision: Option<i64> = family.get(7);
+                Ok(ConsumerFamilyProgress {
+                    source_id: family.get(0),
+                    family_id: family.get(1),
+                    messages_seen: stored_u64(&family, 2, "family messages_seen")?,
+                    messages_projected: stored_u64(&family, 3, "family messages_projected")?,
+                    messages_skipped: stored_u64(&family, 4, "family messages_skipped")?,
+                    messages_rejected: stored_u64(&family, 5, "family messages_rejected")?,
+                    last_sequence: stored_u64(&family, 6, "family last_sequence")?,
+                    latest_graph_revision: revision.map(u64::try_from).transpose().map_err(
+                        |_| {
+                            StoreError::Conflict(
+                                "stored family graph revision is invalid".to_owned(),
+                            )
+                        },
+                    )?,
+                })
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        let end_sequence: Option<i64> = row.get(2);
+        Ok(ConsumerRunInspection {
+            consumer_name: consumer_name.to_owned(),
+            run_id: run_id.to_owned(),
+            mode: row.get(0),
+            start_sequence: stored_u64(&row, 1, "start_sequence")?,
+            end_sequence: end_sequence
+                .map(u64::try_from)
+                .transpose()
+                .map_err(|_| StoreError::Conflict("stored end sequence is invalid".to_owned()))?,
+            status: row.get(3),
+            started_at_unix_ms: stored_u64(&row, 4, "started_at_unix_ms")?,
+            updated_at_unix_ms: stored_u64(&row, 5, "updated_at_unix_ms")?,
+            completed_at_unix_ms: row
+                .get::<_, Option<i64>>(6)
+                .map(u64::try_from)
+                .transpose()
+                .map_err(|_| {
+                    StoreError::Conflict("stored completed timestamp is invalid".to_owned())
+                })?,
+            progress: ConsumerRunProgress {
+                last_delivered_sequence: stored_u64(&row, 7, "last_delivered_sequence")?,
+                covered_sequence: stored_u64(&row, 8, "covered_sequence")?,
+                messages_seen: stored_u64(&row, 9, "messages_seen")?,
+                messages_projected: stored_u64(&row, 10, "messages_projected")?,
+                messages_skipped: stored_u64(&row, 11, "messages_skipped")?,
+                messages_rejected: stored_u64(&row, 12, "messages_rejected")?,
+            },
+            families,
+        })
     }
 
     /// Load one durable runtime definition. Runtime identity comes only from
@@ -2478,6 +2813,11 @@ fn stored_count(row: &tokio_postgres::Row, index: usize, field: &str) -> Result<
         .map_err(|_| StoreError::Conflict(format!("stored {field} count is invalid")))
 }
 
+fn stored_u64(row: &tokio_postgres::Row, index: usize, field: &str) -> Result<u64, StoreError> {
+    let value: i64 = row.get(index);
+    u64::try_from(value).map_err(|_| StoreError::Conflict(format!("stored {field} is invalid")))
+}
+
 #[cfg(test)]
 mod tests {
     use std::env;
@@ -2500,11 +2840,16 @@ mod tests {
             "organizational_legacy_projection_receipts",
             "organizational_source_collection_receipts",
             "organizational_source_collection_latest_idx",
+            "organizational_consumer_runs",
+            "organizational_consumer_family_progress",
+            "last_delivered_sequence BIGINT NOT NULL DEFAULT 0",
             "current_setting(''cerebro.tenant_id'', true)",
             "DEFERRABLE INITIALLY DEFERRED",
         ] {
             assert!(POSTGRES_SCHEMA.contains(required), "missing {required}");
         }
+        assert!(include_str!("postgres.rs").contains("messages_projected > 0"));
+        assert!(include_str!("postgres.rs").contains("messages_rejected = 0"));
         let source_receipt_schema = POSTGRES_SCHEMA
             .split("CREATE TABLE IF NOT EXISTS organizational_source_event_receipts")
             .nth(1)

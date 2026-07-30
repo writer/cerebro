@@ -181,10 +181,7 @@ func (a *App) policyCandidateService() policycandidate.Service {
 	store, _ := a.deps.StateStore.(policycandidate.Store)
 	experiments, _ := a.deps.StateStore.(policycandidate.ExperimentStore)
 	datasets, _ := a.deps.StateStore.(policycandidate.PolicyEvaluationDatasetStore)
-	var graph ports.GraphQueryStore
-	if candidate, ok := a.deps.GraphStore.(ports.GraphQueryStore); ok {
-		graph = candidate
-	}
+	graph := dependencyGraphQueryStore(a.deps)
 	var author *agentauthoring.Service
 	if a.deps.PolicyAuthoring != nil {
 		copy := *a.deps.PolicyAuthoring

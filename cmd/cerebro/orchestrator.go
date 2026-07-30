@@ -392,7 +392,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		findingEvaluationRunStore(deps.StateStore),
 		findingEvidenceStore(deps.StateStore),
 		claimStore(deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(deps.GraphStore)).WithGraphQueryStore(findingGraphQueryStore(deps.GraphStore)).WithTrustedSourceResolution().WithAppendLog(deps.AppendLog).WithGraphRuleQueryTimeout(graphRuleQueryBudgetForPhase(options.PhaseTimeout)).WithRuntimeIndexReplayPreparer(cfg.AppendLog.JetStreamRuntimeIndexEnabled, deps.AppendLog, deps.StateStore)
+	).WithGraphStore(sourceProjectionGraphStore(deps.GraphStore)).WithGraphQueryStore(dependencyGraphQueryStore(deps)).WithTrustedSourceResolution().WithAppendLog(deps.AppendLog).WithGraphRuleQueryTimeout(graphRuleQueryBudgetForPhase(options.PhaseTimeout)).WithRuntimeIndexReplayPreparer(cfg.AppendLog.JetStreamRuntimeIndexEnabled, deps.AppendLog, deps.StateStore)
 	graphService := graphingest.New(
 		registry,
 		lister,
@@ -1586,11 +1586,6 @@ func findingEvidenceStore(store ports.StateStore) ports.FindingEvidenceStore {
 
 func claimStore(store ports.StateStore) ports.ClaimStore {
 	typed, _ := store.(ports.ClaimStore)
-	return typed
-}
-
-func findingGraphQueryStore(store ports.GraphStore) ports.GraphQueryStore {
-	typed, _ := store.(ports.GraphQueryStore)
 	return typed
 }
 

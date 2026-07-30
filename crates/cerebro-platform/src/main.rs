@@ -760,9 +760,17 @@ impl std::fmt::Display for ProjectionFailure {
 impl Error for ProjectionFailure {}
 
 impl ProjectionRuntime {
-    async fn project_committed(
+    async fn project_committed_shadow(
         &self,
         event: CommittedSourceEvent,
+    ) -> Result<ProjectEventResponse, ProjectionFailure> {
+        self.project_committed_with_intent(event, true).await
+    }
+
+    async fn project_committed_with_intent(
+        &self,
+        event: CommittedSourceEvent,
+        materialize_shadow: bool,
     ) -> Result<ProjectEventResponse, ProjectionFailure> {
         self.authority
             .record_source_event(&event)
@@ -783,7 +791,7 @@ impl ProjectionRuntime {
             )
             .await
             .map_err(ProjectionFailure::Store)?;
-        if authority.authority == ProjectionAuthority::Legacy {
+        if !should_materialize(authority.authority, materialize_shadow) {
             return Ok(ProjectEventResponse {
                 authority: ProjectionAuthority::Legacy,
                 projected: false,
@@ -857,7 +865,7 @@ impl ProjectionRuntime {
             .await
             .map_err(ProjectionFailure::Store)?;
         Ok(ProjectEventResponse {
-            authority: ProjectionAuthority::Rust,
+            authority: authority.authority,
             projected: true,
             graph_revision: Some(receipt.graph_revision),
             entities_upserted: receipt.entities_upserted,
@@ -1006,6 +1014,10 @@ impl ProjectionRuntime {
             assertions_upserted: receipt.assertions_upserted,
         })
     }
+}
+
+fn should_materialize(authority: ProjectionAuthority, materialize_shadow: bool) -> bool {
+    authority == ProjectionAuthority::Rust || materialize_shadow
 }
 
 #[derive(Serialize)]
@@ -1418,6 +1430,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("serve-neo4j") => serve_neo4j().await,
         Some("serve-neo4j-consumer") => serve_neo4j_consumer().await,
         Some("consume-append-log") => consume_append_log().await,
+        Some("inspect-append-log") => append_log_consumer::inspect().await,
+        Some("inspect-consumer-run") => append_log_consumer::inspect_run().await,
         Some("migrate-stores") => migrate_stores().await,
         Some("rebuild-lifecycle-projection") => rebuild_lifecycle_projection().await,
         Some("sync-source") => sync_source().await,
@@ -1428,7 +1442,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("show-authority") => cutover_command::show_authority().await,
         Some("--help" | "-h") => {
             println!(
-                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-slack-authority|serve-neo4j|serve-neo4j-consumer|consume-append-log|migrate-stores|rebuild-lifecycle-projection|sync-source|catalog-summary|compare-projection|evaluate-family|promote-family|show-authority>"
+                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-slack-authority|serve-neo4j|serve-neo4j-consumer|consume-append-log|inspect-append-log|inspect-consumer-run|migrate-stores|rebuild-lifecycle-projection|sync-source|catalog-summary|compare-projection|evaluate-family|promote-family|show-authority>"
             );
             Ok(())
         }
@@ -6115,7 +6129,7 @@ mod tests {
         });
         let resource_urn = format!("urn:cerebro:{tenant_id}:runtime_file:asset-1");
         let response = runtime
-            .project_committed(
+            .project_committed_with_intent(
                 CommittedSourceEvent::from_input(
                     cerebro_source_runtime_next::CommittedSourceInput {
                         tenant_id: TenantId::parse(tenant_id.clone()).unwrap(),
@@ -6141,6 +6155,7 @@ mod tests {
                     },
                 )
                 .unwrap(),
+                false,
             )
             .await
             .unwrap();
@@ -6149,5 +6164,12 @@ mod tests {
         let entity = graph.resolve(&tenant, &resource_urn).await.unwrap();
         assert_eq!(entity.label, "Architecture");
         assert_eq!(entity.properties.get("resource_urn"), Some(&resource_urn));
+    }
+
+    #[test]
+    fn replay_materializes_shadow_without_promoting_family_authority() {
+        assert!(should_materialize(ProjectionAuthority::Legacy, true));
+        assert!(!should_materialize(ProjectionAuthority::Legacy, false));
+        assert!(should_materialize(ProjectionAuthority::Rust, false));
     }
 }

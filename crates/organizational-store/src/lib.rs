@@ -18,8 +18,9 @@ pub use parity::{
     SemanticMismatch, SemanticSnapshot,
 };
 pub use postgres::{
-    LegacyProjectionReceipt, POSTGRES_SCHEMA, PostgresLedger, SourceCollectionReceipt,
-    SourceEventReceipt, StoredSourceRuntime,
+    ConsumerFamilyProgress, ConsumerMessageOutcome, ConsumerRunFence, ConsumerRunInspection,
+    ConsumerRunProgress, LegacyProjectionReceipt, POSTGRES_SCHEMA, PostgresLedger,
+    SourceCollectionReceipt, SourceEventReceipt, StoredSourceRuntime,
 };
 
 use std::{error::Error, fmt};

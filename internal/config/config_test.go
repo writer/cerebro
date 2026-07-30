@@ -247,6 +247,32 @@ func TestLoadAcceptsBoundedRustGraphCanaryConfiguration(t *testing.T) {
 	}
 }
 
+func TestLoadAcceptsExplicitLegacyGraphRollbackMode(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL", "http://127.0.0.1:8081")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "legacy")
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET", "test-organizational-graph-secret-32-bytes")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.OrganizationalGraph.ReadMode != "legacy" ||
+		cfg.OrganizationalGraph.ShadowPercent != 0 ||
+		cfg.OrganizationalGraph.AuthorityPercent != 0 {
+		t.Fatalf("OrganizationalGraph = %#v", cfg.OrganizationalGraph)
+	}
+}
+
+func TestLoadRejectsExplicitRustAuthorityWithoutReadEndpoint(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE", "authority")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil")
+	}
+}
+
 func TestLoadRejectsUnsafeRustGraphCanaryConfiguration(t *testing.T) {
 	for name, value := range map[string]string{
 		"missing endpoint": "10",

@@ -1,6 +1,10 @@
 package bootstrap
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/writer/cerebro/internal/graphagent"
+)
 
 func TestFeatureDependencyBundlesAreNilSafe(t *testing.T) {
 	deps := Dependencies{}
@@ -37,5 +41,31 @@ func TestFeatureDependencyBundlesAreNilSafe(t *testing.T) {
 	}
 	if got := newGraphReasoningFeatureDeps(deps); got.GraphQueries != nil || got.GraphAgentLLM != nil || got.TrajectoryStore != nil {
 		t.Fatalf("newGraphReasoningFeatureDeps() = %#v, want nil dependencies", got)
+	}
+}
+
+func TestProductReadDependencyBundlesPreferConfiguredAuthority(t *testing.T) {
+	legacy := &stubGraphStore{}
+	authority := &stubGraphStore{}
+	deps := Dependencies{
+		GraphStore:    legacy,
+		GraphQueries:  authority,
+		GraphAgentLLM: graphagent.NewStubLLMClient(),
+	}
+
+	if got := newReportFeatureDeps(deps).GraphQueries; got != authority {
+		t.Fatalf("report graph queries = %#v, want configured authority", got)
+	}
+	if got := newFindingFeatureDeps(deps).GraphQueries; got != authority {
+		t.Fatalf("finding graph queries = %#v, want configured authority", got)
+	}
+	if got := newKnowledgeFeatureDeps(deps).GraphQueries; got != authority {
+		t.Fatalf("knowledge graph queries = %#v, want configured authority", got)
+	}
+	if got := newGraphQueryFeatureDeps(deps).GraphQueries; got != authority {
+		t.Fatalf("graph query service = %#v, want configured authority", got)
+	}
+	if got := newGraphReasoningFeatureDeps(deps).GraphQueries; got != authority {
+		t.Fatalf("graph reasoning queries = %#v, want configured authority", got)
 	}
 }
