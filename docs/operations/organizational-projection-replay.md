@@ -70,7 +70,7 @@ If a replay has recorded any rejected message, retain that consumer run as
 failed audit evidence. A later candidate cannot turn its cumulative rejected
 counter back to zero. Retry the same immutable fence from its original
 `first_sequence` with a new consumer name and run ID, for example
-`organizational-graph-replay-sec-dev-cutover-v2` and `sec-dev-cutover-v2`.
+`organizational-graph-replay-cutover-v2` and `cutover-v2`.
 Do not delete or reset the failed run or its durable.
 
 Replay recognizes a bounded set of pre-canonical historical records as explicit
