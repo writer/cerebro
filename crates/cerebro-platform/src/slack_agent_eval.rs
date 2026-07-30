@@ -20,7 +20,7 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 use super::slack_agent::ConfiguredModel;
 
 const SCHEMA_VERSION: &str = "cerebro-rust-slack-agent-hillclimb/v1";
-const EXPECTED_CASES_PER_PARTITION: usize = 9;
+const EXPECTED_CASES_PER_PARTITION: usize = 10;
 const MAX_P95_CASE_LATENCY_MS: u128 = 60_000;
 
 #[derive(Clone, Copy)]
@@ -49,6 +49,7 @@ struct EvalCaseReceipt {
     operating_repair_feedback: Vec<Vec<String>>,
     latency_ms: u128,
     false_converse: bool,
+    answer_quality_issues: Vec<String>,
     passed: bool,
     terminal_state: String,
 }
@@ -69,6 +70,7 @@ struct EvalReceipt {
     route_accuracy: f64,
     false_converse_rate: f64,
     loop_completion_rate: f64,
+    answer_quality_rate: f64,
     p95_latency_ms: u128,
     promotion_ready: bool,
     blockers: Vec<String>,
@@ -88,6 +90,7 @@ struct EvalGoal {
     minimum_route_accuracy: f64,
     minimum_false_converse_rate: f64,
     minimum_loop_completion_rate: f64,
+    minimum_answer_quality_rate: f64,
     maximum_p95_case_latency_ms: u128,
     required_case_pass_rate: f64,
 }
@@ -304,18 +307,39 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
             .expect("route receipt poisoned")
             .clone();
         let actual_route = accepted_route(&routes, &original_route_context);
-        let (actual_lane, terminal_state, loop_completed) = match outcome {
+        let (actual_lane, terminal_state, loop_completed, answer_quality_issues) = match outcome {
             Ok(Ok(AgentTurnOutcome::Delivered {
-                lane, final_state, ..
-            })) => (Some(lane), format!("delivered:{final_state:?}"), true),
+                lane,
+                final_state,
+                markdown,
+                ..
+            })) => (
+                Some(lane),
+                format!("delivered:{final_state:?}"),
+                true,
+                answer_quality_issues(&markdown),
+            ),
             Ok(Ok(AgentTurnOutcome::ApprovalRequired { lane, .. })) => {
-                (Some(lane), "approval_required".into(), true)
+                (Some(lane), "approval_required".into(), true, Vec::new())
             }
-            Ok(Ok(AgentTurnOutcome::Ignored { .. })) => {
-                (Some(ExecutionLane::Ignore), "ignored".into(), false)
-            }
-            Ok(Err(error)) => (None, format!("error:{error}"), false),
-            Err(_) => (None, "timed_out".into(), false),
+            Ok(Ok(AgentTurnOutcome::Ignored { .. })) => (
+                Some(ExecutionLane::Ignore),
+                "ignored".into(),
+                false,
+                vec!["the case was ignored".into()],
+            ),
+            Ok(Err(error)) => (
+                None,
+                format!("error:{error}"),
+                false,
+                vec!["the operating loop returned an error".into()],
+            ),
+            Err(_) => (
+                None,
+                "timed_out".into(),
+                false,
+                vec!["the operating loop timed out".into()],
+            ),
         };
         let route_passed = actual_route == Some(eval_case.expected_route);
         let lane_passed = actual_lane == Some(eval_case.expected_lane);
@@ -347,7 +371,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
                 .clone(),
             latency_ms,
             false_converse: eval_case.false_converse,
-            passed: route_passed && lane_passed && false_converse_passed && loop_completed,
+            passed: route_passed
+                && lane_passed
+                && false_converse_passed
+                && loop_completed
+                && answer_quality_issues.is_empty(),
+            answer_quality_issues,
             terminal_state,
         });
     }
@@ -390,6 +419,13 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
             .count(),
         case_count,
     );
+    let answer_quality_rate = rate(
+        results
+            .iter()
+            .filter(|result| result.answer_quality_issues.is_empty())
+            .count(),
+        case_count,
+    );
     let mut latencies = results
         .iter()
         .map(|result| result.latency_ms)
@@ -398,10 +434,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     let p95_latency_ms = percentile_95(&latencies);
     let mut blockers = Vec::new();
     if held_out_case_count < EXPECTED_CASES_PER_PARTITION {
-        blockers.push("held-out partition has fewer than eight cases".into());
+        blockers.push("held-out partition has fewer than ten cases".into());
     }
     if shadow_case_count < EXPECTED_CASES_PER_PARTITION {
-        blockers.push("shadow partition has fewer than eight cases".into());
+        blockers.push("shadow partition has fewer than ten cases".into());
     }
     if route_accuracy < 1.0 {
         blockers.push("semantic route accuracy is below 100%".into());
@@ -412,6 +448,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     if loop_completion_rate < 1.0 {
         blockers
             .push("one or more Rust operating loops did not reach a safe terminal state".into());
+    }
+    if answer_quality_rate < 1.0 {
+        blockers
+            .push("one or more Slack answers violated the operator-facing output contract".into());
     }
     if results.iter().any(|result| !result.passed) {
         blockers.push("one or more held-out or shadow cases failed".into());
@@ -436,6 +476,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
             minimum_route_accuracy: 1.0,
             minimum_false_converse_rate: 1.0,
             minimum_loop_completion_rate: 1.0,
+            minimum_answer_quality_rate: 1.0,
             maximum_p95_case_latency_ms: MAX_P95_CASE_LATENCY_MS,
             required_case_pass_rate: 1.0,
         },
@@ -445,6 +486,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         route_accuracy,
         false_converse_rate,
         loop_completion_rate,
+        answer_quality_rate,
         p95_latency_ms,
         promotion_ready: blockers.is_empty(),
         blockers,
@@ -587,6 +629,16 @@ fn eval_cases() -> Vec<EvalCase> {
             false_converse: true,
         },
         EvalCase {
+            case_ref: "case://held-out/source-access-boundary",
+            partition: "held_out",
+            message: "What visibility or access do you have to Source A?",
+            history: "Source A may contribute governed evidence, but collected evidence and direct administrative access are different authority boundaries.",
+            working_request: None,
+            expected_route: ExecutionLane::Lookup,
+            expected_lane: ExecutionLane::Lookup,
+            false_converse: true,
+        },
+        EvalCase {
             case_ref: "case://held-out/pure-conversation",
             partition: "held_out",
             message: "Hello. What kinds of security questions can you help explain?",
@@ -677,6 +729,16 @@ fn eval_cases() -> Vec<EvalCase> {
             false_converse: true,
         },
         EvalCase {
+            case_ref: "case://shadow/source-capability-boundary",
+            partition: "shadow",
+            message: "Can you see or change anything in Provider B?",
+            history: "Provider B may have a tenant-scoped source adapter. The answer must distinguish observable evidence from direct provider authority.",
+            working_request: None,
+            expected_route: ExecutionLane::Lookup,
+            expected_lane: ExecutionLane::Lookup,
+            false_converse: true,
+        },
+        EvalCase {
             case_ref: "case://shadow/capability-chat",
             partition: "shadow",
             message: "In general, what can Cerebro help a security operator understand?",
@@ -697,6 +759,51 @@ fn eval_cases() -> Vec<EvalCase> {
             false_converse: false,
         },
     ]
+}
+
+fn answer_quality_issues(markdown: &str) -> Vec<String> {
+    let normalized = markdown.to_ascii_lowercase();
+    let mut issues = Vec::new();
+    if markdown.trim().is_empty() {
+        issues.push("the visible reply is empty".into());
+    }
+    if markdown.len() > 3_200 {
+        issues.push("the visible reply is oversized for a Slack answer".into());
+    }
+    if [
+        "urn:cerebro:",
+        "evidence://",
+        "schema://",
+        "\"tenant_id\"",
+        "\"source_ref\"",
+        "\"trace_id\"",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+    {
+        issues.push("the visible reply exposes an internal record identifier".into());
+    }
+    if normalized
+        .lines()
+        .any(|line| line.contains("|---") || line.contains("---|"))
+    {
+        issues.push("the visible reply contains a raw catalog table".into());
+    }
+    if normalized.lines().any(|line| {
+        matches!(
+            line.trim(),
+            "**checked**"
+                | "**changed**"
+                | "**verified**"
+                | "**current state**"
+                | "**next**"
+                | "**coverage**"
+                | "**need from you**"
+        )
+    }) {
+        issues.push("the visible reply renders internal report sections".into());
+    }
+    issues
 }
 
 fn accepted_route(
@@ -749,6 +856,17 @@ mod tests {
     fn hosted_command_rejects_a_non_exact_commit() {
         assert!(validate_commit_sha("not-a-sha").is_err());
         assert!(validate_commit_sha(&"a".repeat(40)).is_ok());
+    }
+
+    #[test]
+    fn answer_quality_rejects_internal_catalogs_and_report_sections() {
+        assert!(answer_quality_issues("I can inspect current Source A evidence.").is_empty());
+        assert!(
+            !answer_quality_issues(
+                "**Checked**\n\n| source | id |\n|---|---|\n| A | urn:cerebro:source:a |"
+            )
+            .is_empty()
+        );
     }
 
     #[test]

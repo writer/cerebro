@@ -6,11 +6,11 @@ use std::{
 use async_trait::async_trait;
 use cerebro_agent_runtime::{
     AGENT_TURN_REQUEST_V1, AgentModel, AgentRuntimeError, AgentTools, AgentTurnOutcome,
-    AgentTurnRequest, ConversationMessage, ConversationRole, CritiqueDecision, CritiqueTurn,
-    EffectAuthorization, EvidenceClaim, EvidenceRecord, ExecutionLane, FinalDraft, FinalState,
-    ModelDecision, ModelTurn, RouteConfidence, RouteDecision, RouteTurn, ToolAuthorityClass,
-    ToolCall, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState, WorkingOutcome,
-    WorkingState, run_turn,
+    AgentTurnRequest, ConversationMessage, ConversationRole, CritiqueChecks, CritiqueDecision,
+    CritiqueTurn, EffectAuthorization, EvidenceClaim, EvidenceRecord, ExecutionLane, FinalDraft,
+    FinalState, ModelDecision, ModelTurn, RouteConfidence, RouteDecision, RouteTurn,
+    ToolAuthorityClass, ToolCall, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
+    WorkingOutcome, WorkingState, run_turn,
 };
 use serde_json::json;
 
@@ -44,7 +44,19 @@ impl AgentModel for ScriptedModel {
             .lock()
             .unwrap()
             .pop_front()
-            .unwrap_or(CritiqueDecision::Approve))
+            .unwrap_or_else(approved_critique))
+    }
+}
+
+fn approved_critique() -> CritiqueDecision {
+    CritiqueDecision::Approve {
+        checks: CritiqueChecks {
+            answers_newest_request: true,
+            evidence_boundary_correct: true,
+            no_raw_record_dump: true,
+            operator_facing: true,
+            right_sized: true,
+        },
     }
 }
 
@@ -130,7 +142,7 @@ impl AgentModel for CriticIssueRepairModel {
             }
             _ => {
                 assert!(turn.repair_feedback[0].contains("bounded critic contract"));
-                Ok(CritiqueDecision::Approve)
+                Ok(approved_critique())
             }
         }
     }
@@ -170,7 +182,7 @@ impl AgentModel for CriticSchemaRepairModel {
             ));
         }
         assert!(turn.repair_feedback[0].contains("critic decision"));
-        Ok(CritiqueDecision::Approve)
+        Ok(approved_critique())
     }
 }
 
@@ -207,7 +219,7 @@ impl AgentModel for SchemaRepairModel {
     }
 
     async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
-        Ok(CritiqueDecision::Approve)
+        Ok(approved_critique())
     }
 }
 
@@ -420,13 +432,117 @@ async fn executes_inspect_change_verify_report_loop() {
     };
     assert_eq!(lane, ExecutionLane::Act);
     assert_eq!(tool_call_count, 3);
-    assert!(markdown.starts_with("**Runtime updated and verified**"));
-    assert!(markdown.contains("**Checked**"));
-    assert!(markdown.contains("**Changed**"));
-    assert!(markdown.contains("**Verified**"));
-    assert!(markdown.contains("**Current state**"));
-    assert!(markdown.contains("**Next**"));
+    assert_eq!(
+        markdown,
+        "The requested runtime change is active. One process restart remains pending."
+    );
+    assert!(!markdown.contains("Checked"));
+    assert!(!markdown.contains("Current state"));
     assert!(!markdown.contains("Cypher"));
+}
+
+#[tokio::test]
+async fn repairs_a_raw_catalog_dump_into_a_direct_capability_answer() {
+    let search = ToolCall {
+        call_id: "source-search".into(),
+        tool_id: "graph_search".into(),
+        purpose: "Inspect the governed evidence available for the named source.".into(),
+        input: json!({"query": "Source A", "limit": 25}),
+    };
+    let raw = FinalDraft {
+        state: FinalState::Answered,
+        headline: "Source entities summary".into(),
+        summary: [
+            "# Source Entities Summary",
+            "| Source | URN |",
+            "|---|---|",
+            "| Directory | urn:cerebro:example:source:directory |",
+            "| Audit | urn:cerebro:example:source:audit |",
+        ]
+        .join("\n"),
+        summary_evidence_refs: vec!["evidence://source-a".into()],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: None,
+        question: None,
+    };
+    let repaired = FinalDraft {
+        state: FinalState::Partial,
+        headline: "Source visibility is metadata-backed".into(),
+        summary: "I can inspect Source A records that have been collected into Cerebro, including the returned directory and audit evidence. I do not have direct administrative access to Source A from this evidence, and this bounded result does not prove complete source coverage.".into(),
+        summary_evidence_refs: vec!["evidence://source-a".into()],
+        checked: vec![claim(
+            "The bounded source search returned directory and audit evidence.",
+            "evidence://source-a",
+        )],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: Some(
+            "The bounded result does not establish complete source coverage.".into(),
+        ),
+        question: None,
+    };
+    let model = scripted(
+        ExecutionLane::Lookup,
+        VecDeque::from([
+            ModelDecision::InvokeTool {
+                call: search.clone(),
+            },
+            ModelDecision::Finish { draft: raw },
+            ModelDecision::Finish { draft: repaired },
+        ]),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "graph_search",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(BTreeMap::from([(
+            search.call_id,
+            ToolResult {
+                state: ToolResultState::Partial,
+                summary: "Found bounded evidence for Source A.".into(),
+                data: json!({
+                    "records": [
+                        {"kind": "directory"},
+                        {"kind": "audit"}
+                    ],
+                    "truncated": true
+                }),
+                evidence: vec![evidence(
+                    "evidence://source-a",
+                    "The bounded source search returned directory and audit evidence.",
+                )],
+                blocker: Some("Additional matching records were outside the bounded read.".into()),
+            },
+        )])),
+    };
+
+    let AgentTurnOutcome::Delivered {
+        markdown,
+        final_state,
+        ..
+    } = run_turn(
+        &model,
+        &tools,
+        request("What visibility and access do you have for Source A?"),
+    )
+    .await
+    .unwrap()
+    else {
+        panic!("expected a delivered capability answer");
+    };
+    assert_eq!(final_state, FinalState::Partial);
+    assert!(markdown.starts_with("I can inspect Source A records"));
+    assert!(markdown.contains("do not have direct administrative access"));
+    assert!(!markdown.contains("urn:cerebro:"));
+    assert!(!markdown.contains("|---"));
 }
 
 #[tokio::test]
@@ -852,7 +968,7 @@ async fn repairs_a_draft_after_independent_critique() {
             CritiqueDecision::Revise {
                 issues: vec!["Name the evidence boundary in the capability statement.".into()],
             },
-            CritiqueDecision::Approve,
+            approved_critique(),
         ])),
     };
     let tools = ScriptedTools {
@@ -984,5 +1100,5 @@ async fn continues_the_exact_durable_mission_instead_of_restarting() {
     };
     assert_eq!(lane, ExecutionLane::Act);
     assert_eq!(final_state, FinalState::Blocked);
-    assert!(markdown.contains("Runtime repair still blocked"));
+    assert!(markdown.contains("saved repair remains blocked"));
 }
