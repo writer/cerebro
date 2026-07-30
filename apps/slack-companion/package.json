@@ -29,7 +29,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "npm run typecheck && npm test",
-    "eval:hillclimb": "npm run build --silent && node dist/src/scratchpad/run-hillclimb.js",
+    "eval:hillclimb": "npm run build --silent && node --permission --allow-fs-read=. dist/src/scratchpad/run-hillclimb-offline.js",
     "test": "npm run build && node --test dist/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
