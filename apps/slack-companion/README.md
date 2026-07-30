@@ -102,23 +102,39 @@ same redaction and expiry policy as saved notes.
 
 ### Working-state hillclimb
 
-`npm run eval:hillclimb` replays the prior no-state policy and the working-state
-candidate against the same public-safe corpus. The corpus has separate held-out
-and shadow partitions and includes continuation, repeated retry, expiry, and
-bounded-eviction cases. The command prints a machine-readable receipt and exits
-non-zero unless the candidate:
+`npm run --silent eval:hillclimb` runs offline and emits only its JSON receipt.
+It builds locally, starts the evaluator
+with Node's permission boundary, grants read access only to the package, and
+denies network access, child processes, workers, native addons, and filesystem
+writes. A runtime guard covers Node versions whose permission model does not
+deny network access directly. The command probes fetch, DNS, TCP, TLS, HTTP,
+HTTP/2, datagram, and child-process access before loading the corpus or
+candidate, then records the result in `offline_execution`.
 
+The evaluator replays the prior no-state policy and the working-state candidate
+against the same public-safe corpus. The corpus has separate held-out and shadow
+partitions and includes continuation, repeated retry, expiry, and
+bounded-eviction cases. The command prints a machine-readable receipt and exits
+non-zero unless the offline boundary is active and the candidate:
+
+- satisfies the required, forbidden, and authority-labelling state contract for
+  every case (semantic state correctness);
 - recalls every required governing request, outcome, and blocker;
+- retains every evidence instruction and source-failure fact supplied by the
+  prior turns;
 - reduces the measured restatement-risk proxy to zero with at least a 0.50
   recall gain over baseline;
 - keeps working state explicitly unverified;
 - introduces no case regression or context-size violation; and
 - builds context within a 5 ms p95 budget.
 
-The corpus measures whether the reasoning boundary receives the state needed to
-resolve a follow-up. It does not claim that a language-model answer is correct.
-Delivered-answer quality remains gated by the independent assistant-turn
-evaluation and outcome receipts described above.
+The receipt names five bounded dimensions: semantic state-contract correctness,
+continuity recall, evidence-context retention, context-build latency, and
+expected restatement burden. These measure whether the reasoning boundary
+receives the state needed to resolve a follow-up. They do not claim that a
+language-model answer is correct or that retained evidence was cited.
+Delivered-answer grounding and evidence use remain gated by the independent
+assistant-turn evaluation and outcome receipts described above.
 
 Durable schedule definitions keep a stable schedule identity, revision, work
 digest, cadence anchor, and misfire policy. The portable planner derives the

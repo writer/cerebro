@@ -7,6 +7,7 @@ export type AssistantTurnSourceGapState =
 
 export interface CerebroAskResult {
   citationValidationPassed: boolean;
+  executionLane: "converse" | "lookup";
   markdown: string;
   safeRefusal: boolean;
   traceId?: string;
@@ -43,10 +44,31 @@ export class CerebroAskClient {
   }
 
   async ask(
+    requestId: string,
     question: string,
     signal: AbortSignal,
     history: readonly CerebroAskHistoryMessage[] = [],
+    authorizedQuestion?: SlackQuestionDecision,
   ): Promise<CerebroAskResult> {
+    const questionDecision = authorizedQuestion
+      ?? await this.authorizeQuestion(requestId, question, history);
+    if (
+      questionDecision.request_id !== requestId
+      || questionDecision.tenant_id !== this.options.tenantId
+    ) {
+      throw new CerebroAskError(
+        "unauthorized",
+        "Rust Slack authority returned a decision for another question request.",
+      );
+    }
+    if (questionDecision.execution_lane === "converse") {
+      return {
+        citationValidationPassed: false,
+        executionLane: "converse",
+        markdown: questionDecision.answer,
+        safeRefusal: false,
+      };
+    }
     const response = await this.fetchImpl(`${this.options.baseUrl}/grc/ask`, {
       method: "POST",
       headers: {
@@ -123,10 +145,29 @@ export class CerebroAskClient {
     }
     return {
       citationValidationPassed: decision.verified,
+      executionLane: "lookup",
       markdown: summary.markdown,
       safeRefusal: decision.disposition === "safe_refusal",
       traceId: decision.trace_id,
     };
+  }
+
+  async authorizeQuestion(
+    requestId: string,
+    question: string,
+    history: readonly CerebroAskHistoryMessage[] = [],
+  ): Promise<SlackQuestionDecision> {
+    try {
+      return await this.options.answerAuthority.authorizeQuestion({
+        history: history.map((message) => ({ ...message })),
+        question,
+        request_id: requestId,
+        schema_version: "slack-question-candidate/v1",
+        tenant_id: this.options.tenantId,
+      });
+    } catch (error: unknown) {
+      throw new CerebroAskError("unauthorized", errorMessage(error));
+    }
   }
 }
 
@@ -266,4 +307,5 @@ function isAbortError(value: unknown): boolean {
 import {
   type SlackAnswerAuthorityPort,
   type SlackAnswerCandidate,
+  type SlackQuestionDecision,
 } from "./slack-answer-authority-client.js";

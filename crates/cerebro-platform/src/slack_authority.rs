@@ -16,7 +16,9 @@ use axum::{
     routing::{get, post},
 };
 use cerebro_slack_authority::{
-    AnswerAuthorityError, AnswerCandidate, AnswerDecision, AnswerDisposition, validate_answer,
+    AnswerAuthorityError, AnswerCandidate, AnswerDecision, AnswerDisposition,
+    QuestionAuthorityError, QuestionCandidate, QuestionDecision, QuestionExecutionLane,
+    QuestionPolicy, authorize_question, validate_answer,
 };
 use serde::Serialize;
 
@@ -30,6 +32,9 @@ struct ErrorResponse {
 }
 
 struct AuthorityRuntime {
+    question_authorized_total: AtomicU64,
+    question_rejected_total: AtomicU64,
+    question_policy: QuestionPolicy,
     grounded_total: AtomicU64,
     rejected_total: AtomicU64,
     safe_refusal_total: AtomicU64,
@@ -41,6 +46,8 @@ struct AuthorityStatus {
     authority: &'static str,
     component: &'static str,
     grounded_total: u64,
+    question_authorized_total: u64,
+    question_rejected_total: u64,
     rejected_total: u64,
     requests_total: u64,
     safe_refusal_total: u64,
@@ -51,12 +58,15 @@ struct AuthorityStatus {
 }
 
 impl AuthorityRuntime {
-    fn new() -> Self {
+    fn new(question_policy: QuestionPolicy) -> Self {
         Self {
+            question_authorized_total: AtomicU64::new(0),
+            question_rejected_total: AtomicU64::new(0),
             grounded_total: AtomicU64::new(0),
             rejected_total: AtomicU64::new(0),
             safe_refusal_total: AtomicU64::new(0),
             started_at: Instant::now(),
+            question_policy,
         }
     }
 
@@ -64,14 +74,20 @@ impl AuthorityRuntime {
         let grounded_total = self.grounded_total.load(Ordering::Relaxed);
         let rejected_total = self.rejected_total.load(Ordering::Relaxed);
         let safe_refusal_total = self.safe_refusal_total.load(Ordering::Relaxed);
+        let question_authorized_total = self.question_authorized_total.load(Ordering::Relaxed);
+        let question_rejected_total = self.question_rejected_total.load(Ordering::Relaxed);
         AuthorityStatus {
             authority: "rust",
             component: "slack-answer-authority",
             grounded_total,
+            question_authorized_total,
+            question_rejected_total,
             rejected_total,
             requests_total: grounded_total
                 .saturating_add(rejected_total)
-                .saturating_add(safe_refusal_total),
+                .saturating_add(safe_refusal_total)
+                .saturating_add(question_authorized_total)
+                .saturating_add(question_rejected_total),
             safe_refusal_total,
             schema_version: "slack-answer-authority-status/v1",
             status: "ready",
@@ -90,6 +106,9 @@ pub async fn serve() -> Result<(), Box<dyn Error>> {
     let bind = env::var("CEREBRO_SLACK_AUTHORITY_BIND").unwrap_or_else(|_| DEFAULT_BIND.to_owned());
     let address: SocketAddr = bind.parse()?;
     require_loopback(address)?;
+    let tenant_id = env::var("CEREBRO_SLACK_AUTHORITY_TENANT_ID")
+        .map_err(|_| "CEREBRO_SLACK_AUTHORITY_TENANT_ID is required")?;
+    let question_policy = QuestionPolicy::new(tenant_id)?;
     let listener = tokio::net::TcpListener::bind(address).await?;
     println!(
         "{}",
@@ -103,17 +122,61 @@ pub async fn serve() -> Result<(), Box<dyn Error>> {
             "version": env!("CARGO_PKG_VERSION"),
         })
     );
-    axum::serve(listener, router()).await?;
+    axum::serve(listener, router(question_policy)).await?;
     Ok(())
 }
 
-fn router() -> Router {
+fn router(question_policy: QuestionPolicy) -> Router {
     Router::new()
         .route("/healthz", get(|| async { StatusCode::NO_CONTENT }))
         .route("/v1/status", get(authority_status_route))
+        .route("/v1/questions/authorize", post(authorize_question_route))
         .route("/v1/answers/validate", post(validate_answer_route))
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
-        .with_state(Arc::new(AuthorityRuntime::new()))
+        .with_state(Arc::new(AuthorityRuntime::new(question_policy)))
+}
+
+async fn authorize_question_route(
+    State(runtime): State<Arc<AuthorityRuntime>>,
+    Json(candidate): Json<QuestionCandidate>,
+) -> Result<Json<QuestionDecision>, (StatusCode, Json<ErrorResponse>)> {
+    match authorize_question(&runtime.question_policy, candidate) {
+        Ok(decision) => {
+            runtime
+                .question_authorized_total
+                .fetch_add(1, Ordering::Relaxed);
+            log_question_decision(
+                &runtime,
+                "authorized",
+                Some(match decision.execution_lane {
+                    QuestionExecutionLane::Converse => "converse",
+                    QuestionExecutionLane::Lookup => "lookup",
+                }),
+                None,
+                Some(&decision.request_id),
+            );
+            Ok(Json(decision))
+        }
+        Err(error) => {
+            runtime
+                .question_rejected_total
+                .fetch_add(1, Ordering::Relaxed);
+            log_question_decision(
+                &runtime,
+                "rejected",
+                None,
+                Some(question_rejection_code(error)),
+                None,
+            );
+            Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(ErrorResponse {
+                    code: "question_rejected",
+                    message: error.to_string(),
+                }),
+            ))
+        }
+    }
 }
 
 async fn authority_status_route(
@@ -195,6 +258,32 @@ fn log_decision(
     );
 }
 
+fn log_question_decision(
+    runtime: &AuthorityRuntime,
+    outcome: &'static str,
+    execution_lane: Option<&'static str>,
+    rejection_code: Option<&'static str>,
+    request_id: Option<&str>,
+) {
+    let status = runtime.status();
+    println!(
+        "{}",
+        serde_json::json!({
+            "authority": "rust",
+            "component": "slack-answer-authority",
+            "execution_lane": execution_lane,
+            "operation": "question_authorize",
+            "outcome": outcome,
+            "question_authorized_total": status.question_authorized_total,
+            "question_rejected_total": status.question_rejected_total,
+            "rejection_code": rejection_code,
+            "request_id": request_id,
+            "requests_total": status.requests_total,
+            "schema_version": "slack-question-authority-decision-log/v1",
+        })
+    );
+}
+
 fn rejection_code(error: AnswerAuthorityError) -> &'static str {
     match error {
         AnswerAuthorityError::CitationEvidenceMissing => "citation_evidence_missing",
@@ -204,6 +293,17 @@ fn rejection_code(error: AnswerAuthorityError) -> &'static str {
         AnswerAuthorityError::InvalidSchema => "invalid_schema",
         AnswerAuthorityError::InvalidTrace => "invalid_trace",
         AnswerAuthorityError::MarkdownInvalid => "markdown_invalid",
+    }
+}
+
+fn question_rejection_code(error: QuestionAuthorityError) -> &'static str {
+    match error {
+        QuestionAuthorityError::HistoryInvalid => "history_invalid",
+        QuestionAuthorityError::InvalidPolicy => "invalid_policy",
+        QuestionAuthorityError::InvalidRequest => "invalid_request",
+        QuestionAuthorityError::InvalidSchema => "invalid_schema",
+        QuestionAuthorityError::QuestionInvalid => "question_invalid",
+        QuestionAuthorityError::TenantMismatch => "tenant_mismatch",
     }
 }
 
@@ -225,6 +325,10 @@ mod tests {
 
     use super::*;
 
+    fn test_router() -> Router {
+        router(QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap())
+    }
+
     #[test]
     fn rejects_non_loopback_bindings() {
         assert!(require_loopback("127.0.0.1:8091".parse().unwrap()).is_ok());
@@ -235,7 +339,7 @@ mod tests {
 
     #[tokio::test]
     async fn route_returns_the_rust_authority_decision() {
-        let response = router()
+        let response = test_router()
             .oneshot(
                 Request::post("/v1/answers/validate")
                     .header(CONTENT_TYPE, "application/json")
@@ -273,7 +377,7 @@ mod tests {
 
     #[tokio::test]
     async fn route_rejects_an_unstructured_uncited_answer() {
-        let app = router();
+        let app = test_router();
         let response = app
             .clone()
             .oneshot(
@@ -312,5 +416,106 @@ mod tests {
         assert_eq!(body["rejected_total"], 1);
         assert_eq!(body["grounded_total"], 0);
         assert_eq!(body["safe_refusal_total"], 0);
+        assert_eq!(body["question_authorized_total"], 0);
+        assert_eq!(body["question_rejected_total"], 0);
+    }
+
+    #[tokio::test]
+    async fn question_route_authorizes_only_the_configured_tenant() {
+        let app = test_router();
+        let authorized = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/questions/authorize")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{
+                          "schema_version":"slack-question-candidate/v1",
+                          "tenant_id":"writer-sec-dev",
+                          "request_id":"C0B2VJDFJ5N:1753830794.123",
+                          "question":"Show connector health for Okta.",
+                          "history":[]
+                        }"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(authorized.status(), StatusCode::OK);
+        let authorized_body: Value = serde_json::from_slice(
+            &to_bytes(authorized.into_body(), MAX_REQUEST_BYTES)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(authorized_body["execution_lane"], "lookup");
+        assert!(authorized_body.get("answer").is_none());
+
+        let conversational = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/questions/authorize")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{
+                          "schema_version":"slack-question-candidate/v1",
+                          "tenant_id":"writer-sec-dev",
+                          "request_id":"C0B2VJDFJ5N:1753830794.124",
+                          "question":"What can you tell me about yourself and your work today?",
+                          "history":[]
+                        }"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(conversational.status(), StatusCode::OK);
+        let conversational_body: Value = serde_json::from_slice(
+            &to_bytes(conversational.into_body(), MAX_REQUEST_BYTES)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(conversational_body["execution_lane"], "converse");
+        assert!(
+            conversational_body["answer"]
+                .as_str()
+                .unwrap()
+                .contains("verified cross-thread work log")
+        );
+
+        let rejected = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/questions/authorize")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{
+                          "schema_version":"slack-question-candidate/v1",
+                          "tenant_id":"other-tenant",
+                          "request_id":"request-2",
+                          "question":"Show connector health for Okta.",
+                          "history":[]
+                        }"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rejected.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+        let status_response = app
+            .oneshot(Request::get("/v1/status").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body: Value = serde_json::from_slice(
+            &to_bytes(status_response.into_body(), MAX_REQUEST_BYTES)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["question_authorized_total"], 2);
+        assert_eq!(body["question_rejected_total"], 1);
+        assert_eq!(body["requests_total"], 3);
     }
 }

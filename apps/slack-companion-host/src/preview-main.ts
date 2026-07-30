@@ -29,6 +29,7 @@ async function main(): Promise<void> {
     tenantId: required(process.env.CEREBRO_TENANT_ID),
   });
   const result = await client.ask(
+    "preview-request",
     "Which security sources are configured and healthy? Use read-only evidence and state any evidence gaps.",
     AbortSignal.timeout(120_000),
   );

@@ -7,10 +7,12 @@ function continuationCase(
   currentRequest: string,
   requiredFragment: string,
   blocker: string,
+  evidenceContext: readonly string[] = [],
 ): SlackWorkingStateEvalCaseV1 {
   return Object.freeze({
     case_ref: caseRef,
     current_request: currentRequest,
+    evidence_context: Object.freeze(evidenceContext),
     forbidden_context: Object.freeze([]),
     partition,
     prior_turns: Object.freeze([Object.freeze({
@@ -41,6 +43,7 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
       "Keep going.",
       "Rank three remediation projects",
       "The evidence query timed out",
+      ["using current evidence"],
     ),
     continuationCase(
       "case://held-out/next-risk",
@@ -49,6 +52,7 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
       "Give me another.",
       "Identify the most material risk",
       "The source check did not finish",
+      ["support it with current evidence"],
     ),
     continuationCase(
       "case://held-out/control-summary",
@@ -65,6 +69,7 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
       "Proceed.",
       "Compare the two proposed response plans",
       "One evidence source was unavailable",
+      ["One evidence source was unavailable"],
     ),
     continuationCase(
       "case://held-out/source-health",
@@ -89,10 +94,12 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
       "Resume.",
       "Rank the response options by verified impact",
       "The impact query did not complete",
+      ["verified impact"],
     ),
     Object.freeze({
       case_ref: "case://held-out/repeated-continuation",
       current_request: "Keep working.",
+      evidence_context: Object.freeze([]),
       forbidden_context: Object.freeze([]),
       partition: "held_out",
       prior_turns: Object.freeze([
@@ -121,6 +128,7 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
     Object.freeze({
       case_ref: "case://held-out/expired-state",
       current_request: "Start a separate assessment.",
+      evidence_context: Object.freeze([]),
       forbidden_context: Object.freeze(["Assess the retired service."]),
       partition: "held_out",
       prior_turns: Object.freeze([Object.freeze({
@@ -134,6 +142,7 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
     Object.freeze({
       case_ref: "case://held-out/bounded-eviction",
       current_request: "Continue the latest task.",
+      evidence_context: Object.freeze([]),
       forbidden_context: Object.freeze(["Review obsolete task zero."]),
       partition: "held_out",
       prior_turns: Object.freeze([
@@ -161,6 +170,22 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
       ]),
       schema_version: "slack-working-state-eval-case/v1",
     }),
+    Object.freeze({
+      case_ref: "case://held-out/self-status-follow-up",
+      current_request: "What else can you verify?",
+      evidence_context: Object.freeze(["your work today"]),
+      forbidden_context: Object.freeze([]),
+      partition: "held_out",
+      prior_turns: Object.freeze([Object.freeze({
+        outcome: "completed" as const,
+        request: "what can you tell me about yourself and your work today?",
+      })]),
+      required_context: Object.freeze([
+        "what can you tell me about yourself and your work today?",
+        "Last outcome: completed.",
+      ]),
+      schema_version: "slack-working-state-eval-case/v1",
+    }),
     continuationCase(
       "case://shadow/ranked-actions",
       "shadow",
@@ -176,6 +201,7 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
       "Show the next one.",
       "Find the largest current exposure",
       "The record search was incomplete",
+      ["supporting records"],
     ),
     continuationCase(
       "case://shadow/policy-gaps",
@@ -192,6 +218,7 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
       "Go ahead.",
       "Review the available mitigation options",
       "A required source was temporarily unavailable",
+      ["A required source was temporarily unavailable"],
     ),
     continuationCase(
       "case://shadow/collector-status",
@@ -216,10 +243,12 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
       "Pick this back up.",
       "Order the proposed fixes by measured impact",
       "The measurement lookup was interrupted",
+      ["measured impact"],
     ),
     Object.freeze({
       case_ref: "case://shadow/repeated-retry",
       current_request: "Take the next step.",
+      evidence_context: Object.freeze(["evidence-backed recovery plan"]),
       forbidden_context: Object.freeze([]),
       partition: "shadow",
       prior_turns: Object.freeze([
@@ -248,6 +277,7 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
     Object.freeze({
       case_ref: "case://shadow/expired-state",
       current_request: "Begin a new independent review.",
+      evidence_context: Object.freeze([]),
       forbidden_context: Object.freeze(["Inspect the decommissioned collector."]),
       partition: "shadow",
       prior_turns: Object.freeze([Object.freeze({
@@ -261,6 +291,7 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
     Object.freeze({
       case_ref: "case://shadow/bounded-eviction",
       current_request: "Resume the current sequence.",
+      evidence_context: Object.freeze([]),
       forbidden_context: Object.freeze(["Trace superseded sequence zero."]),
       partition: "shadow",
       prior_turns: Object.freeze([
@@ -285,6 +316,22 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
         "Trace current sequence one.",
         "Trace current sequence two.",
         "Trace current sequence three.",
+      ]),
+      schema_version: "slack-working-state-eval-case/v1",
+    }),
+    Object.freeze({
+      case_ref: "case://shadow/self-status-follow-up",
+      current_request: "Continue with only what you can support.",
+      evidence_context: Object.freeze(["work you can verify from today"]),
+      forbidden_context: Object.freeze([]),
+      partition: "shadow",
+      prior_turns: Object.freeze([Object.freeze({
+        outcome: "completed" as const,
+        request: "Describe your role and the work you can verify from today.",
+      })]),
+      required_context: Object.freeze([
+        "Describe your role and the work you can verify from today.",
+        "Last outcome: completed.",
       ]),
       schema_version: "slack-working-state-eval-case/v1",
     }),

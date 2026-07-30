@@ -1,10 +1,11 @@
 #![deny(unsafe_code)]
 
-//! Deterministic Slack answer acceptance authority.
+//! Deterministic Slack request and answer authority.
 //!
-//! Slack transport and graph providers supply candidate facts. This crate owns the
-//! fail-closed decision about whether a candidate can be delivered as grounded
-//! evidence or as a structured safe refusal.
+//! Slack transport supplies tenant-bound questions and graph providers supply
+//! candidate facts. This crate owns the fail-closed decisions about whether a
+//! request can be sent upstream and whether a candidate can be delivered as
+//! grounded evidence or as a structured safe refusal.
 
 use std::{error::Error, fmt};
 
@@ -12,9 +13,165 @@ use serde::{Deserialize, Serialize};
 
 pub const ANSWER_CANDIDATE_V1: &str = "slack-answer-candidate/v1";
 pub const ANSWER_DECISION_V1: &str = "slack-answer-decision/v1";
+pub const QUESTION_CANDIDATE_V1: &str = "slack-question-candidate/v1";
+pub const QUESTION_DECISION_V1: &str = "slack-question-decision/v1";
+const MAX_HISTORY_ITEMS: usize = 16;
+const MAX_HISTORY_ITEM_BYTES: usize = 8 * 1024;
 const MAX_MARKDOWN_BYTES: usize = 64 * 1024;
+const MAX_QUESTION_BYTES: usize = 32 * 1024;
 const MAX_REFUSAL_ITEMS: usize = 32;
 const MAX_REFUSAL_ITEM_BYTES: usize = 512;
+const MAX_REQUEST_ID_BYTES: usize = 512;
+const MAX_TENANT_ID_BYTES: usize = 256;
+const SELF_CONTEXT_ANSWER: &str = "I’m Cerebro, Writer’s security operations assistant. I read governed Cerebro evidence for findings, assets, identities, controls, owners, and connector health.\n\nI don’t have a verified cross-thread work log in this request, so I can’t claim a complete list of today’s work. Run `@Cerebro scratchpad` in this thread to see retained requests, outcomes, and blockers, or ask me about one current security task.";
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct QuestionCandidate {
+    pub schema_version: String,
+    pub tenant_id: String,
+    pub request_id: String,
+    pub question: String,
+    pub history: Vec<QuestionHistoryMessage>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct QuestionHistoryMessage {
+    pub content: String,
+    pub role: QuestionHistoryRole,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum QuestionHistoryRole {
+    Assistant,
+    User,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuestionPolicy {
+    tenant_id: String,
+}
+
+impl QuestionPolicy {
+    pub fn new(tenant_id: String) -> Result<Self, QuestionAuthorityError> {
+        if !bounded_identifier(&tenant_id, MAX_TENANT_ID_BYTES) {
+            return Err(QuestionAuthorityError::InvalidPolicy);
+        }
+        Ok(Self { tenant_id })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct QuestionDecision {
+    pub schema_version: &'static str,
+    pub tenant_id: String,
+    pub request_id: String,
+    pub authorized: bool,
+    pub execution_lane: QuestionExecutionLane,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer: Option<&'static str>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuestionExecutionLane {
+    Converse,
+    Lookup,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QuestionAuthorityError {
+    HistoryInvalid,
+    InvalidPolicy,
+    InvalidRequest,
+    InvalidSchema,
+    QuestionInvalid,
+    TenantMismatch,
+}
+
+impl fmt::Display for QuestionAuthorityError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::HistoryInvalid => "the question history is invalid or exceeds the size limit",
+            Self::InvalidPolicy => "the configured tenant policy is invalid",
+            Self::InvalidRequest => "the Slack request identity is invalid",
+            Self::InvalidSchema => "the question candidate schema is unsupported",
+            Self::QuestionInvalid => "the question is empty or exceeds the size limit",
+            Self::TenantMismatch => "the question tenant does not match the configured tenant",
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl Error for QuestionAuthorityError {}
+
+pub fn authorize_question(
+    policy: &QuestionPolicy,
+    candidate: QuestionCandidate,
+) -> Result<QuestionDecision, QuestionAuthorityError> {
+    if candidate.schema_version != QUESTION_CANDIDATE_V1 {
+        return Err(QuestionAuthorityError::InvalidSchema);
+    }
+    if candidate.tenant_id != policy.tenant_id {
+        return Err(QuestionAuthorityError::TenantMismatch);
+    }
+    if !bounded_identifier(&candidate.request_id, MAX_REQUEST_ID_BYTES) {
+        return Err(QuestionAuthorityError::InvalidRequest);
+    }
+    if !bounded_text(&candidate.question, MAX_QUESTION_BYTES) {
+        return Err(QuestionAuthorityError::QuestionInvalid);
+    }
+    if candidate.history.len() > MAX_HISTORY_ITEMS
+        || candidate
+            .history
+            .iter()
+            .any(|message| !bounded_text(&message.content, MAX_HISTORY_ITEM_BYTES))
+    {
+        return Err(QuestionAuthorityError::HistoryInvalid);
+    }
+    let execution_lane = question_execution_lane(&candidate.question);
+    Ok(QuestionDecision {
+        schema_version: QUESTION_DECISION_V1,
+        tenant_id: candidate.tenant_id,
+        request_id: candidate.request_id,
+        authorized: true,
+        execution_lane,
+        answer: match execution_lane {
+            QuestionExecutionLane::Converse => Some(SELF_CONTEXT_ANSWER),
+            QuestionExecutionLane::Lookup => None,
+        },
+    })
+}
+
+fn question_execution_lane(question: &str) -> QuestionExecutionLane {
+    let normalized = question
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    let identity_question = normalized.trim_matches(|character: char| {
+        character.is_ascii_punctuation() || character.is_whitespace()
+    });
+    let asks_identity = normalized.contains("about yourself")
+        || normalized.contains("tell me about you")
+        || matches!(identity_question, "who are you" | "what are you");
+    let asks_work = [
+        "your work today",
+        "what have you done today",
+        "what did you do today",
+        "what are you working on",
+        "what have you worked on",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase));
+    if asks_identity || asks_work {
+        QuestionExecutionLane::Converse
+    } else {
+        QuestionExecutionLane::Lookup
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -162,7 +319,20 @@ fn bounded_list(values: &[String]) -> bool {
 
 fn bounded_text(value: &str, max_bytes: usize) -> bool {
     let value = value.trim();
-    !value.is_empty() && value.len() <= max_bytes
+    !value.is_empty()
+        && value.len() <= max_bytes
+        && !value.chars().any(|character| {
+            character.is_control() && character != '\n' && character != '\r' && character != '\t'
+        })
+}
+
+fn bounded_identifier(value: &str, max_bytes: usize) -> bool {
+    let value = value.trim();
+    !value.is_empty()
+        && value.len() <= max_bytes
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b':' | b'.'))
 }
 
 #[cfg(test)]
@@ -182,6 +352,112 @@ mod tests {
             }),
             unsupported_query: None,
         }
+    }
+
+    fn question() -> QuestionCandidate {
+        QuestionCandidate {
+            schema_version: QUESTION_CANDIDATE_V1.to_owned(),
+            tenant_id: "writer-sec-dev".to_owned(),
+            request_id: "C0B2VJDFJ5N:1753830794.123".to_owned(),
+            question: "Show connector health for Okta.".to_owned(),
+            history: vec![QuestionHistoryMessage {
+                content: "Which source should I inspect?".to_owned(),
+                role: QuestionHistoryRole::Assistant,
+            }],
+        }
+    }
+
+    #[test]
+    fn authorizes_a_tenant_bound_question() {
+        let policy = QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap();
+        assert_eq!(
+            authorize_question(&policy, question()).unwrap(),
+            QuestionDecision {
+                schema_version: QUESTION_DECISION_V1,
+                tenant_id: "writer-sec-dev".to_owned(),
+                request_id: "C0B2VJDFJ5N:1753830794.123".to_owned(),
+                authorized: true,
+                execution_lane: QuestionExecutionLane::Lookup,
+                answer: None,
+            }
+        );
+    }
+
+    #[test]
+    fn routes_self_and_work_status_questions_without_a_graph_lookup() {
+        let policy = QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap();
+        for text in [
+            "What can you tell me about yourself and your work today?",
+            "Who are you?",
+            "What are you working on?",
+        ] {
+            let mut candidate = question();
+            candidate.question = text.to_owned();
+            let decision = authorize_question(&policy, candidate).unwrap();
+            assert_eq!(decision.execution_lane, QuestionExecutionLane::Converse);
+            assert_eq!(decision.answer, Some(SELF_CONTEXT_ANSWER));
+        }
+
+        let lookup = authorize_question(&policy, question()).unwrap();
+        assert_eq!(lookup.execution_lane, QuestionExecutionLane::Lookup);
+        assert_eq!(lookup.answer, None);
+
+        let mut evidence_question = question();
+        evidence_question.question = "What are you seeing in Okta right now?".to_owned();
+        let lookup = authorize_question(&policy, evidence_question).unwrap();
+        assert_eq!(lookup.execution_lane, QuestionExecutionLane::Lookup);
+        assert_eq!(lookup.answer, None);
+    }
+
+    #[test]
+    fn rejects_cross_tenant_and_caller_authorized_questions() {
+        let policy = QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap();
+        let mut cross_tenant = question();
+        cross_tenant.tenant_id = "other-tenant".to_owned();
+        assert_eq!(
+            authorize_question(&policy, cross_tenant),
+            Err(QuestionAuthorityError::TenantMismatch)
+        );
+        let error = serde_json::from_value::<QuestionCandidate>(serde_json::json!({
+            "schema_version": QUESTION_CANDIDATE_V1,
+            "tenant_id": "writer-sec-dev",
+            "request_id": "request-1",
+            "question": "Show connector health for Okta.",
+            "history": [],
+            "authorized": true
+        }))
+        .unwrap_err();
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn rejects_malformed_and_oversized_question_inputs() {
+        let policy = QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap();
+        for invalid_request_id in ["", "request with spaces", "request\nid"] {
+            let mut candidate = question();
+            candidate.request_id = invalid_request_id.to_owned();
+            assert_eq!(
+                authorize_question(&policy, candidate),
+                Err(QuestionAuthorityError::InvalidRequest)
+            );
+        }
+        let mut oversized_question = question();
+        oversized_question.question = "x".repeat(MAX_QUESTION_BYTES + 1);
+        assert_eq!(
+            authorize_question(&policy, oversized_question),
+            Err(QuestionAuthorityError::QuestionInvalid)
+        );
+        let mut oversized_history = question();
+        oversized_history.history = (0..=MAX_HISTORY_ITEMS)
+            .map(|_| QuestionHistoryMessage {
+                content: "bounded".to_owned(),
+                role: QuestionHistoryRole::User,
+            })
+            .collect();
+        assert_eq!(
+            authorize_question(&policy, oversized_history),
+            Err(QuestionAuthorityError::HistoryInvalid)
+        );
     }
 
     fn refusal() -> AnswerCandidate {
