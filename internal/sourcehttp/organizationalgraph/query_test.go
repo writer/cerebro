@@ -2,8 +2,10 @@ package organizationalgraph
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1191,6 +1193,46 @@ func TestComparisonIgnoresSetOrderingButDetectsContentChanges(t *testing.T) {
 	rust.Neighbors[0] = &ports.NeighborhoodNode{URN: nodeTwo.URN, Label: "Changed"}
 	if status := comparisonStatus(legacy, nil, rust, nil); status != "mismatch" {
 		t.Fatalf("comparisonStatus(changed) = %q, want mismatch", status)
+	}
+}
+
+func TestComparisonReceiptEmitsSuccessfulBoundedEvidence(t *testing.T) {
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = writer
+	defer func() {
+		os.Stderr = oldStderr
+	}()
+
+	value := &ports.EntityNeighborhood{
+		Root: &ports.NeighborhoodNode{URN: "urn:cerebro:tenant-a:resource:root"},
+	}
+	logComparisonReceipt(context.Background(), "expand", "match", value, value, nil)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt map[string]any
+	if err := json.Unmarshal(encoded, &receipt); err != nil {
+		t.Fatalf("unmarshal receipt %q: %v", encoded, err)
+	}
+	if receipt["kind"] != "event" || receipt["name"] != "organizational_graph.parity_receipt" {
+		t.Fatalf("unexpected receipt identity: %#v", receipt)
+	}
+	if receipt["operation"] != "expand" || receipt["status"] != "match" {
+		t.Fatalf("unexpected receipt scope: %#v", receipt)
+	}
+	if receipt["legacy_sha256"] == "" || receipt["legacy_sha256"] != receipt["rust_sha256"] {
+		t.Fatalf("unexpected receipt digests: %#v", receipt)
+	}
+	if _, found := receipt["tenant_id"]; found {
+		t.Fatalf("receipt must not contain tenant identifiers: %#v", receipt)
 	}
 }
 

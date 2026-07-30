@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"go.opentelemetry.io/otel/trace"
 
 	cerebrographv1 "github.com/writer/cerebro/gen/cerebro/graph/v1"
 	"github.com/writer/cerebro/gen/cerebro/graph/v1/cerebrographv1connect"
@@ -27,6 +26,7 @@ import (
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/observability"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
@@ -630,9 +630,7 @@ func (s *QueryStore) recordCanaryRoute(ctx context.Context, operation, authority
 
 func (s *QueryStore) recordCanaryVerification(ctx context.Context, operation string, legacy any, legacyErr error, rust any, started time.Time) {
 	status := comparisonStatus(legacy, legacyErr, rust, nil)
-	if status != "match" {
-		logComparisonReceipt(ctx, operation, status, legacy, rust, legacyErr)
-	}
+	logComparisonReceipt(ctx, operation, status, legacy, rust, legacyErr)
 	observability.RecordOrganizationalGraphCanaryVerification(ctx, observability.OrganizationalGraphCanaryVerificationMetrics{
 		Operation: operation,
 		Status:    status,
@@ -642,9 +640,7 @@ func (s *QueryStore) recordCanaryVerification(ctx context.Context, operation str
 
 func (s *QueryStore) recordComparison(ctx context.Context, operation string, legacy, rust any, rustErr error, started time.Time) {
 	status := comparisonStatus(legacy, nil, rust, rustErr)
-	if status != "match" {
-		logComparisonReceipt(ctx, operation, status, legacy, rust, rustErr)
-	}
+	logComparisonReceipt(ctx, operation, status, legacy, rust, rustErr)
 	observability.RecordOrganizationalGraphShadow(ctx, observability.OrganizationalGraphShadowMetrics{
 		Operation: operation,
 		Status:    status,
@@ -677,20 +673,15 @@ func logComparisonReceipt(ctx context.Context, operation, status string, legacy,
 	if comparisonErr != nil {
 		errorDigest = digestString(comparisonErr.Error())
 	}
-	traceID := trace.SpanContextFromContext(ctx).TraceID().String()
-	// #nosec G706 -- operation and status use closed vocabularies; trace IDs
-	// and every receipt value are locally generated hex, counts, or type names.
-	log.Printf(
-		"organizational graph parity operation=%s status=%s trace_id=%s legacy_sha256=%s rust_sha256=%s legacy_shape=%q rust_shape=%q error_sha256=%s",
-		operation,
-		status,
-		traceID,
-		legacyDigest,
-		rustDigest,
-		legacyShape,
-		rustShape,
-		errorDigest,
-	)
+	telemetry.Event(ctx, "organizational_graph.parity_receipt", telemetry.Attrs(
+		telemetry.Field{Key: "operation", Value: operation},
+		telemetry.Field{Key: "status", Value: status},
+		telemetry.Field{Key: "legacy_sha256", Value: legacyDigest},
+		telemetry.Field{Key: "rust_sha256", Value: rustDigest},
+		telemetry.Field{Key: "legacy_shape", Value: legacyShape},
+		telemetry.Field{Key: "rust_shape", Value: rustShape},
+		telemetry.Field{Key: "error_sha256", Value: errorDigest},
+	))
 }
 
 func comparisonReceipt(value any) (string, string) {
