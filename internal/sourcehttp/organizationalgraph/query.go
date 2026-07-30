@@ -50,13 +50,15 @@ const (
 	readModeAuthority readMode = iota
 	readModeShadow
 	readModeCanary
+	readModeLegacy
 )
 
 // QueryStore serves bounded product reads from Rust. When a compatibility
 // reader is present, callers not yet moved from raw Cypher can still use it.
 // Without one, those callers fail explicitly instead of falling back.
 type QueryStore struct {
-	compatibility ports.GraphQueryStore
+	compatibility ports.GraphNeighborhoodStore
+	rawCypher     ports.RawCypherQueryStore
 	baseURL       string
 	httpClient    *http.Client
 	graph         cerebrographv1connect.OrganizationalGraphServiceClient
@@ -78,19 +80,82 @@ func ReadinessStore(compatibility, authority ports.GraphStore) ports.GraphStore 
 }
 
 func NewQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration) (*QueryStore, error) {
-	return newQueryStore(compatibility, baseURL, sharedSecret, timeout, readModeAuthority, 100)
+	return newQueryStore(compatibility, compatibility, baseURL, sharedSecret, timeout, readModeAuthority, 100)
 }
 
 // NewConfiguredQueryStore selects one validated deployment read strategy.
 func NewConfiguredQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode string, shadowPercent, authorityPercent, canaryVerifyPercent int) (*QueryStore, error) {
+	return NewConfiguredQueryStoreWithCompatibility(
+		compatibility,
+		compatibility,
+		baseURL,
+		sharedSecret,
+		timeout,
+		mode,
+		shadowPercent,
+		authorityPercent,
+		canaryVerifyPercent,
+	)
+}
+
+// NewConfiguredQueryStoreWithCompatibility keeps typed Go rollback reads
+// separate from raw Cypher compatibility. Authority mode needs only the raw
+// compatibility port; legacy, shadow, and canary also require typed Go reads.
+func NewConfiguredQueryStoreWithCompatibility(
+	compatibility ports.GraphNeighborhoodStore,
+	rawCypher ports.RawCypherQueryStore,
+	baseURL, sharedSecret string,
+	timeout time.Duration,
+	mode string,
+	shadowPercent, authorityPercent, canaryVerifyPercent int,
+) (*QueryStore, error) {
 	switch mode {
+	case "legacy":
+		if compatibility == nil {
+			return nil, errors.New("legacy graph reads require the compatibility store")
+		}
+		return newQueryStore(compatibility, rawCypher, baseURL, sharedSecret, timeout, readModeLegacy, 0)
 	case "shadow":
-		return NewShadowQueryStore(compatibility, baseURL, sharedSecret, timeout, shadowPercent)
+		if compatibility == nil {
+			return nil, errors.New("shadow graph reads require the legacy compatibility store")
+		}
+		if shadowPercent <= 0 || shadowPercent > 100 {
+			return nil, errors.New("shadow graph read percent must be between 1 and 100")
+		}
+		return newQueryStore(compatibility, rawCypher, baseURL, sharedSecret, timeout, readModeShadow, uint32(shadowPercent)) // #nosec G115 -- validated above.
 	case "canary":
-		return NewVerifiedCanaryQueryStore(compatibility, baseURL, sharedSecret, timeout, authorityPercent, canaryVerifyPercent)
+		if compatibility == nil {
+			return nil, errors.New("canary graph reads require the legacy compatibility store")
+		}
+		if authorityPercent <= 0 || authorityPercent >= 100 {
+			return nil, errors.New("canary graph read percent must be between 1 and 99")
+		}
+		if canaryVerifyPercent < 0 || canaryVerifyPercent > 100 {
+			return nil, errors.New("canary graph verification percent must be between 0 and 100")
+		}
+		store, err := newQueryStore(compatibility, rawCypher, baseURL, sharedSecret, timeout, readModeCanary, uint32(authorityPercent)) // #nosec G115 -- validated above.
+		if err != nil {
+			return nil, err
+		}
+		store.verifyPercent = uint32(canaryVerifyPercent) // #nosec G115 -- validated above.
+		return store, nil
+	case "", "authority":
+		// Config.Load normalizes an omitted mode to authority. Accept the zero
+		// value here as well for callers that construct Config directly.
+		return newQueryStore(compatibility, rawCypher, baseURL, sharedSecret, timeout, readModeAuthority, 100)
 	default:
-		return NewQueryStore(compatibility, baseURL, sharedSecret, timeout)
+		return nil, fmt.Errorf("unsupported organizational graph read mode %q", mode)
 	}
+}
+
+// NewLegacyQueryStore keeps Go as the explicit product-read authority while a
+// deployment rolls back or completes Rust qualification. It does not call the
+// Rust read plane.
+func NewLegacyQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration) (*QueryStore, error) {
+	if compatibility == nil {
+		return nil, errors.New("legacy graph reads require the compatibility store")
+	}
+	return newQueryStore(compatibility, compatibility, baseURL, sharedSecret, timeout, readModeLegacy, 0)
 }
 
 func NewShadowQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, shadowPercent int) (*QueryStore, error) {
@@ -100,7 +165,7 @@ func NewShadowQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSec
 	if shadowPercent <= 0 || shadowPercent > 100 {
 		return nil, errors.New("shadow graph read percent must be between 1 and 100")
 	}
-	return newQueryStore(compatibility, baseURL, sharedSecret, timeout, readModeShadow, uint32(shadowPercent)) // #nosec G115 -- validated above.
+	return newQueryStore(compatibility, compatibility, baseURL, sharedSecret, timeout, readModeShadow, uint32(shadowPercent)) // #nosec G115 -- validated above.
 }
 
 // NewCanaryQueryStore returns Rust responses for one stable sample of typed
@@ -123,7 +188,7 @@ func NewVerifiedCanaryQueryStore(compatibility ports.GraphQueryStore, baseURL, s
 	if verifyPercent < 0 || verifyPercent > 100 {
 		return nil, errors.New("canary graph verification percent must be between 0 and 100")
 	}
-	store, err := newQueryStore(compatibility, baseURL, sharedSecret, timeout, readModeCanary, uint32(authorityPercent)) // #nosec G115 -- validated above.
+	store, err := newQueryStore(compatibility, compatibility, baseURL, sharedSecret, timeout, readModeCanary, uint32(authorityPercent)) // #nosec G115 -- validated above.
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +196,7 @@ func NewVerifiedCanaryQueryStore(compatibility ports.GraphQueryStore, baseURL, s
 	return store, nil
 }
 
-func newQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode readMode, samplePercent uint32) (*QueryStore, error) {
+func newQueryStore(compatibility ports.GraphNeighborhoodStore, rawCypher ports.RawCypherQueryStore, baseURL, sharedSecret string, timeout time.Duration, mode readMode, samplePercent uint32) (*QueryStore, error) {
 	baseURL, err := normalizeBaseURL(baseURL)
 	if err != nil {
 		return nil, err
@@ -146,6 +211,7 @@ func newQueryStore(compatibility ports.GraphQueryStore, baseURL, sharedSecret st
 	httpClient := &http.Client{Timeout: timeout}
 	return &QueryStore{
 		compatibility: compatibility,
+		rawCypher:     rawCypher,
 		baseURL:       baseURL,
 		httpClient:    httpClient,
 		graph:         cerebrographv1connect.NewOrganizationalGraphServiceClient(httpClient, baseURL),
@@ -215,18 +281,37 @@ func (s *QueryStore) ResolveSecurityLifecycleFinding(ctx context.Context, tenant
 }
 
 func (s *QueryStore) Ping(ctx context.Context) (err error) {
-	if s.compatibility != nil {
-		if err := s.compatibility.Ping(ctx); err != nil {
-			return fmt.Errorf("compatibility graph health: %w", err)
+	switch s.mode {
+	case readModeAuthority:
+		return s.pingRust(ctx)
+	case readModeLegacy:
+		return s.pingCompatibility(ctx)
+	case readModeShadow:
+		if err := s.pingCompatibility(ctx); err != nil {
+			return err
 		}
-	}
-	if s.mode == readModeShadow || s.mode == readModeCanary {
 		s.scheduleShadowComparison(ctx, "readiness", nil, func(comparisonCtx context.Context) (any, error) {
 			return nil, s.pingRust(comparisonCtx)
 		})
 		return nil
+	case readModeCanary:
+		if err := s.pingCompatibility(ctx); err != nil {
+			return err
+		}
+		return s.pingRust(ctx)
+	default:
+		return errors.New("organizational graph read mode is invalid")
 	}
-	return s.pingRust(ctx)
+}
+
+func (s *QueryStore) pingCompatibility(ctx context.Context) error {
+	if s.compatibility == nil {
+		return errors.New("compatibility graph is unavailable")
+	}
+	if err := s.compatibility.Ping(ctx); err != nil {
+		return fmt.Errorf("compatibility graph health: %w", err)
+	}
+	return nil
 }
 
 func (s *QueryStore) pingRust(ctx context.Context) (err error) {
@@ -252,6 +337,9 @@ func (s *QueryStore) pingRust(ctx context.Context) (err error) {
 }
 
 func (s *QueryStore) GetEntityNeighborhood(ctx context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
+	if s.mode == readModeLegacy {
+		return s.compatibility.GetEntityNeighborhood(ctx, rootURN, limit)
+	}
 	if s.mode == readModeCanary {
 		tenantID := cerebrourn.TenantID(strings.TrimSpace(rootURN))
 		if tenantID == "" {
@@ -317,6 +405,9 @@ func (s *QueryStore) getRustEntityNeighborhood(ctx context.Context, rootURN stri
 }
 
 func (s *QueryStore) GetEntityNeighborhoods(ctx context.Context, rootURNs []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
+	if s.mode == readModeLegacy {
+		return legacyNeighborhoods(ctx, s.compatibility, rootURNs, limit)
+	}
 	sampleKey := strings.Join(rootURNs, "\x00")
 	if s.mode == readModeCanary {
 		tenantID, err := graphRootsTenant(rootURNs)
@@ -432,7 +523,7 @@ func graphRootsTenant(rootURNs []string) (string, error) {
 	return tenantID, nil
 }
 
-func legacyNeighborhoods(ctx context.Context, store ports.GraphQueryStore, roots []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
+func legacyNeighborhoods(ctx context.Context, store ports.GraphNeighborhoodStore, roots []string, limit int) (map[string]*ports.EntityNeighborhood, error) {
 	if batch, ok := store.(ports.GraphNeighborhoodBatchStore); ok {
 		return batch.GetEntityNeighborhoods(ctx, roots, limit)
 	}
@@ -703,17 +794,17 @@ func digestBytes(value []byte) string {
 }
 
 func (s *QueryStore) ExecuteReadCypher(ctx context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
-	if s.compatibility == nil {
+	if s.rawCypher == nil {
 		return nil, ports.ErrGraphTypedOperationRequired
 	}
-	return s.compatibility.ExecuteReadCypher(ctx, request)
+	return s.rawCypher.ExecuteReadCypher(ctx, request)
 }
 
 func (s *QueryStore) CountProjectedLinksMissingAssertions(ctx context.Context, tenantID string, relations []string) (uint32, error) {
-	if s.compatibility == nil {
+	if s.rawCypher == nil {
 		return 0, ports.ErrGraphTypedOperationRequired
 	}
-	store, ok := s.compatibility.(ports.ProjectionAssertionCoverageStore)
+	store, ok := s.rawCypher.(ports.ProjectionAssertionCoverageStore)
 	if !ok {
 		return 0, errors.New("compatibility graph store does not support projection assertion coverage")
 	}
@@ -721,10 +812,10 @@ func (s *QueryStore) CountProjectedLinksMissingAssertions(ctx context.Context, t
 }
 
 func (s *QueryStore) MigrateProjectedLinkAssertions(ctx context.Context, request ports.ProjectionAssertionMigrationRequest) (ports.ProjectionAssertionMigrationResult, error) {
-	if s.compatibility == nil {
+	if s.rawCypher == nil {
 		return ports.ProjectionAssertionMigrationResult{}, ports.ErrGraphTypedOperationRequired
 	}
-	store, ok := s.compatibility.(ports.ProjectionAssertionMigrator)
+	store, ok := s.rawCypher.(ports.ProjectionAssertionMigrator)
 	if !ok {
 		return ports.ProjectionAssertionMigrationResult{}, errors.New("compatibility graph store does not support projection assertion migration")
 	}

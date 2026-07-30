@@ -24,8 +24,8 @@ func (a *App) newComplianceImpactServices(jobs *platformjobs.Service, assessment
 	}
 
 	projectionStore, projectionOK := a.deps.GraphStore.(ports.ProjectionGraphStore)
-	queryStore, queryOK := a.deps.GraphStore.(ports.GraphQueryStore)
-	if !projectionOK || !queryOK || isNilInterface(projectionStore) || isNilInterface(queryStore) {
+	queryStore := dependencyGraphQueryStore(a.deps)
+	if !projectionOK || isNilInterface(projectionStore) || isNilInterface(queryStore) {
 		return monitorService, nil, nil
 	}
 	projector, err := complianceimpact.NewGraphProjector(projectionStore)

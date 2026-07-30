@@ -62,11 +62,25 @@ type CypherPlanNode struct {
 // MaxCypherQueryRows caps the number of rows the graph store will return for one read query.
 const MaxCypherQueryRows = 3000
 
-// GraphQueryStore exposes bounded graph neighborhood reads and read-only Cypher.
-type GraphQueryStore interface {
+// GraphNeighborhoodStore exposes bounded product graph reads.
+type GraphNeighborhoodStore interface {
 	GraphStore
 	GetEntityNeighborhood(context.Context, string, int) (*EntityNeighborhood, error)
+}
+
+// RawCypherQueryStore is the retained compatibility surface for callers that
+// have not migrated to bounded typed Rust operations.
+type RawCypherQueryStore interface {
+	GraphStore
 	ExecuteReadCypher(context.Context, CypherQueryRequest) ([]CypherRow, error)
+}
+
+// GraphQueryStore is the transitional composite consumed by existing product
+// packages. The authority adapter serves typed reads from Rust and delegates
+// only raw Cypher through RawCypherQueryStore.
+type GraphQueryStore interface {
+	GraphNeighborhoodStore
+	RawCypherQueryStore
 }
 
 // GraphNeighborhoodBatchStore exposes batched bounded graph neighborhood reads.

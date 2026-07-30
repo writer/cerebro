@@ -104,12 +104,16 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		deps.SourceCollectionReceipts = projectionClient
 	}
 	if readBaseURL != "" {
-		var compatibility ports.GraphQueryStore
-		if primary, ok := deps.GraphStore.(ports.GraphQueryStore); ok && !isNilInterface(primary) {
-			compatibility = primary
+		var compatibility ports.GraphNeighborhoodStore
+		if reader, ok := deps.GraphStore.(ports.GraphNeighborhoodStore); ok && !isNilInterface(reader) {
+			compatibility = reader
 		}
-		queryStore, err := organizationalgraph.NewConfiguredQueryStore(
-			compatibility, readBaseURL, cfg.OrganizationalGraph.SharedSecret,
+		var rawCypher ports.RawCypherQueryStore
+		if reader, ok := deps.GraphStore.(ports.RawCypherQueryStore); ok && !isNilInterface(reader) {
+			rawCypher = reader
+		}
+		queryStore, err := organizationalgraph.NewConfiguredQueryStoreWithCompatibility(
+			compatibility, rawCypher, readBaseURL, cfg.OrganizationalGraph.SharedSecret,
 			cfg.OrganizationalGraph.Timeout, cfg.OrganizationalGraph.ReadMode,
 			cfg.OrganizationalGraph.ShadowPercent, cfg.OrganizationalGraph.AuthorityPercent,
 			cfg.OrganizationalGraph.CanaryVerifyPercent,

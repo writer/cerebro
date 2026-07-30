@@ -297,12 +297,39 @@ Go projector                Rust mapper
 
 `cerebro-platform serve-neo4j-readonly` opens only the bounded Neo4j read plane. It does not connect to PostgreSQL, run store migrations, expose a projection runtime, or consume the append log. Use this process for pre-cutover shadow and read canaries. `serve-neo4j` adds the projection API, while `serve-neo4j-consumer` also starts append-log consumption.
 
-Read promotion uses three explicit states. `shadow` always returns Go and
-compares a stable sample with Rust. `canary` assigns each tenant to Rust or Go
-with a stable hash; a Rust-tenant failure fails closed and never retries
-against Go. `authority` returns Rust for every typed read. Raw Cypher is not
-part of the canary surface and must be removed before the Go graph store can be
-retired.
+Read promotion uses four explicit states. `legacy` is the retained-Go rollback
+state and does not call Rust. `shadow` always returns Go and compares a stable
+sample with Rust. `canary` assigns each tenant to Rust or Go with a stable
+hash; readiness requires both authorities, and a Rust-tenant failure fails
+closed without retrying against Go. `authority` returns Rust for every typed
+read and does not depend on Go health.
+
+The promotion sequence is `legacy` or `shadow` -> `canary` -> `authority`.
+Moving forward requires all of these receipts against the same candidate and
+stream fence:
+
+- a completed bounded replay using the original persisted upper fence;
+- a nonzero Rust materialization count, zero rejected messages, and a durable
+  forward-consumer checkpoint at or beyond that fence;
+- a separate receipt proving the compatibility deltas were materialized into
+  the Rust `OrganizationalEntity` and assertion projection;
+- a fresh, nonzero typed-read comparison window with zero mismatches, Rust
+  errors, encoding errors, or dropped comparisons;
+- the exact task definition and image rollout receipt; and
+- a tested rollback receipt naming `legacy` as the expected read mode.
+
+Process liveness, Neo4j connectivity, consumer acknowledgement, and an empty
+projection are not authority evidence. A failed Rust request in `canary` or
+`authority` remains failed; the router never retries it through Go.
+
+Raw Cypher is a separate compatibility port. It remains delegated to the Go
+Neo4j reader until each caller has a typed Rust operation. The Go
+`GetEntityNeighborhood` and `GetEntityNeighborhoods` implementation may be
+deleted after the authority burn-in because typed neighborhood reads no longer
+need it; `ExecuteReadCypher` and `ExplainReadCypher` stay until their callers
+are migrated. After that deletion, rollback uses the last retained-Go image in
+`legacy` mode rather than pretending the current image still contains a Go
+typed reader.
 
 The canary percentage controls tenant allocation, not a random share of
 requests. Monitor `cerebro.organizational_graph.canary.routes` by `authority`,

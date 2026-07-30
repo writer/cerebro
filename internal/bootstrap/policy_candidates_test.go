@@ -1,14 +1,42 @@
 package bootstrap
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/writer/cerebro/internal/agentauthoring"
 	"github.com/writer/cerebro/internal/policycandidate"
 	policyauthor "github.com/writer/cerebro/internal/testauthor/policy"
 )
+
+func TestPolicyCandidateReadsUseConfiguredAuthority(t *testing.T) {
+	legacy := &policyGraphStoreStub{stubGraphStore: &stubGraphStore{}}
+	authority := &stubGraphStore{}
+	app := &App{deps: Dependencies{
+		GraphStore:      legacy,
+		GraphQueries:    authority,
+		PolicyAuthoring: &agentauthoring.Service{},
+	}}
+
+	service := app.policyCandidateService()
+	if service.Graph != authority {
+		t.Fatalf("policy candidate graph = %#v, want configured authority", service.Graph)
+	}
+	if service.Author == nil || any(service.Author.PolicyGraphStore) != any(legacy) {
+		t.Fatalf("policy fixture store = %#v, want explicit compatibility store", service.Author)
+	}
+}
+
+type policyGraphStoreStub struct {
+	*stubGraphStore
+}
+
+func (*policyGraphStoreStub) DeleteProjectedEntity(context.Context, string) error {
+	return nil
+}
 
 func TestPolicyCandidateViewOmitsPrivateOriginAndRawEvidence(t *testing.T) {
 	candidate := &policycandidate.Candidate{

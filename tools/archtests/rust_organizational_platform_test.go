@@ -135,7 +135,7 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	for _, required := range []string{
 		"NewOrganizationalGraphServiceClient",
 		".ExpandBatch(ctx, request)",
-		"compatibility.ExecuteReadCypher",
+		"rawCypher.ExecuteReadCypher",
 		"ErrGraphTypedOperationRequired",
 		"maxBatchRoots",
 		"GetAgentKey",
@@ -161,6 +161,27 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 	} {
 		if !strings.Contains(queryAdapter, required) {
 			t.Errorf("bounded shadow comparison missing enforced safety boundary %q", required)
+		}
+	}
+
+	for _, productionPath := range []string{
+		"internal/bootstrap/compliance_impact_runtime.go",
+		"internal/bootstrap/policy_candidates.go",
+		"cmd/cerebro/orchestrator.go",
+		"cmd/cerebro/finding_rule_graph_evaluate.go",
+	} {
+		source := readText(t, filepath.Join(root, filepath.FromSlash(productionPath)))
+		if !strings.Contains(source, "dependencyGraphQueryStore(") {
+			t.Errorf("%s bypasses configured Rust graph authority", productionPath)
+		}
+	}
+	for _, bootstrapPath := range []string{
+		"internal/bootstrap/compliance_impact_runtime.go",
+		"internal/bootstrap/policy_candidates.go",
+	} {
+		source := readText(t, filepath.Join(root, filepath.FromSlash(bootstrapPath)))
+		if strings.Contains(source, "deps.GraphStore.(ports.GraphQueryStore)") {
+			t.Errorf("%s restored direct Go product-read authority", bootstrapPath)
 		}
 	}
 

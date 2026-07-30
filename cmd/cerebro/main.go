@@ -899,6 +899,21 @@ func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) p
 	return sourceprojection.New(state, graph)
 }
 
+func compatibilityGraphQueryStore(store ports.GraphStore) ports.GraphQueryStore {
+	queryStore, ok := store.(ports.GraphQueryStore)
+	if !ok {
+		return nil
+	}
+	return queryStore
+}
+
+func dependencyGraphQueryStore(deps bootstrap.Dependencies) ports.GraphQueryStore {
+	if deps.GraphQueries != nil {
+		return deps.GraphQueries
+	}
+	return compatibilityGraphQueryStore(deps.GraphStore)
+}
+
 func appendLogSourceProjector(deps bootstrap.Dependencies) ports.SourceProjector {
 	legacy := sourceProjector(deps.StateStore, deps.GraphStore)
 	if deps.OrganizationalProjector == nil {

@@ -697,10 +697,12 @@ func Load() (Config, error) {
 	if cfg.OrganizationalGraph.ReadMode == "" {
 		cfg.OrganizationalGraph.ReadMode = "authority"
 	}
-	if cfg.OrganizationalGraph.ReadMode != "authority" &&
+	explicitOrganizationalGraphReadMode := strings.TrimSpace(os.Getenv("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE")) != ""
+	if cfg.OrganizationalGraph.ReadMode != "legacy" &&
+		cfg.OrganizationalGraph.ReadMode != "authority" &&
 		cfg.OrganizationalGraph.ReadMode != "shadow" &&
 		cfg.OrganizationalGraph.ReadMode != "canary" {
-		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE must be authority, shadow, or canary")
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE must be legacy, shadow, canary, or authority")
 	}
 	if cfg.OrganizationalGraph.ShadowPercent, err = parseIntEnv("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT", 0); err != nil {
 		return Config{}, err
@@ -713,6 +715,11 @@ func Load() (Config, error) {
 	}
 	if cfg.OrganizationalGraph.ReadMode == "canary" && cfg.OrganizationalGraph.ReadBaseURL == "" {
 		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL is required in canary mode")
+	}
+	if explicitOrganizationalGraphReadMode &&
+		cfg.OrganizationalGraph.ReadMode == "authority" &&
+		cfg.OrganizationalGraph.ReadBaseURL == "" {
+		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL is required in authority mode")
 	}
 	if cfg.OrganizationalGraph.ReadMode == "shadow" && cfg.OrganizationalGraph.ShadowPercent == 0 {
 		return Config{}, fmt.Errorf("CEREBRO_ORGANIZATIONAL_GRAPH_SHADOW_PERCENT must be greater than zero in shadow mode")
