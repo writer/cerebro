@@ -397,6 +397,8 @@ BEGIN
 END $$;
 "#;
 
+const START_CONSUMER_RUN_QUERY: &str = "INSERT INTO organizational_consumer_runs (consumer_name, run_id, mode, start_sequence, end_sequence, status) VALUES ($1, $2, $3, $4, $5, 'running') ON CONFLICT (consumer_name, run_id) DO UPDATE SET status = 'running', updated_at = NOW(), completed_at = NULL WHERE organizational_consumer_runs.mode = EXCLUDED.mode AND (organizational_consumer_runs.mode = 'replay' OR (organizational_consumer_runs.mode = 'forward' AND organizational_consumer_runs.end_sequence IS NULL AND EXCLUDED.end_sequence IS NULL)) AND organizational_consumer_runs.status IN ('running', 'stopped', 'failed') RETURNING start_sequence, end_sequence";
+
 const SOURCE_COLLECTION_MANIFEST_QUERY: &str = "SELECT manifest_json FROM organizational_source_collection_receipts WHERE tenant_id = $1 AND source_runtime_id = $2 AND collection_id = $3";
 
 const IDENTITY_CLAIM_REPLACEMENT_QUERY: &str = r#"
@@ -795,8 +797,14 @@ impl PostgresLedger {
         let transaction = client.transaction().await?;
         let row = transaction
             .query_opt(
-                "INSERT INTO organizational_consumer_runs (consumer_name, run_id, mode, start_sequence, end_sequence, status) VALUES ($1, $2, $3, $4, $5, 'running') ON CONFLICT (consumer_name, run_id) DO UPDATE SET status = 'running', updated_at = NOW(), completed_at = NULL WHERE organizational_consumer_runs.mode = EXCLUDED.mode AND (organizational_consumer_runs.mode = 'replay' OR organizational_consumer_runs.start_sequence = EXCLUDED.start_sequence) AND organizational_consumer_runs.status IN ('running', 'stopped', 'failed') RETURNING start_sequence, end_sequence",
-                &[&consumer_name, &run_id, &mode, &start_sequence, &end_sequence],
+                START_CONSUMER_RUN_QUERY,
+                &[
+                    &consumer_name,
+                    &run_id,
+                    &mode,
+                    &start_sequence,
+                    &end_sequence,
+                ],
             )
             .await?;
         let Some(row) = row else {
@@ -2850,6 +2858,16 @@ mod tests {
         }
         assert!(include_str!("postgres.rs").contains("messages_projected > 0"));
         assert!(include_str!("postgres.rs").contains("messages_rejected = 0"));
+        assert!(
+            START_CONSUMER_RUN_QUERY.contains(
+                "organizational_consumer_runs.mode = 'forward' AND organizational_consumer_runs.end_sequence IS NULL AND EXCLUDED.end_sequence IS NULL"
+            ),
+            "unbounded forward runs must resume their stored fence after restart"
+        );
+        assert!(
+            START_CONSUMER_RUN_QUERY.contains("RETURNING start_sequence, end_sequence"),
+            "consumer restart must return the stored fence"
+        );
         let source_receipt_schema = POSTGRES_SCHEMA
             .split("CREATE TABLE IF NOT EXISTS organizational_source_event_receipts")
             .nth(1)
