@@ -818,7 +818,7 @@ func graphRPCError(operation string, err error) error {
 	case connect.CodeNotFound:
 		return ports.ErrGraphEntityNotFound
 	case connect.CodeUnavailable, connect.CodeDeadlineExceeded:
-		return fmt.Errorf("%w: rust graph %s: %v", ports.ErrGraphRuntimeUnavailable, operation, err)
+		return fmt.Errorf("%w: rust graph %s: %w", ports.ErrGraphRuntimeUnavailable, operation, err)
 	default:
 		return fmt.Errorf("rust graph %s: %w", operation, err)
 	}
