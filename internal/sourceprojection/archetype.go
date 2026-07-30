@@ -6,6 +6,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	cerebrourn "github.com/writer/cerebro/internal/urn"
 )
 
 func archetypeScanProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -51,12 +52,13 @@ func archetypeVulnerabilityProjections(event *cerebrov1.EventEnvelope) ([]*ports
 	}
 	attrs := event.GetAttributes()
 	vulnID := firstNonEmpty(attrs["vulnerability_id"], stringValue(payloadMap(event), "id"))
-	if vulnID == "" {
+	scanID := strings.TrimSpace(attrs["scan_id"])
+	if vulnID == "" || scanID == "" {
 		return nil, nil, nil
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	findingURN := projectionURN(tenantID, "archetype_finding", vulnID)
+	findingURN := projectionURN(tenantID, "archetype_finding", cerebrourn.EncodeSegment(scanID), cerebrourn.EncodeSegment(vulnID))
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        findingURN,
 		TenantID:   tenantID,
@@ -68,15 +70,15 @@ func archetypeVulnerabilityProjections(event *cerebrov1.EventEnvelope) ([]*ports
 			"file_path":        attrs["file_path"],
 			"line_number":      attrs["line_number"],
 			"repository_id":    attrs["repository_id"],
-			"scan_id":          attrs["scan_id"],
+			"scan_id":          scanID,
 			"severity":         attrs["severity"],
 			"source_product":   "archetype",
 			"vulnerability_id": vulnID,
 			"at":               eventObservedAt(event),
 		}),
 	})
-	if scanURN := projectionURN(tenantID, "archetype_scan", attrs["scan_id"]); scanURN != "" {
-		addEntity(entities, &ports.ProjectedEntity{URN: scanURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "archetype.scan", Label: "Archetype scan " + attrs["scan_id"], Attributes: map[string]string{"scan_id": attrs["scan_id"]}})
+	if scanURN := projectionURN(tenantID, "archetype_scan", scanID); scanURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{URN: scanURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "archetype.scan", Label: "Archetype scan " + scanID, Attributes: map[string]string{"scan_id": scanID}})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), findingURN, scanURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 	}
 	if repoURN := archetypeRepoURN(tenantID, attrs); repoURN != "" {
