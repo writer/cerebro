@@ -5623,7 +5623,7 @@ func TestGraphIngestArchetypeRuntimeProjectsFindingsEndToEnd(t *testing.T) {
 
 	repoURN := "urn:cerebro:writer:github_code_repository:WriterInternal/Archetype"
 	scanURN := "urn:cerebro:writer:archetype_scan:1"
-	findingURN := "urn:cerebro:writer:archetype_finding:10"
+	findingURN := "urn:cerebro:writer:archetype_finding:1:10"
 	noteURN := "urn:cerebro:writer:archetype_library_note:WriterInternal/Archetype:repository-commit-learning"
 	if entity := graphStore.entities[findingURN]; entity == nil || entity.EntityType != "archetype.finding" {
 		t.Fatalf("projected finding entity = %#v, want archetype.finding", entity)

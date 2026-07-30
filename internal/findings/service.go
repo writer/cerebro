@@ -35,6 +35,7 @@ const (
 
 	findingAttributeLegacyID          = "legacy_finding_id"
 	findingAttributeLegacyFingerprint = "legacy_fingerprint"
+	findingAttributeLegacyMatchFields = "legacy_finding_match_fields"
 )
 
 var (
@@ -1878,6 +1879,20 @@ func matchesLegacyFindingIdentity(incoming *ports.FindingRecord, legacy *ports.F
 	}
 	if strings.TrimSpace(incoming.RuleID) != strings.TrimSpace(legacy.RuleID) {
 		return false
+	}
+	if rawFields := strings.TrimSpace(incoming.Attributes[findingAttributeLegacyMatchFields]); rawFields != "" {
+		for _, rawField := range strings.Split(rawFields, ",") {
+			field := strings.TrimSpace(rawField)
+			if field == "" {
+				return false
+			}
+			incomingValue := strings.TrimSpace(incoming.Attributes[field])
+			legacyValue := strings.TrimSpace(legacy.Attributes[field])
+			if incomingValue == "" || legacyValue == "" || incomingValue != legacyValue {
+				return false
+			}
+		}
+		return true
 	}
 	if len(legacy.EventIDs) == 0 {
 		return true

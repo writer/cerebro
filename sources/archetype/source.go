@@ -227,7 +227,7 @@ func scanEvent(st settings, scan scanRecord, repo repositoryRecord) *primitives.
 }
 func vulnerabilityEvent(st settings, scan scanRecord, vuln vulnerabilityRecord, repo repositoryRecord) *primitives.Event {
 	attrs := map[string]string{"vulnerability_id": strconv.Itoa(vuln.ID), "scan_id": strconv.Itoa(vuln.ScanID), "repository_id": strconv.Itoa(scan.RepositoryID), "severity": vuln.Severity, "category": vuln.Category, "file_path": vuln.FilePath, "line_number": strconv.Itoa(vuln.LineNumber), "owner": repo.Owner, "repo": repo.Name, "source_product": sourceID}
-	return event(st, "archetype.vulnerability", "archetype-vulnerability-"+strconv.Itoa(vuln.ID), "archetype/vulnerability/v1", archetypeclient.ParseTime(vuln.CreatedAt, archetypeclient.ScanTime(scan, time.Now().UTC())), attrs, vuln)
+	return event(st, "archetype.vulnerability", "archetype-vulnerability-"+strconv.Itoa(scan.ID)+"-"+strconv.Itoa(vuln.ID), "archetype/vulnerability/v1", archetypeclient.ParseTime(vuln.CreatedAt, archetypeclient.ScanTime(scan, time.Now().UTC())), attrs, vuln)
 }
 func libraryNoteEvent(st settings, scan scanRecord, entry knowledgeEntryRecord, repo repositoryRecord) *primitives.Event {
 	entry.Slug = first(entry.Slug)
