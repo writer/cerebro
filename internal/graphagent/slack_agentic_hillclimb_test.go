@@ -18,15 +18,25 @@ type slackRouteReplayCase struct {
 
 type slackAgenticHillclimbReceipt struct {
 	CaseCount                     int      `json:"case_count"`
+	ContextBudgetBytes            int      `json:"context_budget_bytes"`
 	CriticRepairRate              float64  `json:"critic_repair_rate"`
+	CriticMaxTokens               int      `json:"critic_max_tokens"`
+	DraftMaxTokens                int      `json:"draft_max_tokens"`
 	FalseConverseCount            int      `json:"false_converse_count"`
 	GraphIsolationRate            float64  `json:"graph_isolation_rate"`
+	LookupPlannerMaxTokens        int      `json:"lookup_planner_max_tokens"`
+	LookupSynthesisMaxTokens      int      `json:"lookup_synthesis_max_tokens"`
 	MalformedRouteSafeRefusalRate float64  `json:"malformed_route_safe_refusal_rate"`
+	MaxConversationRounds         int      `json:"max_conversation_rounds"`
+	MaxRouterAttempts             int      `json:"max_router_attempts"`
 	Partitions                    []string `json:"partitions"`
 	PolicyCoverageRate            float64  `json:"policy_coverage_rate"`
 	RouteContractConformance      float64  `json:"route_contract_conformance"`
+	RouterMaxTokens               int      `json:"router_max_tokens"`
 	RouteP95Milliseconds          float64  `json:"route_p95_ms"`
 	SchemaVersion                 string   `json:"schema_version"`
+	WorstCaseConversationTokens   int      `json:"worst_case_conversation_generation_tokens"`
+	WorstCaseLookupTokens         int      `json:"worst_case_lookup_generation_tokens"`
 }
 
 func TestSlackAgenticHillclimb(t *testing.T) {
@@ -98,15 +108,27 @@ func TestSlackAgenticHillclimb(t *testing.T) {
 	converseCases := countExpectedLane(cases, "converse")
 	receipt := slackAgenticHillclimbReceipt{
 		CaseCount:                     len(cases),
+		ContextBudgetBytes:            maxAskHistoryTotalBytes,
 		CriticRepairRate:              repairRate,
+		CriticMaxTokens:               slackConversationCriticMaxTokens,
+		DraftMaxTokens:                slackConversationDraftMaxTokens,
 		FalseConverseCount:            falseConverse,
 		GraphIsolationRate:            ratio(isolated, len(cases)),
+		LookupPlannerMaxTokens:        slackLookupPlannerMaxTokens,
+		LookupSynthesisMaxTokens:      slackLookupSynthesisMaxTokens,
 		MalformedRouteSafeRefusalRate: safeRefusalRate,
+		MaxConversationRounds:         maxSlackConversationLoopRounds,
+		MaxRouterAttempts:             maxSlackConversationRouterRounds,
 		Partitions:                    sortedKeys(partitions),
 		PolicyCoverageRate:            ratio(policyCovered, converseCases),
 		RouteContractConformance:      ratio(correct, len(cases)),
+		RouterMaxTokens:               slackConversationRouterMaxTokens,
 		RouteP95Milliseconds:          float64(percentileDuration(routeDurations, 0.95).Microseconds()) / 1000,
 		SchemaVersion:                 "slack-agentic-hillclimb-receipt/v1",
+		WorstCaseConversationTokens: maxSlackConversationRouterRounds*slackConversationRouterMaxTokens +
+			maxSlackConversationLoopRounds*(slackConversationDraftMaxTokens+slackConversationCriticMaxTokens),
+		WorstCaseLookupTokens: maxSlackConversationRouterRounds*slackConversationRouterMaxTokens +
+			slackLookupPlannerMaxTokens + slackLookupSynthesisMaxTokens,
 	}
 	payload, err := json.Marshal(receipt)
 	if err != nil {
@@ -135,10 +157,16 @@ func TestSlackAgenticHillclimb(t *testing.T) {
 	if receipt.RouteP95Milliseconds > 5 {
 		t.Errorf("recorded router replay p95 = %.3fms, want <= 5ms", receipt.RouteP95Milliseconds)
 	}
+	if receipt.ContextBudgetBytes != 1<<20 ||
+		receipt.WorstCaseConversationTokens != 655_360 ||
+		receipt.WorstCaseLookupTokens != 262_144 {
+		t.Errorf("budget receipt = %#v, want 1 MiB context and calibrated generation envelopes", receipt)
+	}
 }
 
 func slackRouteReplayCorpus() []slackRouteReplayCase {
 	return []slackRouteReplayCase{
+		{ExpectedLane: "lookup", Partition: "held_out", Question: "What can you tell me about yourself and your work today?", Reason: "agent_work_history"},
 		{ExpectedLane: "converse", Partition: "held_out", Question: "What can you do here?", Reason: "self_context"},
 		{ExpectedLane: "converse", Partition: "held_out", Question: "Describe your role and your limits.", Reason: "self_context"},
 		{ExpectedLane: "converse", Partition: "held_out", Question: "How should I use you in this channel?", Reason: "self_context"},
@@ -163,6 +191,7 @@ func slackRouteReplayCorpus() []slackRouteReplayCase {
 		{ExpectedLane: "lookup", Partition: "shadow", Question: "Are there unresolved findings connected to this workload?", Reason: "evidence_lookup"},
 		{ExpectedLane: "lookup", Partition: "shadow", Question: "Show current control coverage with supporting records.", Reason: "evidence_lookup"},
 		{ExpectedLane: "lookup", Partition: "shadow", Question: "What work did the security team complete today?", Reason: "evidence_lookup"},
+		{ExpectedLane: "lookup", Partition: "shadow", Question: "Introduce yourself and summarize the agent actions recorded this morning.", Reason: "agent_work_history"},
 	}
 }
 
@@ -189,7 +218,7 @@ func replayCriticRepairRate(t *testing.T) float64 {
 		}}
 		result := NewService(store, llm, ValidatorOptions{}).runSlackConversationLoop(
 			context.Background(),
-			AskRequest{TenantID: "writer", Question: "What did you work on today?", Surface: slackSurface},
+			AskRequest{TenantID: "writer", Question: "What can you do here?", Surface: slackSurface},
 			"offline-recorded-model",
 			nil,
 			slackTurnRoute{Confidence: "high", Lane: "converse", ReasonCode: "self_context"},

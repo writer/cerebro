@@ -726,6 +726,50 @@ func TestConvertDraftToQueryScopesConnectorHealthTemplate(t *testing.T) {
 	}
 }
 
+func TestConvertDraftToQueryUsesMinimizedAgentWorkReceiptTemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "What can you tell me about yourself and your work today?",
+	}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentAgentWorkHistory, Limit: 25},
+	})
+
+	if result.Plan.Intent != IntentAgentWorkHistory || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic agent work history", result)
+	}
+	for _, want := range []string{
+		"trusted_endpoint.agent_execution_receipt_observation",
+		"captured_at >= $today_utc",
+		"captured_at < $tomorrow_utc",
+		"receipt.urn AS receipt_urn",
+		"agent_product",
+		"action",
+		"evidence_integrity",
+		"Agent actions are minimized during receipt ingestion",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+	for _, forbidden := range []string{"local_user_claim", "tool_call_id", "provider_event_id", "receipt_digest"} {
+		if strings.Contains(result.Cypher, forbidden) {
+			t.Fatalf("converted cypher exposes private receipt field %q:\n%s", forbidden, result.Cypher)
+		}
+	}
+	validation, limit, err := NewValidator(nil, ValidatorOptions{
+		DisableExplain: true,
+		MaxRows:        100,
+	}).validate(context.Background(), result.Cypher, map[string]any{
+		"tenant_id":    "writer",
+		"scope_urn":    "",
+		"today_utc":    "2026-07-30T00:00:00Z",
+		"tomorrow_utc": "2026-07-31T00:00:00Z",
+	})
+	if err != nil || !validation.OK || limit != 25 {
+		t.Fatalf("validate agent work template = (%#v, %d, %v), want allowed LIMIT 25", validation, limit, err)
+	}
+}
+
 func TestConvertDraftToQueryUsesMITREAttackCoverageTemplate(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{
 		TenantID: "writer",
@@ -1245,6 +1289,7 @@ func TestDeterministicTemplatesUseProjectedGraphContract(t *testing.T) {
 		{name: "explain finding", intent: IntentExplainFinding, scope: "urn:cerebro:writer:finding:alpha"},
 		{name: "identity bridge", intent: IntentIdentityBridge, scope: "urn:cerebro:writer:github_user:alice"},
 		{name: "connector health", intent: IntentConnectorHealth, scope: "urn:cerebro:writer:source:github"},
+		{name: "agent work history", intent: IntentAgentWorkHistory, scope: "urn:cerebro:writer:trusted_endpoint_event:receipt-one"},
 		{name: "questionnaire evidence", intent: IntentQuestionnaireEvidence, scope: "urn:cerebro:writer:policy:control:ac-1", filters: map[string]string{"topic": "okta_mfa"}},
 		{name: "mitre coverage", intent: IntentMITREAttackCoverage, scope: "urn:cerebro:writer:security_tool:agent-gateway", filters: map[string]string{"coverage_state": "gap"}},
 	} {

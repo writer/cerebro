@@ -22,6 +22,7 @@ type DraftRequest struct {
 	Question  string
 	ScopeURN  string
 	Model     string
+	MaxTokens int
 	History   []HistoryMessage
 	MaxRows   int
 	Schema    string
@@ -37,13 +38,14 @@ type DraftResponse struct {
 }
 
 type SummarizeRequest struct {
-	TenantID string
-	Question string
-	ScopeURN string
-	Model    string
-	Cypher   string
-	Rows     []map[string]any
-	History  []HistoryMessage
+	TenantID  string
+	Question  string
+	ScopeURN  string
+	Model     string
+	MaxTokens int
+	Cypher    string
+	Rows      []map[string]any
+	History   []HistoryMessage
 }
 
 type LLMClient interface {

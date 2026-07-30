@@ -1141,6 +1141,23 @@ func TestServiceRequiresTenantID(t *testing.T) {
 	}
 }
 
+func TestNormalizeHistoryKeepsNewestMessagesWithinOneMiB(t *testing.T) {
+	history := []HistoryMessage{
+		{Role: "user", Content: strings.Repeat("a", 700_000)},
+		{Role: "assistant", Content: strings.Repeat("b", 700_000)},
+	}
+	normalized := normalizeHistory(history)
+	if len(normalized) != 2 {
+		t.Fatalf("normalized history length = %d, want 2", len(normalized))
+	}
+	if len(normalized[1].Content) != 700_000 || !strings.HasPrefix(normalized[1].Content, "b") {
+		t.Fatalf("newest history item was not retained: lengths=%d/%d", len(normalized[0].Content), len(normalized[1].Content))
+	}
+	if got := len(normalized[0].Content) + len(normalized[1].Content); got != 1<<20 {
+		t.Fatalf("normalized history bytes = %d, want %d", got, 1<<20)
+	}
+}
+
 func assertEventNames(t *testing.T, events []Event, want []string) {
 	t.Helper()
 	if len(events) != len(want) {

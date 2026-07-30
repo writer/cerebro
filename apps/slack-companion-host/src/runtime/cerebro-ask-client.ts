@@ -184,9 +184,9 @@ function conversationValidation(
       validation.route_reason !== "self_context"
       && validation.route_reason !== "thread_continuation"
     )
-    || !positiveBoundedInteger(validation.router_attempts, 2)
-    || !nonNegativeBoundedInteger(validation.draft_attempts, 2)
-    || !nonNegativeBoundedInteger(validation.critic_attempts, 2)
+    || !positiveBoundedInteger(validation.router_attempts, 4)
+    || !nonNegativeBoundedInteger(validation.draft_attempts, 4)
+    || !nonNegativeBoundedInteger(validation.critic_attempts, 4)
     || typeof validation.critic_approved !== "boolean"
     || typeof validation.fallback_used !== "boolean"
     || validation.requires_graph_query !== false

@@ -9,7 +9,7 @@ import (
 
 const (
 	minStructuredJSONMaxTokens = 4096
-	maxStructuredJSONMaxTokens = 32768
+	maxStructuredJSONMaxTokens = 131072
 )
 
 func (c *BedrockLLMClient) DraftStructuredJSON(ctx context.Context, request StructuredJSONRequest) ([]byte, error) {
@@ -71,6 +71,19 @@ func structuredJSONTokenBudget(configured int, requested int) int {
 		return maxStructuredJSONMaxTokens
 	}
 	return configured
+}
+
+func requestedGenerationTokenBudget(configured int, requested int) int {
+	if requested <= 0 {
+		return configured
+	}
+	if requested < 128 {
+		return 128
+	}
+	if requested > maxStructuredJSONMaxTokens {
+		return maxStructuredJSONMaxTokens
+	}
+	return requested
 }
 
 func structuredJSONPrompt(request StructuredJSONRequest) (string, error) {

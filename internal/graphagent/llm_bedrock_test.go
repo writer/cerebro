@@ -67,9 +67,10 @@ func TestBedrockLLMClient_DraftCypherUsesInferenceProfile(t *testing.T) {
 	}
 
 	resp, err := client.DraftCypher(context.Background(), DraftRequest{
-		TenantID: "test",
-		Question: "Show risky assets",
-		Model:    DefaultModel,
+		TenantID:  "test",
+		Question:  "Show risky assets",
+		Model:     DefaultModel,
+		MaxTokens: 65_536,
 	})
 	if err != nil {
 		t.Fatalf("draft cypher: %v", err)
@@ -80,8 +81,8 @@ func TestBedrockLLMClient_DraftCypherUsesInferenceProfile(t *testing.T) {
 	if got := aws.ToString(runtime.lastInput.ModelId); got != "us.anthropic.claude-sonnet-4-6" {
 		t.Fatalf("model id = %q, want inference profile", got)
 	}
-	if runtime.lastInput.InferenceConfig == nil || aws.ToInt32(runtime.lastInput.InferenceConfig.MaxTokens) != 100 {
-		t.Fatalf("max_tokens = %#v, want 100", runtime.lastInput.InferenceConfig)
+	if runtime.lastInput.InferenceConfig == nil || aws.ToInt32(runtime.lastInput.InferenceConfig.MaxTokens) != 65_536 {
+		t.Fatalf("max_tokens = %#v, want 65536", runtime.lastInput.InferenceConfig)
 	}
 	if runtime.lastInput.InferenceConfig.Temperature != nil {
 		t.Fatalf("temperature = %v, want omitted by default", aws.ToFloat32(runtime.lastInput.InferenceConfig.Temperature))

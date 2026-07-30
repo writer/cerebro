@@ -82,10 +82,13 @@ func TestStructuredJSONTokenBudgetPreservesHigherConfiguredLimit(t *testing.T) {
 	if got := structuredJSONTokenBudget(6000, 9000); got != 9000 {
 		t.Fatalf("budget = %d, want trusted request budget 9000", got)
 	}
+	if got := structuredJSONTokenBudget(6000, 50000); got != 50000 {
+		t.Fatalf("budget = %d, want trusted request budget 50000", got)
+	}
 	if got := structuredJSONTokenBudget(6000, 32); got != 128 {
 		t.Fatalf("budget = %d, want bounded floor 128", got)
 	}
-	if got := structuredJSONTokenBudget(6000, 50000); got != maxStructuredJSONMaxTokens {
+	if got := structuredJSONTokenBudget(6000, 200000); got != maxStructuredJSONMaxTokens {
 		t.Fatalf("budget = %d, want hard ceiling %d", got, maxStructuredJSONMaxTokens)
 	}
 }

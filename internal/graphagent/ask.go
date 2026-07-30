@@ -28,6 +28,7 @@ var (
 const (
 	maxInternalAttributeValueBytes = 4096
 	maxInternalAttributesJSONBytes = 64 << 10
+	maxAskHistoryTotalBytes        = 1 << 20
 	redactedGraphRowValue          = "[graph value omitted]"
 )
 
@@ -193,6 +194,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 			Question:  strings.TrimSpace(request.Question),
 			ScopeURN:  strings.TrimSpace(request.ScopeURN),
 			Model:     model,
+			MaxTokens: generationTokensForSurface(request.Surface, slackLookupPlannerMaxTokens),
 			History:   history,
 			MaxRows:   defaultMaxRows,
 			Schema:    graphAgentSchemaHint,
@@ -320,6 +322,13 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	return err
 }
 
+func generationTokensForSurface(surface string, slackTokens int) int {
+	if strings.TrimSpace(surface) == slackSurface {
+		return slackTokens
+	}
+	return 0
+}
+
 func executionLaneForRequest(request AskRequest) string {
 	if strings.TrimSpace(request.Surface) == slackSurface {
 		return "lookup"
@@ -413,9 +422,12 @@ func ValidateRequest(request AskRequest) error {
 }
 
 func askParams(request AskRequest) map[string]any {
+	todayUTC := time.Now().UTC().Truncate(24 * time.Hour)
 	return map[string]any{
-		"tenant_id": strings.TrimSpace(request.TenantID),
-		"scope_urn": strings.TrimSpace(request.ScopeURN),
+		"tenant_id":    strings.TrimSpace(request.TenantID),
+		"scope_urn":    strings.TrimSpace(request.ScopeURN),
+		"today_utc":    todayUTC.Format(time.RFC3339),
+		"tomorrow_utc": todayUTC.Add(24 * time.Hour).Format(time.RFC3339),
 	}
 }
 
@@ -1367,12 +1379,13 @@ func unsupportedQuery(reason string, traceID string, code string) UnsupportedQue
 	return UnsupportedQuery{
 		Code:             firstNonEmpty(code, unsupportedQueryCode(reason)),
 		Reason:           reason,
-		SupportedIntents: []string{IntentGraphRows, IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentFailingControls, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk, IntentQuestionnaireEvidence, IntentMITREAttackCoverage},
+		SupportedIntents: []string{IntentGraphRows, IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentFailingControls, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth, IntentAgentWorkHistory, IntentOktaPrivilegedWeakMFA, IntentOktaDormantAccess, IntentOktaGroupAccessRisk, IntentQuestionnaireEvidence, IntentMITREAttackCoverage},
 		SuggestedRewrites: []string{
 			"Summarize open high-risk findings and cite the affected entities.",
 			"Show controls with open findings and cite the affected resources.",
 			"Count findings by source family.",
 			"Show source health and freshness for security integrations.",
+			"Summarize today’s minimized agent execution receipts and cite each receipt.",
 			"Explain the evidence for a specific finding URN.",
 			"List privileged Okta users without strong MFA evidence.",
 			"List dormant Okta users that still have app or admin access.",
@@ -1405,12 +1418,18 @@ func fallbackSummary(rows []map[string]any) string {
 }
 
 func normalizeHistory(history []HistoryMessage) []HistoryMessage {
-	const maxHistory = 12
+	const (
+		maxHistory           = 16
+		maxHistoryItemBytes  = 1 << 20
+		maxHistoryTotalBytes = maxAskHistoryTotalBytes
+	)
 	if len(history) > maxHistory {
 		history = history[len(history)-maxHistory:]
 	}
-	result := make([]HistoryMessage, 0, len(history))
-	for _, item := range history {
+	reversed := make([]HistoryMessage, 0, len(history))
+	totalBytes := 0
+	for index := len(history) - 1; index >= 0; index-- {
+		item := history[index]
 		role := strings.ToLower(strings.TrimSpace(item.Role))
 		if role != "user" && role != "assistant" {
 			continue
@@ -1419,10 +1438,22 @@ func normalizeHistory(history []HistoryMessage) []HistoryMessage {
 		if content == "" {
 			continue
 		}
-		if len(content) > 4096 {
-			content = content[:4096]
+		if len(content) > maxHistoryItemBytes {
+			content = content[:maxHistoryItemBytes]
 		}
-		result = append(result, HistoryMessage{Role: role, Content: content})
+		remaining := maxHistoryTotalBytes - totalBytes
+		if remaining <= 0 {
+			break
+		}
+		if len(content) > remaining {
+			content = content[:remaining]
+		}
+		reversed = append(reversed, HistoryMessage{Role: role, Content: content})
+		totalBytes += len(content)
+	}
+	result := make([]HistoryMessage, len(reversed))
+	for index := range reversed {
+		result[len(reversed)-1-index] = reversed[index]
 	}
 	return result
 }

@@ -168,14 +168,22 @@ func TestOpenRouterLLMClient_MapsAnthropicAliasToOpenRouterModel(t *testing.T) {
 	}
 
 	_, err = client.DraftCypher(context.Background(), DraftRequest{
-		TenantID: "test",
-		Question: "Show nodes",
-		Model:    DefaultModel,
+		TenantID:  "test",
+		Question:  "Show nodes",
+		Model:     DefaultModel,
+		MaxTokens: 65_536,
 	})
 	if err != nil {
 		t.Fatalf("draft cypher: %v", err)
 	}
 	assertOpenRouterRequestModel(t, doer.lastBody, "anthropic/claude-sonnet-4.6")
+	var requestBody map[string]any
+	if err := json.Unmarshal(doer.lastBody, &requestBody); err != nil {
+		t.Fatal(err)
+	}
+	if requestBody["max_tokens"] != float64(65_536) {
+		t.Fatalf("max_tokens = %#v, want 65536", requestBody["max_tokens"])
+	}
 }
 
 func TestOpenRouterLLMClient_RejectsUnsupportedRequestedModel(t *testing.T) {

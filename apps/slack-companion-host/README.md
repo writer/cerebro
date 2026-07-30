@@ -25,19 +25,29 @@ The process accepts configured Slack app mentions, preserves bounded thread cont
 ## Assistant routing and synthesis
 
 Question authority admits the tenant-bound request but does not infer intent.
-For Slack turns, the Cerebro API runs a structured router with at most two
+For Slack turns, the Cerebro API runs a structured router with at most four
 attempts. The router selects conversation only when the complete request can be
 answered from the public capability manifest and supplied thread context.
 Requests for current facts, named systems, findings, assets, owners, controls,
 connector health, or mixed conversation and evidence continue through graph
-lookup.
+lookup. Questions about Cerebro's work during a time period use minimized,
+authenticated agent execution receipts. The answer cites those receipt URNs
+and states that a tool receipt does not prove broader task completion.
 
-Conversational turns run a bounded draft and critic loop. The critic checks
-identity, capability scope, current-evidence claims, thread work scope, and the
-next action. One rejected draft may be repaired. A valid conversation route
-with no approved draft returns a fixed bounded answer; a malformed or
-unavailable route refuses without running a graph query. The Rust answer
-authority accepts conversational output only with the complete loop receipt.
+The interactive context boundary is 1 MiB across at most 200 recent thread
+messages. The router requests up to 32,768 output tokens per attempt. Slack
+lookup planning and synthesis request up to 65,536 each. Conversational turns
+run a bounded four-round draft and critic loop with up to 65,536 output tokens
+for each draft and critic call. This allocates a 655,360-token worst-case
+generation envelope across routing and conversation repair; providers may
+enforce a lower model-specific limit.
+
+The critic checks identity, capability scope, current-evidence claims, thread
+work scope, and the next action. Each rejected round may be repaired until the
+four-round limit. A valid conversation route with no approved draft returns a
+fixed bounded answer; a malformed or unavailable route refuses without running
+a graph query. The Rust answer authority accepts conversational output only
+with the complete loop receipt.
 
 Run the offline orchestration replay with:
 
@@ -46,11 +56,12 @@ make slack-agent-hillclimb
 ```
 
 The replay covers held-out and separately worded shadow trajectories, the
-known “your findings” false-positive shape, mixed requests, graph isolation,
-critic repair, policy coverage, malformed-route refusal, and local
-orchestration latency. It verifies orchestration and contract conformance with
-deterministic structured responses; it does not claim live model quality.
-Promotion still requires live Slack probes against the deployed model.
+known “your findings” false-positive shape, the original self-and-work request,
+a separately worded agent-work shadow request, mixed requests, graph isolation,
+critic repair, policy coverage, malformed-route refusal, and local orchestration
+latency. It verifies orchestration and contract conformance with deterministic
+structured responses; it does not claim live model quality. Promotion still
+requires live Slack probes against the deployed model.
 
 ## Thread scratchpad
 

@@ -9,26 +9,36 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func TestSlackSelfContextRunsRouterDraftAndCriticWithoutGraphQuery(t *testing.T) {
-	store := &askStore{}
-	llm := &StubLLMClient{StructuredResponses: [][]byte{
-		[]byte(`{"confidence":"high","lane":"converse","reason_code":"self_context","requires_current_evidence":false}`),
-		[]byte(`{
-			"claims":[
-				{"fact_id":"identity_cerebro_security_ops_assistant","kind":"identity","source_ref":"manifest://cerebro/slack-capabilities/v1"},
-				{"fact_id":"capability_governed_evidence_questions","kind":"capability","source_ref":"manifest://cerebro/slack-capabilities/v1"},
-				{"fact_id":"boundary_no_cross_thread_work_log","kind":"scope_boundary","source_ref":"manifest://cerebro/slack-capabilities/v1"}
-			],
-			"markdown":"I’m Cerebro, Writer’s security operations assistant. I can answer governed evidence questions and continue from this thread’s retained context.\n\nThis request does not include a verified cross-thread work log, so I can’t claim a complete list of today’s work. Run ` + "`@Cerebro scratchpad`" + ` here, or ask one concrete security question.",
-			"next_actions":["Run @Cerebro scratchpad in this thread.","Ask one concrete security question."],
-			"work_scope":"thread_only"
-		}`),
-		[]byte(`{
-			"approved":true,
-			"policy_check_ids":["identity_truthful","capability_scope_bounded","work_scope_explicit","no_current_evidence_claims","next_action_actionable"],
-			"violations":[]
-		}`),
-	}}
+func TestSlackSelfAndWorkTodayUsesAgentReceiptEvidence(t *testing.T) {
+	receiptURN := "urn:cerebro:writer:trusted_endpoint_event:agent-receipt-1"
+	store := &askStore{rows: []ports.CypherRow{{
+		Values: map[string]any{
+			"receipt_urn":        receiptURN,
+			"receipt_label":      "receipt-1",
+			"captured_at":        "2026-07-30T01:20:00Z",
+			"phase":              "completed",
+			"agent_product":      "Codex",
+			"action":             "git push",
+			"outcome_result":     "",
+			"evidence_integrity": "authenticated_device_claim",
+			"receipt_id":         "receipt-1",
+			"overclaim_guard":    "Today is evaluated in UTC.",
+		},
+	}}}
+	llm := &StubLLMClient{
+		StructuredResponses: [][]byte{
+			[]byte(`{"confidence":"high","lane":"lookup","reason_code":"agent_work_history","requires_current_evidence":true}`),
+		},
+		DraftResponse: &DraftResponse{
+			Rationale: "Reading minimized agent execution receipts for today.",
+			Plan: &AskQueryPlan{
+				Intent:     IntentAgentWorkHistory,
+				Confidence: 0.99,
+				Limit:      25,
+			},
+		},
+		Summary: "I’m Cerebro, Writer’s security operations assistant. Today’s receipt evidence includes a completed `git push` action at `urn:cerebro:writer:trusted_endpoint_event:agent-receipt-1`. This proves the minimized tool action, not broader task completion.",
+	}
 	service := NewService(store, llm, ValidatorOptions{})
 
 	events := streamSlackAsk(t, service, AskRequest{
@@ -37,31 +47,31 @@ func TestSlackSelfContextRunsRouterDraftAndCriticWithoutGraphQuery(t *testing.T)
 		Surface:  "slack",
 	})
 
-	if len(store.requests) != 0 {
-		t.Fatalf("graph requests = %d, want 0", len(store.requests))
+	if len(store.requests) != 1 {
+		t.Fatalf("graph requests = %d, want 1", len(store.requests))
 	}
-	if len(llm.DraftRequests) != 0 || len(llm.SummaryRequests) != 0 {
-		t.Fatalf(
-			"graph model calls = draft %d summary %d, want 0",
-			len(llm.DraftRequests),
-			len(llm.SummaryRequests),
-		)
+	if len(llm.DraftRequests) != 1 || len(llm.SummaryRequests) != 1 {
+		t.Fatalf("graph model calls = draft %d summary %d, want one planner and one synthesis call", len(llm.DraftRequests), len(llm.SummaryRequests))
 	}
-	if len(llm.StructuredRequests) != 3 {
-		t.Fatalf("structured loop calls = %d, want 3", len(llm.StructuredRequests))
+	if len(llm.StructuredRequests) != 1 {
+		t.Fatalf("structured router calls = %d, want 1", len(llm.StructuredRequests))
+	}
+	if !strings.Contains(store.requests[0].Query, "trusted_endpoint.agent_execution_receipt_observation") ||
+		!strings.Contains(store.requests[0].Query, "captured_at >= $today_utc") {
+		t.Fatalf("graph query = %q, want current UTC agent receipt template", store.requests[0].Query)
 	}
 	summary := requireSummaryEvent(t, events)
-	if summary.ExecutionLane != "converse" {
-		t.Fatalf("execution lane = %q, want converse", summary.ExecutionLane)
+	if summary.ExecutionLane != "lookup" {
+		t.Fatalf("execution lane = %q, want lookup", summary.ExecutionLane)
 	}
-	if summary.ConversationValidation == nil || !summary.ConversationValidation.OK {
-		t.Fatalf("conversation validation = %#v, want ok", summary.ConversationValidation)
+	if summary.ConversationValidation != nil {
+		t.Fatalf("conversation validation = %#v, want none", summary.ConversationValidation)
 	}
-	if !summary.ConversationValidation.CriticApproved || summary.ConversationValidation.FallbackUsed {
-		t.Fatalf("conversation validation = %#v, want critic-approved draft", summary.ConversationValidation)
+	if summary.CitationValidation == nil || !summary.CitationValidation.OK {
+		t.Fatalf("citation validation = %#v, want receipt-backed answer", summary.CitationValidation)
 	}
-	if !strings.Contains(summary.Markdown, "verified cross-thread work log") {
-		t.Fatalf("summary = %q, want explicit work boundary", summary.Markdown)
+	if !strings.Contains(summary.Markdown, "Cerebro") || !strings.Contains(summary.Markdown, receiptURN) {
+		t.Fatalf("summary = %q, want identity and cited work receipt", summary.Markdown)
 	}
 }
 
@@ -198,6 +208,8 @@ func TestSlackConversationUsesBoundedFallbackAfterTwoInvalidDrafts(t *testing.T)
 	llm := &StubLLMClient{StructuredResponses: [][]byte{
 		[]byte(`{"markdown":"missing required fields"}`),
 		[]byte(`{"markdown":"still missing required fields"}`),
+		[]byte(`{"markdown":"third invalid draft"}`),
+		[]byte(`{"markdown":"fourth invalid draft"}`),
 	}}
 	service := NewService(store, llm, ValidatorOptions{})
 
@@ -216,9 +228,9 @@ func TestSlackConversationUsesBoundedFallbackAfterTwoInvalidDrafts(t *testing.T)
 	if !result.Validation.OK ||
 		!result.Validation.FallbackUsed ||
 		result.Validation.CriticApproved ||
-		result.Validation.DraftAttempts != 2 ||
+		result.Validation.DraftAttempts != 4 ||
 		result.Validation.CriticAttempts != 0 {
-		t.Fatalf("fallback validation = %#v, want bounded two-draft fallback", result.Validation)
+		t.Fatalf("fallback validation = %#v, want bounded four-draft fallback", result.Validation)
 	}
 	if result.Markdown != slackConversationFallback {
 		t.Fatalf("fallback markdown = %q, want fixed bounded fallback", result.Markdown)

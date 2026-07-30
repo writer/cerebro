@@ -19,26 +19,28 @@ func (s *Service) summarizeRows(ctx context.Context, request AskRequest, model s
 	}
 	if !s.options.EnableMapReduce || !shouldMapReduceRows(rows, s.options.MapReduceRowThreshold, s.options.MapReduceByteThreshold) {
 		return s.llm.Summarize(ctx, SummarizeRequest{
-			TenantID: strings.TrimSpace(request.TenantID),
-			Question: strings.TrimSpace(request.Question),
-			ScopeURN: strings.TrimSpace(request.ScopeURN),
-			Model:    model,
-			Cypher:   cypher,
-			Rows:     rows,
-			History:  history,
+			TenantID:  strings.TrimSpace(request.TenantID),
+			Question:  strings.TrimSpace(request.Question),
+			ScopeURN:  strings.TrimSpace(request.ScopeURN),
+			Model:     model,
+			MaxTokens: generationTokensForSurface(request.Surface, slackLookupSynthesisMaxTokens),
+			Cypher:    cypher,
+			Rows:      rows,
+			History:   history,
 		})
 	}
 	chunks := chunkRowsForSummary(rows, s.options.MapReduceRowThreshold, s.options.MapReduceByteThreshold)
 	reduceRows := make([]map[string]any, 0, len(chunks))
 	for i, chunk := range chunks {
 		chunkSummary, err := s.llm.Summarize(ctx, SummarizeRequest{
-			TenantID: strings.TrimSpace(request.TenantID),
-			Question: fmt.Sprintf("Summarize chunk %d of %d for: %s", i+1, len(chunks), strings.TrimSpace(request.Question)),
-			ScopeURN: strings.TrimSpace(request.ScopeURN),
-			Model:    model,
-			Cypher:   cypher,
-			Rows:     chunk,
-			History:  history,
+			TenantID:  strings.TrimSpace(request.TenantID),
+			Question:  fmt.Sprintf("Summarize chunk %d of %d for: %s", i+1, len(chunks), strings.TrimSpace(request.Question)),
+			ScopeURN:  strings.TrimSpace(request.ScopeURN),
+			Model:     model,
+			MaxTokens: generationTokensForSurface(request.Surface, slackLookupSynthesisMaxTokens),
+			Cypher:    cypher,
+			Rows:      chunk,
+			History:   history,
 		})
 		if err != nil {
 			return "", err
@@ -50,13 +52,14 @@ func (s *Service) summarizeRows(ctx context.Context, request AskRequest, model s
 		})
 	}
 	return s.llm.Summarize(ctx, SummarizeRequest{
-		TenantID: strings.TrimSpace(request.TenantID),
-		Question: "Combine the chunk summaries into one final answer for: " + strings.TrimSpace(request.Question),
-		ScopeURN: strings.TrimSpace(request.ScopeURN),
-		Model:    model,
-		Cypher:   cypher,
-		Rows:     reduceRows,
-		History:  history,
+		TenantID:  strings.TrimSpace(request.TenantID),
+		Question:  "Combine the chunk summaries into one final answer for: " + strings.TrimSpace(request.Question),
+		ScopeURN:  strings.TrimSpace(request.ScopeURN),
+		Model:     model,
+		MaxTokens: generationTokensForSurface(request.Surface, slackLookupSynthesisMaxTokens),
+		Cypher:    cypher,
+		Rows:      reduceRows,
+		History:   history,
 	})
 }
 

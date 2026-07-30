@@ -428,7 +428,7 @@ test("Slack delivery references satisfy the opaque URI contract", () => {
   assert.match(references.payloadRef, /^content:\/\/sha256\/[a-f0-9]{64}$/u);
 });
 
-test("thread context paginates to the newest 50 messages", async () => {
+test("thread context paginates to the newest 200 messages", async () => {
   const calls: Array<{ cursor?: string }> = [];
   const context = await readSlackThreadContext({
     conversations: {
@@ -436,7 +436,7 @@ test("thread context paginates to the newest 50 messages", async () => {
         calls.push({ cursor: input.cursor });
         if (!input.cursor) {
           return {
-            messages: Array.from({ length: 40 }, (_, index) => ({
+            messages: Array.from({ length: 100 }, (_, index) => ({
               text: `message-${index}`,
               ts: String(index),
               user: "U-ONE",
@@ -444,22 +444,32 @@ test("thread context paginates to the newest 50 messages", async () => {
             response_metadata: { next_cursor: "page-two" },
           };
         }
+        if (input.cursor === "page-two") {
+          return {
+            messages: Array.from({ length: 100 }, (_, index) => ({
+              text: `message-${index + 100}`,
+              ts: String(index + 100),
+              user: "U-ONE",
+            })),
+            response_metadata: { next_cursor: "page-three" },
+          };
+        }
         return {
           messages: Array.from({ length: 21 }, (_, index) => ({
-            text: index === 20 ? "<@BOT> any idea?" : `message-${index + 40}`,
-            ts: String(index + 40),
+            text: index === 20 ? "<@BOT> any idea?" : `message-${index + 200}`,
+            ts: String(index + 200),
             user: "U-ONE",
           })),
           response_metadata: { next_cursor: "" },
         };
       },
     },
-  }, "C-ONE", "0", "60");
+  }, "C-ONE", "0", "220");
 
-  assert.deepEqual(calls, [{ cursor: undefined }, { cursor: "page-two" }]);
-  assert.doesNotMatch(context!, /message-(?:[0-9]|10)\b/u);
-  assert.match(context!, /message-11\b/u);
-  assert.match(context!, /message-59\b/u);
+  assert.deepEqual(calls, [{ cursor: undefined }, { cursor: "page-two" }, { cursor: "page-three" }]);
+  assert.doesNotMatch(context!, /message-(?:[0-9]|1[0-9]|20)\b/u);
+  assert.match(context!, /message-21\b/u);
+  assert.match(context!, /message-219\b/u);
   assert.doesNotMatch(context!, /any idea/u);
 });
 

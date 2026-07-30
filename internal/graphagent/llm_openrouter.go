@@ -95,7 +95,7 @@ func (c *OpenRouterLLMClient) DraftCypher(ctx context.Context, req DraftRequest)
 	if err != nil {
 		return nil, err
 	}
-	text, err := c.chat(ctx, modelID, prompt, c.maxTokens)
+	text, err := c.chat(ctx, modelID, prompt, requestedGenerationTokenBudget(c.maxTokens, req.MaxTokens))
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (c *OpenRouterLLMClient) Summarize(ctx context.Context, req SummarizeReques
 	if err != nil {
 		return "", err
 	}
-	return c.chat(ctx, modelID, summarizePrompt(req), c.maxTokens)
+	return c.chat(ctx, modelID, summarizePrompt(req), requestedGenerationTokenBudget(c.maxTokens, req.MaxTokens))
 }
 
 func (c *OpenRouterLLMClient) Probe(ctx context.Context) error {

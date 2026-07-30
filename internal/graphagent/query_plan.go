@@ -20,6 +20,7 @@ const (
 	IntentExplainFinding            = "explain_finding"
 	IntentIdentityBridge            = "identity_bridge"
 	IntentConnectorHealth           = "connector_health"
+	IntentAgentWorkHistory          = "agent_work_history"
 	IntentOktaPrivilegedWeakMFA     = "okta_privileged_weak_mfa"
 	IntentOktaDormantAccess         = "okta_dormant_access"
 	IntentOktaGroupAccessRisk       = "okta_group_access_risk"
@@ -542,6 +543,8 @@ func canonicalIntent(value string) string {
 		return IntentIdentityBridge
 	case "connector_health", "source_health", "runtime_health":
 		return IntentConnectorHealth
+	case "agent_work_history", "agent_execution_history", "agent_receipts", "recent_agent_work":
+		return IntentAgentWorkHistory
 	case "okta_privileged_weak_mfa", "okta_privileged_without_strong_mfa", "okta_admin_weak_mfa":
 		return IntentOktaPrivilegedWeakMFA
 	case "okta_dormant_access", "okta_dormant_users_with_access":
@@ -760,6 +763,41 @@ RETURN source.urn AS source_urn,
        coalesce(source.attributes_json, '') AS source_attributes_json_internal
 ORDER BY source_label, source_urn
 LIMIT %d`, limit), true
+	case IntentAgentWorkHistory:
+		return fmt.Sprintf(`MATCH (receipt:Entity {tenant_id: $tenant_id, entity_type: 'trusted_endpoint.agent_execution_receipt_observation'})
+WITH receipt,
+     coalesce(%s, '') AS captured_at,
+     coalesce(%s, '') AS phase,
+     coalesce(%s, '') AS agent_product,
+     coalesce(%s, '') AS action,
+     coalesce(%s, '') AS outcome_result,
+     coalesce(%s, '') AS evidence_integrity,
+     coalesce(%s, '') AS receipt_id
+WHERE CASE WHEN $scope_urn = '' THEN true ELSE receipt.urn = $scope_urn END
+  AND captured_at =~ '^\\d{4}-\\d{2}-\\d{2}T.*'
+  AND captured_at >= $today_utc
+  AND captured_at < $tomorrow_utc
+RETURN receipt.urn AS receipt_urn,
+       coalesce(receipt.label, receipt.urn) AS receipt_label,
+       captured_at,
+       phase,
+       agent_product,
+       action,
+       outcome_result,
+       evidence_integrity,
+       receipt_id,
+       'Today is evaluated in UTC. Agent actions are minimized during receipt ingestion; receipt evidence does not prove broader task completion.' AS overclaim_guard
+ORDER BY captured_at DESC, receipt_urn
+LIMIT %d`,
+			cypherJSONStringAttributes("receipt.attributes_json", "captured_at"),
+			cypherJSONStringAttributes("receipt.attributes_json", "phase"),
+			cypherJSONStringAttributes("receipt.attributes_json", "agent_product"),
+			cypherJSONStringAttributes("receipt.attributes_json", "action"),
+			cypherJSONStringAttributes("receipt.attributes_json", "outcome_result"),
+			cypherJSONStringAttributes("receipt.attributes_json", "evidence_integrity"),
+			cypherJSONStringAttributes("receipt.attributes_json", "receipt_id"),
+			limit,
+		), true
 	case IntentOktaPrivilegedWeakMFA:
 		return fmt.Sprintf(`MATCH (user:Entity {tenant_id: $tenant_id, entity_type: 'okta.user'})-[admin:RELATION {relation: 'can_admin'}]->(role:Entity {tenant_id: $tenant_id, entity_type: 'okta.admin_role'})
 WHERE admin.tenant_id = $tenant_id

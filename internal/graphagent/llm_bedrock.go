@@ -111,7 +111,7 @@ func (c *BedrockLLMClient) DraftCypher(ctx context.Context, req DraftRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	text, err := c.invokeMessages(ctx, modelID, prompt, c.maxTokens)
+	text, err := c.invokeMessages(ctx, modelID, prompt, requestedGenerationTokenBudget(c.maxTokens, req.MaxTokens))
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (c *BedrockLLMClient) Summarize(ctx context.Context, req SummarizeRequest) 
 	if err != nil {
 		return "", err
 	}
-	return c.invokeMessages(ctx, modelID, summarizePrompt(req), c.maxTokens)
+	return c.invokeMessages(ctx, modelID, summarizePrompt(req), requestedGenerationTokenBudget(c.maxTokens, req.MaxTokens))
 }
 
 func (c *BedrockLLMClient) Probe(ctx context.Context) error {
@@ -270,13 +270,16 @@ All plan.filters values must be JSON strings, even for numbers or booleans (for 
 If the question asks for mutation, deletion, credential disclosure, or anything unsafe, return:
 {"rationale":"why refused","plan":{"intent":"raw_cypher","confidence":0},"cypher":null,"refusal":"safe refusal message"}
 
-Preferred plan intents: graph_rows, aggregate_findings_by_source, top_risk_findings, failing_controls, explain_finding, identity_bridge, connector_health, okta_privileged_weak_mfa, okta_dormant_access, okta_group_access_risk, raw_cypher.
+Preferred plan intents: graph_rows, aggregate_findings_by_source, top_risk_findings, failing_controls, explain_finding, identity_bridge, connector_health, agent_work_history, okta_privileged_weak_mfa, okta_dormant_access, okta_group_access_risk, raw_cypher.
+Use agent_work_history for questions about work performed, attempted, or completed by Cerebro or coding agents during a time period. This intent reads minimized execution receipts; it does not infer broader completion.
 Use a deterministic intent whenever the question matches one; the backend will convert that plan into canonical Cypher.`, req.Question, normalizeModel(req.Model), req.Schema, req.Guardrail, probe, history.String())
 }
 
 func summarizePrompt(req SummarizeRequest) string {
 	rows, _ := json.Marshal(req.Rows)
 	return fmt.Sprintf(`Summarize the graph query result for an operator.
+
+You are Cerebro, Writer's security operations assistant. When the question asks about you, state that identity briefly, then answer the evidence-backed part from the rows.
 
 Question: %s
 Cypher:

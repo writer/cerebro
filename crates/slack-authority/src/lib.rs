@@ -16,7 +16,8 @@ pub const ANSWER_DECISION_V1: &str = "slack-answer-decision/v1";
 pub const QUESTION_CANDIDATE_V1: &str = "slack-question-candidate/v1";
 pub const QUESTION_DECISION_V1: &str = "slack-question-decision/v1";
 const MAX_HISTORY_ITEMS: usize = 16;
-const MAX_HISTORY_ITEM_BYTES: usize = 8 * 1024;
+const MAX_HISTORY_ITEM_BYTES: usize = 1024 * 1024;
+const MAX_HISTORY_TOTAL_BYTES: usize = 1024 * 1024;
 const MAX_MARKDOWN_BYTES: usize = 64 * 1024;
 const MAX_QUESTION_BYTES: usize = 32 * 1024;
 const MAX_REFUSAL_ITEMS: usize = 32;
@@ -119,7 +120,15 @@ pub fn authorize_question(
     if !bounded_text(&candidate.question, MAX_QUESTION_BYTES) {
         return Err(QuestionAuthorityError::QuestionInvalid);
     }
+    let history_bytes = candidate
+        .history
+        .iter()
+        .try_fold(0usize, |total, message| {
+            total.checked_add(message.content.len())
+        })
+        .ok_or(QuestionAuthorityError::HistoryInvalid)?;
     if candidate.history.len() > MAX_HISTORY_ITEMS
+        || history_bytes > MAX_HISTORY_TOTAL_BYTES
         || candidate
             .history
             .iter()
@@ -313,9 +322,9 @@ fn validate_conversation(validation: &ConversationValidation) -> Result<(), Answ
         || validation.route != "converse"
         || validation.requires_graph_query
         || validation.router_attempts == 0
-        || validation.router_attempts > 2
-        || validation.draft_attempts > 2
-        || validation.critic_attempts > 2
+        || validation.router_attempts > 4
+        || validation.draft_attempts > 4
+        || validation.critic_attempts > 4
         || validation.critic_attempts > validation.draft_attempts
         || (validation.critic_approved && validation.critic_attempts == 0)
         || (!validation.fallback_used && !validation.critic_approved)
@@ -484,6 +493,21 @@ mod tests {
             .collect();
         assert_eq!(
             authorize_question(&policy, oversized_history),
+            Err(QuestionAuthorityError::HistoryInvalid)
+        );
+        let mut oversized_history_bytes = question();
+        oversized_history_bytes.history = vec![
+            QuestionHistoryMessage {
+                content: "x".repeat(MAX_HISTORY_TOTAL_BYTES / 2 + 1),
+                role: QuestionHistoryRole::User,
+            },
+            QuestionHistoryMessage {
+                content: "y".repeat(MAX_HISTORY_TOTAL_BYTES / 2 + 1),
+                role: QuestionHistoryRole::Assistant,
+            },
+        ];
+        assert_eq!(
+            authorize_question(&policy, oversized_history_bytes),
             Err(QuestionAuthorityError::HistoryInvalid)
         );
     }
