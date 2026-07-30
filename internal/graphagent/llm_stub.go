@@ -6,16 +6,17 @@ import (
 )
 
 type StubLLMClient struct {
-	DraftResponse      *DraftResponse
-	Summary            string
-	DraftRequests      []DraftRequest
-	SummaryResponses   []string
-	SummaryRequests    []SummarizeRequest
-	DraftErr           error
-	SummaryErr         error
-	StructuredResponse []byte
-	StructuredRequests []StructuredJSONRequest
-	StructuredErr      error
+	DraftResponse       *DraftResponse
+	Summary             string
+	DraftRequests       []DraftRequest
+	SummaryResponses    []string
+	SummaryRequests     []SummarizeRequest
+	DraftErr            error
+	SummaryErr          error
+	StructuredResponse  []byte
+	StructuredResponses [][]byte
+	StructuredRequests  []StructuredJSONRequest
+	StructuredErr       error
 }
 
 func (c *StubLLMClient) DraftStructuredJSON(_ context.Context, req StructuredJSONRequest) ([]byte, error) {
@@ -24,6 +25,11 @@ func (c *StubLLMClient) DraftStructuredJSON(_ context.Context, req StructuredJSO
 	}
 	if c != nil {
 		c.StructuredRequests = append(c.StructuredRequests, req)
+		if len(c.StructuredResponses) > 0 {
+			response := append([]byte(nil), c.StructuredResponses[0]...)
+			c.StructuredResponses = c.StructuredResponses[1:]
+			return response, nil
+		}
 		if len(c.StructuredResponse) != 0 {
 			return append([]byte(nil), c.StructuredResponse...), nil
 		}

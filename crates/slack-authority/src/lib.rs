@@ -23,7 +23,6 @@ const MAX_REFUSAL_ITEMS: usize = 32;
 const MAX_REFUSAL_ITEM_BYTES: usize = 512;
 const MAX_REQUEST_ID_BYTES: usize = 512;
 const MAX_TENANT_ID_BYTES: usize = 256;
-const SELF_CONTEXT_ANSWER: &str = "I’m Cerebro, Writer’s security operations assistant. I read governed Cerebro evidence for findings, assets, identities, controls, owners, and connector health.\n\nI don’t have a verified cross-thread work log in this request, so I can’t claim a complete list of today’s work. Run `@Cerebro scratchpad` in this thread to see retained requests, outcomes, and blockers, or ask me about one current security task.";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -70,14 +69,11 @@ pub struct QuestionDecision {
     pub request_id: String,
     pub authorized: bool,
     pub execution_lane: QuestionExecutionLane,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub answer: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum QuestionExecutionLane {
-    Converse,
     Lookup,
 }
 
@@ -131,46 +127,13 @@ pub fn authorize_question(
     {
         return Err(QuestionAuthorityError::HistoryInvalid);
     }
-    let execution_lane = question_execution_lane(&candidate.question);
     Ok(QuestionDecision {
         schema_version: QUESTION_DECISION_V1,
         tenant_id: candidate.tenant_id,
         request_id: candidate.request_id,
         authorized: true,
-        execution_lane,
-        answer: match execution_lane {
-            QuestionExecutionLane::Converse => Some(SELF_CONTEXT_ANSWER),
-            QuestionExecutionLane::Lookup => None,
-        },
+        execution_lane: QuestionExecutionLane::Lookup,
     })
-}
-
-fn question_execution_lane(question: &str) -> QuestionExecutionLane {
-    let normalized = question
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase();
-    let identity_question = normalized.trim_matches(|character: char| {
-        character.is_ascii_punctuation() || character.is_whitespace()
-    });
-    let asks_identity = normalized.contains("about yourself")
-        || normalized.contains("tell me about you")
-        || matches!(identity_question, "who are you" | "what are you");
-    let asks_work = [
-        "your work today",
-        "what have you done today",
-        "what did you do today",
-        "what are you working on",
-        "what have you worked on",
-    ]
-    .iter()
-    .any(|phrase| normalized.contains(phrase));
-    if asks_identity || asks_work {
-        QuestionExecutionLane::Converse
-    } else {
-        QuestionExecutionLane::Lookup
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -181,6 +144,7 @@ pub struct AnswerCandidate {
     pub markdown: String,
     pub trace_id: String,
     pub citation_validation: Option<CitationValidation>,
+    pub conversation_validation: Option<ConversationValidation>,
     pub unsupported_query: Option<UnsupportedQuery>,
 }
 
@@ -190,6 +154,21 @@ pub struct CitationValidation {
     pub ok: bool,
     pub referenced_urn_count: usize,
     pub row_urn_count: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationValidation {
+    pub ok: bool,
+    pub route: String,
+    pub route_reason: String,
+    pub router_attempts: usize,
+    pub draft_attempts: usize,
+    pub critic_attempts: usize,
+    pub critic_approved: bool,
+    pub fallback_used: bool,
+    pub policy_check_ids: Vec<String>,
+    pub requires_graph_query: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -205,6 +184,7 @@ pub struct UnsupportedQuery {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AnswerDisposition {
+    Conversational,
     Grounded,
     SafeRefusal,
 }
@@ -220,6 +200,7 @@ pub struct AnswerDecision {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AnswerAuthorityError {
     CitationEvidenceMissing,
+    ConversationEvidenceInvalid,
     ConflictingEvidenceStates,
     Incomplete,
     InvalidRefusal,
@@ -233,6 +214,9 @@ impl fmt::Display for AnswerAuthorityError {
         let message = match self {
             Self::CitationEvidenceMissing => {
                 "a grounded answer requires validated row-backed citations"
+            }
+            Self::ConversationEvidenceInvalid => {
+                "a conversational answer requires a complete bounded-loop validation"
             }
             Self::ConflictingEvidenceStates => {
                 "an answer cannot be both grounded evidence and a safe refusal"
@@ -262,9 +246,19 @@ pub fn validate_answer(candidate: AnswerCandidate) -> Result<AnswerDecision, Ans
     if !bounded_text(&candidate.trace_id, MAX_REFUSAL_ITEM_BYTES) {
         return Err(AnswerAuthorityError::InvalidTrace);
     }
+    let evidence_state_count = usize::from(candidate.citation_validation.is_some())
+        + usize::from(candidate.conversation_validation.is_some())
+        + usize::from(candidate.unsupported_query.is_some());
+    if evidence_state_count > 1 {
+        return Err(AnswerAuthorityError::ConflictingEvidenceStates);
+    }
 
-    match (candidate.citation_validation, candidate.unsupported_query) {
-        (Some(citations), None) if citations.ok => {
+    match (
+        candidate.citation_validation,
+        candidate.conversation_validation,
+        candidate.unsupported_query,
+    ) {
+        (Some(citations), None, None) if citations.ok => {
             if citations.row_urn_count == 0 || citations.referenced_urn_count == 0 {
                 return Err(AnswerAuthorityError::CitationEvidenceMissing);
             }
@@ -278,10 +272,16 @@ pub fn validate_answer(candidate: AnswerCandidate) -> Result<AnswerDecision, Ans
                 verified: true,
             })
         }
-        (Some(citations), Some(_)) if citations.ok => {
-            Err(AnswerAuthorityError::ConflictingEvidenceStates)
+        (None, Some(conversation), None) => {
+            validate_conversation(&conversation)?;
+            Ok(AnswerDecision {
+                schema_version: ANSWER_DECISION_V1,
+                disposition: AnswerDisposition::Conversational,
+                trace_id: candidate.trace_id,
+                verified: false,
+            })
         }
-        (_, Some(refusal)) => {
+        (None, None, Some(refusal)) => {
             validate_refusal(&refusal, &candidate.trace_id)?;
             Ok(AnswerDecision {
                 schema_version: ANSWER_DECISION_V1,
@@ -292,6 +292,43 @@ pub fn validate_answer(candidate: AnswerCandidate) -> Result<AnswerDecision, Ans
         }
         _ => Err(AnswerAuthorityError::CitationEvidenceMissing),
     }
+}
+
+fn validate_conversation(validation: &ConversationValidation) -> Result<(), AnswerAuthorityError> {
+    const REQUIRED_CHECKS: [&str; 5] = [
+        "capability_scope_bounded",
+        "identity_truthful",
+        "next_action_actionable",
+        "no_current_evidence_claims",
+        "work_scope_explicit",
+    ];
+    let mut actual = validation
+        .policy_check_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    actual.sort_unstable();
+    actual.dedup();
+    if !validation.ok
+        || validation.route != "converse"
+        || validation.requires_graph_query
+        || validation.router_attempts == 0
+        || validation.router_attempts > 2
+        || validation.draft_attempts > 2
+        || validation.critic_attempts > 2
+        || validation.critic_attempts > validation.draft_attempts
+        || (validation.critic_approved && validation.critic_attempts == 0)
+        || (!validation.fallback_used && !validation.critic_approved)
+        || (validation.fallback_used && validation.critic_approved)
+        || actual != REQUIRED_CHECKS
+        || !matches!(
+            validation.route_reason.as_str(),
+            "self_context" | "thread_continuation"
+        )
+    {
+        return Err(AnswerAuthorityError::ConversationEvidenceInvalid);
+    }
+    Ok(())
 }
 
 fn validate_refusal(
@@ -350,6 +387,7 @@ mod tests {
                 referenced_urn_count: 2,
                 row_urn_count: 2,
             }),
+            conversation_validation: None,
             unsupported_query: None,
         }
     }
@@ -378,35 +416,25 @@ mod tests {
                 request_id: "C0B2VJDFJ5N:1753830794.123".to_owned(),
                 authorized: true,
                 execution_lane: QuestionExecutionLane::Lookup,
-                answer: None,
             }
         );
     }
 
     #[test]
-    fn routes_self_and_work_status_questions_without_a_graph_lookup() {
+    fn question_authority_admits_requests_without_deciding_semantic_intent() {
         let policy = QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap();
         for text in [
             "What can you tell me about yourself and your work today?",
             "Who are you?",
             "What are you working on?",
+            "Tell me about your Okta findings.",
+            "Who are you, and show the latest connector health?",
         ] {
             let mut candidate = question();
             candidate.question = text.to_owned();
             let decision = authorize_question(&policy, candidate).unwrap();
-            assert_eq!(decision.execution_lane, QuestionExecutionLane::Converse);
-            assert_eq!(decision.answer, Some(SELF_CONTEXT_ANSWER));
+            assert_eq!(decision.execution_lane, QuestionExecutionLane::Lookup);
         }
-
-        let lookup = authorize_question(&policy, question()).unwrap();
-        assert_eq!(lookup.execution_lane, QuestionExecutionLane::Lookup);
-        assert_eq!(lookup.answer, None);
-
-        let mut evidence_question = question();
-        evidence_question.question = "What are you seeing in Okta right now?".to_owned();
-        let lookup = authorize_question(&policy, evidence_question).unwrap();
-        assert_eq!(lookup.execution_lane, QuestionExecutionLane::Lookup);
-        assert_eq!(lookup.answer, None);
     }
 
     #[test]
@@ -467,6 +495,7 @@ mod tests {
             markdown: "Narrow the request to one source or finding.".to_owned(),
             trace_id: "trace-refusal".to_owned(),
             citation_validation: None,
+            conversation_validation: None,
             unsupported_query: Some(UnsupportedQuery {
                 code: "post_processing_candidate_limit".to_owned(),
                 reason: "The request matched more rows than can be processed safely.".to_owned(),
@@ -474,6 +503,36 @@ mod tests {
                 supported_intents: vec!["source_health".to_owned()],
                 trace_id: "trace-refusal".to_owned(),
             }),
+        }
+    }
+
+    fn conversational() -> AnswerCandidate {
+        AnswerCandidate {
+            schema_version: ANSWER_CANDIDATE_V1.to_owned(),
+            completed: true,
+            markdown: "I’m Cerebro. I can use governed evidence or this thread’s bounded context."
+                .to_owned(),
+            trace_id: "trace-conversation".to_owned(),
+            citation_validation: None,
+            conversation_validation: Some(ConversationValidation {
+                ok: true,
+                route: "converse".to_owned(),
+                route_reason: "self_context".to_owned(),
+                router_attempts: 1,
+                draft_attempts: 1,
+                critic_attempts: 1,
+                critic_approved: true,
+                fallback_used: false,
+                policy_check_ids: vec![
+                    "capability_scope_bounded".to_owned(),
+                    "identity_truthful".to_owned(),
+                    "next_action_actionable".to_owned(),
+                    "no_current_evidence_claims".to_owned(),
+                    "work_scope_explicit".to_owned(),
+                ],
+                requires_graph_query: false,
+            }),
+            unsupported_query: None,
         }
     }
 
@@ -487,6 +546,52 @@ mod tests {
                 trace_id: "trace-grounded".to_owned(),
                 verified: true,
             }
+        );
+    }
+
+    #[test]
+    fn accepts_bounded_loop_conversational_answers_without_evidence_claims() {
+        assert_eq!(
+            validate_answer(conversational()).unwrap(),
+            AnswerDecision {
+                schema_version: ANSWER_DECISION_V1,
+                disposition: AnswerDisposition::Conversational,
+                trace_id: "trace-conversation".to_owned(),
+                verified: false,
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_incomplete_or_conflicting_conversation_receipts() {
+        let mut missing_check = conversational();
+        missing_check
+            .conversation_validation
+            .as_mut()
+            .unwrap()
+            .policy_check_ids
+            .pop();
+        assert_eq!(
+            validate_answer(missing_check),
+            Err(AnswerAuthorityError::ConversationEvidenceInvalid)
+        );
+
+        let mut claims_graph = conversational();
+        claims_graph
+            .conversation_validation
+            .as_mut()
+            .unwrap()
+            .requires_graph_query = true;
+        assert_eq!(
+            validate_answer(claims_graph),
+            Err(AnswerAuthorityError::ConversationEvidenceInvalid)
+        );
+
+        let mut conflicting = conversational();
+        conflicting.citation_validation = grounded().citation_validation;
+        assert_eq!(
+            validate_answer(conflicting),
+            Err(AnswerAuthorityError::ConflictingEvidenceStates)
         );
     }
 

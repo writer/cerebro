@@ -4,6 +4,18 @@ export interface SlackAnswerCandidate {
     referenced_urn_count: number;
     row_urn_count: number;
   };
+  conversation_validation?: {
+    critic_approved: boolean;
+    critic_attempts: number;
+    draft_attempts: number;
+    fallback_used: boolean;
+    ok: boolean;
+    policy_check_ids: string[];
+    requires_graph_query: boolean;
+    route: "converse";
+    route_reason: "self_context" | "thread_continuation";
+    router_attempts: number;
+  };
   completed: boolean;
   markdown: string;
   schema_version: "slack-answer-candidate/v1";
@@ -18,7 +30,7 @@ export interface SlackAnswerCandidate {
 }
 
 export interface SlackAnswerDecision {
-  disposition: "grounded" | "safe_refusal";
+  disposition: "conversational" | "grounded" | "safe_refusal";
   schema_version: "slack-answer-decision/v1";
   trace_id: string;
   verified: boolean;
@@ -35,22 +47,13 @@ export interface SlackQuestionCandidate {
   tenant_id: string;
 }
 
-export type SlackQuestionDecision =
-  | {
-      answer: string;
-      authorized: true;
-      execution_lane: "converse";
-      request_id: string;
-      schema_version: "slack-question-decision/v1";
-      tenant_id: string;
-    }
-  | {
-      authorized: true;
-      execution_lane: "lookup";
-      request_id: string;
-      schema_version: "slack-question-decision/v1";
-      tenant_id: string;
-    };
+export interface SlackQuestionDecision {
+  authorized: true;
+  execution_lane: "lookup";
+  request_id: string;
+  schema_version: "slack-question-decision/v1";
+  tenant_id: string;
+}
 
 export interface SlackAnswerAuthorityPort {
   authorizeQuestion(candidate: SlackQuestionCandidate): Promise<SlackQuestionDecision>;
@@ -131,17 +134,8 @@ function validQuestionDecision(
   const decision = value as Record<string, unknown>;
   return decision.schema_version === "slack-question-decision/v1"
     && decision.authorized === true
-    && (
-      (
-        decision.execution_lane === "lookup"
-        && decision.answer === undefined
-      )
-      || (
-        decision.execution_lane === "converse"
-        && typeof decision.answer === "string"
-        && decision.answer.trim() !== ""
-      )
-    )
+    && decision.execution_lane === "lookup"
+    && decision.answer === undefined
     && decision.request_id === candidate.request_id
     && decision.tenant_id === candidate.tenant_id;
 }
@@ -155,14 +149,16 @@ function validDecision(
   if (
     decision.schema_version !== "slack-answer-decision/v1"
     || decision.trace_id !== expectedTraceId
-    || (decision.disposition !== "grounded" && decision.disposition !== "safe_refusal")
+    || (
+      decision.disposition !== "conversational"
+      && decision.disposition !== "grounded"
+      && decision.disposition !== "safe_refusal"
+    )
     || typeof decision.verified !== "boolean"
   ) {
     return false;
   }
-  return decision.disposition === "grounded"
-    ? decision.verified
-    : !decision.verified;
+  return decision.disposition === "grounded" ? decision.verified : !decision.verified;
 }
 
 function errorMessage(error: unknown): string {

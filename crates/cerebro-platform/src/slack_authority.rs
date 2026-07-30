@@ -35,6 +35,7 @@ struct AuthorityRuntime {
     question_authorized_total: AtomicU64,
     question_rejected_total: AtomicU64,
     question_policy: QuestionPolicy,
+    conversational_total: AtomicU64,
     grounded_total: AtomicU64,
     rejected_total: AtomicU64,
     safe_refusal_total: AtomicU64,
@@ -45,6 +46,7 @@ struct AuthorityRuntime {
 struct AuthorityStatus {
     authority: &'static str,
     component: &'static str,
+    conversational_total: u64,
     grounded_total: u64,
     question_authorized_total: u64,
     question_rejected_total: u64,
@@ -62,6 +64,7 @@ impl AuthorityRuntime {
         Self {
             question_authorized_total: AtomicU64::new(0),
             question_rejected_total: AtomicU64::new(0),
+            conversational_total: AtomicU64::new(0),
             grounded_total: AtomicU64::new(0),
             rejected_total: AtomicU64::new(0),
             safe_refusal_total: AtomicU64::new(0),
@@ -71,6 +74,7 @@ impl AuthorityRuntime {
     }
 
     fn status(&self) -> AuthorityStatus {
+        let conversational_total = self.conversational_total.load(Ordering::Relaxed);
         let grounded_total = self.grounded_total.load(Ordering::Relaxed);
         let rejected_total = self.rejected_total.load(Ordering::Relaxed);
         let safe_refusal_total = self.safe_refusal_total.load(Ordering::Relaxed);
@@ -79,11 +83,13 @@ impl AuthorityRuntime {
         AuthorityStatus {
             authority: "rust",
             component: "slack-answer-authority",
+            conversational_total,
             grounded_total,
             question_authorized_total,
             question_rejected_total,
             rejected_total,
-            requests_total: grounded_total
+            requests_total: conversational_total
+                .saturating_add(grounded_total)
                 .saturating_add(rejected_total)
                 .saturating_add(safe_refusal_total)
                 .saturating_add(question_authorized_total)
@@ -149,7 +155,6 @@ async fn authorize_question_route(
                 &runtime,
                 "authorized",
                 Some(match decision.execution_lane {
-                    QuestionExecutionLane::Converse => "converse",
                     QuestionExecutionLane::Lookup => "lookup",
                 }),
                 None,
@@ -192,6 +197,9 @@ async fn validate_answer_route(
     match validate_answer(candidate) {
         Ok(decision) => {
             match decision.disposition {
+                AnswerDisposition::Conversational => {
+                    runtime.conversational_total.fetch_add(1, Ordering::Relaxed);
+                }
                 AnswerDisposition::Grounded => {
                     runtime.grounded_total.fetch_add(1, Ordering::Relaxed);
                 }
@@ -203,6 +211,7 @@ async fn validate_answer_route(
                 &runtime,
                 "accepted",
                 Some(match decision.disposition {
+                    AnswerDisposition::Conversational => "conversational",
                     AnswerDisposition::Grounded => "grounded",
                     AnswerDisposition::SafeRefusal => "safe_refusal",
                 }),
@@ -244,6 +253,7 @@ fn log_decision(
         serde_json::json!({
             "authority": "rust",
             "component": "slack-answer-authority",
+            "conversational_total": status.conversational_total,
             "disposition": disposition,
             "grounded_total": status.grounded_total,
             "operation": "answer_validate",
@@ -287,6 +297,7 @@ fn log_question_decision(
 fn rejection_code(error: AnswerAuthorityError) -> &'static str {
     match error {
         AnswerAuthorityError::CitationEvidenceMissing => "citation_evidence_missing",
+        AnswerAuthorityError::ConversationEvidenceInvalid => "conversation_evidence_invalid",
         AnswerAuthorityError::ConflictingEvidenceStates => "conflicting_evidence_states",
         AnswerAuthorityError::Incomplete => "incomplete",
         AnswerAuthorityError::InvalidRefusal => "invalid_refusal",
@@ -373,6 +384,69 @@ mod tests {
         .unwrap();
         assert_eq!(body["disposition"], "safe_refusal");
         assert_eq!(body["verified"], false);
+    }
+
+    #[tokio::test]
+    async fn route_accepts_a_complete_conversational_loop_receipt() {
+        let app = test_router();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/answers/validate")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{
+                          "schema_version":"slack-answer-candidate/v1",
+                          "completed":true,
+                          "markdown":"I’m Cerebro. Ask one concrete security question.",
+                          "trace_id":"trace-conversation",
+                          "conversation_validation":{
+                            "ok":true,
+                            "route":"converse",
+                            "route_reason":"self_context",
+                            "router_attempts":1,
+                            "draft_attempts":1,
+                            "critic_attempts":1,
+                            "critic_approved":true,
+                            "fallback_used":false,
+                            "policy_check_ids":[
+                              "capability_scope_bounded",
+                              "identity_truthful",
+                              "next_action_actionable",
+                              "no_current_evidence_claims",
+                              "work_scope_explicit"
+                            ],
+                            "requires_graph_query":false
+                          }
+                        }"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: Value = serde_json::from_slice(
+            &to_bytes(response.into_body(), MAX_REQUEST_BYTES)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["disposition"], "conversational");
+        assert_eq!(body["verified"], false);
+
+        let status_response = app
+            .oneshot(Request::get("/v1/status").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status: Value = serde_json::from_slice(
+            &to_bytes(status_response.into_body(), MAX_REQUEST_BYTES)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(status["conversational_total"], 1);
+        assert_eq!(status["requests_total"], 1);
     }
 
     #[tokio::test]
@@ -476,13 +550,8 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        assert_eq!(conversational_body["execution_lane"], "converse");
-        assert!(
-            conversational_body["answer"]
-                .as_str()
-                .unwrap()
-                .contains("verified cross-thread work log")
-        );
+        assert_eq!(conversational_body["execution_lane"], "lookup");
+        assert!(conversational_body.get("answer").is_none());
 
         let rejected = app
             .clone()

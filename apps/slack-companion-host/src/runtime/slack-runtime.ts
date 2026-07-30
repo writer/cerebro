@@ -217,38 +217,6 @@ export class AssistantQuestionService {
         },
       };
     }
-    if (questionDecision.execution_lane === "converse") {
-      const converseBudget = this.host.enforceBudget({
-        execution_lane: "converse",
-        planned_tool_call_count: 0,
-        selected_capability_count: 0,
-      });
-      const answer = await this.askClient.ask(
-        input.requestKey,
-        currentRequest,
-        this.timeoutSignal(converseBudget.latency_budget_ms),
-        history,
-        questionDecision,
-      );
-      const usefulAnswerAt = this.clock();
-      return {
-        pending: pendingOutcome({
-          budgetMs: converseBudget.latency_budget_ms,
-          executionLane: "converse",
-          openedAt,
-          outcomeState: "completed",
-          requestId,
-          usefulAnswerAt,
-          verified: true,
-        }),
-        text: boundedSlackText(answer.markdown),
-        workingTurn: {
-          currentRequest,
-          outcome: "completed",
-        },
-      };
-    }
-
     const budget = this.host.enforceBudget({
       execution_lane: "lookup",
       planned_tool_call_count: 1,

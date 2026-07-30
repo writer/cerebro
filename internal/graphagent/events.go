@@ -96,13 +96,17 @@ type UnsupportedQuery struct {
 }
 
 type SummaryEvent struct {
-	Markdown           string              `json:"markdown"`
-	Citations          []Citation          `json:"citations"`
-	CitationValidation *CitationValidation `json:"citation_validation,omitempty"`
-	UnsupportedQuery   *UnsupportedQuery   `json:"unsupported_query,omitempty"`
+	Markdown               string                  `json:"markdown"`
+	Citations              []Citation              `json:"citations"`
+	CitationValidation     *CitationValidation     `json:"citation_validation,omitempty"`
+	ConversationValidation *ConversationValidation `json:"conversation_validation,omitempty"`
+	ExecutionLane          string                  `json:"execution_lane,omitempty"`
+	UnsupportedQuery       *UnsupportedQuery       `json:"unsupported_query,omitempty"`
 }
 
 type StageTimings struct {
+	RouteMS              int64 `json:"route_ms,omitempty"`
+	ConversationMS       int64 `json:"conversation_ms,omitempty"`
 	ProbeMS              int64 `json:"probe_ms,omitempty"`
 	DraftMS              int64 `json:"draft_ms,omitempty"`
 	ConversionMS         int64 `json:"conversion_ms,omitempty"`

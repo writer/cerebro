@@ -22,6 +22,36 @@ npm start --workspace @writer/cerebro-slack-companion-host
 
 The process accepts configured Slack app mentions, preserves bounded thread context, sends governed Cerebro requests, and records durable delivery and outcome state. `/healthz` reports process health. `/readyz` opens after Slack and the outcome store are ready.
 
+## Assistant routing and synthesis
+
+Question authority admits the tenant-bound request but does not infer intent.
+For Slack turns, the Cerebro API runs a structured router with at most two
+attempts. The router selects conversation only when the complete request can be
+answered from the public capability manifest and supplied thread context.
+Requests for current facts, named systems, findings, assets, owners, controls,
+connector health, or mixed conversation and evidence continue through graph
+lookup.
+
+Conversational turns run a bounded draft and critic loop. The critic checks
+identity, capability scope, current-evidence claims, thread work scope, and the
+next action. One rejected draft may be repaired. A valid conversation route
+with no approved draft returns a fixed bounded answer; a malformed or
+unavailable route refuses without running a graph query. The Rust answer
+authority accepts conversational output only with the complete loop receipt.
+
+Run the offline orchestration replay with:
+
+```bash
+make slack-agent-hillclimb
+```
+
+The replay covers held-out and separately worded shadow trajectories, the
+known “your findings” false-positive shape, mixed requests, graph isolation,
+critic repair, policy coverage, malformed-route refusal, and local
+orchestration latency. It verifies orchestration and contract conformance with
+deterministic structured responses; it does not claim live model quality.
+Promotion still requires live Slack probes against the deployed model.
+
 ## Thread scratchpad
 
 People can keep short-lived working context with the bot inside one Slack

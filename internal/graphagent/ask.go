@@ -38,6 +38,7 @@ type AskRequest struct {
 	Question        string                           `json:"question"`
 	ScopeURN        string                           `json:"scope_urn,omitempty"`
 	Model           string                           `json:"model,omitempty"`
+	Surface         string                           `json:"surface,omitempty"`
 	History         []HistoryMessage                 `json:"history,omitempty"`
 	PlatformContext *agentplatform.AgentRunPreflight `json:"-"`
 }
@@ -88,6 +89,74 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		recorder.finish(ctx, status)
 	}()
 	emit = recorder.wrap(ctx, emit)
+
+	if strings.TrimSpace(request.Surface) == slackSurface {
+		if err := emitProgress(emit, started, "routing_turn", "Selecting a bounded Slack execution lane."); err != nil {
+			return err
+		}
+		routeStarted := time.Now()
+		route, routerAttempts, err := s.routeSlackTurn(ctx, request, model, history)
+		timings.RouteMS = time.Since(routeStarted).Milliseconds()
+		if err != nil {
+			status = "refused"
+			return emitRefusal(
+				emit,
+				traceID,
+				started,
+				"",
+				"Cerebro could not select a safe Slack execution lane. Retry the request.",
+				"slack_route_unavailable",
+				timings,
+			)
+		}
+		if err := emit(Event{Name: EventRationale, Data: RationaleEvent{
+			Text: fmt.Sprintf(
+				"Slack route selected %s with reason %s after %d bounded attempt(s).",
+				route.Lane,
+				route.ReasonCode,
+				routerAttempts,
+			),
+		}}); err != nil {
+			return err
+		}
+		if route.Lane == "converse" {
+			if err := emitProgress(
+				emit,
+				started,
+				"synthesizing_conversation",
+				"Drafting and checking a thread-bounded response.",
+			); err != nil {
+				return err
+			}
+			conversationStarted := time.Now()
+			conversation := s.runSlackConversationLoop(
+				ctx,
+				request,
+				model,
+				history,
+				route,
+				routerAttempts,
+			)
+			timings.ConversationMS = time.Since(conversationStarted).Milliseconds()
+			if err := emit(Event{Name: EventSummary, Data: SummaryEvent{
+				Markdown:               conversation.Markdown,
+				Citations:              []Citation{},
+				ConversationValidation: &conversation.Validation,
+				ExecutionLane:          "converse",
+			}}); err != nil {
+				return err
+			}
+			err := emit(Event{Name: EventDone, Data: DoneEvent{
+				TraceID: traceID,
+				TotalMS: time.Since(started).Milliseconds(),
+				Timings: timings,
+			}})
+			if err == nil {
+				status = "success"
+			}
+			return err
+		}
+	}
 
 	var probe *GraphProbe
 	if s.options.EnableGraphProbes {
@@ -236,7 +305,12 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	citations := citationsFor(summary, rowMaps)
 	citationValidation := validateSummaryCitations(summary, rowMaps, citations)
 	timings.CitationValidationMS = time.Since(citationStarted).Milliseconds()
-	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: summary, Citations: citations, CitationValidation: &citationValidation}}); err != nil {
+	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{
+		Markdown:           summary,
+		Citations:          citations,
+		CitationValidation: &citationValidation,
+		ExecutionLane:      executionLaneForRequest(request),
+	}}); err != nil {
 		return err
 	}
 	err = emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds(), Timings: timings}})
@@ -244,6 +318,13 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		status = "success"
 	}
 	return err
+}
+
+func executionLaneForRequest(request AskRequest) string {
+	if strings.TrimSpace(request.Surface) == slackSurface {
+		return "lookup"
+	}
+	return ""
 }
 
 func (s *Service) validateConversion(ctx context.Context, conversion conversionResult, cypher string, params map[string]any) (ValidatorResult, int, error) {
@@ -322,6 +403,11 @@ func ValidateRequest(request AskRequest) error {
 	}
 	if err := validateModel(request.Model); err != nil {
 		return err
+	}
+	switch strings.TrimSpace(request.Surface) {
+	case "", slackSurface:
+	default:
+		return fmt.Errorf("%w: unsupported request surface", ErrInvalidRequest)
 	}
 	return nil
 }

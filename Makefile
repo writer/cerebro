@@ -309,6 +309,9 @@ agent-platform-eval: ## Run agent platform protocol, webhook, idempotency, secur
 	go test ./internal/agentplatform -run 'TestRun(SecurityAgent|AgentPlatform)EvalSuiteFixture|Test(SecurityAgentEvalFixtureCoversSecurityScenarios|AgentPlatformEvalFixtureCoversControlPlane)' -count=1 -v
 	go test ./internal/graphagent -run 'TestAskTrajectoryGoldenEvals|TestScoreAskEvents' -count=1 -v
 
+slack-agent-hillclimb: ## Replay bounded Slack router, draft, critic, repair, and refusal trajectories offline.
+	go test ./internal/graphagent -run '^TestSlackAgenticHillclimb$$' -count=1 -v
+
 github-findings-e2e: ## Run GitHub findings end-to-end test against configured repo.
 	CEREBRO_RUN_GITHUB_FINDINGS_E2E=1 CEREBRO_GITHUB_FINDINGS_OWNER="$(GITHUB_FINDINGS_OWNER)" CEREBRO_GITHUB_FINDINGS_REPO="$(GITHUB_FINDINGS_REPO)" go test ./cmd/cerebro -run '^TestGitHubDependabotFindingsEndToEndWithGHCLI$$' -count=1 -v
 

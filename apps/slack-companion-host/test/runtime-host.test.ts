@@ -9,6 +9,7 @@ import { loadSlackRuntimeConfig, SlackRuntimeConfigError } from "../src/runtime/
 import { FileOutcomeStore } from "../src/runtime/outcome-store.js";
 import {
   SlackAnswerAuthorityClient,
+  type SlackAnswerCandidate,
   type SlackAnswerAuthorityPort,
 } from "../src/runtime/slack-answer-authority-client.js";
 import {
@@ -258,6 +259,7 @@ test("question service preflights one governed graph lookup and returns its veri
         role: "user",
       }],
       question: "Which current findings are open?",
+      surface: "slack",
       tenant_id: "writer",
     });
     assert.equal(timeoutMs, 59_900);
@@ -266,33 +268,63 @@ test("question service preflights one governed graph lookup and returns its veri
   }
 });
 
-test("question service keeps self status on the Rust conversational lane", async () => {
+test("question service accepts a critic-approved conversational loop without graph evidence", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
-    let upstreamFetchCount = 0;
+    let apiFetchCount = 0;
+    let answerCandidate: SlackAnswerCandidate | undefined;
     const service = new AssistantQuestionService(
       createAssistantTurnHost(new FileOutcomeStore(root)),
       new CerebroAskClient({
         answerAuthority: {
           async authorizeQuestion(candidate) {
             return {
-              answer: "I’m Cerebro. I don’t have a verified cross-thread work log in this request.",
               authorized: true,
-              execution_lane: "converse",
+              execution_lane: "lookup",
               request_id: candidate.request_id,
               schema_version: "slack-question-decision/v1",
               tenant_id: candidate.tenant_id,
             };
           },
-          async validate() {
-            throw new Error("answer validation must not run");
+          async validate(candidate) {
+            answerCandidate = candidate;
+            return {
+              disposition: "conversational",
+              schema_version: "slack-answer-decision/v1",
+              trace_id: candidate.trace_id,
+              verified: false,
+            };
           },
         },
         apiKey: "bound-at-runtime",
         baseUrl: "https://cerebro.example.com",
         fetchImpl: async () => {
-          upstreamFetchCount += 1;
-          throw new Error("Graph endpoint must not be called");
+          apiFetchCount += 1;
+          return sseResponse([
+            ["summary", {
+              conversation_validation: {
+                critic_approved: true,
+                critic_attempts: 1,
+                draft_attempts: 1,
+                fallback_used: false,
+                ok: true,
+                policy_check_ids: [
+                  "capability_scope_bounded",
+                  "identity_truthful",
+                  "next_action_actionable",
+                  "no_current_evidence_claims",
+                  "work_scope_explicit",
+                ],
+                requires_graph_query: false,
+                route: "converse",
+                route_reason: "self_context",
+                router_attempts: 1,
+              },
+              execution_lane: "converse",
+              markdown: "I’m Cerebro. I don’t have a verified cross-thread work log in this request.",
+            }],
+            ["done", { trace_id: "trace-conversation" }],
+          ]);
         },
         tenantId: "writer",
       }),
@@ -309,9 +341,12 @@ test("question service keeps self status on the Rust conversational lane", async
 
     assert.equal(result.pending.execution_lane, "converse");
     assert.equal(result.pending.outcome_state, "completed");
-    assert.equal(result.pending.verified, true);
+    assert.equal(result.pending.verified, false);
     assert.match(result.text, /verified cross-thread work log/u);
-    assert.equal(upstreamFetchCount, 0);
+    assert.equal(apiFetchCount, 1);
+    assert.equal(answerCandidate?.citation_validation, undefined);
+    assert.equal(answerCandidate?.conversation_validation?.critic_approved, true);
+    assert.equal(answerCandidate?.conversation_validation?.requires_graph_query, false);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -714,45 +749,6 @@ test("Rust Slack authority receives the tenant-bound question and binds its deci
     schema_version: "slack-question-candidate/v1",
     tenant_id: "writer",
   });
-});
-
-test("Rust routes self status questions without calling the graph endpoint", async () => {
-  let upstreamFetchCount = 0;
-  const client = new CerebroAskClient({
-    answerAuthority: {
-      async authorizeQuestion(candidate) {
-        return {
-          answer: "I’m Cerebro. I don’t have a verified cross-thread work log in this request.",
-          authorized: true,
-          execution_lane: "converse",
-          request_id: candidate.request_id,
-          schema_version: "slack-question-decision/v1",
-          tenant_id: candidate.tenant_id,
-        };
-      },
-      async validate() {
-        throw new Error("answer validation must not run");
-      },
-    },
-    apiKey: "bound-at-runtime",
-    baseUrl: "https://cerebro.example.com",
-    fetchImpl: async () => {
-      upstreamFetchCount += 1;
-      throw new Error("Graph endpoint must not be called");
-    },
-    tenantId: "writer",
-  });
-
-  const result = await client.ask(
-    "C0B2VJDFJ5N:1753830794.124",
-    "What can you tell me about yourself and your work today?",
-    new AbortController().signal,
-  );
-
-  assert.equal(result.executionLane, "converse");
-  assert.match(result.markdown, /verified cross-thread work log/u);
-  assert.equal(result.citationValidationPassed, false);
-  assert.equal(upstreamFetchCount, 0);
 });
 
 test("Rust question rejection prevents a request to the Go compatibility endpoint", async () => {

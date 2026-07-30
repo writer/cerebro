@@ -61,14 +61,6 @@ export class CerebroAskClient {
         "Rust Slack authority returned a decision for another question request.",
       );
     }
-    if (questionDecision.execution_lane === "converse") {
-      return {
-        citationValidationPassed: false,
-        executionLane: "converse",
-        markdown: questionDecision.answer,
-        safeRefusal: false,
-      };
-    }
     const response = await this.fetchImpl(`${this.options.baseUrl}/grc/ask`, {
       method: "POST",
       headers: {
@@ -80,6 +72,7 @@ export class CerebroAskClient {
       body: JSON.stringify({
         ...(history.length === 0 ? {} : { history }),
         question,
+        surface: "slack",
         tenant_id: this.options.tenantId,
       }),
       signal,
@@ -106,6 +99,13 @@ export class CerebroAskClient {
               ...(citationValidation(event.data.citation_validation) === undefined
                 ? {}
                 : { citation_validation: citationValidation(event.data.citation_validation) }),
+              ...(conversationValidation(event.data.conversation_validation) === undefined
+                ? {}
+                : {
+                    conversation_validation: conversationValidation(
+                      event.data.conversation_validation,
+                    ),
+                  }),
               markdown,
               ...(unsupportedQuery(event.data.unsupported_query) === undefined
                 ? {}
@@ -145,7 +145,7 @@ export class CerebroAskClient {
     }
     return {
       citationValidationPassed: decision.verified,
-      executionLane: "lookup",
+      executionLane: decision.disposition === "conversational" ? "converse" : "lookup",
       markdown: summary.markdown,
       safeRefusal: decision.disposition === "safe_refusal",
       traceId: decision.trace_id,
@@ -169,6 +169,43 @@ export class CerebroAskClient {
       throw new CerebroAskError("unauthorized", errorMessage(error));
     }
   }
+}
+
+function conversationValidation(
+  value: unknown,
+): SlackAnswerCandidate["conversation_validation"] | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const validation = value as Record<string, unknown>;
+  const policyCheckIds = stringArray(validation.policy_check_ids);
+  if (
+    validation.ok !== true
+    || validation.route !== "converse"
+    || (
+      validation.route_reason !== "self_context"
+      && validation.route_reason !== "thread_continuation"
+    )
+    || !positiveBoundedInteger(validation.router_attempts, 2)
+    || !nonNegativeBoundedInteger(validation.draft_attempts, 2)
+    || !nonNegativeBoundedInteger(validation.critic_attempts, 2)
+    || typeof validation.critic_approved !== "boolean"
+    || typeof validation.fallback_used !== "boolean"
+    || validation.requires_graph_query !== false
+    || policyCheckIds === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    critic_approved: validation.critic_approved,
+    critic_attempts: validation.critic_attempts,
+    draft_attempts: validation.draft_attempts,
+    fallback_used: validation.fallback_used,
+    ok: true,
+    policy_check_ids: policyCheckIds,
+    requires_graph_query: false,
+    route: "converse",
+    route_reason: validation.route_reason,
+    router_attempts: validation.router_attempts,
+  };
 }
 
 function citationValidation(
@@ -222,6 +259,14 @@ function stringArray(value: unknown): string[] | undefined {
 
 function nonNegativeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+function nonNegativeBoundedInteger(value: unknown, maximum: number): value is number {
+  return nonNegativeInteger(value) && Number(value) <= maximum;
+}
+
+function positiveBoundedInteger(value: unknown, maximum: number): value is number {
+  return nonNegativeBoundedInteger(value, maximum) && Number(value) > 0;
 }
 
 interface SseEvent {
