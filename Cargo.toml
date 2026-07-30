@@ -4,6 +4,7 @@ members = [
     "crates/action-provider",
     "crates/action-store",
     "crates/agent-context",
+    "crates/agent-runtime",
     "crates/cerebro-platform",
     "crates/control-kernel",
     "crates/organizational-graph",
@@ -41,6 +42,7 @@ async-trait = "0.1.91"
 aws-config = { version = "=1.8.18", default-features = false, features = ["behavior-version-latest", "credentials-process", "default-https-client", "rt-tokio", "sso"] }
 aws-lc-rs = "1.17.3"
 aws-credential-types = "=1.2.14"
+aws-sdk-bedrockruntime = { version = "=1.108.0", default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio"] }
 aws-sdk-secretsmanager = { version = "=1.108.0", default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio"] }
 aws-sigv4 = { version = "=1.4.5", default-features = false, features = ["http1", "sign-http"] }
 aws-smithy-async = "=1.2.14"
@@ -51,6 +53,7 @@ base64 = "0.22.1"
 buffa = { version = "=0.9.1", features = ["json"] }
 buffa-types = { version = "=0.9.1", features = ["json"] }
 cerebro-agent-context = { version = "0.1.0", path = "crates/agent-context" }
+cerebro-agent-runtime = { version = "0.1.0", path = "crates/agent-runtime" }
 cerebro-action-catalog = { version = "0.1.0", path = "crates/action-catalog" }
 cerebro-action-provider = { version = "0.1.0", path = "crates/action-provider" }
 cerebro-action-store = { version = "0.1.0", path = "crates/action-store" }

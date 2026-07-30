@@ -23,6 +23,7 @@ export interface SlackRuntimeConfig {
   memoryDirectory: string;
   port: number;
   production: boolean;
+  rustAgentEnabled: boolean;
   computerSandboxGateways: readonly ComputerSandboxGatewayRuntimeConfig[];
 }
 
@@ -85,6 +86,10 @@ export function loadSlackRuntimeConfig(
       || "/memory/slack-runtime",
     port: port(env.PORT),
     production: booleanBinding(env.CEREBRO_SLACK_PRODUCTION),
+    rustAgentEnabled: optionalBooleanBinding(
+      env.CEREBRO_SLACK_AGENT_ENABLED,
+      false,
+    ),
     computerSandboxGateways: computerSandboxGateways(env),
   });
 }
