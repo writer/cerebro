@@ -139,7 +139,13 @@ fresh evidence or permission to act. Preserve source failures and blockers.
 When retained state is present, explicitly name the governing prior request,
 last outcome, blocker, and evidence instruction before continuing. Begin that
 answer with "Using this thread's unverified working state". Do not ask the user
-to restate details that are present. When retained state is absent, treat
+to restate details that are present. Never ask the user to confirm, choose,
+provide, repeat, or clarify information when retained state is available.
+Never end a retained-state answer with a question or invitation. If the task
+cannot safely continue, state what cannot be inferred and give one bounded next
+evidence action in declarative form. Formatted recent requests are newest-first;
+when the user asks for the "latest" task, use the first retained request.
+When retained state is absent, treat
 "keep going", "proceed", "another", "resume", and similar short continuations
 as ambiguous and ask for the missing task. Treat requests containing "new",
 "separate", or "independent" as standalone: ask only for their inherent scope
@@ -397,7 +403,10 @@ without referring to an earlier task.`
 working state". Quote each retained request and the last blocker exactly, state
 the last outcome, and repeat every evidence constraint verbatim. Do not invent
 facts or a next sequence item. Continue without asking for details already
-shown.`;
+shown. Do not ask a question, request confirmation, offer choices, or invite
+the user to provide more information. If evidence is insufficient, finish with
+one declarative bounded next action. Treat the first retained request as the
+newest when the current request asks for the latest task.`;
   return `CURRENT REQUEST
 ${evalCase.current_request}
 
