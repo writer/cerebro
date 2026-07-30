@@ -122,11 +122,13 @@ back to Nova or a local model.
 The evaluator sends each current request to the same hosted generator twice:
 once without retained state and once with the working-state candidate. A
 separate hosted judge scores both answers together so the rubric and judge
-version are identical for the pair. Temperature is zero. The JSON receipt binds
-the corpus digest, AWS region, generator and judge model IDs, answer text and
-digests, provider request IDs, token use, inference latency, rubric scores, and
-promotion decision. Missing credentials, unavailable models, malformed model
-responses, and malformed judge scores fail closed.
+version are identical for the pair. Opus 4.8 uses its AWS provider-default
+sampling because the model rejects the deprecated temperature parameter. The
+JSON receipt records that choice and binds the corpus digest, AWS region,
+generator and judge model IDs, answer text and digests, provider request IDs,
+token use, inference latency, rubric scores, and promotion decision. Missing
+credentials, unavailable models, malformed model responses, and malformed
+judge scores fail closed.
 
 The corpus has separate held-out and shadow partitions and includes
 continuation, repeated retry, expiry, bounded-eviction, and self-status cases.

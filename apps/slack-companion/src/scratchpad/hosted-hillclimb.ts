@@ -14,7 +14,6 @@ export interface HostedModelRequest {
   readonly model_id: string;
   readonly prompt: string;
   readonly system: string;
-  readonly temperature: number;
 }
 
 export interface HostedModelResponse {
@@ -97,7 +96,7 @@ export interface HostedHillclimbReceipt {
     readonly model_id: string;
     readonly provider: "aws_bedrock";
     readonly region: string;
-    readonly temperature: 0;
+    readonly sampling_parameters: "provider_default";
   };
   readonly goal: {
     readonly maximum_candidate_expected_restatement_turns_per_case: number;
@@ -116,7 +115,7 @@ export interface HostedHillclimbReceipt {
     readonly p95_latency_ms: number;
     readonly provider: "aws_bedrock";
     readonly region: string;
-    readonly temperature: 0;
+    readonly sampling_parameters: "provider_default";
     readonly total_tokens: number;
   };
   readonly promotion: {
@@ -266,7 +265,7 @@ export async function runHostedSlackWorkingStateHillclimb(
       model_id: options.generator_model_id,
       provider: "aws_bedrock" as const,
       region: options.region,
-      temperature: 0 as const,
+      sampling_parameters: "provider_default" as const,
     }),
     goal: Object.freeze({
       maximum_candidate_expected_restatement_turns_per_case:
@@ -298,7 +297,7 @@ export async function runHostedSlackWorkingStateHillclimb(
       ),
       provider: "aws_bedrock" as const,
       region: options.region,
-      temperature: 0 as const,
+      sampling_parameters: "provider_default" as const,
       total_tokens: sum(
         judgeOutputs.map((output) => output.token_usage.total_tokens),
       ),
@@ -330,7 +329,6 @@ async function generateAnswer(
     model_id: modelId,
     prompt,
     system: GENERATOR_SYSTEM,
-    temperature: 0,
   });
   validateModelResponse(output, modelId);
   return { output, prompt };
@@ -363,7 +361,6 @@ async function judgeAnswers(
       model_id: modelId,
       prompt,
       system: JUDGE_SYSTEM,
-      temperature: 0,
     });
     validateModelResponse(output, modelId);
     outputs.push(output);

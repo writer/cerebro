@@ -20,7 +20,6 @@ export class BedrockHostedModel implements HostedModelPort {
     const output = await this.client.send(new ConverseCommand({
       inferenceConfig: {
         maxTokens: request.max_tokens,
-        temperature: request.temperature,
       },
       messages: [{
         content: [{ text: request.prompt }],
