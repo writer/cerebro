@@ -100,6 +100,26 @@ follow-ups without treating the thread as authority. It contains no hidden
 reasoning, tool credentials, or new evidence; the storage boundary applies the
 same redaction and expiry policy as saved notes.
 
+### Working-state hillclimb
+
+`npm run eval:hillclimb` replays the prior no-state policy and the working-state
+candidate against the same public-safe corpus. The corpus has separate held-out
+and shadow partitions and includes continuation, repeated retry, expiry, and
+bounded-eviction cases. The command prints a machine-readable receipt and exits
+non-zero unless the candidate:
+
+- recalls every required governing request, outcome, and blocker;
+- reduces the measured restatement-risk proxy to zero with at least a 0.50
+  recall gain over baseline;
+- keeps working state explicitly unverified;
+- introduces no case regression or context-size violation; and
+- builds context within a 5 ms p95 budget.
+
+The corpus measures whether the reasoning boundary receives the state needed to
+resolve a follow-up. It does not claim that a language-model answer is correct.
+Delivered-answer quality remains gated by the independent assistant-turn
+evaluation and outcome receipts described above.
+
 Durable schedule definitions keep a stable schedule identity, revision, work
 digest, cadence anchor, and misfire policy. The portable planner derives the
 same due times after a restart or topology change and materializes occurrences

@@ -3,6 +3,7 @@ import { CerebroAskClient } from "./runtime/cerebro-ask-client.js";
 import { loadSlackRuntimeConfig } from "./runtime/config.js";
 import { FileOutcomeStore } from "./runtime/outcome-store.js";
 import { FileThreadScratchpadStore } from "./runtime/thread-scratchpad-store.js";
+import { SlackAnswerAuthorityClient } from "./runtime/slack-answer-authority-client.js";
 import {
   AssistantQuestionService,
   createAssistantTurnHost,
@@ -16,6 +17,9 @@ async function main(): Promise<void> {
   const scratchpads = new FileThreadScratchpadStore(config.memoryDirectory);
   const host = createAssistantTurnHost(outcomes);
   const questions = new AssistantQuestionService(host, new CerebroAskClient({
+    answerAuthority: new SlackAnswerAuthorityClient({
+      baseUrl: config.slackAnswerAuthorityUrl,
+    }),
     apiKey: config.cerebroReadApiKey,
     baseUrl: config.cerebroBaseUrl,
     tenantId: config.cerebroTenantId,
