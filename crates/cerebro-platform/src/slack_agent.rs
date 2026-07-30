@@ -1717,6 +1717,9 @@ fn catalog_evidence(
     statement: String,
 ) -> Result<EvidenceRecord, AgentRuntimeError> {
     let observed_at = OffsetDateTime::now_utc();
+    let fresh_until = observed_at
+        .checked_add(TimeDuration::minutes(5))
+        .ok_or_else(|| AgentRuntimeError::InvalidToolCall("evidence time overflow".into()))?;
     let identity = format!(
         "{}:{}:{}:{}",
         request.tenant_id,
@@ -1728,14 +1731,17 @@ fn catalog_evidence(
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
-    let timestamp = observed_at
-        .format(&Rfc3339)
-        .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
     Ok(EvidenceRecord {
         evidence_ref: format!("evidence://source-catalog/{digest}"),
         statement,
-        observed_at: timestamp.clone(),
-        fresh_until: Some(timestamp),
+        observed_at: observed_at
+            .format(&Rfc3339)
+            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
+        fresh_until: Some(
+            fresh_until
+                .format(&Rfc3339)
+                .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
+        ),
         complete,
     })
 }
@@ -2086,6 +2092,36 @@ mod tests {
         assert!(!encoded.contains("client_secret"));
         assert!(!encoded.contains("token_url"));
         assert!(!encoded.contains("api.vanta.com"));
+    }
+
+    #[test]
+    fn catalog_evidence_remains_fresh_for_the_turn() {
+        let request = AgentTurnRequest {
+            schema_version: "v1".into(),
+            tenant_id: "tenant-1".into(),
+            request_id: "request-1".into(),
+            thread_ref: "thread-1".into(),
+            actor_ref: "actor-1".into(),
+            assessment_at: OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
+            message: "What access do you have to Vanta?".into(),
+            history: Vec::new(),
+            working_state: None,
+            effect_authorizations: Vec::new(),
+        };
+        let call = cerebro_agent_runtime::ToolCall {
+            call_id: "catalog-1".into(),
+            tool_id: "source_catalog.inspect".into(),
+            purpose: "Describe declared Vanta access.".into(),
+            input: json!({"source": "vanta"}),
+        };
+
+        let evidence =
+            catalog_evidence(&request, &call, true, "Declared Vanta access.".into()).unwrap();
+        let observed_at = OffsetDateTime::parse(&evidence.observed_at, &Rfc3339).unwrap();
+        let fresh_until =
+            OffsetDateTime::parse(evidence.fresh_until.as_deref().unwrap(), &Rfc3339).unwrap();
+
+        assert_eq!(fresh_until - observed_at, TimeDuration::minutes(5));
     }
 
     #[test]
