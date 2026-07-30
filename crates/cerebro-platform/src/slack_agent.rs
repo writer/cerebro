@@ -144,6 +144,7 @@ impl BedrockModel {
         payload: Value,
         max_tokens: i32,
         decision_tool: &str,
+        decision_schema: Value,
     ) -> Result<Value, AgentRuntimeError> {
         validate_generation_budget(max_tokens)?;
         let message = Message::builder()
@@ -154,9 +155,7 @@ impl BedrockModel {
         let tool_specification = ToolSpecification::builder()
             .name(decision_tool)
             .description("Submit the one schema-constrained decision for this layer.")
-            .input_schema(ToolInputSchema::Json(json_to_document(&json!({
-                "type": "object"
-            }))?))
+            .input_schema(ToolInputSchema::Json(json_to_document(&decision_schema)?))
             .build()
             .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
         let tool_choice = SpecificToolChoice::builder()
@@ -211,6 +210,7 @@ impl AgentModel for BedrockModel {
                 route_turn_payload(&turn),
                 ROUTER_MAX_TOKENS,
                 ROUTE_DECISION_TOOL,
+                route_decision_schema(),
             )
             .await?;
         parse_route_value(value)
@@ -223,6 +223,7 @@ impl AgentModel for BedrockModel {
                 model_turn_payload(&turn),
                 DECISION_MAX_TOKENS,
                 OPERATING_DECISION_TOOL,
+                model_decision_schema(),
             )
             .await?;
         parse_model_value(value)
@@ -235,6 +236,7 @@ impl AgentModel for BedrockModel {
                 critique_turn_payload(&turn),
                 CRITIC_MAX_TOKENS,
                 CRITIQUE_DECISION_TOOL,
+                critique_decision_schema(),
             )
             .await?;
         parse_critique_value(value)
@@ -516,6 +518,140 @@ fn document_to_json(document: &Document) -> Result<Value, AgentRuntimeError> {
             .map(Value::Object),
     }
 }
+
+fn route_decision_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "lane": {"type": "string", "enum": ["converse", "continue", "lookup", "investigate", "act"]},
+            "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+            "reason": {"type": "string", "minLength": 1},
+            "requires_current_evidence": {"type": "boolean"}
+        },
+        "required": ["lane", "confidence", "reason", "requires_current_evidence"]
+    })
+}
+
+fn evidence_claim_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "text": {"type": "string", "minLength": 1},
+            "evidence_refs": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1}
+            }
+        },
+        "required": ["text", "evidence_refs"]
+    })
+}
+
+fn final_draft_schema() -> Value {
+    let claim = evidence_claim_schema();
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "state": {"type": "string", "enum": ["answered", "partial", "needs_input", "blocked"]},
+            "headline": {"type": "string", "minLength": 1},
+            "summary": {"type": "string", "minLength": 1},
+            "summary_evidence_refs": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1}
+            },
+            "checked": {"type": "array", "items": claim.clone()},
+            "changed": {"type": "array", "items": claim.clone()},
+            "verified": {"type": "array", "items": claim.clone()},
+            "current_state": {"type": "array", "items": claim},
+            "next_actions": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1}
+            },
+            "coverage_notice": {"type": ["string", "null"]},
+            "question": {"type": ["string", "null"]}
+        },
+        "required": [
+            "state",
+            "headline",
+            "summary",
+            "summary_evidence_refs",
+            "checked",
+            "changed",
+            "verified",
+            "current_state",
+            "next_actions",
+            "coverage_notice",
+            "question"
+        ]
+    })
+}
+
+fn model_decision_schema() -> Value {
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "decision": {"type": "string", "enum": ["invoke_tool"]},
+                    "call": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "call_id": {"type": "string", "minLength": 1},
+                            "tool_id": {"type": "string", "minLength": 1},
+                            "purpose": {"type": "string", "minLength": 1},
+                            "input": {"type": "object"}
+                        },
+                        "required": ["call_id", "tool_id", "purpose", "input"]
+                    }
+                },
+                "required": ["decision", "call"]
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "decision": {"type": "string", "enum": ["finish"]},
+                    "draft": final_draft_schema()
+                },
+                "required": ["decision", "draft"]
+            }
+        ]
+    })
+}
+
+fn critique_decision_schema() -> Value {
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "decision": {"type": "string", "enum": ["approve"]}
+                },
+                "required": ["decision"]
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "decision": {"type": "string", "enum": ["revise"]},
+                    "issues": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 16,
+                        "items": {"type": "string", "minLength": 1}
+                    }
+                },
+                "required": ["decision", "issues"]
+            }
+        ]
+    })
+}
+
 fn route_turn_payload(turn: &RouteTurn) -> Value {
     json!({
         "repair_feedback": &turn.repair_feedback,
@@ -568,7 +704,7 @@ fn route_instructions() -> &'static str {
 Lane contract:
 - converse: pure conversation, timeless explanation, or non-operational self-description that needs no current system or work evidence.
 - continue: the newest request asks to resume the exact durable mission in working_state. It requires a mission_ref. Do not use it for a new request.
-- lookup: a bounded current-fact question answerable with a small number of observations.
+- lookup: a bounded current-fact or isolation-boundary question answerable with a small number of observations.
 - investigate: diagnosis, comparison, broad discovery, or current work/status synthesis requiring multiple observations.
 - act: an explicit request to change external state, then verify the result.
 
@@ -592,6 +728,7 @@ Operate, do not merely describe a query:
 - Do not expose raw tool payloads, database syntax, internal query mechanics, credentials, or hidden identifiers.
 - State what you checked, what changed, what fresh evidence verifies, what remains pending, and the next bounded action.
 - Use partial or blocked when evidence is incomplete, stale, unavailable, or contradictory. Name the coverage gap.
+- If no observation supports the requested scope, finish blocked with a coverage_notice, empty evidence claim arrays, and no summary evidence refs. Do not use answered or partial without summary evidence. Use needs_input only when one user answer can unblock the work, and include exactly one question.
 - Every dynamic statement in summary_evidence_refs and each EvidenceClaim must cite exact evidence_ref values from observations.
 - Keep the headline factual and short. Keep the summary direct. Use concrete nouns and states.
 - Do not tell the operator to rerun an internal query. Continue the investigation yourself while the tool budget permits.
