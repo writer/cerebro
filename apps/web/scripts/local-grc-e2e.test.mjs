@@ -126,6 +126,8 @@ describe("real-service E2E isolation", () => {
     const seed = await readFile(seedPath, "utf8");
     expect(seed).toContain("e2e-local");
     expect(seed).toContain("example.org");
+    expect(seed).toContain(":OrganizationalEntity");
+    expect(seed).toContain(":ORGANIZATIONAL_RELATION");
     expect(seed).not.toMatch(/\breplace\s|GOPRIVATE|example\.com|unused-local/);
   });
 
