@@ -45,8 +45,11 @@ const CRITIQUE_DECISION_TOOL: &str = "submit_critique_decision";
 const MAX_GRAPH_LIMIT: usize = 25;
 const MAX_GRAPH_DEPTH: usize = 3;
 const MAX_RUNTIME_LIMIT: usize = 25;
-const STARTUP_ATTEMPTS: usize = 5;
-const STARTUP_RETRY_DELAY: StdDuration = StdDuration::from_millis(250);
+const STARTUP_HEALTH_ATTEMPTS: usize = 12;
+const STARTUP_INITIAL_RETRY_DELAY: StdDuration = StdDuration::from_millis(500);
+const STARTUP_MAX_RETRY_DELAY: StdDuration = StdDuration::from_secs(5);
+const STARTUP_DEPENDENCY_ATTEMPTS: usize = 5;
+const STARTUP_DEPENDENCY_RETRY_DELAY: StdDuration = StdDuration::from_millis(250);
 
 pub struct SlackAgentService {
     model: Arc<dyn AgentModel>,
@@ -59,22 +62,43 @@ impl SlackAgentService {
         if !enabled(&env::var("CEREBRO_SLACK_AGENT_ENABLED").unwrap_or_default()) {
             return Ok(None);
         }
-        let service = retry_startup(STARTUP_ATTEMPTS, STARTUP_RETRY_DELAY, || {
-            Self::initialize(tenant_id.clone())
-        })
-        .await?;
+        let service = Self::initialize(tenant_id).await?;
         Ok(Some(service))
     }
 
     async fn initialize(tenant_id: String) -> Result<Self, Box<dyn Error>> {
-        let graph = Neo4jProjector::connect(
-            &required_env("CEREBRO_NEO4J_URI")?,
-            &required_env("CEREBRO_NEO4J_USERNAME")?,
-            &required_env("CEREBRO_NEO4J_PASSWORD")?,
+        let neo4j_uri = required_env("CEREBRO_NEO4J_URI")?;
+        let neo4j_username = required_env("CEREBRO_NEO4J_USERNAME")?;
+        let neo4j_password = required_env("CEREBRO_NEO4J_PASSWORD")?;
+        let graph = retry_startup(
+            STARTUP_DEPENDENCY_ATTEMPTS,
+            STARTUP_DEPENDENCY_RETRY_DELAY,
+            STARTUP_DEPENDENCY_RETRY_DELAY,
+            || Neo4jProjector::connect(&neo4j_uri, &neo4j_username, &neo4j_password),
         )
         .await?;
-        let ledger = PostgresLedger::connect_tls(&required_env("CEREBRO_POSTGRES_DSN")?).await?;
-        let model = ConfiguredModel::from_env().await?;
+        retry_startup(
+            STARTUP_HEALTH_ATTEMPTS,
+            STARTUP_INITIAL_RETRY_DELAY,
+            STARTUP_MAX_RETRY_DELAY,
+            || graph.health(),
+        )
+        .await?;
+        let postgres_dsn = required_env("CEREBRO_POSTGRES_DSN")?;
+        let ledger = retry_startup(
+            STARTUP_DEPENDENCY_ATTEMPTS,
+            STARTUP_DEPENDENCY_RETRY_DELAY,
+            STARTUP_DEPENDENCY_RETRY_DELAY,
+            || PostgresLedger::connect_tls(&postgres_dsn),
+        )
+        .await?;
+        let model = retry_startup(
+            STARTUP_DEPENDENCY_ATTEMPTS,
+            STARTUP_DEPENDENCY_RETRY_DELAY,
+            STARTUP_DEPENDENCY_RETRY_DELAY,
+            ConfiguredModel::from_env,
+        )
+        .await?;
         Ok(Self {
             model: Arc::new(model),
             tools: Arc::new(PlatformAgentTools {
@@ -105,7 +129,8 @@ impl SlackAgentService {
 
 async fn retry_startup<T, E, F, Fut>(
     attempts: usize,
-    retry_delay: StdDuration,
+    initial_retry_delay: StdDuration,
+    max_retry_delay: StdDuration,
     mut operation: F,
 ) -> Result<T, E>
 where
@@ -113,14 +138,26 @@ where
     Fut: Future<Output = Result<T, E>>,
 {
     assert!(attempts > 0, "startup attempts must be greater than zero");
+    assert!(
+        initial_retry_delay <= max_retry_delay,
+        "initial startup retry delay must not exceed the maximum"
+    );
+    let mut retry_delay = initial_retry_delay;
     for attempt in 1..=attempts {
         match operation().await {
             Ok(value) => return Ok(value),
             Err(error) if attempt == attempts => return Err(error),
-            Err(_) => tokio::time::sleep(retry_delay).await,
+            Err(_) => {
+                tokio::time::sleep(retry_delay).await;
+                retry_delay = next_startup_retry_delay(retry_delay, max_retry_delay);
+            }
         }
     }
     unreachable!("a positive attempt count must return from the retry loop")
+}
+
+fn next_startup_retry_delay(current: StdDuration, maximum: StdDuration) -> StdDuration {
+    current.saturating_mul(2).min(maximum)
 }
 
 pub(super) enum ConfiguredModel {
@@ -1439,45 +1476,113 @@ mod tests {
     #[tokio::test]
     async fn startup_recovers_from_transient_dependency_timeouts() {
         let attempts = AtomicUsize::new(0);
-        let result = retry_startup(STARTUP_ATTEMPTS, StdDuration::ZERO, || {
-            let attempt = attempts.fetch_add(1, Ordering::Relaxed) + 1;
-            async move {
-                if attempt < STARTUP_ATTEMPTS {
-                    Err(ContextError::BackendUnavailable(format!(
-                        "transient failure {attempt}"
-                    )))
-                } else {
-                    Ok("ready")
+        let result = retry_startup(
+            STARTUP_HEALTH_ATTEMPTS,
+            StdDuration::ZERO,
+            StdDuration::ZERO,
+            || {
+                let attempt = attempts.fetch_add(1, Ordering::Relaxed) + 1;
+                async move {
+                    if attempt < STARTUP_HEALTH_ATTEMPTS {
+                        Err(ContextError::BackendUnavailable(format!(
+                            "transient failure {attempt}"
+                        )))
+                    } else {
+                        Ok("ready")
+                    }
                 }
-            }
-        })
+            },
+        )
         .await;
 
         assert_eq!(result.unwrap(), "ready");
-        assert_eq!(attempts.load(Ordering::Relaxed), STARTUP_ATTEMPTS);
+        assert_eq!(attempts.load(Ordering::Relaxed), STARTUP_HEALTH_ATTEMPTS);
     }
 
     #[tokio::test]
     async fn startup_stops_after_the_bounded_retry_budget() {
         let attempts = AtomicUsize::new(0);
-        let result: Result<(), ContextError> =
-            retry_startup(STARTUP_ATTEMPTS, StdDuration::ZERO, || {
+        let result: Result<(), ContextError> = retry_startup(
+            STARTUP_HEALTH_ATTEMPTS,
+            StdDuration::ZERO,
+            StdDuration::ZERO,
+            || {
                 let attempt = attempts.fetch_add(1, Ordering::Relaxed) + 1;
                 async move {
                     Err(ContextError::BackendUnavailable(format!(
                         "persistent failure {attempt}"
                     )))
                 }
-            })
-            .await;
+            },
+        )
+        .await;
 
         assert_eq!(
             result,
             Err(ContextError::BackendUnavailable(
-                "persistent failure 5".to_owned()
+                "persistent failure 12".to_owned()
             ))
         );
-        assert_eq!(attempts.load(Ordering::Relaxed), STARTUP_ATTEMPTS);
+        assert_eq!(attempts.load(Ordering::Relaxed), STARTUP_HEALTH_ATTEMPTS);
+    }
+
+    #[tokio::test]
+    async fn non_graph_startup_dependencies_keep_their_retry_budget() {
+        let attempts = AtomicUsize::new(0);
+        let result: Result<(), ContextError> = retry_startup(
+            STARTUP_DEPENDENCY_ATTEMPTS,
+            StdDuration::ZERO,
+            StdDuration::ZERO,
+            || {
+                let attempt = attempts.fetch_add(1, Ordering::Relaxed) + 1;
+                async move {
+                    Err(ContextError::BackendUnavailable(format!(
+                        "dependency failure {attempt}"
+                    )))
+                }
+            },
+        )
+        .await;
+
+        assert_eq!(
+            result,
+            Err(ContextError::BackendUnavailable(
+                "dependency failure 5".to_owned()
+            ))
+        );
+        assert_eq!(
+            attempts.load(Ordering::Relaxed),
+            STARTUP_DEPENDENCY_ATTEMPTS
+        );
+    }
+
+    #[test]
+    fn startup_backoff_is_exponential_and_capped() {
+        let mut delay = STARTUP_INITIAL_RETRY_DELAY;
+        let delays = (1..STARTUP_HEALTH_ATTEMPTS)
+            .map(|_| {
+                let current = delay;
+                delay = next_startup_retry_delay(delay, STARTUP_MAX_RETRY_DELAY);
+                current
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            delays,
+            vec![
+                StdDuration::from_millis(500),
+                StdDuration::from_secs(1),
+                StdDuration::from_secs(2),
+                StdDuration::from_secs(4),
+                StdDuration::from_secs(5),
+                StdDuration::from_secs(5),
+                StdDuration::from_secs(5),
+                StdDuration::from_secs(5),
+                StdDuration::from_secs(5),
+                StdDuration::from_secs(5),
+                StdDuration::from_secs(5),
+            ]
+        );
     }
 
     #[test]
