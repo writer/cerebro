@@ -72,7 +72,7 @@ type Service struct {
 	evidenceStore             ports.FindingEvidenceStore
 	candidateStore            ports.FindingCandidateStore
 	claimStore                ports.ClaimStore
-	graphQuery                ports.GraphQueryStore
+	graphQuery                ports.RawCypherQueryStore
 	graphRunStore             GraphIngestRunStore
 	requireTrustedResolution  bool
 	graph                     ports.ProjectionGraphStore
@@ -248,7 +248,7 @@ func (s *Service) WithGraphStore(graph ports.ProjectionGraphStore) *Service {
 }
 
 // WithGraphQueryStore wires one optional graph query boundary used by workflow bridges.
-func (s *Service) WithGraphQueryStore(graphQuery ports.GraphQueryStore) *Service {
+func (s *Service) WithGraphQueryStore(graphQuery ports.RawCypherQueryStore) *Service {
 	if s == nil {
 		return nil
 	}

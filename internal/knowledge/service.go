@@ -148,7 +148,7 @@ type OutcomeWriteResult struct {
 }
 
 // New constructs one platform knowledge write service.
-func New(query ports.GraphQueryStore, graph ports.ProjectionGraphStore) *Service {
+func New(query ports.RawCypherQueryStore, graph ports.ProjectionGraphStore) *Service {
 	_ = query // Retained in the constructor for compatibility; graph lookup is not a durability precondition.
 	return &Service{graph: graph, durabilityMode: DurabilityRequired}
 }

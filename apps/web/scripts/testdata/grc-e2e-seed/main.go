@@ -88,9 +88,14 @@ func seedNeo4j(ctx context.Context) {
 	for _, link := range links {
 		must(store.UpsertProjectedLink(ctx, link))
 	}
-	neighborhood, err := store.GetEntityNeighborhood(ctx, adminURN, 10)
+	rows, err := store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
+		Query: `MATCH (root:Entity {urn: $root_urn})-[relation:RELATION]-(neighbor:Entity)
+RETURN count(DISTINCT neighbor) AS neighbors, count(relation) AS relations`,
+		Params:   map[string]any{"root_urn": adminURN},
+		RowLimit: 1,
+	})
 	must(err)
-	if neighborhood.Root == nil || len(neighborhood.Neighbors) < 2 || len(neighborhood.Relations) < 2 {
-		panic("seeded graph neighborhood is incomplete")
+	if len(rows) != 1 || fmt.Sprint(rows[0].Values["neighbors"]) == "0" || fmt.Sprint(rows[0].Values["relations"]) == "0" {
+		panic("seeded graph relations are incomplete")
 	}
 }

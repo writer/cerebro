@@ -61,7 +61,7 @@ type PolicyGraphFixtureEdge struct {
 }
 
 type PolicyGraphTestStore interface {
-	ports.GraphQueryStore
+	ports.RawCypherQueryStore
 	ports.ProjectionGraphStore
 	ports.ProjectionEntityDeleter
 }
