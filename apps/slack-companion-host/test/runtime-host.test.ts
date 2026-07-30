@@ -186,6 +186,64 @@ test("blocked Rust agent turns do not record a useful answer timestamp", async (
   }
 });
 
+test("Rust continuation receives the newest retained request", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
+  try {
+    let requestBody: Record<string, unknown> | undefined;
+    const service = new AssistantQuestionService(
+      createAssistantTurnHost(new FileOutcomeStore(root)),
+      new CerebroAskClient({
+        agentRuntimeUrl: "http://127.0.0.1:8091",
+        answerAuthority: testAnswerAuthority,
+        apiKey: "unused",
+        baseUrl: "https://legacy.example.com",
+        fetchImpl: async (input, init) => {
+          requestBody = await new Request(input, init).json() as Record<string, unknown>;
+          return Response.json({
+            evidence_refs: [],
+            final_state: "blocked",
+            lane: "investigate",
+            markdown: "**Blocked**\n\nCurrent evidence is unavailable.",
+            outcome: "delivered",
+            schema_version: "agent-turn-result/v1",
+            tool_call_count: 0,
+          });
+        },
+        tenantId: "writer",
+      }),
+      {
+        clock: () => new Date("2026-07-29T20:00:00.000Z"),
+        timeoutSignal: () => new AbortController().signal,
+      },
+    );
+
+    await service.answer({
+      actorRef: "slack-user:U-ONE",
+      requestKey: "T-ONE:C-ONE:thread-one:event-continue",
+      text: "<@BOT> Keep going.",
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+      workingState: {
+        expires_at: "2026-08-05T20:00:00.000Z",
+        last_outcome: "blocked",
+        recent_requests: [
+          "Investigate the newest connector failure.",
+          "Review the older control gap.",
+        ],
+        schema_version: "slack-thread-working-state/v1",
+        thread_ref: "slack-thread:T-ONE:C-ONE:thread-one",
+        updated_at: "2026-07-29T19:59:00.000Z",
+      },
+    });
+
+    assert.equal(
+      (requestBody?.working_state as Record<string, unknown>).current_request,
+      "Investigate the newest connector failure.",
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("evidence-free Rust conversation turns are not recorded as verified", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
@@ -576,6 +634,26 @@ test("thread context resolves a deictic mention without treating quoted text as 
   assert.doesNotMatch(history[0]!.content, /<@BOT>/u);
 });
 
+test("thread and scratchpad context stay within a UTF-8 byte envelope", () => {
+  const context = formatSlackThreadContext([
+    {
+      text: "🙂".repeat(300_000),
+      ts: "1710000000.000001",
+      user: "U-ONE",
+    },
+  ], "1710000000.000002");
+
+  assert.ok(context);
+  assert.ok(Buffer.byteLength(context, "utf8") <= 1_048_576);
+  assert.doesNotMatch(context, /\uFFFD/u);
+  assert.match(context, /Earlier thread context truncated/u);
+  const history = contextualHistory(context, "證據".repeat(300_000));
+  assert.equal(history.length, 1);
+  assert.ok(Buffer.byteLength(history[0]!.content, "utf8") <= 1_048_576);
+  assert.doesNotMatch(history[0]!.content, /\uFFFD/u);
+  assert.match(history[0]!.content, /Earlier context truncated/u);
+});
+
 test("Slack delivery references satisfy the opaque URI contract", () => {
   const references = slackDeliveryReferences(
     "T-ONE",
@@ -590,7 +668,7 @@ test("Slack delivery references satisfy the opaque URI contract", () => {
   assert.match(references.payloadRef, /^content:\/\/sha256\/[a-f0-9]{64}$/u);
 });
 
-test("thread context paginates to the newest 50 messages", async () => {
+test("thread context paginates to the newest 200 messages", async () => {
   const calls: Array<{ cursor?: string }> = [];
   const context = await readSlackThreadContext({
     conversations: {
@@ -598,7 +676,7 @@ test("thread context paginates to the newest 50 messages", async () => {
         calls.push({ cursor: input.cursor });
         if (!input.cursor) {
           return {
-            messages: Array.from({ length: 40 }, (_, index) => ({
+            messages: Array.from({ length: 150 }, (_, index) => ({
               text: `message-${index}`,
               ts: String(index),
               user: "U-ONE",
@@ -607,21 +685,21 @@ test("thread context paginates to the newest 50 messages", async () => {
           };
         }
         return {
-          messages: Array.from({ length: 21 }, (_, index) => ({
-            text: index === 20 ? "<@BOT> any idea?" : `message-${index + 40}`,
-            ts: String(index + 40),
+          messages: Array.from({ length: 101 }, (_, index) => ({
+            text: index === 100 ? "<@BOT> any idea?" : `message-${index + 150}`,
+            ts: String(index + 150),
             user: "U-ONE",
           })),
           response_metadata: { next_cursor: "" },
         };
       },
     },
-  }, "C-ONE", "0", "60");
+  }, "C-ONE", "0", "250");
 
   assert.deepEqual(calls, [{ cursor: undefined }, { cursor: "page-two" }]);
-  assert.doesNotMatch(context!, /message-(?:[0-9]|10)\b/u);
-  assert.match(context!, /message-11\b/u);
-  assert.match(context!, /message-59\b/u);
+  assert.doesNotMatch(context!, /message-(?:[0-9]|[1-4][0-9])\b/u);
+  assert.match(context!, /message-51\b/u);
+  assert.match(context!, /message-249\b/u);
   assert.doesNotMatch(context!, /any idea/u);
 });
 
