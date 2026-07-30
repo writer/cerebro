@@ -19,6 +19,26 @@ readonly organizational_receipt="${output_dir}/organizational-receipt.json"
 readonly qualification_receipt="${output_dir}/receipt.json"
 readonly service_logs="${output_dir}/service-logs.txt"
 readonly compose_files=(-f "${repository_root}/docker-compose.yml" -f "${repository_root}/docker-compose.rust.yml")
+read -r rust_canary_tenant go_canary_tenant < <(
+  python3 - <<'PY'
+import hashlib
+
+rust_tenant = ""
+go_tenant = ""
+for index in range(10000):
+    tenant = f"rust-canary-{index}"
+    bucket = int.from_bytes(hashlib.sha256(tenant.encode()).digest()[:4], "big") % 100
+    if bucket < 50 and not rust_tenant:
+        rust_tenant = tenant
+    if bucket >= 50 and not go_tenant:
+        go_tenant = tenant
+    if rust_tenant and go_tenant:
+        print(rust_tenant, go_tenant)
+        break
+else:
+    raise SystemExit("unable to construct stable canary tenants")
+PY
+)
 
 if ! [[ "${CEREBRO_QUALIFICATION_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "CEREBRO_QUALIFICATION_SHA must be an exact 40-character commit" >&2
@@ -36,6 +56,7 @@ export CEREBRO_RUST_READ_MODE=authority
 export CEREBRO_RUST_SHADOW_PERCENT=0
 export CEREBRO_RUST_AUTHORITY_PERCENT=0
 export CEREBRO_RUST_GRAPH_SECRET="${graph_secret}"
+export CEREBRO_RUST_CANARY_API_KEYS=",rust-canary-key:local:${rust_canary_tenant},go-canary-key:local:${go_canary_tenant}"
 
 cleanup() {
   local exit_code=$?

@@ -10,6 +10,7 @@ const WORKSPACE_MANIFEST: &str = include_str!("../../../Cargo.toml");
 const WORKSPACE_LOCK: &str = include_str!("../../../Cargo.lock");
 const MAKEFILE: &str = include_str!("../../../Makefile");
 const RUST_CODEGEN: &str = include_str!("../../../buf.gen.rust.yaml");
+const QUALIFICATION_SCRIPT: &str = include_str!("../../../scripts/qualify-rust-graph.sh");
 const CONNECTRPC_REVISION: &str = "8b3c3b05d3b54af547477a9e3b3a77d62f68e229";
 const BUFFA_VERSION: &str = "0.9.1";
 
@@ -112,6 +113,22 @@ fn rust_candidate_build_never_invokes_go_or_emulation() {
         assert!(
             WORKFLOW.contains(required),
             "Rust-only candidate workflow is missing {required:?}"
+        );
+    }
+}
+
+#[test]
+fn graph_qualification_defines_stable_canary_tenants_and_keys() {
+    for required in [
+        "read -r rust_canary_tenant go_canary_tenant < <(",
+        "bucket = int.from_bytes(hashlib.sha256(tenant.encode()).digest()[:4], \"big\") % 100",
+        "if bucket < 50 and not rust_tenant:",
+        "if bucket >= 50 and not go_tenant:",
+        "CEREBRO_RUST_CANARY_API_KEYS=\",rust-canary-key:local:${rust_canary_tenant},go-canary-key:local:${go_canary_tenant}\"",
+    ] {
+        assert!(
+            QUALIFICATION_SCRIPT.contains(required),
+            "Rust graph qualification is missing stable canary setup {required:?}"
         );
     }
 }
