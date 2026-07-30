@@ -118,17 +118,30 @@ fn rust_candidate_build_never_invokes_go_or_emulation() {
 }
 
 #[test]
-fn graph_qualification_defines_stable_canary_tenants_and_keys() {
+fn graph_qualification_stays_on_retired_rust_authority_path() {
     for required in [
-        "read -r rust_canary_tenant go_canary_tenant < <(",
-        "bucket = int.from_bytes(hashlib.sha256(tenant.encode()).digest()[:4], \"big\") % 100",
-        "if bucket < 50 and not rust_tenant:",
-        "if bucket >= 50 and not go_tenant:",
-        "CEREBRO_RUST_CANARY_API_KEYS=\",rust-canary-key:local:${rust_canary_tenant},go-canary-key:local:${go_canary_tenant}\"",
+        "export CEREBRO_RUST_READ_MODE=authority",
+        "cmp \"${output_dir}/authority-graph-response-after-restart.canonical.json\"",
+        "assert_status 503 graph-authority-without-rust",
     ] {
         assert!(
             QUALIFICATION_SCRIPT.contains(required),
-            "Rust graph qualification is missing stable canary setup {required:?}"
+            "Rust graph qualification is missing retired authority setup {required:?}"
+        );
+    }
+    for forbidden in [
+        "CEREBRO_RUST_READ_MODE=canary",
+        "go_canary",
+        "rust_canary",
+        "CEREBRO_RUST_CANARY_API_KEYS",
+        "stable_authority_canary",
+        "verified_canary_restart",
+        "canary_legacy_isolation",
+        "canary_rust_fail_closed",
+    ] {
+        assert!(
+            !QUALIFICATION_SCRIPT.contains(forbidden),
+            "Rust graph qualification retained removed Go canary setup {forbidden:?}"
         );
     }
 }
