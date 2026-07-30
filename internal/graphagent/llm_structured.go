@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-const minStructuredJSONMaxTokens = 4096
+const (
+	minStructuredJSONMaxTokens = 4096
+	maxStructuredJSONMaxTokens = 32768
+)
 
 func (c *BedrockLLMClient) DraftStructuredJSON(ctx context.Context, request StructuredJSONRequest) ([]byte, error) {
 	modelID, err := c.modelID(request.Model)
@@ -18,7 +21,12 @@ func (c *BedrockLLMClient) DraftStructuredJSON(ctx context.Context, request Stru
 	if err != nil {
 		return nil, err
 	}
-	text, err := c.invokeMessages(ctx, modelID, prompt, structuredJSONTokenBudget(c.maxTokens))
+	text, err := c.invokeMessages(
+		ctx,
+		modelID,
+		prompt,
+		structuredJSONTokenBudget(c.maxTokens, request.MaxTokens),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -34,16 +42,33 @@ func (c *OpenRouterLLMClient) DraftStructuredJSON(ctx context.Context, request S
 	if err != nil {
 		return nil, err
 	}
-	text, err := c.chat(ctx, modelID, prompt, structuredJSONTokenBudget(c.maxTokens))
+	text, err := c.chat(
+		ctx,
+		modelID,
+		prompt,
+		structuredJSONTokenBudget(c.maxTokens, request.MaxTokens),
+	)
 	if err != nil {
 		return nil, err
 	}
 	return validateStructuredJSONObject(text)
 }
 
-func structuredJSONTokenBudget(configured int) int {
+func structuredJSONTokenBudget(configured int, requested int) int {
+	if requested > 0 {
+		if requested < 128 {
+			return 128
+		}
+		if requested > maxStructuredJSONMaxTokens {
+			return maxStructuredJSONMaxTokens
+		}
+		return requested
+	}
 	if configured < minStructuredJSONMaxTokens {
 		return minStructuredJSONMaxTokens
+	}
+	if configured > maxStructuredJSONMaxTokens {
+		return maxStructuredJSONMaxTokens
 	}
 	return configured
 }

@@ -60,6 +60,7 @@ type StructuredJSONRequest struct {
 	SchemaJSON string
 	Context    map[string]any
 	Model      string
+	MaxTokens  int
 }
 
 // StructuredJSONClient is an optional capability implemented by providers

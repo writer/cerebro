@@ -32,6 +32,26 @@ func TestBedrockLLMClientDraftStructuredJSONUsesConfiguredBudget(t *testing.T) {
 	}
 }
 
+func TestBedrockLLMClientDraftStructuredJSONUsesBoundedRequestBudget(t *testing.T) {
+	runtime := &stubBedrockRuntime{text: `{"lane":"lookup"}`}
+	client, err := NewBedrockLLMClient(context.Background(), BedrockConfig{
+		DefaultModel: "configured-model",
+		Runtime:      runtime,
+		MaxTokens:    4096,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.DraftStructuredJSON(context.Background(), StructuredJSONRequest{
+		Kind: "slack_turn_route", MaxTokens: 256, Prompt: "route", SchemaJSON: `{"type":"object"}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := aws.ToInt32(runtime.lastInput.InferenceConfig.MaxTokens); got != 256 {
+		t.Fatalf("max tokens = %d, want 256", got)
+	}
+}
+
 func TestOpenRouterLLMClientDraftStructuredJSONUsesConfiguredRequest(t *testing.T) {
 	response, _ := json.Marshal(map[string]any{"choices": []map[string]any{{"message": map[string]string{"content": `{"kind":"PolicyFindingRule"}`}}}})
 	doer := &stubHTTPDoer{statusCode: 200, body: response}
@@ -56,8 +76,17 @@ func TestOpenRouterLLMClientDraftStructuredJSONUsesConfiguredRequest(t *testing.
 }
 
 func TestStructuredJSONTokenBudgetPreservesHigherConfiguredLimit(t *testing.T) {
-	if got := structuredJSONTokenBudget(6000); got != 6000 {
+	if got := structuredJSONTokenBudget(6000, 0); got != 6000 {
 		t.Fatalf("budget = %d, want configured 6000", got)
+	}
+	if got := structuredJSONTokenBudget(6000, 9000); got != 9000 {
+		t.Fatalf("budget = %d, want trusted request budget 9000", got)
+	}
+	if got := structuredJSONTokenBudget(6000, 32); got != 128 {
+		t.Fatalf("budget = %d, want bounded floor 128", got)
+	}
+	if got := structuredJSONTokenBudget(6000, 50000); got != maxStructuredJSONMaxTokens {
+		t.Fatalf("budget = %d, want hard ceiling %d", got, maxStructuredJSONMaxTokens)
 	}
 }
 
