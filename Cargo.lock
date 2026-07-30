@@ -982,6 +982,7 @@ dependencies = [
  "aws-credential-types",
  "aws-sdk-bedrockruntime",
  "aws-sdk-secretsmanager",
+ "aws-smithy-types",
  "axum",
  "buffa",
  "buffa-types",

@@ -6,19 +6,30 @@ use std::{
 use async_trait::async_trait;
 use cerebro_agent_runtime::{
     AGENT_TURN_REQUEST_V1, AgentModel, AgentRuntimeError, AgentTools, AgentTurnOutcome,
-    AgentTurnRequest, ConversationMessage, ConversationRole, EffectAuthorization, EvidenceClaim,
-    EvidenceRecord, ExecutionLane, FinalDraft, FinalState, ModelDecision, ModelTurn,
-    ToolAuthorityClass, ToolCall, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
-    WorkingOutcome, WorkingState, route_execution_lane, run_turn,
+    AgentTurnRequest, ConversationMessage, ConversationRole, CritiqueDecision, CritiqueTurn,
+    EffectAuthorization, EvidenceClaim, EvidenceRecord, ExecutionLane, FinalDraft, FinalState,
+    ModelDecision, ModelTurn, RouteConfidence, RouteDecision, RouteTurn, ToolAuthorityClass,
+    ToolCall, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState, WorkingOutcome,
+    WorkingState, run_turn,
 };
 use serde_json::json;
 
 struct ScriptedModel {
+    routes: Mutex<VecDeque<RouteDecision>>,
     decisions: Mutex<VecDeque<ModelDecision>>,
+    critiques: Mutex<VecDeque<CritiqueDecision>>,
 }
 
 #[async_trait]
 impl AgentModel for ScriptedModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        self.routes
+            .lock()
+            .unwrap()
+            .pop_front()
+            .ok_or_else(|| AgentRuntimeError::InvalidRoute("router script ended".into()))
+    }
+
     async fn next(&self, _turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
         self.decisions
             .lock()
@@ -26,11 +37,178 @@ impl AgentModel for ScriptedModel {
             .pop_front()
             .ok_or_else(|| AgentRuntimeError::InvalidFinal("model script ended".into()))
     }
+
+    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(self
+            .critiques
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(CritiqueDecision::Approve))
+    }
+}
+
+fn route(lane: ExecutionLane) -> RouteDecision {
+    RouteDecision {
+        lane,
+        confidence: RouteConfidence::High,
+        reason: format!("The request semantically requires the {lane:?} lane."),
+        requires_current_evidence: !matches!(lane, ExecutionLane::Converse),
+    }
+}
+
+fn scripted(lane: ExecutionLane, decisions: VecDeque<ModelDecision>) -> ScriptedModel {
+    ScriptedModel {
+        routes: Mutex::new(VecDeque::from([route(lane)])),
+        decisions: Mutex::new(decisions),
+        critiques: Mutex::new(VecDeque::new()),
+    }
+}
+
+fn tool_then_repeat_draft(call: ToolCall, draft: FinalDraft) -> VecDeque<ModelDecision> {
+    let mut decisions = VecDeque::from([ModelDecision::InvokeTool { call }]);
+    decisions.extend((0..5).map(|_| ModelDecision::Finish {
+        draft: draft.clone(),
+    }));
+    decisions
 }
 
 struct ScriptedTools {
     descriptors: Vec<ToolDescriptor>,
     results: Mutex<BTreeMap<String, ToolResult>>,
+}
+
+struct SchemaRepairModel {
+    attempts: Mutex<usize>,
+}
+
+struct CriticSchemaRepairModel {
+    attempts: Mutex<usize>,
+}
+
+struct CriticIssueRepairModel {
+    attempts: Mutex<usize>,
+}
+
+#[async_trait]
+impl AgentModel for CriticIssueRepairModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Converse))
+    }
+
+    async fn next(&self, _turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        Ok(ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Evidence freshness".into(),
+                summary: "Fresh evidence remains valid through its stated observation window."
+                    .into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        })
+    }
+
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        let mut attempts = self.attempts.lock().unwrap();
+        *attempts += 1;
+        match *attempts {
+            1 => Ok(CritiqueDecision::Revise { issues: vec![] }),
+            2 => {
+                assert!(turn.repair_feedback[0].contains("bounded critic contract"));
+                Ok(CritiqueDecision::Revise {
+                    issues: (0..17)
+                        .map(|index| format!("Bounded critic issue {index}"))
+                        .collect(),
+                })
+            }
+            _ => {
+                assert!(turn.repair_feedback[0].contains("bounded critic contract"));
+                Ok(CritiqueDecision::Approve)
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl AgentModel for CriticSchemaRepairModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Converse))
+    }
+
+    async fn next(&self, _turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        Ok(ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Evidence freshness".into(),
+                summary: "Fresh evidence remains valid through its stated observation window."
+                    .into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        })
+    }
+
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        let mut attempts = self.attempts.lock().unwrap();
+        *attempts += 1;
+        if *attempts == 1 {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "critic output: expected value at line 1 column 1".into(),
+            ));
+        }
+        assert!(turn.repair_feedback[0].contains("critic decision"));
+        Ok(CritiqueDecision::Approve)
+    }
+}
+
+#[async_trait]
+impl AgentModel for SchemaRepairModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Converse))
+    }
+
+    async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        let mut attempts = self.attempts.lock().unwrap();
+        *attempts += 1;
+        if *attempts == 1 {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "invalid type: map, expected a string".into(),
+            ));
+        }
+        assert!(turn.revision_feedback[0].contains("required JSON schema"));
+        Ok(ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Cerebro capabilities".into(),
+                summary: "I can explain security operations concepts.".into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        })
+    }
+
+    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(CritiqueDecision::Approve)
+    }
 }
 
 #[async_trait]
@@ -172,8 +350,9 @@ async fn executes_inspect_change_verify_report_loop() {
         tool_id: change.tool_id.clone(),
         input_digest: change.input_digest(),
     });
-    let model = ScriptedModel {
-        decisions: Mutex::new(VecDeque::from([
+    let model = scripted(
+        ExecutionLane::Act,
+        VecDeque::from([
             ModelDecision::InvokeTool {
                 call: inspect.clone(),
             },
@@ -186,8 +365,8 @@ async fn executes_inspect_change_verify_report_loop() {
             ModelDecision::Finish {
                 draft: final_draft(),
             },
-        ])),
-    };
+        ]),
+    );
     let tools = ScriptedTools {
         descriptors: vec![
             tool(
@@ -258,11 +437,12 @@ async fn requests_exact_approval_before_an_effect() {
         purpose: "Update the runtime configuration.".into(),
         input: json!({"runtime_ref": "runtime://one", "model": "model://next"}),
     };
-    let model = ScriptedModel {
-        decisions: Mutex::new(VecDeque::from([ModelDecision::InvokeTool {
+    let model = scripted(
+        ExecutionLane::Act,
+        VecDeque::from([ModelDecision::InvokeTool {
             call: change.clone(),
-        }])),
-    };
+        }]),
+    );
     let tools = ScriptedTools {
         descriptors: vec![tool(
             "runtime_config_update",
@@ -304,11 +484,12 @@ async fn rejects_an_approval_bound_to_another_actor_and_thread() {
         tool_id: change.tool_id.clone(),
         input_digest: change.input_digest(),
     });
-    let model = ScriptedModel {
-        decisions: Mutex::new(VecDeque::from([ModelDecision::InvokeTool {
+    let model = scripted(
+        ExecutionLane::Act,
+        VecDeque::from([ModelDecision::InvokeTool {
             call: change.clone(),
-        }])),
-    };
+        }]),
+    );
     let tools = ScriptedTools {
         descriptors: vec![tool(
             "runtime_config_update",
@@ -344,16 +525,17 @@ async fn consumes_each_effect_authorization_once() {
         tool_id: first.tool_id.clone(),
         input_digest: first.input_digest(),
     });
-    let model = ScriptedModel {
-        decisions: Mutex::new(VecDeque::from([
+    let model = scripted(
+        ExecutionLane::Act,
+        VecDeque::from([
             ModelDecision::InvokeTool {
                 call: first.clone(),
             },
             ModelDecision::InvokeTool {
                 call: second.clone(),
             },
-        ])),
-    };
+        ]),
+    );
     let tools = ScriptedTools {
         descriptors: vec![tool(
             "runtime_config_update",
@@ -412,14 +594,10 @@ async fn rejects_effect_claims_without_later_independent_verification() {
         "evidence://effect",
     )];
     draft.current_state.clear();
-    let model = ScriptedModel {
-        decisions: Mutex::new(VecDeque::from([
-            ModelDecision::InvokeTool {
-                call: change.clone(),
-            },
-            ModelDecision::Finish { draft },
-        ])),
-    };
+    let model = scripted(
+        ExecutionLane::Act,
+        tool_then_repeat_draft(change.clone(), draft),
+    );
     let tools = ScriptedTools {
         descriptors: vec![tool(
             "runtime_config_update",
@@ -437,7 +615,7 @@ async fn rejects_effect_claims_without_later_independent_verification() {
 
     assert_eq!(
         run_turn(&model, &tools, turn).await,
-        Err(AgentRuntimeError::UnverifiedEffect)
+        Err(AgentRuntimeError::OperatingRepairLimit)
     );
 }
 
@@ -459,16 +637,17 @@ async fn stops_and_reconciles_outcome_unknown_without_retrying() {
         tool_id: effect.tool_id.clone(),
         input_digest: effect.input_digest(),
     });
-    let model = ScriptedModel {
-        decisions: Mutex::new(VecDeque::from([
+    let model = scripted(
+        ExecutionLane::Act,
+        VecDeque::from([
             ModelDecision::InvokeTool {
                 call: effect.clone(),
             },
             ModelDecision::InvokeTool {
                 call: effect.clone(),
             },
-        ])),
-    };
+        ]),
+    );
     let tools = ScriptedTools {
         descriptors: vec![tool(
             "runtime_config_update",
@@ -527,14 +706,10 @@ async fn rejects_final_claims_that_cite_unobserved_evidence() {
         coverage_notice: None,
         question: None,
     };
-    let model = ScriptedModel {
-        decisions: Mutex::new(VecDeque::from([
-            ModelDecision::InvokeTool {
-                call: lookup.clone(),
-            },
-            ModelDecision::Finish { draft },
-        ])),
-    };
+    let model = scripted(
+        ExecutionLane::Lookup,
+        tool_then_repeat_draft(lookup.clone(), draft),
+    );
     let tools = ScriptedTools {
         descriptors: vec![tool(
             "runtime_status",
@@ -552,9 +727,7 @@ async fn rejects_final_claims_that_cite_unobserved_evidence() {
 
     assert_eq!(
         run_turn(&model, &tools, request("What is the runtime status?")).await,
-        Err(AgentRuntimeError::EvidenceNotObserved(
-            "evidence://invented".into()
-        ))
+        Err(AgentRuntimeError::OperatingRepairLimit)
     );
 }
 
@@ -579,14 +752,10 @@ async fn refuses_to_present_stale_evidence_as_current() {
         coverage_notice: None,
         question: None,
     };
-    let model = ScriptedModel {
-        decisions: Mutex::new(VecDeque::from([
-            ModelDecision::InvokeTool {
-                call: lookup.clone(),
-            },
-            ModelDecision::Finish { draft },
-        ])),
-    };
+    let model = scripted(
+        ExecutionLane::Lookup,
+        tool_then_repeat_draft(lookup.clone(), draft),
+    );
     let mut stale = evidence(
         "evidence://stale",
         "The runtime returned a healthy status record.",
@@ -606,32 +775,166 @@ async fn refuses_to_present_stale_evidence_as_current() {
 
     assert_eq!(
         run_turn(&model, &tools, request("What is the runtime status?")).await,
-        Err(AgentRuntimeError::EvidenceNotAuthoritative(
-            "evidence://stale".into()
-        ))
+        Err(AgentRuntimeError::OperatingRepairLimit)
     );
 }
 
-#[test]
-fn routes_operator_requests_by_required_work() {
-    assert_eq!(
-        route_execution_lane(&request("Hello")),
-        ExecutionLane::Converse
-    );
-    assert_eq!(
-        route_execution_lane(&request("What is the connector status?")),
-        ExecutionLane::Lookup
-    );
-    assert_eq!(
-        route_execution_lane(&request(
-            "Figure out why the connector keeps failing end to end."
-        )),
-        ExecutionLane::Investigate
-    );
-    assert_eq!(
-        route_execution_lane(&request("Fix the connector and verify it.")),
-        ExecutionLane::Act
-    );
+#[tokio::test]
+async fn repairs_a_schema_valid_but_unsafe_route_before_operating() {
+    let draft = FinalDraft {
+        state: FinalState::Blocked,
+        headline: "Current evidence is unavailable".into(),
+        summary: "The runtime cannot be assessed without a current observation.".into(),
+        summary_evidence_refs: vec![],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec!["Restore the runtime observation source.".into()],
+        coverage_notice: Some("No current runtime evidence was available.".into()),
+        question: None,
+    };
+    let model = ScriptedModel {
+        routes: Mutex::new(VecDeque::from([
+            RouteDecision {
+                lane: ExecutionLane::Converse,
+                confidence: RouteConfidence::Low,
+                reason: "The request sounds conversational.".into(),
+                requires_current_evidence: true,
+            },
+            route(ExecutionLane::Investigate),
+        ])),
+        decisions: Mutex::new(VecDeque::from([ModelDecision::Finish { draft }])),
+        critiques: Mutex::new(VecDeque::new()),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { lane, .. } = run_turn(
+        &model,
+        &tools,
+        request("Tell me what happened with the connector after yesterday's rollout."),
+    )
+    .await
+    .unwrap() else {
+        panic!("expected the repaired route to run");
+    };
+    assert_eq!(lane, ExecutionLane::Investigate);
+}
+
+#[tokio::test]
+async fn repairs_a_draft_after_independent_critique() {
+    let first = FinalDraft {
+        state: FinalState::Answered,
+        headline: "Cerebro capabilities".into(),
+        summary: "I can inspect current security state.".into(),
+        summary_evidence_refs: vec![],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: None,
+        question: None,
+    };
+    let mut repaired = first.clone();
+    repaired.summary =
+        "I can inspect governed security state and report explicit evidence gaps.".into();
+    let model = ScriptedModel {
+        routes: Mutex::new(VecDeque::from([route(ExecutionLane::Converse)])),
+        decisions: Mutex::new(VecDeque::from([
+            ModelDecision::Finish { draft: first },
+            ModelDecision::Finish { draft: repaired },
+        ])),
+        critiques: Mutex::new(VecDeque::from([
+            CritiqueDecision::Revise {
+                issues: vec!["Name the evidence boundary in the capability statement.".into()],
+            },
+            CritiqueDecision::Approve,
+        ])),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } =
+        run_turn(&model, &tools, request("What can you do?"))
+            .await
+            .unwrap()
+    else {
+        panic!("expected the repaired draft");
+    };
+    assert!(markdown.contains("explicit evidence gaps"));
+}
+
+#[tokio::test]
+async fn repairs_a_malformed_operating_decision_without_weakening_the_schema() {
+    let model = SchemaRepairModel {
+        attempts: Mutex::new(0),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } =
+        run_turn(&model, &tools, request("What can you do?"))
+            .await
+            .unwrap()
+    else {
+        panic!("expected the repaired operating decision");
+    };
+    assert!(markdown.contains("security operations concepts"));
+    assert_eq!(*model.attempts.lock().unwrap(), 2);
+}
+
+#[tokio::test]
+async fn repairs_a_malformed_independent_critic_decision() {
+    let model = CriticSchemaRepairModel {
+        attempts: Mutex::new(0),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } = run_turn(
+        &model,
+        &tools,
+        request("What does evidence freshness mean?"),
+    )
+    .await
+    .unwrap() else {
+        panic!("expected the repaired critic decision");
+    };
+    assert!(markdown.contains("observation window"));
+    assert_eq!(*model.attempts.lock().unwrap(), 2);
+}
+
+#[tokio::test]
+async fn repairs_empty_and_oversized_critic_issue_lists() {
+    let model = CriticIssueRepairModel {
+        attempts: Mutex::new(0),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } = run_turn(
+        &model,
+        &tools,
+        request("What does evidence freshness mean?"),
+    )
+    .await
+    .unwrap() else {
+        panic!("expected the bounded critic decisions to be repaired");
+    };
+    assert!(markdown.contains("observation window"));
+    assert_eq!(*model.attempts.lock().unwrap(), 3);
 }
 
 #[tokio::test]
@@ -644,6 +947,10 @@ async fn continues_the_exact_durable_mission_instead_of_restarting() {
         last_blocker: None,
     });
     let model = ScriptedModel {
+        routes: Mutex::new(VecDeque::from([
+            route(ExecutionLane::Continue),
+            route(ExecutionLane::Act),
+        ])),
         decisions: Mutex::new(VecDeque::from([ModelDecision::Finish {
             draft: FinalDraft {
                 state: FinalState::Blocked,
@@ -659,6 +966,7 @@ async fn continues_the_exact_durable_mission_instead_of_restarting() {
                 question: None,
             },
         }])),
+        critiques: Mutex::new(VecDeque::new()),
     };
     let tools = ScriptedTools {
         descriptors: vec![],
