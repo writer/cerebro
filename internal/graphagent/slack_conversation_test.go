@@ -203,6 +203,31 @@ func TestSlackRouterRepairsAnInvalidFirstDecision(t *testing.T) {
 	}
 }
 
+func TestSlackRouterRepairsLookupWithAConversationalReason(t *testing.T) {
+	store := &askStore{}
+	llm := &StubLLMClient{StructuredResponses: [][]byte{
+		[]byte(`{"confidence":"high","lane":"lookup","reason_code":"self_context","requires_current_evidence":true}`),
+		[]byte(`{"confidence":"high","lane":"lookup","reason_code":"agent_work_history","requires_current_evidence":true}`),
+	}}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	route, attempts, err := service.routeSlackTurn(
+		context.Background(),
+		AskRequest{TenantID: "writer", Question: "What did your agents do today?", Surface: slackSurface},
+		"offline-recorded-model",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("routeSlackTurn() error = %v", err)
+	}
+	if route.Lane != "lookup" || route.ReasonCode != "agent_work_history" || attempts != 2 {
+		t.Fatalf("route = %#v after %d attempts, want agent work lookup after repair", route, attempts)
+	}
+	if got := llm.StructuredRequests[1].Context["prior_failure"]; got != "route_policy_invalid" {
+		t.Fatalf("second route prior_failure = %#v, want route_policy_invalid", got)
+	}
+}
+
 func TestSlackConversationUsesBoundedFallbackAfterTwoInvalidDrafts(t *testing.T) {
 	store := &askStore{}
 	llm := &StubLLMClient{StructuredResponses: [][]byte{

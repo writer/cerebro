@@ -307,6 +307,9 @@ func validateSlackTurnRoute(route slackTurnRoute) error {
 		if !route.RequiresCurrentEvidence {
 			return fmt.Errorf("lookup route must require current evidence")
 		}
+		if route.ReasonCode == "self_context" || route.ReasonCode == "thread_continuation" {
+			return fmt.Errorf("lookup route requires an evidence reason")
+		}
 	default:
 		return fmt.Errorf("unsupported route lane")
 	}
