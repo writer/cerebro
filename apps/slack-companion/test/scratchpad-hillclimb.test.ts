@@ -150,7 +150,9 @@ test("hosted hillclimb compares baseline and candidate through AWS model ports",
   assert.equal(model.judgeCalls, 22);
   assert.equal(receipt.generator.provider, "aws_bedrock");
   assert.equal(receipt.generator.model_id, "us.anthropic.claude-opus-4-8");
+  assert.equal(receipt.generator.sampling_parameters, "provider_default");
   assert.equal(receipt.judge.model_id, "us.anthropic.claude-opus-4-8");
+  assert.equal(receipt.judge.sampling_parameters, "provider_default");
   assert.equal(receipt.baseline.context_recall_rate, 0.0909);
   assert.equal(receipt.baseline.expected_restatement_turns_per_case, 1);
   assert.equal(receipt.candidate.context_recall_rate, 1);
@@ -164,6 +166,24 @@ test("hosted hillclimb compares baseline and candidate through AWS model ports",
   assert.equal(receipt.promotion.regression_count, 0);
   assert.deepEqual(receipt.promotion.blockers, []);
   assert.equal(receipt.promotion.promotion_ready, true);
+});
+
+test("hosted hillclimb rejects a Nova generator before invocation", async () => {
+  const model = new FakeHostedModel();
+  await assert.rejects(
+    runHostedSlackWorkingStateHillclimb(
+      SLACK_WORKING_STATE_HILLCLIMB_CORPUS,
+      {
+        generator_model_id: "us.amazon.nova-pro-v1:0",
+        judge_model_id: "us.anthropic.claude-opus-4-8",
+        region: "us-east-1",
+      },
+      model,
+    ),
+    /require AWS-hosted Claude Opus models/u,
+  );
+  assert.equal(model.generatorCalls, 0);
+  assert.equal(model.judgeCalls, 0);
 });
 
 test("hosted hillclimb fails closed on an invalid judge receipt", async () => {
