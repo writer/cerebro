@@ -26,7 +26,9 @@ pub const MAX_HISTORY_ITEM_BYTES: usize = 1024 * 1024;
 pub const MAX_HISTORY_TOTAL_BYTES: usize = 1024 * 1024;
 pub const MAX_MODEL_STEPS: usize = 24;
 pub const MAX_ROUTER_ATTEMPTS: usize = 4;
+pub const MAX_OPERATING_REPAIRS: usize = 8;
 pub const MAX_CRITIC_REPAIRS: usize = 4;
+pub const MAX_CRITIC_REVISIONS: usize = 4;
 pub const ROUTER_MAX_TOKENS: i32 = 32_768;
 pub const DECISION_MAX_TOKENS: i32 = 65_536;
 pub const CRITIC_MAX_TOKENS: i32 = 65_536;
@@ -368,6 +370,7 @@ pub enum AgentRuntimeError {
     InvalidToolCall(String),
     ModelUnavailable(String),
     ModelStepLimit,
+    OperatingRepairLimit,
     CriticRepairLimit,
     ToolBudgetExceeded,
     ToolUnavailable(String),
@@ -407,6 +410,9 @@ impl fmt::Display for AgentRuntimeError {
                 write!(formatter, "the agent model is unavailable: {reason}")
             }
             Self::ModelStepLimit => formatter.write_str("the model exceeded the turn step limit"),
+            Self::OperatingRepairLimit => {
+                formatter.write_str("the operating decision repair loop exceeded its bounded limit")
+            }
             Self::CriticRepairLimit => {
                 formatter.write_str("the critic repair loop exceeded its bounded limit")
             }
@@ -466,7 +472,8 @@ pub async fn run_turn(
     let mut consumed_effect_authorizations = BTreeSet::new();
     let mut selected_tools = BTreeSet::new();
     let mut revision_feedback = Vec::new();
-    let mut critic_repairs = 0;
+    let mut operating_repairs = 0;
+    let mut critic_revisions = 0;
     for _ in 0..MAX_MODEL_STEPS {
         let decision = match model
             .next(ModelTurn {
@@ -481,9 +488,9 @@ pub async fn run_turn(
         {
             Ok(decision) => decision,
             Err(AgentRuntimeError::InvalidFinal(reason)) => {
-                critic_repairs += 1;
-                if critic_repairs > MAX_CRITIC_REPAIRS {
-                    return Err(AgentRuntimeError::CriticRepairLimit);
+                operating_repairs += 1;
+                if operating_repairs > MAX_OPERATING_REPAIRS {
+                    return Err(AgentRuntimeError::OperatingRepairLimit);
                 }
                 revision_feedback = vec![format!(
                     "The prior operating decision did not match the required JSON schema: {reason}. Return exactly one corrected JSON object."
@@ -494,6 +501,7 @@ pub async fn run_turn(
         };
         match decision {
             ModelDecision::InvokeTool { call } => {
+                operating_repairs = 0;
                 revision_feedback.clear();
                 validate_call(&call)?;
                 if observations.len() >= budget.max_tool_calls {
@@ -558,13 +566,14 @@ pub async fn run_turn(
             }
             ModelDecision::Finish { draft } => {
                 if let Err(error) = validate_final(&request, lane, &draft, &observations) {
-                    critic_repairs += 1;
-                    if critic_repairs > MAX_CRITIC_REPAIRS {
-                        return Err(AgentRuntimeError::CriticRepairLimit);
+                    operating_repairs += 1;
+                    if operating_repairs > MAX_OPERATING_REPAIRS {
+                        return Err(AgentRuntimeError::OperatingRepairLimit);
                     }
                     revision_feedback = vec![error.to_string()];
                     continue;
                 }
+                operating_repairs = 0;
                 match critique_with_repair(
                     model,
                     CritiqueTurn {
@@ -580,8 +589,8 @@ pub async fn run_turn(
                     CritiqueDecision::Approve => {}
                     CritiqueDecision::Revise { issues } => {
                         validate_critique_issues(&issues)?;
-                        critic_repairs += 1;
-                        if critic_repairs > MAX_CRITIC_REPAIRS {
+                        critic_revisions += 1;
+                        if critic_revisions > MAX_CRITIC_REVISIONS {
                             return Err(AgentRuntimeError::CriticRepairLimit);
                         }
                         revision_feedback = issues;

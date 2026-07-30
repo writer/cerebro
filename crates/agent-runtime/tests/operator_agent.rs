@@ -561,7 +561,7 @@ async fn rejects_effect_claims_without_later_independent_verification() {
 
     assert_eq!(
         run_turn(&model, &tools, turn).await,
-        Err(AgentRuntimeError::CriticRepairLimit)
+        Err(AgentRuntimeError::OperatingRepairLimit)
     );
 }
 
@@ -673,7 +673,7 @@ async fn rejects_final_claims_that_cite_unobserved_evidence() {
 
     assert_eq!(
         run_turn(&model, &tools, request("What is the runtime status?")).await,
-        Err(AgentRuntimeError::CriticRepairLimit)
+        Err(AgentRuntimeError::OperatingRepairLimit)
     );
 }
 
@@ -721,7 +721,7 @@ async fn refuses_to_present_stale_evidence_as_current() {
 
     assert_eq!(
         run_turn(&model, &tools, request("What is the runtime status?")).await,
-        Err(AgentRuntimeError::CriticRepairLimit)
+        Err(AgentRuntimeError::OperatingRepairLimit)
     );
 }
 
