@@ -19,6 +19,14 @@ import {
 import { FileThreadScratchpadStore } from "../src/runtime/thread-scratchpad-store.js";
 
 const testAnswerAuthority: SlackAnswerAuthorityPort = {
+  async authorizeQuestion(candidate) {
+    return {
+      authorized: true,
+      request_id: candidate.request_id,
+      schema_version: "slack-question-decision/v1",
+      tenant_id: candidate.tenant_id,
+    };
+  },
   async validate(candidate) {
     if (!candidate.citation_validation?.ok) throw new Error("candidate rejected");
     return {

@@ -226,6 +226,7 @@ export class AssistantQuestionService {
     try {
       const sourceStartedAt = this.clock().getTime();
       const answer = await this.askClient.ask(
+        input.requestKey,
         currentRequest,
         this.timeoutSignal(Math.max(1, preflight.remaining_ms)),
         history,

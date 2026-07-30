@@ -43,10 +43,22 @@ export class CerebroAskClient {
   }
 
   async ask(
+    requestId: string,
     question: string,
     signal: AbortSignal,
     history: readonly CerebroAskHistoryMessage[] = [],
   ): Promise<CerebroAskResult> {
+    try {
+      await this.options.answerAuthority.authorizeQuestion({
+        history: history.map((message) => ({ ...message })),
+        question,
+        request_id: requestId,
+        schema_version: "slack-question-candidate/v1",
+        tenant_id: this.options.tenantId,
+      });
+    } catch (error: unknown) {
+      throw new CerebroAskError("unauthorized", errorMessage(error));
+    }
     const response = await this.fetchImpl(`${this.options.baseUrl}/grc/ask`, {
       method: "POST",
       headers: {
