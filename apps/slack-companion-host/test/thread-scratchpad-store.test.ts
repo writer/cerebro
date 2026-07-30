@@ -185,6 +185,7 @@ test("blocked Slack turns are visible through the runtime scratchpad command pat
     const questions = new AssistantQuestionService(
       host,
       new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
         apiKey: "bound-at-runtime",
         baseUrl: "https://cerebro.example.com",
         fetchImpl: async () => new Response("unavailable", { status: 503 }),
