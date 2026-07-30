@@ -10,12 +10,25 @@ import {
 import { CerebroAskClient } from "../src/runtime/cerebro-ask-client.js";
 import { loadSlackRuntimeConfig } from "../src/runtime/config.js";
 import { FileOutcomeStore } from "../src/runtime/outcome-store.js";
+import type { SlackAnswerAuthorityPort } from "../src/runtime/slack-answer-authority-client.js";
 import {
   AssistantQuestionService,
   createAssistantTurnHost,
   handleSlackMention,
 } from "../src/runtime/slack-runtime.js";
 import { FileThreadScratchpadStore } from "../src/runtime/thread-scratchpad-store.js";
+
+const testAnswerAuthority: SlackAnswerAuthorityPort = {
+  async validate(candidate) {
+    if (!candidate.citation_validation?.ok) throw new Error("candidate rejected");
+    return {
+      disposition: "grounded",
+      schema_version: "slack-answer-decision/v1",
+      trace_id: candidate.trace_id,
+      verified: true,
+    };
+  },
+};
 
 test("file scratchpad stores idempotent thread notes and clears them", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-scratchpad-"));
@@ -175,13 +188,18 @@ test("Slack remember saves a note that the next question uses only in that threa
     const questions = new AssistantQuestionService(
       host,
       new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
         apiKey: "bound-at-runtime",
         baseUrl: "https://cerebro.example.com",
         fetchImpl: async (_input, init) => {
           graphRequest = JSON.parse(String(init?.body)) as typeof graphRequest;
           return sseResponse([
             ["summary", {
-              citation_validation: { ok: true },
+              citation_validation: {
+                ok: true,
+                referenced_urn_count: 1,
+                row_urn_count: 1,
+              },
               markdown: "The current owner is Security Operations.",
             }],
             ["done", { trace_id: "trace-scratchpad" }],
