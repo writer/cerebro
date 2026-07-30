@@ -569,7 +569,7 @@ function policyResult(
 
 function effectiveScore(
   answer: string,
-  _judgeScore: HostedHillclimbJudgeScore,
+  judgeScore: HostedHillclimbJudgeScore,
   evalCase: SlackWorkingStateEvalCaseV1,
   policy: SlackWorkingStatePolicy,
 ): HostedHillclimbJudgeScore {
@@ -583,30 +583,34 @@ function effectiveScore(
   const evidenceContextRetained = evalCase.evidence_context.every((fragment) =>
     comparableAnswer.includes(comparableText(fragment))
   );
-  const requiredContextRecalled = evalCase.required_context.every((fragment) =>
-    comparableAnswer.includes(comparableText(fragment))
-  );
-  const authorityBoundary = hasRetainedState
+  const deterministicAuthorityBoundary = hasRetainedState
     ? normalizedAnswer.includes("unverified working state")
       || normalizedAnswer.includes("unverified continuity context")
     : !forbiddenContextPresent;
-  const restatementNeeded = asksForPriorRestatement(answer);
-  const semanticStateContract = requiredContextRecalled
+  const authorityBoundary = deterministicAuthorityBoundary
+    && judgeScore.authority_boundary === 1;
+  const contextRecalled = judgeScore.context_recall === 1;
+  const evidenceRetained = evidenceContextRetained
+    && judgeScore.evidence_context_retention === 1;
+  const restatementNeeded = judgeScore.restatement_needed === 1
+    || asksForPriorRestatement(answer);
+  const semanticStateContract = judgeScore.semantic_state_contract === 1
+    && contextRecalled
     && !forbiddenContextPresent
     && authorityBoundary
     && !restatementNeeded;
   const reasonCodes = [
     authorityBoundary ? undefined : "authority_boundary_missing",
-    requiredContextRecalled ? undefined : "context_recall_missing",
-    evidenceContextRetained ? undefined : "evidence_context_missing",
+    contextRecalled ? undefined : "context_recall_missing",
+    evidenceRetained ? undefined : "evidence_context_missing",
     restatementNeeded ? "restatement_needed" : undefined,
     semanticStateContract ? undefined : "semantic_state_contract_missing",
     forbiddenContextPresent ? "forbidden_context_present" : undefined,
   ].filter((value): value is string => value !== undefined);
   return Object.freeze({
     authority_boundary: authorityBoundary ? 1 : 0,
-    context_recall: requiredContextRecalled ? 1 : 0,
-    evidence_context_retention: evidenceContextRetained ? 1 : 0,
+    context_recall: contextRecalled ? 1 : 0,
+    evidence_context_retention: evidenceRetained ? 1 : 0,
     reason_codes: Object.freeze(reasonCodes),
     restatement_needed: restatementNeeded ? 1 : 0,
     semantic_state_contract: semanticStateContract ? 1 : 0,
@@ -734,24 +738,17 @@ function comparableText(value: string): string {
 }
 
 function asksForPriorRestatement(value: string): boolean {
-  const words = comparableText(value).split(" ");
-  const restatementIndexes = wordIndexes(words, new Set(["restate", "repeat"]));
-  const priorIndexes = wordIndexes(
-    words,
-    new Set(["prior", "previous", "earlier", "original"]),
-  );
-  return restatementIndexes.some((restatementIndex) =>
-    priorIndexes.some((priorIndex) =>
-      Math.abs(restatementIndex - priorIndex) <= 16
-    )
-  );
-}
-
-function wordIndexes(
-  words: readonly string[],
-  matches: ReadonlySet<string>,
-): readonly number[] {
-  return words.flatMap((word, index) => matches.has(word) ? [index] : []);
+  const comparable = comparableText(value);
+  return [
+    "restate the task",
+    "restate your task",
+    "restate the prior",
+    "restate the previous",
+    "repeat the task",
+    "repeat your task",
+    "repeat the prior",
+    "repeat the previous",
+  ].some((phrase) => comparable.includes(phrase));
 }
 
 function digest(value: unknown): string {
