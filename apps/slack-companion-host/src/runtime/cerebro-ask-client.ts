@@ -7,7 +7,8 @@ export type AssistantTurnSourceGapState =
 
 export interface CerebroAskResult {
   citationValidationPassed: boolean;
-  executionLane: "converse" | "lookup";
+  executionLane: "act" | "continue" | "converse" | "ignore" | "investigate" | "lookup";
+  finalState?: "answered" | "blocked" | "needs_input" | "partial";
   markdown: string;
   safeRefusal: boolean;
   traceId?: string;
@@ -19,6 +20,7 @@ export interface CerebroAskHistoryMessage {
 }
 
 export interface CerebroAskClientOptions {
+  agentRuntimeUrl?: string;
   answerAuthority: SlackAnswerAuthorityPort;
   apiKey: string;
   baseUrl: string;
@@ -41,6 +43,109 @@ export class CerebroAskClient {
 
   constructor(private readonly options: CerebroAskClientOptions) {
     this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  get usesRustAgent(): boolean {
+    return Boolean(this.options.agentRuntimeUrl);
+  }
+
+  async runAgentTurn(input: {
+    actorRef: string;
+    assessmentAt: string;
+    history?: readonly CerebroAskHistoryMessage[];
+    question: string;
+    requestId: string;
+    signal: AbortSignal;
+    threadRef: string;
+    workingState?: {
+      current_request: string;
+      last_blocker?: string;
+      last_outcome: "blocked" | "completed" | "needs_user";
+      mission_ref: string;
+    };
+  }): Promise<CerebroAskResult> {
+    if (!this.options.agentRuntimeUrl) {
+      throw new CerebroAskError("not_configured", "The Rust agent runtime is not configured.");
+    }
+    const response = await this.fetchImpl(`${this.options.agentRuntimeUrl}/v1/turns/run`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actor_ref: input.actorRef,
+        assessment_at: input.assessmentAt,
+        effect_authorizations: [],
+        history: input.history ?? [],
+        message: input.question,
+        request_id: input.requestId,
+        schema_version: "agent-turn-request/v1",
+        tenant_id: this.options.tenantId,
+        thread_ref: input.threadRef,
+        working_state: input.workingState ?? null,
+      }),
+      signal: input.signal,
+    }).catch((error: unknown) => {
+      if (input.signal.aborted) {
+        throw new CerebroAskError("timed_out", "The Rust agent did not finish before the turn deadline.");
+      }
+      throw new CerebroAskError("unavailable", errorMessage(error));
+    });
+    if (!response.ok) {
+      throw new CerebroAskError(
+        sourceState(response.status),
+        `The Rust agent failed with status ${response.status}.`,
+      );
+    }
+    let outcome: RustAgentTurnOutcome;
+    try {
+      outcome = await response.json() as RustAgentTurnOutcome;
+    } catch (error: unknown) {
+      if (input.signal.aborted) {
+        throw new CerebroAskError(
+          "timed_out",
+          "The Rust agent did not finish before the turn deadline.",
+        );
+      }
+      throw new CerebroAskError("unavailable", errorMessage(error));
+    }
+    if (outcome.outcome === "delivered") {
+      return {
+        citationValidationPassed:
+          outcome.final_state === "answered"
+          && outcome.evidence_refs.length > 0,
+        executionLane: outcome.lane,
+        finalState: outcome.final_state,
+        markdown: outcome.markdown,
+        safeRefusal: outcome.final_state !== "answered",
+        traceId: input.requestId,
+      };
+    }
+    if (outcome.outcome === "approval_required") {
+      return {
+        citationValidationPassed: false,
+        executionLane: outcome.lane,
+        finalState: "needs_input",
+        markdown: [
+          "**Approval required**",
+          "",
+          outcome.request.purpose,
+          "",
+          `Approve the exact ${outcome.request.tool_id} operation before I continue.`,
+        ].join("\n"),
+        safeRefusal: true,
+        traceId: input.requestId,
+      };
+    }
+    return {
+      citationValidationPassed: false,
+      executionLane: "ignore",
+      finalState: "needs_input",
+      markdown: "Ask a concrete question or assign a bounded task.",
+      safeRefusal: true,
+      traceId: input.requestId,
+    };
   }
 
   async ask(
@@ -170,6 +275,26 @@ export class CerebroAskClient {
     }
   }
 }
+
+type RustAgentTurnOutcome =
+  | {
+      evidence_refs: string[];
+      final_state: "answered" | "blocked" | "needs_input" | "partial";
+      lane: CerebroAskResult["executionLane"];
+      markdown: string;
+      outcome: "delivered";
+    }
+  | {
+      lane: "act";
+      outcome: "approval_required";
+      request: {
+        purpose: string;
+        tool_id: string;
+      };
+    }
+  | {
+      outcome: "ignored";
+    };
 
 function citationValidation(
   value: unknown,

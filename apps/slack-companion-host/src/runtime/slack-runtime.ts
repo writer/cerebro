@@ -18,10 +18,12 @@ import {
   verifiedTurnScratchpadContent,
   type SlackThreadScratchpadCommandV1,
   type SlackThreadScratchpadPort,
+  type SlackThreadWorkingStateV1,
   type SlackThreadWorkingOutcome,
 } from "@writer/cerebro-slack-companion";
 import {
   AssistantTurnHostAdapter,
+  type AssistantExecutionLane,
   type AssistantTurnPlanPreflightInput,
   type AssistantTurnSourceHealthSnapshot,
 } from "../assistant-turn.js";
@@ -29,6 +31,7 @@ import {
   CerebroAskClient,
   CerebroAskError,
   type CerebroAskHistoryMessage,
+  type CerebroAskResult,
 } from "./cerebro-ask-client.js";
 import type { SlackRuntimeConfig } from "./config.js";
 import {
@@ -116,10 +119,13 @@ const graphCatalog = createToolCatalog([{
 }]);
 
 export interface AssistantQuestionInput {
+  actorRef: string;
   requestKey: string;
   scratchpadContext?: string;
   threadContext?: string;
   text: string;
+  threadRef: string;
+  workingState?: SlackThreadWorkingStateV1;
 }
 
 export interface AssistantQuestionResult {
@@ -186,6 +192,87 @@ export class AssistantQuestionService {
       input.threadContext,
       input.scratchpadContext,
     );
+    if (this.askClient.usesRustAgent) {
+      const budget = this.host.enforceBudget({
+        execution_lane: "act",
+        planned_tool_call_count: 12,
+        selected_capability_count: 12,
+      });
+      try {
+        const answer = await this.askClient.runAgentTurn({
+          actorRef: input.actorRef,
+          assessmentAt: openedAt.toISOString(),
+          history,
+          question: currentRequest,
+          requestId,
+          signal: this.timeoutSignal(budget.latency_budget_ms),
+          threadRef: input.threadRef,
+          ...(input.workingState === undefined
+            ? {}
+            : {
+                workingState: {
+                  current_request:
+                    input.workingState.recent_requests.at(-1) ?? currentRequest,
+                  ...(input.workingState.blocker === undefined
+                    ? {}
+                    : { last_blocker: input.workingState.blocker }),
+                  last_outcome: input.workingState.last_outcome,
+                  mission_ref: input.workingState.thread_ref,
+                },
+              }),
+        });
+        const usefulAnswerAt =
+          answer.finalState === "answered" || answer.finalState === "partial"
+            ? this.clock()
+            : undefined;
+        return {
+          pending: pendingOutcome({
+            budgetMs: budget.latency_budget_ms,
+            executionLane: answer.executionLane,
+            openedAt,
+            outcomeState: agentOutcomeState(answer.finalState),
+            requestId,
+            usefulAnswerAt,
+            verified: answer.citationValidationPassed,
+          }),
+          text: boundedSlackText(answer.markdown),
+          workingTurn: {
+            ...(answer.finalState === "blocked"
+              ? { blocker: "The Rust agent reported a blocked turn." }
+              : {}),
+            currentRequest,
+            outcome: agentWorkingOutcome(answer.finalState),
+          },
+          ...(answer.citationValidationPassed && answer.traceId
+            ? {
+                verifiedTurn: {
+                  answer: answer.markdown,
+                  question: currentRequest,
+                  traceId: answer.traceId,
+                },
+              }
+            : {}),
+        };
+      } catch (error) {
+        const state = error instanceof CerebroAskError ? error.sourceState : "unavailable";
+        return {
+          pending: pendingOutcome({
+            budgetMs: budget.latency_budget_ms,
+            executionLane: "investigate",
+            openedAt,
+            outcomeState: "blocked",
+            requestId,
+            verified: false,
+          }),
+          text: `The Rust agent runtime is ${state.replaceAll("_", " ")}. No current answer is available.`,
+          workingTurn: {
+            blocker: `Rust agent runtime was ${state.replaceAll("_", " ")}.`,
+            currentRequest,
+            outcome: "blocked",
+          },
+        };
+      }
+    }
     let questionDecision;
     try {
       questionDecision = await this.askClient.authorizeQuestion(
@@ -808,7 +895,7 @@ export async function handleSlackMention(input: {
       phase: "checking",
       schema_version: "assistant-turn-progress/v1",
       sequence: 1,
-      status: "Reading this thread and checking current Cerebro evidence",
+      status: "Reading this thread and working the request",
     });
     const progress = await input.client.chat.postMessage({
       channel: input.event.channel,
@@ -816,18 +903,23 @@ export async function handleSlackMention(input: {
         input.config,
         threadContext
           || scratchpadContext
-          ? "Reading this thread's context and checking current Cerebro evidence…"
-          : "Checking current Cerebro evidence…",
+          ? "Reading this thread and working the request…"
+          : "Working the request…",
       ),
       thread_ts: input.event.threadTs,
     });
     if (!progress.ts) throw new Error("Slack did not accept the progress message.");
     deliveredMessageTs = progress.ts;
     const result = await input.questions.answer({
+      actorRef: slackScratchpadAuthorRef(input.event.teamId, input.event.userId),
       requestKey,
       scratchpadContext,
       threadContext,
       text: input.event.text,
+      threadRef: scratchpadRef,
+      ...(scratchpad?.working_state === undefined
+        ? {}
+        : { workingState: scratchpad.working_state }),
     });
     const deliveredText = formatEnvironmentMessage(input.config, result.text);
     await input.client.chat.update({
@@ -1019,7 +1111,7 @@ function preflightInput(
 
 function pendingOutcome(input: {
   budgetMs: number;
-  executionLane?: "converse" | "lookup";
+  executionLane?: AssistantExecutionLane;
   openedAt: Date;
   outcomeState: PendingAssistantOutcome["outcome_state"];
   requestId: string;
@@ -1038,6 +1130,22 @@ function pendingOutcome(input: {
     useful_answer_at: input.usefulAnswerAt?.toISOString(),
     verified: input.verified,
   };
+}
+
+function agentOutcomeState(
+  state: CerebroAskResult["finalState"],
+): PendingAssistantOutcome["outcome_state"] {
+  if (state === "blocked") return "blocked";
+  if (state === "needs_input") return "needs_user";
+  return "completed";
+}
+
+function agentWorkingOutcome(
+  state: CerebroAskResult["finalState"],
+): SlackThreadWorkingOutcome {
+  if (state === "blocked") return "blocked";
+  if (state === "needs_input") return "needs_user";
+  return "completed";
 }
 
 function renderOutput(output: ReturnType<typeof buildAssistantTurnEvidenceFallback>): string {

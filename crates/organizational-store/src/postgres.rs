@@ -682,6 +682,35 @@ pub struct SourceCollectionReceipt {
     pub manifest_digest: String,
 }
 
+/// A tenant-scoped, secret-free source-runtime observation for operator reads.
+///
+/// The stored runtime JSON can contain connector configuration and secret
+/// references. This projection deliberately exposes only health and progress
+/// fields that are safe for an agent tool result.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceRuntimeObservation {
+    pub runtime_id: String,
+    pub source_id: String,
+    pub enabled_state: String,
+    pub last_failure_category: Option<String>,
+    pub last_synced_at: Option<String>,
+    pub cursor_pending: bool,
+    pub checkpoint_cursor_present: bool,
+    pub stale_after_seconds: Option<u64>,
+    pub latest_collection: Option<SourceRuntimeCollectionObservation>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceRuntimeCollectionObservation {
+    pub collection_id: String,
+    pub status: String,
+    pub completed_at_unix_ms: u64,
+    pub pages_read: u64,
+    pub records_scanned: u64,
+    pub records_accepted: u64,
+    pub records_rejected: u64,
+}
+
 /// One stored source-runtime definition admitted from the shared PostgreSQL
 /// current-state table. The config may contain unresolved secret references,
 /// so this type deliberately does not implement `Debug` or `Serialize`.
@@ -1452,6 +1481,108 @@ WHERE id = $1
             .await?;
         transaction.commit().await?;
         Ok(row.map(|row| row.get("manifest_json")))
+    }
+
+    /// Search current source runtimes and join the latest collection receipt.
+    ///
+    /// The query is a literal case-insensitive substring, not a SQL pattern.
+    /// Tenant scope is applied both to the shared runtime registry and through
+    /// the receipt table's row-level-security context.
+    pub async fn source_runtime_observations(
+        &self,
+        tenant_id: &str,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<SourceRuntimeObservation>, StoreError> {
+        if tenant_id.trim().is_empty() || limit == 0 || limit > 100 {
+            return Err(StoreError::Conflict(
+                "source runtime observation scope is invalid".to_owned(),
+            ));
+        }
+        let limit = i64::try_from(limit)
+            .map_err(|_| StoreError::Conflict("source runtime limit overflow".to_owned()))?;
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await?;
+        set_tenant(&transaction, tenant_id).await?;
+        let rows = transaction
+            .query(
+                r#"
+SELECT
+  runtime.id,
+  COALESCE(runtime.runtime_json->>'source_id', ''),
+  COALESCE(runtime.runtime_json->'config'->>'enabled', ''),
+  NULLIF(runtime.runtime_json->'config'->>'__cerebro_runtime_last_failure_category', ''),
+  NULLIF(runtime.runtime_json->>'last_synced_at', ''),
+  COALESCE(NULLIF(runtime.runtime_json->'next_cursor'->>'opaque', ''), '') <> '',
+  COALESCE(NULLIF(runtime.runtime_json->'checkpoint'->>'cursor_opaque', ''), '') <> '',
+  NULLIF(runtime.runtime_json->'config'->>'stale_after_seconds', ''),
+  latest.collection_id,
+  latest.status,
+  latest.completed_at_unix_ms,
+  latest.pages_read,
+  latest.records_scanned,
+  latest.records_accepted,
+  latest.records_rejected
+FROM source_runtimes AS runtime
+LEFT JOIN LATERAL (
+  SELECT
+    collection_id,
+    status,
+    completed_at_unix_ms,
+    pages_read,
+    records_scanned,
+    records_accepted,
+    records_rejected
+  FROM organizational_source_collection_receipts
+  WHERE tenant_id = $1
+    AND source_runtime_id = runtime.id
+  ORDER BY completed_at_unix_ms DESC, collection_id DESC
+  LIMIT 1
+) AS latest ON TRUE
+WHERE runtime.runtime_json->>'tenant_id' = $1
+  AND (
+    $2 = ''
+    OR POSITION(LOWER($2) IN LOWER(runtime.id)) > 0
+    OR POSITION(LOWER($2) IN LOWER(COALESCE(runtime.runtime_json->>'source_id', ''))) > 0
+  )
+ORDER BY runtime.id
+LIMIT $3
+"#,
+                &[&tenant_id, &query.trim(), &limit],
+            )
+            .await?;
+        transaction.commit().await?;
+        rows.into_iter()
+            .map(|row| {
+                let stale_after_seconds = row
+                    .get::<_, Option<String>>(7)
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .filter(|value| *value > 0);
+                let latest_collection = match row.get::<_, Option<String>>(8) {
+                    Some(collection_id) => Some(SourceRuntimeCollectionObservation {
+                        collection_id,
+                        status: row.get(9),
+                        completed_at_unix_ms: stored_u64(&row, 10, "completed_at_unix_ms")?,
+                        pages_read: stored_u64(&row, 11, "pages_read")?,
+                        records_scanned: stored_u64(&row, 12, "records_scanned")?,
+                        records_accepted: stored_u64(&row, 13, "records_accepted")?,
+                        records_rejected: stored_u64(&row, 14, "records_rejected")?,
+                    }),
+                    None => None,
+                };
+                Ok(SourceRuntimeObservation {
+                    runtime_id: row.get(0),
+                    source_id: row.get(1),
+                    enabled_state: row.get(2),
+                    last_failure_category: row.get(3),
+                    last_synced_at: row.get(4),
+                    cursor_pending: row.get(5),
+                    checkpoint_cursor_present: row.get(6),
+                    stale_after_seconds,
+                    latest_collection,
+                })
+            })
+            .collect()
     }
 
     pub async fn record_parity(&self, receipt: &ParityReceipt) -> Result<(), StoreError> {

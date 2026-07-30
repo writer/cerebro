@@ -17,6 +17,9 @@ async function main(): Promise<void> {
   const scratchpads = new FileThreadScratchpadStore(config.memoryDirectory);
   const host = createAssistantTurnHost(outcomes);
   const questions = new AssistantQuestionService(host, new CerebroAskClient({
+    ...(config.rustAgentEnabled
+      ? { agentRuntimeUrl: config.slackAnswerAuthorityUrl }
+      : {}),
     answerAuthority: new SlackAnswerAuthorityClient({
       baseUrl: config.slackAnswerAuthorityUrl,
     }),

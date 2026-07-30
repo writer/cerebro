@@ -5,6 +5,7 @@ mod cutover_command;
 mod oidc;
 mod parity_command;
 mod rpc;
+mod slack_agent;
 mod slack_authority;
 
 use std::{

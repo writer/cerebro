@@ -15,12 +15,15 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use cerebro_agent_runtime::{AgentRuntimeError, AgentTurnOutcome, AgentTurnRequest};
 use cerebro_slack_authority::{
     AnswerAuthorityError, AnswerCandidate, AnswerDecision, AnswerDisposition,
     QuestionAuthorityError, QuestionCandidate, QuestionDecision, QuestionExecutionLane,
     QuestionPolicy, authorize_question, validate_answer,
 };
 use serde::Serialize;
+
+use crate::slack_agent::SlackAgentService;
 
 const DEFAULT_BIND: &str = "127.0.0.1:8091";
 const MAX_REQUEST_BYTES: usize = 96 * 1024;
@@ -32,6 +35,10 @@ struct ErrorResponse {
 }
 
 struct AuthorityRuntime {
+    agent: Option<SlackAgentService>,
+    agent_tool_calls_total: AtomicU64,
+    agent_turn_failures_total: AtomicU64,
+    agent_turns_total: AtomicU64,
     question_authorized_total: AtomicU64,
     question_rejected_total: AtomicU64,
     question_policy: QuestionPolicy,
@@ -43,6 +50,10 @@ struct AuthorityRuntime {
 
 #[derive(Serialize)]
 struct AuthorityStatus {
+    agent_ready: bool,
+    agent_tool_calls_total: u64,
+    agent_turn_failures_total: u64,
+    agent_turns_total: u64,
     authority: &'static str,
     component: &'static str,
     grounded_total: u64,
@@ -58,8 +69,12 @@ struct AuthorityStatus {
 }
 
 impl AuthorityRuntime {
-    fn new(question_policy: QuestionPolicy) -> Self {
+    fn new(question_policy: QuestionPolicy, agent: Option<SlackAgentService>) -> Self {
         Self {
+            agent,
+            agent_tool_calls_total: AtomicU64::new(0),
+            agent_turn_failures_total: AtomicU64::new(0),
+            agent_turns_total: AtomicU64::new(0),
             question_authorized_total: AtomicU64::new(0),
             question_rejected_total: AtomicU64::new(0),
             grounded_total: AtomicU64::new(0),
@@ -76,7 +91,13 @@ impl AuthorityRuntime {
         let safe_refusal_total = self.safe_refusal_total.load(Ordering::Relaxed);
         let question_authorized_total = self.question_authorized_total.load(Ordering::Relaxed);
         let question_rejected_total = self.question_rejected_total.load(Ordering::Relaxed);
+        let agent_turns_total = self.agent_turns_total.load(Ordering::Relaxed);
+        let agent_turn_failures_total = self.agent_turn_failures_total.load(Ordering::Relaxed);
         AuthorityStatus {
+            agent_ready: self.agent.is_some(),
+            agent_tool_calls_total: self.agent_tool_calls_total.load(Ordering::Relaxed),
+            agent_turn_failures_total,
+            agent_turns_total,
             authority: "rust",
             component: "slack-answer-authority",
             grounded_total,
@@ -87,7 +108,9 @@ impl AuthorityRuntime {
                 .saturating_add(rejected_total)
                 .saturating_add(safe_refusal_total)
                 .saturating_add(question_authorized_total)
-                .saturating_add(question_rejected_total),
+                .saturating_add(question_rejected_total)
+                .saturating_add(agent_turns_total)
+                .saturating_add(agent_turn_failures_total),
             safe_refusal_total,
             schema_version: "slack-answer-authority-status/v1",
             status: "ready",
@@ -108,7 +131,8 @@ pub async fn serve() -> Result<(), Box<dyn Error>> {
     require_loopback(address)?;
     let tenant_id = env::var("CEREBRO_SLACK_AUTHORITY_TENANT_ID")
         .map_err(|_| "CEREBRO_SLACK_AUTHORITY_TENANT_ID is required")?;
-    let question_policy = QuestionPolicy::new(tenant_id)?;
+    let question_policy = QuestionPolicy::new(tenant_id.clone())?;
+    let agent = SlackAgentService::from_env(tenant_id).await?;
     let listener = tokio::net::TcpListener::bind(address).await?;
     println!(
         "{}",
@@ -122,18 +146,75 @@ pub async fn serve() -> Result<(), Box<dyn Error>> {
             "version": env!("CARGO_PKG_VERSION"),
         })
     );
-    axum::serve(listener, router(question_policy)).await?;
+    axum::serve(listener, router(question_policy, agent)).await?;
     Ok(())
 }
 
-fn router(question_policy: QuestionPolicy) -> Router {
+fn router(question_policy: QuestionPolicy, agent: Option<SlackAgentService>) -> Router {
     Router::new()
         .route("/healthz", get(|| async { StatusCode::NO_CONTENT }))
         .route("/v1/status", get(authority_status_route))
         .route("/v1/questions/authorize", post(authorize_question_route))
         .route("/v1/answers/validate", post(validate_answer_route))
+        .route("/v1/turns/run", post(run_turn_route))
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
-        .with_state(Arc::new(AuthorityRuntime::new(question_policy)))
+        .with_state(Arc::new(AuthorityRuntime::new(question_policy, agent)))
+}
+
+async fn run_turn_route(
+    State(runtime): State<Arc<AuthorityRuntime>>,
+    Json(request): Json<AgentTurnRequest>,
+) -> Result<Json<AgentTurnOutcome>, (StatusCode, Json<ErrorResponse>)> {
+    let agent = runtime.agent.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                code: "agent_not_configured",
+                message: "The Rust Slack agent runtime is not configured.".into(),
+            }),
+        )
+    })?;
+    match agent.run(request).await {
+        Ok(outcome) => {
+            runtime.agent_turns_total.fetch_add(1, Ordering::Relaxed);
+            runtime
+                .agent_tool_calls_total
+                .fetch_add(outcome_tool_call_count(&outcome), Ordering::Relaxed);
+            Ok(Json(outcome))
+        }
+        Err(error) => {
+            runtime
+                .agent_turn_failures_total
+                .fetch_add(1, Ordering::Relaxed);
+            Err(agent_error(error))
+        }
+    }
+}
+
+fn outcome_tool_call_count(outcome: &AgentTurnOutcome) -> u64 {
+    match outcome {
+        AgentTurnOutcome::Delivered {
+            tool_call_count, ..
+        }
+        | AgentTurnOutcome::ApprovalRequired {
+            tool_call_count, ..
+        } => (*tool_call_count).try_into().unwrap_or(u64::MAX),
+        AgentTurnOutcome::Ignored { .. } => 0,
+    }
+}
+
+fn agent_error(error: AgentRuntimeError) -> (StatusCode, Json<ErrorResponse>) {
+    let status = match &error {
+        AgentRuntimeError::ModelUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+        _ => StatusCode::UNPROCESSABLE_ENTITY,
+    };
+    (
+        status,
+        Json(ErrorResponse {
+            code: "agent_turn_failed",
+            message: error.to_string(),
+        }),
+    )
 }
 
 async fn authorize_question_route(
@@ -326,7 +407,45 @@ mod tests {
     use super::*;
 
     fn test_router() -> Router {
-        router(QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap())
+        router(
+            QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap(),
+            None,
+        )
+    }
+
+    #[tokio::test]
+    async fn turn_route_fails_closed_when_the_agent_is_not_configured() {
+        let response = test_router()
+            .oneshot(
+                Request::post("/v1/turns/run")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{
+                          "schema_version":"agent-turn-request/v1",
+                          "tenant_id":"writer-sec-dev",
+                          "request_id":"request-one",
+                          "thread_ref":"slack-thread:T:C:one",
+                          "actor_ref":"slack-user:U",
+                          "assessment_at":"2026-07-29T20:00:00Z",
+                          "message":"Investigate the source failure.",
+                          "history":[],
+                          "working_state":null,
+                          "effect_authorizations":[]
+                        }"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body: Value = serde_json::from_slice(
+            &to_bytes(response.into_body(), MAX_REQUEST_BYTES)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(body["code"], "agent_not_configured");
     }
 
     #[test]
