@@ -54,7 +54,33 @@ RUN find /app/sources -mindepth 2 -type f ! -name catalog.yaml -delete
 
 FROM ${RUNTIME_BASE_IMAGE} AS runtime
 
+ADD --checksum=sha256:e5bb2084ccf45087bda1c9bffdea0eb15ee67f0b91646106e466714f9de3c7e3 \
+    https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+    /tmp/aws-rds-global-bundle.pem
+
 RUN apk upgrade --no-cache && \
+    apk add --no-cache ca-certificates openssl && \
+    awk '\
+      /-----BEGIN CERTIFICATE-----/ { certificate += 1 } \
+      certificate > 0 { \
+        print > sprintf("/usr/local/share/ca-certificates/aws-rds-root-%03d.crt", certificate) \
+      } \
+      END { if (certificate != 108) exit 1 } \
+    ' /tmp/aws-rds-global-bundle.pem && \
+    for certificate in /usr/local/share/ca-certificates/aws-rds-root-*.crt; do \
+      subject="$(openssl x509 -in "${certificate}" -noout -subject -nameopt RFC2253)"; \
+      issuer="$(openssl x509 -in "${certificate}" -noout -issuer -nameopt RFC2253)"; \
+      test "${subject#subject=}" = "${issuer#issuer=}"; \
+      openssl verify -CAfile "${certificate}" "${certificate}"; \
+      case "${subject}" in \
+        *"CN=Amazon RDS "*" Root CA RSA2048 G1"*) ;; \
+        *"CN=Amazon RDS "*" Root CA RSA4096 G1"*) ;; \
+        *"CN=Amazon RDS "*" Root CA ECC384 G1"*) ;; \
+        *) exit 1 ;; \
+      esac; \
+    done && \
+    update-ca-certificates && \
+    rm /tmp/aws-rds-global-bundle.pem && \
     addgroup -S cerebro && \
     adduser -S -G cerebro -u 10001 cerebro
 

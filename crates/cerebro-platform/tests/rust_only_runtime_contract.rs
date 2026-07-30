@@ -32,6 +32,17 @@ fn rust_runtime_image_has_no_go_executable_path() {
     );
     for required in [
         "cerebro-platform --bin cerebro-platform",
+        "ADD --checksum=sha256:e5bb2084ccf45087bda1c9bffdea0eb15ee67f0b91646106e466714f9de3c7e3",
+        "https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem",
+        "apk add --no-cache ca-certificates openssl",
+        "/usr/local/share/ca-certificates/aws-rds-root-%03d.crt",
+        "if (certificate != 108) exit 1",
+        "test \"${subject#subject=}\" = \"${issuer#issuer=}\"",
+        "openssl verify -CAfile \"${certificate}\" \"${certificate}\"",
+        "CN=Amazon RDS \"*\" Root CA RSA2048 G1",
+        "CN=Amazon RDS \"*\" Root CA RSA4096 G1",
+        "CN=Amazon RDS \"*\" Root CA ECC384 G1",
+        "update-ca-certificates",
         "/usr/local/bin/cerebro-event-admission-worker",
         "/usr/local/bin/cerebro-platform",
         "ENTRYPOINT [\"/usr/local/bin/cerebro-platform\"]",
@@ -41,6 +52,16 @@ fn rust_runtime_image_has_no_go_executable_path() {
         assert!(
             DOCKERFILE.contains(required),
             "Rust runtime Dockerfile is missing {required:?}"
+        );
+    }
+    for forbidden in [
+        "danger_accept_invalid_certs",
+        "danger_accept_invalid_hostnames",
+        "sslmode=disable",
+    ] {
+        assert!(
+            !DOCKERFILE.contains(forbidden),
+            "Rust runtime Dockerfile weakens TLS verification with {forbidden:?}"
         );
     }
 }
