@@ -11,7 +11,7 @@ use async_nats::jetstream::{
     consumer::{AckPolicy, DeliverPolicy, pull},
 };
 use cerebro_organizational_store::{ConsumerMessageOutcome, ConsumerRunProgress, PostgresLedger};
-use cerebro_source_runtime_next::CommittedSourceEvent;
+use cerebro_source_runtime_next::{AppendLogDecodeError, CommittedSourceEvent};
 use futures_util::StreamExt;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -37,6 +37,48 @@ enum ConsumerMode {
 enum FailureDisposition {
     Retry,
     Reject,
+}
+
+#[derive(Debug)]
+enum EventDecodeError {
+    Boundary(AppendLogDecodeError),
+    LifecycleSubjectMismatch {
+        event_kind: String,
+        expected_subject: String,
+    },
+    CatalogOwnedWithoutEnvelope {
+        subject: String,
+    },
+    SourceMismatch {
+        subject_source: String,
+        event_source: String,
+    },
+}
+
+impl std::fmt::Display for EventDecodeError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Boundary(error) => error.fmt(formatter),
+            Self::LifecycleSubjectMismatch {
+                event_kind,
+                expected_subject,
+            } => write!(
+                formatter,
+                "append-log lifecycle event {event_kind} must use subject {expected_subject}"
+            ),
+            Self::CatalogOwnedWithoutEnvelope { subject } => write!(
+                formatter,
+                "append-log subject {subject} is catalog-owned but has no source envelope"
+            ),
+            Self::SourceMismatch {
+                subject_source,
+                event_source,
+            } => write!(
+                formatter,
+                "append-log subject source {subject_source} does not match envelope source {event_source}"
+            ),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -399,6 +441,35 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                 continue;
             }
             Err(error) => {
+                if let Some(reason) =
+                    replay_legacy_decode_skip(config.mode, subject_source, subject_family, &error)
+                {
+                    eprintln!(
+                        "organizational append-log replay compatibility skip subject={subject} reason={reason}"
+                    );
+                    record_progress(
+                        &runtime,
+                        &config,
+                        stream_sequence,
+                        ConsumerMessageOutcome::Skipped,
+                        Some((subject_source, subject_family)),
+                        None,
+                        &mut counters,
+                    )
+                    .await?;
+                    message.double_ack().await.map_err(consumer_io)?;
+                    if replay_drained(&config, end_sequence, stream_sequence, pending) {
+                        return finish_replay(
+                            &runtime,
+                            &config,
+                            start_sequence,
+                            end_sequence.expect("replay has an end fence"),
+                            &counters,
+                        )
+                        .await;
+                    }
+                    continue;
+                }
                 eprintln!("organizational append-log message rejected: {error}");
                 record_progress(
                     &runtime,
@@ -475,6 +546,38 @@ pub(crate) async fn run(runtime: Arc<ProjectionRuntime>) -> Result<(), Box<dyn E
                         .map_err(consumer_io)?;
                 }
                 FailureDisposition::Reject => {
+                    if let Some(reason) = replay_legacy_projection_skip(
+                        config.mode,
+                        &event_source,
+                        &event_family,
+                        &error,
+                    ) {
+                        eprintln!(
+                            "organizational append-log replay compatibility skip subject={subject} reason={reason}"
+                        );
+                        record_progress(
+                            &runtime,
+                            &config,
+                            stream_sequence,
+                            ConsumerMessageOutcome::Skipped,
+                            Some((&event_source, &event_family)),
+                            None,
+                            &mut counters,
+                        )
+                        .await?;
+                        message.double_ack().await.map_err(consumer_io)?;
+                        if replay_drained(&config, end_sequence, stream_sequence, pending) {
+                            return finish_replay(
+                                &runtime,
+                                &config,
+                                start_sequence,
+                                end_sequence.expect("replay has an end fence"),
+                                &counters,
+                            )
+                            .await;
+                        }
+                        continue;
+                    }
                     eprintln!(
                         "organizational append-log projection rejected subject={subject} error={error}"
                     );
@@ -825,7 +928,7 @@ fn decode_event(
     subject: &str,
     subject_prefix: &str,
     catalog_source_known: bool,
-) -> Result<Option<CommittedSourceEvent>, String> {
+) -> Result<Option<CommittedSourceEvent>, EventDecodeError> {
     match CommittedSourceEvent::decode(payload) {
         Ok(Some(event))
             if event.is_portable_security_lifecycle()
@@ -833,23 +936,79 @@ fn decode_event(
         {
             Ok(Some(event))
         }
-        Ok(Some(event)) if event.is_portable_security_lifecycle() => Err(format!(
-            "append-log lifecycle event {} must use subject {subject_prefix}.{}",
-            event.event_kind(),
-            event.event_kind()
-        )),
+        Ok(Some(event)) if event.is_portable_security_lifecycle() => {
+            Err(EventDecodeError::LifecycleSubjectMismatch {
+                event_kind: event.event_kind().to_owned(),
+                expected_subject: format!("{subject_prefix}.{}", event.event_kind()),
+            })
+        }
         Ok(Some(_)) if !catalog_source_known => Ok(None),
         Ok(Some(event)) if event.source_id() == subject_source => Ok(Some(event)),
-        Ok(Some(event)) => Err(format!(
-            "append-log subject source {subject_source} does not match envelope source {}",
-            event.source_id()
-        )),
-        Ok(None) => Err(format!(
-            "append-log subject {subject} is catalog-owned but has no source envelope"
-        )),
-        Err(error) => Err(format!(
-            "append-log subject {subject} failed the committed source boundary: {error}"
-        )),
+        Ok(Some(event)) => Err(EventDecodeError::SourceMismatch {
+            subject_source: subject_source.to_owned(),
+            event_source: event.source_id().to_owned(),
+        }),
+        Ok(None) => Err(EventDecodeError::CatalogOwnedWithoutEnvelope {
+            subject: subject.to_owned(),
+        }),
+        Err(error) => Err(EventDecodeError::Boundary(error)),
+    }
+}
+
+fn replay_legacy_decode_skip(
+    mode: ConsumerMode,
+    source_id: &str,
+    family_id: &str,
+    error: &EventDecodeError,
+) -> Option<&'static str> {
+    if mode != ConsumerMode::Replay {
+        return None;
+    }
+    match (source_id, family_id, error) {
+        (
+            "asset",
+            "data_sensitivity",
+            EventDecodeError::Boundary(AppendLogDecodeError::Missing(
+                "a source-owned kind in source.family form",
+            )),
+        ) => Some("legacy_missing_source_owned_kind"),
+        (
+            "gcp",
+            "iam_role_assignment" | "effective_permission",
+            EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(message)),
+        )
+        | (
+            "aws",
+            "public_endpoint",
+            EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(message)),
+        ) if message == "observation id is invalid" => Some("legacy_invalid_observation_id"),
+        (
+            "cerebro",
+            "health.jetstream_canary",
+            EventDecodeError::CatalogOwnedWithoutEnvelope { .. },
+        ) => Some("legacy_catalog_canary_without_source_envelope"),
+        _ => None,
+    }
+}
+
+fn replay_legacy_projection_skip(
+    mode: ConsumerMode,
+    source_id: &str,
+    family_id: &str,
+    error: &crate::ProjectionFailure,
+) -> Option<&'static str> {
+    if mode == ConsumerMode::Replay
+        && source_id == "okta"
+        && family_id == "threat_insight"
+        && matches!(
+            error,
+            crate::ProjectionFailure::Invalid(message)
+                if message == "family okta.threat_insight is not in the compiled catalog"
+        )
+    {
+        Some("legacy_family_not_in_compiled_catalog")
+    } else {
+        None
     }
 }
 
@@ -1073,6 +1232,138 @@ mod tests {
         );
         assert_eq!(failure_disposition(false), FailureDisposition::Reject);
         assert_eq!(failure_disposition(true), FailureDisposition::Retry);
+    }
+
+    #[test]
+    fn replay_skips_only_observed_legacy_decode_shapes() {
+        let cases = [
+            (
+                "asset",
+                "data_sensitivity",
+                EventDecodeError::Boundary(AppendLogDecodeError::Missing(
+                    "a source-owned kind in source.family form",
+                )),
+                "legacy_missing_source_owned_kind",
+            ),
+            (
+                "gcp",
+                "iam_role_assignment",
+                EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(
+                    "observation id is invalid".to_owned(),
+                )),
+                "legacy_invalid_observation_id",
+            ),
+            (
+                "gcp",
+                "effective_permission",
+                EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(
+                    "observation id is invalid".to_owned(),
+                )),
+                "legacy_invalid_observation_id",
+            ),
+            (
+                "aws",
+                "public_endpoint",
+                EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(
+                    "observation id is invalid".to_owned(),
+                )),
+                "legacy_invalid_observation_id",
+            ),
+            (
+                "cerebro",
+                "health.jetstream_canary",
+                EventDecodeError::CatalogOwnedWithoutEnvelope {
+                    subject: "events.cerebro.health.jetstream_canary".to_owned(),
+                },
+                "legacy_catalog_canary_without_source_envelope",
+            ),
+        ];
+        for (source, family, error, reason) in cases {
+            assert_eq!(
+                replay_legacy_decode_skip(ConsumerMode::Replay, source, family, &error),
+                Some(reason)
+            );
+            assert_eq!(
+                replay_legacy_decode_skip(ConsumerMode::Forward, source, family, &error),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn replay_legacy_decode_skip_does_not_widen_the_boundary() {
+        let invalid_observation = EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(
+            "observation id is invalid".to_owned(),
+        ));
+        assert_eq!(
+            replay_legacy_decode_skip(
+                ConsumerMode::Replay,
+                "gcp",
+                "project_bindings",
+                &invalid_observation,
+            ),
+            None
+        );
+        assert_eq!(
+            replay_legacy_decode_skip(
+                ConsumerMode::Replay,
+                "aws",
+                "public_endpoint",
+                &EventDecodeError::Boundary(AppendLogDecodeError::InvalidModel(
+                    "tenant id is invalid".to_owned(),
+                )),
+            ),
+            None
+        );
+        assert_eq!(
+            replay_legacy_decode_skip(
+                ConsumerMode::Replay,
+                "asset",
+                "data_sensitivity",
+                &EventDecodeError::Boundary(AppendLogDecodeError::Missing("tenant_id")),
+            ),
+            None
+        );
+        assert_eq!(
+            replay_legacy_decode_skip(
+                ConsumerMode::Replay,
+                "cerebro",
+                "health.jetstream_canary",
+                &EventDecodeError::Boundary(AppendLogDecodeError::Protobuf(
+                    "invalid wire type".to_owned(),
+                )),
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn replay_skips_only_the_observed_missing_okta_catalog_family() {
+        let observed = crate::ProjectionFailure::Invalid(
+            "family okta.threat_insight is not in the compiled catalog".to_owned(),
+        );
+        assert_eq!(
+            replay_legacy_projection_skip(
+                ConsumerMode::Replay,
+                "okta",
+                "threat_insight",
+                &observed,
+            ),
+            Some("legacy_family_not_in_compiled_catalog")
+        );
+        assert_eq!(
+            replay_legacy_projection_skip(
+                ConsumerMode::Forward,
+                "okta",
+                "threat_insight",
+                &observed,
+            ),
+            None
+        );
+        assert_eq!(
+            replay_legacy_projection_skip(ConsumerMode::Replay, "okta", "users", &observed,),
+            None
+        );
     }
 
     #[test]
