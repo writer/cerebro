@@ -115,6 +115,8 @@ fn replacement_proof_is_a_native_rust_product_path() {
         "test ! -e /usr/bin/go",
         "test ! -e /bin/go",
         "--entrypoint /usr/local/bin/organizational-graph-e2e",
+        "CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY=by_start_sequence",
+        "CEREBRO_ORGANIZATIONAL_CONSUMER_START_SEQUENCE=1",
         "docker restart cerebro-rust-graph-platform",
         "receipt.json)\" -eq 14",
     ] {
