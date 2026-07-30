@@ -23,6 +23,7 @@ const MAX_REFUSAL_ITEMS: usize = 32;
 const MAX_REFUSAL_ITEM_BYTES: usize = 512;
 const MAX_REQUEST_ID_BYTES: usize = 512;
 const MAX_TENANT_ID_BYTES: usize = 256;
+const SELF_CONTEXT_ANSWER: &str = "I’m Cerebro, Writer’s security operations assistant. I read governed Cerebro evidence for findings, assets, identities, controls, owners, and connector health.\n\nI don’t have a verified cross-thread work log in this request, so I can’t claim a complete list of today’s work. Run `@Cerebro scratchpad` in this thread to see retained requests, outcomes, and blockers, or ask me about one current security task.";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -68,6 +69,16 @@ pub struct QuestionDecision {
     pub tenant_id: String,
     pub request_id: String,
     pub authorized: bool,
+    pub execution_lane: QuestionExecutionLane,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer: Option<&'static str>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuestionExecutionLane {
+    Converse,
+    Lookup,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -120,12 +131,46 @@ pub fn authorize_question(
     {
         return Err(QuestionAuthorityError::HistoryInvalid);
     }
+    let execution_lane = question_execution_lane(&candidate.question);
     Ok(QuestionDecision {
         schema_version: QUESTION_DECISION_V1,
         tenant_id: candidate.tenant_id,
         request_id: candidate.request_id,
         authorized: true,
+        execution_lane,
+        answer: match execution_lane {
+            QuestionExecutionLane::Converse => Some(SELF_CONTEXT_ANSWER),
+            QuestionExecutionLane::Lookup => None,
+        },
     })
+}
+
+fn question_execution_lane(question: &str) -> QuestionExecutionLane {
+    let normalized = question
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    let identity_question = normalized.trim_matches(|character: char| {
+        character.is_ascii_punctuation() || character.is_whitespace()
+    });
+    let asks_identity = normalized.contains("about yourself")
+        || normalized.contains("tell me about you")
+        || matches!(identity_question, "who are you" | "what are you");
+    let asks_work = [
+        "your work today",
+        "what have you done today",
+        "what did you do today",
+        "what are you working on",
+        "what have you worked on",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase));
+    if asks_identity || asks_work {
+        QuestionExecutionLane::Converse
+    } else {
+        QuestionExecutionLane::Lookup
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -332,8 +377,36 @@ mod tests {
                 tenant_id: "writer-sec-dev".to_owned(),
                 request_id: "C0B2VJDFJ5N:1753830794.123".to_owned(),
                 authorized: true,
+                execution_lane: QuestionExecutionLane::Lookup,
+                answer: None,
             }
         );
+    }
+
+    #[test]
+    fn routes_self_and_work_status_questions_without_a_graph_lookup() {
+        let policy = QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap();
+        for text in [
+            "What can you tell me about yourself and your work today?",
+            "Who are you?",
+            "What are you working on?",
+        ] {
+            let mut candidate = question();
+            candidate.question = text.to_owned();
+            let decision = authorize_question(&policy, candidate).unwrap();
+            assert_eq!(decision.execution_lane, QuestionExecutionLane::Converse);
+            assert_eq!(decision.answer, Some(SELF_CONTEXT_ANSWER));
+        }
+
+        let lookup = authorize_question(&policy, question()).unwrap();
+        assert_eq!(lookup.execution_lane, QuestionExecutionLane::Lookup);
+        assert_eq!(lookup.answer, None);
+
+        let mut evidence_question = question();
+        evidence_question.question = "What are you seeing in Okta right now?".to_owned();
+        let lookup = authorize_question(&policy, evidence_question).unwrap();
+        assert_eq!(lookup.execution_lane, QuestionExecutionLane::Lookup);
+        assert_eq!(lookup.answer, None);
     }
 
     #[test]

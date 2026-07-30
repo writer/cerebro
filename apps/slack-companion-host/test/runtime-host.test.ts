@@ -28,6 +28,7 @@ const testAnswerAuthority: SlackAnswerAuthorityPort = {
   async authorizeQuestion(candidate) {
     return {
       authorized: true,
+      execution_lane: "lookup",
       request_id: candidate.request_id,
       schema_version: "slack-question-decision/v1",
       tenant_id: candidate.tenant_id,
@@ -265,6 +266,57 @@ test("question service preflights one governed graph lookup and returns its veri
   }
 });
 
+test("question service keeps self status on the Rust conversational lane", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
+  try {
+    let upstreamFetchCount = 0;
+    const service = new AssistantQuestionService(
+      createAssistantTurnHost(new FileOutcomeStore(root)),
+      new CerebroAskClient({
+        answerAuthority: {
+          async authorizeQuestion(candidate) {
+            return {
+              answer: "I’m Cerebro. I don’t have a verified cross-thread work log in this request.",
+              authorized: true,
+              execution_lane: "converse",
+              request_id: candidate.request_id,
+              schema_version: "slack-question-decision/v1",
+              tenant_id: candidate.tenant_id,
+            };
+          },
+          async validate() {
+            throw new Error("answer validation must not run");
+          },
+        },
+        apiKey: "bound-at-runtime",
+        baseUrl: "https://cerebro.example.com",
+        fetchImpl: async () => {
+          upstreamFetchCount += 1;
+          throw new Error("Graph endpoint must not be called");
+        },
+        tenantId: "writer",
+      }),
+      {
+        clock: () => new Date("2026-07-29T18:25:00.000Z"),
+        timeoutSignal: () => new AbortController().signal,
+      },
+    );
+
+    const result = await service.answer({
+      requestKey: "T-ONE:C-ONE:thread-one:event-self",
+      text: "<@BOT> What can you tell me about yourself and your work today?",
+    });
+
+    assert.equal(result.pending.execution_lane, "converse");
+    assert.equal(result.pending.outcome_state, "completed");
+    assert.equal(result.pending.verified, true);
+    assert.match(result.text, /verified cross-thread work log/u);
+    assert.equal(upstreamFetchCount, 0);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("empty threaded mentions request a question without invoking Cerebro", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
@@ -478,6 +530,7 @@ test("Cerebro ask returns after done without waiting for the SSE response to clo
 
   assert.deepEqual(result, {
     citationValidationPassed: true,
+    executionLane: "lookup",
     markdown: "Current evidence is verified.",
     safeRefusal: false,
     traceId: "trace-complete",
@@ -520,6 +573,7 @@ test("Cerebro ask ignores an error event sent after done", async () => {
 
   assert.deepEqual(result, {
     citationValidationPassed: true,
+    executionLane: "lookup",
     markdown: "Current evidence is verified.",
     safeRefusal: false,
     traceId: "trace-complete",
@@ -635,6 +689,7 @@ test("Rust Slack authority receives the tenant-bound question and binds its deci
       body = JSON.parse(String(init?.body));
       return Response.json({
         authorized: true,
+        execution_lane: "lookup",
         request_id: "C0B2VJDFJ5N:1753830794.123",
         schema_version: "slack-question-decision/v1",
         tenant_id: "writer",
@@ -651,6 +706,7 @@ test("Rust Slack authority receives the tenant-bound question and binds its deci
   });
 
   assert.equal(decision.authorized, true);
+  assert.equal(decision.execution_lane, "lookup");
   assert.deepEqual(body, {
     history: [{ content: "Which source?", role: "assistant" }],
     question: "Show connector health for Okta.",
@@ -658,6 +714,45 @@ test("Rust Slack authority receives the tenant-bound question and binds its deci
     schema_version: "slack-question-candidate/v1",
     tenant_id: "writer",
   });
+});
+
+test("Rust routes self status questions without calling the graph endpoint", async () => {
+  let upstreamFetchCount = 0;
+  const client = new CerebroAskClient({
+    answerAuthority: {
+      async authorizeQuestion(candidate) {
+        return {
+          answer: "I’m Cerebro. I don’t have a verified cross-thread work log in this request.",
+          authorized: true,
+          execution_lane: "converse",
+          request_id: candidate.request_id,
+          schema_version: "slack-question-decision/v1",
+          tenant_id: candidate.tenant_id,
+        };
+      },
+      async validate() {
+        throw new Error("answer validation must not run");
+      },
+    },
+    apiKey: "bound-at-runtime",
+    baseUrl: "https://cerebro.example.com",
+    fetchImpl: async () => {
+      upstreamFetchCount += 1;
+      throw new Error("Graph endpoint must not be called");
+    },
+    tenantId: "writer",
+  });
+
+  const result = await client.ask(
+    "C0B2VJDFJ5N:1753830794.124",
+    "What can you tell me about yourself and your work today?",
+    new AbortController().signal,
+  );
+
+  assert.equal(result.executionLane, "converse");
+  assert.match(result.markdown, /verified cross-thread work log/u);
+  assert.equal(result.citationValidationPassed, false);
+  assert.equal(upstreamFetchCount, 0);
 });
 
 test("Rust question rejection prevents a request to the Go compatibility endpoint", async () => {
@@ -763,6 +858,7 @@ test("Cerebro ask accepts a structured safe refusal without citations", async ()
     ),
     {
       citationValidationPassed: false,
+      executionLane: "lookup",
       markdown: "Narrow the request to one source or finding.",
       safeRefusal: true,
       traceId: "trace-safe-refusal",

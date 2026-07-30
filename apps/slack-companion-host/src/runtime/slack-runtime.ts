@@ -164,15 +164,16 @@ export class AssistantQuestionService {
     const openedAt = this.clock();
     const requestId = `slack-request-${digest(input.requestKey)}`;
     const currentRequest = normalizedSlackText(input.text);
-    const budget = this.host.enforceBudget({
-      execution_lane: "lookup",
-      planned_tool_call_count: 1,
-      selected_capability_count: 1,
-    });
     if (!currentRequest) {
+      const emptyBudget = this.host.enforceBudget({
+        execution_lane: "converse",
+        planned_tool_call_count: 0,
+        selected_capability_count: 0,
+      });
       return {
         pending: pendingOutcome({
-          budgetMs: budget.latency_budget_ms,
+          budgetMs: emptyBudget.latency_budget_ms,
+          executionLane: "converse",
           openedAt,
           outcomeState: "needs_user",
           requestId,
@@ -185,7 +186,74 @@ export class AssistantQuestionService {
       input.threadContext,
       input.scratchpadContext,
     );
+    let questionDecision;
+    try {
+      questionDecision = await this.askClient.authorizeQuestion(
+        input.requestKey,
+        currentRequest,
+        history,
+      );
+    } catch (error) {
+      const state = error instanceof CerebroAskError ? error.sourceState : "unauthorized";
+      const authorityBudget = this.host.enforceBudget({
+        execution_lane: "converse",
+        planned_tool_call_count: 0,
+        selected_capability_count: 0,
+      });
+      return {
+        pending: pendingOutcome({
+          budgetMs: authorityBudget.latency_budget_ms,
+          executionLane: "converse",
+          openedAt,
+          outcomeState: "blocked",
+          requestId,
+          verified: false,
+        }),
+        text: "Cerebro could not authorize this Slack request. Retry after the request authority is healthy.",
+        workingTurn: {
+          blocker: `Request authority was ${state.replaceAll("_", " ")}.`,
+          currentRequest,
+          outcome: "blocked",
+        },
+      };
+    }
+    if (questionDecision.execution_lane === "converse") {
+      const converseBudget = this.host.enforceBudget({
+        execution_lane: "converse",
+        planned_tool_call_count: 0,
+        selected_capability_count: 0,
+      });
+      const answer = await this.askClient.ask(
+        input.requestKey,
+        currentRequest,
+        this.timeoutSignal(converseBudget.latency_budget_ms),
+        history,
+        questionDecision,
+      );
+      const usefulAnswerAt = this.clock();
+      return {
+        pending: pendingOutcome({
+          budgetMs: converseBudget.latency_budget_ms,
+          executionLane: "converse",
+          openedAt,
+          outcomeState: "completed",
+          requestId,
+          usefulAnswerAt,
+          verified: true,
+        }),
+        text: boundedSlackText(answer.markdown),
+        workingTurn: {
+          currentRequest,
+          outcome: "completed",
+        },
+      };
+    }
 
+    const budget = this.host.enforceBudget({
+      execution_lane: "lookup",
+      planned_tool_call_count: 1,
+      selected_capability_count: 1,
+    });
     const observedAt = this.clock();
     const preflight = this.host.preflightInvocation(preflightInput(
       currentRequest,
@@ -230,12 +298,14 @@ export class AssistantQuestionService {
         currentRequest,
         this.timeoutSignal(Math.max(1, preflight.remaining_ms)),
         history,
+        questionDecision,
       );
       const usefulAnswerAt = this.clock();
       this.recordSourceResult(true, Math.max(0, usefulAnswerAt.getTime() - sourceStartedAt));
       return {
         pending: pendingOutcome({
           budgetMs: budget.latency_budget_ms,
+          executionLane: answer.executionLane,
           openedAt,
           outcomeState: "completed",
           requestId,
@@ -949,6 +1019,7 @@ function preflightInput(
 
 function pendingOutcome(input: {
   budgetMs: number;
+  executionLane?: "converse" | "lookup";
   openedAt: Date;
   outcomeState: PendingAssistantOutcome["outcome_state"];
   requestId: string;
@@ -956,7 +1027,7 @@ function pendingOutcome(input: {
   verified: boolean;
 }): Omit<PendingAssistantOutcome, "delivered_message_ts"> {
   return {
-    execution_lane: "lookup",
+    execution_lane: input.executionLane ?? "lookup",
     latency_budget_ms: input.budgetMs,
     negative_feedback_count: 0,
     opened_at: input.openedAt.toISOString(),

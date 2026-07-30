@@ -35,12 +35,22 @@ export interface SlackQuestionCandidate {
   tenant_id: string;
 }
 
-export interface SlackQuestionDecision {
-  authorized: true;
-  request_id: string;
-  schema_version: "slack-question-decision/v1";
-  tenant_id: string;
-}
+export type SlackQuestionDecision =
+  | {
+      answer: string;
+      authorized: true;
+      execution_lane: "converse";
+      request_id: string;
+      schema_version: "slack-question-decision/v1";
+      tenant_id: string;
+    }
+  | {
+      authorized: true;
+      execution_lane: "lookup";
+      request_id: string;
+      schema_version: "slack-question-decision/v1";
+      tenant_id: string;
+    };
 
 export interface SlackAnswerAuthorityPort {
   authorizeQuestion(candidate: SlackQuestionCandidate): Promise<SlackQuestionDecision>;
@@ -121,6 +131,17 @@ function validQuestionDecision(
   const decision = value as Record<string, unknown>;
   return decision.schema_version === "slack-question-decision/v1"
     && decision.authorized === true
+    && (
+      (
+        decision.execution_lane === "lookup"
+        && decision.answer === undefined
+      )
+      || (
+        decision.execution_lane === "converse"
+        && typeof decision.answer === "string"
+        && decision.answer.trim() !== ""
+      )
+    )
     && decision.request_id === candidate.request_id
     && decision.tenant_id === candidate.tenant_id;
 }

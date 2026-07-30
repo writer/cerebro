@@ -17,8 +17,8 @@ use axum::{
 };
 use cerebro_slack_authority::{
     AnswerAuthorityError, AnswerCandidate, AnswerDecision, AnswerDisposition,
-    QuestionAuthorityError, QuestionCandidate, QuestionDecision, QuestionPolicy,
-    authorize_question, validate_answer,
+    QuestionAuthorityError, QuestionCandidate, QuestionDecision, QuestionExecutionLane,
+    QuestionPolicy, authorize_question, validate_answer,
 };
 use serde::Serialize;
 
@@ -145,7 +145,16 @@ async fn authorize_question_route(
             runtime
                 .question_authorized_total
                 .fetch_add(1, Ordering::Relaxed);
-            log_question_decision(&runtime, "authorized", None, Some(&decision.request_id));
+            log_question_decision(
+                &runtime,
+                "authorized",
+                Some(match decision.execution_lane {
+                    QuestionExecutionLane::Converse => "converse",
+                    QuestionExecutionLane::Lookup => "lookup",
+                }),
+                None,
+                Some(&decision.request_id),
+            );
             Ok(Json(decision))
         }
         Err(error) => {
@@ -155,6 +164,7 @@ async fn authorize_question_route(
             log_question_decision(
                 &runtime,
                 "rejected",
+                None,
                 Some(question_rejection_code(error)),
                 None,
             );
@@ -251,6 +261,7 @@ fn log_decision(
 fn log_question_decision(
     runtime: &AuthorityRuntime,
     outcome: &'static str,
+    execution_lane: Option<&'static str>,
     rejection_code: Option<&'static str>,
     request_id: Option<&str>,
 ) {
@@ -260,6 +271,7 @@ fn log_question_decision(
         serde_json::json!({
             "authority": "rust",
             "component": "slack-answer-authority",
+            "execution_lane": execution_lane,
             "operation": "question_authorize",
             "outcome": outcome,
             "question_authorized_total": status.question_authorized_total,
@@ -430,6 +442,47 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(authorized.status(), StatusCode::OK);
+        let authorized_body: Value = serde_json::from_slice(
+            &to_bytes(authorized.into_body(), MAX_REQUEST_BYTES)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(authorized_body["execution_lane"], "lookup");
+        assert!(authorized_body.get("answer").is_none());
+
+        let conversational = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/questions/authorize")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{
+                          "schema_version":"slack-question-candidate/v1",
+                          "tenant_id":"writer-sec-dev",
+                          "request_id":"C0B2VJDFJ5N:1753830794.124",
+                          "question":"What can you tell me about yourself and your work today?",
+                          "history":[]
+                        }"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(conversational.status(), StatusCode::OK);
+        let conversational_body: Value = serde_json::from_slice(
+            &to_bytes(conversational.into_body(), MAX_REQUEST_BYTES)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(conversational_body["execution_lane"], "converse");
+        assert!(
+            conversational_body["answer"]
+                .as_str()
+                .unwrap()
+                .contains("verified cross-thread work log")
+        );
 
         let rejected = app
             .clone()
@@ -461,8 +514,8 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        assert_eq!(body["question_authorized_total"], 1);
+        assert_eq!(body["question_authorized_total"], 2);
         assert_eq!(body["question_rejected_total"], 1);
-        assert_eq!(body["requests_total"], 2);
+        assert_eq!(body["requests_total"], 3);
     }
 }

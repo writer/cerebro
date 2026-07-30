@@ -22,6 +22,7 @@ const testAnswerAuthority: SlackAnswerAuthorityPort = {
   async authorizeQuestion(candidate) {
     return {
       authorized: true,
+      execution_lane: "lookup",
       request_id: candidate.request_id,
       schema_version: "slack-question-decision/v1",
       tenant_id: candidate.tenant_id,
