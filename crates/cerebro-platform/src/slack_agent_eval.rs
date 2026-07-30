@@ -20,7 +20,7 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 use super::slack_agent::ConfiguredModel;
 
 const SCHEMA_VERSION: &str = "cerebro-rust-slack-agent-hillclimb/v1";
-const EXPECTED_CASES_PER_PARTITION: usize = 8;
+const EXPECTED_CASES_PER_PARTITION: usize = 9;
 const MAX_P95_CASE_LATENCY_MS: u128 = 60_000;
 
 #[derive(Clone, Copy)]
@@ -537,6 +537,16 @@ fn eval_cases() -> Vec<EvalCase> {
             false_converse: true,
         },
         EvalCase {
+            case_ref: "case://held-out/informal-operational-check-in",
+            partition: "held_out",
+            message: "how we doin?",
+            history: "The user is checking the current state of Cerebro's security operations work.",
+            working_request: None,
+            expected_route: ExecutionLane::Investigate,
+            expected_lane: ExecutionLane::Investigate,
+            false_converse: true,
+        },
+        EvalCase {
             case_ref: "case://held-out/diagnose-source",
             partition: "held_out",
             message: "Figure out why the connector keeps failing end to end.",
@@ -614,6 +624,16 @@ fn eval_cases() -> Vec<EvalCase> {
             working_request: None,
             expected_route: ExecutionLane::Lookup,
             expected_lane: ExecutionLane::Lookup,
+            false_converse: true,
+        },
+        EvalCase {
+            case_ref: "case://shadow/informal-operational-check-in",
+            partition: "shadow",
+            message: "How are things looking?",
+            history: "The user is asking the agent for a current operational check-in.",
+            working_request: None,
+            expected_route: ExecutionLane::Investigate,
+            expected_lane: ExecutionLane::Investigate,
             false_converse: true,
         },
         EvalCase {
@@ -733,7 +753,11 @@ mod tests {
 
     #[test]
     fn accepted_route_uses_the_repaired_router_decision() {
-        let original_request = eval_request(0, eval_cases()[3], "2026-07-30T00:00:00Z");
+        let resume_case = eval_cases()
+            .into_iter()
+            .find(|case| case.case_ref == "case://held-out/resume-newest")
+            .unwrap();
+        let original_request = eval_request(0, resume_case, "2026-07-30T00:00:00Z");
         let original_context = RouteContext::from_request(&original_request);
         let resumed_context = RouteContext {
             message: "Investigate the newest connector failure.".into(),
