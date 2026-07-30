@@ -102,11 +102,20 @@ same redaction and expiry policy as saved notes.
 
 ### Working-state hillclimb
 
-`npm run eval:hillclimb` replays the prior no-state policy and the working-state
-candidate against the same public-safe corpus. The corpus has separate held-out
-and shadow partitions and includes continuation, repeated retry, expiry, and
+`npm run --silent eval:hillclimb` runs offline and emits only its JSON receipt.
+It builds locally, starts the evaluator
+with Node's permission boundary, grants read access only to the package, and
+denies network access, child processes, workers, native addons, and filesystem
+writes. A runtime guard covers Node versions whose permission model does not
+deny network access directly. The command probes fetch, DNS, TCP, TLS, HTTP,
+HTTP/2, datagram, and child-process access before loading the corpus or
+candidate, then records the result in `offline_execution`.
+
+The evaluator replays the prior no-state policy and the working-state candidate
+against the same public-safe corpus. The corpus has separate held-out and shadow
+partitions and includes continuation, repeated retry, expiry, and
 bounded-eviction cases. The command prints a machine-readable receipt and exits
-non-zero unless the candidate:
+non-zero unless the offline boundary is active and the candidate:
 
 - satisfies the required, forbidden, and authority-labelling state contract for
   every case (semantic state correctness);

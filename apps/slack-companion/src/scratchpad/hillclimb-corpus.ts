@@ -170,6 +170,22 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
       ]),
       schema_version: "slack-working-state-eval-case/v1",
     }),
+    Object.freeze({
+      case_ref: "case://held-out/self-status-follow-up",
+      current_request: "What else can you verify?",
+      evidence_context: Object.freeze(["your work today"]),
+      forbidden_context: Object.freeze([]),
+      partition: "held_out",
+      prior_turns: Object.freeze([Object.freeze({
+        outcome: "completed" as const,
+        request: "what can you tell me about yourself and your work today?",
+      })]),
+      required_context: Object.freeze([
+        "what can you tell me about yourself and your work today?",
+        "Last outcome: completed.",
+      ]),
+      schema_version: "slack-working-state-eval-case/v1",
+    }),
     continuationCase(
       "case://shadow/ranked-actions",
       "shadow",
@@ -300,6 +316,22 @@ export const SLACK_WORKING_STATE_HILLCLIMB_CORPUS: readonly SlackWorkingStateEva
         "Trace current sequence one.",
         "Trace current sequence two.",
         "Trace current sequence three.",
+      ]),
+      schema_version: "slack-working-state-eval-case/v1",
+    }),
+    Object.freeze({
+      case_ref: "case://shadow/self-status-follow-up",
+      current_request: "Continue with only what you can support.",
+      evidence_context: Object.freeze(["work you can verify from today"]),
+      forbidden_context: Object.freeze([]),
+      partition: "shadow",
+      prior_turns: Object.freeze([Object.freeze({
+        outcome: "completed" as const,
+        request: "Describe your role and the work you can verify from today.",
+      })]),
+      required_context: Object.freeze([
+        "Describe your role and the work you can verify from today.",
+        "Last outcome: completed.",
       ]),
       schema_version: "slack-working-state-eval-case/v1",
     }),
