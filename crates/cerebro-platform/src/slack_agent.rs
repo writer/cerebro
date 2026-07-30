@@ -680,7 +680,7 @@ fn route_instructions() -> &'static str {
 Lane contract:
 - converse: pure conversation, timeless explanation, or non-operational self-description that needs no current system or work evidence.
 - continue: the newest request asks to resume the exact durable mission in working_state. It requires a mission_ref. Do not use it for a new request.
-- lookup: a bounded current-fact or isolation-boundary question answerable with a small number of observations.
+- lookup: a bounded current-fact or isolation-boundary question answerable with a small number of observations. A request for one tenant-scoped graph search is lookup when it does not ask for diagnosis, synthesis, or broad discovery.
 - investigate: diagnosis, comparison, broad discovery, or current work/status synthesis requiring multiple observations.
 - act: an explicit request to change external state, then verify the result.
 

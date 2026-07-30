@@ -94,11 +94,40 @@ struct EvalGoal {
 
 struct MeasuredModel {
     inner: Arc<ConfiguredModel>,
-    routes: Mutex<Vec<ExecutionLane>>,
+    routes: Mutex<Vec<RouteMeasurement>>,
     route_attempts: Mutex<usize>,
     operating_steps: Mutex<usize>,
     critic_attempts: Mutex<usize>,
     operating_repair_feedback: Mutex<Vec<Vec<String>>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RouteContext {
+    message: String,
+    mission_ref: Option<String>,
+    current_request: Option<String>,
+}
+
+impl RouteContext {
+    fn from_request(request: &AgentTurnRequest) -> Self {
+        Self {
+            message: request.message.clone(),
+            mission_ref: request
+                .working_state
+                .as_ref()
+                .and_then(|state| state.mission_ref.clone()),
+            current_request: request
+                .working_state
+                .as_ref()
+                .map(|state| state.current_request.clone()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RouteMeasurement {
+    context: RouteContext,
+    lane: ExecutionLane,
 }
 
 impl MeasuredModel {
@@ -118,11 +147,15 @@ impl MeasuredModel {
 impl AgentModel for MeasuredModel {
     async fn route(&self, turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
         *self.route_attempts.lock().expect("route counter poisoned") += 1;
+        let context = RouteContext::from_request(&turn.request);
         let decision = self.inner.route(turn).await?;
         self.routes
             .lock()
             .expect("route receipt poisoned")
-            .push(decision.lane);
+            .push(RouteMeasurement {
+                context,
+                lane: decision.lane,
+            });
         Ok(decision)
     }
 
@@ -257,6 +290,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     for (index, eval_case) in eval_cases().into_iter().enumerate() {
         let measured = MeasuredModel::new(model.clone());
         let request = eval_request(index, eval_case, &evaluated_at_text);
+        let original_route_context = RouteContext::from_request(&request);
         let started = Instant::now();
         let outcome = tokio::time::timeout(
             std::time::Duration::from_secs(180),
@@ -269,7 +303,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
             .lock()
             .expect("route receipt poisoned")
             .clone();
-        let actual_route = routes.first().copied();
+        let actual_route = accepted_route(&routes, &original_route_context);
         let (actual_lane, terminal_state, loop_completed) = match outcome {
             Ok(Ok(AgentTurnOutcome::Delivered {
                 lane, final_state, ..
@@ -645,6 +679,17 @@ fn eval_cases() -> Vec<EvalCase> {
     ]
 }
 
+fn accepted_route(
+    routes: &[RouteMeasurement],
+    original_context: &RouteContext,
+) -> Option<ExecutionLane> {
+    routes
+        .iter()
+        .rev()
+        .find(|route| &route.context == original_context)
+        .map(|route| route.lane)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -684,5 +729,40 @@ mod tests {
     fn hosted_command_rejects_a_non_exact_commit() {
         assert!(validate_commit_sha("not-a-sha").is_err());
         assert!(validate_commit_sha(&"a".repeat(40)).is_ok());
+    }
+
+    #[test]
+    fn accepted_route_uses_the_repaired_router_decision() {
+        let original_request = eval_request(0, eval_cases()[3], "2026-07-30T00:00:00Z");
+        let original_context = RouteContext::from_request(&original_request);
+        let resumed_context = RouteContext {
+            message: "Investigate the newest connector failure.".into(),
+            mission_ref: None,
+            current_request: None,
+        };
+        assert_eq!(
+            accepted_route(
+                &[
+                    RouteMeasurement {
+                        context: original_context.clone(),
+                        lane: ExecutionLane::Converse,
+                    },
+                    RouteMeasurement {
+                        context: original_context,
+                        lane: ExecutionLane::Continue,
+                    },
+                    RouteMeasurement {
+                        context: resumed_context,
+                        lane: ExecutionLane::Investigate,
+                    },
+                ],
+                &RouteContext::from_request(&original_request),
+            ),
+            Some(ExecutionLane::Continue)
+        );
+        assert_eq!(
+            accepted_route(&[], &RouteContext::from_request(&original_request)),
+            None
+        );
     }
 }
