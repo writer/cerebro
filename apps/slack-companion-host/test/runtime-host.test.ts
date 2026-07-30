@@ -9,6 +9,7 @@ import { loadSlackRuntimeConfig, SlackRuntimeConfigError } from "../src/runtime/
 import { FileOutcomeStore } from "../src/runtime/outcome-store.js";
 import {
   SlackAnswerAuthorityClient,
+  SlackAnswerAuthorityError,
   type SlackAnswerAuthorityPort,
 } from "../src/runtime/slack-answer-authority-client.js";
 import {
@@ -1277,6 +1278,79 @@ test("a structured safe refusal does not open the source failure cooldown", asyn
     assert.equal(first.verifiedTurn, undefined);
     assert.equal(second.pending.outcome_state, "completed");
     assert.match(second.text, /Narrow the request/u);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("an answer rejected for missing evidence does not mark the graph unavailable", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
+  try {
+    let fetchCount = 0;
+    const service = new AssistantQuestionService(
+      createAssistantTurnHost(new FileOutcomeStore(root)),
+      new CerebroAskClient({
+        answerAuthority: {
+          async authorizeQuestion(candidate) {
+            return {
+              authorized: true,
+              execution_lane: "lookup",
+              request_id: candidate.request_id,
+              schema_version: "slack-question-decision/v1",
+              tenant_id: candidate.tenant_id,
+            };
+          },
+          async validate() {
+            throw new SlackAnswerAuthorityError(
+              "Rust Slack answer authority rejected the candidate with status 422.",
+              true,
+            );
+          },
+        },
+        apiKey: "bound-at-runtime",
+        baseUrl: "https://cerebro.example.com",
+        fetchImpl: async () => {
+          fetchCount += 1;
+          return sseResponse([
+            ["summary", {
+              citation_validation: {
+                ok: false,
+                referenced_urn_count: 0,
+                row_urn_count: 0,
+              },
+              markdown: "Vanta is connected.",
+            }],
+            ["done", { trace_id: `trace-rejected-${fetchCount}` }],
+          ]);
+        },
+        tenantId: "writer",
+      }),
+      {
+        clock: () => new Date("2026-07-30T14:33:00.000Z"),
+        timeoutSignal: () => new AbortController().signal,
+      },
+    );
+
+    const first = await service.answer({
+      actorRef: "slack-user:U-ONE",
+      requestKey: "rejected-answer-one",
+      text: "What visibility or access do you have to Vanta?",
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+    });
+    const second = await service.answer({
+      actorRef: "slack-user:U-ONE",
+      requestKey: "rejected-answer-two",
+      text: "Retry the Vanta lookup.",
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+    });
+
+    assert.equal(fetchCount, 2);
+    assert.equal(first.pending.outcome_state, "blocked");
+    assert.match(first.text, /answer without source evidence/u);
+    assert.match(first.text, /connector status, last successful collection receipt/u);
+    assert.doesNotMatch(first.text, /graph evidence|source health/u);
+    assert.doesNotMatch(first.text, /Vanta is connected/u);
+    assert.match(second.text, /Current evidence was not verified/u);
   } finally {
     await rm(root, { force: true, recursive: true });
   }

@@ -7,6 +7,7 @@ mod parity_command;
 mod rpc;
 mod slack_agent;
 mod slack_agent_eval;
+mod slack_agent_mcp;
 mod slack_authority;
 
 use std::{

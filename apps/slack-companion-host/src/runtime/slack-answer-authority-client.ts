@@ -63,7 +63,10 @@ export interface SlackAnswerAuthorityClientOptions {
 }
 
 export class SlackAnswerAuthorityError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly candidateRejected = false,
+  ) {
     super(message);
     this.name = "SlackAnswerAuthorityError";
   }
@@ -97,6 +100,7 @@ export class SlackAnswerAuthorityClient implements SlackAnswerAuthorityPort {
     if (!response.ok) {
       throw new SlackAnswerAuthorityError(
         `Rust Slack answer authority rejected the candidate with status ${response.status}.`,
+        response.status === 422,
       );
     }
     const decision: unknown = await response.json().catch(() => undefined);

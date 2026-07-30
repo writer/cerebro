@@ -28,6 +28,7 @@ import {
   type AssistantTurnSourceHealthSnapshot,
 } from "../assistant-turn.js";
 import {
+  CerebroAnswerRejectedError,
   CerebroAskClient,
   CerebroAskError,
   type CerebroAskHistoryMessage,
@@ -264,7 +265,7 @@ export class AssistantQuestionService {
             requestId,
             verified: false,
           }),
-          text: `The Rust agent runtime is ${state.replaceAll("_", " ")}. No current answer is available.`,
+          text: agentRuntimeFailureText(state),
           workingTurn: {
             blocker: `Rust agent runtime was ${state.replaceAll("_", " ")}.`,
             currentRequest,
@@ -415,6 +416,30 @@ export class AssistantQuestionService {
           : {}),
       };
     } catch (error) {
+      if (error instanceof CerebroAnswerRejectedError) {
+        this.recordSourceResult(true, Math.max(0, this.clock().getTime() - observedAt.getTime()));
+        return {
+          pending: pendingOutcome({
+            budgetMs: budget.latency_budget_ms,
+            openedAt,
+            outcomeState: "blocked",
+            requestId,
+            verified: false,
+          }),
+          text: [
+            "**Current evidence was not verified**",
+            "",
+            "Cerebro returned an answer without source evidence, so I did not present it as fact.",
+            "",
+            "Next action: run a fresh lookup for this named source's connector status, last successful collection receipt, and accessible record types.",
+          ].join("\n"),
+          workingTurn: {
+            blocker: "The answer did not include source evidence.",
+            currentRequest,
+            outcome: "blocked",
+          },
+        };
+      }
       this.recordSourceResult(false, Math.max(0, this.clock().getTime() - observedAt.getTime()));
       const state = error instanceof CerebroAskError ? error.sourceState : "unavailable";
       const output = this.host.buildEvidenceFallback({
@@ -1392,6 +1417,30 @@ function sourceRecoveryAction(state: CerebroAskError["sourceState"]): string {
     case "unavailable":
       return "Retry after the Cerebro source health check passes.";
   }
+}
+
+function agentRuntimeFailureText(state: CerebroAskError["sourceState"]): string {
+  const details: Record<CerebroAskError["sourceState"], string> = {
+    not_configured:
+      "My live operating tools are not configured in this Slack environment.",
+    not_found:
+      "The live operating endpoint was not found in this Slack environment.",
+    timed_out:
+      "I did not finish the current evidence check before its deadline.",
+    unauthorized:
+      "My live operating tools rejected the current read binding.",
+    unavailable:
+      "I cannot reach my live operating tools right now.",
+  };
+  return [
+    "**Live check blocked**",
+    "",
+    details[state],
+    "",
+    "I can still use this thread's context, answer general security questions, explain what I would check, and retain the request. I will not claim current system state until a live observation succeeds.",
+    "",
+    "Next action: resume this retained request when the operating runtime is healthy; you do not need to restate it.",
+  ].join("\n");
 }
 
 function digest(value: string): string {

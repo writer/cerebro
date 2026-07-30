@@ -38,6 +38,13 @@ export class CerebroAskError extends Error {
   }
 }
 
+export class CerebroAnswerRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CerebroAnswerRejectedError";
+  }
+}
+
 export class CerebroAskClient {
   private readonly fetchImpl: typeof fetch;
 
@@ -246,6 +253,9 @@ export class CerebroAskClient {
         trace_id: traceId,
       });
     } catch (error: unknown) {
+      if (error instanceof SlackAnswerAuthorityError && error.candidateRejected) {
+        throw new CerebroAnswerRejectedError(error.message);
+      }
       throw new CerebroAskError("unavailable", errorMessage(error));
     }
     return {
@@ -430,6 +440,7 @@ function isAbortError(value: unknown): boolean {
   return value instanceof DOMException && (value.name === "AbortError" || value.name === "TimeoutError");
 }
 import {
+  SlackAnswerAuthorityError,
   type SlackAnswerAuthorityPort,
   type SlackAnswerCandidate,
   type SlackQuestionDecision,

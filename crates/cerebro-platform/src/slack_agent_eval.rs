@@ -20,7 +20,7 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 use super::slack_agent::ConfiguredModel;
 
 const SCHEMA_VERSION: &str = "cerebro-rust-slack-agent-hillclimb/v1";
-const EXPECTED_CASES_PER_PARTITION: usize = 10;
+const EXPECTED_CASES_PER_PARTITION: usize = 14;
 const MAX_P95_CASE_LATENCY_MS: u128 = 60_000;
 
 #[derive(Clone, Copy)]
@@ -192,7 +192,17 @@ impl AgentTools for EvalTools {
     fn catalog(&self) -> Vec<ToolDescriptor> {
         vec![
             descriptor(
+                "capability.overview",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            descriptor(
                 "source_runtime.inspect",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            descriptor(
+                "source_catalog.inspect",
                 ToolAuthorityClass::Observe,
                 ToolEffectClass::Read,
             ),
@@ -204,6 +214,41 @@ impl AgentTools for EvalTools {
             descriptor(
                 "graph.expand",
                 ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            descriptor(
+                "mcp.cerebro.findings.search",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            descriptor(
+                "mcp.cerebro.assets.search",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            descriptor(
+                "mcp.cerebro.investigation.context",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            descriptor(
+                "mcp.cerebro.risk.explain",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            descriptor(
+                "mcp.cerebro.evidence.packet",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            descriptor(
+                "mcp.cerebro.sources.health",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            descriptor(
+                "mcp.cerebro.action.plan",
+                ToolAuthorityClass::Propose,
                 ToolEffectClass::Read,
             ),
             descriptor(
@@ -434,10 +479,14 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     let p95_latency_ms = percentile_95(&latencies);
     let mut blockers = Vec::new();
     if held_out_case_count < EXPECTED_CASES_PER_PARTITION {
-        blockers.push("held-out partition has fewer than ten cases".into());
+        blockers.push(format!(
+            "held-out partition has fewer than {EXPECTED_CASES_PER_PARTITION} cases"
+        ));
     }
     if shadow_case_count < EXPECTED_CASES_PER_PARTITION {
-        blockers.push("shadow partition has fewer than ten cases".into());
+        blockers.push(format!(
+            "shadow partition has fewer than {EXPECTED_CASES_PER_PARTITION} cases"
+        ));
     }
     if route_accuracy < 1.0 {
         blockers.push("semantic route accuracy is below 100%".into());
@@ -579,6 +628,46 @@ fn eval_cases() -> Vec<EvalCase> {
             false_converse: true,
         },
         EvalCase {
+            case_ref: "case://held-out/source-visibility",
+            partition: "held_out",
+            message: "What visibility or access, if any, do you have to Vanta?",
+            history: "The user wants the agent to distinguish declared connector capabilities from live access and collected evidence.",
+            working_request: None,
+            expected_route: ExecutionLane::Lookup,
+            expected_lane: ExecutionLane::Lookup,
+            false_converse: true,
+        },
+        EvalCase {
+            case_ref: "case://held-out/current-capabilities",
+            partition: "held_out",
+            message: "What can you actually do in this Slack environment right now?",
+            history: "The user is asking for the currently bound capability surface, not a generic product description.",
+            working_request: None,
+            expected_route: ExecutionLane::Lookup,
+            expected_lane: ExecutionLane::Lookup,
+            false_converse: true,
+        },
+        EvalCase {
+            case_ref: "case://held-out/finding-triage",
+            partition: "held_out",
+            message: "Triage the highest-risk open finding and explain the supporting evidence.",
+            history: "Finding search, investigation context, and risk explanation tools are available.",
+            working_request: None,
+            expected_route: ExecutionLane::Investigate,
+            expected_lane: ExecutionLane::Investigate,
+            false_converse: true,
+        },
+        EvalCase {
+            case_ref: "case://held-out/remediation-plan",
+            partition: "held_out",
+            message: "Build a remediation plan for the current critical findings, but do not execute changes.",
+            history: "The action planning capability is read-only and stops at a proposal.",
+            working_request: None,
+            expected_route: ExecutionLane::Investigate,
+            expected_lane: ExecutionLane::Investigate,
+            false_converse: true,
+        },
+        EvalCase {
             case_ref: "case://held-out/informal-operational-check-in",
             partition: "held_out",
             message: "how we doin?",
@@ -676,6 +765,46 @@ fn eval_cases() -> Vec<EvalCase> {
             working_request: None,
             expected_route: ExecutionLane::Lookup,
             expected_lane: ExecutionLane::Lookup,
+            false_converse: true,
+        },
+        EvalCase {
+            case_ref: "case://shadow/source-access-boundary",
+            partition: "shadow",
+            message: "Tell me exactly what the Okta connector can read and what evidence is actually available now.",
+            history: "Catalog support, live connector state, and collected graph evidence are separate authority boundaries.",
+            working_request: None,
+            expected_route: ExecutionLane::Lookup,
+            expected_lane: ExecutionLane::Lookup,
+            false_converse: true,
+        },
+        EvalCase {
+            case_ref: "case://shadow/bound-tool-inventory",
+            partition: "shadow",
+            message: "Which live tools are connected for you here?",
+            history: "The answer requires the current capability registry.",
+            working_request: None,
+            expected_route: ExecutionLane::Lookup,
+            expected_lane: ExecutionLane::Lookup,
+            false_converse: true,
+        },
+        EvalCase {
+            case_ref: "case://shadow/asset-evidence-investigation",
+            partition: "shadow",
+            message: "Find the exposed production asset and assemble the evidence packet that supports the risk.",
+            history: "Asset search, evidence packet, and risk tools are bound.",
+            working_request: None,
+            expected_route: ExecutionLane::Investigate,
+            expected_lane: ExecutionLane::Investigate,
+            false_converse: true,
+        },
+        EvalCase {
+            case_ref: "case://shadow/risk-action-candidates",
+            partition: "shadow",
+            message: "Recommend bounded next actions for the current risk without changing external state.",
+            history: "The available action planning tool produces proposals only.",
+            working_request: None,
+            expected_route: ExecutionLane::Investigate,
+            expected_lane: ExecutionLane::Investigate,
             false_converse: true,
         },
         EvalCase {
