@@ -77,5 +77,13 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_ORGANIZATIONAL_GRAPH_CANARY_VERIFY_PERCENT` | `0` | Stable percentage from 0 through 100 of Rust-authority canary reads also compared with Go. Verification uses bounded background work, records parity evidence, and never delays or changes authority. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET` | unset | Shared secret used to sign tenant-bound requests to the Rust organizational graph service. Required with any Rust graph origin; minimum 32 bytes. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT` | `1s` | Timeout for Rust organizational graph reads and projection-authority requests. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_MODE` | `forward` | `forward` for durable projection or `replay` for a bounded retained-history run. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_NAME` | `organizational-graph-v1` | Durable JetStream consumer identity. Replay requires a distinct explicit name. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_RUN_ID` | mode-specific | Stable PostgreSQL receipt identity reused across bounded invocations. Replay requires it. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY` | `new` | `new`, `all`, or `by_start_sequence`; replay rejects `new` and forward rejects `all`. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_START_SEQUENCE` | unset | Positive stream sequence required by `by_start_sequence`. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_END_SEQUENCE` | captured stream head | Immutable replay upper fence; rejected in forward mode. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_MAX_MESSAGES` | `100000` | Replay messages processed per invocation before a resumable stopped receipt. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_MAX_RUNTIME_SECONDS` | `3600` | Replay seconds per invocation before a resumable stopped receipt. |
 
 `CEREBRO_KUZU_PATH` is rejected. Kuzu is no longer a supported graph backend.

@@ -278,8 +278,13 @@ Use managed Postgres or an operationally equivalent deployment for shared enviro
 | `CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET` | Secret used to sign tenant-bound graph requests. Required with any Rust graph origin and must be at least 32 bytes. |
 | `CEREBRO_ORGANIZATIONAL_GRAPH_TIMEOUT` | Rust graph request timeout. Defaults to `1s`. |
 | `CEREBRO_ORGANIZATIONAL_CONSUMER_NAME` | Durable JetStream consumer identity. Replay and rebuild modes require a new explicit name. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_MODE` | `forward` for the durable handoff consumer or `replay` for a bounded retained-history run. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_RUN_ID` | Stable receipt identity. Reuse it with the same durable name across bounded replay invocations. |
 | `CEREBRO_ORGANIZATIONAL_CONSUMER_DELIVER_POLICY` | `new` for forward processing, `all` for a complete retained-history rebuild, or `by_start_sequence` for a fenced handoff. |
 | `CEREBRO_ORGANIZATIONAL_CONSUMER_START_SEQUENCE` | Positive JetStream stream sequence required by `by_start_sequence`. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_END_SEQUENCE` | Optional immutable replay upper fence. Capture it with `inspect-append-log`; forward mode rejects it. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_MAX_MESSAGES` | Per-invocation replay safety bound. Defaults to `100000`; cumulative run progress survives a bounded stop. |
+| `CEREBRO_ORGANIZATIONAL_CONSUMER_MAX_RUNTIME_SECONDS` | Per-invocation replay time bound. Defaults to `3600`; cumulative run progress survives a bounded stop. |
 
 Monitor graph ingest health, query latency, index health, and storage growth. Keep graph credentials scoped to the required database.
 
