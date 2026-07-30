@@ -1,4 +1,4 @@
-use std::{env, error::Error, sync::Arc, time::Duration as StdDuration};
+use std::{env, error::Error, future::Future, sync::Arc, time::Duration as StdDuration};
 
 use async_trait::async_trait;
 use aws_config::BehaviorVersion;
@@ -28,6 +28,8 @@ const MAX_MODEL_RESPONSE_BYTES: usize = 256 * 1024;
 const MAX_GRAPH_LIMIT: usize = 25;
 const MAX_GRAPH_DEPTH: usize = 3;
 const MAX_RUNTIME_LIMIT: usize = 25;
+const STARTUP_ATTEMPTS: usize = 5;
+const STARTUP_RETRY_DELAY: StdDuration = StdDuration::from_millis(250);
 
 pub struct SlackAgentService {
     model: Arc<dyn AgentModel>,
@@ -40,6 +42,14 @@ impl SlackAgentService {
         if !enabled(&env::var("CEREBRO_SLACK_AGENT_ENABLED").unwrap_or_default()) {
             return Ok(None);
         }
+        let service = retry_startup(STARTUP_ATTEMPTS, STARTUP_RETRY_DELAY, || {
+            Self::initialize(tenant_id.clone())
+        })
+        .await?;
+        Ok(Some(service))
+    }
+
+    async fn initialize(tenant_id: String) -> Result<Self, Box<dyn Error>> {
         let graph = Neo4jProjector::connect(
             &required_env("CEREBRO_NEO4J_URI")?,
             &required_env("CEREBRO_NEO4J_USERNAME")?,
@@ -49,14 +59,14 @@ impl SlackAgentService {
         graph.health().await?;
         let ledger = PostgresLedger::connect_tls(&required_env("CEREBRO_POSTGRES_DSN")?).await?;
         let model = ConfiguredModel::from_env().await?;
-        Ok(Some(Self {
+        Ok(Self {
             model: Arc::new(model),
             tools: Arc::new(PlatformAgentTools {
                 graph: Arc::new(graph),
                 ledger: Arc::new(ledger),
             }),
             tenant_id,
-        }))
+        })
     }
 
     pub async fn run(
@@ -81,6 +91,26 @@ impl SlackAgentService {
         .await
         .map_err(|_| AgentRuntimeError::ModelUnavailable("turn deadline exceeded".into()))?
     }
+}
+
+async fn retry_startup<T, E, F, Fut>(
+    attempts: usize,
+    retry_delay: StdDuration,
+    mut operation: F,
+) -> Result<T, E>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, E>>,
+{
+    assert!(attempts > 0, "startup attempts must be greater than zero");
+    for attempt in 1..=attempts {
+        match operation().await {
+            Ok(value) => return Ok(value),
+            Err(error) if attempt == attempts => return Err(error),
+            Err(_) => tokio::time::sleep(retry_delay).await,
+        }
+    }
+    unreachable!("a positive attempt count must return from the retry loop")
 }
 
 enum ConfiguredModel {
@@ -820,6 +850,51 @@ fn required_env(name: &str) -> Result<String, Box<dyn Error>> {
 mod tests {
     use super::*;
     use cerebro_organizational_store::SourceRuntimeCollectionObservation;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[tokio::test]
+    async fn startup_recovers_from_transient_dependency_timeouts() {
+        let attempts = AtomicUsize::new(0);
+        let result = retry_startup(STARTUP_ATTEMPTS, StdDuration::ZERO, || {
+            let attempt = attempts.fetch_add(1, Ordering::Relaxed) + 1;
+            async move {
+                if attempt < STARTUP_ATTEMPTS {
+                    Err(ContextError::BackendUnavailable(format!(
+                        "transient failure {attempt}"
+                    )))
+                } else {
+                    Ok("ready")
+                }
+            }
+        })
+        .await;
+
+        assert_eq!(result.unwrap(), "ready");
+        assert_eq!(attempts.load(Ordering::Relaxed), STARTUP_ATTEMPTS);
+    }
+
+    #[tokio::test]
+    async fn startup_stops_after_the_bounded_retry_budget() {
+        let attempts = AtomicUsize::new(0);
+        let result: Result<(), ContextError> =
+            retry_startup(STARTUP_ATTEMPTS, StdDuration::ZERO, || {
+                let attempt = attempts.fetch_add(1, Ordering::Relaxed) + 1;
+                async move {
+                    Err(ContextError::BackendUnavailable(format!(
+                        "persistent failure {attempt}"
+                    )))
+                }
+            })
+            .await;
+
+        assert_eq!(
+            result,
+            Err(ContextError::BackendUnavailable(
+                "persistent failure 5".to_owned()
+            ))
+        );
+        assert_eq!(attempts.load(Ordering::Relaxed), STARTUP_ATTEMPTS);
+    }
 
     #[test]
     fn parses_a_structured_model_tool_decision() {
