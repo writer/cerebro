@@ -29,11 +29,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "npm run typecheck && npm test",
-    "eval:hillclimb": "npm run build --silent && node --permission --allow-fs-read=. dist/src/scratchpad/run-hillclimb-offline.js",
+    "eval:hillclimb": "npm run build --silent && node dist/src/scratchpad/run-hillclimb-bedrock.js",
+    "eval:hillclimb:structural": "npm run build --silent && node --permission --allow-fs-read=. dist/src/scratchpad/run-hillclimb-offline.js",
     "test": "npm run build && node --test dist/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1098.0",
     "@writer/cerebro-sdk": "0.1.0"
   },
   "devDependencies": {
