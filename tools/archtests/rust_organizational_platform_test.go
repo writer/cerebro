@@ -185,6 +185,24 @@ func TestRustOrganizationalPlatformBoundary(t *testing.T) {
 		}
 	}
 
+	goNeo4jStore := readText(t, filepath.Join(root, "internal/graphstore/neo4j/store.go"))
+	for _, forbidden := range []string{
+		"func (s *Store) GetEntityNeighborhood(",
+		"func (s *Store) GetEntityNeighborhoods(",
+	} {
+		if strings.Contains(goNeo4jStore, forbidden) {
+			t.Errorf("Go Neo4j store restored retired product-read authority %q", forbidden)
+		}
+	}
+	for _, retained := range []string{
+		"func (s *Store) ExecuteReadCypher(",
+		"func (s *Store) ExplainReadCypher(",
+	} {
+		if !strings.Contains(goNeo4jStore, retained) {
+			t.Errorf("Go Neo4j store removed raw-Cypher compatibility %q", retained)
+		}
+	}
+
 	replacementWorkflow := readText(t, filepath.Join(root, ".github/workflows/rust-graph-replacement.yml"))
 	for _, required := range []string{
 		"name: Rust-only persisted product read",

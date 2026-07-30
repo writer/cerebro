@@ -44,8 +44,8 @@ let workDir;
 let logDir;
 let failed = false;
 let backendProcess = null;
+let rustGraphProcess = null;
 let webProcess = null;
-let neo4jStopped = false;
 let postgresStarted = false;
 let neo4jStarted = false;
 let overallDeadlineAt = 0;
@@ -250,38 +250,71 @@ async function main(options) {
   const binarySuffix = process.platform === "win32" ? ".exe" : "";
   const apiBinary = path.join(workDir, `cerebro${binarySuffix}`);
   const eventAdmissionBinary = path.join(backendRoot, "target", "release", `cerebro-event-admission-worker${binarySuffix}`);
+  const rustGraphBinary = path.join(backendRoot, "target", "release", `cerebro-platform${binarySuffix}`);
+  const rustGraphSharedSecret = `grc-e2e-${randomBytes(32).toString("base64url")}`;
   const apiBuild = Promise.all([
     run("go", ["-C", backendRoot, "build", "-o", apiBinary, "./cmd/cerebro"], {
       env: portableChildEnvironment(),
       quiet: true,
     }),
-    run("cargo", ["build", "--locked", "--release", "-p", "cerebro-sourceruntime-eventadmission", "--bin", "cerebro-event-admission-worker"], {
+    run("cargo", [
+      "build", "--locked", "--release",
+      "-p", "cerebro-sourceruntime-eventadmission",
+      "-p", "cerebro-platform",
+      "--bins",
+    ], {
       cwd: backendRoot,
       env: portableChildEnvironment(),
       quiet: true,
     }),
   ]);
-  backendProcess = await startAfterPrerequisite(apiBuild, async () => {
-    const reservation = await reserveDistinctLoopbackPort(usedPorts, { control: activeRunControl });
-    apiPort = reservation.port;
-    usedPorts.add(apiPort);
-    apiBase = `http://127.0.0.1:${apiPort}`;
-    return handoffLoopbackReservation(reservation, () => spawnLogged("cerebro-api", apiBinary, ["serve"], {
+  await apiBuild;
+  const rustGraphReservation = await reserveDistinctLoopbackPort(usedPorts, { control: activeRunControl });
+  const rustGraphPort = rustGraphReservation.port;
+  usedPorts.add(rustGraphPort);
+  const rustGraphBase = `http://127.0.0.1:${rustGraphPort}`;
+  rustGraphProcess = await handoffLoopbackReservation(rustGraphReservation, () => spawnLogged(
+    "cerebro-rust-graph",
+    rustGraphBinary,
+    ["serve-neo4j-readonly"],
+    {
+      cwd: backendRoot,
       env: portableChildEnvironment(process.env, {
-        CEREBRO_HTTP_ADDR: `127.0.0.1:${apiPort}`,
-        CEREBRO_STATE_STORE_DRIVER: "postgres",
-        CEREBRO_POSTGRES_DSN: postgresDSN,
-        CEREBRO_GRAPH_STORE_DRIVER: "neo4j",
         CEREBRO_NEO4J_URI: neo4jURI,
         CEREBRO_NEO4J_USERNAME: neo4jUser,
         CEREBRO_NEO4J_PASSWORD: neo4jCredential,
-        CEREBRO_EVENT_ADMISSION_WORKER: eventAdmissionBinary,
-        CEREBRO_API_AUTH_ENABLED: "false",
-        CEREBRO_DEV_MODE: "1",
-        CEREBRO_DEV_MODE_ACK: "1",
+        CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: rustGraphSharedSecret,
+        CEREBRO_RUST_BIND: `127.0.0.1:${rustGraphPort}`,
       }),
-    }), activeRunControl, "Cerebro API spawn");
-  }, activeRunControl, "Cerebro API port reservation");
+    },
+  ), activeRunControl, "Rust graph spawn");
+  await waitFor("Rust graph readiness", async () => {
+    const readiness = await request(`${rustGraphBase}/readyz`);
+    expect(readiness.status === 200, `Rust graph readiness status ${readiness.status}`);
+  }, Math.min(120_000, remainingValidationMs()), rustGraphProcess);
+
+  const apiReservation = await reserveDistinctLoopbackPort(usedPorts, { control: activeRunControl });
+  apiPort = apiReservation.port;
+  usedPorts.add(apiPort);
+  apiBase = `http://127.0.0.1:${apiPort}`;
+  backendProcess = await handoffLoopbackReservation(apiReservation, () => spawnLogged("cerebro-api", apiBinary, ["serve"], {
+    env: portableChildEnvironment(process.env, {
+      CEREBRO_HTTP_ADDR: `127.0.0.1:${apiPort}`,
+      CEREBRO_STATE_STORE_DRIVER: "postgres",
+      CEREBRO_POSTGRES_DSN: postgresDSN,
+      CEREBRO_GRAPH_STORE_DRIVER: "neo4j",
+      CEREBRO_NEO4J_URI: neo4jURI,
+      CEREBRO_NEO4J_USERNAME: neo4jUser,
+      CEREBRO_NEO4J_PASSWORD: neo4jCredential,
+      CEREBRO_ORGANIZATIONAL_GRAPH_READ_URL: rustGraphBase,
+      CEREBRO_ORGANIZATIONAL_GRAPH_READ_MODE: "authority",
+      CEREBRO_ORGANIZATIONAL_GRAPH_SHARED_SECRET: rustGraphSharedSecret,
+      CEREBRO_EVENT_ADMISSION_WORKER: eventAdmissionBinary,
+      CEREBRO_API_AUTH_ENABLED: "false",
+      CEREBRO_DEV_MODE: "1",
+      CEREBRO_DEV_MODE_ACK: "1",
+    }),
+  }), activeRunControl, "Cerebro API spawn");
   await waitFor("Cerebro API readiness", async () => {
     const health = await requestJSON(`${apiBase}/health`);
     expect(health.status === 200, `health status ${health.status}`);
@@ -973,7 +1006,8 @@ async function validateFailureModes() {
   const warmDashboard = await requestJSON(staleDashboardUrl, proxyCacheProbeOptions);
   expect(warmDashboard.status === 200, `warm dashboard status ${warmDashboard.status}`);
   await abortableSleep(proxyCacheTtlMs + 500, activeRunControl?.signal, "proxy cache expiry");
-  await stopNeo4j();
+  await stopChild(rustGraphProcess);
+  rustGraphProcess = null;
   const staleImpact = await requestJSON(staleImpactUrl, proxyCacheProbeOptions);
   expect(staleImpact.status === 200, `stale impact status ${staleImpact.status}`);
   expect(staleImpact.headers.get("x-cerebro-cache") === "stale", `stale impact cache ${staleImpact.headers.get("x-cerebro-cache")}`);
@@ -989,16 +1023,6 @@ async function validateFailureModes() {
 
   const nonCacheableDown = await request(`${webBase}/api/cerebro/health`);
   expect(nonCacheableDown.status === 502, `non-cacheable backend-down status ${nonCacheableDown.status}`);
-}
-
-async function stopNeo4j() {
-  if (neo4jStopped || !neo4jStarted) return;
-  neo4jStopped = true;
-  await run("docker", ["stop", "--time", "5", neo4jContainer], {
-    deadlineAt: Math.min(overallDeadlineAt, Date.now() + 10_000),
-    quiet: true,
-  });
-  neo4jStarted = false;
 }
 
 async function stopChild(child) {
@@ -1134,6 +1158,11 @@ async function cleanup() {
   } catch (error) {
     errors.push(error);
   }
+  try {
+    await stopChild(rustGraphProcess);
+  } catch (error) {
+    errors.push(error);
+  }
   if (neo4jStarted) {
     try {
       await run("docker", ["rm", "-f", neo4jContainer], { deadlineAt: overallDeadlineAt, quiet: true, signal: null });
@@ -1203,13 +1232,13 @@ export async function runLocalGrcE2E(options = {}) {
   activeRunControl = createRunControl(validationDeadlineAt);
   failed = false;
   backendProcess = null;
+  rustGraphProcess = null;
   webProcess = null;
   delayRelay = null;
   workDir = undefined;
   logDir = undefined;
   apiBase = undefined;
   webBase = undefined;
-  neo4jStopped = false;
   postgresStarted = false;
   neo4jStarted = false;
 
