@@ -112,6 +112,48 @@ test("Slack uses the Rust agent turn endpoint without calling the legacy ask rou
   assert.equal(result.citationValidationPassed, true);
 });
 
+test("informal operational check-ins use the Rust agent instead of legacy Ask", async () => {
+  let request: Request | undefined;
+  const client = new CerebroAskClient({
+    agentRuntimeUrl: "http://127.0.0.1:8091",
+    answerAuthority: {
+      async authorizeQuestion() {
+        throw new Error("legacy question authorization must not run");
+      },
+      async validate() {
+        throw new Error("legacy answer validation must not run");
+      },
+    },
+    apiKey: "unused",
+    baseUrl: "https://legacy.example.com",
+    fetchImpl: async (input, init) => {
+      request = new Request(input, init);
+      return Response.json({
+        evidence_refs: ["evidence://runtime-overview"],
+        final_state: "answered",
+        lane: "investigate",
+        markdown: "Current runtime evidence is available.",
+        outcome: "delivered",
+        tool_call_count: 1,
+      });
+    },
+    tenantId: "writer",
+  });
+
+  const answer = await client.runAgentTurn({
+    actorRef: "slack-user://U-ONE",
+    assessmentAt: "2026-07-30T14:00:00Z",
+    question: "how we doin?",
+    requestId: "slack-request-status",
+    signal: new AbortController().signal,
+    threadRef: "slack-thread://T-ONE/C-ONE/one",
+  });
+
+  assert.equal(new URL(request?.url ?? "").pathname, "/v1/turns/run");
+  assert.equal(answer.executionLane, "investigate");
+  assert.equal(answer.markdown, "Current runtime evidence is available.");
+});
+
 test("Rust agent body timeout is reported as timed out", async () => {
   const controller = new AbortController();
   const response = Response.json({});
