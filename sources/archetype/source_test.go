@@ -80,6 +80,63 @@ func TestSourceReadEmitsScanAndVulnerabilityEvents(t *testing.T) {
 	}
 }
 
+func TestSourceReadScopesVulnerabilityEventIDsToScan(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/scans":
+			writeJSON(t, w, []map[string]any{
+				{"id": 2, "repository_id": 7, "status": "completed", "completed_at": "2026-06-17T12:06:00Z"},
+				{"id": 1, "repository_id": 7, "status": "completed", "completed_at": "2026-06-17T12:05:00Z"},
+			})
+		case "/api/v1/repositories":
+			writeJSON(t, w, []map[string]any{{"id": 7, "owner": "WriterInternal", "name": "Archetype"}})
+		case "/api/v1/scans/1/vulnerabilities":
+			writeJSON(t, w, []map[string]any{{"id": 1, "scan_id": 1, "severity": "high", "category": "ssrf", "file_path": "app/one.py"}})
+		case "/api/v1/scans/2/vulnerabilities":
+			writeJSON(t, w, []map[string]any{{"id": 1, "scan_id": 2, "severity": "high", "category": "ssrf", "file_path": "app/two.py"}})
+		case "/api/v1/repositories/7/knowledge":
+			writeJSON(t, w, map[string]any{"entries": []map[string]any{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+	})
+
+	readVulnerabilityIDs := func() []string {
+		pull, err := source.ReadWithCheckpoint(context.Background(), cfg, nil, nil)
+		if err != nil {
+			t.Fatalf("ReadWithCheckpoint() error = %v", err)
+		}
+		ids := make([]string, 0, 2)
+		for _, event := range pull.Events {
+			if event.GetKind() == "archetype.vulnerability" {
+				ids = append(ids, event.GetId())
+			}
+		}
+		return ids
+	}
+
+	first := readVulnerabilityIDs()
+	second := readVulnerabilityIDs()
+	want := []string{"archetype-vulnerability-1-1", "archetype-vulnerability-2-1"}
+	if len(first) != len(want) || first[0] != want[0] || first[1] != want[1] {
+		t.Fatalf("first vulnerability event ids = %q, want %q", first, want)
+	}
+	if len(second) != len(want) || second[0] != want[0] || second[1] != want[1] {
+		t.Fatalf("retry vulnerability event ids = %q, want %q", second, want)
+	}
+}
+
 func TestSourceReadPaginatesScansWithoutSkippingCheckpointRange(t *testing.T) {
 	var scanRequests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

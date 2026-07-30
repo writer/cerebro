@@ -39,13 +39,93 @@ func TestProjectArchetypeVulnerabilityLinksRepoScanAndFinding(t *testing.T) {
 	}
 	repoURN := "urn:cerebro:writer:github_code_repository:WriterInternal/Archetype"
 	scanURN := "urn:cerebro:writer:archetype_scan:1"
-	findingURN := "urn:cerebro:writer:archetype_finding:10"
+	findingURN := "urn:cerebro:writer:archetype_finding:1:10"
 	if entity := state.entities[findingURN]; entity == nil || entity.EntityType != "archetype.finding" {
 		t.Fatalf("finding entity missing: %#v", entity)
 	}
 	assertProjectedLink(t, state, findingURN, relationBelongsTo, scanURN)
 	assertProjectedLink(t, state, repoURN, relationHasEvidence, findingURN)
 	assertProjectedLink(t, state, findingURN, relationAffects, repoURN)
+}
+
+func TestProjectArchetypeVulnerabilityScopesFindingToScan(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	project := func(eventID string, scanID string) {
+		t.Helper()
+		_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+			Id:       eventID,
+			TenantId: "writer",
+			SourceId: "archetype",
+			Kind:     "archetype.vulnerability",
+			Attributes: map[string]string{
+				"vulnerability_id": "10",
+				"scan_id":          scanID,
+				"repository_id":    "7",
+				"owner":            "WriterInternal",
+				"repo":             "Archetype",
+				"severity":         "high",
+				"category":         "ssrf",
+				"file_path":        "app/main.py",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Project() error = %v", err)
+		}
+	}
+
+	project("archetype-vulnerability-1-10", "1")
+	project("archetype-vulnerability-1-10", "1")
+	project("archetype-vulnerability-2-10", "2")
+
+	firstURN := "urn:cerebro:writer:archetype_finding:1:10"
+	secondURN := "urn:cerebro:writer:archetype_finding:2:10"
+	if entity := state.entities[firstURN]; entity == nil || entity.Attributes["scan_id"] != "1" {
+		t.Fatalf("first scan finding entity missing: %#v", entity)
+	}
+	if entity := state.entities[secondURN]; entity == nil || entity.Attributes["scan_id"] != "2" {
+		t.Fatalf("second scan finding entity missing: %#v", entity)
+	}
+	findingCount := 0
+	for _, entity := range state.entities {
+		if entity.EntityType == "archetype.finding" {
+			findingCount++
+		}
+	}
+	if findingCount != 2 {
+		t.Fatalf("projected archetype finding entities = %d, want 2 after retry and second scan", findingCount)
+	}
+}
+
+func TestProjectArchetypeVulnerabilityCanonicalizesProviderIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	project := func(eventID string, scanID string, vulnerabilityID string) {
+		t.Helper()
+		_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+			Id:       eventID,
+			TenantId: "writer",
+			SourceId: "archetype",
+			Kind:     "archetype.vulnerability",
+			Attributes: map[string]string{
+				"vulnerability_id": vulnerabilityID,
+				"scan_id":          scanID,
+				"severity":         "high",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Project() error = %v", err)
+		}
+	}
+
+	project("first", "scan:one", "vulnerability/two")
+	project("second", "scan", "one:vulnerability/two")
+
+	firstURN := "urn:cerebro:writer:archetype_finding:scan%3Aone:vulnerability%2Ftwo"
+	secondURN := "urn:cerebro:writer:archetype_finding:scan:one%3Avulnerability%2Ftwo"
+	if state.entities[firstURN] == nil || state.entities[secondURN] == nil {
+		t.Fatalf("canonical finding entities missing: first=%#v second=%#v", state.entities[firstURN], state.entities[secondURN])
+	}
 }
 
 func TestProjectArchetypeScanLinksRepositoryEvidence(t *testing.T) {
