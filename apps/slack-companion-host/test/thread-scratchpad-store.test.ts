@@ -174,6 +174,101 @@ test("file scratchpad removes expired notes during retrieval", async () => {
   }
 });
 
+test("blocked Slack turns are visible through the runtime scratchpad command path", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-scratchpad-"));
+  try {
+    let postSequence = 0;
+    const delivered: string[] = [];
+    const outcomes = new FileOutcomeStore(root, { log: () => undefined });
+    const scratchpads = new FileThreadScratchpadStore(root);
+    const host = createAssistantTurnHost(outcomes);
+    const questions = new AssistantQuestionService(
+      host,
+      new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
+        apiKey: "bound-at-runtime",
+        baseUrl: "https://cerebro.example.com",
+        fetchImpl: async () => new Response("unavailable", { status: 503 }),
+        tenantId: "writer",
+      }),
+      { timeoutSignal: () => new AbortController().signal },
+    );
+    const client = {
+      chat: {
+        postMessage: async (input: { text: string }) => {
+          delivered.push(input.text);
+          postSequence += 1;
+          return { ts: `1710000000.00000${postSequence}` };
+        },
+        update: async (input: { text: string }) => {
+          delivered.push(input.text);
+        },
+      },
+      conversations: {
+        replies: async () => ({ messages: [] }),
+      },
+    };
+    const config = loadSlackRuntimeConfig({
+      CEREBRO_BASE_URL: "https://cerebro.example.com",
+      CEREBRO_READ_API_KEY: "bound-at-runtime",
+      CEREBRO_SLACK_APP_NAME: "Cerebro Development",
+      CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
+      CEREBRO_SLACK_PRODUCTION: "false",
+      CEREBRO_TENANT_ID: "writer",
+      SLACK_ALLOWED_TEAM_IDS: "T-ONE",
+      SLACK_APP_TOKEN: "bound-at-runtime",
+      SLACK_BOT_TOKEN: "bound-at-runtime",
+    });
+    const baseEvent = {
+      channel: "C-ONE",
+      teamId: "T-ONE",
+      threadTs: "1710000000.000001",
+      userId: "U-ONE",
+    };
+
+    assert.equal(await handleSlackMention({
+      client,
+      config,
+      event: {
+        ...baseEvent,
+        eventTs: "1710000000.000001",
+        hasThreadContext: false,
+        text: "<@BOT> identify the top current security risk",
+      },
+      host,
+      outcomes,
+      questions,
+      scratchpads,
+    }), true);
+    assert.match(delivered.at(-1) ?? "", /current graph evidence \(unavailable\)/u);
+
+    assert.equal(await handleSlackMention({
+      client,
+      config,
+      event: {
+        ...baseEvent,
+        eventTs: "1710000000.000002",
+        hasThreadContext: true,
+        text: "<@BOT> scratchpad",
+      },
+      host,
+      outcomes,
+      questions,
+      scratchpads,
+    }), true);
+    const renderedScratchpad = delivered.at(-1) ?? "";
+    assert.match(renderedScratchpad, /Working state — unverified context/u);
+    assert.match(
+      renderedScratchpad,
+      /identify the top current security risk/u,
+    );
+    assert.match(renderedScratchpad, /Last outcome: blocked/u);
+    assert.match(renderedScratchpad, /Last blocker: Graph evidence was unavailable\./u);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("Slack remember saves a note that the next question uses only in that thread", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-scratchpad-"));
   try {
