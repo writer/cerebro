@@ -14,7 +14,6 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/findings"
-	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
@@ -119,10 +118,7 @@ func TestGitHubDependabotFindingsEndToEndWithGHCLI(t *testing.T) {
 		t.Fatalf("ResolveFinding().Status = %q, want resolved", resolved.Status)
 	}
 
-	alertNeighborhood, err := graphquery.New(graphStore).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
-		RootURN: primaryResourceURN,
-		Limit:   20,
-	})
+	alertNeighborhood, err := readNeo4jLiveNeighborhood(ctx, graphStore, primaryResourceURN, 20)
 	if err != nil {
 		t.Fatalf("GetEntityNeighborhood(%q) error = %v", primaryResourceURN, err)
 	}
@@ -136,10 +132,7 @@ func TestGitHubDependabotFindingsEndToEndWithGHCLI(t *testing.T) {
 	}
 
 	findingURN := "urn:cerebro:" + finding.TenantID + ":finding:" + finding.ID
-	findingNeighborhood, err := graphquery.New(graphStore).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
-		RootURN: findingURN,
-		Limit:   20,
-	})
+	findingNeighborhood, err := readNeo4jLiveNeighborhood(ctx, graphStore, findingURN, 20)
 	if err != nil {
 		t.Fatalf("GetEntityNeighborhood(%q) error = %v", findingURN, err)
 	}
@@ -260,10 +253,7 @@ func TestGitHubAuditFindingsGraphPreviewWithGHCLI(t *testing.T) {
 	neighborhoods := make([]graphPreviewNeighborhood, 0, len(previewFindings))
 	neighborhoodsByFindingURN := map[string]*ports.EntityNeighborhood{}
 	for _, finding := range allPreviewFindings {
-		neighborhood, err := graphquery.New(graphStore).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
-			RootURN: finding.FindingURN,
-			Limit:   50,
-		})
+		neighborhood, err := readNeo4jLiveNeighborhood(ctx, graphStore, finding.FindingURN, 50)
 		if err != nil {
 			t.Fatalf("GetEntityNeighborhood(%q) error = %v", finding.FindingURN, err)
 		}

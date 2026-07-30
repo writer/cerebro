@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
+	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	findinganalysis "github.com/writer/cerebro/internal/findings"
@@ -88,9 +90,111 @@ func seedNeo4j(ctx context.Context) {
 	for _, link := range links {
 		must(store.UpsertProjectedLink(ctx, link))
 	}
-	neighborhood, err := store.GetEntityNeighborhood(ctx, adminURN, 10)
+	seedRustAuthorityGraph(ctx, entities, links)
+	rows, err := store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
+		Query: `MATCH (root:Entity {urn: $root_urn})-[relation:RELATION]-(neighbor:Entity)
+RETURN count(DISTINCT neighbor) AS neighbors, count(relation) AS relations`,
+		Params:   map[string]any{"root_urn": adminURN},
+		RowLimit: 1,
+	})
 	must(err)
-	if neighborhood.Root == nil || len(neighborhood.Neighbors) < 2 || len(neighborhood.Relations) < 2 {
-		panic("seeded graph neighborhood is incomplete")
+	if len(rows) != 1 || fmt.Sprint(rows[0].Values["neighbors"]) == "0" || fmt.Sprint(rows[0].Values["relations"]) == "0" {
+		panic("seeded graph relations are incomplete")
 	}
+}
+
+func seedRustAuthorityGraph(ctx context.Context, entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) {
+	driver, err := neo4jdriver.NewDriverWithContext(
+		os.Getenv("CEREBRO_NEO4J_URI"),
+		neo4jdriver.BasicAuth(
+			os.Getenv("CEREBRO_NEO4J_USERNAME"),
+			os.Getenv("CEREBRO_NEO4J_PASSWORD"),
+			"",
+		),
+	)
+	must(err)
+	defer func() { _ = driver.Close(ctx) }()
+
+	entityIDs := map[string]string{
+		adminURN: "identity-privileged",
+		appURN:   "application-admin-console",
+		repoURN:  "repository-public-protected",
+		guestURN: "identity-external-collaborator",
+	}
+	entityRows := make([]map[string]any, 0, len(entities))
+	for _, entity := range entities {
+		properties, err := json.Marshal(map[string]string{"entity_urn": entity.URN})
+		must(err)
+		entityRows = append(entityRows, map[string]any{
+			"authority_json":  "{}",
+			"entity_id":       entityIDs[entity.URN],
+			"entity_kind":     entity.EntityType,
+			"external_id":     entity.URN,
+			"label":           entity.Label,
+			"properties_json": string(properties),
+		})
+	}
+	linkRows := make([]map[string]any, 0, len(links))
+	for index, link := range links {
+		linkRows = append(linkRows, map[string]any{
+			"assertion_id":      fmt.Sprintf("grc-e2e-%d", index+1),
+			"from_entity_id":    entityIDs[link.FromURN],
+			"relation":          link.Relation,
+			"source_runtime_id": link.RuntimeID,
+			"to_entity_id":      entityIDs[link.ToURN],
+		})
+	}
+
+	session := driver.NewSession(ctx, neo4jdriver.SessionConfig{})
+	defer func() { _ = session.Close(ctx) }()
+	_, err = session.ExecuteWrite(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		result, err := tx.Run(ctx, `UNWIND $entities AS row
+MATCH (entity:Entity {urn: row.external_id})
+SET entity:OrganizationalEntity,
+    entity.tenant_id = $tenant_id,
+    entity.entity_id = row.entity_id,
+    entity.entity_kind = row.entity_kind,
+    entity.authority_json = row.authority_json,
+    entity.label = row.label,
+    entity.properties_json = row.properties_json,
+    entity.external_id = row.external_id
+WITH count(entity) AS projected
+MERGE (revision:OrganizationalGraphRevision {tenant_id: $tenant_id})
+SET revision.graph_revision = 1
+RETURN projected`, map[string]any{"entities": entityRows, "tenant_id": tenantID})
+		if err != nil {
+			return nil, err
+		}
+		record, err := result.Single(ctx)
+		if err != nil {
+			return nil, err
+		}
+		projected, ok := record.Values[0].(int64)
+		if !ok || projected != int64(len(entityRows)) {
+			return nil, fmt.Errorf("projected Rust authority entities = %v, want %d", record.Values[0], len(entityRows))
+		}
+		result, err = tx.Run(ctx, `UNWIND $links AS row
+MATCH (source:OrganizationalEntity {tenant_id: $tenant_id, entity_id: row.from_entity_id})
+MATCH (target:OrganizationalEntity {tenant_id: $tenant_id, entity_id: row.to_entity_id})
+MERGE (source)-[relation:ORGANIZATIONAL_RELATION {
+  tenant_id: $tenant_id,
+  assertion_id: row.assertion_id
+}]->(target)
+SET relation.relation = row.relation,
+    relation.source_runtime_id = row.source_runtime_id
+RETURN count(relation) AS projected`, map[string]any{"links": linkRows, "tenant_id": tenantID})
+		if err != nil {
+			return nil, err
+		}
+		record, err = result.Single(ctx)
+		if err != nil {
+			return nil, err
+		}
+		projected, ok = record.Values[0].(int64)
+		if !ok || projected != int64(len(linkRows)) {
+			return nil, fmt.Errorf("projected Rust authority relations = %v, want %d", record.Values[0], len(linkRows))
+		}
+		return nil, nil
+	})
+	must(err)
 }

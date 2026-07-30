@@ -170,6 +170,7 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 		{name: "workflow replay unknown", err: workflowReplayConnectError(errors.New("replay failed")), code: connect.CodeInternal},
 		{name: "graph query entity not found", err: graphQueryConnectError(ports.ErrGraphEntityNotFound), code: connect.CodeNotFound},
 		{name: "graph query unavailable", err: graphQueryConnectError(graphquery.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "graph query Rust runtime unavailable", err: graphQueryConnectError(ports.ErrGraphRuntimeUnavailable), code: connect.CodeUnavailable},
 		{name: "graph query invalid", err: graphQueryConnectError(graphquery.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "graph ingest run not found", err: graphIngestConnectError(graphingest.ErrRunNotFound), code: connect.CodeNotFound},
 		{name: "graph ingest source not found", err: graphIngestConnectError(sourceops.ErrSourceNotFound), code: connect.CodeNotFound},
@@ -486,6 +487,14 @@ func TestWriteKnowledgeErrorMapsInvalidRequestToBadRequest(t *testing.T) {
 	writeKnowledgeError(recorder, knowledge.ErrInvalidRequest)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}
+
+func TestWriteGraphQueryErrorMapsRustRuntimeUnavailable(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeGraphQueryError(recorder, ports.ErrGraphRuntimeUnavailable)
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)
 	}
 }
 

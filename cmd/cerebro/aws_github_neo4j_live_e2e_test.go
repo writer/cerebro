@@ -85,7 +85,7 @@ func TestAWSGitHubNeo4jSharedIdentityLiveE2E(t *testing.T) {
 		t.Fatalf("graph counts = %#v, want non-zero nodes and relations", counts)
 	}
 	identityURN := "urn:cerebro:" + tenantID + ":identity:email:" + strings.ToLower(sharedEmail)
-	neighborhood, err := store.GetEntityNeighborhood(ctx, identityURN, 50)
+	neighborhood, err := readNeo4jLiveNeighborhood(ctx, store, identityURN, 50)
 	if err != nil {
 		t.Fatalf("GetEntityNeighborhood(%q) error = %v", identityURN, err)
 	}

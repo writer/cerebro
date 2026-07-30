@@ -1392,9 +1392,7 @@ func writeGRCError(w http.ResponseWriter, err error) {
 func grcHTTPStatusCode(err error) int {
 	statusCode := http.StatusInternalServerError
 	switch {
-	case errors.Is(err, errTenantForbidden):
-		statusCode = http.StatusForbidden
-	case errors.Is(err, errScopeForbidden):
+	case errors.Is(err, errTenantForbidden), errors.Is(err, errScopeForbidden):
 		statusCode = http.StatusForbidden
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
 		errors.Is(err, ports.ErrFindingNotFound),
@@ -1408,6 +1406,7 @@ func grcHTTPStatusCode(err error) int {
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, sourcecoverage.ErrEvaluatorUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
+		errors.Is(err, ports.ErrGraphRuntimeUnavailable),
 		errors.Is(err, graphagent.ErrLLMAuthenticationFailed),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
 		errors.Is(err, graphquery.ErrRuntimeUnavailable),
