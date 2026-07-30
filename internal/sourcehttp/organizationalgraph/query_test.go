@@ -925,6 +925,21 @@ func TestQueryStoreStrictReplacementRejectsUntypedCompatibilityCalls(t *testing.
 	}
 }
 
+func TestAuthorityReportsUnavailableRustRuntime(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	store, err := NewQueryStore(nil, server.URL, testSharedSecret, time.Second)
+	if err != nil {
+		t.Fatalf("NewQueryStore() error = %v", err)
+	}
+	if _, err := store.GetEntityNeighborhood(context.Background(), "urn:cerebro:tenant-a:resource:one", 10); !errors.Is(err, ports.ErrGraphRuntimeUnavailable) {
+		t.Fatalf("GetEntityNeighborhood() error = %v, want %v", err, ports.ErrGraphRuntimeUnavailable)
+	}
+}
+
 func TestQueryStorePreservesProjectionAssertionCapabilities(t *testing.T) {
 	compatibility := &assertionQueryStoreStub{}
 	store, err := NewQueryStore(compatibility, "http://127.0.0.1:1", testSharedSecret, time.Second)

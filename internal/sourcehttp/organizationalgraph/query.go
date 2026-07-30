@@ -814,10 +814,14 @@ func (s *QueryStore) MigrateProjectedLinkAssertions(ctx context.Context, request
 }
 
 func graphRPCError(operation string, err error) error {
-	if connect.CodeOf(err) == connect.CodeNotFound {
+	switch connect.CodeOf(err) {
+	case connect.CodeNotFound:
 		return ports.ErrGraphEntityNotFound
+	case connect.CodeUnavailable, connect.CodeDeadlineExceeded:
+		return fmt.Errorf("%w: rust graph %s: %v", ports.ErrGraphRuntimeUnavailable, operation, err)
+	default:
+		return fmt.Errorf("rust graph %s: %w", operation, err)
 	}
-	return fmt.Errorf("rust graph %s: %w", operation, err)
 }
 
 func productNeighborhood(rootKey string, rust *cerebrographv1.ExpandResponse) (*ports.EntityNeighborhood, error) {

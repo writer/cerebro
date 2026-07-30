@@ -1408,6 +1408,7 @@ func grcHTTPStatusCode(err error) int {
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, sourcecoverage.ErrEvaluatorUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
+		errors.Is(err, ports.ErrGraphRuntimeUnavailable),
 		errors.Is(err, graphagent.ErrLLMAuthenticationFailed),
 		errors.Is(err, graphagent.ErrRuntimeUnavailable),
 		errors.Is(err, graphquery.ErrRuntimeUnavailable),

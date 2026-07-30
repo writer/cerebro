@@ -8,6 +8,10 @@ import (
 // ErrGraphEntityNotFound indicates that the requested graph root entity does not exist.
 var ErrGraphEntityNotFound = errors.New("graph entity not found")
 
+// ErrGraphRuntimeUnavailable indicates that the configured graph read authority
+// could not serve the request.
+var ErrGraphRuntimeUnavailable = errors.New("graph runtime unavailable")
+
 // ErrGraphTypedOperationRequired indicates that a caller still depends on raw
 // Cypher and must move to a bounded Rust graph operation before strict
 // replacement mode can serve it.

@@ -40,6 +40,12 @@ func TestGRCSourceCoverageEvaluatorUnavailableMapsToServiceUnavailable(t *testin
 	}
 }
 
+func TestGRCGraphRuntimeUnavailableMapsToServiceUnavailable(t *testing.T) {
+	if got := grcHTTPStatusCode(ports.ErrGraphRuntimeUnavailable); got != http.StatusServiceUnavailable {
+		t.Fatalf("status code = %d, want %d", got, http.StatusServiceUnavailable)
+	}
+}
+
 func TestGRCScopeDoesNotReadQuestionnaireVendorURN(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/grc/control-packets?tenant_id=writer&vendor_urn=urn:cerebro:writer:vendor:okta", nil)
 	scope, err := grcScopeFromRequest(req)

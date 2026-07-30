@@ -46,7 +46,6 @@ let failed = false;
 let backendProcess = null;
 let rustGraphProcess = null;
 let webProcess = null;
-let neo4jStopped = false;
 let postgresStarted = false;
 let neo4jStarted = false;
 let overallDeadlineAt = 0;
@@ -1007,7 +1006,8 @@ async function validateFailureModes() {
   const warmDashboard = await requestJSON(staleDashboardUrl, proxyCacheProbeOptions);
   expect(warmDashboard.status === 200, `warm dashboard status ${warmDashboard.status}`);
   await abortableSleep(proxyCacheTtlMs + 500, activeRunControl?.signal, "proxy cache expiry");
-  await stopNeo4j();
+  await stopChild(rustGraphProcess);
+  rustGraphProcess = null;
   const staleImpact = await requestJSON(staleImpactUrl, proxyCacheProbeOptions);
   expect(staleImpact.status === 200, `stale impact status ${staleImpact.status}`);
   expect(staleImpact.headers.get("x-cerebro-cache") === "stale", `stale impact cache ${staleImpact.headers.get("x-cerebro-cache")}`);
@@ -1023,16 +1023,6 @@ async function validateFailureModes() {
 
   const nonCacheableDown = await request(`${webBase}/api/cerebro/health`);
   expect(nonCacheableDown.status === 502, `non-cacheable backend-down status ${nonCacheableDown.status}`);
-}
-
-async function stopNeo4j() {
-  if (neo4jStopped || !neo4jStarted) return;
-  neo4jStopped = true;
-  await run("docker", ["stop", "--time", "5", neo4jContainer], {
-    deadlineAt: Math.min(overallDeadlineAt, Date.now() + 10_000),
-    quiet: true,
-  });
-  neo4jStarted = false;
 }
 
 async function stopChild(child) {
@@ -1249,7 +1239,6 @@ export async function runLocalGrcE2E(options = {}) {
   logDir = undefined;
   apiBase = undefined;
   webBase = undefined;
-  neo4jStopped = false;
   postgresStarted = false;
   neo4jStarted = false;
 
