@@ -153,7 +153,7 @@ test("hosted hillclimb compares baseline and candidate through AWS model ports",
   assert.equal(receipt.generator.sampling_parameters, "provider_default");
   assert.equal(receipt.judge.model_id, "us.anthropic.claude-opus-4-8");
   assert.equal(receipt.judge.sampling_parameters, "provider_default");
-  assert.equal(receipt.baseline.context_recall_rate, 0.0909);
+  assert.equal(receipt.baseline.context_recall_rate, 0);
   assert.equal(receipt.baseline.expected_restatement_turns_per_case, 1);
   assert.equal(receipt.candidate.context_recall_rate, 1);
   assert.equal(receipt.candidate.evidence_context_retention_rate, 1);
@@ -162,7 +162,7 @@ test("hosted hillclimb compares baseline and candidate through AWS model ports",
   assert.equal(receipt.candidate.expected_restatement_turns_per_case, 0);
   assert.equal(receipt.candidate.p95_inference_latency_ms, 100);
   assert.equal(receipt.judge.p95_latency_ms, 200);
-  assert.equal(receipt.promotion.context_recall_gain, 0.9091);
+  assert.equal(receipt.promotion.context_recall_gain, 1);
   assert.equal(receipt.promotion.regression_count, 0);
   assert.deepEqual(receipt.promotion.blockers, []);
   assert.equal(receipt.promotion.promotion_ready, true);

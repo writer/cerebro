@@ -157,7 +157,7 @@ and no markdown. Each numeric score must be 0 or 1.`;
 const MAX_GENERATOR_TOKENS = 320;
 const MAX_JUDGE_TOKENS = 700;
 const MAX_JUDGE_ATTEMPTS = 3;
-const OPUS_MODEL_PATTERN = /(?:^|[./])anthropic\.claude-opus-[a-z0-9.-]+$/u;
+const OPUS_MODEL_MARKER = "anthropic.claude-opus-";
 const MINIMUM_CANDIDATE_RATE = 0.9;
 const REQUIRED_AUTHORITY_RATE = 1;
 const MAXIMUM_RESTATEMENT_RATE = 0.1;
@@ -681,13 +681,30 @@ function validateOptions(options: HostedHillclimbOptions): void {
     }
   }
   if (
-    !OPUS_MODEL_PATTERN.test(options.generator_model_id)
-    || !OPUS_MODEL_PATTERN.test(options.judge_model_id)
+    !isOpusModelId(options.generator_model_id)
+    || !isOpusModelId(options.judge_model_id)
   ) {
     throw new Error(
       "Cerebro working-state hillclimbs require AWS-hosted Claude Opus models.",
     );
   }
+}
+
+function isOpusModelId(modelId: string): boolean {
+  const markerIndex = modelId.indexOf(OPUS_MODEL_MARKER);
+  if (
+    markerIndex <= 0
+    || ![".", "/"].includes(modelId[markerIndex - 1]!)
+  ) {
+    return false;
+  }
+  const suffix = modelId.slice(markerIndex + OPUS_MODEL_MARKER.length);
+  return suffix.length > 0 && [...suffix].every((character) =>
+    character === "."
+    || character === "-"
+    || character >= "0" && character <= "9"
+    || character >= "a" && character <= "z"
+  );
 }
 
 function validateModelResponse(
