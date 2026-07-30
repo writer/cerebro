@@ -23,6 +23,7 @@ export interface SlackWorkingStateEvalTurn {
 export interface SlackWorkingStateEvalCaseV1 {
   readonly case_ref: string;
   readonly current_request: string;
+  readonly evidence_context: readonly string[];
   readonly forbidden_context: readonly string[];
   readonly partition: SlackWorkingStateEvalPartition;
   readonly prior_turns: readonly SlackWorkingStateEvalTurn[];
@@ -37,10 +38,12 @@ export interface SlackWorkingStateEvalResultV1 {
   readonly case_ref: string;
   readonly context_build_ms: number;
   readonly context_utf8_bytes: number;
+  readonly evidence_context_count: number;
   readonly passed: boolean;
   readonly partition: SlackWorkingStateEvalPartition;
   readonly policy_ref: string;
   readonly recalled_required_count: number;
+  readonly retained_evidence_context_count: number;
   readonly required_context_count: number;
   readonly schema_version: "slack-working-state-eval-result/v1";
 }
@@ -51,10 +54,13 @@ export interface SlackWorkingStateEvalSummaryV1 {
   readonly case_count: number;
   readonly case_pass_rate: number;
   readonly context_recall_rate: number;
+  readonly evidence_context_retention_rate: number;
+  readonly expected_restatement_turns_per_case: number;
   readonly held_out_case_count: number;
   readonly p95_context_build_ms: number;
   readonly policy_ref: string;
   readonly restatement_risk_rate: number;
+  readonly semantic_state_contract_rate: number;
   readonly shadow_case_count: number;
 }
 
@@ -65,6 +71,9 @@ export interface SlackWorkingStateHillclimbReceiptV1 {
   readonly evaluated_at: string;
   readonly goal: {
     readonly candidate_context_recall_rate: number;
+    readonly candidate_evidence_context_retention_rate: number;
+    readonly candidate_semantic_state_contract_rate: number;
+    readonly maximum_candidate_expected_restatement_turns_per_case: number;
     readonly maximum_candidate_p95_context_build_ms: number;
     readonly maximum_candidate_restatement_risk_rate: number;
     readonly minimum_context_recall_gain: number;
@@ -90,7 +99,10 @@ const MAXIMUM_CONTEXT_BYTES = 8_000;
 const MINIMUM_PARTITION_CASES = 8;
 const MINIMUM_RECALL_GAIN = 0.5;
 const REQUIRED_CANDIDATE_RECALL = 1;
+const REQUIRED_CANDIDATE_EVIDENCE_RETENTION = 1;
+const REQUIRED_CANDIDATE_SEMANTIC_STATE_CONTRACT = 1;
 const MAXIMUM_RESTATEMENT_RISK = 0;
+const MAXIMUM_EXPECTED_RESTATEMENT_TURNS_PER_CASE = 0;
 const MAXIMUM_P95_BUILD_MS = 5;
 
 export function runSlackWorkingStateHillclimb(
@@ -120,6 +132,18 @@ export function runSlackWorkingStateHillclimb(
     candidate.context_recall_rate < REQUIRED_CANDIDATE_RECALL
       ? "candidate_context_recall_below_goal"
       : undefined,
+    candidate.semantic_state_contract_rate
+        < REQUIRED_CANDIDATE_SEMANTIC_STATE_CONTRACT
+      ? "candidate_semantic_state_contract_below_goal"
+      : undefined,
+    candidate.evidence_context_retention_rate
+        < REQUIRED_CANDIDATE_EVIDENCE_RETENTION
+      ? "candidate_evidence_context_retention_below_goal"
+      : undefined,
+    candidate.expected_restatement_turns_per_case
+        > MAXIMUM_EXPECTED_RESTATEMENT_TURNS_PER_CASE
+      ? "candidate_expected_restatement_burden_above_goal"
+      : undefined,
     candidate.restatement_risk_rate > MAXIMUM_RESTATEMENT_RISK
       ? "candidate_restatement_risk_above_goal"
       : undefined,
@@ -142,6 +166,12 @@ export function runSlackWorkingStateHillclimb(
     evaluated_at: evaluatedAt.toISOString(),
     goal: Object.freeze({
       candidate_context_recall_rate: REQUIRED_CANDIDATE_RECALL,
+      candidate_evidence_context_retention_rate:
+        REQUIRED_CANDIDATE_EVIDENCE_RETENTION,
+      candidate_semantic_state_contract_rate:
+        REQUIRED_CANDIDATE_SEMANTIC_STATE_CONTRACT,
+      maximum_candidate_expected_restatement_turns_per_case:
+        MAXIMUM_EXPECTED_RESTATEMENT_TURNS_PER_CASE,
       maximum_candidate_p95_context_build_ms: MAXIMUM_P95_BUILD_MS,
       maximum_candidate_restatement_risk_rate: MAXIMUM_RESTATEMENT_RISK,
       minimum_context_recall_gain: MINIMUM_RECALL_GAIN,
@@ -178,6 +208,9 @@ export function evaluateSlackWorkingStateCase(
   const forbiddenMatches = evalCase.forbidden_context.filter((fragment) =>
     rendered.includes(fragment)
   );
+  const retainedEvidenceContextCount = evalCase.evidence_context.filter(
+    (fragment) => rendered.includes(fragment),
+  ).length;
   const authorityBoundaryPresent = context === undefined
     || rendered.includes("Current working state (unverified; context only):");
   const contextBytes = Buffer.byteLength(rendered, "utf8");
@@ -186,6 +219,9 @@ export function evaluateSlackWorkingStateCase(
       ? "required_context_missing"
       : undefined,
     forbiddenMatches.length > 0 ? "forbidden_context_retained" : undefined,
+    retainedEvidenceContextCount < evalCase.evidence_context.length
+      ? "evidence_context_missing"
+      : undefined,
     !authorityBoundaryPresent ? "authority_boundary_missing" : undefined,
     contextBytes > MAXIMUM_CONTEXT_BYTES ? "context_byte_limit_exceeded" : undefined,
   ].filter((value): value is string => value !== undefined);
@@ -195,10 +231,12 @@ export function evaluateSlackWorkingStateCase(
     case_ref: evalCase.case_ref,
     context_build_ms: roundMilliseconds(contextBuildMs),
     context_utf8_bytes: contextBytes,
+    evidence_context_count: evalCase.evidence_context.length,
     passed: blockers.length === 0,
     partition: evalCase.partition,
     policy_ref: policy === "candidate" ? CANDIDATE_POLICY_REF : BASELINE_POLICY_REF,
     recalled_required_count: recalledRequiredCount,
+    retained_evidence_context_count: retainedEvidenceContextCount,
     required_context_count: evalCase.required_context.length,
     schema_version: "slack-working-state-eval-result/v1",
   });
@@ -234,6 +272,15 @@ function summarize(
   const requiredCount = sum(results.map((result) => result.required_context_count));
   const recalledCount = sum(results.map((result) => result.recalled_required_count));
   const recallRate = ratio(recalledCount, requiredCount);
+  const evidenceContextCount = sum(
+    results.map((result) => result.evidence_context_count),
+  );
+  const retainedEvidenceContextCount = sum(
+    results.map((result) => result.retained_evidence_context_count),
+  );
+  const casesNeedingRestatement = results.filter((result) =>
+    result.recalled_required_count < result.required_context_count
+  ).length;
   const authorityBoundaryPasses = results.filter((result) =>
     !result.blockers.includes("authority_boundary_missing")
   ).length;
@@ -251,12 +298,30 @@ function summarize(
       results.length,
     ),
     context_recall_rate: recallRate,
+    evidence_context_retention_rate: ratio(
+      retainedEvidenceContextCount,
+      evidenceContextCount,
+    ),
+    expected_restatement_turns_per_case: ratio(
+      casesNeedingRestatement,
+      results.length,
+    ),
     held_out_case_count: results.filter((result) =>
       result.partition === "held_out"
     ).length,
     p95_context_build_ms: percentile(sortedLatencies, 0.95),
     policy_ref: results[0]!.policy_ref,
     restatement_risk_rate: round(1 - recallRate),
+    semantic_state_contract_rate: ratio(
+      results.filter((result) =>
+        !result.blockers.some((blocker) =>
+          blocker === "required_context_missing"
+          || blocker === "forbidden_context_retained"
+          || blocker === "authority_boundary_missing"
+        )
+      ).length,
+      results.length,
+    ),
     shadow_case_count: results.filter((result) =>
       result.partition === "shadow"
     ).length,
@@ -308,6 +373,7 @@ function validateCase(evalCase: SlackWorkingStateEvalCaseV1): void {
   }
   for (const value of [
     evalCase.current_request,
+    ...evalCase.evidence_context,
     ...evalCase.required_context,
     ...evalCase.forbidden_context,
     ...evalCase.prior_turns.flatMap((turn) => [

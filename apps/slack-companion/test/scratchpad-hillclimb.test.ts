@@ -15,6 +15,12 @@ test("working-state candidate clears the sealed hillclimb goal", () => {
   assert.equal(receipt.baseline.context_recall_rate, 0);
   assert.equal(receipt.baseline.restatement_risk_rate, 1);
   assert.equal(receipt.candidate.context_recall_rate, 1);
+  assert.equal(receipt.baseline.semantic_state_contract_rate, 0.1);
+  assert.equal(receipt.candidate.semantic_state_contract_rate, 1);
+  assert.equal(receipt.baseline.evidence_context_retention_rate, 0);
+  assert.equal(receipt.candidate.evidence_context_retention_rate, 1);
+  assert.equal(receipt.baseline.expected_restatement_turns_per_case, 0.9);
+  assert.equal(receipt.candidate.expected_restatement_turns_per_case, 0);
   assert.equal(receipt.candidate.restatement_risk_rate, 0);
   assert.equal(receipt.candidate.authority_boundary_rate, 1);
   assert.equal(receipt.candidate.byte_limit_violation_count, 0);
@@ -45,6 +51,40 @@ test("baseline and candidate are evaluated against one exact case digest", () =>
   assert.equal(baseline.case_digest, candidate.case_digest);
   assert.equal(baseline.case_ref, candidate.case_ref);
   assert.notEqual(baseline.policy_ref, candidate.policy_ref);
-  assert.deepEqual(baseline.blockers, ["required_context_missing"]);
+  assert.deepEqual(baseline.blockers, [
+    "required_context_missing",
+    "evidence_context_missing",
+  ]);
   assert.deepEqual(candidate.blockers, []);
+});
+
+test("candidate fails a case when evidence instructions are not retained", () => {
+  const source = SLACK_WORKING_STATE_HILLCLIMB_CORPUS[0]!;
+  const result = evaluateSlackWorkingStateCase({
+    ...source,
+    evidence_context: ["cite the unavailable source receipt"],
+  }, "candidate");
+
+  assert.equal(result.retained_evidence_context_count, 0);
+  assert.ok(result.blockers.includes("evidence_context_missing"));
+  assert.equal(result.passed, false);
+});
+
+test("promotion stops when the candidate drops required evidence context", () => {
+  const corpus = SLACK_WORKING_STATE_HILLCLIMB_CORPUS.map((evalCase, index) =>
+    index === 0
+      ? {
+        ...evalCase,
+        evidence_context: ["cite the unavailable source receipt"],
+      }
+      : evalCase
+  );
+  const receipt = runSlackWorkingStateHillclimb(corpus);
+
+  assert.ok(
+    receipt.promotion.blockers.includes(
+      "candidate_evidence_context_retention_below_goal",
+    ),
+  );
+  assert.equal(receipt.promotion.promotion_ready, false);
 });

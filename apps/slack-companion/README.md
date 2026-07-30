@@ -108,17 +108,24 @@ and shadow partitions and includes continuation, repeated retry, expiry, and
 bounded-eviction cases. The command prints a machine-readable receipt and exits
 non-zero unless the candidate:
 
+- satisfies the required, forbidden, and authority-labelling state contract for
+  every case (semantic state correctness);
 - recalls every required governing request, outcome, and blocker;
+- retains every evidence instruction and source-failure fact supplied by the
+  prior turns;
 - reduces the measured restatement-risk proxy to zero with at least a 0.50
   recall gain over baseline;
 - keeps working state explicitly unverified;
 - introduces no case regression or context-size violation; and
 - builds context within a 5 ms p95 budget.
 
-The corpus measures whether the reasoning boundary receives the state needed to
-resolve a follow-up. It does not claim that a language-model answer is correct.
-Delivered-answer quality remains gated by the independent assistant-turn
-evaluation and outcome receipts described above.
+The receipt names five bounded dimensions: semantic state-contract correctness,
+continuity recall, evidence-context retention, context-build latency, and
+expected restatement burden. These measure whether the reasoning boundary
+receives the state needed to resolve a follow-up. They do not claim that a
+language-model answer is correct or that retained evidence was cited.
+Delivered-answer grounding and evidence use remain gated by the independent
+assistant-turn evaluation and outcome receipts described above.
 
 Durable schedule definitions keep a stable schedule identity, revision, work
 digest, cadence anchor, and misfire policy. The portable planner derives the
