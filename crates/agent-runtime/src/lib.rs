@@ -467,7 +467,7 @@ pub async fn run_turn(
     let mut revision_feedback = Vec::new();
     let mut critic_repairs = 0;
     for _ in 0..MAX_MODEL_STEPS {
-        let decision = model
+        let decision = match model
             .next(ModelTurn {
                 request: request.clone(),
                 lane,
@@ -476,7 +476,21 @@ pub async fn run_turn(
                 observations: observations.clone(),
                 revision_feedback: revision_feedback.clone(),
             })
-            .await?;
+            .await
+        {
+            Ok(decision) => decision,
+            Err(AgentRuntimeError::InvalidFinal(reason)) => {
+                critic_repairs += 1;
+                if critic_repairs > MAX_CRITIC_REPAIRS {
+                    return Err(AgentRuntimeError::CriticRepairLimit);
+                }
+                revision_feedback = vec![format!(
+                    "The prior operating decision did not match the required JSON schema: {reason}. Return exactly one corrected JSON object."
+                )];
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         match decision {
             ModelDecision::InvokeTool { call } => {
                 revision_feedback.clear();

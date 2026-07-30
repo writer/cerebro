@@ -78,6 +78,43 @@ struct ScriptedTools {
     results: Mutex<BTreeMap<String, ToolResult>>,
 }
 
+struct SchemaRepairModel {
+    attempts: Mutex<usize>,
+}
+
+#[async_trait]
+impl AgentModel for SchemaRepairModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Converse))
+    }
+
+    async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        let mut attempts = self.attempts.lock().unwrap();
+        *attempts += 1;
+        if *attempts == 1 {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "invalid type: map, expected a string".into(),
+            ));
+        }
+        assert!(turn.revision_feedback[0].contains("required JSON schema"));
+        Ok(ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Cerebro capabilities".into(),
+                summary: "I can explain security operations concepts.".into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        })
+    }
+}
+
 #[async_trait]
 impl AgentTools for ScriptedTools {
     fn catalog(&self) -> Vec<ToolDescriptor> {
@@ -735,6 +772,27 @@ async fn repairs_a_draft_after_independent_critique() {
         panic!("expected the repaired draft");
     };
     assert!(markdown.contains("explicit evidence gaps"));
+}
+
+#[tokio::test]
+async fn repairs_a_malformed_operating_decision_without_weakening_the_schema() {
+    let model = SchemaRepairModel {
+        attempts: Mutex::new(0),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } =
+        run_turn(&model, &tools, request("What can you do?"))
+            .await
+            .unwrap()
+    else {
+        panic!("expected the repaired operating decision");
+    };
+    assert!(markdown.contains("security operations concepts"));
+    assert_eq!(*model.attempts.lock().unwrap(), 2);
 }
 
 #[tokio::test]

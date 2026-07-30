@@ -472,7 +472,9 @@ Finish shape:
 {"decision":"finish","draft":{"state":"answered|partial|needs_input|blocked","headline":"...","summary":"...","summary_evidence_refs":[],"checked":[],"changed":[],"verified":[],"current_state":[],"next_actions":[],"coverage_notice":null,"question":null}}
 
 Each item in checked, changed, verified, and current_state has:
-{"text":"operator-facing statement","evidence_refs":["exact observed evidence ref"]}"#
+{"text":"operator-facing statement","evidence_refs":["exact observed evidence ref"]}
+
+headline, summary, coverage_notice, question, and every next_actions item are strings, never nested objects. summary_evidence_refs and evidence_refs contain strings. Use no fields beyond the exact selected shape."#
 }
 
 fn critic_instructions() -> &'static str {
