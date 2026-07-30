@@ -68,10 +68,10 @@ RUN apk upgrade --no-cache && \
       END { if (certificate != 108) exit 1 } \
     ' /tmp/aws-rds-global-bundle.pem && \
     for certificate in /usr/local/share/ca-certificates/aws-rds-root-*.crt; do \
-      subject="$(openssl x509 -in "${certificate}" -noout -subject -nameopt RFC2253)"; \
-      issuer="$(openssl x509 -in "${certificate}" -noout -issuer -nameopt RFC2253)"; \
-      test "${subject#subject=}" = "${issuer#issuer=}"; \
-      openssl verify -CAfile "${certificate}" "${certificate}"; \
+      subject="$(openssl x509 -in "${certificate}" -noout -subject -nameopt RFC2253)" || exit 1; \
+      issuer="$(openssl x509 -in "${certificate}" -noout -issuer -nameopt RFC2253)" || exit 1; \
+      test "${subject#subject=}" = "${issuer#issuer=}" || exit 1; \
+      openssl verify -CAfile "${certificate}" "${certificate}" || exit 1; \
       case "${subject}" in \
         *"CN=Amazon RDS "*" Root CA RSA2048 G1"*) ;; \
         *"CN=Amazon RDS "*" Root CA RSA4096 G1"*) ;; \

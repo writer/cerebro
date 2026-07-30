@@ -37,8 +37,8 @@ fn rust_runtime_image_has_no_go_executable_path() {
         "apk add --no-cache ca-certificates openssl",
         "/usr/local/share/ca-certificates/aws-rds-root-%03d.crt",
         "if (certificate != 108) exit 1",
-        "test \"${subject#subject=}\" = \"${issuer#issuer=}\"",
-        "openssl verify -CAfile \"${certificate}\" \"${certificate}\"",
+        "test \"${subject#subject=}\" = \"${issuer#issuer=}\" || exit 1",
+        "openssl verify -CAfile \"${certificate}\" \"${certificate}\" || exit 1",
         "CN=Amazon RDS \"*\" Root CA RSA2048 G1",
         "CN=Amazon RDS \"*\" Root CA RSA4096 G1",
         "CN=Amazon RDS \"*\" Root CA ECC384 G1",
@@ -64,6 +64,11 @@ fn rust_runtime_image_has_no_go_executable_path() {
             "Rust runtime Dockerfile weakens TLS verification with {forbidden:?}"
         );
     }
+    assert_eq!(
+        DOCKERFILE.matches("-nameopt RFC2253)\" || exit 1").count(),
+        2,
+        "Rust runtime must fail closed when either certificate identity cannot be parsed"
+    );
 }
 
 fn contains_word_pair(input: &str, first: &str, second: &str) -> bool {
