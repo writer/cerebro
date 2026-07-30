@@ -615,7 +615,6 @@ pub async fn run_turn(
                 {
                     CritiqueDecision::Approve => {}
                     CritiqueDecision::Revise { issues } => {
-                        validate_critique_issues(&issues)?;
                         critic_revisions += 1;
                         if critic_revisions > MAX_CRITIC_REVISIONS {
                             return Err(AgentRuntimeError::CriticRepairLimit);
@@ -645,7 +644,17 @@ async fn critique_with_repair(
 ) -> Result<CritiqueDecision, AgentRuntimeError> {
     for _ in 0..MAX_CRITIC_REPAIRS {
         match model.critique(turn.clone()).await {
-            Ok(decision) => return Ok(decision),
+            Ok(decision) => {
+                if let CritiqueDecision::Revise { issues } = &decision
+                    && let Err(error) = validate_critique_issues(issues)
+                {
+                    turn.repair_feedback = vec![format!(
+                        "The prior critic decision did not satisfy the bounded critic contract: {error}. Return exactly one corrected critic JSON object."
+                    )];
+                    continue;
+                }
+                return Ok(decision);
+            }
             Err(AgentRuntimeError::InvalidFinal(reason)) => {
                 turn.repair_feedback = vec![format!(
                     "The prior critic decision did not match the required JSON schema: {reason}. Return exactly one corrected critic JSON object."
