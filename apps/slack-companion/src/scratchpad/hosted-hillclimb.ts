@@ -734,11 +734,24 @@ function comparableText(value: string): string {
 }
 
 function asksForPriorRestatement(value: string): boolean {
-  const comparable = comparableText(value);
-  return /\b(?:restate|repeat)\b.{0,100}\b(?:prior|previous|earlier|original)\b/u
-      .test(comparable)
-    || /\b(?:prior|previous|earlier|original)\b.{0,100}\b(?:restate|repeat)\b/u
-      .test(comparable);
+  const words = comparableText(value).split(" ");
+  const restatementIndexes = wordIndexes(words, new Set(["restate", "repeat"]));
+  const priorIndexes = wordIndexes(
+    words,
+    new Set(["prior", "previous", "earlier", "original"]),
+  );
+  return restatementIndexes.some((restatementIndex) =>
+    priorIndexes.some((priorIndex) =>
+      Math.abs(restatementIndex - priorIndex) <= 16
+    )
+  );
+}
+
+function wordIndexes(
+  words: readonly string[],
+  matches: ReadonlySet<string>,
+): readonly number[] {
+  return words.flatMap((word, index) => matches.has(word) ? [index] : []);
 }
 
 function digest(value: unknown): string {
