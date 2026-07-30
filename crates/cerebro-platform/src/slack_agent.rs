@@ -1,11 +1,16 @@
-use std::{env, error::Error, sync::Arc, time::Duration as StdDuration};
+use std::{collections::HashMap, env, error::Error, sync::Arc, time::Duration as StdDuration};
 
 use async_trait::async_trait;
 use aws_config::BehaviorVersion;
 use aws_sdk_bedrockruntime::{
     Client as BedrockClient,
-    types::{ContentBlock, ConversationRole, InferenceConfiguration, Message, SystemContentBlock},
+    types::{
+        ContentBlock, ConversationRole, InferenceConfiguration, Message, SpecificToolChoice,
+        SystemContentBlock, Tool, ToolChoice, ToolConfiguration, ToolInputSchema,
+        ToolSpecification,
+    },
 };
+use aws_smithy_types::{Document, Number};
 use cerebro_agent_context::{AgentGraph, ContextError};
 use cerebro_agent_runtime::{
     AgentModel, AgentRuntimeError, AgentTools, AgentTurnOutcome, AgentTurnRequest,
@@ -27,6 +32,9 @@ use sha2::{Digest, Sha256};
 use time::{Duration as TimeDuration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 const MAX_MODEL_RESPONSE_BYTES: usize = 512 * 1024;
+const ROUTE_DECISION_TOOL: &str = "submit_route_decision";
+const OPERATING_DECISION_TOOL: &str = "submit_operating_decision";
+const CRITIQUE_DECISION_TOOL: &str = "submit_critique_decision";
 const MAX_GRAPH_LIMIT: usize = 25;
 const MAX_GRAPH_DEPTH: usize = 3;
 const MAX_RUNTIME_LIMIT: usize = 25;
@@ -130,16 +138,34 @@ pub(super) struct BedrockModel {
 }
 
 impl BedrockModel {
-    async fn complete(
+    async fn complete_structured(
         &self,
         instructions: &str,
         payload: Value,
         max_tokens: i32,
-    ) -> Result<String, AgentRuntimeError> {
+        decision_tool: &str,
+    ) -> Result<Value, AgentRuntimeError> {
         validate_generation_budget(max_tokens)?;
         let message = Message::builder()
             .role(ConversationRole::User)
             .content(ContentBlock::Text(payload.to_string()))
+            .build()
+            .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
+        let tool_specification = ToolSpecification::builder()
+            .name(decision_tool)
+            .description("Submit the one schema-constrained decision for this layer.")
+            .input_schema(ToolInputSchema::Json(json_to_document(&json!({
+                "type": "object"
+            }))?))
+            .build()
+            .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
+        let tool_choice = SpecificToolChoice::builder()
+            .name(decision_tool)
+            .build()
+            .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
+        let tool_configuration = ToolConfiguration::builder()
+            .tools(Tool::ToolSpec(tool_specification))
+            .tool_choice(ToolChoice::Tool(tool_choice))
             .build()
             .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
         let response = self
@@ -153,60 +179,65 @@ impl BedrockModel {
                     .max_tokens(max_tokens)
                     .build(),
             )
+            .tool_config(tool_configuration)
             .send()
             .await
             .map_err(|_| AgentRuntimeError::ModelUnavailable("Bedrock request failed".into()))?;
         let content = response
             .output()
             .and_then(|output| output.as_message().ok())
-            .and_then(|message| message.content().first())
-            .and_then(|content| content.as_text().ok())
-            .cloned()
+            .map(|message| message.content())
             .ok_or_else(|| {
-                AgentRuntimeError::ModelUnavailable("Bedrock returned no text content".into())
+                AgentRuntimeError::ModelUnavailable("Bedrock returned no message content".into())
             })?;
-        if content.len() > MAX_MODEL_RESPONSE_BYTES {
+        let value = bedrock_structured_output(content, decision_tool)?;
+        let encoded = serde_json::to_vec(&value)
+            .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
+        if encoded.len() > MAX_MODEL_RESPONSE_BYTES {
             return Err(AgentRuntimeError::ModelUnavailable(
                 "Bedrock response exceeded the size limit".into(),
             ));
         }
-        Ok(content)
+        Ok(value)
     }
 }
 
 #[async_trait]
 impl AgentModel for BedrockModel {
     async fn route(&self, turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
-        let content = self
-            .complete(
+        let value = self
+            .complete_structured(
                 route_instructions(),
                 route_turn_payload(&turn),
                 ROUTER_MAX_TOKENS,
+                ROUTE_DECISION_TOOL,
             )
             .await?;
-        parse_route_content(&content)
+        parse_route_value(value)
     }
 
     async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
-        let content = self
-            .complete(
+        let value = self
+            .complete_structured(
                 model_instructions(),
                 model_turn_payload(&turn),
                 DECISION_MAX_TOKENS,
+                OPERATING_DECISION_TOOL,
             )
             .await?;
-        parse_model_content(&content)
+        parse_model_value(value)
     }
 
     async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
-        let content = self
-            .complete(
+        let value = self
+            .complete_structured(
                 critic_instructions(),
                 critique_turn_payload(&turn),
                 CRITIC_MAX_TOKENS,
+                CRITIQUE_DECISION_TOOL,
             )
             .await?;
-        parse_critique_content(&content)
+        parse_critique_value(value)
     }
 }
 
@@ -376,8 +407,18 @@ fn parse_route_content(content: &str) -> Result<RouteDecision, AgentRuntimeError
         .map_err(|error| AgentRuntimeError::InvalidRoute(format!("router output: {error}")))
 }
 
+fn parse_route_value(value: Value) -> Result<RouteDecision, AgentRuntimeError> {
+    serde_json::from_value(value)
+        .map_err(|error| AgentRuntimeError::InvalidRoute(format!("router output: {error}")))
+}
+
 fn parse_model_content(content: &str) -> Result<ModelDecision, AgentRuntimeError> {
     serde_json::from_str(structured_json(content))
+        .map_err(|error| AgentRuntimeError::InvalidFinal(format!("model output: {error}")))
+}
+
+fn parse_model_value(value: Value) -> Result<ModelDecision, AgentRuntimeError> {
+    serde_json::from_value(value)
         .map_err(|error| AgentRuntimeError::InvalidFinal(format!("model output: {error}")))
 }
 
@@ -386,6 +427,95 @@ fn parse_critique_content(content: &str) -> Result<CritiqueDecision, AgentRuntim
         .map_err(|error| AgentRuntimeError::InvalidFinal(format!("critic output: {error}")))
 }
 
+fn parse_critique_value(value: Value) -> Result<CritiqueDecision, AgentRuntimeError> {
+    serde_json::from_value(value)
+        .map_err(|error| AgentRuntimeError::InvalidFinal(format!("critic output: {error}")))
+}
+
+fn bedrock_structured_output(
+    content: &[ContentBlock],
+    decision_tool: &str,
+) -> Result<Value, AgentRuntimeError> {
+    let mut tool_uses = content.iter().filter_map(|block| block.as_tool_use().ok());
+    let tool_use = tool_uses.next().ok_or_else(|| {
+        AgentRuntimeError::ModelUnavailable(
+            "Bedrock returned no schema-constrained decision".into(),
+        )
+    })?;
+    if tool_uses.next().is_some() || tool_use.name() != decision_tool {
+        return Err(AgentRuntimeError::ModelUnavailable(
+            "Bedrock returned an ambiguous schema-constrained decision".into(),
+        ));
+    }
+    if content
+        .iter()
+        .any(|block| block.as_text().is_ok_and(|text| !text.trim().is_empty()))
+    {
+        return Err(AgentRuntimeError::ModelUnavailable(
+            "Bedrock returned free text with a schema-constrained decision".into(),
+        ));
+    }
+    document_to_json(tool_use.input())
+}
+
+fn json_to_document(value: &Value) -> Result<Document, AgentRuntimeError> {
+    match value {
+        Value::Null => Ok(Document::Null),
+        Value::Bool(value) => Ok(Document::Bool(*value)),
+        Value::Number(value) => {
+            let number = if let Some(value) = value.as_u64() {
+                Number::PosInt(value)
+            } else if let Some(value) = value.as_i64() {
+                Number::NegInt(value)
+            } else {
+                Number::Float(value.as_f64().ok_or_else(|| {
+                    AgentRuntimeError::ModelUnavailable(
+                        "JSON schema contains an unsupported number".into(),
+                    )
+                })?)
+            };
+            Ok(Document::Number(number))
+        }
+        Value::String(value) => Ok(Document::String(value.clone())),
+        Value::Array(values) => values
+            .iter()
+            .map(json_to_document)
+            .collect::<Result<Vec<_>, _>>()
+            .map(Document::Array),
+        Value::Object(values) => values
+            .iter()
+            .map(|(key, value)| Ok((key.clone(), json_to_document(value)?)))
+            .collect::<Result<HashMap<_, _>, AgentRuntimeError>>()
+            .map(Document::Object),
+    }
+}
+
+fn document_to_json(document: &Document) -> Result<Value, AgentRuntimeError> {
+    match document {
+        Document::Null => Ok(Value::Null),
+        Document::Bool(value) => Ok(Value::Bool(*value)),
+        Document::Number(Number::PosInt(value)) => Ok(Value::Number((*value).into())),
+        Document::Number(Number::NegInt(value)) => Ok(Value::Number((*value).into())),
+        Document::Number(Number::Float(value)) => serde_json::Number::from_f64(*value)
+            .map(Value::Number)
+            .ok_or_else(|| {
+                AgentRuntimeError::ModelUnavailable(
+                    "Bedrock returned a non-finite decision number".into(),
+                )
+            }),
+        Document::String(value) => Ok(Value::String(value.clone())),
+        Document::Array(values) => values
+            .iter()
+            .map(document_to_json)
+            .collect::<Result<Vec<_>, _>>()
+            .map(Value::Array),
+        Document::Object(values) => values
+            .iter()
+            .map(|(key, value)| Ok((key.clone(), document_to_json(value)?)))
+            .collect::<Result<serde_json::Map<_, _>, AgentRuntimeError>>()
+            .map(Value::Object),
+    }
+}
 fn route_turn_payload(turn: &RouteTurn) -> Value {
     json!({
         "repair_feedback": &turn.repair_feedback,
@@ -1044,6 +1174,45 @@ mod tests {
                 issues: vec!["Cite current evidence.".into()]
             }
         );
+    }
+
+    #[test]
+    fn parses_one_forced_bedrock_decision_and_rejects_ambiguous_content() {
+        let decision = json!({
+            "lane": "investigate",
+            "confidence": "high",
+            "reason": "Current work claims require evidence.",
+            "requires_current_evidence": true
+        });
+        let tool_use = aws_sdk_bedrockruntime::types::ToolUseBlock::builder()
+            .tool_use_id("tool-use-1")
+            .name(ROUTE_DECISION_TOOL)
+            .input(json_to_document(&decision).unwrap())
+            .build()
+            .unwrap();
+        let content = vec![ContentBlock::ToolUse(tool_use.clone())];
+        assert_eq!(
+            bedrock_structured_output(&content, ROUTE_DECISION_TOOL).unwrap(),
+            decision
+        );
+        assert!(parse_route_value(decision).is_ok());
+
+        let with_free_text = vec![
+            ContentBlock::Text("unstructured answer".into()),
+            ContentBlock::ToolUse(tool_use.clone()),
+        ];
+        assert!(matches!(
+            bedrock_structured_output(&with_free_text, ROUTE_DECISION_TOOL),
+            Err(AgentRuntimeError::ModelUnavailable(_))
+        ));
+        let duplicate = vec![
+            ContentBlock::ToolUse(tool_use.clone()),
+            ContentBlock::ToolUse(tool_use),
+        ];
+        assert!(matches!(
+            bedrock_structured_output(&duplicate, ROUTE_DECISION_TOOL),
+            Err(AgentRuntimeError::ModelUnavailable(_))
+        ));
     }
 
     #[test]

@@ -14,6 +14,7 @@ aws-config.workspace = true
 aws-credential-types.workspace = true
 aws-sdk-bedrockruntime.workspace = true
 aws-sdk-secretsmanager.workspace = true
+aws-smithy-types.workspace = true
 buffa.workspace = true
 buffa-types.workspace = true
 cerebro-action-catalog.workspace = true
