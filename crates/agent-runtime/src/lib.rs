@@ -35,6 +35,12 @@ pub const CRITIC_MAX_TOKENS: i32 = 65_536;
 pub const HARD_MAX_GENERATION_TOKENS: i32 = 131_072;
 const MAX_TEXT_BYTES: usize = 16 * 1024;
 const MAX_TOOL_DATA_BYTES: usize = 64 * 1024;
+const MAX_HEADLINE_BYTES: usize = 160;
+const MAX_SUMMARY_BYTES: usize = 2_400;
+const MAX_SUPPLEMENT_BYTES: usize = 800;
+const MAX_CLAIMS_PER_SECTION: usize = 8;
+const MAX_TOTAL_CLAIMS: usize = 16;
+const MAX_NEXT_ACTIONS: usize = 5;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -302,8 +308,18 @@ pub struct CritiqueTurn {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
 pub enum CritiqueDecision {
-    Approve,
+    Approve { checks: CritiqueChecks },
     Revise { issues: Vec<String> },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CritiqueChecks {
+    pub answers_newest_request: bool,
+    pub evidence_boundary_correct: bool,
+    pub no_raw_record_dump: bool,
+    pub operator_facing: bool,
+    pub right_sized: bool,
 }
 
 #[async_trait]
@@ -613,7 +629,7 @@ pub async fn run_turn(
                 )
                 .await?
                 {
-                    CritiqueDecision::Approve => {}
+                    CritiqueDecision::Approve { .. } => {}
                     CritiqueDecision::Revise { issues } => {
                         critic_revisions += 1;
                         if critic_revisions > MAX_CRITIC_REVISIONS {
@@ -645,9 +661,7 @@ async fn critique_with_repair(
     for _ in 0..MAX_CRITIC_REPAIRS {
         match model.critique(turn.clone()).await {
             Ok(decision) => {
-                if let CritiqueDecision::Revise { issues } = &decision
-                    && let Err(error) = validate_critique_issues(issues)
-                {
+                if let Err(error) = validate_critique_decision(&decision) {
                     turn.repair_feedback = vec![format!(
                         "The prior critic decision did not satisfy the bounded critic contract: {error}. Return exactly one corrected critic JSON object."
                     )];
@@ -751,6 +765,40 @@ fn validate_critique_issues(issues: &[String]) -> Result<(), AgentRuntimeError> 
         ));
     }
     Ok(())
+}
+
+fn validate_critique_decision(decision: &CritiqueDecision) -> Result<(), AgentRuntimeError> {
+    match decision {
+        CritiqueDecision::Approve { checks }
+            if checks.answers_newest_request
+                && checks.evidence_boundary_correct
+                && checks.no_raw_record_dump
+                && checks.operator_facing
+                && checks.right_sized =>
+        {
+            Ok(())
+        }
+        CritiqueDecision::Approve { checks } => {
+            let failed = [
+                ("answers_newest_request", checks.answers_newest_request),
+                (
+                    "evidence_boundary_correct",
+                    checks.evidence_boundary_correct,
+                ),
+                ("no_raw_record_dump", checks.no_raw_record_dump),
+                ("operator_facing", checks.operator_facing),
+                ("right_sized", checks.right_sized),
+            ]
+            .into_iter()
+            .filter_map(|(name, passed)| (!passed).then_some(name))
+            .collect::<Vec<_>>()
+            .join(", ");
+            Err(AgentRuntimeError::InvalidFinal(format!(
+                "critic approval has failed checks: {failed}"
+            )))
+        }
+        CritiqueDecision::Revise { issues } => validate_critique_issues(issues),
+    }
 }
 
 fn validate_request(request: &AgentTurnRequest) -> Result<(), AgentRuntimeError> {
@@ -887,19 +935,49 @@ fn validate_final(
     draft: &FinalDraft,
     observations: &[ToolObservation],
 ) -> Result<(), AgentRuntimeError> {
-    if !bounded_text(&draft.headline) || !bounded_text(&draft.summary) {
+    if !bounded_display_text(&draft.headline, MAX_HEADLINE_BYTES)
+        || draft.headline.contains('\n')
+        || draft.headline.contains('\r')
+        || !bounded_display_text(&draft.summary, MAX_SUMMARY_BYTES)
+    {
         return Err(AgentRuntimeError::InvalidFinal(
-            "headline and summary are required".into(),
+            "headline or summary is empty, oversized, or structurally invalid".into(),
+        ));
+    }
+    let claim_count = all_claims(draft).count();
+    if draft.checked.len() > MAX_CLAIMS_PER_SECTION
+        || draft.changed.len() > MAX_CLAIMS_PER_SECTION
+        || draft.verified.len() > MAX_CLAIMS_PER_SECTION
+        || draft.current_state.len() > MAX_CLAIMS_PER_SECTION
+        || claim_count > MAX_TOTAL_CLAIMS
+        || draft.next_actions.len() > MAX_NEXT_ACTIONS
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "operator output contains too many report items".into(),
+        ));
+    }
+    if looks_like_raw_record_dump(&draft.summary)
+        || draft
+            .coverage_notice
+            .as_ref()
+            .is_some_and(|value| looks_like_raw_record_dump(value))
+        || draft
+            .question
+            .as_ref()
+            .is_some_and(|value| looks_like_raw_record_dump(value))
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "operator output exposes a raw record dump instead of a bounded answer".into(),
         ));
     }
     if draft
         .coverage_notice
         .as_ref()
-        .is_some_and(|value| !bounded_text(value))
+        .is_some_and(|value| !bounded_display_text(value, MAX_SUPPLEMENT_BYTES))
         || draft
             .question
             .as_ref()
-            .is_some_and(|value| !bounded_text(value))
+            .is_some_and(|value| !bounded_display_text(value, MAX_SUPPLEMENT_BYTES))
         || draft.next_actions.iter().any(|value| !bounded_text(value))
     {
         return Err(AgentRuntimeError::InvalidFinal(
@@ -1127,47 +1205,18 @@ fn evidence_is_authoritative(
 }
 
 fn render_final(draft: &FinalDraft) -> String {
-    let mut sections = vec![format!(
-        "**{}**\n\n{}",
-        draft.headline.trim(),
-        draft.summary.trim()
-    )];
-    push_claim_section(&mut sections, "Checked", &draft.checked);
-    push_claim_section(&mut sections, "Changed", &draft.changed);
-    push_claim_section(&mut sections, "Verified", &draft.verified);
-    push_claim_section(&mut sections, "Current state", &draft.current_state);
-    if let Some(notice) = &draft.coverage_notice {
-        sections.push(format!("**Coverage**\n\n{}", notice.trim()));
+    let mut sections = vec![draft.summary.trim().to_owned()];
+    if let Some(notice) = &draft.coverage_notice
+        && !draft.summary.contains(notice.trim())
+    {
+        sections.push(notice.trim().to_owned());
     }
-    if !draft.next_actions.is_empty() {
-        sections.push(format!(
-            "**Next**\n{}",
-            draft
-                .next_actions
-                .iter()
-                .map(|action| format!("- {}", action.trim()))
-                .collect::<Vec<_>>()
-                .join("\n")
-        ));
-    }
-    if let Some(question) = &draft.question {
-        sections.push(format!("**Need from you**\n\n{}", question.trim()));
+    if let Some(question) = &draft.question
+        && !draft.summary.contains(question.trim())
+    {
+        sections.push(question.trim().to_owned());
     }
     sections.join("\n\n")
-}
-
-fn push_claim_section(sections: &mut Vec<String>, title: &str, claims: &[EvidenceClaim]) {
-    if claims.is_empty() {
-        return;
-    }
-    sections.push(format!(
-        "**{title}**\n{}",
-        claims
-            .iter()
-            .map(|claim| format!("- {}", claim.text.trim()))
-            .collect::<Vec<_>>()
-            .join("\n")
-    ));
 }
 
 fn digest_json(value: &Value) -> String {
@@ -1187,4 +1236,38 @@ fn bounded_text(value: &str) -> bool {
         && !value
             .chars()
             .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
+}
+
+fn bounded_display_text(value: &str, max_bytes: usize) -> bool {
+    let value = value.trim();
+    !value.is_empty()
+        && value.len() <= max_bytes
+        && !value
+            .chars()
+            .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
+}
+
+fn looks_like_raw_record_dump(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    let internal_marker_count = [
+        "urn:cerebro:",
+        "evidence://",
+        "schema://",
+        "\"graph_revision\"",
+        "\"runtime_id\"",
+        "\"source_ref\"",
+        "\"tenant_id\"",
+        "\"trace_id\"",
+    ]
+    .into_iter()
+    .map(|marker| normalized.matches(marker).count())
+    .sum::<usize>();
+    let has_markdown_table = normalized
+        .lines()
+        .any(|line| line.contains("|---") || line.contains("---|"));
+    let has_nested_heading = normalized
+        .lines()
+        .any(|line| line.trim_start().starts_with('#'));
+    internal_marker_count >= 2
+        || (internal_marker_count > 0 && (has_markdown_table || has_nested_heading))
 }
