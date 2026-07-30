@@ -190,6 +190,78 @@ test "$(jq -r .schema_version "${organizational_receipt}")" = \
 test "$(jq -r .status "${organizational_receipt}")" = passed
 test "$(jq '[.checks[] | select(.status == "passed")] | length' "${organizational_receipt}")" -eq 14
 
+rust_canary_urn="urn:cerebro:${rust_canary_tenant}:organizational_entity:canary"
+go_canary_urn="urn:cerebro:${go_canary_tenant}:organizational_entity:canary"
+docker exec "${neo4j_container}" cypher-shell -u neo4j -p local-password \
+  --param "rust_urn => '${rust_canary_urn}'" \
+  --param "rust_tenant => '${rust_canary_tenant}'" \
+  --param "go_urn => '${go_canary_urn}'" \
+  --param "go_tenant => '${go_canary_tenant}'" \
+  'MERGE (rust:Entity:OrganizationalEntity {urn: $rust_urn})
+   SET rust.tenant_id = $rust_tenant,
+       rust.entity_id = "rust-canary-entity",
+       rust.external_id = $rust_urn,
+       rust.entity_type = "resource",
+       rust.entity_kind = "resource",
+       rust.authority_json = "\"qualification\"",
+       rust.properties_json = "{\"entity_urn\":\"" + $rust_urn + "\"}",
+       rust.label = "Rust canary"
+   MERGE (legacy:Entity:OrganizationalEntity {urn: $go_urn})
+   SET legacy.tenant_id = $go_tenant,
+       legacy.entity_id = "go-canary-entity",
+       legacy.external_id = $go_urn,
+       legacy.entity_type = "resource",
+       legacy.entity_kind = "resource",
+       legacy.authority_json = "\"qualification\"",
+       legacy.properties_json = "{\"entity_urn\":\"" + $go_urn + "\"}",
+       legacy.label = "Go canary"'
+rust_canary_url="http://127.0.0.1:8080/platform/graph/neighborhood?root_urn=$(jq -rn --arg value "${rust_canary_urn}" '$value|@uri')&limit=10"
+go_canary_url="http://127.0.0.1:8080/platform/graph/neighborhood?root_urn=$(jq -rn --arg value "${go_canary_urn}" '$value|@uri')&limit=10"
+
+export CEREBRO_RUST_READ_MODE=canary
+export CEREBRO_RUST_SHADOW_PERCENT=0
+export CEREBRO_RUST_AUTHORITY_PERCENT=50
+export CEREBRO_RUST_CANARY_VERIFY_PERCENT=100
+docker compose "${compose_files[@]}" up -d --force-recreate --wait cerebro
+assert_status 200 graph-canary-rust "${output_dir}/canary-rust-response.json" "${rust_canary_url}" rust-canary-key
+assert_status 200 graph-canary-go "${output_dir}/canary-go-response.json" "${go_canary_url}" go-canary-key
+
+docker compose "${compose_files[@]}" restart cerebro
+docker compose "${compose_files[@]}" up -d --wait cerebro
+assert_status 200 graph-canary-rust-after-restart \
+  "${output_dir}/canary-rust-response.json" "${rust_canary_url}" rust-canary-key
+assert_status 200 graph-canary-go-after-restart \
+  "${output_dir}/canary-go-response.json" "${go_canary_url}" go-canary-key
+
+rust_container="$(docker compose "${compose_files[@]}" ps -q rust-platform)"
+docker stop "${rust_container}" >/dev/null
+assert_status 503 readiness-canary-without-rust \
+  "${output_dir}/readiness.json" http://127.0.0.1:8080/health
+assert_status 200 graph-canary-go-without-rust \
+  "${output_dir}/canary-go-response.json" "${go_canary_url}" go-canary-key
+assert_not_status 200 graph-canary-rust-without-rust \
+  "${output_dir}/canary-rust-response.json" "${rust_canary_url}" rust-canary-key
+docker start "${rust_container}" >/dev/null
+for attempt in $(seq 1 36); do
+  if docker inspect --format '{{.State.Health.Status}}' "${rust_container}" | grep -qx healthy; then
+    break
+  fi
+  test "${attempt}" -lt 36
+  sleep 5
+done
+
+export CEREBRO_RUST_READ_MODE=authority
+export CEREBRO_RUST_SHADOW_PERCENT=0
+export CEREBRO_RUST_AUTHORITY_PERCENT=0
+export CEREBRO_RUST_CANARY_VERIFY_PERCENT=0
+docker compose "${compose_files[@]}" up -d --force-recreate --wait cerebro
+assert_status 200 readiness-authority "${output_dir}/readiness.json" http://127.0.0.1:8080/health
+assert_status 200 graph-authority "${output_dir}/authority-graph-response.json" "${graph_url}"
+jq -S . "${output_dir}/authority-graph-response.json" \
+  >"${output_dir}/authority-graph-response.canonical.json"
+cmp "${output_dir}/shadow-graph-response.json" \
+  "${output_dir}/authority-graph-response.canonical.json"
+
 rust_container="$(docker compose "${compose_files[@]}" ps -q rust-platform)"
 test -n "${rust_container}"
 docker stop "${rust_container}" >/dev/null
@@ -218,6 +290,26 @@ jq \
          name: "authority_fail_closed",
          status: "passed",
          evidence: "API readiness and product graph reads returned 503 when Rust authority was stopped"
+       },
+       {
+         name: "stable_authority_canary",
+         status: "passed",
+         evidence: "stable 50 percent sampling served one typed read from Rust and one from Go"
+       },
+       {
+         name: "verified_canary_restart",
+         status: "passed",
+         evidence: "100 percent Go-oracle verification was enabled and both stable cohorts survived an API restart"
+       },
+       {
+         name: "canary_legacy_isolation",
+         status: "passed",
+         evidence: "global readiness failed closed while the non-sampled Go read stayed available with Rust stopped"
+       },
+       {
+         name: "canary_rust_fail_closed",
+         status: "passed",
+         evidence: "the sampled Rust read did not fall back to Go while Rust was stopped"
        }
      ]' "${organizational_receipt}" >"${qualification_receipt}"
 
