@@ -46,6 +46,7 @@ struct EvalCaseReceipt {
     route_attempt_count: usize,
     operating_step_count: usize,
     critic_attempt_count: usize,
+    operating_repair_feedback: Vec<Vec<String>>,
     latency_ms: u128,
     false_converse: bool,
     passed: bool,
@@ -97,6 +98,7 @@ struct MeasuredModel {
     route_attempts: Mutex<usize>,
     operating_steps: Mutex<usize>,
     critic_attempts: Mutex<usize>,
+    operating_repair_feedback: Mutex<Vec<Vec<String>>>,
 }
 
 impl MeasuredModel {
@@ -107,6 +109,7 @@ impl MeasuredModel {
             route_attempts: Mutex::new(0),
             operating_steps: Mutex::new(0),
             critic_attempts: Mutex::new(0),
+            operating_repair_feedback: Mutex::new(Vec::new()),
         }
     }
 }
@@ -128,6 +131,12 @@ impl AgentModel for MeasuredModel {
             .operating_steps
             .lock()
             .expect("operating counter poisoned") += 1;
+        if !turn.revision_feedback.is_empty() {
+            self.operating_repair_feedback
+                .lock()
+                .expect("operating repair receipt poisoned")
+                .push(turn.revision_feedback.clone());
+        }
         self.inner.next(turn).await
     }
 
@@ -297,6 +306,11 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
                 .critic_attempts
                 .lock()
                 .expect("critic counter poisoned"),
+            operating_repair_feedback: measured
+                .operating_repair_feedback
+                .lock()
+                .expect("operating repair receipt poisoned")
+                .clone(),
             latency_ms,
             false_converse: eval_case.false_converse,
             passed: route_passed && lane_passed && false_converse_passed && loop_completed,
