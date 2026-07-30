@@ -294,6 +294,7 @@ pub struct CritiqueTurn {
     pub lane: ExecutionLane,
     pub draft: FinalDraft,
     pub observations: Vec<ToolObservation>,
+    pub repair_feedback: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -564,14 +565,17 @@ pub async fn run_turn(
                     revision_feedback = vec![error.to_string()];
                     continue;
                 }
-                match model
-                    .critique(CritiqueTurn {
+                match critique_with_repair(
+                    model,
+                    CritiqueTurn {
                         request: request.clone(),
                         lane,
                         draft: draft.clone(),
                         observations: observations.clone(),
-                    })
-                    .await?
+                        repair_feedback: Vec::new(),
+                    },
+                )
+                .await?
                 {
                     CritiqueDecision::Approve => {}
                     CritiqueDecision::Revise { issues } => {
@@ -597,6 +601,24 @@ pub async fn run_turn(
         }
     }
     Err(AgentRuntimeError::ModelStepLimit)
+}
+
+async fn critique_with_repair(
+    model: &dyn AgentModel,
+    mut turn: CritiqueTurn,
+) -> Result<CritiqueDecision, AgentRuntimeError> {
+    for _ in 0..MAX_CRITIC_REPAIRS {
+        match model.critique(turn.clone()).await {
+            Ok(decision) => return Ok(decision),
+            Err(AgentRuntimeError::InvalidFinal(reason)) => {
+                turn.repair_feedback = vec![format!(
+                    "The prior critic decision did not match the required JSON schema: {reason}. Return exactly one corrected critic JSON object."
+                )];
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(AgentRuntimeError::CriticRepairLimit)
 }
 
 async fn route_with_repair(

@@ -82,6 +82,48 @@ struct SchemaRepairModel {
     attempts: Mutex<usize>,
 }
 
+struct CriticSchemaRepairModel {
+    attempts: Mutex<usize>,
+}
+
+#[async_trait]
+impl AgentModel for CriticSchemaRepairModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Converse))
+    }
+
+    async fn next(&self, _turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        Ok(ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Evidence freshness".into(),
+                summary: "Fresh evidence remains valid through its stated observation window."
+                    .into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        })
+    }
+
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        let mut attempts = self.attempts.lock().unwrap();
+        *attempts += 1;
+        if *attempts == 1 {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "critic output: expected value at line 1 column 1".into(),
+            ));
+        }
+        assert!(turn.repair_feedback[0].contains("critic decision"));
+        Ok(CritiqueDecision::Approve)
+    }
+}
+
 #[async_trait]
 impl AgentModel for SchemaRepairModel {
     async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
@@ -792,6 +834,29 @@ async fn repairs_a_malformed_operating_decision_without_weakening_the_schema() {
         panic!("expected the repaired operating decision");
     };
     assert!(markdown.contains("security operations concepts"));
+    assert_eq!(*model.attempts.lock().unwrap(), 2);
+}
+
+#[tokio::test]
+async fn repairs_a_malformed_independent_critic_decision() {
+    let model = CriticSchemaRepairModel {
+        attempts: Mutex::new(0),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } = run_turn(
+        &model,
+        &tools,
+        request("What does evidence freshness mean?"),
+    )
+    .await
+    .unwrap() else {
+        panic!("expected the repaired critic decision");
+    };
+    assert!(markdown.contains("observation window"));
     assert_eq!(*model.attempts.lock().unwrap(), 2);
 }
 
