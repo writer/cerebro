@@ -10,6 +10,7 @@ const WORKSPACE_MANIFEST: &str = include_str!("../../../Cargo.toml");
 const WORKSPACE_LOCK: &str = include_str!("../../../Cargo.lock");
 const MAKEFILE: &str = include_str!("../../../Makefile");
 const RUST_CODEGEN: &str = include_str!("../../../buf.gen.rust.yaml");
+const QUALIFICATION_SCRIPT: &str = include_str!("../../../scripts/qualify-rust-graph.sh");
 const CONNECTRPC_REVISION: &str = "8b3c3b05d3b54af547477a9e3b3a77d62f68e229";
 const BUFFA_VERSION: &str = "0.9.1";
 
@@ -112,6 +113,35 @@ fn rust_candidate_build_never_invokes_go_or_emulation() {
         assert!(
             WORKFLOW.contains(required),
             "Rust-only candidate workflow is missing {required:?}"
+        );
+    }
+}
+
+#[test]
+fn graph_qualification_stays_on_retired_rust_authority_path() {
+    for required in [
+        "export CEREBRO_RUST_READ_MODE=authority",
+        "cmp \"${output_dir}/authority-graph-response-after-restart.canonical.json\"",
+        "assert_status 503 graph-authority-without-rust",
+    ] {
+        assert!(
+            QUALIFICATION_SCRIPT.contains(required),
+            "Rust graph qualification is missing retired authority setup {required:?}"
+        );
+    }
+    for forbidden in [
+        "CEREBRO_RUST_READ_MODE=canary",
+        "go_canary",
+        "rust_canary",
+        "CEREBRO_RUST_CANARY_API_KEYS",
+        "stable_authority_canary",
+        "verified_canary_restart",
+        "canary_legacy_isolation",
+        "canary_rust_fail_closed",
+    ] {
+        assert!(
+            !QUALIFICATION_SCRIPT.contains(forbidden),
+            "Rust graph qualification retained removed Go canary setup {forbidden:?}"
         );
     }
 }

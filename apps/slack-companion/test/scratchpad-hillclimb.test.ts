@@ -148,6 +148,16 @@ test("hosted hillclimb compares baseline and candidate through AWS model ports",
 
   assert.equal(model.generatorCalls, 44);
   assert.equal(model.judgeCalls, 22);
+  assert.ok(model.generatorRequests.every((request) =>
+    request.system.includes(
+      "Never end a retained-state answer with a question or invitation.",
+    )
+  ));
+  assert.ok(model.generatorRequests.some((request) =>
+    request.prompt.includes(
+      "Do not ask a question, request confirmation, offer choices, or invite",
+    )
+  ));
   assert.equal(receipt.generator.provider, "aws_bedrock");
   assert.equal(receipt.generator.model_id, "us.anthropic.claude-opus-4-8");
   assert.equal(receipt.generator.sampling_parameters, "provider_default");
@@ -204,6 +214,7 @@ test("hosted hillclimb fails closed on an invalid judge receipt", async () => {
 
 class FakeHostedModel implements HostedModelPort {
   generatorCalls = 0;
+  generatorRequests: HostedModelRequest[] = [];
   judgeCalls = 0;
 
   constructor(private readonly judgeText = JSON.stringify({
@@ -229,7 +240,10 @@ class FakeHostedModel implements HostedModelPort {
     const judge = request.system.includes("strict evaluator");
     const generatorCallNumber = judge ? undefined : this.generatorCalls + 1;
     if (judge) this.judgeCalls += 1;
-    else this.generatorCalls += 1;
+    else {
+      this.generatorCalls += 1;
+      this.generatorRequests.push(request);
+    }
     const candidate = generatorCallNumber !== undefined &&
       generatorCallNumber % 2 === 0;
     const outputText = judge
