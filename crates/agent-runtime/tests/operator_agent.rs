@@ -155,6 +155,10 @@ impl AgentModel for SchemaRepairModel {
             },
         })
     }
+
+    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(CritiqueDecision::Approve)
+    }
 }
 
 #[async_trait]

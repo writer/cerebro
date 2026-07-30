@@ -307,14 +307,41 @@ pub enum CritiqueDecision {
 }
 
 #[async_trait]
+/// Model authority for routing, operating, and independent critique.
+///
+/// Every implementation must provide a critic. Omitting it is a compile error:
+///
+/// ```compile_fail
+/// use async_trait::async_trait;
+/// use cerebro_agent_runtime::{
+///     AgentModel, AgentRuntimeError, ModelDecision, ModelTurn, RouteDecision, RouteTurn,
+/// };
+///
+/// struct MissingCritic;
+///
+/// #[async_trait]
+/// impl AgentModel for MissingCritic {
+///     async fn route(
+///         &self,
+///         _turn: RouteTurn,
+///     ) -> Result<RouteDecision, AgentRuntimeError> {
+///         unimplemented!()
+///     }
+///
+///     async fn next(
+///         &self,
+///         _turn: ModelTurn,
+///     ) -> Result<ModelDecision, AgentRuntimeError> {
+///         unimplemented!()
+///     }
+/// }
+/// ```
 pub trait AgentModel: Send + Sync {
     async fn route(&self, turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError>;
 
     async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError>;
 
-    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
-        Ok(CritiqueDecision::Approve)
-    }
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError>;
 }
 
 #[async_trait]
