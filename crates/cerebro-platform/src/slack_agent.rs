@@ -618,10 +618,18 @@ fn bedrock_structured_output(
             "Bedrock returned no schema-constrained decision".into(),
         )
     })?;
-    if tool_uses.next().is_some() || tool_use.name() != decision_tool {
+    if tool_use.name() != decision_tool {
         return Err(AgentRuntimeError::ModelUnavailable(
             "Bedrock returned an ambiguous schema-constrained decision".into(),
         ));
+    }
+    let value = document_to_json(tool_use.input())?;
+    for duplicate in tool_uses {
+        if duplicate.name() != decision_tool || document_to_json(duplicate.input())? != value {
+            return Err(AgentRuntimeError::ModelUnavailable(
+                "Bedrock returned an ambiguous schema-constrained decision".into(),
+            ));
+        }
     }
     if content
         .iter()
@@ -631,7 +639,7 @@ fn bedrock_structured_output(
             "Bedrock returned free text with a schema-constrained decision".into(),
         ));
     }
-    document_to_json(tool_use.input())
+    Ok(value)
 }
 
 fn json_to_document(value: &Value) -> Result<Document, AgentRuntimeError> {
@@ -2185,7 +2193,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_one_forced_bedrock_decision_and_rejects_ambiguous_content() {
+    fn parses_one_forced_bedrock_decision_and_rejects_disagreeing_content() {
         let decision = json!({
             "lane": "investigate",
             "confidence": "high",
@@ -2203,7 +2211,7 @@ mod tests {
             bedrock_structured_output(&content, ROUTE_DECISION_TOOL).unwrap(),
             decision
         );
-        assert!(parse_route_value(decision).is_ok());
+        assert!(parse_route_value(decision.clone()).is_ok());
 
         let with_free_text = vec![
             ContentBlock::Text("unstructured answer".into()),
@@ -2215,10 +2223,32 @@ mod tests {
         ));
         let duplicate = vec![
             ContentBlock::ToolUse(tool_use.clone()),
-            ContentBlock::ToolUse(tool_use),
+            ContentBlock::ToolUse(tool_use.clone()),
         ];
+        assert_eq!(
+            bedrock_structured_output(&duplicate, ROUTE_DECISION_TOOL).unwrap(),
+            decision
+        );
+        let disagreeing_decision = json!({
+            "lane": "lookup",
+            "confidence": "high",
+            "reason": "A bounded current fact needs one read.",
+            "requires_current_evidence": true
+        });
+        let disagreeing = aws_sdk_bedrockruntime::types::ToolUseBlock::builder()
+            .tool_use_id("tool-use-2")
+            .name(ROUTE_DECISION_TOOL)
+            .input(json_to_document(&disagreeing_decision).unwrap())
+            .build()
+            .unwrap();
         assert!(matches!(
-            bedrock_structured_output(&duplicate, ROUTE_DECISION_TOOL),
+            bedrock_structured_output(
+                &[
+                    ContentBlock::ToolUse(tool_use),
+                    ContentBlock::ToolUse(disagreeing),
+                ],
+                ROUTE_DECISION_TOOL,
+            ),
             Err(AgentRuntimeError::ModelUnavailable(_))
         ));
     }
