@@ -1545,7 +1545,14 @@ WHERE runtime.runtime_json->>'tenant_id' = $1
     OR POSITION(LOWER($2) IN LOWER(runtime.id)) > 0
     OR POSITION(LOWER($2) IN LOWER(COALESCE(runtime.runtime_json->>'source_id', ''))) > 0
   )
-ORDER BY runtime.id
+ORDER BY
+  CASE
+    WHEN LOWER(runtime.id) = LOWER($2)
+      OR LOWER(COALESCE(runtime.runtime_json->>'source_id', '')) = LOWER($2)
+    THEN 0
+    ELSE 1
+  END,
+  runtime.id
 LIMIT $3
 "#,
                 &[&tenant_id, &query.trim(), &limit],

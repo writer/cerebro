@@ -529,7 +529,7 @@ rust-coverage: ## Enforce the Rust workspace line-coverage floor with the pinned
 		test "$$actual" = "cargo-llvm-cov 0.8.7" || { echo "rust-coverage: install cargo-llvm-cov 0.8.7 with 'cargo install cargo-llvm-cov --version 0.8.7 --locked'"; exit 1; }
 	# Generated RPC bindings and codegen process entrypoints are checked by regeneration;
 	# database drivers, connector/auth/model HTTP, and runtime process entrypoints use live tests.
-	$(CARGO) llvm-cov --workspace --all-features --locked --ignore-filename-regex '(^|/)(wasm_abi\.rs|crates/action-store/src/lib\.rs|crates/cerebro-platform/src/(generated/.*|main|oidc|slack_agent|slack_agent_eval|append_log_consumer|cutover_command|parity_command)\.rs|crates/organizational-store/src/(lib|neo4j|postgres)\.rs|crates/source-runtime-next/src/http\.rs|tools/policycataloggen/src/main\.rs)$$' --fail-under-lines 90 --summary-only
+	$(CARGO) llvm-cov --workspace --all-features --locked --ignore-filename-regex '(^|/)(wasm_abi\.rs|crates/action-store/src/lib\.rs|crates/cerebro-platform/src/(generated/.*|main|oidc|slack_agent|slack_agent_eval|slack_agent_mcp|append_log_consumer|cutover_command|parity_command)\.rs|crates/organizational-store/src/(lib|neo4j|postgres)\.rs|crates/source-runtime-next/src/http\.rs|tools/policycataloggen/src/main\.rs)$$' --fail-under-lines 90 --summary-only
 
 rust-platform-engine-coverage: ## Enforce focused coverage for reusable platform engines.
 	@actual="$$($(CARGO) llvm-cov --version 2>/dev/null || true)"; \

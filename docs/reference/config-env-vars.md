@@ -87,3 +87,28 @@ Current bootstrap configuration is loaded by `internal/config`.
 | `CEREBRO_ORGANIZATIONAL_CONSUMER_MAX_RUNTIME_SECONDS` | `3600` | Replay seconds per invocation before a resumable stopped receipt. |
 
 `CEREBRO_KUZU_PATH` is rejected. Kuzu is no longer a supported graph backend.
+
+## Rust Slack agent
+
+The Rust platform process loads these bindings for the evidence-backed Slack
+operating loop. Model credentials and MCP bearer tokens belong in the
+deployment secret store, not checked-in configuration.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CEREBRO_SLACK_AGENT_ENABLED` | `false` | Enable the Rust Slack operating loop. |
+| `CEREBRO_SLACK_AGENT_MODEL_PROVIDER` | unset | Model adapter. Supported values are enforced by the Rust runtime. |
+| `CEREBRO_SLACK_AGENT_MODEL` | unset | Model identifier used for routing, tool selection, response drafting, and independent critique. |
+| `CEREBRO_SLACK_AGENT_MODEL_URL` | unset | HTTPS or loopback model endpoint when the selected provider requires one. |
+| `CEREBRO_SLACK_AGENT_MODEL_API_KEY` | unset | Model API credential. Store as a secret. |
+| `CEREBRO_SLACK_AGENT_MCP_URL` | unset | Optional HTTPS or loopback MCP endpoint whose tool catalog is added to the Slack agent. When unset, built-in graph, source catalog, and source-runtime tools remain available. |
+| `CEREBRO_SLACK_AGENT_MCP_BEARER_TOKEN` | unset | Tenant-scoped bearer token for the MCP endpoint. Required when the MCP URL is set. Store as a secret. |
+| `CEREBRO_SLACK_AGENT_MCP_TOOLSETS` | `task` | MCP toolset selection sent as `X-Cerebro-MCP-Toolsets`. Use the bounded task surface by default; deployment owners may select additional domain toolsets. |
+| `CEREBRO_SLACK_AGENT_MCP_PROPOSE_TOOLS` | unset | Comma-separated read-only MCP tools that return proposals. These tools may run in investigation lanes but cannot apply changes. |
+| `CEREBRO_SLACK_AGENT_MCP_ACTUATE_TOOLS` | unset | Comma-separated write-capable MCP tools admitted to the exact effect-approval path. Unlisted write tools are omitted. Every admitted call still requires request-, actor-, thread-, tool-, and input-digest-bound authorization plus independent verification. |
+
+Read-only MCP tools are admitted from server-declared `readOnlyHint=true`
+metadata. A write-capable tool is unavailable to the agent unless the
+deployment lists it in `CEREBRO_SLACK_AGENT_MCP_ACTUATE_TOOLS`. A read-only tool
+cannot be promoted to actuation, and a write-capable tool cannot be mislabeled
+as a proposal.
