@@ -229,7 +229,7 @@ test("blocked Rust agent turns do not record a useful answer timestamp", async (
   }
 });
 
-test("Rust continuation receives the newest retained request", async () => {
+test("Rust continuation preserves the durable mission across repeated nudges", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
     let requestBody: Record<string, unknown> | undefined;
@@ -269,8 +269,8 @@ test("Rust continuation receives the newest retained request", async () => {
         expires_at: "2026-08-05T20:00:00.000Z",
         last_outcome: "blocked",
         recent_requests: [
+          "Keep going.",
           "Investigate the newest connector failure.",
-          "Review the older control gap.",
         ],
         schema_version: "slack-thread-working-state/v1",
         thread_ref: "slack-thread:T-ONE:C-ONE:thread-one",

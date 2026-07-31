@@ -213,7 +213,7 @@ export class AssistantQuestionService {
             : {
                 workingState: {
                   current_request:
-                    input.workingState.recent_requests[0] ?? currentRequest,
+                    durableMissionRequest(input.workingState, currentRequest),
                   ...(input.workingState.blocker === undefined
                     ? {}
                     : { last_blocker: input.workingState.blocker }),
@@ -1402,6 +1402,31 @@ export function slackDeliveryReferences(
 
 function normalizedSlackText(value: string): string {
   return value.replace(/<@[A-Z0-9]+>/gu, " ").replace(/\s+/gu, " ").trim();
+}
+
+function durableMissionRequest(
+  workingState: SlackThreadWorkingStateV1,
+  currentRequest: string,
+): string {
+  return workingState.recent_requests.find((request) =>
+    !continuationOnlyRequest(request)
+  ) ?? currentRequest;
+}
+
+function continuationOnlyRequest(value: string): boolean {
+  const normalized = value
+    .toLocaleLowerCase("en-US")
+    .replace(/[.!?]+$/gu, "")
+    .trim();
+  return [
+    "continue",
+    "go on",
+    "keep going",
+    "proceed",
+    "resume",
+    "carry on",
+    "do it",
+  ].includes(normalized);
 }
 
 function sourceRecoveryAction(state: CerebroAskError["sourceState"]): string {

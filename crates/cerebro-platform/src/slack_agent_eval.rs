@@ -212,6 +212,7 @@ struct ConversationLabScenarioReceipt {
     unanswered_user_turn_count: usize,
     transcript: Vec<ConversationMessage>,
     final_judgment: Option<ConversationQualityJudgment>,
+    final_judgment_error: Option<String>,
     passed: bool,
     turns: Vec<ConversationLabTurnReceipt>,
 }
@@ -1114,19 +1115,26 @@ async fn run_conversation_lab(
             .iter()
             .filter(|turn| turn.response_markdown.is_none())
             .count();
-        let final_judgment = if terminal_failure || unanswered_user_turn_count > 0 {
-            None
-        } else {
-            judge_conversation_trajectory(
-                judge.as_ref(),
-                &scenario,
-                &transcript,
-                &all_observations,
-                &turns,
-            )
-            .await
-            .ok()
-        };
+        let (final_judgment, final_judgment_error) =
+            if terminal_failure || unanswered_user_turn_count > 0 {
+                (
+                    None,
+                    Some("terminal failure or unanswered user turn forbids judgment".into()),
+                )
+            } else {
+                match judge_conversation_trajectory(
+                    judge.as_ref(),
+                    &scenario,
+                    &transcript,
+                    &all_observations,
+                    &turns,
+                )
+                .await
+                {
+                    Ok(judgment) => (Some(judgment), None),
+                    Err(error) => (None, Some(error.to_string())),
+                }
+            };
         let passed = !terminal_failure
             && operator_satisfied
             && delivered_exchange_count >= LAB_MIN_EXCHANGES
@@ -1142,6 +1150,7 @@ async fn run_conversation_lab(
             unanswered_user_turn_count,
             transcript,
             final_judgment,
+            final_judgment_error,
             passed,
             turns,
         });
