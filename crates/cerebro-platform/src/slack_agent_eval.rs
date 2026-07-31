@@ -1142,8 +1142,8 @@ async fn run_conversation_lab(
                     Some(lane),
                     "approval_required".into(),
                     Some(format!(
-                        "I need the exact approval for {} before I can continue: {}",
-                        request.tool_id, request.purpose
+                        "The external change is prepared for the recorded executor. Nothing changed. Exact effect authorization is required before execution; the planned effect is: {}",
+                        request.purpose
                     )),
                     working_state.clone(),
                 ),

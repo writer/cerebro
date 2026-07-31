@@ -97,8 +97,8 @@ impl ExecutionLane {
                 max_tool_calls: 3,
             },
             Self::Investigate => TurnBudget {
-                max_selected_capabilities: 10,
-                max_tool_calls: 8,
+                max_selected_capabilities: 7,
+                max_tool_calls: 5,
             },
             Self::Act => TurnBudget {
                 max_selected_capabilities: 12,
