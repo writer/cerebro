@@ -27,10 +27,12 @@ pub const MAX_HISTORY_TOTAL_BYTES: usize = 1024 * 1024;
 pub const MAX_MODEL_STEPS: usize = 24;
 pub const MAX_ROUTER_ATTEMPTS: usize = 4;
 pub const MAX_OPERATING_REPAIRS: usize = 8;
+pub const MAX_PRESENTATION_REPAIRS: usize = 4;
 pub const MAX_CRITIC_REPAIRS: usize = 4;
 pub const MAX_CRITIC_REVISIONS: usize = 4;
 pub const ROUTER_MAX_TOKENS: i32 = 32_768;
 pub const DECISION_MAX_TOKENS: i32 = 65_536;
+pub const PRESENTATION_MAX_TOKENS: i32 = 16_384;
 pub const CRITIC_MAX_TOKENS: i32 = 65_536;
 pub const HARD_MAX_GENERATION_TOKENS: i32 = 131_072;
 const MAX_TEXT_BYTES: usize = 16 * 1024;
@@ -305,6 +307,21 @@ pub struct CritiqueTurn {
     pub repair_feedback: Vec<String>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct PresentationTurn {
+    pub request: AgentTurnRequest,
+    pub lane: ExecutionLane,
+    pub draft: FinalDraft,
+    pub observations: Vec<ToolObservation>,
+    pub repair_feedback: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PresentationDecision {
+    pub messages: Vec<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
 pub enum CritiqueDecision {
@@ -316,9 +333,11 @@ pub enum CritiqueDecision {
 #[serde(deny_unknown_fields)]
 pub struct CritiqueChecks {
     pub answers_newest_request: bool,
+    pub conversational: bool,
     pub evidence_boundary_correct: bool,
     pub no_raw_record_dump: bool,
     pub operator_facing: bool,
+    pub owns_follow_through: bool,
     pub right_sized: bool,
 }
 
@@ -356,6 +375,15 @@ pub trait AgentModel: Send + Sync {
     async fn route(&self, turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError>;
 
     async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError>;
+
+    async fn present(
+        &self,
+        turn: PresentationTurn,
+    ) -> Result<PresentationDecision, AgentRuntimeError> {
+        Ok(PresentationDecision {
+            messages: vec![turn.draft.summary],
+        })
+    }
 
     async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError>;
 }
@@ -414,6 +442,7 @@ pub enum AgentRuntimeError {
     ModelUnavailable(String),
     ModelStepLimit,
     OperatingRepairLimit,
+    PresentationRepairLimit,
     CriticRepairLimit,
     ToolBudgetExceeded,
     ToolUnavailable(String),
@@ -456,6 +485,9 @@ impl fmt::Display for AgentRuntimeError {
             Self::OperatingRepairLimit => {
                 formatter.write_str("the operating decision repair loop exceeded its bounded limit")
             }
+            Self::PresentationRepairLimit => formatter.write_str(
+                "the conversational presentation repair loop exceeded its bounded limit",
+            ),
             Self::CriticRepairLimit => {
                 formatter.write_str("the critic repair loop exceeded its bounded limit")
             }
@@ -616,6 +648,25 @@ pub async fn run_turn(
                     revision_feedback = vec![error.to_string()];
                     continue;
                 }
+                let draft = present_with_repair(
+                    model,
+                    PresentationTurn {
+                        request: request.clone(),
+                        lane,
+                        draft,
+                        observations: observations.clone(),
+                        repair_feedback: Vec::new(),
+                    },
+                )
+                .await?;
+                if let Err(error) = validate_final(&request, lane, &draft, &observations) {
+                    operating_repairs += 1;
+                    if operating_repairs > MAX_OPERATING_REPAIRS {
+                        return Err(AgentRuntimeError::OperatingRepairLimit);
+                    }
+                    revision_feedback = vec![error.to_string()];
+                    continue;
+                }
                 operating_repairs = 0;
                 match critique_with_repair(
                     model,
@@ -652,6 +703,37 @@ pub async fn run_turn(
         }
     }
     Err(AgentRuntimeError::ModelStepLimit)
+}
+
+async fn present_with_repair(
+    model: &dyn AgentModel,
+    mut turn: PresentationTurn,
+) -> Result<FinalDraft, AgentRuntimeError> {
+    for _ in 0..MAX_PRESENTATION_REPAIRS {
+        let presentation = match model.present(turn.clone()).await {
+            Ok(presentation) => presentation,
+            Err(AgentRuntimeError::InvalidFinal(reason)) => {
+                turn.repair_feedback = vec![format!(
+                    "The prior Slack presentation did not match the required JSON schema: {reason}. Return exactly one corrected presentation JSON object."
+                )];
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+        match validate_presentation(&presentation) {
+            Ok(summary) => {
+                let mut draft = turn.draft;
+                draft.summary = summary;
+                return Ok(draft);
+            }
+            Err(error) => {
+                turn.repair_feedback = vec![format!(
+                    "The prior Slack presentation did not satisfy the conversational contract: {error}. Rewrite only the visible reply."
+                )];
+            }
+        }
+    }
+    Err(AgentRuntimeError::PresentationRepairLimit)
 }
 
 async fn critique_with_repair(
@@ -767,13 +849,47 @@ fn validate_critique_issues(issues: &[String]) -> Result<(), AgentRuntimeError> 
     Ok(())
 }
 
+fn validate_presentation(presentation: &PresentationDecision) -> Result<String, AgentRuntimeError> {
+    if presentation.messages.is_empty()
+        || presentation.messages.len() > 2
+        || presentation
+            .messages
+            .iter()
+            .any(|message| !bounded_display_text(message, MAX_SUMMARY_BYTES))
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "Slack presentation requires one or two bounded messages".into(),
+        ));
+    }
+    let summary = presentation
+        .messages
+        .iter()
+        .map(|message| message.trim())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    if summary.len() > MAX_SUMMARY_BYTES {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "Slack presentation exceeds the visible reply limit".into(),
+        ));
+    }
+    if looks_like_report_copy(&summary) || looks_like_user_handback(&summary) {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "Slack presentation reads like an internal report or hands assistant-owned work back to the user"
+                .into(),
+        ));
+    }
+    Ok(summary)
+}
+
 fn validate_critique_decision(decision: &CritiqueDecision) -> Result<(), AgentRuntimeError> {
     match decision {
         CritiqueDecision::Approve { checks }
             if checks.answers_newest_request
+                && checks.conversational
                 && checks.evidence_boundary_correct
                 && checks.no_raw_record_dump
                 && checks.operator_facing
+                && checks.owns_follow_through
                 && checks.right_sized =>
         {
             Ok(())
@@ -781,12 +897,14 @@ fn validate_critique_decision(decision: &CritiqueDecision) -> Result<(), AgentRu
         CritiqueDecision::Approve { checks } => {
             let failed = [
                 ("answers_newest_request", checks.answers_newest_request),
+                ("conversational", checks.conversational),
                 (
                     "evidence_boundary_correct",
                     checks.evidence_boundary_correct,
                 ),
                 ("no_raw_record_dump", checks.no_raw_record_dump),
                 ("operator_facing", checks.operator_facing),
+                ("owns_follow_through", checks.owns_follow_through),
                 ("right_sized", checks.right_sized),
             ]
             .into_iter()
@@ -1280,6 +1398,39 @@ fn looks_like_internal_query_failure(value: &str) -> bool {
         "read-only cypher validator",
         "query matched more graph rows than can be safely post-processed",
         "unwind, range(), and collect()",
+    ]
+    .into_iter()
+    .any(|marker| normalized.contains(marker))
+}
+
+fn looks_like_report_copy(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    normalized.lines().any(|line| {
+        let line = line.trim_start();
+        line.starts_with('#')
+            || [
+                "checked:",
+                "evidence:",
+                "current state:",
+                "next actions:",
+                "research:",
+                "tool trail:",
+                "observations:",
+            ]
+            .into_iter()
+            .any(|prefix| line.starts_with(prefix))
+    })
+}
+
+fn looks_like_user_handback(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    [
+        "let me know if",
+        "would you like me to",
+        "do you want me to",
+        "if you'd like, i can",
+        "say the word",
+        "tell me if you want",
     ]
     .into_iter()
     .any(|marker| normalized.contains(marker))

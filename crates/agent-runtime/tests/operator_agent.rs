@@ -8,15 +8,16 @@ use cerebro_agent_runtime::{
     AGENT_TURN_REQUEST_V1, AgentModel, AgentRuntimeError, AgentTools, AgentTurnOutcome,
     AgentTurnRequest, ConversationMessage, ConversationRole, CritiqueChecks, CritiqueDecision,
     CritiqueTurn, EffectAuthorization, EvidenceClaim, EvidenceRecord, ExecutionLane, FinalDraft,
-    FinalState, ModelDecision, ModelTurn, RouteConfidence, RouteDecision, RouteTurn,
-    ToolAuthorityClass, ToolCall, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
-    WorkingOutcome, WorkingState, run_turn,
+    FinalState, ModelDecision, ModelTurn, PresentationDecision, PresentationTurn, RouteConfidence,
+    RouteDecision, RouteTurn, ToolAuthorityClass, ToolCall, ToolDescriptor, ToolEffectClass,
+    ToolResult, ToolResultState, WorkingOutcome, WorkingState, run_turn,
 };
 use serde_json::json;
 
 struct ScriptedModel {
     routes: Mutex<VecDeque<RouteDecision>>,
     decisions: Mutex<VecDeque<ModelDecision>>,
+    presentations: Mutex<VecDeque<PresentationDecision>>,
     critiques: Mutex<VecDeque<CritiqueDecision>>,
 }
 
@@ -38,6 +39,20 @@ impl AgentModel for ScriptedModel {
             .ok_or_else(|| AgentRuntimeError::InvalidFinal("model script ended".into()))
     }
 
+    async fn present(
+        &self,
+        turn: PresentationTurn,
+    ) -> Result<PresentationDecision, AgentRuntimeError> {
+        Ok(self
+            .presentations
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or_else(|| PresentationDecision {
+                messages: vec![turn.draft.summary],
+            }))
+    }
+
     async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
         Ok(self
             .critiques
@@ -52,9 +67,11 @@ fn approved_critique() -> CritiqueDecision {
     CritiqueDecision::Approve {
         checks: CritiqueChecks {
             answers_newest_request: true,
+            conversational: true,
             evidence_boundary_correct: true,
             no_raw_record_dump: true,
             operator_facing: true,
+            owns_follow_through: true,
             right_sized: true,
         },
     }
@@ -73,6 +90,7 @@ fn scripted(lane: ExecutionLane, decisions: VecDeque<ModelDecision>) -> Scripted
     ScriptedModel {
         routes: Mutex::new(VecDeque::from([route(lane)])),
         decisions: Mutex::new(decisions),
+        presentations: Mutex::new(VecDeque::new()),
         critiques: Mutex::new(VecDeque::new()),
     }
 }
@@ -546,6 +564,58 @@ async fn repairs_a_raw_catalog_dump_into_a_direct_capability_answer() {
 }
 
 #[tokio::test]
+async fn presents_completed_work_as_a_conversational_slack_reply() {
+    let draft = FinalDraft {
+        state: FinalState::Answered,
+        headline: "Control evidence approach".into(),
+        summary: "## Checked\nThe control and evidence boundaries are understood.".into(),
+        summary_evidence_refs: vec![],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: None,
+        question: None,
+    };
+    let model = ScriptedModel {
+        routes: Mutex::new(VecDeque::from([route(ExecutionLane::Converse)])),
+        decisions: Mutex::new(VecDeque::from([ModelDecision::Finish { draft }])),
+        presentations: Mutex::new(VecDeque::from([
+            PresentationDecision {
+                messages: vec![
+                    "## Evidence\nThe control and evidence boundaries are understood.".into(),
+                ],
+            },
+            PresentationDecision {
+                messages: vec!["I can build that lineage. Let me know if you want me to continue.".into()],
+            },
+            PresentationDecision {
+                messages: vec!["The right way to approach this is to build one lineage per control, then compare expected evidence with what the systems actually produce and what the auditor tested.".into()],
+            },
+        ])),
+        critiques: Mutex::new(VecDeque::new()),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } = run_turn(
+        &model,
+        &tools,
+        request("How should I build a control-to-evidence lineage map?"),
+    )
+    .await
+    .unwrap() else {
+        panic!("expected a conversational presentation");
+    };
+    assert!(markdown.starts_with("The right way to approach this"));
+    assert!(!markdown.contains("##"));
+    assert!(!markdown.contains("Checked"));
+}
+
+#[tokio::test]
 async fn repairs_internal_query_refusals_into_an_operator_facing_boundary() {
     let lookup = ToolCall {
         call_id: "graph-reason".into(),
@@ -1002,6 +1072,7 @@ async fn repairs_a_schema_valid_but_unsafe_route_before_operating() {
             route(ExecutionLane::Investigate),
         ])),
         decisions: Mutex::new(VecDeque::from([ModelDecision::Finish { draft }])),
+        presentations: Mutex::new(VecDeque::new()),
         critiques: Mutex::new(VecDeque::new()),
     };
     let tools = ScriptedTools {
@@ -1045,6 +1116,7 @@ async fn repairs_a_draft_after_independent_critique() {
             ModelDecision::Finish { draft: first },
             ModelDecision::Finish { draft: repaired },
         ])),
+        presentations: Mutex::new(VecDeque::new()),
         critiques: Mutex::new(VecDeque::from([
             CritiqueDecision::Revise {
                 issues: vec!["Name the evidence boundary in the capability statement.".into()],
@@ -1163,6 +1235,7 @@ async fn continues_the_exact_durable_mission_instead_of_restarting() {
                 question: None,
             },
         }])),
+        presentations: Mutex::new(VecDeque::new()),
         critiques: Mutex::new(VecDeque::new()),
     };
     let tools = ScriptedTools {
