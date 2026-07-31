@@ -301,7 +301,7 @@ impl BedrockModel {
             .tool_choice(ToolChoice::Tool(tool_choice))
             .build()
             .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
-        let response = self
+        let mut request = self
             .client
             .converse()
             .model_id(&self.model)
@@ -312,7 +312,13 @@ impl BedrockModel {
                     .max_tokens(max_tokens)
                     .build(),
             )
-            .tool_config(tool_configuration)
+            .tool_config(tool_configuration);
+        if self.model.contains(".anthropic.claude-") {
+            request = request.additional_model_request_fields(json_to_document(&json!({
+                "disable_parallel_tool_use": true,
+            }))?);
+        }
+        let response = request
             .send()
             .await
             .map_err(|_| AgentRuntimeError::ModelUnavailable("Bedrock request failed".into()))?;
