@@ -124,6 +124,59 @@ struct FinalLengthRepairModel {
     attempts: Mutex<usize>,
 }
 
+struct FinalHeadlineRepairModel {
+    attempts: Mutex<usize>,
+}
+
+#[async_trait]
+impl AgentModel for FinalHeadlineRepairModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Lookup))
+    }
+
+    async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        let mut attempts = self.attempts.lock().unwrap();
+        *attempts += 1;
+        if *attempts == 1 {
+            return Ok(ModelDecision::InvokeTool {
+                call: ToolCall {
+                    call_id: "headline-read".into(),
+                    tool_id: "runtime_status".into(),
+                    purpose: "Read the current runtime status.".into(),
+                    input: json!({"runtime_ref": "runtime://headline"}),
+                },
+            });
+        }
+        if *attempts == 3 {
+            assert!(turn.revision_feedback[0].contains("prior headline was 161 bytes"));
+            assert!(turn.revision_feedback[0].contains("no longer than 160 bytes"));
+        }
+        Ok(ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: if *attempts == 2 {
+                    "x".repeat(161)
+                } else {
+                    "Runtime status is current".into()
+                },
+                summary: "The runtime returned a current bounded status observation.".into(),
+                summary_evidence_refs: vec!["evidence://headline".into()],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        })
+    }
+
+    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(approved_critique())
+    }
+}
+
 #[async_trait]
 impl AgentModel for FinalLengthRepairModel {
     async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
@@ -427,6 +480,44 @@ async fn oversized_final_receives_precise_length_feedback_and_repairs() {
 
     assert!(markdown.starts_with("Owner: <provider admin>."));
     assert!(markdown.len() < 1_800);
+}
+
+#[tokio::test]
+async fn oversized_headline_receives_precise_length_feedback_and_repairs() {
+    let model = FinalHeadlineRepairModel {
+        attempts: Mutex::new(0),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "runtime_status",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(BTreeMap::from([(
+            "headline-read".into(),
+            success(
+                "The runtime returned current status.",
+                evidence("evidence://headline", "The runtime status is current."),
+            ),
+        )])),
+    };
+
+    let AgentTurnOutcome::Delivered {
+        markdown,
+        tool_call_count,
+        ..
+    } = run_turn(&model, &tools, request("Read the current runtime status."))
+        .await
+        .unwrap()
+    else {
+        panic!("expected a repaired grounded answer")
+    };
+
+    assert_eq!(tool_call_count, 1);
+    assert_eq!(
+        markdown,
+        "The runtime returned a current bounded status observation."
+    );
 }
 
 fn final_draft() -> FinalDraft {
