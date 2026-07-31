@@ -568,6 +568,7 @@ pub async fn run_turn(
     let mut operating_repairs = 0;
     let mut critic_revisions = 0;
     for _ in 0..MAX_MODEL_STEPS {
+        let presentation_feedback = revision_feedback.clone();
         let decision = match model
             .next(ModelTurn {
                 request: request.clone(),
@@ -609,7 +610,15 @@ pub async fn run_turn(
                     continue;
                 }
                 if !call_ids.insert(call.call_id.clone()) {
-                    return Err(AgentRuntimeError::DuplicateCallId);
+                    operating_repairs += 1;
+                    if operating_repairs > MAX_OPERATING_REPAIRS {
+                        return Err(AgentRuntimeError::OperatingRepairLimit);
+                    }
+                    revision_feedback = vec![format!(
+                        "Tool call_id {:?} was already used in this turn. Do not repeat the call. Finish from existing observations, or use a new unique call_id only for a materially different read.",
+                        call.call_id
+                    )];
+                    continue;
                 }
                 let descriptor = available_tools
                     .iter()
@@ -697,7 +706,16 @@ pub async fn run_turn(
                     if operating_repairs > MAX_OPERATING_REPAIRS {
                         return Err(AgentRuntimeError::OperatingRepairLimit);
                     }
-                    revision_feedback = vec![error.to_string()];
+                    revision_feedback = if resumed_mission
+                        && lane != ExecutionLane::Converse
+                        && observations.is_empty()
+                    {
+                        vec![format!(
+                            "The durable mission resumed in the {lane:?} lane, so thread history cannot support the current answer: {error}. Invoke one available bounded observation capability now. If no capability can observe the required field, finish blocked with no evidence claims and one exact coverage notice. Never cite history or working state as evidence."
+                        )]
+                    } else {
+                        vec![error.to_string()]
+                    };
                     continue;
                 }
                 let draft = present_with_repair(
@@ -707,7 +725,7 @@ pub async fn run_turn(
                         lane,
                         draft,
                         observations: observations.clone(),
-                        repair_feedback: Vec::new(),
+                        repair_feedback: presentation_feedback,
                     },
                 )
                 .await?;

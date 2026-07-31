@@ -128,6 +128,70 @@ struct FinalHeadlineRepairModel {
     attempts: Mutex<usize>,
 }
 
+struct ContinuationEvidenceRepairModel {
+    attempts: Mutex<usize>,
+}
+
+#[async_trait]
+impl AgentModel for ContinuationEvidenceRepairModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Continue))
+    }
+
+    async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        let mut attempts = self.attempts.lock().unwrap();
+        *attempts += 1;
+        match *attempts {
+            1 => Ok(ModelDecision::Finish {
+                draft: FinalDraft {
+                    state: FinalState::Answered,
+                    headline: "Resumed status".into(),
+                    summary: "The retained status is still current.".into(),
+                    summary_evidence_refs: vec![],
+                    checked: vec![],
+                    changed: vec![],
+                    verified: vec![],
+                    current_state: vec![],
+                    next_actions: vec![],
+                    coverage_notice: None,
+                    question: None,
+                },
+            }),
+            2 => {
+                assert!(turn.revision_feedback[0].contains("durable mission resumed"));
+                assert!(turn.revision_feedback[0].contains("Invoke one available bounded"));
+                Ok(ModelDecision::InvokeTool {
+                    call: ToolCall {
+                        call_id: "resume-read".into(),
+                        tool_id: "runtime_status".into(),
+                        purpose: "Refresh the current status before continuing.".into(),
+                        input: json!({"runtime_ref": "runtime://resumed"}),
+                    },
+                })
+            }
+            _ => Ok(ModelDecision::Finish {
+                draft: FinalDraft {
+                    state: FinalState::Answered,
+                    headline: "Resumed status observed".into(),
+                    summary: "A fresh bounded read confirms the resumed status.".into(),
+                    summary_evidence_refs: vec!["evidence://resumed".into()],
+                    checked: vec![],
+                    changed: vec![],
+                    verified: vec![],
+                    current_state: vec![],
+                    next_actions: vec![],
+                    coverage_notice: None,
+                    question: None,
+                },
+            }),
+        }
+    }
+
+    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(approved_critique())
+    }
+}
+
 #[async_trait]
 impl AgentModel for FinalHeadlineRepairModel {
     async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
@@ -1507,6 +1571,111 @@ async fn continuation_resumes_the_retained_conversation_lane_without_reads() {
         panic!("expected the conversational mission to resume")
     };
     assert_eq!(lane, ExecutionLane::Converse);
+}
+
+#[tokio::test]
+async fn evidence_bearing_continuation_repairs_to_a_fresh_read() {
+    let mut turn = request("Keep at it.");
+    turn.working_state = Some(WorkingState {
+        mission_ref: Some("mission://current-status".into()),
+        current_request: "Finish the current runtime status assessment.".into(),
+        last_outcome: WorkingOutcome::Owned,
+        last_blocker: None,
+        active_lane: Some(ExecutionLane::Investigate),
+        requires_current_evidence: Some(true),
+        open_loops: vec!["Refresh the decision-bearing status.".into()],
+    });
+    let model = ContinuationEvidenceRepairModel {
+        attempts: Mutex::new(0),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "runtime_status",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(BTreeMap::from([(
+            "resume-read".into(),
+            success(
+                "The resumed status is current.",
+                evidence("evidence://resumed", "The resumed status is current."),
+            ),
+        )])),
+    };
+
+    let AgentTurnOutcome::Delivered {
+        lane,
+        tool_call_count,
+        markdown,
+        ..
+    } = run_turn(&model, &tools, turn).await.unwrap()
+    else {
+        panic!("expected a grounded continuation")
+    };
+    assert_eq!(lane, ExecutionLane::Investigate);
+    assert_eq!(tool_call_count, 1);
+    assert!(markdown.contains("fresh bounded read"));
+}
+
+#[tokio::test]
+async fn duplicate_call_identity_is_repaired_without_dropping_the_turn() {
+    let repeated = ToolCall {
+        call_id: "status-read".into(),
+        tool_id: "runtime_status".into(),
+        purpose: "Read the current runtime status.".into(),
+        input: json!({"runtime_ref": "runtime://one"}),
+    };
+    let model = scripted(
+        ExecutionLane::Lookup,
+        VecDeque::from([
+            ModelDecision::InvokeTool {
+                call: repeated.clone(),
+            },
+            ModelDecision::InvokeTool { call: repeated },
+            ModelDecision::Finish {
+                draft: FinalDraft {
+                    state: FinalState::Answered,
+                    headline: "Runtime status observed".into(),
+                    summary: "The current runtime status was observed once and reused.".into(),
+                    summary_evidence_refs: vec!["evidence://status".into()],
+                    checked: vec![],
+                    changed: vec![],
+                    verified: vec![],
+                    current_state: vec![],
+                    next_actions: vec![],
+                    coverage_notice: None,
+                    question: None,
+                },
+            },
+        ]),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "runtime_status",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(BTreeMap::from([(
+            "status-read".into(),
+            success(
+                "The runtime status is current.",
+                evidence("evidence://status", "The runtime status is current."),
+            ),
+        )])),
+    };
+
+    let AgentTurnOutcome::Delivered {
+        tool_call_count,
+        markdown,
+        ..
+    } = run_turn(&model, &tools, request("Read the current runtime status."))
+        .await
+        .unwrap()
+    else {
+        panic!("expected the duplicate identity to be repaired")
+    };
+    assert_eq!(tool_call_count, 1);
+    assert!(markdown.contains("observed once"));
 }
 
 #[tokio::test]
