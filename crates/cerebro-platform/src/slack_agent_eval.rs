@@ -409,6 +409,7 @@ impl AgentModel for MeasuredModel {
 
 struct EvalTools {
     case_ref: String,
+    scenario_anchor_at: Option<String>,
     observations: Mutex<Vec<String>>,
 }
 
@@ -416,6 +417,15 @@ impl EvalTools {
     fn new(case_ref: impl Into<String>) -> Self {
         Self {
             case_ref: case_ref.into(),
+            scenario_anchor_at: None,
+            observations: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn for_conversation(case_ref: impl Into<String>, scenario_anchor_at: String) -> Self {
+        Self {
+            case_ref: case_ref.into(),
+            scenario_anchor_at: Some(scenario_anchor_at),
             observations: Mutex::new(Vec::new()),
         }
     }
@@ -520,21 +530,29 @@ impl AgentTools for EvalTools {
         let fresh_until = observed_at
             .checked_add(Duration::minutes(5))
             .ok_or_else(|| AgentRuntimeError::InvalidToolCall("evidence time overflow".into()))?;
-        let fixture = evaluation_fixture(&self.case_ref, &call.tool_id);
+        let fixture = evaluation_fixture(
+            &self.case_ref,
+            &call.tool_id,
+            self.scenario_anchor_at
+                .as_deref()
+                .unwrap_or(&request.assessment_at),
+            &request.assessment_at,
+        );
+        let summary = fixture.summary;
         self.observations
             .lock()
             .expect("evaluation observation receipt poisoned")
-            .push(format!("{}: {}", call.tool_id, fixture.summary));
+            .push(format!("{}: {}", call.tool_id, summary));
         Ok(ToolResult {
             state: ToolResultState::Succeeded,
-            summary: fixture.summary.into(),
+            summary: summary.clone(),
             data: fixture.data,
             evidence: vec![cerebro_agent_runtime::EvidenceRecord {
                 evidence_ref: format!(
                     "evidence://rust-hillclimb/{}/{}",
                     request.request_id, call.call_id
                 ),
-                statement: fixture.summary.into(),
+                statement: summary,
                 observed_at: request.assessment_at.clone(),
                 fresh_until: Some(
                     fresh_until
@@ -549,37 +567,60 @@ impl AgentTools for EvalTools {
 }
 
 struct EvaluationFixture {
-    summary: &'static str,
+    summary: String,
     data: serde_json::Value,
 }
 
-fn evaluation_fixture(case_ref: &str, tool_id: &str) -> EvaluationFixture {
+fn evaluation_fixture(
+    case_ref: &str,
+    tool_id: &str,
+    scenario_anchor_at: &str,
+    assessment_at: &str,
+) -> EvaluationFixture {
     if case_ref.contains("source-visibility") || case_ref.contains("source-access-boundary") {
         return match tool_id {
             "source_catalog.inspect" => EvaluationFixture {
-                summary: "The named compliance source declares five collectible families: controls, tests, evidence, people, and audit activity. This declaration does not prove provider-side permission.",
+                summary: "The named compliance source declares five collectible families: controls, tests, evidence, people, and audit activity. This declaration does not prove provider-side permission.".into(),
                 data: json!({"declared_families": 5, "families": ["controls", "tests", "evidence", "people", "audit activity"], "provider_admin_access": false}),
             },
             "source_runtime.inspect" | "source_runtime.overview" => EvaluationFixture {
-                summary: "The source runtime is enabled. Its last collection completed eight minutes ago with four of five expected families. The per-family receipt marks audit activity not_observed with no explicit error code; this remains partial, does not rule out an empty family, missing per-family scope, provider failure, or connector defect, and provides no evidence for ranking those causes.",
+                summary: "The source runtime is enabled. Its last collection completed eight minutes ago with four of five expected families. The per-family receipt marks audit activity not_observed with no explicit error code; this remains partial, does not rule out an empty family, missing per-family scope, provider failure, or connector defect, and provides no evidence for ranking those causes.".into(),
                 data: json!({"enabled": true, "last_collection_minutes_ago": 8, "expected_families": 5, "observed_families": 4, "family_receipts": [{"family": "audit activity", "status": "not_observed", "explicit_error_code": null}], "coverage": "partial", "excluded_causes": [], "cause_ranking_supported": false}),
             },
             "graph.search" | "graph.expand" => EvaluationFixture {
-                summary: "The current bounded graph search found source-backed controls, tests, evidence, and people, but no audit-activity records or mappings in the searched scope. This does not establish that no independent configuration mapping exists.",
+                summary: "The current bounded graph search found source-backed controls, tests, evidence, and people, but no audit-activity records or mappings in the searched scope. This does not establish that no independent configuration mapping exists.".into(),
                 data: json!({"present_families": ["controls", "tests", "evidence", "people"], "missing_families": ["audit activity"], "mapping_found_in_search_scope": false, "proves_configuration_absence": false, "bounded": true}),
             },
             _ => generic_evaluation_fixture(tool_id),
         };
     }
     if case_ref.contains("operational-check-in") {
+        let anchor = OffsetDateTime::parse(scenario_anchor_at, &Rfc3339).ok();
+        let assessed = OffsetDateTime::parse(assessment_at, &Rfc3339).ok();
+        let last_complete = anchor.and_then(|value| value.checked_sub(Duration::minutes(47)));
+        let deadline = last_complete.and_then(|value| value.checked_add(Duration::hours(1)));
+        let last_complete_text = last_complete
+            .and_then(|value| value.format(&Rfc3339).ok())
+            .unwrap_or_else(|| "unknown".into());
+        let deadline_text = deadline
+            .and_then(|value| value.format(&Rfc3339).ok())
+            .unwrap_or_else(|| "unknown".into());
+        let remaining_margin_minutes = deadline
+            .zip(assessed)
+            .map(|(deadline, assessed)| (deadline - assessed).whole_minutes().max(0))
+            .unwrap_or(0);
         return match tool_id {
             "source_runtime.overview" | "source_runtime.inspect" => EvaluationFixture {
-                summary: "Five of six governed sources are healthy. One evidence source is degraded after three rejected collection cursors; its last complete receipt is 47 minutes old, while the other five completed within 12 minutes.",
-                data: json!({"source_count": 6, "healthy": 5, "degraded": 1, "degraded_reason": "rejected collection cursor", "degraded_last_complete_minutes_ago": 47, "other_sources_max_age_minutes": 12}),
+                summary: format!(
+                    "Five of six governed sources are healthy. One evidence source is degraded after three rejected collection cursors; its fixed last complete receipt was at {last_complete_text}, while the other five completed within 12 minutes of the scenario anchor."
+                ),
+                data: json!({"source_count": 6, "healthy": 5, "degraded": 1, "degraded_reason": "rejected collection cursor", "degraded_last_complete_at": last_complete_text, "other_sources_max_age_minutes_at_scenario_anchor": 12}),
             },
             "mcp.cerebro.findings.search" => EvaluationFixture {
-                summary: "One high-risk finding depends on the degraded source; its evidence is still within the one-hour freshness objective but has 13 minutes of margin remaining.",
-                data: json!({"high_risk_findings_affected": 1, "freshness_objective_minutes": 60, "remaining_margin_minutes": 13}),
+                summary: format!(
+                    "One high-risk finding depends on the degraded source. Its one-hour evidence-freshness deadline is fixed at {deadline_text}; at this observation it has {remaining_margin_minutes} minutes of margin remaining."
+                ),
+                data: json!({"high_risk_findings_affected": 1, "freshness_objective_minutes": 60, "freshness_deadline": deadline_text, "remaining_margin_minutes_at_observation": remaining_margin_minutes}),
             },
             _ => generic_evaluation_fixture(tool_id),
         };
@@ -587,11 +628,11 @@ fn evaluation_fixture(case_ref: &str, tool_id: &str) -> EvaluationFixture {
     if case_ref.contains("diagnose-source") || case_ref.contains("root-cause") {
         return match tool_id {
             "source_runtime.inspect" | "source_runtime.overview" => EvaluationFixture {
-                summary: "The last three collections failed after the provider returned data because the saved cursor was rejected. Authentication and the prior complete evidence page remain healthy.",
+                summary: "The last three collections failed after the provider returned data because the saved cursor was rejected. Authentication and the prior complete evidence page remain healthy.".into(),
                 data: json!({"failed_attempts": 3, "failure_stage": "cursor advance", "authentication": "healthy", "prior_complete_page": "available"}),
             },
             "mcp.cerebro.sources.health" => EvaluationFixture {
-                summary: "The supported cause is a cursor-format mismatch introduced by the latest connector configuration revision; the first affected run began immediately after that revision.",
+                summary: "The supported cause is a cursor-format mismatch introduced by the latest connector configuration revision; the first affected run began immediately after that revision.".into(),
                 data: json!({"supported_cause": "cursor-format mismatch", "correlation": "first failure followed latest configuration revision"}),
             },
             _ => generic_evaluation_fixture(tool_id),
@@ -603,51 +644,51 @@ fn evaluation_fixture(case_ref: &str, tool_id: &str) -> EvaluationFixture {
 fn generic_evaluation_fixture(tool_id: &str) -> EvaluationFixture {
     match tool_id {
         "capability.overview" => EvaluationFixture {
-            summary: "Cerebro has tenant-scoped read capabilities for governed sources, graph evidence, findings, assets, investigations, risks, and action proposals. It has no direct provider administration authority; external changes require an exact effect authorization.",
+            summary: "Cerebro has tenant-scoped read capabilities for governed sources, graph evidence, findings, assets, investigations, risks, and action proposals. It has no direct provider administration authority; external changes require an exact effect authorization.".into(),
             data: json!({"read_domains": ["sources", "graph evidence", "findings", "assets", "investigations", "risks", "action proposals"], "direct_provider_administration": false}),
         },
         "source_runtime.overview" | "source_runtime.inspect" => EvaluationFixture {
-            summary: "The bounded source view contains six governed sources: five are healthy and current, and one is degraded with a 47-minute-old last complete receipt.",
+            summary: "The bounded source view contains six governed sources: five are healthy and current, and one is degraded with a 47-minute-old last complete receipt.".into(),
             data: json!({"source_count": 6, "healthy": 5, "degraded": 1, "oldest_complete_receipt_minutes": 47}),
         },
         "source_catalog.inspect" => EvaluationFixture {
-            summary: "The source catalog declares governed read surfaces but does not establish live credentials, provider-side permissions, or current collected coverage.",
+            summary: "The source catalog declares governed read surfaces but does not establish live credentials, provider-side permissions, or current collected coverage.".into(),
             data: json!({"authority": "declared collection contract", "proves_live_access": false}),
         },
         "graph.reason" => EvaluationFixture {
-            summary: "The broad relationship reasoning operation could not produce a grounded result. Other bounded graph and domain reads remain available.",
+            summary: "The broad relationship reasoning operation could not produce a grounded result. Other bounded graph and domain reads remain available.".into(),
             data: json!({"grounded": false, "operator_facing_gap": "broad relationship reasoning unavailable"}),
         },
         "graph.search" | "graph.expand" => EvaluationFixture {
-            summary: "The bounded tenant graph search returned current governed evidence for the requested scope without crossing the tenant boundary.",
+            summary: "The bounded tenant graph search returned current governed evidence for the requested scope without crossing the tenant boundary.".into(),
             data: json!({"current": true, "bounded": true, "tenant_isolated": true}),
         },
         "mcp.cerebro.findings.search" => EvaluationFixture {
-            summary: "The current bounded search found one high-risk open finding with complete supporting evidence and a named remediation owner.",
+            summary: "The current bounded search found one high-risk open finding with complete supporting evidence and a named remediation owner.".into(),
             data: json!({"high_risk_open": 1, "supporting_evidence_complete": true, "remediation_owner_present": true}),
         },
         "mcp.cerebro.assets.search" => EvaluationFixture {
-            summary: "The bounded asset search found one internet-exposed production asset associated with the current high-risk finding.",
+            summary: "The bounded asset search found one internet-exposed production asset associated with the current high-risk finding.".into(),
             data: json!({"internet_exposed_production_assets": 1}),
         },
         "mcp.cerebro.investigation.context" | "mcp.cerebro.risk.explain" => EvaluationFixture {
-            summary: "The supported risk is external exposure with a complete evidence chain; the immediate priority is to restrict exposure and then independently re-observe the asset.",
+            summary: "The supported risk is external exposure with a complete evidence chain; the immediate priority is to restrict exposure and then independently re-observe the asset.".into(),
             data: json!({"risk": "external exposure", "evidence_chain": "complete", "recommended_priority": "restrict and re-observe"}),
         },
         "mcp.cerebro.evidence.packet" => EvaluationFixture {
-            summary: "A complete current evidence packet is available for the bounded finding and asset scope.",
+            summary: "A complete current evidence packet is available for the bounded finding and asset scope.".into(),
             data: json!({"complete": true, "current": true}),
         },
         "mcp.cerebro.sources.health" => EvaluationFixture {
-            summary: "The relevant source is current enough for this decision and its latest collection receipt is complete.",
+            summary: "The relevant source is current enough for this decision and its latest collection receipt is complete.".into(),
             data: json!({"current": true, "complete": true}),
         },
         "mcp.cerebro.action.plan" => EvaluationFixture {
-            summary: "The bounded read-only plan assigns the remediation owner to restrict exposure, then requires a fresh independent asset observation before closure.",
-            data: json!({"action": "restrict exposure", "verification": "fresh independent asset observation", "external_effect": false}),
+            summary: "The bounded read-only plan assigns the remediation owner to restrict exposure, then requires a fresh independent asset observation before closure. Creating the plan is read-only; the planned restriction remains an unexecuted external effect that requires exact effect authorization.".into(),
+            data: json!({"action": "restrict exposure", "verification": "fresh independent asset observation", "plan_external_effect": false, "planned_action_external_effect": true, "planned_action_requires_effect_authorization": true}),
         },
         _ => EvaluationFixture {
-            summary: "The tenant-scoped evaluation source returned a current, bounded observation for the requested scope.",
+            summary: "The tenant-scoped evaluation source returned a current, bounded observation for the requested scope.".into(),
             data: json!({"current": true, "bounded": true, "tool_id": tool_id}),
         },
     }
@@ -1041,6 +1082,7 @@ async fn run_conversation_lab(
             &scenario.scenario_ref,
         );
         let mut transcript = scenario.seed_history.clone();
+        let scenario_anchor_at = OffsetDateTime::now_utc().format(&Rfc3339)?;
         let mut current_message = scenario.initial_message.to_owned();
         let mut turns = Vec::new();
         let mut operator_satisfied = false;
@@ -1065,7 +1107,8 @@ async fn run_conversation_lab(
             };
             let original_route_context = RouteContext::from_request(&request);
             let measured = MeasuredModel::new(model.clone());
-            let tools = EvalTools::new(&scenario.fixture_ref);
+            let tools =
+                EvalTools::for_conversation(&scenario.fixture_ref, scenario_anchor_at.clone());
             let started = Instant::now();
             let outcome = tokio::time::timeout(
                 std::time::Duration::from_secs(180),
@@ -2566,5 +2609,41 @@ mod tests {
         assert!(!encoded.contains("bedrock"));
         assert!(!encoded.contains("model_id"));
         assert!(!encoded.contains("commit_sha"));
+    }
+
+    #[test]
+    fn conversation_fixture_keeps_one_fixed_freshness_deadline() {
+        let first = evaluation_fixture(
+            "case://held-out/informal-operational-check-in",
+            "mcp.cerebro.findings.search",
+            "2026-07-31T20:00:00Z",
+            "2026-07-31T20:02:00Z",
+        );
+        let later = evaluation_fixture(
+            "case://held-out/informal-operational-check-in",
+            "mcp.cerebro.findings.search",
+            "2026-07-31T20:00:00Z",
+            "2026-07-31T20:05:00Z",
+        );
+        assert!(first.summary.contains("2026-07-31T20:13:00Z"));
+        assert!(later.summary.contains("2026-07-31T20:13:00Z"));
+        assert_eq!(first.data["remaining_margin_minutes_at_observation"], 11);
+        assert_eq!(later.data["remaining_margin_minutes_at_observation"], 8);
+    }
+
+    #[test]
+    fn action_plan_distinguishes_read_only_planning_from_the_planned_effect() {
+        let fixture = evaluation_fixture(
+            "case://shadow/action-plan",
+            "mcp.cerebro.action.plan",
+            "2026-07-31T20:00:00Z",
+            "2026-07-31T20:00:00Z",
+        );
+        assert_eq!(fixture.data["plan_external_effect"], false);
+        assert_eq!(fixture.data["planned_action_external_effect"], true);
+        assert_eq!(
+            fixture.data["planned_action_requires_effect_authorization"],
+            true
+        );
     }
 }

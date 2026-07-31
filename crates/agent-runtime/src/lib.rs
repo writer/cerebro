@@ -598,7 +598,15 @@ pub async fn run_turn(
                 revision_feedback.clear();
                 validate_call(&call)?;
                 if observations.len() >= budget.max_tool_calls {
-                    return Err(AgentRuntimeError::ToolBudgetExceeded);
+                    operating_repairs += 1;
+                    if operating_repairs > MAX_OPERATING_REPAIRS {
+                        return Err(AgentRuntimeError::ToolBudgetExceeded);
+                    }
+                    revision_feedback = vec![format!(
+                        "The {lane:?} lane has used all {} bounded tool calls. Do not invoke another capability. Finish now from the collected observations, preserving the exact unsupported fields as a coverage gap.",
+                        budget.max_tool_calls
+                    )];
+                    continue;
                 }
                 if !call_ids.insert(call.call_id.clone()) {
                     return Err(AgentRuntimeError::DuplicateCallId);
@@ -624,7 +632,15 @@ pub async fn run_turn(
                 }
                 selected_tools.insert(call.tool_id.clone());
                 if selected_tools.len() > budget.max_selected_capabilities {
-                    return Err(AgentRuntimeError::ToolBudgetExceeded);
+                    selected_tools.remove(&call.tool_id);
+                    operating_repairs += 1;
+                    if operating_repairs > MAX_OPERATING_REPAIRS {
+                        return Err(AgentRuntimeError::ToolBudgetExceeded);
+                    }
+                    revision_feedback = vec![format!(
+                        "The {lane:?} lane has reached its bounded capability-selection limit. Do not select another capability. Finish now from the collected observations and name any remaining field as a coverage gap."
+                    )];
+                    continue;
                 }
                 if descriptor.authority_class == ToolAuthorityClass::Actuate {
                     if lane != ExecutionLane::Act {

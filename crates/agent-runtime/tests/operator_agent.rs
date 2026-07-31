@@ -1350,3 +1350,81 @@ async fn continuation_resumes_the_retained_conversation_lane_without_reads() {
     };
     assert_eq!(lane, ExecutionLane::Converse);
 }
+
+#[tokio::test]
+async fn exhausted_tool_budget_forces_a_grounded_finish_instead_of_dropping_the_turn() {
+    let calls = (1..=4)
+        .map(|index| ToolCall {
+            call_id: format!("lookup-{index}"),
+            tool_id: "runtime_status".into(),
+            purpose: format!("Read bounded status field {index}."),
+            input: json!({"field": index}),
+        })
+        .collect::<Vec<_>>();
+    let mut decisions = calls
+        .iter()
+        .cloned()
+        .map(|call| ModelDecision::InvokeTool { call })
+        .collect::<VecDeque<_>>();
+    decisions.push_back(ModelDecision::Finish {
+        draft: FinalDraft {
+            state: FinalState::Partial,
+            headline: "Bounded status collected".into(),
+            summary:
+                "Three bounded status fields were observed; the fourth remains a coverage gap."
+                    .into(),
+            summary_evidence_refs: vec!["evidence://status-1".into()],
+            checked: vec![claim(
+                "Three bounded status fields were observed.",
+                "evidence://status-1",
+            )],
+            changed: vec![],
+            verified: vec![],
+            current_state: vec![],
+            next_actions: vec!["Resolve the unobserved fourth field.".into()],
+            coverage_notice: Some("The fourth field was outside the turn budget.".into()),
+            question: None,
+        },
+    });
+    let model = scripted(ExecutionLane::Lookup, decisions);
+    let results = calls
+        .iter()
+        .take(3)
+        .enumerate()
+        .map(|(index, call)| {
+            (
+                call.call_id.clone(),
+                success(
+                    "Returned one bounded status field.",
+                    evidence(
+                        &format!("evidence://status-{}", index + 1),
+                        "The runtime returned one bounded status field.",
+                    ),
+                ),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "runtime_status",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(results),
+    };
+
+    let AgentTurnOutcome::Delivered {
+        final_state,
+        tool_call_count,
+        markdown,
+        ..
+    } = run_turn(&model, &tools, request("Read the bounded runtime status."))
+        .await
+        .unwrap()
+    else {
+        panic!("expected a grounded partial answer")
+    };
+    assert_eq!(final_state, FinalState::Partial);
+    assert_eq!(tool_call_count, 3);
+    assert!(markdown.contains("fourth remains a coverage gap"));
+}
