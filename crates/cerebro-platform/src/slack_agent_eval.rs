@@ -664,7 +664,7 @@ fn generic_evaluation_fixture(tool_id: &str) -> EvaluationFixture {
             data: json!({"current": true, "bounded": true, "tenant_isolated": true}),
         },
         "mcp.cerebro.findings.search" => EvaluationFixture {
-            summary: "The current bounded search found one high-risk open finding with complete supporting evidence and a named remediation owner.".into(),
+            summary: "The current bounded search found one high-risk open finding with complete supporting evidence and a remediation-owner mapping; the concrete owner identity was not returned.".into(),
             data: json!({"high_risk_open": 1, "supporting_evidence_complete": true, "remediation_owner_present": true}),
         },
         "mcp.cerebro.assets.search" => EvaluationFixture {
@@ -2645,5 +2645,19 @@ mod tests {
             fixture.data["planned_action_requires_effect_authorization"],
             true
         );
+    }
+
+    #[test]
+    fn finding_fixture_does_not_promote_owner_presence_into_an_identity() {
+        let fixture = evaluation_fixture(
+            "case://held-out/finding",
+            "mcp.cerebro.findings.search",
+            "2026-07-31T20:00:00Z",
+            "2026-07-31T20:00:00Z",
+        );
+        assert_eq!(fixture.data["remediation_owner_present"], true);
+        assert!(fixture.summary.contains("owner mapping"));
+        assert!(fixture.summary.contains("identity was not returned"));
+        assert!(!fixture.summary.contains("named remediation owner"));
     }
 }

@@ -523,6 +523,46 @@ async fn conversational_artifact_edits_do_not_require_system_evidence() {
 }
 
 #[tokio::test]
+async fn precise_conversational_question_becomes_the_durable_open_loop() {
+    let question = "Which incident channel should receive the finished handoff?";
+    let model = scripted(
+        ExecutionLane::Converse,
+        VecDeque::from([ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::NeedsInput,
+                headline: "One routing decision remains".into(),
+                summary: "The handoff is ready; one routing decision remains.".into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: Some(question.into()),
+            },
+        }]),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { working_state, .. } = run_turn(
+        &model,
+        &tools,
+        request("Prepare the incident handoff for the right channel."),
+    )
+    .await
+    .unwrap() else {
+        panic!("expected one precise question")
+    };
+    let working_state = working_state.expect("working state");
+    assert_eq!(working_state.last_outcome, WorkingOutcome::NeedsUser);
+    assert_eq!(working_state.open_loops, vec![question]);
+}
+
+#[tokio::test]
 async fn oversized_final_receives_precise_length_feedback_and_repairs() {
     let model = FinalLengthRepairModel {
         attempts: Mutex::new(0),
@@ -1143,10 +1183,18 @@ async fn rejects_effect_claims_without_later_independent_verification() {
         )])),
     };
 
-    assert_eq!(
-        run_turn(&model, &tools, turn).await,
-        Err(AgentRuntimeError::OperatingRepairLimit)
-    );
+    let AgentTurnOutcome::Delivered {
+        final_state,
+        markdown,
+        evidence_refs,
+        ..
+    } = run_turn(&model, &tools, turn).await.unwrap()
+    else {
+        panic!("expected an evidence-safe blocked handoff")
+    };
+    assert_eq!(final_state, FinalState::Blocked);
+    assert!(markdown.contains("not claiming completion"));
+    assert!(evidence_refs.is_empty());
 }
 
 #[tokio::test]
@@ -1255,10 +1303,20 @@ async fn rejects_final_claims_that_cite_unobserved_evidence() {
         )])),
     };
 
-    assert_eq!(
-        run_turn(&model, &tools, request("What is the runtime status?")).await,
-        Err(AgentRuntimeError::OperatingRepairLimit)
-    );
+    let AgentTurnOutcome::Delivered {
+        final_state,
+        markdown,
+        evidence_refs,
+        ..
+    } = run_turn(&model, &tools, request("What is the runtime status?"))
+        .await
+        .unwrap()
+    else {
+        panic!("expected an evidence-safe blocked handoff")
+    };
+    assert_eq!(final_state, FinalState::Blocked);
+    assert!(!markdown.contains("runtime is healthy"));
+    assert!(evidence_refs.is_empty());
 }
 
 #[tokio::test]
@@ -1303,10 +1361,20 @@ async fn refuses_to_present_stale_evidence_as_current() {
         )])),
     };
 
-    assert_eq!(
-        run_turn(&model, &tools, request("What is the runtime status?")).await,
-        Err(AgentRuntimeError::OperatingRepairLimit)
-    );
+    let AgentTurnOutcome::Delivered {
+        final_state,
+        markdown,
+        evidence_refs,
+        ..
+    } = run_turn(&model, &tools, request("What is the runtime status?"))
+        .await
+        .unwrap()
+    else {
+        panic!("expected an evidence-safe blocked handoff")
+    };
+    assert_eq!(final_state, FinalState::Blocked);
+    assert!(!markdown.contains("runtime is healthy"));
+    assert!(evidence_refs.is_empty());
 }
 
 #[tokio::test]
@@ -1676,6 +1744,53 @@ async fn duplicate_call_identity_is_repaired_without_dropping_the_turn() {
     };
     assert_eq!(tool_call_count, 1);
     assert!(markdown.contains("observed once"));
+}
+
+#[tokio::test]
+async fn exhausted_operating_repairs_return_a_durable_blocker_instead_of_an_error() {
+    let invalid = FinalDraft {
+        state: FinalState::Answered,
+        headline: "Unsupported current answer".into(),
+        summary: "The current runtime is healthy.".into(),
+        summary_evidence_refs: vec![],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: None,
+        question: None,
+    };
+    let model = scripted(
+        ExecutionLane::Lookup,
+        (0..=cerebro_agent_runtime::MAX_OPERATING_REPAIRS)
+            .map(|_| ModelDecision::Finish {
+                draft: invalid.clone(),
+            })
+            .collect(),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered {
+        final_state,
+        markdown,
+        working_state,
+        ..
+    } = run_turn(&model, &tools, request("Read the current runtime status."))
+        .await
+        .unwrap()
+    else {
+        panic!("expected a durable blocked outcome")
+    };
+    assert_eq!(final_state, FinalState::Blocked);
+    assert!(markdown.contains("no external change was applied"));
+    assert_eq!(
+        working_state.expect("working state").last_outcome,
+        WorkingOutcome::Blocked
+    );
 }
 
 #[tokio::test]

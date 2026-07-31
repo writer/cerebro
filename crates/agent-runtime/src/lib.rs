@@ -584,7 +584,12 @@ pub async fn run_turn(
             Err(AgentRuntimeError::InvalidFinal(reason)) => {
                 operating_repairs += 1;
                 if operating_repairs > MAX_OPERATING_REPAIRS {
-                    return Err(AgentRuntimeError::OperatingRepairLimit);
+                    return Ok(repair_limit_outcome(
+                        &request,
+                        lane,
+                        resumed_mission,
+                        &observations,
+                    ));
                 }
                 revision_feedback = vec![format!(
                     "The prior operating decision did not match the required JSON schema: {reason}. Return exactly one corrected JSON object."
@@ -612,7 +617,12 @@ pub async fn run_turn(
                 if !call_ids.insert(call.call_id.clone()) {
                     operating_repairs += 1;
                     if operating_repairs > MAX_OPERATING_REPAIRS {
-                        return Err(AgentRuntimeError::OperatingRepairLimit);
+                        return Ok(repair_limit_outcome(
+                            &request,
+                            lane,
+                            resumed_mission,
+                            &observations,
+                        ));
                     }
                     revision_feedback = vec![format!(
                         "Tool call_id {:?} was already used in this turn. Do not repeat the call. Finish from existing observations, or use a new unique call_id only for a materially different read.",
@@ -630,7 +640,12 @@ pub async fn run_turn(
                     if !call_fingerprints.insert(call_fingerprint) {
                         operating_repairs += 1;
                         if operating_repairs > MAX_OPERATING_REPAIRS {
-                            return Err(AgentRuntimeError::OperatingRepairLimit);
+                            return Ok(repair_limit_outcome(
+                                &request,
+                                lane,
+                                resumed_mission,
+                                &observations,
+                            ));
                         }
                         revision_feedback = vec![
                             "The identical capability and input were already observed in this turn. Use the existing observation, choose a materially different read, or finish the answer."
@@ -704,7 +719,12 @@ pub async fn run_turn(
                 if let Err(error) = validate_final(&request, lane, &draft, &observations) {
                     operating_repairs += 1;
                     if operating_repairs > MAX_OPERATING_REPAIRS {
-                        return Err(AgentRuntimeError::OperatingRepairLimit);
+                        return Ok(repair_limit_outcome(
+                            &request,
+                            lane,
+                            resumed_mission,
+                            &observations,
+                        ));
                     }
                     revision_feedback = if resumed_mission
                         && lane != ExecutionLane::Converse
@@ -732,7 +752,12 @@ pub async fn run_turn(
                 if let Err(error) = validate_final(&request, lane, &draft, &observations) {
                     operating_repairs += 1;
                     if operating_repairs > MAX_OPERATING_REPAIRS {
-                        return Err(AgentRuntimeError::OperatingRepairLimit);
+                        return Ok(repair_limit_outcome(
+                            &request,
+                            lane,
+                            resumed_mission,
+                            &observations,
+                        ));
                     }
                     revision_feedback = vec![error.to_string()];
                     continue;
@@ -784,6 +809,53 @@ pub async fn run_turn(
         }
     }
     Err(AgentRuntimeError::ModelStepLimit)
+}
+
+fn repair_limit_outcome(
+    request: &AgentTurnRequest,
+    lane: ExecutionLane,
+    resumed_mission: bool,
+    observations: &[ToolObservation],
+) -> AgentTurnOutcome {
+    let effect_observed = observations
+        .iter()
+        .any(|observation| observation.descriptor.authority_class == ToolAuthorityClass::Actuate);
+    let (summary, next_action) = if effect_observed {
+        (
+            "I couldn't produce a reliable final synthesis after the bounded repair attempts. The effect observation remains recorded, but I am not claiming completion without a clean independent verification.",
+            "Reconcile the recorded effect outcome and obtain a fresh independent verification before closure.",
+        )
+    } else {
+        (
+            "I couldn't produce a reliable answer after the bounded repair attempts. I preserved the thread, and no external change was applied.",
+            "Retry the bounded read or final synthesis without repeating the prior failed decision.",
+        )
+    };
+    let draft = FinalDraft {
+        state: FinalState::Blocked,
+        headline: "Reliable answer blocked".into(),
+        summary: summary.into(),
+        summary_evidence_refs: Vec::new(),
+        checked: Vec::new(),
+        changed: Vec::new(),
+        verified: Vec::new(),
+        current_state: Vec::new(),
+        next_actions: vec![next_action.into()],
+        coverage_notice: Some(
+            "The operating model could not satisfy the final-answer contract within its bounded repair limit."
+                .into(),
+        ),
+        question: None,
+    };
+    AgentTurnOutcome::Delivered {
+        schema_version: AGENT_TURN_RESULT_V1,
+        lane,
+        markdown: render_final(&draft),
+        final_state: draft.state,
+        evidence_refs: Vec::new(),
+        tool_call_count: observations.len(),
+        working_state: Some(next_working_state(request, lane, resumed_mission, &draft)),
+    }
 }
 
 fn normalize_converse_draft(
