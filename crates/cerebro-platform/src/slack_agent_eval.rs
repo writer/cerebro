@@ -932,6 +932,18 @@ fn answer_quality_issues(markdown: &str) -> Vec<String> {
     }) {
         issues.push("the visible reply renders internal report sections".into());
     }
+    if [
+        "deterministic ask query",
+        "row-expanding cypher",
+        "read-only cypher validator",
+        "query matched more graph rows than can be safely post-processed",
+        "unwind, range(), and collect()",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+    {
+        issues.push("the visible reply exposes an internal graph-query failure".into());
+    }
     issues
 }
 
@@ -993,6 +1005,12 @@ mod tests {
         assert!(
             !answer_quality_issues(
                 "**Checked**\n\n| source | id |\n|---|---|\n| A | urn:cerebro:source:a |"
+            )
+            .is_empty()
+        );
+        assert!(
+            !answer_quality_issues(
+                "row-expanding Cypher expressions such as UNWIND, range(), and collect() are forbidden"
             )
             .is_empty()
         );

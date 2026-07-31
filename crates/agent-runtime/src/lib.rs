@@ -957,17 +957,17 @@ fn validate_final(
         ));
     }
     if looks_like_raw_record_dump(&draft.summary)
-        || draft
-            .coverage_notice
-            .as_ref()
-            .is_some_and(|value| looks_like_raw_record_dump(value))
-        || draft
-            .question
-            .as_ref()
-            .is_some_and(|value| looks_like_raw_record_dump(value))
+        || looks_like_internal_query_failure(&draft.summary)
+        || draft.coverage_notice.as_ref().is_some_and(|value| {
+            looks_like_raw_record_dump(value) || looks_like_internal_query_failure(value)
+        })
+        || draft.question.as_ref().is_some_and(|value| {
+            looks_like_raw_record_dump(value) || looks_like_internal_query_failure(value)
+        })
     {
         return Err(AgentRuntimeError::InvalidFinal(
-            "operator output exposes a raw record dump instead of a bounded answer".into(),
+            "operator output exposes raw records or internal query mechanics instead of a bounded answer"
+                .into(),
         ));
     }
     if draft
@@ -1270,4 +1270,17 @@ fn looks_like_raw_record_dump(value: &str) -> bool {
         .any(|line| line.trim_start().starts_with('#'));
     internal_marker_count >= 2
         || (internal_marker_count > 0 && (has_markdown_table || has_nested_heading))
+}
+
+fn looks_like_internal_query_failure(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    [
+        "deterministic ask query",
+        "row-expanding cypher",
+        "read-only cypher validator",
+        "query matched more graph rows than can be safely post-processed",
+        "unwind, range(), and collect()",
+    ]
+    .into_iter()
+    .any(|marker| normalized.contains(marker))
 }

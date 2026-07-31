@@ -546,6 +546,87 @@ async fn repairs_a_raw_catalog_dump_into_a_direct_capability_answer() {
 }
 
 #[tokio::test]
+async fn repairs_internal_query_refusals_into_an_operator_facing_boundary() {
+    let lookup = ToolCall {
+        call_id: "graph-reason".into(),
+        tool_id: "graph_reason".into(),
+        purpose: "Inspect current graph evidence for the request.".into(),
+        input: json!({"question": "Continue the current analysis."}),
+    };
+    let leaked = FinalDraft {
+        state: FinalState::Blocked,
+        headline: "Graph query blocked".into(),
+        summary:
+            "row-expanding Cypher expressions such as UNWIND, range(), and collect() are forbidden"
+                .into(),
+        summary_evidence_refs: vec![],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: Some("The read-only Cypher validator refused the draft.".into()),
+        question: None,
+    };
+    let repaired = FinalDraft {
+        state: FinalState::Blocked,
+        headline: "Current graph answer is unavailable".into(),
+        summary: "I could not produce a grounded graph answer for this request. The other bounded evidence capabilities remain available, so the investigation should continue there instead of treating this failed read as a result.".into(),
+        summary_evidence_refs: vec![],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: Some(
+            "No source-backed graph observation supports the requested conclusion yet.".into(),
+        ),
+        question: None,
+    };
+    let model = scripted(
+        ExecutionLane::Investigate,
+        VecDeque::from([
+            ModelDecision::InvokeTool {
+                call: lookup.clone(),
+            },
+            ModelDecision::Finish { draft: leaked },
+            ModelDecision::Finish { draft: repaired },
+        ]),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "graph_reason",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(BTreeMap::from([(
+            lookup.call_id,
+            ToolResult {
+                state: ToolResultState::Failed,
+                summary: "Graph reasoning returned a blocked result.".into(),
+                data: json!({"state": "blocked", "reason_code": "validator_refusal"}),
+                evidence: vec![],
+                blocker: Some(
+                    "Graph reasoning did not produce a grounded answer. Continue with other bounded evidence capabilities."
+                        .into(),
+                ),
+            },
+        )])),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } =
+        run_turn(&model, &tools, request("Continue the current analysis."))
+            .await
+            .unwrap()
+    else {
+        panic!("expected a delivered blocked boundary");
+    };
+    assert!(!markdown.contains("Cypher"));
+    assert!(!markdown.contains("UNWIND"));
+    assert!(markdown.contains("could not produce a grounded graph answer"));
+}
+
+#[tokio::test]
 async fn requests_exact_approval_before_an_effect() {
     let change = ToolCall {
         call_id: "change".into(),
