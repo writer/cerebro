@@ -129,6 +129,12 @@ pub struct WorkingState {
     pub current_request: String,
     pub last_outcome: WorkingOutcome,
     pub last_blocker: Option<String>,
+    #[serde(default)]
+    pub active_lane: Option<ExecutionLane>,
+    #[serde(default)]
+    pub requires_current_evidence: Option<bool>,
+    #[serde(default)]
+    pub open_loops: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -417,6 +423,7 @@ pub enum AgentTurnOutcome {
         final_state: FinalState,
         evidence_refs: Vec<String>,
         tool_call_count: usize,
+        working_state: Option<WorkingState>,
     },
     ApprovalRequired {
         schema_version: &'static str,
@@ -509,7 +516,8 @@ pub async fn run_turn(
 ) -> Result<AgentTurnOutcome, AgentRuntimeError> {
     validate_request(&request)?;
     let routed_lane = route_with_repair(model, request.clone()).await?;
-    let lane = if routed_lane == ExecutionLane::Continue {
+    let resumed_mission = routed_lane == ExecutionLane::Continue;
+    let lane = if resumed_mission {
         let state = request.working_state.as_ref().ok_or_else(|| {
             AgentRuntimeError::InvalidRequest("continuation requires working state".into())
         })?;
@@ -518,14 +526,23 @@ pub async fn run_turn(
                 "continuation requires a durable mission".into(),
             ));
         }
-        let mut resumed = request.clone();
-        resumed.message.clone_from(&state.current_request);
-        resumed.working_state = None;
-        match route_with_repair(model, resumed).await? {
-            ExecutionLane::Ignore | ExecutionLane::Converse | ExecutionLane::Continue => {
-                ExecutionLane::Investigate
+        if let Some(active_lane) = state.active_lane {
+            if matches!(active_lane, ExecutionLane::Ignore | ExecutionLane::Continue) {
+                return Err(AgentRuntimeError::InvalidRequest(
+                    "durable mission contains an invalid active lane".into(),
+                ));
             }
-            lane => lane,
+            active_lane
+        } else {
+            let mut resumed = request.clone();
+            resumed.message.clone_from(&state.current_request);
+            resumed.working_state = None;
+            match route_with_repair(model, resumed).await? {
+                ExecutionLane::Ignore | ExecutionLane::Converse | ExecutionLane::Continue => {
+                    ExecutionLane::Investigate
+                }
+                lane => lane,
+            }
         }
     } else {
         routed_lane
@@ -669,7 +686,7 @@ pub async fn run_turn(
                     continue;
                 }
                 operating_repairs = 0;
-                match critique_with_repair(
+                let critique = match critique_with_repair(
                     model,
                     CritiqueTurn {
                         request: request.clone(),
@@ -679,10 +696,15 @@ pub async fn run_turn(
                         repair_feedback: Vec::new(),
                     },
                 )
-                .await?
+                .await
                 {
-                    CritiqueDecision::Approve { .. } => {}
-                    CritiqueDecision::Revise { issues } => {
+                    Ok(decision) => Some(decision),
+                    Err(AgentRuntimeError::ModelUnavailable(_)) => None,
+                    Err(error) => return Err(error),
+                };
+                match critique {
+                    None | Some(CritiqueDecision::Approve { .. }) => {}
+                    Some(CritiqueDecision::Revise { issues }) => {
                         critic_revisions += 1;
                         if critic_revisions > MAX_CRITIC_REVISIONS {
                             return Err(AgentRuntimeError::CriticRepairLimit);
@@ -699,6 +721,12 @@ pub async fn run_turn(
                     final_state: draft.state,
                     evidence_refs,
                     tool_call_count: observations.len(),
+                    working_state: Some(next_working_state(
+                        &request,
+                        lane,
+                        resumed_mission,
+                        &draft,
+                    )),
                 });
             }
         }
@@ -733,10 +761,52 @@ fn normalize_converse_draft(
     draft
 }
 
+fn next_working_state(
+    request: &AgentTurnRequest,
+    lane: ExecutionLane,
+    resumed_mission: bool,
+    draft: &FinalDraft,
+) -> WorkingState {
+    let prior = request.working_state.as_ref();
+    let current_request = if resumed_mission {
+        prior
+            .map(|state| state.current_request.clone())
+            .unwrap_or_else(|| request.message.clone())
+    } else {
+        request.message.clone()
+    };
+    let last_outcome = match draft.state {
+        FinalState::Answered => WorkingOutcome::Completed,
+        FinalState::Partial => WorkingOutcome::Owned,
+        FinalState::NeedsInput => WorkingOutcome::NeedsUser,
+        FinalState::Blocked => WorkingOutcome::Blocked,
+    };
+    let mut open_loops = draft.next_actions.clone();
+    if let Some(question) = &draft.question
+        && !open_loops.contains(question)
+    {
+        open_loops.push(question.clone());
+    }
+    WorkingState {
+        mission_ref: prior
+            .and_then(|state| state.mission_ref.clone())
+            .or_else(|| Some(request.thread_ref.clone())),
+        current_request,
+        last_outcome,
+        last_blocker: matches!(draft.state, FinalState::Blocked)
+            .then(|| draft.coverage_notice.clone())
+            .flatten(),
+        active_lane: Some(lane),
+        requires_current_evidence: Some(lane != ExecutionLane::Converse),
+        open_loops,
+    }
+}
+
 async fn present_with_repair(
     model: &dyn AgentModel,
     mut turn: PresentationTurn,
 ) -> Result<FinalDraft, AgentRuntimeError> {
+    let validated_fallback = turn.draft.clone();
     for _ in 0..MAX_PRESENTATION_REPAIRS {
         let presentation = match model.present(turn.clone()).await {
             Ok(presentation) => presentation,
@@ -746,6 +816,7 @@ async fn present_with_repair(
                 )];
                 continue;
             }
+            Err(AgentRuntimeError::ModelUnavailable(_)) => return Ok(validated_fallback),
             Err(error) => return Err(error),
         };
         match validate_presentation(&presentation) {
@@ -761,7 +832,7 @@ async fn present_with_repair(
             }
         }
     }
-    Err(AgentRuntimeError::PresentationRepairLimit)
+    Ok(validated_fallback)
 }
 
 async fn critique_with_repair(
@@ -787,7 +858,9 @@ async fn critique_with_repair(
             Err(error) => return Err(error),
         }
     }
-    Err(AgentRuntimeError::CriticRepairLimit)
+    Err(AgentRuntimeError::ModelUnavailable(
+        "critic decision unavailable after bounded repairs".into(),
+    ))
 }
 
 async fn route_with_repair(
@@ -853,9 +926,17 @@ fn validate_route(
                 "continuation requires a durable mission".into(),
             ))
         }
-        ExecutionLane::Continue if !decision.requires_current_evidence => Err(
-            AgentRuntimeError::InvalidRoute("continuation requires current evidence".into()),
-        ),
+        ExecutionLane::Continue
+            if request
+                .working_state
+                .as_ref()
+                .and_then(|state| state.requires_current_evidence)
+                .is_some_and(|required| required != decision.requires_current_evidence) =>
+        {
+            Err(AgentRuntimeError::InvalidRoute(
+                "continuation evidence requirement does not match the durable mission".into(),
+            ))
+        }
         ExecutionLane::Continue => Ok(()),
         ExecutionLane::Lookup | ExecutionLane::Investigate | ExecutionLane::Act
             if !decision.requires_current_evidence =>
@@ -996,6 +1077,8 @@ fn validate_request(request: &AgentTurnRequest) -> Result<(), AgentRuntimeError>
                 .last_blocker
                 .as_ref()
                 .is_some_and(|value| !bounded_text(value))
+            || state.open_loops.len() > MAX_NEXT_ACTIONS + 1
+            || state.open_loops.iter().any(|value| !bounded_text(value))
     }) {
         return Err(AgentRuntimeError::InvalidRequest(
             "working state contains an invalid field".into(),
@@ -1279,6 +1362,7 @@ fn finalize_unknown_effect(
             .map(|evidence| evidence.evidence_ref.clone())
             .collect(),
         tool_call_count: observations.len(),
+        working_state: None,
     })
 }
 

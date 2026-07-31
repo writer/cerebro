@@ -1255,6 +1255,9 @@ async fn continues_the_exact_durable_mission_instead_of_restarting() {
         current_request: "Repair the runtime and verify the deployed state.".into(),
         last_outcome: WorkingOutcome::Owned,
         last_blocker: None,
+        active_lane: Some(ExecutionLane::Act),
+        requires_current_evidence: Some(true),
+        open_loops: vec!["Verify the deployed state.".into()],
     });
     let model = ScriptedModel {
         routes: Mutex::new(VecDeque::from([
@@ -1296,4 +1299,54 @@ async fn continues_the_exact_durable_mission_instead_of_restarting() {
     assert_eq!(lane, ExecutionLane::Act);
     assert_eq!(final_state, FinalState::Blocked);
     assert!(markdown.contains("saved repair remains blocked"));
+}
+
+#[tokio::test]
+async fn continuation_resumes_the_retained_conversation_lane_without_reads() {
+    let mut turn = request("Go on.");
+    turn.working_state = Some(WorkingState {
+        mission_ref: Some("mission://handoff-draft".into()),
+        current_request: "Rewrite the handoff as a concise teammate update.".into(),
+        last_outcome: WorkingOutcome::Owned,
+        last_blocker: None,
+        active_lane: Some(ExecutionLane::Converse),
+        requires_current_evidence: Some(false),
+        open_loops: vec!["Finish the concise handoff.".into()],
+    });
+    let model = ScriptedModel {
+        routes: Mutex::new(VecDeque::from([RouteDecision {
+            lane: ExecutionLane::Continue,
+            confidence: RouteConfidence::High,
+            reason: "The user asked to resume the durable handoff draft.".into(),
+            requires_current_evidence: false,
+        }])),
+        decisions: Mutex::new(VecDeque::from([ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Handoff finished".into(),
+                summary: "The handoff now names the owner, trigger, and acceptance condition."
+                    .into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        }])),
+        presentations: Mutex::new(VecDeque::new()),
+        critiques: Mutex::new(VecDeque::new()),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { lane, .. } = run_turn(&model, &tools, turn).await.unwrap()
+    else {
+        panic!("expected the conversational mission to resume")
+    };
+    assert_eq!(lane, ExecutionLane::Converse);
 }

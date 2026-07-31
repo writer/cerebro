@@ -12,6 +12,7 @@ export interface CerebroAskResult {
   markdown: string;
   safeRefusal: boolean;
   traceId?: string;
+  workingState?: RustWorkingState;
 }
 
 export interface CerebroAskHistoryMessage {
@@ -65,10 +66,13 @@ export class CerebroAskClient {
     signal: AbortSignal;
     threadRef: string;
     workingState?: {
+      active_lane?: CerebroAskResult["executionLane"];
       current_request: string;
       last_blocker?: string;
-      last_outcome: "blocked" | "completed" | "needs_user";
+      last_outcome: "blocked" | "completed" | "needs_user" | "owned" | "unknown";
       mission_ref: string;
+      open_loops?: readonly string[];
+      requires_current_evidence?: boolean;
     };
   }): Promise<CerebroAskResult> {
     if (!this.options.agentRuntimeUrl) {
@@ -127,6 +131,9 @@ export class CerebroAskClient {
         markdown: outcome.markdown,
         safeRefusal: outcome.final_state !== "answered",
         traceId: input.requestId,
+        ...(outcome.working_state == null
+          ? {}
+          : { workingState: outcome.working_state }),
       };
     }
     if (outcome.outcome === "approval_required") {
@@ -293,6 +300,7 @@ type RustAgentTurnOutcome =
       lane: CerebroAskResult["executionLane"];
       markdown: string;
       outcome: "delivered";
+      working_state: RustWorkingState | null;
     }
   | {
       lane: "act";
@@ -323,6 +331,16 @@ function citationValidation(
     referenced_urn_count: validation.referenced_urn_count,
     row_urn_count: validation.row_urn_count,
   };
+}
+
+interface RustWorkingState {
+  active_lane?: Exclude<CerebroAskResult["executionLane"], "continue" | "ignore">;
+  current_request: string;
+  last_blocker?: string;
+  last_outcome: "blocked" | "completed" | "needs_user" | "owned" | "unknown";
+  mission_ref?: string;
+  open_loops?: string[];
+  requires_current_evidence?: boolean;
 }
 
 function unsupportedQuery(

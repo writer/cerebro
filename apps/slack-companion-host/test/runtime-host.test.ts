@@ -244,12 +244,20 @@ test("Rust continuation preserves the durable mission across repeated nudges", a
           requestBody = await new Request(input, init).json() as Record<string, unknown>;
           return Response.json({
             evidence_refs: [],
-            final_state: "blocked",
+            final_state: "partial",
             lane: "investigate",
-            markdown: "**Blocked**\n\nCurrent evidence is unavailable.",
+            markdown: "The connector is narrowed to one unresolved receipt gap.",
             outcome: "delivered",
             schema_version: "agent-turn-result/v1",
             tool_call_count: 0,
+            working_state: {
+              active_lane: "investigate",
+              current_request: "Investigate the newest connector failure.",
+              last_outcome: "owned",
+              mission_ref: "slack-thread:T-ONE:C-ONE:thread-one",
+              open_loops: ["Inspect the next complete receipt."],
+              requires_current_evidence: true,
+            },
           });
         },
         tenantId: "writer",
@@ -260,7 +268,7 @@ test("Rust continuation preserves the durable mission across repeated nudges", a
       },
     );
 
-    await service.answer({
+    const result = await service.answer({
       actorRef: "slack-user:U-ONE",
       requestKey: "T-ONE:C-ONE:thread-one:event-continue",
       text: "<@BOT> Keep going.",
@@ -282,6 +290,9 @@ test("Rust continuation preserves the durable mission across repeated nudges", a
       (requestBody?.working_state as Record<string, unknown>).current_request,
       "Investigate the newest connector failure.",
     );
+    assert.equal(result.workingTurn?.currentRequest, "Investigate the newest connector failure.");
+    assert.equal(result.workingTurn?.outcome, "owned");
+    assert.deepEqual(result.workingTurn?.openLoops, ["Inspect the next complete receipt."]);
   } finally {
     await rm(root, { force: true, recursive: true });
   }

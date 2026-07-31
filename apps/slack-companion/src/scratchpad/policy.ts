@@ -141,6 +141,9 @@ export function validateSlackThreadScratchpad(
   ) + (workingState?.recent_requests ?? []).reduce(
     (total, request) => total + Buffer.byteLength(request, "utf8"),
     0,
+  ) + (workingState?.open_loops ?? []).reduce(
+    (total, item) => total + Buffer.byteLength(item, "utf8"),
+    0,
   ) + (
     workingState?.blocker === undefined
       ? 0
@@ -187,10 +190,13 @@ export function formatSlackThreadScratchpadContext(
 export function recordSlackThreadWorkingTurn(
   prior: SlackThreadWorkingStateV1 | undefined,
   input: {
+    activeLane?: SlackThreadWorkingStateV1["active_lane"];
     blocker?: string;
     currentRequest: string;
     now: Date;
     outcome: SlackThreadWorkingOutcome;
+    openLoops?: readonly string[];
+    requiresCurrentEvidence?: boolean;
     threadRef: string;
   },
 ): SlackThreadWorkingStateV1 {
@@ -201,17 +207,23 @@ export function recordSlackThreadWorkingTurn(
   const blocker = input.blocker === undefined
     ? undefined
     : normalizeScratchpadContent(input.blocker);
+  const openLoops = (input.openLoops ?? []).map(normalizeScratchpadContent);
   const recentRequests = [
     currentRequest,
     ...(validPrior?.recent_requests ?? []).filter((request) => request !== currentRequest),
   ].slice(0, SLACK_THREAD_SCRATCHPAD_LIMITS.max_recent_requests);
   return Object.freeze({
+    ...(input.activeLane === undefined ? {} : { active_lane: input.activeLane }),
     ...(blocker === undefined ? {} : { blocker }),
     expires_at: new Date(
       input.now.getTime() + SLACK_THREAD_SCRATCHPAD_LIMITS.lifetime_ms,
     ).toISOString(),
     last_outcome: input.outcome,
+    ...(openLoops.length === 0 ? {} : { open_loops: Object.freeze(openLoops) }),
     recent_requests: Object.freeze(recentRequests),
+    ...(input.requiresCurrentEvidence === undefined
+      ? {}
+      : { requires_current_evidence: input.requiresCurrentEvidence }),
     schema_version: "slack-thread-working-state/v1",
     thread_ref: input.threadRef,
     updated_at: input.now.toISOString(),
@@ -268,6 +280,22 @@ function validateSlackThreadWorkingState(
     || state.recent_requests.length === 0
     || state.recent_requests.length > SLACK_THREAD_SCRATCHPAD_LIMITS.max_recent_requests
     || !workingOutcome(state.last_outcome)
+    || (
+      state.active_lane !== undefined
+      && !["act", "converse", "investigate", "lookup"].includes(state.active_lane)
+    )
+    || (
+      state.open_loops !== undefined
+      && (
+        !Array.isArray(state.open_loops)
+        || state.open_loops.length > SLACK_THREAD_SCRATCHPAD_LIMITS.max_open_loops
+        || state.open_loops.some((item) => normalizeScratchpadContent(item) !== item)
+      )
+    )
+    || (
+      state.requires_current_evidence !== undefined
+      && typeof state.requires_current_evidence !== "boolean"
+    )
     || state.recent_requests.some((request) =>
       normalizeScratchpadContent(request) !== request
     )
@@ -284,12 +312,16 @@ function validateSlackThreadWorkingState(
   if (Date.parse(state.expires_at) <= now.getTime()) return undefined;
   return Object.freeze({
     ...state,
+    ...(state.open_loops === undefined
+      ? {}
+      : { open_loops: Object.freeze([...state.open_loops]) }),
     recent_requests: Object.freeze([...state.recent_requests]),
   });
 }
 
 function workingOutcome(value: string): value is SlackThreadWorkingOutcome {
-  return value === "blocked" || value === "completed" || value === "needs_user";
+  return value === "blocked" || value === "completed" || value === "needs_user"
+    || value === "owned";
 }
 
 function compactText(value: string): string {

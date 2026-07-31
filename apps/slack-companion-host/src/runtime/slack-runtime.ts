@@ -138,9 +138,12 @@ export interface AssistantQuestionResult {
     traceId: string;
   };
   workingTurn?: {
+    activeLane?: Exclude<AssistantExecutionLane, "continue" | "ignore">;
     blocker?: string;
     currentRequest: string;
+    openLoops?: readonly string[];
     outcome: SlackThreadWorkingOutcome;
+    requiresCurrentEvidence?: boolean;
   };
 }
 
@@ -212,6 +215,9 @@ export class AssistantQuestionService {
             ? {}
             : {
                 workingState: {
+                  ...(input.workingState.active_lane === undefined
+                    ? {}
+                    : { active_lane: input.workingState.active_lane }),
                   current_request:
                     durableMissionRequest(input.workingState, currentRequest),
                   ...(input.workingState.blocker === undefined
@@ -219,6 +225,15 @@ export class AssistantQuestionService {
                     : { last_blocker: input.workingState.blocker }),
                   last_outcome: input.workingState.last_outcome,
                   mission_ref: input.workingState.thread_ref,
+                  ...(input.workingState.open_loops === undefined
+                    ? {}
+                    : { open_loops: input.workingState.open_loops }),
+                  ...(input.workingState.requires_current_evidence === undefined
+                    ? {}
+                    : {
+                        requires_current_evidence:
+                          input.workingState.requires_current_evidence,
+                      }),
                 },
               }),
         });
@@ -238,11 +253,28 @@ export class AssistantQuestionService {
           }),
           text: boundedSlackText(answer.markdown),
           workingTurn: {
-            ...(answer.finalState === "blocked"
-              ? { blocker: "The Rust agent reported a blocked turn." }
-              : {}),
-            currentRequest,
-            outcome: agentWorkingOutcome(answer.finalState),
+            ...(answer.workingState?.active_lane === undefined
+              ? {}
+              : { activeLane: answer.workingState.active_lane }),
+            ...(answer.workingState?.last_blocker === undefined
+              ? answer.finalState === "blocked"
+                ? { blocker: "The Rust agent reported a blocked turn." }
+                : {}
+              : { blocker: answer.workingState.last_blocker }),
+            currentRequest: answer.workingState?.current_request ?? currentRequest,
+            ...(answer.workingState?.open_loops === undefined
+              ? {}
+              : { openLoops: answer.workingState.open_loops }),
+            outcome: agentWorkingOutcome(
+              answer.finalState,
+              answer.workingState?.last_outcome,
+            ),
+            ...(answer.workingState?.requires_current_evidence === undefined
+              ? {}
+              : {
+                  requiresCurrentEvidence:
+                    answer.workingState.requires_current_evidence,
+                }),
           },
           ...(answer.citationValidationPassed && answer.traceId
             ? {
@@ -982,11 +1014,23 @@ export async function handleSlackMention(input: {
     if (input.scratchpads && result.workingTurn) {
       try {
         await input.scratchpads.recordWorkingTurn({
+          ...(result.workingTurn.activeLane === undefined
+            ? {}
+            : { active_lane: result.workingTurn.activeLane }),
           ...(result.workingTurn.blocker === undefined
             ? {}
             : { blocker: result.workingTurn.blocker }),
           current_request: result.workingTurn.currentRequest,
+          ...(result.workingTurn.openLoops === undefined
+            ? {}
+            : { open_loops: result.workingTurn.openLoops }),
           outcome: result.workingTurn.outcome,
+          ...(result.workingTurn.requiresCurrentEvidence === undefined
+            ? {}
+            : {
+                requires_current_evidence:
+                  result.workingTurn.requiresCurrentEvidence,
+              }),
           thread_ref: scratchpadRef,
         });
       } catch (error) {
@@ -1167,7 +1211,9 @@ function agentOutcomeState(
 
 function agentWorkingOutcome(
   state: CerebroAskResult["finalState"],
+  runtimeOutcome?: "blocked" | "completed" | "needs_user" | "owned" | "unknown",
 ): SlackThreadWorkingOutcome {
+  if (runtimeOutcome === "owned") return "owned";
   if (state === "blocked") return "blocked";
   if (state === "needs_input") return "needs_user";
   return "completed";
