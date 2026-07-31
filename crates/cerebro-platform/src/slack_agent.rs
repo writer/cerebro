@@ -586,18 +586,80 @@ fn parse_route_value(value: Value) -> Result<RouteDecision, AgentRuntimeError> {
 }
 
 fn parse_model_content(content: &str) -> Result<ModelDecision, AgentRuntimeError> {
-    serde_json::from_str(structured_json(content))
-        .map_err(|error| AgentRuntimeError::InvalidFinal(format!("model output: {error}")))
+    let value = serde_json::from_str(structured_json(content))
+        .map_err(|error| AgentRuntimeError::InvalidFinal(format!("model output: {error}")))?;
+    parse_model_value(value)
 }
 
 fn parse_model_value(mut value: Value) -> Result<ModelDecision, AgentRuntimeError> {
     if let Some(object) = value.as_object_mut() {
+        if let Some(Value::Object(mut payload)) = object.remove("payload") {
+            for field in ["call", "draft"] {
+                if let Some(value) = payload.remove(field) {
+                    object.insert(field.into(), value);
+                }
+            }
+        }
+        if !object.contains_key("decision") {
+            let inferred = if object.get("call").is_some_and(|value| !value.is_null())
+                || ["call_id", "tool_id", "purpose", "input"]
+                    .iter()
+                    .any(|field| object.contains_key(*field))
+            {
+                Some("invoke_tool")
+            } else if object.get("draft").is_some_and(|value| !value.is_null())
+                || ["state", "headline", "summary"]
+                    .iter()
+                    .any(|field| object.contains_key(*field))
+            {
+                Some("finish")
+            } else {
+                None
+            };
+            if let Some(decision) = inferred {
+                object.insert("decision".into(), Value::String(decision.into()));
+            }
+        }
         match object.get("decision").and_then(Value::as_str) {
             Some("invoke_tool") => {
                 object.remove("draft");
+                if object.get("call").is_none_or(Value::is_null) {
+                    let mut call = serde_json::Map::new();
+                    for field in ["call_id", "tool_id", "purpose", "input"] {
+                        if let Some(value) = object.remove(field) {
+                            call.insert(field.into(), value);
+                        }
+                    }
+                    if !call.is_empty() {
+                        object.insert("call".into(), Value::Object(call));
+                    }
+                }
             }
             Some("finish") => {
                 object.remove("call");
+                if object.get("draft").is_none_or(Value::is_null) {
+                    let mut draft = serde_json::Map::new();
+                    for field in [
+                        "state",
+                        "headline",
+                        "summary",
+                        "summary_evidence_refs",
+                        "checked",
+                        "changed",
+                        "verified",
+                        "current_state",
+                        "next_actions",
+                        "coverage_notice",
+                        "question",
+                    ] {
+                        if let Some(value) = object.remove(field) {
+                            draft.insert(field.into(), value);
+                        }
+                    }
+                    if !draft.is_empty() {
+                        object.insert("draft".into(), Value::Object(draft));
+                    }
+                }
             }
             _ => {}
         }
@@ -783,27 +845,40 @@ fn final_draft_schema() -> Value {
 }
 
 fn model_decision_schema() -> Value {
-    let mut draft = final_draft_schema();
-    draft["type"] = json!(["object", "null"]);
+    let call = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "call_id": {"type": "string", "minLength": 1},
+            "tool_id": {"type": "string", "minLength": 1},
+            "purpose": {"type": "string", "minLength": 1},
+            "input": {"type": "object"}
+        },
+        "required": ["call_id", "tool_id", "purpose", "input"]
+    });
     json!({
         "type": "object",
         "additionalProperties": false,
         "properties": {
             "decision": {"type": "string", "enum": ["invoke_tool", "finish"]},
-            "call": {
-                "type": ["object", "null"],
-                "additionalProperties": false,
-                "properties": {
-                    "call_id": {"type": "string", "minLength": 1},
-                    "tool_id": {"type": "string", "minLength": 1},
-                    "purpose": {"type": "string", "minLength": 1},
-                    "input": {"type": "object"}
-                },
-                "required": ["call_id", "tool_id", "purpose", "input"]
-            },
-            "draft": draft
+            "payload": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {"call": call},
+                        "required": ["call"]
+                    },
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {"draft": final_draft_schema()},
+                        "required": ["draft"]
+                    }
+                ]
+            }
         },
-        "required": ["decision", "call", "draft"]
+        "required": ["decision", "payload"]
     })
 }
 
@@ -1024,15 +1099,15 @@ Operate, do not merely describe a query:
 - Treat revision_feedback as mandatory independent review findings and repair every issue before finishing.
 
 InvokeTool shape:
-{"decision":"invoke_tool","call":{"call_id":"unique","tool_id":"catalog id","purpose":"concrete reason","input":{}},"draft":null}
+{"decision":"invoke_tool","payload":{"call":{"call_id":"unique","tool_id":"catalog id","purpose":"concrete reason","input":{}}}}
 
 Finish shape:
-{"decision":"finish","call":null,"draft":{"state":"answered|partial|needs_input|blocked","headline":"...","summary":"...","summary_evidence_refs":[],"checked":[],"changed":[],"verified":[],"current_state":[],"next_actions":[],"coverage_notice":null,"question":null}}
+{"decision":"finish","payload":{"draft":{"state":"answered|partial|needs_input|blocked","headline":"...","summary":"...","summary_evidence_refs":[],"checked":[],"changed":[],"verified":[],"current_state":[],"next_actions":[],"coverage_notice":null,"question":null}}}
 
 Each item in checked, changed, verified, and current_state has:
 {"text":"operator-facing statement","evidence_refs":["exact observed evidence ref"]}
 
-Always include decision, call, and draft. Set the unused call or draft field to null. headline, summary, coverage_notice, question, and every next_actions item are strings, never nested objects. summary_evidence_refs and evidence_refs contain strings. Use no fields beyond the exact selected shape."#
+headline, summary, coverage_notice, question, and every next_actions item are strings, never nested objects. summary_evidence_refs and evidence_refs contain strings. Use no fields beyond the exact selected shape."#
 }
 
 fn presentation_instructions() -> &'static str {
@@ -2317,16 +2392,12 @@ mod tests {
     }
 
     #[test]
-    fn parses_required_nullable_fields_from_bedrock_decisions() {
+    fn recovers_unambiguous_flattened_bedrock_decisions() {
         let decision = parse_model_value(json!({
-            "decision": "invoke_tool",
-            "call": {
-                "call_id": "runtime-1",
-                "tool_id": "source_runtime.inspect",
-                "purpose": "Read connector health.",
-                "input": {"query": "identity provider"}
-            },
-            "draft": null
+            "call_id": "runtime-1",
+            "tool_id": "source_runtime.inspect",
+            "purpose": "Read connector health.",
+            "input": {"query": "identity provider"}
         }))
         .unwrap();
         assert!(matches!(decision, ModelDecision::InvokeTool { .. }));
