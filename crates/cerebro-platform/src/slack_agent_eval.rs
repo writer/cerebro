@@ -1176,35 +1176,52 @@ async fn simulate_operator(
     transcript: &[ConversationMessage],
     observations: &[String],
 ) -> Result<OperatorDecision, AgentRuntimeError> {
-    let value = model
-        .complete_evaluation_judgment(
-            operator_simulator_instructions(),
-            json!({
-                "mission": scenario.mission,
-                "operator_brief": scenario.operator_brief,
-                "completed_turns": completed_turns,
-                "maximum_turns": LAB_MAX_TURNS,
-                "conversation": transcript,
-                "latest_tool_observations": observations,
-            }),
-            QUALITY_JUDGE_MAX_TOKENS,
-            OPERATOR_DECISION_TOOL,
-            operator_decision_schema(),
-        )
-        .await?;
-    let decision: OperatorDecision = serde_json::from_value(value).map_err(|error| {
-        AgentRuntimeError::InvalidFinal(format!("operator simulation: {error}"))
-    })?;
-    if decision.unresolved_outcomes.len() > 8
-        || decision.critique.trim().is_empty()
-        || (decision.status == OperatorStatus::Continue && decision.next_message.trim().is_empty())
-        || (decision.status != OperatorStatus::Continue && !decision.next_message.trim().is_empty())
-    {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "operator simulation violated the conversation-lab contract".into(),
-        ));
+    let mut repair_feedback = Vec::new();
+    for _ in 0..4 {
+        let value = model
+            .complete_evaluation_judgment(
+                operator_simulator_instructions(),
+                json!({
+                    "mission": scenario.mission,
+                    "operator_brief": scenario.operator_brief,
+                    "completed_turns": completed_turns,
+                    "maximum_turns": LAB_MAX_TURNS,
+                    "conversation": transcript,
+                    "latest_tool_observations": observations,
+                    "repair_feedback": &repair_feedback,
+                }),
+                QUALITY_JUDGE_MAX_TOKENS,
+                OPERATOR_DECISION_TOOL,
+                operator_decision_schema(),
+            )
+            .await?;
+        match serde_json::from_value::<OperatorDecision>(value) {
+            Ok(decision)
+                if decision.unresolved_outcomes.len() <= 8
+                    && !decision.critique.trim().is_empty()
+                    && (decision.status != OperatorStatus::Continue
+                        || !decision.next_message.trim().is_empty())
+                    && (decision.status == OperatorStatus::Continue
+                        || decision.next_message.trim().is_empty()) =>
+            {
+                return Ok(decision);
+            }
+            Ok(_) => {
+                repair_feedback = vec![
+                    "The prior decision violated the status, next_message, critique, or unresolved_outcomes contract. Return one corrected decision."
+                        .into(),
+                ];
+            }
+            Err(error) => {
+                repair_feedback = vec![format!(
+                    "The prior decision did not match the required schema: {error}. Return one corrected decision."
+                )];
+            }
+        }
     }
-    Ok(decision)
+    Err(AgentRuntimeError::InvalidFinal(
+        "operator simulation repair attempts were exhausted".into(),
+    ))
 }
 
 async fn judge_conversation_trajectory(
@@ -1214,23 +1231,53 @@ async fn judge_conversation_trajectory(
     observations: &[String],
     turns: &[ConversationLabTurnReceipt],
 ) -> Result<ConversationQualityJudgment, AgentRuntimeError> {
-    let value = model
-        .complete_evaluation_judgment(
-            trajectory_judge_instructions(),
-            json!({
-                "mission": scenario.mission,
-                "operator_brief": scenario.operator_brief,
-                "full_conversation": transcript,
-                "all_tool_observations": observations,
-                "typed_turn_receipts": turns,
-            }),
-            QUALITY_JUDGE_MAX_TOKENS,
-            QUALITY_JUDGMENT_TOOL,
-            quality_judgment_schema(),
-        )
-        .await?;
-    serde_json::from_value(value)
-        .map_err(|error| AgentRuntimeError::InvalidFinal(format!("trajectory judgment: {error}")))
+    let mut repair_feedback = Vec::new();
+    for _ in 0..4 {
+        let value = model
+            .complete_evaluation_judgment(
+                trajectory_judge_instructions(),
+                json!({
+                    "mission": scenario.mission,
+                    "operator_brief": scenario.operator_brief,
+                    "full_conversation": transcript,
+                    "all_tool_observations": observations,
+                    "typed_turn_receipts": turns,
+                    "repair_feedback": &repair_feedback,
+                }),
+                QUALITY_JUDGE_MAX_TOKENS,
+                QUALITY_JUDGMENT_TOOL,
+                quality_judgment_schema(),
+            )
+            .await?;
+        match serde_json::from_value::<ConversationQualityJudgment>(value) {
+            Ok(judgment) => {
+                let scores = [
+                    judgment.scores.task_completion,
+                    judgment.scores.factual_grounding,
+                    judgment.scores.conversational_quality,
+                    judgment.scores.initiative,
+                    judgment.scores.judgment,
+                    judgment.scores.continuity,
+                    judgment.scores.burden_reduction,
+                ];
+                if scores.iter().all(|score| (1..=5).contains(score)) {
+                    return Ok(judgment);
+                }
+                repair_feedback = vec![
+                    "Every quality score must be an integer from one through five. Return one corrected judgment."
+                        .into(),
+                ];
+            }
+            Err(error) => {
+                repair_feedback = vec![format!(
+                    "The prior judgment did not match the required schema: {error}. Return one corrected judgment."
+                )];
+            }
+        }
+    }
+    Err(AgentRuntimeError::InvalidFinal(
+        "trajectory judgment repair attempts were exhausted".into(),
+    ))
 }
 
 fn operator_simulator_instructions() -> &'static str {
