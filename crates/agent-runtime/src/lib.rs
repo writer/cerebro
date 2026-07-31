@@ -719,6 +719,14 @@ fn normalize_converse_draft(
     draft.changed.clear();
     draft.verified.clear();
     draft.current_state.clear();
+    if !bounded_display_text(&draft.headline, MAX_HEADLINE_BYTES)
+        || draft.headline.contains('\n')
+        || draft.headline.contains('\r')
+    {
+        // The headline is planning metadata and is not rendered into Slack. Do not
+        // spend another model round trip repairing it on an evidence-free turn.
+        draft.headline = "Conversation response".into();
+    }
     if draft.state == FinalState::Answered {
         draft.coverage_notice = None;
     }

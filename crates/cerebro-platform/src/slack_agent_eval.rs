@@ -27,6 +27,7 @@ const MAX_P95_CASE_LATENCY_MS: u128 = 60_000;
 const QUALITY_JUDGE_MAX_TOKENS: i32 = 2_048;
 const QUALITY_JUDGMENT_TOOL: &str = "submit_conversation_quality_judgment";
 const OPERATOR_DECISION_TOOL: &str = "submit_operator_decision";
+const EVALUATION_PROBE_TOOL: &str = "submit_evaluation_probe";
 const LAB_MIN_EXCHANGES: usize = 2;
 const LAB_MAX_TURNS: usize = 12;
 
@@ -951,6 +952,7 @@ async fn run_conversation_lab(
     model: Arc<ConfiguredModel>,
     judge: Arc<ConfiguredModel>,
 ) -> Result<(), Box<dyn Error>> {
+    preflight_judge(judge.as_ref()).await?;
     let scenarios = selected_lab_scenarios()?;
     let mut receipts = Vec::new();
     for (scenario_index, scenario) in scenarios.into_iter().enumerate() {
@@ -1175,6 +1177,30 @@ async fn run_conversation_lab(
         Ok(())
     } else {
         Err("the exact-head Rust conversation lab did not meet its trajectory goal".into())
+    }
+}
+
+async fn preflight_judge(model: &ConfiguredModel) -> Result<(), AgentRuntimeError> {
+    let value = model
+        .complete_evaluation_judgment(
+            "Return the one schema-constrained readiness probe with ready set to true. This request contains no system evidence to judge.",
+            json!({"probe": "conversation-lab-judge"}),
+            64,
+            EVALUATION_PROBE_TOOL,
+            json!({
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {"ready": {"type": "boolean"}},
+                "required": ["ready"]
+            }),
+        )
+        .await?;
+    if value.get("ready").and_then(serde_json::Value::as_bool) == Some(true) {
+        Ok(())
+    } else {
+        Err(AgentRuntimeError::ModelUnavailable(
+            "the conversation quality judge failed its readiness probe".into(),
+        ))
     }
 }
 

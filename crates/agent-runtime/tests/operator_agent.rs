@@ -325,7 +325,7 @@ fn claim(text: &str, reference: &str) -> EvidenceClaim {
 async fn conversational_artifact_edits_do_not_require_system_evidence() {
     let draft = FinalDraft {
         state: FinalState::Answered,
-        headline: "Owner lines added".into(),
+        headline: String::new(),
         summary: "Owner: <named provider admin> — please confirm. Cerebro owns the fresh receipt check after the provider change.".into(),
         summary_evidence_refs: vec!["evidence://history-only".into()],
         checked: vec![],

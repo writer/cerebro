@@ -320,10 +320,9 @@ impl BedrockModel {
                     .build(),
             )
             .tool_config(tool_configuration);
-        let response = request
-            .send()
-            .await
-            .map_err(|_| AgentRuntimeError::ModelUnavailable("Bedrock request failed".into()))?;
+        let response = request.send().await.map_err(|error| {
+            AgentRuntimeError::ModelUnavailable(format!("Bedrock request failed: {error}"))
+        })?;
         let content = response
             .output()
             .and_then(|output| output.as_message().ok())
@@ -591,7 +590,18 @@ fn parse_model_content(content: &str) -> Result<ModelDecision, AgentRuntimeError
         .map_err(|error| AgentRuntimeError::InvalidFinal(format!("model output: {error}")))
 }
 
-fn parse_model_value(value: Value) -> Result<ModelDecision, AgentRuntimeError> {
+fn parse_model_value(mut value: Value) -> Result<ModelDecision, AgentRuntimeError> {
+    if let Some(object) = value.as_object_mut() {
+        match object.get("decision").and_then(Value::as_str) {
+            Some("invoke_tool") => {
+                object.remove("draft");
+            }
+            Some("finish") => {
+                object.remove("call");
+            }
+            _ => {}
+        }
+    }
     serde_json::from_value(value)
         .map_err(|error| AgentRuntimeError::InvalidFinal(format!("model output: {error}")))
 }
@@ -773,13 +783,15 @@ fn final_draft_schema() -> Value {
 }
 
 fn model_decision_schema() -> Value {
+    let mut draft = final_draft_schema();
+    draft["type"] = json!(["object", "null"]);
     json!({
         "type": "object",
         "additionalProperties": false,
         "properties": {
             "decision": {"type": "string", "enum": ["invoke_tool", "finish"]},
             "call": {
-                "type": "object",
+                "type": ["object", "null"],
                 "additionalProperties": false,
                 "properties": {
                     "call_id": {"type": "string", "minLength": 1},
@@ -789,9 +801,9 @@ fn model_decision_schema() -> Value {
                 },
                 "required": ["call_id", "tool_id", "purpose", "input"]
             },
-            "draft": final_draft_schema()
+            "draft": draft
         },
-        "required": ["decision"]
+        "required": ["decision", "call", "draft"]
     })
 }
 
@@ -1012,15 +1024,15 @@ Operate, do not merely describe a query:
 - Treat revision_feedback as mandatory independent review findings and repair every issue before finishing.
 
 InvokeTool shape:
-{"decision":"invoke_tool","call":{"call_id":"unique","tool_id":"catalog id","purpose":"concrete reason","input":{}}}
+{"decision":"invoke_tool","call":{"call_id":"unique","tool_id":"catalog id","purpose":"concrete reason","input":{}},"draft":null}
 
 Finish shape:
-{"decision":"finish","draft":{"state":"answered|partial|needs_input|blocked","headline":"...","summary":"...","summary_evidence_refs":[],"checked":[],"changed":[],"verified":[],"current_state":[],"next_actions":[],"coverage_notice":null,"question":null}}
+{"decision":"finish","call":null,"draft":{"state":"answered|partial|needs_input|blocked","headline":"...","summary":"...","summary_evidence_refs":[],"checked":[],"changed":[],"verified":[],"current_state":[],"next_actions":[],"coverage_notice":null,"question":null}}
 
 Each item in checked, changed, verified, and current_state has:
 {"text":"operator-facing statement","evidence_refs":["exact observed evidence ref"]}
 
-headline, summary, coverage_notice, question, and every next_actions item are strings, never nested objects. summary_evidence_refs and evidence_refs contain strings. Use no fields beyond the exact selected shape."#
+Always include decision, call, and draft. Set the unused call or draft field to null. headline, summary, coverage_notice, question, and every next_actions item are strings, never nested objects. summary_evidence_refs and evidence_refs contain strings. Use no fields beyond the exact selected shape."#
 }
 
 fn presentation_instructions() -> &'static str {
@@ -2300,6 +2312,22 @@ mod tests {
         let decision = parse_model_content(
             "```json\n{\"decision\":\"invoke_tool\",\"call\":{\"call_id\":\"runtime-1\",\"tool_id\":\"source_runtime.inspect\",\"purpose\":\"Read connector health.\",\"input\":{\"query\":\"identity provider\"}}}\n```",
         )
+        .unwrap();
+        assert!(matches!(decision, ModelDecision::InvokeTool { .. }));
+    }
+
+    #[test]
+    fn parses_required_nullable_fields_from_bedrock_decisions() {
+        let decision = parse_model_value(json!({
+            "decision": "invoke_tool",
+            "call": {
+                "call_id": "runtime-1",
+                "tool_id": "source_runtime.inspect",
+                "purpose": "Read connector health.",
+                "input": {"query": "identity provider"}
+            },
+            "draft": null
+        }))
         .unwrap();
         assert!(matches!(decision, ModelDecision::InvokeTool { .. }));
     }
