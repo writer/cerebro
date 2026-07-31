@@ -561,6 +561,7 @@ pub async fn run_turn(
     validate_catalog(&available_tools)?;
     let mut observations = Vec::new();
     let mut call_ids = BTreeSet::new();
+    let mut call_fingerprints = BTreeSet::new();
     let mut consumed_effect_authorizations = BTreeSet::new();
     let mut selected_tools = BTreeSet::new();
     let mut revision_feedback = Vec::new();
@@ -607,6 +608,20 @@ pub async fn run_turn(
                     .find(|candidate| candidate.tool_id == call.tool_id)
                     .cloned()
                     .ok_or_else(|| AgentRuntimeError::ToolUnavailable(call.tool_id.clone()))?;
+                if descriptor.authority_class != ToolAuthorityClass::Actuate {
+                    let call_fingerprint = (call.tool_id.clone(), call.input_digest());
+                    if !call_fingerprints.insert(call_fingerprint) {
+                        operating_repairs += 1;
+                        if operating_repairs > MAX_OPERATING_REPAIRS {
+                            return Err(AgentRuntimeError::OperatingRepairLimit);
+                        }
+                        revision_feedback = vec![
+                            "The identical capability and input were already observed in this turn. Use the existing observation, choose a materially different read, or finish the answer."
+                                .into(),
+                        ];
+                        continue;
+                    }
+                }
                 selected_tools.insert(call.tool_id.clone());
                 if selected_tools.len() > budget.max_selected_capabilities {
                     return Err(AgentRuntimeError::ToolBudgetExceeded);
@@ -643,6 +658,9 @@ pub async fn run_turn(
                     }
                 }
                 let result = tools.invoke(&request, &call).await?;
+                if descriptor.authority_class == ToolAuthorityClass::Actuate {
+                    call_fingerprints.clear();
+                }
                 validate_tool_result(&result)?;
                 observations.push(ToolObservation {
                     sequence: observations.len() + 1,

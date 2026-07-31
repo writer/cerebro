@@ -669,11 +669,40 @@ fn parse_model_value(mut value: Value) -> Result<ModelDecision, AgentRuntimeErro
 }
 
 fn parse_presentation_content(content: &str) -> Result<PresentationDecision, AgentRuntimeError> {
-    serde_json::from_str(structured_json(content))
-        .map_err(|error| AgentRuntimeError::InvalidFinal(format!("presentation output: {error}")))
+    let value = serde_json::from_str(structured_json(content)).map_err(|error| {
+        AgentRuntimeError::InvalidFinal(format!("presentation output: {error}"))
+    })?;
+    parse_presentation_value(value)
 }
 
-fn parse_presentation_value(value: Value) -> Result<PresentationDecision, AgentRuntimeError> {
+fn parse_presentation_value(mut value: Value) -> Result<PresentationDecision, AgentRuntimeError> {
+    if let Value::String(text) = value {
+        if let Ok(decoded) = serde_json::from_str::<Value>(&text) {
+            return parse_presentation_value(decoded);
+        }
+        return Ok(PresentationDecision {
+            messages: vec![text],
+        });
+    }
+    if let Value::Array(values) = &value
+        && values.iter().all(Value::is_string)
+    {
+        return Ok(PresentationDecision {
+            messages: values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect(),
+        });
+    }
+    if let Some(messages) = value
+        .as_object_mut()
+        .and_then(|object| object.get_mut("messages"))
+        && let Value::String(text) = messages
+    {
+        *messages = serde_json::from_str::<Value>(text)
+            .unwrap_or_else(|_| Value::Array(vec![Value::String(text.clone())]));
+    }
     serde_json::from_value(value)
         .map_err(|error| AgentRuntimeError::InvalidFinal(format!("presentation output: {error}")))
 }
@@ -1090,6 +1119,7 @@ Operate, do not merely describe a query:
 - Keep tool work separate from the visible reply. Do not narrate routine tool calls or paste the research trail.
 - Lead with the direct answer in natural language. When a capability is unavailable, say exactly which capability failed, state what remains usable, and continue with any other safe observations that can still answer part of the request.
 - Never collapse a missing citation, an empty result, an unavailable backend, and an unauthorized operation into the same state. Describe the observed state precisely.
+- Do not invent provider-console navigation, OAuth scope names, permission labels, endpoint behavior, re-sync controls, or causal tests. When provider-side configuration is outside the observations, request the exact provider receipt or grant record needed and name the acceptance condition without pretending to know the provider UI.
 - Use partial or blocked when evidence is incomplete, stale, unavailable, or contradictory. Name the coverage gap.
 - If no observation supports the requested scope, finish blocked with a coverage_notice, empty evidence claim arrays, and no summary evidence refs. Do not use answered or partial without summary evidence. Use needs_input only when one user answer can unblock the work, and include exactly one question.
 - Every dynamic statement in summary_evidence_refs and each EvidenceClaim must cite exact evidence_ref values from observations.
@@ -1151,6 +1181,7 @@ Approve only when the draft:
 - never upgrades a missing record into proof that no rejection or defect occurred, a bounded graph miss into proof of configuration absence, source-family coverage into audit-program coverage, or post-change success into proof of one unique cause;
 - never labels an evidence gap noise, non-blocking, decision-grade, low-risk, or safe to defer without current dependency evidence, and never ranks down a cause that an observation explicitly leaves open;
 - never assigns likelihood, prevalence, weakness, or diagnostic priority to unresolved causes without observed support for that ranking;
+- never invents provider-console steps, scope names, permission labels, endpoint behavior, re-sync controls, or causal conclusions absent from observations;
 - does not promise a future assistant check or follow-up unless the turn completed it or a durable commitment record is present;
 - uses factual, natural Slack language, stays proportional to the question, and gives a bounded owned next action when work remains;
 - owns every safe follow-through available in the turn, asks only for one materially necessary decision, and does not hand the same work back through a generic offer;
@@ -2317,6 +2348,20 @@ mod tests {
             vec!["The current evidence supports the recommendation."]
         );
         assert!(parse_presentation_content(r#"{"message":"report"}"#).is_err());
+        assert_eq!(
+            parse_presentation_value(Value::String("A direct conversational reply.".into()))
+                .unwrap()
+                .messages,
+            vec!["A direct conversational reply."]
+        );
+        assert_eq!(
+            parse_presentation_value(json!({
+                "messages": "[\"First message.\",\"Second message.\"]"
+            }))
+            .unwrap()
+            .messages,
+            vec!["First message.", "Second message."]
+        );
         assert!(presentation_instructions().contains("capable security teammate"));
         assert!(presentation_instructions().contains("Never hand the same work back"));
         assert!(model_instructions().contains("broad operator request as a goal"));
