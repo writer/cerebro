@@ -120,6 +120,49 @@ struct CriticIssueRepairModel {
     attempts: Mutex<usize>,
 }
 
+struct FinalLengthRepairModel {
+    attempts: Mutex<usize>,
+}
+
+#[async_trait]
+impl AgentModel for FinalLengthRepairModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Converse))
+    }
+
+    async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        let mut attempts = self.attempts.lock().unwrap();
+        *attempts += 1;
+        let summary = if *attempts == 1 {
+            "x".repeat(2_501)
+        } else {
+            assert!(turn.revision_feedback[0].contains("prior summary was 2501 bytes"));
+            assert!(turn.revision_feedback[0].contains("Rewrite it materially shorter"));
+            "Owner: <provider admin>. Trigger: approved connector repair. Cerebro re-checks the receipt after the change. Acceptance: a fresh successful receipt with no unresolved gap."
+                .into()
+        };
+        Ok(ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Connector handoff".into(),
+                summary,
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        })
+    }
+
+    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(approved_critique())
+    }
+}
+
 #[async_trait]
 impl AgentModel for CriticIssueRepairModel {
     async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
@@ -360,6 +403,30 @@ async fn conversational_artifact_edits_do_not_require_system_evidence() {
 
     assert!(markdown.contains("Owner: <named provider admin>"));
     assert!(!markdown.contains("No new tool observation"));
+}
+
+#[tokio::test]
+async fn oversized_final_receives_precise_length_feedback_and_repairs() {
+    let model = FinalLengthRepairModel {
+        attempts: Mutex::new(0),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } = run_turn(
+        &model,
+        &tools,
+        request("Finalize the approved connector handoff for Slack."),
+    )
+    .await
+    .unwrap() else {
+        panic!("expected a repaired handoff")
+    };
+
+    assert!(markdown.starts_with("Owner: <provider admin>."));
+    assert!(markdown.len() < 1_800);
 }
 
 fn final_draft() -> FinalDraft {

@@ -1149,6 +1149,8 @@ Operate, do not merely describe a query:
 - Every dynamic statement in summary_evidence_refs and each EvidenceClaim must cite exact evidence_ref values from observations.
 - headline is a short internal outcome label. summary is the complete Slack-facing reply and must read naturally without the headline, claim arrays, next_actions, or other structured fields being rendered. Put every material fact the operator must see in summary.
 - In the converse lane, history may be used for continuity and requested rewriting, but it is not fresh evidence. Keep summary_evidence_refs and structured claim arrays empty unless this turn has an observation. Do not add a visible “no new tool observation” disclaimer; simply avoid claiming a new check.
+- In the converse lane, a requested handoff, message, or artifact may use facts the operator supplied as content without presenting them as independently verified. Do not invent additional restarts, re-authentication, rollbacks, provider theories, team names, acceptance cycles, or routing rules to make the artifact sound complete. Use one explicit role or field placeholder when the operator did not supply it.
+- When the operator approves a draft and says finish, finalize, or send-ready, return only the concise finished artifact. Preserve the agreed owner, trigger, action boundary, and acceptance condition; remove prefaces, repeated caveats, alternative theories, and instructions about how to fill the template. Keep the finished Slack artifact under 1,800 bytes.
 - checked, changed, verified, current_state, and next_actions are structured records for evidence and continuity. Do not write summary as a duplicate report of those field names, and do not use visible prefixes such as Checked, Evidence, Current state, Next, Research, or Tool trail.
 - Do not tell the operator to rerun an internal query. Continue the investigation yourself while the tool budget permits.
 - Treat revision_feedback as mandatory independent review findings and repair every issue before finishing.
@@ -1217,6 +1219,8 @@ Approve only when the draft:
 - never declares a material external loop closed or tells the operator they are clear to leave while action or independent verification remains open;
 - uses factual, natural Slack language, stays proportional to the question, and gives a bounded owned next action when work remains;
 - avoids repeating unchanged evidence and caveats from earlier turns, and answers later turns with only the changed decision, required boundary, and usable next action;
+- for a converse-lane handoff or artifact, uses operator-supplied facts as content without inventing technical remediation steps, team names, or authority, and leaves an explicit placeholder for genuinely missing fields;
+- when the operator asks to finish an approved draft, returns one send-ready artifact under 1,800 bytes with no preface, template instructions, repeated caveats, or new alternative theories;
 - owns every safe follow-through available in the turn, asks only for one materially necessary decision, and does not hand the same work back through a generic offer;
 - avoids report headers, generic service endings, self-congratulation, and invitations to re-request the work.
 
@@ -2334,6 +2338,13 @@ mod tests {
             model_instructions().contains("recorded remediation owner (identity not returned)")
         );
         assert!(model_instructions().contains("purpose describes the concrete business effect"));
+        assert!(model_instructions().contains("Do not invent additional restarts"));
+        assert!(
+            model_instructions().contains("Keep the finished Slack artifact under 1,800 bytes")
+        );
+        assert!(
+            critic_instructions().contains("returns one send-ready artifact under 1,800 bytes")
+        );
     }
 
     #[test]

@@ -1201,11 +1201,23 @@ fn validate_final(
     if !bounded_display_text(&draft.headline, MAX_HEADLINE_BYTES)
         || draft.headline.contains('\n')
         || draft.headline.contains('\r')
-        || !bounded_display_text(&draft.summary, MAX_SUMMARY_BYTES)
     {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "headline or summary is empty, oversized, or structurally invalid".into(),
-        ));
+        return Err(AgentRuntimeError::InvalidFinal(format!(
+            "headline must be one non-empty line no longer than {MAX_HEADLINE_BYTES} bytes; the prior headline was {} bytes",
+            draft.headline.len()
+        )));
+    }
+    if draft.summary.trim().is_empty()
+        || draft.summary.len() > MAX_SUMMARY_BYTES
+        || draft
+            .summary
+            .chars()
+            .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
+    {
+        return Err(AgentRuntimeError::InvalidFinal(format!(
+            "summary must be non-empty, conversational text no longer than {MAX_SUMMARY_BYTES} bytes; the prior summary was {} bytes. Rewrite it materially shorter instead of repeating the same draft",
+            draft.summary.len()
+        )));
     }
     let claim_count = all_claims(draft).count();
     if draft.checked.len() > MAX_CLAIMS_PER_SECTION
