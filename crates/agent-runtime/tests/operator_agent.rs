@@ -321,6 +321,47 @@ fn claim(text: &str, reference: &str) -> EvidenceClaim {
     }
 }
 
+#[tokio::test]
+async fn conversational_artifact_edits_do_not_require_system_evidence() {
+    let draft = FinalDraft {
+        state: FinalState::Answered,
+        headline: "Owner lines added".into(),
+        summary: "Owner: <named provider admin> — please confirm. Cerebro owns the fresh receipt check after the provider change.".into(),
+        summary_evidence_refs: vec!["evidence://history-only".into()],
+        checked: vec![],
+        changed: vec![claim(
+            "The requested owner lines were added to the conversational artifact.",
+            "evidence://history-only",
+        )],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: Some("No new tool observation was required for this text edit.".into()),
+        question: None,
+    };
+    let model = scripted(
+        ExecutionLane::Converse,
+        VecDeque::from([ModelDecision::Finish { draft }]),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } = run_turn(
+        &model,
+        &tools,
+        request("Add the owner placeholder and our re-check responsibility to the handoff."),
+    )
+    .await
+    .unwrap() else {
+        panic!("expected a delivered artifact edit")
+    };
+
+    assert!(markdown.contains("Owner: <named provider admin>"));
+    assert!(!markdown.contains("No new tool observation"));
+}
+
 fn final_draft() -> FinalDraft {
     FinalDraft {
         state: FinalState::Answered,

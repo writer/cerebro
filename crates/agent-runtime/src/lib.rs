@@ -640,6 +640,7 @@ pub async fn run_turn(
                 }
             }
             ModelDecision::Finish { draft } => {
+                let draft = normalize_converse_draft(lane, draft, &observations);
                 if let Err(error) = validate_final(&request, lane, &draft, &observations) {
                     operating_repairs += 1;
                     if operating_repairs > MAX_OPERATING_REPAIRS {
@@ -703,6 +704,25 @@ pub async fn run_turn(
         }
     }
     Err(AgentRuntimeError::ModelStepLimit)
+}
+
+fn normalize_converse_draft(
+    lane: ExecutionLane,
+    mut draft: FinalDraft,
+    observations: &[ToolObservation],
+) -> FinalDraft {
+    if lane != ExecutionLane::Converse || !observations.is_empty() {
+        return draft;
+    }
+    draft.summary_evidence_refs.clear();
+    draft.checked.clear();
+    draft.changed.clear();
+    draft.verified.clear();
+    draft.current_state.clear();
+    if draft.state == FinalState::Answered {
+        draft.coverage_notice = None;
+    }
+    draft
 }
 
 async fn present_with_repair(

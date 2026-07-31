@@ -42,6 +42,9 @@ use time::{Duration as TimeDuration, OffsetDateTime, format_description::well_kn
 use super::slack_agent_mcp::McpAgentTools;
 
 const MAX_MODEL_RESPONSE_BYTES: usize = 512 * 1024;
+const MAX_MODEL_HISTORY_ITEMS: usize = 24;
+const MAX_MODEL_HISTORY_ITEM_BYTES: usize = 8 * 1024;
+const MAX_MODEL_HISTORY_TOTAL_BYTES: usize = 96 * 1024;
 const ROUTE_DECISION_TOOL: &str = "submit_route_decision";
 const OPERATING_DECISION_TOOL: &str = "submit_operating_decision";
 const PRESENTATION_DECISION_TOOL: &str = "submit_slack_presentation";
@@ -191,14 +194,18 @@ pub(super) enum ConfiguredModel {
 }
 
 impl ConfiguredModel {
+    pub(super) async fn amazon_bedrock(model: String) -> Result<Self, Box<dyn Error>> {
+        let config = aws_config::defaults(BehaviorVersion::latest()).load().await;
+        Ok(Self::AmazonBedrock(BedrockModel {
+            client: BedrockClient::new(&config),
+            model,
+        }))
+    }
+
     pub(super) async fn from_env() -> Result<Self, Box<dyn Error>> {
         match required_env("CEREBRO_SLACK_AGENT_MODEL_PROVIDER")?.as_str() {
             "amazon-bedrock" => {
-                let config = aws_config::defaults(BehaviorVersion::latest()).load().await;
-                Ok(Self::AmazonBedrock(BedrockModel {
-                    client: BedrockClient::new(&config),
-                    model: required_env("CEREBRO_SLACK_AGENT_MODEL")?,
-                }))
+                Self::amazon_bedrock(required_env("CEREBRO_SLACK_AGENT_MODEL")?).await
             }
             "openai-compatible" => Ok(Self::OpenAiCompatible(OpenAiCompatibleModel::from_env()?)),
             _ => Err("CEREBRO_SLACK_AGENT_MODEL_PROVIDER is unsupported".into()),
@@ -855,7 +862,7 @@ fn route_turn_payload(turn: &RouteTurn) -> Value {
     json!({
         "repair_feedback": &turn.repair_feedback,
         "request": {
-            "history": &turn.request.history,
+            "history": bounded_model_history(&turn.request.history),
             "message": &turn.request.message,
             "working_state": &turn.request.working_state,
         },
@@ -871,7 +878,7 @@ fn model_turn_payload(turn: &ModelTurn) -> Value {
         "revision_feedback": &turn.revision_feedback,
         "request": {
             "effect_authorizations": &turn.request.effect_authorizations,
-            "history": &turn.request.history,
+            "history": bounded_model_history(&turn.request.history),
             "message": &turn.request.message,
             "working_state": turn.request.working_state.as_ref().map(|state| json!({
                 "current_request": state.current_request,
@@ -888,7 +895,7 @@ fn presentation_turn_payload(turn: &PresentationTurn) -> Value {
         "lane": turn.lane,
         "repair_feedback": &turn.repair_feedback,
         "request": {
-            "history": &turn.request.history,
+            "history": bounded_model_history(&turn.request.history),
             "message": &turn.request.message,
             "working_state": &turn.request.working_state,
         },
@@ -902,11 +909,40 @@ fn critique_turn_payload(turn: &CritiqueTurn) -> Value {
         "observations": &turn.observations,
         "repair_feedback": &turn.repair_feedback,
         "request": {
-            "history": &turn.request.history,
+            "history": bounded_model_history(&turn.request.history),
             "message": &turn.request.message,
             "working_state": &turn.request.working_state,
         },
     })
+}
+
+fn bounded_model_history(history: &[cerebro_agent_runtime::ConversationMessage]) -> Value {
+    let mut selected = Vec::new();
+    let mut total_bytes = 0usize;
+    for message in history.iter().rev().take(MAX_MODEL_HISTORY_ITEMS) {
+        let content = truncate_model_context(&message.content, MAX_MODEL_HISTORY_ITEM_BYTES);
+        if total_bytes.saturating_add(content.len()) > MAX_MODEL_HISTORY_TOTAL_BYTES {
+            break;
+        }
+        total_bytes += content.len();
+        selected.push(json!({
+            "role": message.role,
+            "content": content,
+        }));
+    }
+    selected.reverse();
+    Value::Array(selected)
+}
+
+fn truncate_model_context(value: &str, maximum_bytes: usize) -> String {
+    if value.len() <= maximum_bytes {
+        return value.to_owned();
+    }
+    let mut boundary = maximum_bytes.saturating_sub(3);
+    while boundary > 0 && !value.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    format!("{}...", value[..boundary].trim_end())
 }
 
 fn route_instructions() -> &'static str {
@@ -956,8 +992,12 @@ Operate, do not merely describe a query:
 - Treat completed source results as usable evidence for this answer even if a later source fails. Preserve the supported conclusion and name only the remaining gap.
 - Before reporting an aggregate, reconcile it against the observations. Account for every returned item exactly once, list every observed group, ensure subtotals equal the returned item count, and never state a group count that differs from the groups listed.
 - Treat bounded or truncated observations as a returned result page, not the total population. State the observed coverage and the possibility of additional items instead of presenting the page size as a total.
+- Missing records prove only that those records were not observed in the stated scope. They do not prove that no rejection, connector defect, provider defect, or independent configuration exists unless the observation explicitly excludes it.
+- A bounded graph miss does not prove a tenant configuration mapping is absent. Source-family collection coverage is not audit-program or control coverage. A successful read after a change is consistent with the change helping, not proof of a unique cause.
 - Lead with the current conclusion or exact blocker. Add only evidence, completed action, or next work that changes what the reader does.
 - Make a recommendation when the evidence supports one. Own safe follow-through instead of handing the same work back to the operator.
+- If you identify a safe read that would materially narrow the answer and that capability is available, invoke it before finishing this turn. Do not promise “I’ll pull,” “I’ll check,” or “next I’ll inspect” work the runtime can perform now.
+- When a useful artifact needs an owner but the exact person is unavailable, put an explicit role placeholder in the artifact and assign the follow-up that Cerebro or the known team can own. Do not make the operator ask twice for the placeholder.
 - Ask for input only when one precise decision materially changes the action, cannot be inferred from context or tools, and has no safe default. Otherwise proceed with best judgment and name the bounded assumption.
 - Do not promise future work unless you complete it now, leave an exact durable continuation in the structured state, or name the specific blocker and owner. Do not end with generic offers such as “let me know,” “want me to,” or “say the word.”
 - Avoid filler, customer-service endings, self-congratulation, generic invitations, and labels that describe the answer instead of answering.
@@ -972,6 +1012,7 @@ Operate, do not merely describe a query:
 - If no observation supports the requested scope, finish blocked with a coverage_notice, empty evidence claim arrays, and no summary evidence refs. Do not use answered or partial without summary evidence. Use needs_input only when one user answer can unblock the work, and include exactly one question.
 - Every dynamic statement in summary_evidence_refs and each EvidenceClaim must cite exact evidence_ref values from observations.
 - headline is a short internal outcome label. summary is the complete Slack-facing reply and must read naturally without the headline, claim arrays, next_actions, or other structured fields being rendered. Put every material fact the operator must see in summary.
+- In the converse lane, history may be used for continuity and requested rewriting, but it is not fresh evidence. Keep summary_evidence_refs and structured claim arrays empty unless this turn has an observation. Do not add a visible “no new tool observation” disclaimer; simply avoid claiming a new check.
 - checked, changed, verified, current_state, and next_actions are structured records for evidence and continuity. Do not write summary as a duplicate report of those field names, and do not use visible prefixes such as Checked, Evidence, Current state, Next, Research, or Tool trail.
 - Do not tell the operator to rerun an internal query. Continue the investigation yourself while the tool budget permits.
 - Treat revision_feedback as mandatory independent review findings and repair every issue before finishing.
@@ -996,6 +1037,7 @@ Rewrite the completed answer as a capable security teammate would speak in the c
 - Keep a concrete, calm, curious voice. Take a position and make a recommendation when the completed evidence supports one.
 - Preserve every material fact, evidence boundary, subject identity, action result, and precise user question from completed_answer. Do not add facts, claims, source status, identifiers, actions, promises, or certainty.
 - Keep tool work and internal structure invisible. Do not mention schemas, routes, validators, queries, row limits, tool names, research trails, working state, or evidence reference tokens.
+- Do not surface process disclaimers such as “no new tool observation was available this turn.” Preserve the actual authority or coverage limit once, in the sentence where it changes the conclusion; remove repetitive caveat footers.
 - Write natural sentences and short bullets only when they help. Do not use report headers or labels such as Checked, Evidence, Current state, Next actions, Research, Tool trail, Observation, or Suggested action.
 - Keep the response proportional. Prefer one compact message; use a second only when it prevents the first from becoming dense.
 - Own assistant-safe follow-through already supported by the completed answer. Never hand the same work back with “let me know,” “would you like me,” “want me to,” “say the word,” or a generic invitation.
@@ -1024,6 +1066,7 @@ Approve only when the draft:
 - keeps routine tool work and structured record fields out of the visible prose;
 - preserves completed evidence when a later check failed and narrows uncertainty to the exact remaining gap;
 - reconciles every aggregate against the observations, with all observed groups listed, subtotals equal to the returned item count, and no bounded or truncated page presented as a total population;
+- never upgrades a missing record into proof that no rejection or defect occurred, a bounded graph miss into proof of configuration absence, source-family coverage into audit-program coverage, or post-change success into proof of one unique cause;
 - uses factual, natural Slack language, stays proportional to the question, and gives a bounded owned next action when work remains;
 - owns every safe follow-through available in the turn, asks only for one materially necessary decision, and does not hand the same work back through a generic offer;
 - avoids report headers, generic service endings, self-congratulation, and invitations to re-request the work.
