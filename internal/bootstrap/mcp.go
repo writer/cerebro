@@ -66,8 +66,6 @@ const (
 	maxMCPRiskActionGraph       = 10
 	defaultMCPRecentRiskRows    = 10
 	maxMCPComplianceLimit       = 200
-	maxMCPGraphReasonHistory    = 12
-	maxMCPGraphHistoryItemBytes = 4096
 	mcpResourceMIMEJSON         = "application/json"
 )
 
@@ -1802,16 +1800,9 @@ func (app *App) authorizeMCPGraphFactSelectors(r *http.Request, runtimeID string
 }
 
 func (app *App) mcpGraphReason(r *http.Request, args map[string]any) (any, error) {
-	history, err := mcpGraphReasonHistoryArg(args)
+	request, err := graphagent.DecodeMCPAskRequest(args)
 	if err != nil {
 		return nil, err
-	}
-	request := graphagent.AskRequest{
-		TenantID: mcpStringArg(args, "tenant_id"),
-		Question: mcpStringArg(args, "question"),
-		ScopeURN: mcpStringArg(args, "scope_urn"),
-		Model:    mcpStringArg(args, "model"),
-		History:  history,
 	}
 	resolved, err := resolveAgentPlatformRequestContext(r.Context(), request.TenantID, "", nil)
 	if err != nil {
@@ -2801,19 +2792,7 @@ func mcpTools() []mcpTool {
 				"question":  map[string]any{"type": "string"},
 				"scope_urn": map[string]any{"type": "string"},
 				"model":     map[string]any{"type": "string"},
-				"history": map[string]any{
-					"type":     "array",
-					"maxItems": maxMCPGraphReasonHistory,
-					"items": map[string]any{
-						"type":                 "object",
-						"additionalProperties": false,
-						"properties": map[string]any{
-							"role":    map[string]any{"type": "string", "enum": []string{"assistant", "user"}},
-							"content": map[string]any{"type": "string", "minLength": 1, "maxLength": maxMCPGraphHistoryItemBytes},
-						},
-						"required": []string{"role", "content"},
-					},
-				},
+				"history":   graphagent.MCPHistoryInputSchema(),
 			}, []string{"question"}),
 			OutputSchema: mcpOutputSchema(map[string]any{
 				"trace_id":            map[string]any{"type": "string"},
@@ -4498,34 +4477,6 @@ func mcpStringArg(args map[string]any, key string) string {
 	default:
 		return strings.TrimSpace(fmt.Sprint(typed))
 	}
-}
-
-func mcpGraphReasonHistoryArg(args map[string]any) ([]graphagent.HistoryMessage, error) {
-	raw, ok := args["history"]
-	if !ok || raw == nil {
-		return nil, nil
-	}
-	payload, err := json.Marshal(raw)
-	if err != nil {
-		return nil, fmt.Errorf("%w: graph reasoning history is invalid", errInvalidHTTPRequest)
-	}
-	var history []graphagent.HistoryMessage
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&history); err != nil {
-		return nil, fmt.Errorf("%w: graph reasoning history is invalid", errInvalidHTTPRequest)
-	}
-	if len(history) > maxMCPGraphReasonHistory {
-		return nil, fmt.Errorf("%w: graph reasoning history exceeds %d items", errInvalidHTTPRequest, maxMCPGraphReasonHistory)
-	}
-	for _, message := range history {
-		role := strings.TrimSpace(message.Role)
-		content := strings.TrimSpace(message.Content)
-		if (role != "assistant" && role != "user") || content == "" || len(content) > maxMCPGraphHistoryItemBytes {
-			return nil, fmt.Errorf("%w: graph reasoning history contains an invalid message", errInvalidHTTPRequest)
-		}
-	}
-	return history, nil
 }
 
 func mcpRuntimeIDsArg(args map[string]any) []string {
