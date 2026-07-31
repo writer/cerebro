@@ -1,5 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/components/agent/CerebroAgentProvider", () => ({
+  useCerebroAgent: () => ({ openAgent: vi.fn() }),
+}));
 
 import MarkdownSummary from "./MarkdownSummary";
 
@@ -20,8 +24,8 @@ describe("MarkdownSummary", () => {
     );
 
     expect(html).toContain("Second paragraph cites");
-    expect(html).toContain("/impact?root_urn=urn%3Acerebro%3Awriter%3Arepo%3Asecurity-agent-platform");
-    expect(html).toContain(">repo</a>");
+    expect(html).toContain('data-urn="urn:cerebro:writer:repo:security-agent-platform"');
+    expect(html).toContain(">repo</button>");
   });
 
   it("renders cited bullet lines without shifting offsets", () => {
@@ -39,6 +43,7 @@ describe("MarkdownSummary", () => {
       />,
     );
 
-    expect(html).toContain(">Connector</a>");
+    expect(html).toContain('data-urn="urn:cerebro:writer:connector:local-github"');
+    expect(html).toContain(">Connector</button>");
   });
 });

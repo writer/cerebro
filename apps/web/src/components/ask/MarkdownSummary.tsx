@@ -1,14 +1,18 @@
 "use client";
 
-import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 
 import type { AskCitation } from "@/lib/ask";
 import { shortUrn } from "@/lib/ask";
+import type { GRCGraph } from "@/lib/grc";
+
+import EntityChip from "./EntityChip";
 
 type Props = {
   markdown: string;
   citations?: AskCitation[] | null;
+  /** Turn graph, used to enrich cited entity chips with labels and risk. */
+  graph?: GRCGraph | null;
 };
 
 const INLINE_TOKEN = /(\*\*[^*]+\*\*|`[^`]+`)/g;
@@ -39,6 +43,7 @@ const renderWithCitations = (
   markdown: string,
   citations?: AskCitation[] | null,
   baseOffset = 0,
+  graph?: GRCGraph | null,
 ): ReactNode[] => {
   const safeCitations = citations ?? [];
   if (!safeCitations.length) {
@@ -58,14 +63,12 @@ const renderWithCitations = (
     }
     const label = markdown.slice(start, end) || shortUrn(citation.urn);
     result.push(
-      <Link
+      <EntityChip
         key={`citation-${index}`}
-        href={`/impact?root_urn=${encodeURIComponent(citation.urn)}`}
-        title={citation.urn}
-        className="rounded-md border border-indigo-200 bg-indigo-50 px-1 font-mono text-[12px] text-indigo-700 transition hover:border-indigo-400 hover:text-indigo-900"
-      >
-        {label}
-      </Link>,
+        urn={citation.urn}
+        label={label}
+        graph={graph}
+      />,
     );
     cursor = end;
   });
@@ -91,7 +94,7 @@ const markdownBlocks = (markdown: string): Array<{ text: string; offset: number 
   return blocks;
 };
 
-export default function MarkdownSummary({ markdown, citations }: Props) {
+export default function MarkdownSummary({ markdown, citations, graph }: Props) {
   const blocks = markdownBlocks(markdown);
   return (
     <div className="space-y-3 text-[13px] leading-relaxed text-slate-800">
@@ -108,14 +111,14 @@ export default function MarkdownSummary({ markdown, citations }: Props) {
                 lineOffset += line.length + 1;
                 return (
                   <li key={lineIndex}>
-                    {renderWithCitations(content, citations, contentOffset)}
+                    {renderWithCitations(content, citations, contentOffset, graph)}
                   </li>
                 );
               })}
             </ul>
           );
         }
-        return <p key={index}>{renderWithCitations(block.text, citations, block.offset)}</p>;
+        return <p key={index}>{renderWithCitations(block.text, citations, block.offset, graph)}</p>;
       })}
     </div>
   );
