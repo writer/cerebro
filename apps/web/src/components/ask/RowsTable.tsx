@@ -1,16 +1,20 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { looksLikeUrn, shortUrn } from "@/lib/ask";
 import { pluralize } from "@/lib/format";
+import type { GRCGraph } from "@/lib/grc";
+
+import EntityChip from "./EntityChip";
 
 type Row = Record<string, unknown>;
 
 type Props = {
   rows: Row[];
   execMs: number;
+  /** Turn graph, used to enrich URN cells with labels and risk. */
+  graph?: GRCGraph | null;
 };
 
 type SortState = {
@@ -43,7 +47,7 @@ const cellLabel = (value: unknown): string => {
   return String(value);
 };
 
-export default function RowsTable({ rows, execMs }: Props) {
+export default function RowsTable({ rows, execMs, graph }: Props) {
   const columns = useMemo(() => {
     const set = new Set<string>();
     rows.forEach((row) => Object.keys(row).forEach((key) => set.add(key)));
@@ -141,12 +145,7 @@ export default function RowsTable({ rows, execMs }: Props) {
                       <details>
                         <summary className="cursor-pointer list-none">
                           {looksLikeUrn(value) ? (
-                            <Link
-                              href={`/impact?root_urn=${encodeURIComponent(value)}`}
-                              className="font-mono text-[11px] text-indigo-700 hover:text-indigo-900"
-                            >
-                              {shortUrn(value)}
-                            </Link>
+                            <EntityChip urn={value} label={shortUrn(value)} graph={graph} />
                           ) : (
                             <span className="break-words">{cellLabel(value)}</span>
                           )}

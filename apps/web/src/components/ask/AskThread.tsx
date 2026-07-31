@@ -7,6 +7,7 @@ import { type AskTurnState } from "@/lib/ask";
 import GraphViewer from "@/components/grc/LazyGraphViewer";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/grc/Primitives";
 import CypherBlock from "./CypherBlock";
+import EntityChip from "./EntityChip";
 import MarkdownSummary from "./MarkdownSummary";
 import RowsTable from "./RowsTable";
 import TraceDrawer from "./TraceDrawer";
@@ -276,7 +277,7 @@ export default function AskThread({ turns, activeTurnId, onRetry, onStop }: Prop
                   {turn.rows.graph?.root && (
                     <GraphViewer graph={turn.rows.graph} />
                   )}
-                  <RowsTable rows={turn.rows.rows} execMs={turn.rows.exec_ms} />
+                  <RowsTable rows={turn.rows.rows} execMs={turn.rows.exec_ms} graph={turn.rows.graph} />
                   {turn.rows.rows.length === 0 && isTerminal && (
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px] text-slate-600">
                       No rows came back. Try a broader scope, remove a strict filter, or ask for available entities first.
@@ -294,6 +295,7 @@ export default function AskThread({ turns, activeTurnId, onRetry, onStop }: Prop
                     <MarkdownSummary
                       markdown={displayedSummary.markdown}
                       citations={displayedSummary.citations}
+                      graph={turn.rows?.graph}
                     />
                   </div>
                   {sources.length > 0 && (
@@ -301,13 +303,11 @@ export default function AskThread({ turns, activeTurnId, onRetry, onStop }: Prop
                       <div className="text-[10px] uppercase tracking-[0.22em] text-slate-400">Sources</div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {sources.map((source) => (
-                          <a
+                          <EntityChip
                             key={source.urn}
-                            href={`/impact?root_urn=${encodeURIComponent(source.urn)}`}
-                            className="rounded-md border border-indigo-100 bg-indigo-50 px-2 py-1 font-mono text-[11px] text-indigo-700 transition hover:border-indigo-300 hover:text-indigo-900"
-                          >
-                            {source.urn}
-                          </a>
+                            urn={source.urn}
+                            graph={turn.rows?.graph}
+                          />
                         ))}
                       </div>
                     </div>
