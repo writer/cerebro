@@ -301,7 +301,7 @@ impl BedrockModel {
             .tool_choice(ToolChoice::Tool(tool_choice))
             .build()
             .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
-        let mut request = self
+        let request = self
             .client
             .converse()
             .model_id(&self.model)
@@ -313,11 +313,6 @@ impl BedrockModel {
                     .build(),
             )
             .tool_config(tool_configuration);
-        if self.model.contains(".anthropic.claude-") {
-            request = request.additional_model_request_fields(json_to_document(&json!({
-                "disable_parallel_tool_use": true,
-            }))?);
-        }
         let response = request
             .send()
             .await
@@ -629,13 +624,14 @@ fn bedrock_structured_output(
             "Bedrock returned an ambiguous schema-constrained decision".into(),
         ));
     }
-    let value = document_to_json(tool_use.input())?;
-    for duplicate in tool_uses {
-        if duplicate.name() != decision_tool || document_to_json(duplicate.input())? != value {
+    let mut value = document_to_json(tool_use.input())?;
+    for revised_decision in tool_uses {
+        if revised_decision.name() != decision_tool {
             return Err(AgentRuntimeError::ModelUnavailable(
                 "Bedrock returned an ambiguous schema-constrained decision".into(),
             ));
         }
+        value = document_to_json(revised_decision.input())?;
     }
     if content
         .iter()
@@ -2199,7 +2195,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_one_forced_bedrock_decision_and_rejects_disagreeing_content() {
+    fn uses_the_final_forced_bedrock_decision_and_rejects_free_text() {
         let decision = json!({
             "lane": "investigate",
             "confidence": "high",
@@ -2247,16 +2243,17 @@ mod tests {
             .input(json_to_document(&disagreeing_decision).unwrap())
             .build()
             .unwrap();
-        assert!(matches!(
+        assert_eq!(
             bedrock_structured_output(
                 &[
                     ContentBlock::ToolUse(tool_use),
                     ContentBlock::ToolUse(disagreeing),
                 ],
                 ROUTE_DECISION_TOOL,
-            ),
-            Err(AgentRuntimeError::ModelUnavailable(_))
-        ));
+            )
+            .unwrap(),
+            disagreeing_decision
+        );
     }
 
     #[test]
