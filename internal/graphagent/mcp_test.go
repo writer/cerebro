@@ -7,12 +7,12 @@ import (
 )
 
 func TestDecodeMCPAskRequest(t *testing.T) {
-	request, err := DecodeMCPAskRequest(map[string]any{
-		"tenant_id": " tenant-one ",
-		"question":  " What changed? ",
-		"scope_urn": " urn:cerebro:tenant-one:asset:one ",
-		"model":     " claude-opus-4-7 ",
-		"history": []any{
+	request, err := DecodeMCPAskRequest(MCPAskArguments{
+		TenantID: " tenant-one ",
+		Question: " What changed? ",
+		ScopeURN: " urn:cerebro:tenant-one:asset:one ",
+		Model:    " claude-opus-4-7 ",
+		History: []any{
 			map[string]any{"role": "user", "content": "Check the production asset."},
 			map[string]any{"role": "assistant", "content": "The prior evidence was incomplete."},
 		},
@@ -44,7 +44,7 @@ func TestDecodeMCPAskRequestRejectsInvalidHistory(t *testing.T) {
 	}
 	for name, history := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := DecodeMCPAskRequest(map[string]any{"history": history})
+			_, err := DecodeMCPAskRequest(MCPAskArguments{History: history})
 			if !errors.Is(err, ErrInvalidRequest) {
 				t.Fatalf("error = %v, want ErrInvalidRequest", err)
 			}
@@ -53,14 +53,11 @@ func TestDecodeMCPAskRequestRejectsInvalidHistory(t *testing.T) {
 }
 
 func TestMCPHistoryInputSchemaMatchesDecoderBounds(t *testing.T) {
-	schema := MCPHistoryInputSchema()
-	if schema["maxItems"] != maxMCPHistoryItems {
-		t.Fatalf("maxItems = %#v", schema["maxItems"])
+	schema := GraphHistoryInputSchema()
+	if schema.MaxItems != maxMCPHistoryItems {
+		t.Fatalf("maxItems = %#v", schema.MaxItems)
 	}
-	items := schema["items"].(map[string]any)
-	properties := items["properties"].(map[string]any)
-	content := properties["content"].(map[string]any)
-	if content["maxLength"] != maxMCPHistoryItemBytes {
-		t.Fatalf("content maxLength = %#v", content["maxLength"])
+	if schema.Items.Properties.Content.MaxLength != maxMCPHistoryItemBytes {
+		t.Fatalf("content maxLength = %#v", schema.Items.Properties.Content.MaxLength)
 	}
 }

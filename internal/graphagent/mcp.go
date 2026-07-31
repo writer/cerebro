@@ -12,34 +12,67 @@ const (
 	maxMCPHistoryItemBytes = 4096
 )
 
+type MCPAskArguments struct {
+	TenantID string
+	Question string
+	ScopeURN string
+	Model    string
+	History  any
+}
+
+type HistoryInputSchema struct {
+	Type     string                 `json:"type"`
+	MaxItems int                    `json:"maxItems"`
+	Items    HistoryItemInputSchema `json:"items"`
+}
+
+type HistoryItemInputSchema struct {
+	Type                 string                 `json:"type"`
+	AdditionalProperties bool                   `json:"additionalProperties"`
+	Properties           HistoryInputProperties `json:"properties"`
+	Required             []string               `json:"required"`
+}
+
+type HistoryInputProperties struct {
+	Role    StringInputSchema `json:"role"`
+	Content StringInputSchema `json:"content"`
+}
+
+type StringInputSchema struct {
+	Type      string   `json:"type"`
+	Enum      []string `json:"enum,omitempty"`
+	MinLength int      `json:"minLength,omitempty"`
+	MaxLength int      `json:"maxLength,omitempty"`
+}
+
 // DecodeMCPAskRequest keeps graph-reasoning input semantics behind the graph
 // domain boundary while the MCP adapter owns transport and authorization.
-func DecodeMCPAskRequest(args map[string]any) (AskRequest, error) {
-	history, err := decodeMCPHistory(args["history"])
+func DecodeMCPAskRequest(args MCPAskArguments) (AskRequest, error) {
+	history, err := decodeMCPHistory(args.History)
 	if err != nil {
 		return AskRequest{}, err
 	}
 	return AskRequest{
-		TenantID: textArg(args, "tenant_id"),
-		Question: textArg(args, "question"),
-		ScopeURN: textArg(args, "scope_urn"),
-		Model:    textArg(args, "model"),
+		TenantID: strings.TrimSpace(args.TenantID),
+		Question: strings.TrimSpace(args.Question),
+		ScopeURN: strings.TrimSpace(args.ScopeURN),
+		Model:    strings.TrimSpace(args.Model),
 		History:  history,
 	}, nil
 }
 
-func MCPHistoryInputSchema() map[string]any {
-	return map[string]any{
-		"type":     "array",
-		"maxItems": maxMCPHistoryItems,
-		"items": map[string]any{
-			"type":                 "object",
-			"additionalProperties": false,
-			"properties": map[string]any{
-				"role":    map[string]any{"type": "string", "enum": []string{"assistant", "user"}},
-				"content": map[string]any{"type": "string", "minLength": 1, "maxLength": maxMCPHistoryItemBytes},
+func GraphHistoryInputSchema() HistoryInputSchema {
+	return HistoryInputSchema{
+		Type:     "array",
+		MaxItems: maxMCPHistoryItems,
+		Items: HistoryItemInputSchema{
+			Type:                 "object",
+			AdditionalProperties: false,
+			Properties: HistoryInputProperties{
+				Role:    StringInputSchema{Type: "string", Enum: []string{"assistant", "user"}},
+				Content: StringInputSchema{Type: "string", MinLength: 1, MaxLength: maxMCPHistoryItemBytes},
 			},
-			"required": []string{"role", "content"},
+			Required: []string{"role", "content"},
 		},
 	}
 }
@@ -69,15 +102,4 @@ func decodeMCPHistory(raw any) ([]HistoryMessage, error) {
 		}
 	}
 	return history, nil
-}
-
-func textArg(args map[string]any, key string) string {
-	value, ok := args[key]
-	if !ok || value == nil {
-		return ""
-	}
-	if text, ok := value.(string); ok {
-		return strings.TrimSpace(text)
-	}
-	return strings.TrimSpace(fmt.Sprint(value))
 }
