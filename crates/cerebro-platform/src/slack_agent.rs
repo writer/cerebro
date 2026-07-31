@@ -700,11 +700,21 @@ fn parse_presentation_value(mut value: Value) -> Result<PresentationDecision, Ag
         .and_then(|object| object.get_mut("messages"))
         && let Value::String(text) = messages
     {
-        *messages = serde_json::from_str::<Value>(text)
-            .unwrap_or_else(|_| Value::Array(vec![Value::String(text.clone())]));
+        *messages = decode_presentation_messages(text);
     }
     serde_json::from_value(value)
         .map_err(|error| AgentRuntimeError::InvalidFinal(format!("presentation output: {error}")))
+}
+
+fn decode_presentation_messages(text: &str) -> Value {
+    for candidate in [Some(text), text.strip_suffix('}')].into_iter().flatten() {
+        if let Ok(Value::Array(values)) = serde_json::from_str::<Value>(candidate)
+            && values.iter().all(Value::is_string)
+        {
+            return Value::Array(values);
+        }
+    }
+    Value::Array(vec![Value::String(text.to_owned())])
 }
 
 fn parse_critique_content(content: &str) -> Result<CritiqueDecision, AgentRuntimeError> {
@@ -2356,7 +2366,7 @@ mod tests {
         );
         assert_eq!(
             parse_presentation_value(json!({
-                "messages": "[\"First message.\",\"Second message.\"]"
+                "messages": "[\"First message.\",\"Second message.\"]}"
             }))
             .unwrap()
             .messages,
