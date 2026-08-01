@@ -984,6 +984,12 @@ pub async fn run_session_turn_recorded(
                     record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
                     continue;
                 }
+                if matches!(trigger, SessionTurnTrigger::Operator)
+                    && let Err(error) = validate_explicit_follow_through(&session, &proposed)
+                {
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    continue;
+                }
                 if plan.as_ref() == Some(&proposed) {
                     record_operating_repair(
                         &mut repairs,
@@ -1611,11 +1617,16 @@ fn validate_wake_completion(
         next.status,
         CommitmentStatus::Completed | CommitmentStatus::Cancelled
     );
-    if accepted {
-        if !closed || draft.delivery != DeliveryDisposition::Visible {
+    if closed {
+        if !accepted {
             return Err(AgentRuntimeError::InvalidFinal(
-                "the typed acceptance condition is satisfied; close the commitment and notify the operator"
+                "the commitment cannot close before its typed acceptance condition is satisfied"
                     .into(),
+            ));
+        }
+        if draft.delivery != DeliveryDisposition::Visible {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "a closed wake commitment must notify the operator".into(),
             ));
         }
         if next.wake_at.is_some() {
@@ -1625,13 +1636,8 @@ fn validate_wake_completion(
         }
         return Ok(());
     }
-    if closed {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "the commitment cannot close before its typed acceptance condition is satisfied".into(),
-        ));
-    }
     if unhealthy_required_tools.is_empty() {
-        let required_delivery = if alert {
+        let required_delivery = if accepted || alert {
             DeliveryDisposition::Visible
         } else {
             DeliveryDisposition::Silent
@@ -2648,6 +2654,50 @@ pub fn validate_plan(
         }
     }
     Ok(())
+}
+
+fn validate_explicit_follow_through(
+    session: &AgentSession,
+    plan: &ResearchPlan,
+) -> Result<(), AgentRuntimeError> {
+    let request = session
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == SessionMessageRole::User)
+        .map(|message| message.text.as_str())
+        .unwrap_or_default();
+    if explicitly_delegates_future_observation(request) && plan.follow_through.is_none() {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "the operator explicitly delegated future observation. Record one bounded follow_through with a stable commitment_ref, exact read tools, acceptance criteria, and a final scheduled commitment; do not finish this as one-turn advice"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+fn explicitly_delegates_future_observation(request: &str) -> bool {
+    let normalized = request.to_ascii_lowercase();
+    [
+        "keep an eye",
+        "keep checking",
+        "keep monitoring",
+        "keep watching",
+        "check again",
+        "keep going",
+        "keep owning",
+        "own the recovery",
+        "notify me when",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase))
+        || (normalized.contains("watch ")
+            && (normalized.contains("recovery")
+                || normalized.contains("until")
+                || normalized.contains("tell me when")
+                || normalized.contains("progress")))
+        || (normalized.contains("only interrupt me")
+            && (normalized.contains("final") || normalized.contains("gap")))
 }
 
 fn validate_plan_completion(
@@ -4843,6 +4893,41 @@ mod tests {
     }
 
     #[test]
+    fn explicit_future_delegation_requires_a_planned_executor() {
+        let mut delegated = session();
+        delegated.messages.push(SessionMessage {
+            role: SessionMessageRole::User,
+            message_ref: "message:delegation".into(),
+            actor_ref: "user:one".into(),
+            text: "Own the recovery check. Only interrupt me for a gap or the final result.".into(),
+            received_at: "2026-07-31T00:00:00Z".into(),
+        });
+        let mut proposed = plan();
+        proposed.follow_through = None;
+        assert!(
+            validate_explicit_follow_through(&delegated, &proposed)
+                .unwrap_err()
+                .to_string()
+                .contains("explicitly delegated future observation")
+        );
+
+        proposed.follow_through = Some(PlannedFollowThrough {
+            commitment_ref: "commitment:delegated-check".into(),
+            required_tool_ids: vec!["connector.read".into()],
+            acceptance_criteria: vec!["The connector is healthy.".into()],
+        });
+        assert!(validate_explicit_follow_through(&delegated, &proposed).is_ok());
+
+        delegated
+            .messages
+            .last_mut()
+            .expect("the delegated request was added")
+            .text = "Summarize the current source state.".into();
+        proposed.follow_through = None;
+        assert!(validate_explicit_follow_through(&delegated, &proposed).is_ok());
+    }
+
+    #[test]
     fn delivery_disposition_enforces_human_attention_boundaries() {
         let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
         let mut operator_draft = draft();
@@ -4952,6 +5037,33 @@ mod tests {
         );
 
         let accepted = observation(true, Some("2026-07-31T00:06:00Z"));
+        let mut accepted_but_still_open = draft();
+        accepted_but_still_open.mission = awakened.mission.clone();
+        accepted_but_still_open.mission.commitments[0].wake_at =
+            Some("2026-07-31T00:06:00Z".into());
+        accepted_but_still_open.delivery = DeliveryDisposition::Silent;
+        let error = validate_wake_completion(
+            &awakened,
+            &accepted_but_still_open,
+            &trigger,
+            assessment_at,
+            std::slice::from_ref(&accepted),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("Visible"));
+        accepted_but_still_open.delivery = DeliveryDisposition::Visible;
+        assert!(
+            validate_wake_completion(
+                &awakened,
+                &accepted_but_still_open,
+                &trigger,
+                assessment_at,
+                std::slice::from_ref(&accepted),
+            )
+            .is_ok(),
+            "typed attention owns visibility; semantic review owns whether every stated criterion is complete"
+        );
+
         let mut completed = draft();
         completed.mission = awakened.mission.clone();
         completed.mission.commitments[0].status = CommitmentStatus::Completed;
