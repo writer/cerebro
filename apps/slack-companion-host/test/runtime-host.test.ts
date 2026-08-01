@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { FileAgentApprovalStore } from "../src/runtime/agent-approval-store.js";
+import { FileAgentDeliveryOutbox } from "../src/runtime/agent-delivery-outbox.js";
 import { CerebroAskClient, CerebroAskError } from "../src/runtime/cerebro-ask-client.js";
 import { loadSlackRuntimeConfig, SlackRuntimeConfigError } from "../src/runtime/config.js";
 import { FileOutcomeStore } from "../src/runtime/outcome-store.js";
@@ -259,6 +260,36 @@ test("Slack persists an exact Rust approval and resumes the original turn once",
       thread_ref: "slack-thread:T-ONE:C-ONE:thread-one",
       tool_id: "connector.update",
     }]);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Slack agent delivery outbox survives restart until both delivery boundaries finish", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-agent-delivery-"));
+  try {
+    const firstProcess = new FileAgentDeliveryOutbox(root);
+    const prepared = await firstProcess.prepare({
+      channel: "C-ONE",
+      deliveredAt: "2026-07-31T20:01:00.000Z",
+      deliveryRef: "slack-message://sha256/receipt",
+      messageTs: "1753992060.000100",
+      payloadDigest: `sha256:${"d".repeat(64)}`,
+      requestId: "request-pending",
+      text: "The current graph state is verified.",
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+    });
+    assert.equal(prepared.state, "prepared");
+
+    const secondProcess = new FileAgentDeliveryOutbox(root);
+    assert.deepEqual(await secondProcess.list(), [prepared]);
+    const slackDelivered = await secondProcess.markSlackDelivered(prepared.recordRef);
+    assert.equal(slackDelivered.state, "slack_delivered");
+
+    const thirdProcess = new FileAgentDeliveryOutbox(root);
+    assert.deepEqual(await thirdProcess.list(), [slackDelivered]);
+    await thirdProcess.complete(prepared.recordRef);
+    assert.deepEqual(await thirdProcess.list(), []);
   } finally {
     await rm(root, { force: true, recursive: true });
   }

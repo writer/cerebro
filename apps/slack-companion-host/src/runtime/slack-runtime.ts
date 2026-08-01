@@ -36,6 +36,10 @@ import {
   type CerebroAskResult,
 } from "./cerebro-ask-client.js";
 import type { FileAgentApprovalStore } from "./agent-approval-store.js";
+import {
+  FileAgentDeliveryOutbox,
+  type AgentDeliveryOutboxRecord,
+} from "./agent-delivery-outbox.js";
 import type { SlackRuntimeConfig } from "./config.js";
 import {
   FileOutcomeStore,
@@ -641,6 +645,7 @@ export class AssistantQuestionService {
 }
 
 export class SlackCompanionRuntime {
+  private agentDeliveryTimer?: NodeJS.Timeout;
   private readonly app: App;
   private healthServer?: Server;
   private outcomeTimer?: NodeJS.Timeout;
@@ -653,6 +658,7 @@ export class SlackCompanionRuntime {
     private readonly questions: AssistantQuestionService,
     private readonly outcomes: FileOutcomeStore,
     private readonly scratchpads: SlackThreadScratchpadPort,
+    private readonly agentDeliveries: FileAgentDeliveryOutbox,
     private readonly archetype?: ArchetypeSlackWorkspace,
   ) {
     this.app = new App({
@@ -707,6 +713,12 @@ export class SlackCompanionRuntime {
       });
     }
     await this.assessOutcomes();
+    await this.flushAgentDeliveries();
+    this.agentDeliveryTimer = setInterval(
+      () => void this.flushAgentDeliveries(),
+      30_000,
+    );
+    this.agentDeliveryTimer.unref();
     this.outcomeTimer = setInterval(() => void this.assessOutcomes(), 60 * 60 * 1_000);
     this.outcomeTimer.unref();
   }
@@ -714,6 +726,7 @@ export class SlackCompanionRuntime {
   async stop(): Promise<void> {
     this.ready = false;
     this.releaseNoticeMonitor?.stop();
+    if (this.agentDeliveryTimer) clearInterval(this.agentDeliveryTimer);
     if (this.outcomeTimer) clearInterval(this.outcomeTimer);
     await Promise.all([
       this.app.stop(),
@@ -849,6 +862,7 @@ export class SlackCompanionRuntime {
         outcomes: this.outcomes,
         questions: this.questions,
         scratchpads: this.scratchpads,
+        agentDeliveries: this.agentDeliveries,
       });
     });
 
@@ -872,6 +886,39 @@ export class SlackCompanionRuntime {
       })}\n`);
     }
   }
+
+  private async flushAgentDeliveries(): Promise<void> {
+    let records: AgentDeliveryOutboxRecord[];
+    try {
+      records = await this.agentDeliveries.list();
+    } catch (error) {
+      logAgentDeliveryFailure("read_outbox", error);
+      return;
+    }
+    for (const record of records) {
+      try {
+        let current = record;
+        if (current.state === "prepared") {
+          await this.app.client.chat.update({
+            channel: current.channel,
+            text: current.text,
+            ts: current.messageTs,
+          });
+          current = await this.agentDeliveries.markSlackDelivered(current.recordRef);
+        }
+        await this.questions.acknowledgeAgentDelivery({
+          deliveredAt: current.deliveredAt,
+          deliveryRef: current.deliveryRef,
+          payloadDigest: current.payloadDigest,
+          requestId: current.requestId,
+          threadRef: current.threadRef,
+        });
+        await this.agentDeliveries.complete(current.recordRef);
+      } catch (error) {
+        logAgentDeliveryFailure("flush_outbox", error);
+      }
+    }
+  }
 }
 
 export async function closeHealthServer(server?: Server): Promise<void> {
@@ -890,7 +937,17 @@ function logArchetypeFailure(operation: string, error: unknown): void {
   })}\n`);
 }
 
+function logAgentDeliveryFailure(operation: string, error: unknown): void {
+  process.stderr.write(`${JSON.stringify({
+    component: "slack-agent-delivery",
+    error_kind: error instanceof Error ? error.name : "unknown",
+    operation,
+    state: "retrying",
+  })}\n`);
+}
+
 export async function handleSlackMention(input: {
+  agentDeliveries?: FileAgentDeliveryOutbox;
   client: SlackMentionClient;
   config: SlackRuntimeConfig;
   event: SlackMentionEvent;
@@ -1086,11 +1143,6 @@ export async function handleSlackMention(input: {
     ) {
       throw new Error("The Slack payload changed after the Rust agent prepared delivery.");
     }
-    await input.client.chat.update({
-      channel: input.event.channel,
-      text: deliveredText,
-      ts: deliveredMessageTs,
-    });
     const deliveredAt = new Date().toISOString();
     const references = slackDeliveryReferences(
       input.event.teamId,
@@ -1099,14 +1151,42 @@ export async function handleSlackMention(input: {
       deliveredMessageTs,
       deliveredText,
     );
+    const outboxRecord = result.agentDelivery && input.agentDeliveries
+      ? await input.agentDeliveries.prepare({
+          channel: input.event.channel,
+          deliveredAt,
+          deliveryRef: references.destinationReceipt,
+          messageTs: deliveredMessageTs,
+          payloadDigest: deliveredPayloadDigest,
+          requestId: result.agentDelivery.requestId,
+          text: deliveredText,
+          threadRef: result.agentDelivery.threadRef,
+        })
+      : undefined;
+    await input.client.chat.update({
+      channel: input.event.channel,
+      text: deliveredText,
+      ts: deliveredMessageTs,
+    });
+    if (outboxRecord) {
+      await input.agentDeliveries?.markSlackDelivered(outboxRecord.recordRef);
+    }
     if (result.agentDelivery) {
-      await input.questions.acknowledgeAgentDelivery({
-        deliveredAt,
-        deliveryRef: references.destinationReceipt,
-        payloadDigest: deliveredPayloadDigest,
-        requestId: result.agentDelivery.requestId,
-        threadRef: result.agentDelivery.threadRef,
-      });
+      try {
+        await input.questions.acknowledgeAgentDelivery({
+          deliveredAt,
+          deliveryRef: references.destinationReceipt,
+          payloadDigest: deliveredPayloadDigest,
+          requestId: result.agentDelivery.requestId,
+          threadRef: result.agentDelivery.threadRef,
+        });
+        if (outboxRecord) {
+          await input.agentDeliveries?.complete(outboxRecord.recordRef);
+        }
+      } catch (error) {
+        if (!outboxRecord) throw error;
+        logAgentDeliveryFailure("acknowledge", error);
+      }
     }
     await input.host.recordDelivery({
       created_at: result.pending.opened_at,
