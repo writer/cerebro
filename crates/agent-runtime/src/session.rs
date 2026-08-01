@@ -467,6 +467,7 @@ pub struct CommitmentCheckpoint {
 #[serde(deny_unknown_fields)]
 pub struct CommitmentCheckpointObservation {
     pub tool_id: String,
+    pub input: Value,
     pub input_digest: String,
     pub observed_at: Option<String>,
     pub state: ToolResultState,
@@ -1500,7 +1501,7 @@ fn validate_wake_completion(
     if current.owner != WorkOwner::Cerebro
         || matches!(
             current.status,
-            CommitmentStatus::Completed | CommitmentStatus::Cancelled
+            CommitmentStatus::Blocked | CommitmentStatus::Completed | CommitmentStatus::Cancelled
         )
     {
         return Err(AgentRuntimeError::InvalidFinal(
@@ -1523,19 +1524,30 @@ fn validate_wake_completion(
             "the wake commitment is not due yet".into(),
         ));
     }
+    let checkpoint = prior_commitment_checkpoint(session, trigger);
     let missing_required_tools = current
         .required_tool_ids
         .iter()
         .filter(|tool_id| {
-            !observations
-                .iter()
-                .any(|observation| observation.call.tool_id.as_str() == tool_id.as_str())
+            let expected_input_digest = checkpoint.as_ref().and_then(|checkpoint| {
+                checkpoint
+                    .observations
+                    .iter()
+                    .rev()
+                    .find(|observation| observation.tool_id.as_str() == tool_id.as_str())
+                    .map(|observation| observation.input_digest.as_str())
+            });
+            !observations.iter().any(|observation| {
+                observation.call.tool_id.as_str() == tool_id.as_str()
+                    && expected_input_digest
+                        .is_none_or(|expected| observation.call.input_digest() == expected)
+            })
         })
         .cloned()
         .collect::<Vec<_>>();
     if !missing_required_tools.is_empty() {
         return Err(AgentRuntimeError::InvalidFinal(format!(
-            "scheduled wake must invoke its required tools before finishing: {}",
+            "scheduled wake must invoke its required tools with the exact prior completed-check input before finishing: {}. Copy the matching tool input from prior_commitment_checkpoint.observations.",
             missing_required_tools.join(", ")
         )));
     }
@@ -2027,6 +2039,7 @@ fn prior_commitment_checkpoint(
                     SessionEvent::ToolInvoked { observation } => {
                         Some(CommitmentCheckpointObservation {
                             tool_id: observation.call.tool_id.clone(),
+                            input: observation.call.input.clone(),
                             input_digest: observation.call.input_digest(),
                             observed_at: observation
                                 .result
@@ -4410,6 +4423,76 @@ mod tests {
         assert!(
             validate_wake_completion(&awakened, &completed, &trigger, assessment_at, &[current],)
                 .is_ok()
+        );
+
+        let mut prior_draft = draft();
+        prior_draft.mission = awakened.mission.clone();
+        awakened.events = vec![
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:00:00Z".into(),
+                event: SessionEvent::TurnStarted {
+                    request_id: "request:prior".into(),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 2,
+                occurred_at: "2026-07-31T00:00:00Z".into(),
+                event: SessionEvent::ToolInvoked {
+                    observation: observation(true, Some("2026-07-31T00:06:00Z")),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 3,
+                occurred_at: "2026-07-31T00:00:00Z".into(),
+                event: SessionEvent::DraftProduced {
+                    request_id: "request:prior".into(),
+                    draft: prior_draft,
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 4,
+                occurred_at: "2026-07-31T00:00:01Z".into(),
+                event: SessionEvent::DeliveryRecorded {
+                    request_id: "request:prior".into(),
+                    transport: "slack".into(),
+                    delivery_ref: "delivery:prior".into(),
+                    payload_digest: format!("sha256:{}", "b".repeat(64)),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 5,
+                occurred_at: "2026-07-31T00:00:02Z".into(),
+                event: SessionEvent::TurnCompleted {
+                    request_id: "request:prior".into(),
+                    state: FinalState::Answered,
+                },
+            },
+        ];
+        let mut wrong_subject = observation(true, Some("2026-07-31T00:06:00Z"));
+        wrong_subject.call.input = json!({"connector_ref": "connector:beta"});
+        let error = validate_wake_completion(
+            &awakened,
+            &completed,
+            &trigger,
+            assessment_at,
+            &[wrong_subject],
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("exact prior completed-check input")
         );
     }
 
