@@ -205,6 +205,9 @@ pub enum ClaimContent {
     RetainedPlan {
         open_loop_ref: String,
     },
+    Commitment {
+        commitment_ref: String,
+    },
     Recommendation {
         action: ActionSpec,
         rationale_atom_refs: Vec<String>,
@@ -1917,6 +1920,12 @@ pub fn validate_grounded_draft(
         .iter()
         .map(|item| item.open_loop_ref.as_str())
         .collect::<BTreeSet<_>>();
+    let commitments = draft
+        .mission
+        .commitments
+        .iter()
+        .map(|commitment| (commitment.commitment_ref.as_str(), commitment))
+        .collect::<BTreeMap<_, _>>();
     let mut claim_refs = BTreeSet::new();
     let mut cited_atoms = BTreeSet::new();
     let message_sequence = session
@@ -1925,6 +1934,14 @@ pub fn validate_grounded_draft(
         .enumerate()
         .map(|(index, message)| ((index + 1) as u64, message))
         .collect::<BTreeMap<_, _>>();
+    let claim_context = ClaimValidationContext {
+        atoms: &atoms,
+        open_loops: &open_loops,
+        commitments: &commitments,
+        messages: &message_sequence,
+        assessment_at,
+        final_state: draft.state,
+    };
 
     if draft.claims.is_empty()
         || draft
@@ -1949,15 +1966,7 @@ pub fn validate_grounded_draft(
                     .into(),
             ));
         }
-        validate_claim(
-            claim,
-            &atoms,
-            &open_loops,
-            &message_sequence,
-            assessment_at,
-            draft.state,
-            &mut cited_atoms,
-        )?;
+        validate_claim(claim, &claim_context, &mut cited_atoms)?;
     }
 
     for update in &draft.memory_updates {
@@ -2016,13 +2025,18 @@ pub fn validate_grounded_draft(
     })
 }
 
-fn validate_claim(
-    claim: &GroundedClaim,
-    atoms: &BTreeMap<String, AtomContext<'_>>,
-    open_loops: &BTreeSet<&str>,
-    messages: &BTreeMap<u64, &SessionMessage>,
+struct ClaimValidationContext<'a, 'b> {
+    atoms: &'a BTreeMap<String, AtomContext<'b>>,
+    open_loops: &'a BTreeSet<&'a str>,
+    commitments: &'a BTreeMap<&'a str, &'a Commitment>,
+    messages: &'a BTreeMap<u64, &'a SessionMessage>,
     assessment_at: OffsetDateTime,
     final_state: FinalState,
+}
+
+fn validate_claim(
+    claim: &GroundedClaim,
+    context: &ClaimValidationContext<'_, '_>,
     cited_atoms: &mut BTreeSet<String>,
 ) -> Result<(), AgentRuntimeError> {
     let atom_refs = match &claim.content {
@@ -2051,7 +2065,7 @@ fn validate_claim(
             message_sequence,
             exact_excerpt,
         } => {
-            let message = messages.get(message_sequence).ok_or_else(|| {
+            let message = context.messages.get(message_sequence).ok_or_else(|| {
                 AgentRuntimeError::InvalidFinal("operator context cites an unknown message".into())
             })?;
             if exact_excerpt.is_empty() || !message.text.contains(exact_excerpt) {
@@ -2062,9 +2076,36 @@ fn validate_claim(
             return Ok(());
         }
         ClaimContent::RetainedPlan { open_loop_ref } => {
-            if !open_loops.contains(open_loop_ref.as_str()) {
+            if !context.open_loops.contains(open_loop_ref.as_str()) {
                 return Err(AgentRuntimeError::InvalidFinal(
                     "retained plan cites an unknown open loop".into(),
+                ));
+            }
+            return Ok(());
+        }
+        ClaimContent::Commitment { commitment_ref } => {
+            let commitment = context
+                .commitments
+                .get(commitment_ref.as_str())
+                .ok_or_else(|| {
+                    AgentRuntimeError::InvalidFinal(
+                        "commitment claim cites an unknown durable commitment".into(),
+                    )
+                })?;
+            if commitment.owner != WorkOwner::Cerebro
+                || !matches!(
+                    commitment.status,
+                    CommitmentStatus::Planned
+                        | CommitmentStatus::InProgress
+                        | CommitmentStatus::Waiting
+                )
+                || commitment.wake_at.is_none()
+                || commitment.next_action.is_none()
+                || commitment.acceptance_criteria.is_empty()
+                || commitment.verification.is_none()
+            {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "commitment claims require an active executor-bound Cerebro commitment".into(),
                 ));
             }
             return Ok(());
@@ -2079,15 +2120,19 @@ fn validate_claim(
         ));
     }
     for atom_ref in atom_refs {
-        let context = atoms
+        let atom = context
+            .atoms
             .get(atom_ref)
             .ok_or_else(|| AgentRuntimeError::EvidenceNotObserved(atom_ref.clone()))?;
         if matches!(claim.content, ClaimContent::Observation { .. })
-            && (!context.complete
-                || context
+            && (!atom.complete
+                || atom
                     .fresh_until
-                    .is_none_or(|until| until < assessment_at))
-            && !matches!(final_state, FinalState::Partial | FinalState::Blocked)
+                    .is_none_or(|until| until < context.assessment_at))
+            && !matches!(
+                context.final_state,
+                FinalState::Partial | FinalState::Blocked
+            )
         {
             return Err(AgentRuntimeError::EvidenceNotAuthoritative(
                 atom_ref.clone(),
@@ -2668,6 +2713,46 @@ mod tests {
 
         scheduled.mission.commitments[0].verification = None;
         assert!(validate_mission(&scheduled.mission).is_err());
+    }
+
+    #[test]
+    fn commitment_claims_are_bound_to_the_exact_draft_scheduler_record() {
+        let mut scheduled = draft();
+        scheduled.message = "I’ll re-check connector alpha at the recorded wake time.".into();
+        scheduled.claims = vec![GroundedClaim {
+            claim_ref: "claim:scheduled-follow-through".into(),
+            planned_claim_ref: None,
+            text: scheduled.message.clone(),
+            required_for_answer: false,
+            content: ClaimContent::Commitment {
+                commitment_ref: "commitment:scheduled-check".into(),
+            },
+        }];
+        scheduled.mission.commitments.push(scheduled_commitment());
+        scheduled.mission.status = SessionStatus::WaitingForExternal;
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &scheduled,
+                &[],
+                OffsetDateTime::parse("2026-07-31T00:00:00Z", &Rfc3339).unwrap(),
+            )
+            .is_ok()
+        );
+
+        let ClaimContent::Commitment { commitment_ref } = &mut scheduled.claims[0].content else {
+            unreachable!()
+        };
+        *commitment_ref = "commitment:unknown".into();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &scheduled,
+                &[],
+                OffsetDateTime::parse("2026-07-31T00:00:00Z", &Rfc3339).unwrap(),
+            )
+            .is_err()
+        );
     }
 
     #[test]
