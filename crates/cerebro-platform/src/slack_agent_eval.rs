@@ -1446,6 +1446,7 @@ async fn run_conversation_lab(
         let mut turns = Vec::new();
         let mut operator_satisfied = false;
         let mut terminal_failure = false;
+        let mut operator_ended = false;
         let mut all_observations = Vec::new();
         let mut working_state = None;
         let mut interaction_kinds = Vec::new();
@@ -1475,14 +1476,18 @@ async fn run_conversation_lab(
                             "cursor_format": "current_revision",
                         }),
                     };
+                    let input_digest = call.input_digest();
                     vec![EffectAuthorization {
-                        approval_ref: format!("evaluation-approval:{request_id}"),
+                        approval_ref: format!(
+                            "approval://agent-effect/{}",
+                            input_digest.trim_start_matches("sha256:")
+                        ),
                         tenant_id: "rust-conversation-lab-tenant".into(),
                         request_id: request_id.clone(),
                         thread_ref: thread_ref.clone(),
                         actor_ref: actor_ref.clone(),
                         tool_id: call.tool_id.clone(),
-                        input_digest: call.input_digest(),
+                        input_digest,
                     }]
                 } else {
                     Vec::new()
@@ -1610,7 +1615,7 @@ async fn run_conversation_lab(
                             operator_satisfied = true;
                         }
                     }
-                    OperatorStatus::Failed => terminal_failure = true,
+                    OperatorStatus::Failed => operator_ended = true,
                 }
             }
 
@@ -1656,7 +1661,7 @@ async fn run_conversation_lab(
                 terminal_state,
                 operator_decision,
             });
-            if operator_satisfied || terminal_failure {
+            if operator_satisfied || operator_ended || terminal_failure {
                 break;
             }
         }
@@ -1739,6 +1744,10 @@ async fn run_conversation_lab(
     let suite_passed = full_suite && targeted_regression_passed;
     let blind_review_bundle = blind_review_bundle(&selection.source, &receipts);
     let blind_review_bytes = serde_json::to_vec_pretty(&blind_review_bundle)?;
+    validate_blind_review_bytes(
+        &blind_review_bytes,
+        &[&commit_sha, &model_id, &judge_model_id, "aws_bedrock"],
+    )?;
     let blind_review_bundle_sha256 = sha256_hex(&blind_review_bytes);
     if let Ok(path) = env::var("CEREBRO_SLACK_AGENT_EVAL_BLIND_OUTPUT") {
         fs::write(path, &blind_review_bytes)?;
@@ -2080,6 +2089,52 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+fn validate_blind_review_bytes(
+    bytes: &[u8],
+    sensitive_values: &[&str],
+) -> Result<(), Box<dyn Error>> {
+    let encoded = std::str::from_utf8(bytes)?.to_ascii_lowercase();
+    for identity in ["rust", "opus", "claude", "anthropic", "bedrock"] {
+        if contains_identity_token(&encoded, identity) {
+            return Err(format!(
+                "blind review bundle discloses forbidden identity token {identity}"
+            )
+            .into());
+        }
+    }
+    for value in sensitive_values {
+        let value = value.trim().to_ascii_lowercase();
+        if !value.is_empty() && encoded.contains(&value) {
+            return Err("blind review bundle discloses a runtime identity value".into());
+        }
+    }
+    for raw_only_key in [
+        "\"commit_sha\"",
+        "\"judge_model_id\"",
+        "\"latency_ms\"",
+        "\"model_id\"",
+        "\"operator_decision\"",
+        "\"provider\"",
+        "\"repair_feedback\"",
+        "\"route_attempt_count\"",
+        "\"runtime_path\"",
+    ] {
+        if encoded.contains(raw_only_key) {
+            return Err("blind review bundle includes a raw-only receipt field".into());
+        }
+    }
+    Ok(())
+}
+
+fn contains_identity_token(haystack: &str, needle: &str) -> bool {
+    haystack.match_indices(needle).any(|(start, matched)| {
+        let before = haystack[..start].chars().next_back();
+        let after = haystack[start + matched.len()..].chars().next();
+        before.is_none_or(|value| !value.is_ascii_alphanumeric())
+            && after.is_none_or(|value| !value.is_ascii_alphanumeric())
+    })
 }
 
 fn blind_candidate_label(
@@ -3054,6 +3109,35 @@ mod tests {
         assert!(!encoded.contains("rust"));
         assert!(!encoded.contains("model_id"));
         assert!(!encoded.contains("commit_sha"));
+        assert!(
+            validate_blind_review_bytes(
+                encoded.as_bytes(),
+                &[&"a".repeat(40), "us.anthropic.claude-opus-hidden"]
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn blind_review_byte_scan_fails_closed_on_identity_or_raw_receipt_leaks() {
+        assert!(
+            validate_blind_review_bytes(
+                br#"{"conversation":["Trust the evidence boundary."]}"#,
+                &[&"a".repeat(40)]
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_blind_review_bytes(
+                br#"{"conversation":["This was generated by Claude."]}"#,
+                &[]
+            )
+            .is_err()
+        );
+        assert!(
+            validate_blind_review_bytes(br#"{"model_id":"sealed","conversation":[]}"#, &[])
+                .is_err()
+        );
     }
 
     #[test]
