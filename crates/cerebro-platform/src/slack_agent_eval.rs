@@ -1637,6 +1637,30 @@ fn completed_lab_turn_receipt(
     ))
 }
 
+fn autonomy_turn_error(
+    stage: &str,
+    error: AgentRuntimeError,
+    measured: &MeasuredModel,
+    tools: &EvalTools,
+) -> AgentRuntimeError {
+    AgentRuntimeError::InvalidFinal(format!(
+        "autonomy stage {stage} failed: {error}; operating_repair_feedback={:?}; critic_repair_feedback={:?}; observation_tools={:?}",
+        measured
+            .operating_repair_feedback
+            .lock()
+            .expect("operating repair receipt poisoned"),
+        measured
+            .critic_repair_feedback
+            .lock()
+            .expect("critic repair receipt poisoned"),
+        tools
+            .observations()
+            .iter()
+            .map(|observation| observation.tool_id.as_str())
+            .collect::<Vec<_>>(),
+    ))
+}
+
 fn active_autonomy_commitment(
     session: &AgentSession,
 ) -> Result<cerebro_agent_runtime::session::Commitment, Box<dyn Error>> {
@@ -1738,7 +1762,8 @@ async fn run_autonomy_lab(
         run_evaluation_session_turn(&measured, &tools, &mut session, initial_request.clone()),
     )
     .await
-    .map_err(|_| "the initial autonomy turn timed out")??;
+    .map_err(|_| "the initial autonomy turn timed out")?
+    .map_err(|error| autonomy_turn_error("operator_00", error, &measured, &tools))?;
     let observations = tools.observations();
     let turn_observations = observations[observation_offset..].to_vec();
     observation_offset = observations.len();
@@ -1803,7 +1828,15 @@ async fn run_autonomy_lab(
             ),
         )
         .await
-        .map_err(|_| "a scheduled autonomy turn timed out")??;
+        .map_err(|_| "a scheduled autonomy turn timed out")?
+        .map_err(|error| {
+            autonomy_turn_error(
+                &format!("scheduled_wake_{wake_index:02}"),
+                error,
+                &measured,
+                &tools,
+            )
+        })?;
         let observations = tools.observations();
         let turn_observations = observations[observation_offset..].to_vec();
         observation_offset = observations.len();
