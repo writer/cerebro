@@ -28,6 +28,7 @@ const MAX_OPEN_LOOPS: usize = 16;
 const MAX_VISIBLE_CLAIMS: usize = 32;
 const MAX_SESSION_STEPS: usize = 48;
 const MAX_MODEL_REPAIRS: usize = 6;
+const MAX_CRITIC_REPAIRS: usize = 3;
 const MAX_DELIVERY_MESSAGE_BYTES: usize = 3_500;
 const MAX_MESSAGE_BYTES: usize = 16 * 1024;
 const MAX_TEXT_BYTES: usize = 4 * 1024;
@@ -771,7 +772,7 @@ pub async fn run_session_turn_recorded(
     let mut consumed_approvals = BTreeSet::new();
     let mut repair_feedback = Vec::new();
     let mut repairs = 0;
-    let mut draft_repaired_after_review = false;
+    let mut critic_repairs = 0;
 
     for _ in 0..MAX_SESSION_STEPS {
         let decision = match model
@@ -827,7 +828,7 @@ pub async fn run_session_turn_recorded(
                 repair_feedback.clear();
             }
             SessionModelDecision::InvokeTools { calls } => {
-                if draft_repaired_after_review {
+                if critic_repairs > 0 {
                     return Err(AgentRuntimeError::InvalidToolCall(
                         "claim-review repair is tool-frozen and must finish from existing evidence"
                             .into(),
@@ -996,10 +997,10 @@ pub async fn run_session_turn_recorded(
                     .await?;
                 let issues = validate_message_review(&draft, &review)?;
                 if !issues.is_empty() {
-                    if draft_repaired_after_review {
+                    if critic_repairs >= MAX_CRITIC_REPAIRS {
                         return Err(AgentRuntimeError::CriticRepairLimit);
                     }
-                    draft_repaired_after_review = true;
+                    critic_repairs += 1;
                     repair_feedback = issues;
                     continue;
                 }
@@ -2216,6 +2217,61 @@ mod tests {
         }
     }
 
+    struct RefiningSessionModel {
+        decisions: Mutex<VecDeque<SessionModelDecision>>,
+        reviews: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl SessionAgentModel for RefiningSessionModel {
+        async fn advance(
+            &self,
+            _turn: SessionModelTurn,
+        ) -> Result<SessionModelDecision, AgentRuntimeError> {
+            self.decisions
+                .lock()
+                .expect("decision script poisoned")
+                .pop_front()
+                .ok_or(AgentRuntimeError::ModelStepLimit)
+        }
+
+        async fn review_message(
+            &self,
+            turn: ClaimReviewTurn,
+        ) -> Result<MessageReview, AgentRuntimeError> {
+            let review_number = self.reviews.fetch_add(1, Ordering::SeqCst);
+            let mut claim_reviews = turn
+                .draft
+                .claims
+                .iter()
+                .map(|claim| ClaimReview {
+                    claim_ref: claim.claim_ref.clone(),
+                    verdict: ClaimReviewVerdict::Supported,
+                    issue: None,
+                })
+                .collect::<Vec<_>>();
+            let mut behavioral = BehavioralReview {
+                answers_newest_request: true,
+                conversational: true,
+                owns_follow_through: true,
+                right_sized: true,
+                evidence_boundary_correct: true,
+            };
+            if review_number == 0 {
+                claim_reviews[0].verdict = ClaimReviewVerdict::Unsupported;
+                claim_reviews[0].issue = Some("State the observed scope precisely.".into());
+            } else if review_number == 1 {
+                behavioral.conversational = false;
+            }
+            Ok(MessageReview {
+                message_digest: message_digest(&turn.draft.message),
+                claim_reviews,
+                undeclared_material: Vec::new(),
+                behavioral,
+            })
+        }
+    }
+
     struct ConnectorTools;
 
     #[async_trait]
@@ -2605,6 +2661,46 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event.event, SessionEvent::DraftProduced { .. }))
         );
+    }
+
+    #[tokio::test]
+    async fn critic_can_raise_distinct_issues_across_bounded_revisions() {
+        let model = RefiningSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::EstablishPlan { plan: plan() },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:1".into(),
+                        tool_id: "connector.read".into(),
+                        purpose: "Read connector alpha.".into(),
+                        input: json!({"connector_ref": "connector:alpha"}),
+                    }],
+                },
+                SessionModelDecision::Finish { draft: draft() },
+                SessionModelDecision::Finish { draft: draft() },
+                SessionModelDecision::Finish { draft: draft() },
+            ])),
+            reviews: AtomicUsize::new(0),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            session(),
+            SessionTurnInput {
+                request_id: "request:1".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(matches!(
+            outcome,
+            SessionTurnOutcome::PendingDelivery { .. }
+        ));
+        assert_eq!(model.reviews.load(Ordering::SeqCst), 3);
     }
 
     #[tokio::test]
