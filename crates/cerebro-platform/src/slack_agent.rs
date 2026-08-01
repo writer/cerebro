@@ -2111,17 +2111,50 @@ fn parse_message_review_value(mut value: Value) -> Result<MessageReview, AgentRu
         .and_then(|object| object.get_mut("attention"))
         && let Value::String(encoded) = attention
     {
-        let decoded = [Some(encoded.as_str()), encoded.strip_suffix('}')]
-            .into_iter()
-            .flatten()
-            .find_map(|candidate| serde_json::from_str::<Value>(candidate).ok())
-            .filter(Value::is_object);
+        let decoded = serde_json::from_str::<Value>(encoded)
+            .ok()
+            .filter(Value::is_object)
+            .or_else(|| parse_first_embedded_object(encoded));
         if let Some(decoded) = decoded {
             *attention = decoded;
         }
     }
     serde_json::from_value(value)
         .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))
+}
+
+fn parse_first_embedded_object(encoded: &str) -> Option<Value> {
+    let start = encoded.find('{')?;
+    let mut depth = 0_u32;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (offset, character) in encoded[start..].char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match character {
+            '"' => in_string = true,
+            '{' => depth = depth.saturating_add(1),
+            '}' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    let end = start + offset + character.len_utf8();
+                    return serde_json::from_str::<Value>(&encoded[start..end])
+                        .ok()
+                        .filter(Value::is_object);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn parse_session_decision_value(value: Value) -> Result<SessionModelDecision, AgentRuntimeError> {
@@ -2339,7 +2372,7 @@ Claims are ordered visible message units. Concatenating every claim.text in orde
 - {"basis":"stable_explanation"} for timeless explanatory content.
 - {"basis":"question"} for the one precise question that blocks progress.
 
-Set planned_claim_ref on each message unit that answers or visibly disposes a planned claim. Every required planned claim must be represented by at least one required_for_answer=true visible unit before finishing.
+Set planned_claim_ref on a message unit when it directly answers a planned claim. The plan guides bounded research; it does not force internal research questions into the user-visible response. Include only material grounded claims needed to answer the operator naturally.
 
 Use only evidence atom refs present in observations. A missing JSON field is unknown unless a FieldCoverage atom explicitly says it was not returned. Partial or stale evidence cannot support a required current observation. Never invent an owner, identity, cause, timestamp, deadline, route, tool outcome, or action receipt.
 
@@ -3769,7 +3802,7 @@ mod tests {
             "A failed or irrelevant read does not exhaust an explicitly delegated follow-through"
         ));
         assert!(session_instructions().contains(
-            "prior_commitment_checkpoint is the durable summary from the most recent completed turn"
+            "prior_commitment_checkpoint is the durable record from the most recent delivered and completed turn"
         ));
         assert!(
             claim_review_instructions()
@@ -3800,6 +3833,27 @@ mod tests {
 
         assert_eq!(review.attention.delivery, DeliveryDisposition::Silent);
         assert_eq!(review.attention.reason, "Routine nonterminal progress.");
+    }
+
+    #[test]
+    fn claim_review_recovers_an_attention_object_with_trailing_wrapper_text() {
+        let review = parse_message_review_value(json!({
+            "message_digest": format!("sha256:{}", "0".repeat(64)),
+            "claim_reviews": [],
+            "undeclared_material": [],
+            "attention": "[{\"delivery\":\"silent\",\"reason\":\"Routine progress.\"}]",
+            "behavioral": {
+                "answers_newest_request": true,
+                "conversational": true,
+                "owns_follow_through": true,
+                "right_sized": true,
+                "evidence_boundary_correct": true
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(review.attention.delivery, DeliveryDisposition::Silent);
+        assert_eq!(review.attention.reason, "Routine progress.");
     }
 
     #[test]

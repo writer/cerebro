@@ -2618,32 +2618,16 @@ fn validate_plan_completion(
     let planned = plan
         .claims
         .iter()
-        .map(|claim| (claim.claim_ref.as_str(), claim.required))
-        .collect::<BTreeMap<_, _>>();
-    let mut closed = BTreeSet::new();
+        .map(|claim| claim.claim_ref.as_str())
+        .collect::<BTreeSet<_>>();
     for claim in &draft.claims {
-        if let Some(planned_claim_ref) = claim.planned_claim_ref.as_deref() {
-            let required = planned.get(planned_claim_ref).ok_or_else(|| {
-                AgentRuntimeError::InvalidFinal(
-                    "visible claim references an unknown planned claim".into(),
-                )
-            })?;
-            if *required && !claim.required_for_answer {
-                return Err(AgentRuntimeError::InvalidFinal(
-                    "required planned claims require a required visible disposition".into(),
-                ));
-            }
-            closed.insert(planned_claim_ref);
+        if let Some(planned_claim_ref) = claim.planned_claim_ref.as_deref()
+            && !planned.contains(planned_claim_ref)
+        {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "visible claim references an unknown planned claim".into(),
+            ));
         }
-    }
-    if plan
-        .claims
-        .iter()
-        .any(|claim| claim.required && !closed.contains(claim.claim_ref.as_str()))
-    {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "every required planned claim needs a visible disposition".into(),
-        ));
     }
     if let Some(follow_through) = &plan.follow_through {
         let persisted = draft
@@ -3725,10 +3709,10 @@ mod tests {
     }
 
     #[test]
-    fn required_planned_claims_and_lane_budgets_are_enforced() {
+    fn internal_plan_claims_do_not_force_user_visible_prose() {
         let mut unfinished = draft();
         unfinished.claims[0].planned_claim_ref = None;
-        assert!(validate_plan_completion(Some(&plan()), &unfinished).is_err());
+        assert!(validate_plan_completion(Some(&plan()), &unfinished).is_ok());
 
         let mut over_budget = plan();
         over_budget.lane = ExecutionLane::Lookup;
