@@ -783,7 +783,7 @@ pub async fn run_session_turn_recorded(
     let mut observations = if resumed {
         turn_observations.clone()
     } else {
-        prior_read_observations(&session, assessment_at)
+        recalled_observations_for_trigger(&session, &trigger, assessment_at)
     };
     let mut events = Vec::new();
     if !resumed {
@@ -1407,6 +1407,18 @@ fn prior_read_observations(
         .collect::<Vec<_>>();
     observations.reverse();
     observations
+}
+
+fn recalled_observations_for_trigger(
+    session: &AgentSession,
+    trigger: &SessionTurnTrigger,
+    assessment_at: OffsetDateTime,
+) -> Vec<ToolObservation> {
+    if matches!(trigger, SessionTurnTrigger::Wake { .. }) {
+        Vec::new()
+    } else {
+        prior_read_observations(session, assessment_at)
+    }
 }
 
 fn record_operating_repair(
@@ -3442,6 +3454,27 @@ mod tests {
             prior_read_observations(
                 &continued,
                 OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+            )
+            .is_empty()
+        );
+        let fresh_assessment = OffsetDateTime::parse("2026-07-31T00:00:40Z", &Rfc3339).unwrap();
+        assert_eq!(
+            recalled_observations_for_trigger(
+                &continued,
+                &SessionTurnTrigger::Operator,
+                fresh_assessment,
+            )
+            .len(),
+            1
+        );
+        assert!(
+            recalled_observations_for_trigger(
+                &continued,
+                &SessionTurnTrigger::Wake {
+                    commitment_ref: "commitment:scheduled-check".into(),
+                    occurrence_ref: "occurrence:fresh-envelope".into(),
+                },
+                fresh_assessment,
             )
             .is_empty()
         );
