@@ -1139,7 +1139,8 @@ pub async fn run_session_turn_recorded(
                 repairs = 0;
                 repair_feedback.clear();
             }
-            SessionModelDecision::Finish { draft } => {
+            SessionModelDecision::Finish { mut draft } => {
+                bind_planned_follow_through(plan.as_ref(), &mut draft);
                 if let Err(error) = validate_commitment_baselines(
                     &session,
                     &draft,
@@ -2408,6 +2409,33 @@ fn validate_plan_completion(
     Ok(())
 }
 
+fn bind_planned_follow_through(plan: Option<&ResearchPlan>, draft: &mut GroundedDraft) {
+    let Some(follow_through) = plan.and_then(|plan| plan.follow_through.as_ref()) else {
+        return;
+    };
+    let mut candidates = draft.mission.commitments.iter_mut().filter(|commitment| {
+        commitment.owner == WorkOwner::Cerebro
+            && !matches!(
+                commitment.status,
+                CommitmentStatus::Completed | CommitmentStatus::Cancelled
+            )
+            && commitment.wake_at.is_some()
+    });
+    let Some(commitment) = candidates.next() else {
+        return;
+    };
+    if candidates.next().is_some() {
+        return;
+    }
+    commitment.required_tool_ids = follow_through.required_tool_ids.clone();
+    for criterion in &follow_through.acceptance_criteria {
+        if !commitment.acceptance_criteria.contains(criterion) {
+            commitment.acceptance_criteria.push(criterion.clone());
+        }
+    }
+    draft.mission.status = SessionStatus::WaitingForExternal;
+}
+
 pub fn validate_grounded_draft(
     session: &AgentSession,
     draft: &GroundedDraft,
@@ -3625,6 +3653,57 @@ mod tests {
         assert!(validate_plan_completion(Some(&plan), &answer).is_err());
         answer.mission.commitments.push(scheduled_commitment());
         assert!(validate_plan_completion(Some(&plan), &answer).is_ok());
+    }
+
+    #[test]
+    fn planned_follow_through_binds_the_single_scheduled_executor() {
+        let mut plan = plan();
+        plan.follow_through = Some(PlannedFollowThrough {
+            required_tool_ids: vec!["connector.read".into()],
+            acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
+        });
+        let mut answer = draft();
+        let mut commitment = scheduled_commitment();
+        commitment.required_tool_ids = vec!["graph.read".into()];
+        commitment.acceptance_criteria = vec!["The scheduled check runs.".into()];
+        answer.mission.commitments.push(commitment);
+
+        bind_planned_follow_through(Some(&plan), &mut answer);
+
+        assert_eq!(
+            answer.mission.commitments[0].required_tool_ids,
+            vec!["connector.read"]
+        );
+        assert_eq!(
+            answer.mission.commitments[0].acceptance_criteria,
+            vec![
+                "The scheduled check runs.",
+                "A fresh connector state is recorded."
+            ]
+        );
+        assert_eq!(answer.mission.status, SessionStatus::WaitingForExternal);
+        assert!(validate_plan_completion(Some(&plan), &answer).is_ok());
+    }
+
+    #[test]
+    fn planned_follow_through_does_not_invent_or_choose_an_executor() {
+        let mut plan = plan();
+        plan.follow_through = Some(PlannedFollowThrough {
+            required_tool_ids: vec!["connector.read".into()],
+            acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
+        });
+        let mut answer = draft();
+        bind_planned_follow_through(Some(&plan), &mut answer);
+        assert!(answer.mission.commitments.is_empty());
+
+        answer.mission.commitments = vec![scheduled_commitment(), scheduled_commitment()];
+        answer.mission.commitments[1].commitment_ref = "commitment:second-check".into();
+        answer.mission.commitments[0].required_tool_ids = vec!["graph.read".into()];
+        bind_planned_follow_through(Some(&plan), &mut answer);
+        assert_eq!(
+            answer.mission.commitments[0].required_tool_ids,
+            vec!["graph.read"]
+        );
     }
 
     #[test]
