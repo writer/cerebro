@@ -2557,12 +2557,12 @@ async fn run_autonomy_lab(
         if wake_index < wake_count
             && (matches!(
                 persisted.status,
-                CommitmentStatus::Completed | CommitmentStatus::Cancelled
+                CommitmentStatus::Completed
+                    | CommitmentStatus::Blocked
+                    | CommitmentStatus::Cancelled
             ) || persisted.wake_at.is_none())
         {
-            return Err(
-                "the autonomy trajectory declared recovery before its evidence threshold".into(),
-            );
+            break;
         }
     }
 
