@@ -1704,15 +1704,17 @@ fn validate_commitment_baselines(
                         .into(),
                 ));
             }
-            if policy
+            let matching_baseline_alerts = policy
                 .alert_any
                 .iter()
-                .any(|condition| observation_condition_matches(condition, observations))
-            {
-                return Err(AgentRuntimeError::InvalidFinal(
-                    "the new commitment's alert_any condition is already true at baseline; alerts must describe a future regression, conflict, stale, or mismatch state"
-                        .into(),
-                ));
+                .filter(|condition| observation_condition_matches(condition, observations))
+                .collect::<Vec<_>>();
+            if !matching_baseline_alerts.is_empty() {
+                let matching = serde_json::to_string(&matching_baseline_alerts)
+                    .unwrap_or_else(|_| "the matching alert conditions".into());
+                return Err(AgentRuntimeError::InvalidFinal(format!(
+                    "the new commitment has alert_any conditions already true at baseline: {matching}. Remove those baseline-matching alerts. Put a desired future success value in acceptance_all; keep alert_any only for a regression, conflict, stale, or mismatch value that is not true now."
+                )));
             }
             let covered = policy
                 .acceptance_all
@@ -1731,7 +1733,7 @@ fn validate_commitment_baselines(
                     !covered.contains(&(observation.call.tool_id.as_str(), pointer.as_str()))
                 }) {
                     return Err(AgentRuntimeError::InvalidFinal(format!(
-                        "the new commitment's typed attention policy does not classify baseline boolean signal {}{}",
+                        "the new commitment's typed attention policy does not classify false baseline boolean signal {}{}. Cover this pointer with equals=true in acceptance_all when true is the desired completion state, or equals=true in alert_any when true is a future regression, conflict, stale, or mismatch signal. Do not use equals=false because the baseline already matches it.",
                         observation.call.tool_id, pointer
                     )));
                 }
@@ -4224,6 +4226,8 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("/streak_reset"));
+        assert!(error.to_string().contains("acceptance_all"));
+        assert!(error.to_string().contains("Do not use equals=false"));
 
         scheduled.mission.commitments[0]
             .attention_policy
@@ -4261,6 +4265,8 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("already true at baseline"));
+        assert!(error.to_string().contains("/streak_reset"));
+        assert!(error.to_string().contains("desired future success"));
     }
 
     #[test]

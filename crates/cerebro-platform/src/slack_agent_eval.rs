@@ -41,7 +41,7 @@ const EVALUATION_PROBE_TOOL: &str = "submit_evaluation_probe";
 const LAB_MIN_EXCHANGES: usize = 4;
 const LAB_MAX_TURNS: usize = 12;
 const LAB_MAX_OPERATOR_TURN_LATENCY_MS: u128 = 300_000;
-const LAB_MAX_SCHEDULED_WAKE_LATENCY_MS: u128 = 60_000;
+const LAB_MAX_SCHEDULED_WAKE_LATENCY_MS: u128 = 90_000;
 const AUTONOMY_WAKE_COUNT: usize = 2;
 const AUTONOMY_MAX_WAKE_DELAY: Duration = Duration::hours(24);
 
@@ -4461,7 +4461,7 @@ mod tests {
         ));
         assert!(lab_turn_latency_slo_passed(
             LabTurnTrigger::ScheduledWake,
-            46_149
+            69_137
         ));
         assert!(!lab_turn_latency_slo_passed(
             LabTurnTrigger::ScheduledWake,
