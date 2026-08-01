@@ -7,8 +7,9 @@ use async_trait::async_trait;
 use cerebro_agent_runtime::{
     AGENT_TURN_REQUEST_V1, AgentModel, AgentRuntimeError, AgentTools, AgentTurnOutcome,
     AgentTurnRequest, ConversationMessage, ConversationRole, CritiqueChecks, CritiqueDecision,
-    CritiqueTurn, EffectAuthorization, EvidenceClaim, EvidenceRecord, ExecutionLane, FinalDraft,
-    FinalState, ModelDecision, ModelTurn, PresentationDecision, PresentationTurn, RouteConfidence,
+    CritiqueGroundingBasis, CritiqueGroundingCheck, CritiqueGroundingSupport, CritiqueTurn,
+    EffectAuthorization, EvidenceClaim, EvidenceRecord, ExecutionLane, FinalDraft, FinalState,
+    ModelDecision, ModelTurn, PresentationDecision, PresentationTurn, RouteConfidence,
     RouteDecision, RouteTurn, ToolAuthorityClass, ToolCall, ToolDescriptor, ToolEffectClass,
     ToolResult, ToolResultState, WorkingOutcome, WorkingState, run_turn,
 };
@@ -53,17 +54,20 @@ impl AgentModel for ScriptedModel {
             }))
     }
 
-    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
-        Ok(self
-            .critiques
-            .lock()
-            .unwrap()
-            .pop_front()
-            .unwrap_or_else(approved_critique))
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(match self.critiques.lock().unwrap().pop_front() {
+            Some(decision) => decision,
+            None => approved_critique(&turn),
+        })
     }
 }
 
-fn approved_critique() -> CritiqueDecision {
+fn approved_critique(turn: &CritiqueTurn) -> CritiqueDecision {
+    let observed = turn
+        .observations
+        .iter()
+        .flat_map(|observation| &observation.result.evidence)
+        .next();
     CritiqueDecision::Approve {
         checks: CritiqueChecks {
             answers_newest_request: true,
@@ -74,7 +78,133 @@ fn approved_critique() -> CritiqueDecision {
             owns_follow_through: true,
             right_sized: true,
         },
+        grounding: turn
+            .grounding_units
+            .iter()
+            .map(|unit| {
+                let context = best_test_context(turn, &unit.text);
+                let basis = test_grounding_basis(
+                    &unit.text,
+                    observed.is_some(),
+                    turn.observations
+                        .iter()
+                        .any(|observation| observation.result.state != ToolResultState::Succeeded),
+                    &context,
+                );
+                CritiqueGroundingCheck {
+                    unit_id: unit.unit_id.clone(),
+                    basis,
+                    support: observed
+                        .map(|evidence| {
+                            vec![CritiqueGroundingSupport {
+                                evidence_ref: evidence.evidence_ref.clone(),
+                                data_pointer: None,
+                                supporting_text: evidence.statement.clone(),
+                            }]
+                        })
+                        .unwrap_or_default(),
+                    context_excerpt: matches!(
+                        basis,
+                        CritiqueGroundingBasis::OperatorSupplied
+                            | CritiqueGroundingBasis::RetainedContext
+                    )
+                    .then(|| context.map(|(_, excerpt)| excerpt))
+                    .flatten(),
+                    observation_sequence: (basis == CritiqueGroundingBasis::ToolOutcome)
+                        .then(|| {
+                            turn.observations
+                                .last()
+                                .map(|observation| observation.sequence)
+                        })
+                        .flatten(),
+                }
+            })
+            .collect(),
     }
+}
+
+fn test_grounding_basis(
+    text: &str,
+    observed: bool,
+    failed_observation: bool,
+    context: &Option<(CritiqueGroundingBasis, String)>,
+) -> CritiqueGroundingBasis {
+    let normalized = text.to_ascii_lowercase();
+    if observed {
+        CritiqueGroundingBasis::DirectObservation
+    } else if failed_observation {
+        CritiqueGroundingBasis::ToolOutcome
+    } else if (text.contains('<') && text.contains('>')) || normalized.contains("not returned") {
+        CritiqueGroundingBasis::Placeholder
+    } else if text.trim_end().ends_with('?') {
+        CritiqueGroundingBasis::NonFactual
+    } else if [
+        "ask ", "attach ", "check ", "confirm ", "provide ", "request ", "resume ", "run ", "use ",
+        "wait ",
+    ]
+    .into_iter()
+    .any(|prefix| normalized.starts_with(prefix))
+    {
+        CritiqueGroundingBasis::Recommendation
+    } else if let Some((basis, _)) = context {
+        *basis
+    } else {
+        CritiqueGroundingBasis::StableExplanation
+    }
+}
+
+fn best_test_context(turn: &CritiqueTurn, text: &str) -> Option<(CritiqueGroundingBasis, String)> {
+    let words = test_grounding_words(text);
+    let operator = turn
+        .request
+        .history
+        .iter()
+        .filter(|message| message.role == ConversationRole::User)
+        .map(|message| message.content.as_str())
+        .chain(std::iter::once(turn.request.message.as_str()))
+        .max_by_key(|candidate| words.intersection(&test_grounding_words(candidate)).count())
+        .filter(|candidate| {
+            words
+                .intersection(&test_grounding_words(candidate))
+                .next()
+                .is_some()
+        })
+        .map(|excerpt| (CritiqueGroundingBasis::OperatorSupplied, excerpt.to_owned()));
+    let retained = turn.request.working_state.as_ref().and_then(|state| {
+        std::iter::once(state.current_request.as_str())
+            .chain(state.last_blocker.as_deref())
+            .chain(state.open_loops.iter().map(String::as_str))
+            .max_by_key(|candidate| words.intersection(&test_grounding_words(candidate)).count())
+            .filter(|candidate| {
+                words
+                    .intersection(&test_grounding_words(candidate))
+                    .next()
+                    .is_some()
+            })
+            .map(|excerpt| (CritiqueGroundingBasis::RetainedContext, excerpt.to_owned()))
+    });
+    operator.or(retained)
+}
+
+fn test_grounding_words(value: &str) -> std::collections::BTreeSet<String> {
+    value
+        .split(|character: char| !character.is_alphanumeric())
+        .map(str::to_ascii_lowercase)
+        .filter(|word| word.chars().count() >= 3)
+        .filter(|word| {
+            ![
+                "and", "are", "but", "for", "from", "has", "have", "that", "the", "this", "was",
+                "were", "with", "you", "your", "after", "before", "into",
+            ]
+            .contains(&word.as_str())
+        })
+        .map(|word| match word.as_str() {
+            "our" | "ours" | "we" | "cerebro" => "cerebro".into(),
+            "owner" | "owns" | "owned" | "ownership" | "responsibility" => "own".into(),
+            "checked" | "checks" | "recheck" => "check".into(),
+            _ => word,
+        })
+        .collect()
 }
 
 fn route(lane: ExecutionLane) -> RouteDecision {
@@ -119,6 +249,8 @@ struct CriticSchemaRepairModel {
 struct CriticIssueRepairModel {
     attempts: Mutex<usize>,
 }
+
+struct ExhaustedCriticModel;
 
 struct FinalLengthRepairModel {
     attempts: Mutex<usize>,
@@ -187,8 +319,8 @@ impl AgentModel for ContinuationEvidenceRepairModel {
         }
     }
 
-    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
-        Ok(approved_critique())
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(approved_critique(&turn))
     }
 }
 
@@ -236,8 +368,8 @@ impl AgentModel for FinalHeadlineRepairModel {
         })
     }
 
-    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
-        Ok(approved_critique())
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(approved_critique(&turn))
     }
 }
 
@@ -255,7 +387,7 @@ impl AgentModel for FinalLengthRepairModel {
         } else {
             assert!(turn.revision_feedback[0].contains("prior summary was 2501 bytes"));
             assert!(turn.revision_feedback[0].contains("Rewrite it materially shorter"));
-            "Owner: <provider admin>. Trigger: approved connector repair. Cerebro re-checks the receipt after the change. Acceptance: a fresh successful receipt with no unresolved gap."
+            "Owner: <provider admin>. The approved connector repair is the action boundary. Cerebro re-checks the receipt after the change. Acceptance: a fresh successful receipt with no unresolved gap."
                 .into()
         };
         Ok(ModelDecision::Finish {
@@ -275,8 +407,8 @@ impl AgentModel for FinalLengthRepairModel {
         })
     }
 
-    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
-        Ok(approved_critique())
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(approved_critique(&turn))
     }
 }
 
@@ -320,7 +452,7 @@ impl AgentModel for CriticIssueRepairModel {
             }
             _ => {
                 assert!(turn.repair_feedback[0].contains("bounded critic contract"));
-                Ok(approved_critique())
+                Ok(approved_critique(&turn))
             }
         }
     }
@@ -360,7 +492,38 @@ impl AgentModel for CriticSchemaRepairModel {
             ));
         }
         assert!(turn.repair_feedback[0].contains("critic decision"));
-        Ok(approved_critique())
+        Ok(approved_critique(&turn))
+    }
+}
+
+#[async_trait]
+impl AgentModel for ExhaustedCriticModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Converse))
+    }
+
+    async fn next(&self, _turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        Ok(ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Bounded answer".into(),
+                summary: "The answer stays bounded.".into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        })
+    }
+
+    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Err(AgentRuntimeError::InvalidFinal(
+            "critic omitted its grounding ledger".into(),
+        ))
     }
 }
 
@@ -396,8 +559,8 @@ impl AgentModel for SchemaRepairModel {
         })
     }
 
-    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
-        Ok(approved_critique())
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(approved_critique(&turn))
     }
 }
 
@@ -486,7 +649,7 @@ async fn conversational_artifact_edits_do_not_require_system_evidence() {
     let draft = FinalDraft {
         state: FinalState::Answered,
         headline: String::new(),
-        summary: "Owner: <named provider admin> — please confirm. Cerebro owns the fresh receipt check after the provider change.".into(),
+        summary: "Owner: <named provider admin>. Confirm this placeholder. Cerebro owns the fresh receipt check after the provider change.".into(),
         summary_evidence_refs: vec!["evidence://history-only".into()],
         checked: vec![],
         changed: vec![claim(
@@ -1448,12 +1611,9 @@ async fn repairs_a_draft_after_independent_critique() {
             ModelDecision::Finish { draft: repaired },
         ])),
         presentations: Mutex::new(VecDeque::new()),
-        critiques: Mutex::new(VecDeque::from([
-            CritiqueDecision::Revise {
-                issues: vec!["Name the evidence boundary in the capability statement.".into()],
-            },
-            approved_critique(),
-        ])),
+        critiques: Mutex::new(VecDeque::from([CritiqueDecision::Revise {
+            issues: vec!["Name the evidence boundary in the capability statement.".into()],
+        }])),
     };
     let tools = ScriptedTools {
         descriptors: vec![],
@@ -1515,6 +1675,53 @@ async fn repairs_a_malformed_independent_critic_decision() {
 }
 
 #[tokio::test]
+async fn exhausted_critic_contract_fails_closed_without_delivering() {
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+    assert_eq!(
+        run_turn(
+            &ExhaustedCriticModel,
+            &tools,
+            request("Give me the bounded answer."),
+        )
+        .await,
+        Err(AgentRuntimeError::CriticRepairLimit)
+    );
+}
+
+#[tokio::test]
+async fn unsupported_next_action_cannot_enter_working_state() {
+    let model = scripted(
+        ExecutionLane::Converse,
+        VecDeque::from([ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Bounded answer".into(),
+                summary: "The answer is complete.".into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec!["Escalate to the platform team.".into()],
+                coverage_notice: None,
+                question: None,
+            },
+        }]),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+    assert!(matches!(
+        run_turn(&model, &tools, request("Give me the bounded answer.")).await,
+        Err(AgentRuntimeError::CriticRepairLimit)
+    ));
+}
+
+#[tokio::test]
 async fn repairs_empty_and_oversized_critic_issue_lists() {
     let model = CriticIssueRepairModel {
         attempts: Mutex::new(0),
@@ -1543,8 +1750,8 @@ async fn continues_the_exact_durable_mission_instead_of_restarting() {
     turn.working_state = Some(WorkingState {
         mission_ref: Some("mission://runtime-repair".into()),
         current_request: "Repair the runtime and verify the deployed state.".into(),
-        last_outcome: WorkingOutcome::Owned,
-        last_blocker: None,
+        last_outcome: WorkingOutcome::Blocked,
+        last_blocker: Some("Provider access is unavailable.".into()),
         active_lane: Some(ExecutionLane::Act),
         requires_current_evidence: Some(true),
         open_loops: vec!["Verify the deployed state.".into()],
@@ -1558,14 +1765,16 @@ async fn continues_the_exact_durable_mission_instead_of_restarting() {
             draft: FinalDraft {
                 state: FinalState::Blocked,
                 headline: "Runtime repair still blocked".into(),
-                summary: "The saved repair remains blocked on provider access.".into(),
+                summary: "The retained repair is blocked on provider access.".into(),
                 summary_evidence_refs: vec![],
                 checked: vec![],
                 changed: vec![],
                 verified: vec![],
                 current_state: vec![],
                 next_actions: vec!["Resume after provider access is restored.".into()],
-                coverage_notice: Some("No new provider observation was available.".into()),
+                coverage_notice: Some(
+                    "Provider access is unavailable in the retained mission.".into(),
+                ),
                 question: None,
             },
         }])),
@@ -1588,7 +1797,7 @@ async fn continues_the_exact_durable_mission_instead_of_restarting() {
     };
     assert_eq!(lane, ExecutionLane::Act);
     assert_eq!(final_state, FinalState::Blocked);
-    assert!(markdown.contains("saved repair remains blocked"));
+    assert!(markdown.contains("retained repair is blocked"));
 }
 
 #[tokio::test]
@@ -1614,7 +1823,7 @@ async fn continuation_resumes_the_retained_conversation_lane_without_reads() {
             draft: FinalDraft {
                 state: FinalState::Answered,
                 headline: "Handoff finished".into(),
-                summary: "The handoff now names the owner, trigger, and acceptance condition."
+                summary: "The handoff is now concise and preserves its acceptance condition."
                     .into(),
                 summary_evidence_refs: vec![],
                 checked: vec![],
@@ -1691,7 +1900,7 @@ async fn continuation_repairs_a_repeated_blocker_into_forward_progress() {
             },
             ModelDecision::Finish {
                 draft: blocked_draft(
-                    "The handoff is ready as a blocked-state artifact: scope and next action are preserved, and the owner can attach the missing identifier without reconstructing the thread.",
+                    "The handoff is ready as a blocked-state artifact: the next action is preserved. Owner: <owner>. Attach the missing identifier without reconstructing the thread.",
                 ),
             },
         ])),
