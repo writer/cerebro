@@ -1183,6 +1183,7 @@ pub async fn run_session_turn_recorded(
             }
             SessionModelDecision::Finish { mut draft } => {
                 normalize_redundant_baseline_alerts(&session, &mut draft, &observations);
+                normalize_coverage_notice(&mut draft, &observations);
                 if let Err(error) = validate_planned_follow_through_viability(
                     plan.as_ref(),
                     &observations,
@@ -1844,6 +1845,34 @@ fn normalize_redundant_baseline_alerts(
             !(baseline_matches && acceptance_replaces_baseline)
         });
     }
+}
+
+fn normalize_coverage_notice(draft: &mut GroundedDraft, observations: &[ToolObservation]) {
+    if draft.coverage_notice.is_some()
+        || !matches!(draft.state, FinalState::Partial | FinalState::Blocked)
+    {
+        return;
+    }
+    let notice = observations.iter().rev().find_map(|observation| {
+        let incomplete = observation.result.state != ToolResultState::Succeeded
+            || observation.result.blocker.is_some()
+            || !observation
+                .result
+                .evidence
+                .iter()
+                .any(|evidence| evidence.complete);
+        incomplete.then(|| {
+            observation
+                .result
+                .blocker
+                .as_deref()
+                .unwrap_or(&observation.result.summary)
+                .chars()
+                .take(MAX_TEXT_BYTES.min(800))
+                .collect::<String>()
+        })
+    });
+    draft.coverage_notice = notice;
 }
 
 fn collect_false_boolean_pointers(value: &Value, prefix: &str, output: &mut Vec<String>) {
@@ -4691,6 +4720,23 @@ mod tests {
                 assessment_at,
             )
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn failed_observation_supplies_a_missing_partial_coverage_notice() {
+        let mut partial = draft();
+        partial.state = FinalState::Partial;
+        partial.coverage_notice = None;
+        let mut failed = observation(false, Some("2026-07-31T00:06:00Z"));
+        failed.result.state = ToolResultState::Failed;
+        failed.result.blocker = Some("The source runtime returned a bounded read failure.".into());
+
+        normalize_coverage_notice(&mut partial, &[failed]);
+
+        assert_eq!(
+            partial.coverage_notice.as_deref(),
+            Some("The source runtime returned a bounded read failure.")
         );
     }
 
