@@ -1477,11 +1477,11 @@ async fn repair_fallback_outcome(
         mission.status = SessionStatus::Blocked;
         "Coverage gap: The external action outcome is unknown. Reconcile the provider state with a fresh observation before another effect. I did not retry the action or record a new follow-up."
     } else if rescheduled_wake.is_some() && supported.is_some() {
-        "Coverage gap: I could not complete a fully grounded answer to this scheduled check. The acceptance condition remains unverified."
+        "Coverage gap: This check is partial, so the acceptance condition remains unverified."
     } else if rescheduled_wake.is_some() {
-        "Coverage gap: No current authoritative observation was obtained for this scheduled check. The acceptance condition remains unverified."
+        "Coverage gap: This check returned no authoritative observation, so the acceptance condition remains unverified."
     } else if supported.is_some() {
-        "Coverage gap: I could not complete a fully grounded answer to the newest request. I did not execute an action or record a new follow-up."
+        "Coverage gap: The available evidence does not support the full requested conclusion. No action or future follow-up was recorded."
     } else {
         "Coverage gap: No current authoritative observation was obtained. I did not evaluate the requested condition, execute an action, or record a new follow-up."
     }
@@ -1547,8 +1547,8 @@ async fn repair_fallback_outcome(
             }],
         )
     };
-    if let Some((commitment_ref, wake_at)) = rescheduled_wake {
-        let follow_up = format!("\n\nI’ll check again at {wake_at}.");
+    if let Some((commitment_ref, _wake_at)) = rescheduled_wake {
+        let follow_up = "\n\nI’ll check again in five minutes.".to_owned();
         message.push_str(&follow_up);
         claims.push(GroundedClaim {
             claim_ref: format!("fallback-commitment:{}", input.request_id),
@@ -5849,7 +5849,7 @@ mod tests {
             panic!("scheduled repair fallback should not request approval");
         };
         assert_eq!(final_state, FinalState::Blocked);
-        assert!(markdown.contains("I’ll check again at 2026-07-31T00:06:00Z"));
+        assert!(markdown.contains("I’ll check again in five minutes"));
         let commitment = mission
             .commitments
             .iter()
