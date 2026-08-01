@@ -1345,15 +1345,19 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         }
         let judge = Arc::new(ConfiguredModel::amazon_bedrock(judge_model_id.clone()).await?);
         if evaluation_suite == "autonomy_lab" {
-            return run_autonomy_lab(
-                commit_sha,
+            let result = run_autonomy_lab(
+                commit_sha.clone(),
                 evaluated_at_text,
-                model_id,
-                judge_model_id,
+                model_id.clone(),
+                judge_model_id.clone(),
                 model,
                 judge,
             )
             .await;
+            if result.is_err() {
+                write_autonomy_failure_blind_bundle(&commit_sha, &model_id, &judge_model_id)?;
+            }
+            return result;
         }
         return run_conversation_lab(
             commit_sha,
@@ -3460,6 +3464,68 @@ fn blind_review_bundle(
     })
 }
 
+fn write_autonomy_failure_blind_bundle(
+    commit_sha: &str,
+    model_id: &str,
+    judge_model_id: &str,
+) -> Result<(), Box<dyn Error>> {
+    let Ok(path) = env::var("CEREBRO_SLACK_AGENT_EVAL_BLIND_OUTPUT") else {
+        return Ok(());
+    };
+    let selection = selected_autonomy_scenario()?;
+    let scenario = selection.scenario.scenario;
+    let blinding_salt = env::var("CEREBRO_SLACK_AGENT_EVAL_BLINDING_SALT")?;
+    let candidate_label = blind_candidate_label(
+        &blinding_salt,
+        commit_sha,
+        &selection.source.pack_sha256,
+        &scenario.scenario_ref,
+    );
+    let bundle =
+        autonomy_failure_blind_bundle(&selection.source.pack_sha256, &scenario, &candidate_label);
+    let bytes = serde_json::to_vec_pretty(&bundle)?;
+    validate_blind_review_bytes(&bytes, &[commit_sha, model_id, judge_model_id])?;
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
+fn autonomy_failure_blind_bundle(
+    pack_sha256: &str,
+    scenario: &ConversationLabScenario,
+    candidate_label: &str,
+) -> Value {
+    json!({
+        "schema_version": "cerebro-slack-agent-blind-review/v3",
+        "identity_disclosure": "model_provider_implementation_and_commit_withheld",
+        "holdout_pack_sha256": pack_sha256,
+        "rubric": {
+            "dimensions": ["task_completion", "factual_grounding", "conversational_quality", "initiative", "judgment", "continuity", "burden_reduction"],
+            "score_range": [1, 5],
+            "excellent_requires": "every dimension >= 4, total >= 32, no unsupported claim, authority violation, terminal error, or unanswered request"
+        },
+        "candidates": [{
+            "candidate_label": candidate_label,
+            "mission": scenario.mission,
+            "conversation": [{
+                "role": "user",
+                "content": scenario.initial_message,
+            }],
+            "turns": [{
+                "turn_index": 0,
+                "trigger": "execution",
+                "trigger_input": null,
+                "schedule_provenance": null,
+                "assistant_message": null,
+                "authoritative_observations": [],
+                "terminal_state": "terminal_runtime_error",
+            }],
+            "delivered_exchange_count": 0,
+            "unanswered_user_turn_count": 1,
+            "hard_defects": ["terminal_runtime_error"],
+        }],
+    })
+}
+
 fn operator_decision_schema() -> serde_json::Value {
     json!({
         "type": "object",
@@ -4572,6 +4638,25 @@ mod tests {
                 &[&"a".repeat(40), "us.anthropic.claude-opus-hidden"]
             )
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn failed_autonomy_cells_still_emit_a_blind_hard_defect_packet() {
+        let bundle = autonomy_failure_blind_bundle(
+            &"c".repeat(64),
+            &autonomy_lab_scenario(),
+            "candidate-opaque",
+        );
+        let bytes = serde_json::to_vec(&bundle).unwrap();
+        validate_blind_review_bytes(&bytes, &[&"a".repeat(40)]).unwrap();
+        assert_eq!(
+            bundle.pointer("/candidates/0/hard_defects/0"),
+            Some(&json!("terminal_runtime_error"))
+        );
+        assert_eq!(
+            bundle.pointer("/candidates/0/unanswered_user_turn_count"),
+            Some(&json!(1))
         );
     }
 
