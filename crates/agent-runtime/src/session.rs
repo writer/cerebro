@@ -155,6 +155,10 @@ pub struct PlannedFollowThrough {
     pub commitment_ref: String,
     pub required_tool_ids: Vec<String>,
     pub acceptance_criteria: Vec<String>,
+    pub next_action: String,
+    pub attention_policy: CommitmentAttentionPolicy,
+    pub check_after_seconds: u32,
+    pub verification: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -974,6 +978,7 @@ pub async fn run_session_turn_recorded(
     let mut repairs = 0;
     let mut critic_repairs = 0;
     let mut rejected_reviews = BTreeSet::new();
+    let mut rejected_operating_drafts = BTreeSet::new();
 
     for _ in 0..MAX_SESSION_STEPS {
         if repairs > MAX_MODEL_REPAIRS {
@@ -1260,7 +1265,20 @@ pub async fn run_session_turn_recorded(
                 repair_feedback.clear();
             }
             SessionModelDecision::Finish { mut draft } => {
-                normalize_redundant_baseline_alerts(&session, &mut draft, &observations);
+                materialize_planned_follow_through(
+                    &session,
+                    &trigger,
+                    plan.as_ref(),
+                    assessment_at,
+                    &mut draft,
+                )?;
+                if !matches!(trigger, SessionTurnTrigger::Operator)
+                    || plan
+                        .as_ref()
+                        .is_none_or(|plan| plan.follow_through.is_none())
+                {
+                    normalize_redundant_baseline_alerts(&session, &mut draft, &observations);
+                }
                 normalize_passive_wake_handback(&trigger, &mut draft);
                 normalize_coverage_notice(&mut draft, &observations);
                 if let Err(error) = validate_planned_follow_through_viability(
@@ -1268,7 +1286,13 @@ pub async fn run_session_turn_recorded(
                     &observations,
                     assessment_at,
                 ) {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        error.to_string(),
+                    );
                     continue;
                 }
                 if let Err(error) = validate_commitment_baselines(
@@ -1278,7 +1302,13 @@ pub async fn run_session_turn_recorded(
                     &observations,
                     assessment_at,
                 ) {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        error.to_string(),
+                    );
                     continue;
                 }
                 if let Err(error) = validate_wake_completion(
@@ -1288,24 +1318,57 @@ pub async fn run_session_turn_recorded(
                     assessment_at,
                     &observations,
                 ) {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        error.to_string(),
+                    );
                     continue;
                 }
                 if let Err(error) = validate_plan_completion(plan.as_ref(), &draft) {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        error.to_string(),
+                    );
+                    continue;
+                }
+                if let Err(error) = validate_cross_turn_consistency(&session, &draft) {
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        error.to_string(),
+                    );
                     continue;
                 }
                 let validated =
                     match validate_grounded_draft(&session, &draft, &observations, assessment_at) {
                         Ok(validated) => validated,
                         Err(error) => {
-                            repairs += 1;
-                            repair_feedback = vec![error.to_string()];
+                            record_draft_repair(
+                                &mut rejected_operating_drafts,
+                                &draft,
+                                &mut repairs,
+                                &mut repair_feedback,
+                                error.to_string(),
+                            );
                             continue;
                         }
                     };
                 if let Err(error) = validate_effect_closure(&observations, &draft, assessment_at) {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        error.to_string(),
+                    );
                     continue;
                 }
                 let review = match model
@@ -1519,6 +1582,22 @@ async fn repair_fallback_outcome(
             }
             None
         }
+        SessionTurnTrigger::Operator if uncertain_effect.is_none() => plan
+            .and_then(|plan| plan.follow_through.as_ref())
+            .map(|follow_through| {
+                let commitment = planned_commitment(follow_through, assessment_at)?;
+                let wake_at = commitment
+                    .wake_at
+                    .clone()
+                    .expect("a planned commitment always has a wake time");
+                mission
+                    .commitments
+                    .retain(|candidate| candidate.commitment_ref != follow_through.commitment_ref);
+                mission.commitments.push(commitment);
+                mission.status = SessionStatus::WaitingForExternal;
+                Ok((follow_through.commitment_ref.clone(), wake_at))
+            })
+            .transpose()?,
         SessionTurnTrigger::Operator => None,
     };
     let coverage_notice = if uncertain_effect.is_some() {
@@ -1595,8 +1674,8 @@ async fn repair_fallback_outcome(
             }],
         )
     };
-    if let Some((commitment_ref, _wake_at)) = rescheduled_wake {
-        let follow_up = "\n\nI’ll check again in five minutes.".to_owned();
+    if let Some((commitment_ref, wake_at)) = rescheduled_wake {
+        let follow_up = format!("\n\nI’ll check again at {wake_at}.");
         message.push_str(&follow_up);
         claims.push(GroundedClaim {
             claim_ref: format!("fallback-commitment:{}", input.request_id),
@@ -2670,6 +2749,20 @@ fn record_operating_repair(
     *repair_feedback = vec![feedback];
 }
 
+fn record_draft_repair(
+    rejected: &mut BTreeSet<(String, String)>,
+    draft: &GroundedDraft,
+    repairs: &mut usize,
+    repair_feedback: &mut Vec<String>,
+    feedback: String,
+) {
+    let repeated = !rejected.insert((message_digest(&draft.message), feedback.clone()));
+    record_operating_repair(repairs, repair_feedback, feedback);
+    if repeated {
+        *repairs = MAX_MODEL_REPAIRS + 1;
+    }
+}
+
 fn push_event(
     session: &AgentSession,
     occurred_at: &str,
@@ -3185,6 +3278,54 @@ pub fn validate_plan(
                     .into(),
             ));
         }
+        if !bounded(&follow_through.next_action, MAX_TEXT_BYTES)
+            || !bounded(&follow_through.verification, MAX_TEXT_BYTES)
+            || !(30..=3_600).contains(&follow_through.check_after_seconds)
+            || follow_through.attention_policy.acceptance_all.is_empty()
+        {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "planned follow-through requires a bounded next action and verification, a 30-3600 second check delay, and at least one typed acceptance condition"
+                    .into(),
+            ));
+        }
+        if follow_through
+            .attention_policy
+            .acceptance_all
+            .iter()
+            .chain(&follow_through.attention_policy.alert_any)
+            .any(|condition| {
+                !follow_through
+                    .required_tool_ids
+                    .contains(&condition.tool_id)
+                    || !bounded(&condition.tool_id, MAX_TEXT_BYTES)
+                    || !condition.data_pointer.starts_with('/')
+                    || !bounded(&condition.data_pointer, MAX_TEXT_BYTES)
+                    || !matches!(
+                        &condition.equals,
+                        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_)
+                    )
+                    || condition
+                        .equals
+                        .as_str()
+                        .is_some_and(|value| !bounded(value, MAX_TEXT_BYTES))
+            })
+        {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "planned attention conditions must reference required tools and bounded JSON pointers"
+                    .into(),
+            ));
+        }
+        if follow_through
+            .attention_policy
+            .alert_any
+            .iter()
+            .any(|condition| !condition.equals.is_boolean())
+        {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "planned alert conditions must target explicit boolean authority signals; numeric and string progress values belong in acceptance conditions"
+                    .into(),
+            ));
+        }
     }
     Ok(())
 }
@@ -3268,6 +3409,9 @@ fn validate_plan_completion(
                 )
                 && commitment.required_tool_ids == follow_through.required_tool_ids
                 && commitment.acceptance_criteria == follow_through.acceptance_criteria
+                && commitment.next_action.as_deref() == Some(&follow_through.next_action)
+                && commitment.attention_policy.as_ref() == Some(&follow_through.attention_policy)
+                && commitment.verification.as_deref() == Some(&follow_through.verification)
                 && commitment.wake_at.is_some()
         });
         if !exact {
@@ -3278,6 +3422,103 @@ fn validate_plan_completion(
             )));
         }
     }
+    Ok(())
+}
+
+fn validate_cross_turn_consistency(
+    session: &AgentSession,
+    draft: &GroundedDraft,
+) -> Result<(), AgentRuntimeError> {
+    let current = draft.message.to_ascii_lowercase();
+    if current.contains("no regressions occurred")
+        && session.messages.iter().any(|message| {
+            message.role == SessionMessageRole::Assistant && {
+                let prior = message.text.to_ascii_lowercase();
+                prior.contains("regressed")
+                    || prior.contains("regression detected")
+                    || prior.contains("streak reset")
+            }
+        })
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "the response contradicts the delivered trajectory: an earlier update reported a regression, so do not claim that no regressions occurred; describe only the current check or say that no further regression was observed"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+fn planned_commitment(
+    follow_through: &PlannedFollowThrough,
+    assessment_at: OffsetDateTime,
+) -> Result<Commitment, AgentRuntimeError> {
+    let wake_at = assessment_at
+        .checked_add(Duration::seconds(i64::from(
+            follow_through.check_after_seconds,
+        )))
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal(
+                "the planned follow-through wake time overflowed".into(),
+            )
+        })?
+        .format(&Rfc3339)
+        .map_err(|_| {
+            AgentRuntimeError::InvalidFinal(
+                "the planned follow-through wake time could not be formatted".into(),
+            )
+        })?;
+    Ok(Commitment {
+        commitment_ref: follow_through.commitment_ref.clone(),
+        summary: follow_through.next_action.clone(),
+        owner: WorkOwner::Cerebro,
+        status: CommitmentStatus::Waiting,
+        next_action: Some(follow_through.next_action.clone()),
+        blocker: None,
+        acceptance_criteria: follow_through.acceptance_criteria.clone(),
+        artifact_refs: Vec::new(),
+        required_tool_ids: follow_through.required_tool_ids.clone(),
+        attention_policy: Some(follow_through.attention_policy.clone()),
+        wake_at: Some(wake_at),
+        verification: Some(follow_through.verification.clone()),
+    })
+}
+
+fn materialize_planned_follow_through(
+    session: &AgentSession,
+    trigger: &SessionTurnTrigger,
+    plan: Option<&ResearchPlan>,
+    assessment_at: OffsetDateTime,
+    draft: &mut GroundedDraft,
+) -> Result<(), AgentRuntimeError> {
+    if !matches!(trigger, SessionTurnTrigger::Operator) {
+        return Ok(());
+    }
+    let Some(follow_through) = plan.and_then(|plan| plan.follow_through.as_ref()) else {
+        return Ok(());
+    };
+    let persisted_refs = session
+        .mission
+        .commitments
+        .iter()
+        .map(|commitment| commitment.commitment_ref.as_str())
+        .collect::<BTreeSet<_>>();
+    draft.mission.commitments.retain(|commitment| {
+        persisted_refs.contains(commitment.commitment_ref.as_str())
+            || commitment.commitment_ref == follow_through.commitment_ref
+            || commitment.owner != WorkOwner::Cerebro
+    });
+    let canonical = planned_commitment(follow_through, assessment_at)?;
+    if let Some(commitment) = draft
+        .mission
+        .commitments
+        .iter_mut()
+        .find(|commitment| commitment.commitment_ref == follow_through.commitment_ref)
+    {
+        *commitment = canonical;
+    } else {
+        draft.mission.commitments.push(canonical);
+    }
+    draft.mission.status = SessionStatus::WaitingForExternal;
     Ok(())
 }
 
@@ -3591,6 +3832,16 @@ fn validate_claim(
                     "commitment claims require an active executor-bound Cerebro commitment".into(),
                 ));
             }
+            let normalized = claim.text.to_ascii_lowercase();
+            if normalized.contains("immediately")
+                || normalized.contains("the moment")
+                || normalized.contains("as soon as it changes")
+            {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "a scheduled check supports notification after that check, not immediate or continuous detection"
+                        .into(),
+                ));
+            }
             return Ok(());
         }
         ClaimContent::StableExplanation => {
@@ -3790,6 +4041,10 @@ fn validate_mission(mission: &MissionState) -> Result<(), AgentRuntimeError> {
             })?;
             if policy.acceptance_all.is_empty()
                 || policy
+                    .alert_any
+                    .iter()
+                    .any(|condition| !condition.equals.is_boolean())
+                || policy
                     .acceptance_all
                     .iter()
                     .chain(&policy.alert_any)
@@ -3809,7 +4064,7 @@ fn validate_mission(mission: &MissionState) -> Result<(), AgentRuntimeError> {
                     })
             {
                 return Err(AgentRuntimeError::InvalidFinal(
-                    "typed attention conditions must reference required tools and bounded JSON pointers"
+                    "typed attention conditions must reference required tools and bounded JSON pointers, and alerts must target explicit boolean authority signals"
                         .into(),
                 ));
             }
@@ -4034,6 +4289,25 @@ mod tests {
             stop_conditions: vec!["Current state is observed.".into()],
             user_visible_work: vec!["Checking connector alpha.".into()],
             follow_through: None,
+        }
+    }
+
+    fn planned_follow_through() -> PlannedFollowThrough {
+        PlannedFollowThrough {
+            commitment_ref: "commitment:scheduled-check".into(),
+            required_tool_ids: vec!["connector.read".into()],
+            acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
+            next_action: "Read connector alpha and compare the current state.".into(),
+            attention_policy: CommitmentAttentionPolicy {
+                acceptance_all: vec![ObservationCondition {
+                    tool_id: "connector.read".into(),
+                    data_pointer: "/status".into(),
+                    equals: json!("healthy"),
+                }],
+                alert_any: Vec::new(),
+            },
+            check_after_seconds: 300,
+            verification: "A current connector observation closes the check.".into(),
         }
     }
 
@@ -4642,6 +4916,17 @@ mod tests {
             commitment_ref: "commitment:later-check".into(),
             required_tool_ids: vec!["graph.read".into()],
             acceptance_criteria: vec!["A fresh state is recorded.".into()],
+            next_action: "Read the graph again.".into(),
+            attention_policy: CommitmentAttentionPolicy {
+                acceptance_all: vec![ObservationCondition {
+                    tool_id: "graph.read".into(),
+                    data_pointer: "/decision_grade".into(),
+                    equals: json!(true),
+                }],
+                alert_any: Vec::new(),
+            },
+            check_after_seconds: 300,
+            verification: "graph.read reports decision_grade=true".into(),
         });
         let error =
             validate_plan(&invalid, &["connector.read".into(), "graph.read".into()]).unwrap_err();
@@ -4656,12 +4941,76 @@ mod tests {
     }
 
     #[test]
+    fn planned_alerts_reject_ordinary_progress_values() {
+        let mut proposed = plan();
+        let mut follow_through = planned_follow_through();
+        follow_through
+            .attention_policy
+            .alert_any
+            .push(ObservationCondition {
+                tool_id: "connector.read".into(),
+                data_pointer: "/receipt_count".into(),
+                equals: json!(2),
+            });
+        proposed.follow_through = Some(follow_through);
+        let error = validate_plan(&proposed, &["connector.read".into()]).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("explicit boolean authority signals")
+        );
+    }
+
+    #[test]
+    fn rust_materializes_the_planned_executor_contract() {
+        let current = session();
+        let mut proposed = plan();
+        proposed.follow_through = Some(planned_follow_through());
+        let mut answer = draft();
+        let mut invented = scheduled_commitment();
+        invented.commitment_ref = "commitment:invented".into();
+        invented.required_tool_ids = vec!["graph.read".into()];
+        answer.mission.commitments.push(invented);
+
+        materialize_planned_follow_through(
+            &current,
+            &SessionTurnTrigger::Operator,
+            Some(&proposed),
+            OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+            &mut answer,
+        )
+        .unwrap();
+
+        assert_eq!(answer.mission.status, SessionStatus::WaitingForExternal);
+        assert_eq!(answer.mission.commitments.len(), 1);
+        let commitment = &answer.mission.commitments[0];
+        assert_eq!(commitment.commitment_ref, "commitment:scheduled-check");
+        assert_eq!(commitment.required_tool_ids, vec!["connector.read"]);
+        assert_eq!(
+            commitment.attention_policy.as_ref(),
+            Some(&planned_follow_through().attention_policy)
+        );
+        assert_eq!(commitment.wake_at.as_deref(), Some("2026-07-31T00:06:00Z"));
+    }
+
+    #[test]
     fn planned_follow_through_cannot_disappear_from_the_final_mission() {
         let mut plan = plan();
         plan.follow_through = Some(PlannedFollowThrough {
             commitment_ref: "commitment:scheduled-check".into(),
             required_tool_ids: vec!["connector.read".into()],
             acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
+            next_action: "Read connector alpha and compare the current state.".into(),
+            attention_policy: CommitmentAttentionPolicy {
+                acceptance_all: vec![ObservationCondition {
+                    tool_id: "connector.read".into(),
+                    data_pointer: "/status".into(),
+                    equals: json!("healthy"),
+                }],
+                alert_any: Vec::new(),
+            },
+            check_after_seconds: 300,
+            verification: "A current connector observation closes the check.".into(),
         });
         let mut answer = draft();
         assert!(validate_plan_completion(Some(&plan), &answer).is_err());
@@ -4676,6 +5025,17 @@ mod tests {
             commitment_ref: "commitment:scheduled-check".into(),
             required_tool_ids: vec!["connector.read".into()],
             acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
+            next_action: "Read connector alpha and compare the current state.".into(),
+            attention_policy: CommitmentAttentionPolicy {
+                acceptance_all: vec![ObservationCondition {
+                    tool_id: "connector.read".into(),
+                    data_pointer: "/status".into(),
+                    equals: json!("healthy"),
+                }],
+                alert_any: Vec::new(),
+            },
+            check_after_seconds: 300,
+            verification: "A current connector observation closes the check.".into(),
         });
         let mut answer = draft();
         let mut commitment = scheduled_commitment();
@@ -4706,6 +5066,17 @@ mod tests {
             commitment_ref: "commitment:scheduled-check".into(),
             required_tool_ids: vec!["connector.read".into()],
             acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
+            next_action: "Read connector alpha and compare the current state.".into(),
+            attention_policy: CommitmentAttentionPolicy {
+                acceptance_all: vec![ObservationCondition {
+                    tool_id: "connector.read".into(),
+                    data_pointer: "/status".into(),
+                    equals: json!("healthy"),
+                }],
+                alert_any: Vec::new(),
+            },
+            check_after_seconds: 300,
+            verification: "A current connector observation closes the check.".into(),
         });
         let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
 
@@ -5542,6 +5913,31 @@ mod tests {
     }
 
     #[test]
+    fn final_update_cannot_erase_an_earlier_reported_regression() {
+        let mut current = session();
+        current.messages.push(SessionMessage {
+            role: SessionMessageRole::Assistant,
+            message_ref: "message:regression".into(),
+            actor_ref: "cerebro".into(),
+            text: "Regression detected: the streak regressed from 2 to 0.".into(),
+            received_at: "2026-07-31T00:01:00Z".into(),
+        });
+        let mut final_update = draft();
+        final_update.message =
+            "The feed is decision-grade at this check. No regressions occurred.".into();
+        let error = validate_cross_turn_consistency(&current, &final_update).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("contradicts the delivered trajectory")
+        );
+
+        final_update.message =
+            "The feed is decision-grade at this check. No further regression was observed.".into();
+        assert!(validate_cross_turn_consistency(&current, &final_update).is_ok());
+    }
+
+    #[test]
     fn wake_assessment_computes_typed_scalar_deltas_before_model_review() {
         let mut awakened = session();
         let mut commitment = scheduled_commitment();
@@ -5760,6 +6156,17 @@ mod tests {
             commitment_ref: "commitment:delegated-check".into(),
             required_tool_ids: vec!["connector.read".into()],
             acceptance_criteria: vec!["The connector is healthy.".into()],
+            next_action: "Read connector alpha and compare the current state.".into(),
+            attention_policy: CommitmentAttentionPolicy {
+                acceptance_all: vec![ObservationCondition {
+                    tool_id: "connector.read".into(),
+                    data_pointer: "/status".into(),
+                    equals: json!("healthy"),
+                }],
+                alert_any: Vec::new(),
+            },
+            check_after_seconds: 300,
+            verification: "A current connector observation closes the check.".into(),
         });
         assert!(validate_explicit_follow_through(&delegated, &proposed).is_ok());
 
@@ -6291,7 +6698,7 @@ mod tests {
             panic!("scheduled repair fallback should not request approval");
         };
         assert_eq!(final_state, FinalState::Blocked);
-        assert!(markdown.contains("I’ll check again in five minutes"));
+        assert!(markdown.contains("I’ll check again at 2026-07-31T00:06:00Z"));
         let commitment = mission
             .commitments
             .iter()
@@ -6300,6 +6707,52 @@ mod tests {
         assert_eq!(commitment.status, CommitmentStatus::Waiting);
         assert_eq!(commitment.wake_at.as_deref(), Some("2026-07-31T00:06:00Z"));
         assert_eq!(tools.effects.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn operator_repair_fallback_preserves_delegated_follow_through() {
+        let current = session();
+        let mut proposed = plan();
+        proposed.follow_through = Some(planned_follow_through());
+        let mut baseline = observation(true, Some("2026-07-31T00:06:00Z"));
+        baseline.result.summary =
+            "Connector alpha is recovering and is not ready at this check.".into();
+        baseline.result.data = json!({"status": "recovering"});
+        let outcome = repair_fallback_outcome(
+            &current,
+            &SessionTurnInput {
+                request_id: "request:operator-fallback".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                trigger: SessionTurnTrigger::Operator,
+            },
+            &SessionTurnTrigger::Operator,
+            Some(&proposed),
+            &[baseline],
+            Vec::new(),
+            &NoopSessionJournal,
+        )
+        .await
+        .expect("delegated work should survive model repair exhaustion");
+
+        let SessionTurnOutcome::PendingDelivery {
+            final_state,
+            markdown,
+            mission,
+            ..
+        } = outcome
+        else {
+            panic!("operator fallback should produce a durable visible update")
+        };
+        assert_eq!(final_state, FinalState::Blocked);
+        assert!(markdown.contains("I’ll check again at 2026-07-31T00:06:00Z"));
+        let commitment = mission
+            .commitments
+            .iter()
+            .find(|commitment| commitment.commitment_ref == "commitment:scheduled-check")
+            .expect("the planned commitment must survive fallback");
+        assert_eq!(commitment.status, CommitmentStatus::Waiting);
+        assert_eq!(commitment.wake_at.as_deref(), Some("2026-07-31T00:06:00Z"));
     }
 
     #[tokio::test]

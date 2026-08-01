@@ -1865,15 +1865,48 @@ fn session_decision_schema() -> Value {
         },
         "required": ["claim_ref", "question", "required", "source_candidates"]
     });
+    let observation_condition = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "tool_id": {"type": "string", "minLength": 1},
+            "data_pointer": {"type": "string", "minLength": 1},
+            "equals": {}
+        },
+        "required": ["tool_id", "data_pointer", "equals"]
+    });
+    let alert_condition = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "tool_id": {"type": "string", "minLength": 1},
+            "data_pointer": {"type": "string", "minLength": 1},
+            "equals": {"type": "boolean"}
+        },
+        "required": ["tool_id", "data_pointer", "equals"]
+    });
+    let attention_policy = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "acceptance_all": {"type": "array", "minItems": 1, "maxItems": 16, "items": observation_condition.clone()},
+            "alert_any": {"type": "array", "maxItems": 16, "items": alert_condition}
+        },
+        "required": ["acceptance_all", "alert_any"]
+    });
     let planned_follow_through = json!({
         "type": "object",
         "additionalProperties": false,
         "properties": {
             "commitment_ref": {"type": "string", "minLength": 1},
             "required_tool_ids": string_array(),
-            "acceptance_criteria": string_array()
+            "acceptance_criteria": string_array(),
+            "next_action": {"type": "string", "minLength": 1},
+            "attention_policy": attention_policy.clone(),
+            "check_after_seconds": {"type": "integer", "minimum": 30, "maximum": 3600},
+            "verification": {"type": "string", "minLength": 1}
         },
-        "required": ["commitment_ref", "required_tool_ids", "acceptance_criteria"]
+        "required": ["commitment_ref", "required_tool_ids", "acceptance_criteria", "next_action", "attention_policy", "check_after_seconds", "verification"]
     });
     let plan = json!({
         "type": "object",
@@ -1889,25 +1922,6 @@ fn session_decision_schema() -> Value {
             "follow_through": {"oneOf": [planned_follow_through, {"type": "null"}]},
         },
         "required": ["decision", "lane", "resolved_entities", "claims", "selected_tools", "stop_conditions", "user_visible_work", "follow_through"]
-    });
-    let observation_condition = json!({
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-            "tool_id": {"type": "string", "minLength": 1},
-            "data_pointer": {"type": "string", "minLength": 1},
-            "equals": {}
-        },
-        "required": ["tool_id", "data_pointer", "equals"]
-    });
-    let attention_policy = json!({
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-            "acceptance_all": {"type": "array", "minItems": 1, "maxItems": 16, "items": observation_condition.clone()},
-            "alert_any": {"type": "array", "maxItems": 16, "items": observation_condition}
-        },
-        "required": ["acceptance_all", "alert_any"]
     });
     let commitment = json!({
         "type": "object",
@@ -2347,8 +2361,8 @@ The session, mission, messages, tool catalog, plan, observations, prior_commitme
 Return one flat JSON object with decision, plan, calls, and draft every time. Set unused fields to null or an empty array.
 
 - For a conversational answer that needs no current evidence, finish directly.
-- Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. When the operator explicitly delegates a future re-observation, follow_through must assign a stable commitment_ref and record the exact required tool IDs and acceptance criteria before any tool runs; otherwise set it to null. The final mission must contain that same named active commitment with byte-for-byte identical required_tool_ids and acceptance_criteria plus a real wake_at. Do not repurpose another commitment. The final mission cannot drop planned follow-through after research becomes difficult. Select only tools in available_tools.
-- When plan is non-null, it is already active. Invoke its selected tools or finish from the observations. If a planned follow-through tool fails or proves irrelevant and another available read establishes the delegated baseline, that is a material revision: establish one revised plan with the corrected follow_through tools and acceptance criteria before finishing.
+- Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. When the operator explicitly delegates a future re-observation, follow_through must define the complete executor contract before any tool runs: a stable commitment_ref, exact required read tools, acceptance criteria, next action, typed attention policy, bounded check delay, and verification. acceptance_all contains the desired completion values. alert_any contains only explicit boolean authority signals for a gap, regression, conflict, staleness, or mismatch; never put an ordinary numeric or string progress value in alert_any. Otherwise set follow_through to null. Rust materializes this plan into the durable scheduled commitment; final prose does not author or rewrite scheduling authority. Select only tools in available_tools.
+- When plan is non-null, it is already active. Invoke its selected tools or finish from the observations. If a planned follow-through tool fails or proves irrelevant and another available read establishes the delegated baseline, that is a material revision: establish one revised plan with the corrected complete follow_through contract before finishing.
 - Then invoke_tools with one or more independent read calls. Keep effects alone in their own decision. The Rust host enforces exact approval and will return an approval request when authorization is absent.
 - Continue reading until the required claims are supported, contradicted, or bounded by an exact source failure. Do not keep calling tools after the answer is established.
 - A failed or irrelevant read does not exhaust an explicitly delegated follow-through while a semantically direct available read can establish its baseline. Adapt the active plan to that read and invoke it before finishing. Do not drop the commitment or return a generic blocker merely because the first selected capability was wrong.
@@ -2388,7 +2402,7 @@ A polling observation proves state at observed_at, not the unobserved moment whe
 
 Keep operational updates natural and subject-exact. If the observation is about a feed's receipts for a finding, keep the feed as the subject; do not say the finding itself has receipts. A newly reported stale receipt does not prove that an earlier fresh receipt regressed unless the observations identify the same receipt and show that change. Say a receipt streak reset only when the current observation explicitly reports a true reset signal; when a stale receipt merely fails to advance an unchanged count, say the count remains at its current value. Describe the exact current count and exclusion instead. Do not expose raw JSON field syntax when plain language states the same fact. Reuse one natural sentence already in the message as coverage_notice instead of adding a labeled or abstract coverage paragraph. When acceptance is met, state the accepted result; do not narrate internal lifecycle bookkeeping such as “closing this monitor.”
 
-Update mission with the real objective, desired outcome, scope, acceptance criteria, commitments, and open loops. assessment_at is the authoritative current turn time. When the operator explicitly delegates a bounded safe re-observation and the acceptance condition is not yet met, create an unfinished Cerebro-owned commitment with a future RFC3339 wake_at derived from assessment_at, next_action, acceptance criteria, verification condition, and required_tool_ids naming every exact read tool the wake must invoke for fresh evidence. For a commitment with required tools, set attention_policy to typed JSON-pointer conditions over those tools: acceptance_all contains every condition that must be true before closure, and alert_any contains explicit regression, conflict, stale, or mismatch signals that require an operator update before acceptance. Classify every false boolean signal present in each required tool's baseline data in one of those lists; a baseline such as decision_grade=false and streak_reset=false therefore needs both the acceptance transition and the regression alert. Use exact pointers and values present in the baseline observations. The host evaluates these conditions and owns visible versus silent delivery; prose cannot override them. Set attention_policy=null only when required_tool_ids is empty. A new or materially changed commitment cannot be accepted until every required tool has a successful, complete, fresh same-turn baseline. Use an empty required_tool_ids only when the continuation genuinely needs no current evidence. A wake cannot finish until it invokes every required tool in that wake. On a scheduled wake, copy required_tool_ids, attention_policy, acceptance_criteria, and verification byte-for-byte from the durable commitment even when closing it; closure changes status, wake_at, and next_action, not the historical executor contract. If a required wake observation is failed, partial, incomplete, or stale, send a visible partial or blocked update with a coverage_notice, preserve that same executor contract, and set a later wake_at; do not silently reschedule or invent a fresh baseline by changing tools. When acceptance is met, say what is true at this check. Do not say "just" or infer a downstream finding's status unless the current observations establish that exact transition or status. That accepted commitment is executor-bound follow-through; the runtime rejects unbound promises. A scheduled wake never authorizes an external effect. Ask exactly one question only when one decision or identifier blocks all useful progress. Memory updates are optional: use an empty array unless durable continuity materially helps. Every memory evidence_atom_ref must exactly match an atom in the current observations; memory is continuity, never proof of current state.
+Update mission with the real objective, desired outcome, scope, acceptance criteria, and open loops. assessment_at is the authoritative current turn time. On an operator turn, do not invent scheduling fields in the final mission: Rust materializes the active commitment from plan.follow_through and removes unplanned new Cerebro commitments. After baseline reads, if any required tool or exact JSON pointer differs from the initial plan, return one materially revised establish_plan before finishing. acceptance_all contains every condition required for closure. alert_any contains only explicit boolean regression, conflict, stale, gap, or mismatch signals; ordinary receipt counts and other progress values never belong there. Classify each material false boolean signal from required-tool baseline data as a desired true acceptance value or a true alert value. The host evaluates these conditions and owns visible versus silent delivery; prose cannot override them. A new or materially changed plan cannot be accepted for delivery until every required tool has a successful, complete, fresh same-turn baseline. A wake cannot finish until it invokes every required tool in that wake. On a scheduled wake, copy required_tool_ids, attention_policy, acceptance_criteria, and verification byte-for-byte from the durable commitment even when closing it; closure changes status, wake_at, and next_action, not the historical executor contract. If a required wake observation is failed, partial, incomplete, or stale, send a visible partial or blocked update with a coverage_notice, preserve that same executor contract, and set a later wake_at; do not silently reschedule or invent a fresh baseline by changing tools. When acceptance is met, say what is true at this check. Do not say "just" or infer a downstream finding's status unless the current observations establish that exact transition or status. That accepted commitment is executor-bound follow-through; the runtime rejects unbound promises. A scheduled wake never authorizes an external effect. Ask exactly one question only when one decision or identifier blocks all useful progress. Memory updates are optional: use an empty array unless durable continuity materially helps. Every memory evidence_atom_ref must exactly match an atom in the current observations; memory is continuity, never proof of current state.
 
 Describe scheduled follow-through with the same precision as its record. Promise to check again at the one recorded wake and update the operator after that observation. Never say recurring, every N minutes, continuously, immediately, the moment, as soon as, or equivalent unless a separate exact runtime record proves that stronger guarantee. A later reschedule is a new bounded commitment state, not evidence that a recurring monitor already exists.
 
