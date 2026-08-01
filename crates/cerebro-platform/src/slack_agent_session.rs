@@ -3,7 +3,7 @@ use cerebro_agent_runtime::{
     AgentRuntimeError, FinalState,
     session::{
         AGENT_SESSION_EVENT_V2, AgentSession, CommitmentStatus, DeliveryDisposition, GroundedDraft,
-        MemoryKind, MemoryUpdate, SessionEvent, SessionEventRecord, SessionJournal,
+        MemoryKind, MemoryUpdate, SessionEvent, SessionEventRecord, SessionJournal, SessionMessage,
         SessionMessageRole, SessionStatus, SessionStore, WorkOwner, apply_session_events,
         message_digest,
     },
@@ -85,13 +85,14 @@ CREATE TABLE IF NOT EXISTS cerebro_agent_memories (
   PRIMARY KEY (session_ref, memory_ref)
 );
 CREATE TABLE IF NOT EXISTS cerebro_agent_thread_contexts (
-  session_ref TEXT PRIMARY KEY REFERENCES cerebro_agent_sessions(session_ref) ON DELETE CASCADE,
+  session_ref TEXT NOT NULL REFERENCES cerebro_agent_sessions(session_ref) ON DELETE CASCADE,
   tenant_id TEXT NOT NULL,
   actor_ref TEXT NOT NULL,
   context_scope_ref TEXT NOT NULL,
   thread_ref TEXT NOT NULL,
   context_json JSONB NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (session_ref, actor_ref)
 );
 CREATE INDEX IF NOT EXISTS cerebro_agent_thread_contexts_recall_idx
   ON cerebro_agent_thread_contexts (tenant_id, actor_ref, context_scope_ref, updated_at DESC);
@@ -1139,29 +1140,18 @@ async fn project_session_state(
             .await
             .map_err(store_unavailable)?;
     }
-    if matches!(
-        session.events.last().map(|event| &event.event),
-        Some(SessionEvent::TurnCompleted { .. })
-    ) && session.pending_delivery.is_none()
-        && let (Some(context_scope_ref), Some(actor_ref)) = (
+    if session.pending_delivery.is_none()
+        && let (Some(context_scope_ref), Some(operator_message)) = (
             session.context_scope_ref.as_deref(),
-            session
-                .messages
-                .iter()
-                .find(|message| message.role == SessionMessageRole::User)
-                .map(|message| message.actor_ref.as_str()),
+            completed_operator_message(&session.events, &session.messages),
         )
         && session
             .messages
             .iter()
             .any(|message| message.role == SessionMessageRole::Assistant)
     {
-        let latest_user_message = session
-            .messages
-            .iter()
-            .rev()
-            .find(|message| message.role == SessionMessageRole::User)
-            .map(|message| bounded_context_text(&message.text, 4_000));
+        let actor_ref = operator_message.actor_ref.as_str();
+        let latest_user_message = Some(bounded_context_text(&operator_message.text, 4_000));
         let latest_assistant_message = session
             .messages
             .iter()
@@ -1219,13 +1209,27 @@ async fn project_session_state(
         });
         transaction
             .execute(
-                "INSERT INTO cerebro_agent_thread_contexts (session_ref, tenant_id, actor_ref, context_scope_ref, thread_ref, context_json) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (session_ref) DO UPDATE SET actor_ref = EXCLUDED.actor_ref, context_scope_ref = EXCLUDED.context_scope_ref, context_json = EXCLUDED.context_json, updated_at = NOW()",
+                "INSERT INTO cerebro_agent_thread_contexts (session_ref, tenant_id, actor_ref, context_scope_ref, thread_ref, context_json) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (session_ref, actor_ref) DO UPDATE SET context_scope_ref = EXCLUDED.context_scope_ref, context_json = EXCLUDED.context_json, updated_at = NOW()",
                 &[&session.session_ref, &session.tenant_id, &actor_ref, &context_scope_ref, &session.thread_ref, &context_json],
             )
             .await
             .map_err(store_unavailable)?;
     }
     Ok(())
+}
+
+fn completed_operator_message<'a>(
+    events: &[SessionEventRecord],
+    messages: &'a [SessionMessage],
+) -> Option<&'a SessionMessage> {
+    let request_id = match &events.last()?.event {
+        SessionEvent::TurnCompleted { request_id, .. } => request_id,
+        _ => return None,
+    };
+    let message_ref = format!("operator:{request_id}");
+    messages.iter().rev().find(|message| {
+        message.role == SessionMessageRole::User && message.message_ref == message_ref
+    })
 }
 
 fn bounded_context_text(value: &str, maximum_bytes: usize) -> String {
@@ -1298,6 +1302,7 @@ mod tests {
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("delivery_attempt_ref TEXT"));
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("cerebro_agent_memories"));
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("cerebro_agent_thread_contexts"));
+        assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("PRIMARY KEY (session_ref, actor_ref)"));
         assert!(
             POSTGRES_AGENT_SESSION_SCHEMA
                 .contains("tenant_id, actor_ref, context_scope_ref, updated_at DESC")
@@ -1311,6 +1316,41 @@ mod tests {
 
         assert!(bounded.len() <= 13);
         assert!(bounded.ends_with("..."));
+    }
+
+    #[test]
+    fn completed_context_is_attributed_to_the_exact_turn_actor() {
+        let messages = vec![
+            SessionMessage {
+                role: SessionMessageRole::User,
+                message_ref: "operator:first-request".into(),
+                actor_ref: "slack-user:first".into(),
+                text: "First operator message".into(),
+                received_at: "2026-07-31T00:00:00Z".into(),
+            },
+            SessionMessage {
+                role: SessionMessageRole::User,
+                message_ref: "operator:second-request".into(),
+                actor_ref: "slack-user:second".into(),
+                text: "Second operator message".into(),
+                received_at: "2026-07-31T00:01:00Z".into(),
+            },
+        ];
+        let events = vec![SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: "agent-session:test".into(),
+            sequence: 1,
+            occurred_at: "2026-07-31T00:02:00Z".into(),
+            event: SessionEvent::TurnCompleted {
+                request_id: "second-request".into(),
+                state: FinalState::Answered,
+            },
+        }];
+
+        let completed = completed_operator_message(&events, &messages).unwrap();
+
+        assert_eq!(completed.actor_ref, "slack-user:second");
+        assert_eq!(completed.text, "Second operator message");
     }
 
     #[tokio::test]
