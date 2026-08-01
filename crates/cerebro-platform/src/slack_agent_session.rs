@@ -1355,6 +1355,195 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires CEREBRO_TEST_POSTGRES_DSN"]
+    async fn postgres_completed_thread_context_recall_is_actor_and_scope_isolated() {
+        let Ok(dsn) = std::env::var("CEREBRO_TEST_POSTGRES_DSN") else {
+            return;
+        };
+        let source_session_ref = "agent-session:postgres-context-completed";
+        let pending_session_ref = "agent-session:postgres-context-pending";
+        let tenant_id = "tenant:postgres-context";
+        let actor_ref = "slack-user:postgres-context-owner";
+        let other_actor_ref = "slack-user:postgres-context-other";
+        let context_scope_ref = format!("slack-context-scope://sha256/{}", "a".repeat(64));
+        let other_scope_ref = format!("slack-context-scope://sha256/{}", "b".repeat(64));
+        let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
+        for session_ref in [source_session_ref, pending_session_ref] {
+            store
+                .client
+                .lock()
+                .await
+                .execute(
+                    "DELETE FROM cerebro_agent_sessions WHERE session_ref = $1",
+                    &[&session_ref],
+                )
+                .await
+                .unwrap();
+        }
+
+        let completed = context_test_session(
+            source_session_ref,
+            "slack-thread://postgres-context/completed",
+            tenant_id,
+            actor_ref,
+            &context_scope_ref,
+            "completed-request",
+            "Remember the completed source-thread decision.",
+            "I will retain that completed decision for this channel.",
+            false,
+        );
+        store.create(&completed).await.unwrap();
+        let pending = context_test_session(
+            pending_session_ref,
+            "slack-thread://postgres-context/pending",
+            tenant_id,
+            actor_ref,
+            &context_scope_ref,
+            "pending-request",
+            "This pending message must not be recalled.",
+            "This delivery has not been acknowledged.",
+            true,
+        );
+        store.create(&pending).await.unwrap();
+        drop(store);
+
+        let restarted = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
+        let recalled = restarted
+            .recall_thread_contexts(
+                tenant_id,
+                actor_ref,
+                &context_scope_ref,
+                "agent-session:postgres-context-target",
+                12,
+            )
+            .await
+            .unwrap();
+        assert_eq!(recalled.len(), 1);
+        assert!(
+            recalled[0]
+                .statement
+                .contains("completed source-thread decision")
+        );
+        assert!(!recalled[0].statement.contains("pending message"));
+        assert!(
+            restarted
+                .recall_thread_contexts(
+                    tenant_id,
+                    other_actor_ref,
+                    &context_scope_ref,
+                    "agent-session:postgres-context-target",
+                    12,
+                )
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            restarted
+                .recall_thread_contexts(
+                    tenant_id,
+                    actor_ref,
+                    &other_scope_ref,
+                    "agent-session:postgres-context-target",
+                    12,
+                )
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        for session_ref in [source_session_ref, pending_session_ref] {
+            restarted
+                .client
+                .lock()
+                .await
+                .execute(
+                    "DELETE FROM cerebro_agent_sessions WHERE session_ref = $1",
+                    &[&session_ref],
+                )
+                .await
+                .unwrap();
+        }
+    }
+
+    fn context_test_session(
+        session_ref: &str,
+        thread_ref: &str,
+        tenant_id: &str,
+        actor_ref: &str,
+        context_scope_ref: &str,
+        request_id: &str,
+        user_text: &str,
+        assistant_text: &str,
+        pending_delivery: bool,
+    ) -> AgentSession {
+        let mission = MissionState {
+            mission_ref: format!("mission:{request_id}"),
+            objective: "Preserve bounded Slack continuity.".into(),
+            desired_outcome: "Recall only completed context for the same actor and channel.".into(),
+            resolved_scope: Vec::new(),
+            scope_assumptions: Vec::new(),
+            acceptance_criteria: vec!["Actor and scope boundaries remain exact.".into()],
+            commitments: Vec::new(),
+            open_loops: Vec::new(),
+            status: SessionStatus::Completed,
+        };
+        let user_message = SessionMessage {
+            role: SessionMessageRole::User,
+            message_ref: format!("operator:{request_id}"),
+            actor_ref: actor_ref.into(),
+            text: user_text.into(),
+            received_at: "2026-07-31T00:00:00Z".into(),
+        };
+        let assistant_message = SessionMessage {
+            role: SessionMessageRole::Assistant,
+            message_ref: format!("assistant:{request_id}"),
+            actor_ref: "cerebro".into(),
+            text: assistant_text.into(),
+            received_at: "2026-07-31T00:00:01Z".into(),
+        };
+        let draft = GroundedDraft {
+            state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
+            message: assistant_text.into(),
+            claims: Vec::new(),
+            coverage_notice: None,
+            question: None,
+            mission: mission.clone(),
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        };
+        AgentSession {
+            schema_version: cerebro_agent_runtime::session::AGENT_SESSION_V2.into(),
+            session_ref: session_ref.into(),
+            tenant_id: tenant_id.into(),
+            thread_ref: thread_ref.into(),
+            context_scope_ref: Some(context_scope_ref.into()),
+            mission,
+            messages: vec![user_message, assistant_message],
+            events: vec![SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session_ref.into(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:00:02Z".into(),
+                event: SessionEvent::TurnCompleted {
+                    request_id: request_id.into(),
+                    state: FinalState::Answered,
+                },
+            }],
+            effect_authorizations: Vec::new(),
+            pending_delivery: pending_delivery.then_some(
+                cerebro_agent_runtime::session::PendingDelivery {
+                    request_id: request_id.into(),
+                    draft,
+                    produced_at: "2026-07-31T00:00:01Z".into(),
+                },
+            ),
+            memories: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires CEREBRO_TEST_POSTGRES_DSN"]
     async fn postgres_wake_claim_is_fenced_until_exact_delivery() {
         let Ok(dsn) = std::env::var("CEREBRO_TEST_POSTGRES_DSN") else {
             return;
