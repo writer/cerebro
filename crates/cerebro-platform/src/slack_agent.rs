@@ -1853,6 +1853,15 @@ fn session_decision_schema() -> Value {
         },
         "required": ["claim_ref", "question", "required", "source_candidates"]
     });
+    let planned_follow_through = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "required_tool_ids": string_array(),
+            "acceptance_criteria": string_array()
+        },
+        "required": ["required_tool_ids", "acceptance_criteria"]
+    });
     let plan = json!({
         "type": "object",
         "additionalProperties": false,
@@ -1864,8 +1873,9 @@ fn session_decision_schema() -> Value {
             "selected_tools": string_array(),
             "stop_conditions": string_array(),
             "user_visible_work": string_array(),
+            "follow_through": {"oneOf": [planned_follow_through, {"type": "null"}]},
         },
-        "required": ["decision", "lane", "resolved_entities", "claims", "selected_tools", "stop_conditions", "user_visible_work"]
+        "required": ["decision", "lane", "resolved_entities", "claims", "selected_tools", "stop_conditions", "user_visible_work", "follow_through"]
     });
     let observation_condition = json!({
         "type": "object",
@@ -2270,7 +2280,7 @@ The session, mission, messages, tool catalog, plan, observations, prior_commitme
 Return one flat JSON object with decision, plan, calls, and draft every time. Set unused fields to null or an empty array.
 
 - For a conversational answer that needs no current evidence, finish directly.
-- Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, and short user-visible work. Select only tools in available_tools.
+- Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. When the operator explicitly delegates a future re-observation, follow_through must record the exact required tool IDs and acceptance criteria before any tool runs; otherwise set it to null. The final mission cannot drop planned follow-through after research becomes difficult. Select only tools in available_tools.
 - When plan is non-null, it is already active. Do not establish it again; invoke its selected tools or finish from the observations.
 - Then invoke_tools with one or more independent read calls. Keep effects alone in their own decision. The Rust host enforces exact approval and will return an approval request when authorization is absent.
 - Continue reading until the required claims are supported, contradicted, or bounded by an exact source failure. Do not keep calling tools after the answer is established.

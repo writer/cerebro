@@ -145,6 +145,15 @@ pub struct ResearchPlan {
     pub selected_tools: Vec<String>,
     pub stop_conditions: Vec<String>,
     pub user_visible_work: Vec<String>,
+    #[serde(default)]
+    pub follow_through: Option<PlannedFollowThrough>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlannedFollowThrough {
+    pub required_tool_ids: Vec<String>,
+    pub acceptance_criteria: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1309,6 +1318,7 @@ fn wake_research_plan(
         selected_tools: commitment.required_tool_ids.clone(),
         stop_conditions,
         user_visible_work: Vec::new(),
+        follow_through: None,
     })
 }
 
@@ -2325,6 +2335,19 @@ pub fn validate_plan(
             "research plan selected an unavailable tool".into(),
         ));
     }
+    if let Some(follow_through) = &plan.follow_through
+        && (follow_through.required_tool_ids.is_empty()
+            || follow_through.acceptance_criteria.is_empty()
+            || follow_through
+                .required_tool_ids
+                .iter()
+                .any(|tool_id| !plan.selected_tools.contains(tool_id)))
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "planned follow-through requires selected tools and explicit acceptance criteria"
+                .into(),
+        ));
+    }
     Ok(())
 }
 
@@ -2364,6 +2387,24 @@ fn validate_plan_completion(
         return Err(AgentRuntimeError::InvalidFinal(
             "every required planned claim needs a visible disposition".into(),
         ));
+    }
+    if let Some(follow_through) = &plan.follow_through {
+        let persisted = draft.mission.commitments.iter().any(|commitment| {
+            commitment.owner == WorkOwner::Cerebro
+                && !matches!(
+                    commitment.status,
+                    CommitmentStatus::Completed | CommitmentStatus::Cancelled
+                )
+                && commitment.required_tool_ids == follow_through.required_tool_ids
+                && commitment.acceptance_criteria == follow_through.acceptance_criteria
+                && commitment.wake_at.is_some()
+        });
+        if !persisted {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "the research plan requires executor-bound follow-through, but the final mission does not persist its exact tools and acceptance criteria"
+                    .into(),
+            ));
+        }
     }
     Ok(())
 }
@@ -2994,6 +3035,7 @@ mod tests {
             selected_tools: vec!["connector.read".into()],
             stop_conditions: vec!["Current state is observed.".into()],
             user_visible_work: vec!["Checking connector alpha.".into()],
+            follow_through: None,
         }
     }
 
@@ -3571,6 +3613,19 @@ mod tests {
         let plan = plan();
         assert!(validate_plan(&plan, &["connector.read".into()]).is_ok());
         assert!(validate_plan(&plan, &["graph.read".into()]).is_err());
+    }
+
+    #[test]
+    fn planned_follow_through_cannot_disappear_from_the_final_mission() {
+        let mut plan = plan();
+        plan.follow_through = Some(PlannedFollowThrough {
+            required_tool_ids: vec!["connector.read".into()],
+            acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
+        });
+        let mut answer = draft();
+        assert!(validate_plan_completion(Some(&plan), &answer).is_err());
+        answer.mission.commitments.push(scheduled_commitment());
+        assert!(validate_plan_completion(Some(&plan), &answer).is_ok());
     }
 
     #[test]
