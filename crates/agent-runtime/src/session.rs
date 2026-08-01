@@ -815,6 +815,22 @@ pub async fn run_session_turn_recorded(
         )
         .await?;
     }
+    if plan.is_none()
+        && let Some(executor_plan) = wake_research_plan(&session, &trigger)
+    {
+        validate_plan(&executor_plan, &available_tool_ids)?;
+        emit_event(
+            &session,
+            &input.assessment_at,
+            &mut events,
+            SessionEvent::PlanEstablished {
+                plan: executor_plan.clone(),
+            },
+            journal,
+        )
+        .await?;
+        plan = Some(executor_plan);
+    }
     let mut call_ids = turn_observations
         .iter()
         .map(|observation| observation.call.call_id.clone())
@@ -1141,6 +1157,59 @@ pub async fn run_session_turn_recorded(
         }
     }
     Err(AgentRuntimeError::ModelStepLimit)
+}
+
+fn wake_research_plan(
+    session: &AgentSession,
+    trigger: &SessionTurnTrigger,
+) -> Option<ResearchPlan> {
+    let SessionTurnTrigger::Wake { commitment_ref, .. } = trigger else {
+        return None;
+    };
+    let commitment = session
+        .mission
+        .commitments
+        .iter()
+        .find(|commitment| commitment.commitment_ref == *commitment_ref)?;
+    if commitment.required_tool_ids.is_empty() {
+        return None;
+    }
+    let claims = if commitment.acceptance_criteria.is_empty() {
+        vec![PlannedClaim {
+            claim_ref: format!("wake-claim:{commitment_ref}:verification"),
+            question: commitment
+                .verification
+                .clone()
+                .unwrap_or_else(|| "Determine the current commitment state.".into()),
+            required: true,
+            source_candidates: commitment.required_tool_ids.clone(),
+        }]
+    } else {
+        commitment
+            .acceptance_criteria
+            .iter()
+            .enumerate()
+            .map(|(index, criterion)| PlannedClaim {
+                claim_ref: format!("wake-claim:{commitment_ref}:{index}"),
+                question: criterion.clone(),
+                required: true,
+                source_candidates: commitment.required_tool_ids.clone(),
+            })
+            .collect()
+    };
+    let mut stop_conditions = commitment.acceptance_criteria.clone();
+    if let Some(verification) = &commitment.verification {
+        stop_conditions.push(verification.clone());
+    }
+    Some(ResearchPlan {
+        decision: format!("Execute scheduled commitment {commitment_ref}."),
+        lane: ExecutionLane::Investigate,
+        resolved_entities: vec![commitment_ref.clone()],
+        claims,
+        selected_tools: commitment.required_tool_ids.clone(),
+        stop_conditions,
+        user_visible_work: Vec::new(),
+    })
 }
 
 fn validate_turn_input(
@@ -3287,6 +3356,31 @@ mod tests {
         assert!(
             validate_wake_completion(&awakened, &completed, &trigger, assessment_at, &[event],)
                 .is_ok()
+        );
+    }
+
+    #[test]
+    fn scheduled_wake_plan_is_derived_from_the_persisted_commitment() {
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        let plan = wake_research_plan(
+            &awakened,
+            &SessionTurnTrigger::Wake {
+                commitment_ref: "commitment:scheduled-check".into(),
+                occurrence_ref: "occurrence:auto-plan".into(),
+            },
+        )
+        .expect("a required-read wake should have an executor plan");
+        assert_eq!(plan.lane, ExecutionLane::Investigate);
+        assert_eq!(plan.selected_tools, vec!["connector.read"]);
+        assert_eq!(plan.claims.len(), 1);
+        assert_eq!(
+            plan.claims[0].question,
+            "A fresh connector state is recorded."
+        );
+        assert!(
+            validate_plan(&plan, &["connector.read".into()]).is_ok(),
+            "the derived plan must satisfy the same host contract as a model plan"
         );
     }
 
