@@ -16,12 +16,12 @@ use cerebro_agent_runtime::{
     ROUTER_MAX_TOKENS, RouteDecision, RouteTurn, ToolAuthorityClass, ToolCall, ToolDescriptor,
     ToolEffectClass, ToolResult, ToolResultState, WorkingOutcome, WorkingState, run_turn,
     session::{
-        AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2, AgentSession, ClaimReviewTurn, CommitmentStatus,
-        DeliveryDisposition, EvidenceAtomization, MessageReview, MissionState, SessionAgentModel,
-        SessionEvent, SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
-        SessionModelTurn, SessionStatus, SessionTools, SessionTurnInput, SessionTurnOutcome,
-        SessionTurnTrigger, WorkOwner, apply_session_events, evidence_atoms_from_json,
-        message_digest, run_session_turn, session_turn_request_text,
+        AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2, AgentSession, ClaimReviewTurn, Commitment,
+        CommitmentStatus, DeliveryDisposition, EvidenceAtomization, MessageReview, MissionState,
+        SessionAgentModel, SessionEvent, SessionEventRecord, SessionMessage, SessionMessageRole,
+        SessionModelDecision, SessionModelTurn, SessionStatus, SessionTools, SessionTurnInput,
+        SessionTurnOutcome, SessionTurnTrigger, WorkOwner, apply_session_events,
+        evidence_atoms_from_json, message_digest, run_session_turn, session_turn_request_text,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -272,17 +272,36 @@ struct ConversationLabTurnReceipt {
     repair_feedback: Vec<Vec<String>>,
     presentation_repair_feedback: Vec<Vec<String>>,
     critic_repair_feedback: Vec<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schedule: Option<EvaluationScheduleReceipt>,
     tool_observations: Vec<EvaluationObservationReceipt>,
     response_markdown: Option<String>,
     terminal_state: String,
     operator_decision: Option<OperatorDecision>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LabTurnTrigger {
     Operator,
     ScheduledWake,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct EvaluationScheduleReceipt {
+    schedule_ref: String,
+    scheduled_for: String,
+    required_tool_ids: Vec<String>,
+    acceptance_criteria: Vec<String>,
+    verification: Option<String>,
+    candidate_authored: bool,
+    persisted_before_trigger: bool,
+    trigger_bound_to_schedule: bool,
+}
+
+struct EvaluationTurnEvidence {
+    schedule: Option<EvaluationScheduleReceipt>,
+    tool_observations: Vec<EvaluationObservationReceipt>,
 }
 
 #[derive(Serialize)]
@@ -349,6 +368,8 @@ struct AutonomyLabReceipt {
     unsolicited_follow_up_count: usize,
     synthetic_operator_turn_count: usize,
     fresh_observation_every_wake: bool,
+    candidate_authored_schedule_every_wake: bool,
+    unique_fresh_observation_receipts: bool,
     commitment_closed: bool,
     independent_review_required: bool,
     promotion_ready: bool,
@@ -508,6 +529,8 @@ impl SessionAgentModel for MeasuredModel {
 
 #[derive(Clone, Debug, Serialize)]
 struct EvaluationObservationReceipt {
+    observation_ref: String,
+    observed_at: String,
     tool_id: String,
     summary: String,
     data: Value,
@@ -730,10 +753,25 @@ impl AgentTools for EvalTools {
         let blocker = (!complete).then(|| {
             "The broad relationship reasoning operation did not return grounded evidence.".into()
         });
+        let observation_ref = format!(
+            "observation://sha256/{}",
+            sha256_hex(
+                &serde_json::to_vec(&json!({
+                    "request_id": request.request_id,
+                    "call_id": call.call_id,
+                    "tool_id": call.tool_id,
+                    "observed_at": request.assessment_at,
+                    "data": data,
+                }))
+                .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?
+            )
+        );
         self.observations
             .lock()
             .expect("evaluation observation receipt poisoned")
             .push(EvaluationObservationReceipt {
+                observation_ref,
+                observed_at: request.assessment_at.clone(),
                 tool_id: call.tool_id.clone(),
                 summary: summary.clone(),
                 data: data.clone(),
@@ -1577,9 +1615,13 @@ fn completed_lab_turn_receipt(
     trigger: LabTurnTrigger,
     trigger_input: String,
     latency_ms: u128,
-    tool_observations: Vec<EvaluationObservationReceipt>,
+    evidence: EvaluationTurnEvidence,
     outcome: (AgentTurnOutcome, DeliveryDisposition),
 ) -> Result<(ConversationLabTurnReceipt, Option<String>), Box<dyn Error>> {
+    let EvaluationTurnEvidence {
+        schedule,
+        tool_observations,
+    } = evidence;
     let (outcome, delivery) = outcome;
     let (actual_lane, terminal_state, response_markdown) = match outcome {
         AgentTurnOutcome::Delivered {
@@ -1642,6 +1684,7 @@ fn completed_lab_turn_receipt(
                 .lock()
                 .expect("critic repair receipt poisoned")
                 .clone(),
+            schedule,
             tool_observations,
             response_markdown: visible_markdown.clone(),
             terminal_state: if delivery == DeliveryDisposition::Silent {
@@ -1706,6 +1749,63 @@ fn active_autonomy_commitment(
         .into());
     }
     Ok(candidates.into_iter().next().expect("length was checked"))
+}
+
+fn evaluation_schedule_receipt(
+    session: &AgentSession,
+    commitment: &Commitment,
+    trigger: Option<(&str, &str)>,
+) -> Result<EvaluationScheduleReceipt, Box<dyn Error>> {
+    let commitment_bytes = serde_json::to_vec(commitment)?;
+    let authored = session.events.iter().find_map(|event| match &event.event {
+        SessionEvent::DraftProduced { request_id, draft } => draft
+            .mission
+            .commitments
+            .iter()
+            .any(|candidate| candidate == commitment)
+            .then_some((event.sequence, request_id.as_str())),
+        _ => None,
+    });
+    let persisted_sequence = authored.and_then(|(authored_sequence, authored_request)| {
+        session.events.iter().find_map(|event| match &event.event {
+            SessionEvent::DeliveryRecorded { request_id, .. }
+                if request_id == authored_request && event.sequence > authored_sequence =>
+            {
+                Some(event.sequence)
+            }
+            _ => None,
+        })
+    });
+    let trigger_bound_to_schedule = trigger.is_some_and(|(request_id, occurrence_ref)| {
+        session.events.iter().any(|event| {
+            matches!(
+                &event.event,
+                SessionEvent::WakeTriggered {
+                    request_id: recorded_request,
+                    commitment_ref,
+                    occurrence_ref: recorded_occurrence,
+                    scheduled_for,
+                } if recorded_request == request_id
+                    && commitment_ref == &commitment.commitment_ref
+                    && recorded_occurrence == occurrence_ref
+                    && commitment.wake_at.as_deref() == Some(scheduled_for.as_str())
+                    && persisted_sequence.is_some_and(|sequence| sequence < event.sequence)
+            )
+        })
+    });
+    Ok(EvaluationScheduleReceipt {
+        schedule_ref: format!("schedule://sha256/{}", sha256_hex(&commitment_bytes)),
+        scheduled_for: commitment
+            .wake_at
+            .clone()
+            .ok_or("the evaluation schedule has no due time")?,
+        required_tool_ids: commitment.required_tool_ids.clone(),
+        acceptance_criteria: commitment.acceptance_criteria.clone(),
+        verification: commitment.verification.clone(),
+        candidate_authored: authored.is_some(),
+        persisted_before_trigger: persisted_sequence.is_some(),
+        trigger_bound_to_schedule,
+    })
 }
 
 fn autonomy_lab_scenario() -> ConversationLabScenario {
@@ -1794,13 +1894,18 @@ async fn run_autonomy_lab(
     let turn_observations = observations[observation_offset..].to_vec();
     observation_offset = observations.len();
     all_observations.extend(turn_observations.iter().cloned());
+    let initial_commitment = active_autonomy_commitment(&session)?;
+    let initial_schedule = evaluation_schedule_receipt(&session, &initial_commitment, None)?;
     let (turn, markdown) = completed_lab_turn_receipt(
         &measured,
         1,
         LabTurnTrigger::Operator,
         initial_request.message,
         started.elapsed().as_millis(),
-        turn_observations,
+        EvaluationTurnEvidence {
+            schedule: Some(initial_schedule),
+            tool_observations: turn_observations,
+        },
         outcome,
     )?;
     transcript.push(ConversationMessage {
@@ -1847,9 +1952,9 @@ async fn run_autonomy_lab(
                 &measured,
                 &tools,
                 &mut session,
-                request_id,
+                request_id.clone(),
                 commitment.commitment_ref.clone(),
-                occurrence_ref,
+                occurrence_ref.clone(),
                 wake_at_text,
             ),
         )
@@ -1876,13 +1981,21 @@ async fn run_autonomy_lab(
                 == Some(&json!(wake_index + 1))
         });
         all_observations.extend(turn_observations.iter().cloned());
+        let schedule = evaluation_schedule_receipt(
+            &session,
+            &commitment,
+            Some((&request_id, &occurrence_ref)),
+        )?;
         let (turn, markdown) = completed_lab_turn_receipt(
             &measured,
             wake_index + 1,
             LabTurnTrigger::ScheduledWake,
             wake_input,
             started.elapsed().as_millis(),
-            turn_observations,
+            EvaluationTurnEvidence {
+                schedule: Some(schedule),
+                tool_observations: turn_observations,
+            },
             outcome,
         )?;
         if let Some(markdown) = markdown {
@@ -1927,6 +2040,39 @@ async fn run_autonomy_lab(
         .filter(|message| message.role == SessionMessageRole::Assistant)
         .count()
         .saturating_sub(1);
+    let candidate_authored_schedule_every_wake = turns.iter().all(|turn| {
+        turn.schedule.as_ref().is_some_and(|schedule| {
+            schedule.candidate_authored
+                && schedule.persisted_before_trigger
+                && (turn.trigger == LabTurnTrigger::Operator || schedule.trigger_bound_to_schedule)
+        })
+    });
+    let observation_refs = turns
+        .iter()
+        .flat_map(|turn| {
+            turn.tool_observations
+                .iter()
+                .map(|observation| observation.observation_ref.as_str())
+        })
+        .collect::<Vec<_>>();
+    let unique_fresh_observation_receipts = observation_refs.len()
+        == observation_refs
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .len()
+        && turns
+            .iter()
+            .filter(|turn| turn.trigger == LabTurnTrigger::ScheduledWake)
+            .all(|turn| {
+                turn.tool_observations.iter().all(|observation| {
+                    observation.observed_at
+                        == turn
+                            .schedule
+                            .as_ref()
+                            .map_or("", |schedule| schedule.scheduled_for.as_str())
+                })
+            });
     let judgment = judge_conversation_trajectory(
         judge.as_ref(),
         &scenario,
@@ -1940,6 +2086,8 @@ async fn run_autonomy_lab(
         && turns.len() == AUTONOMY_WAKE_COUNT + 1
         && unsolicited_follow_up_count == 1
         && fresh_observation_every_wake
+        && candidate_authored_schedule_every_wake
+        && unique_fresh_observation_receipts
         && commitment_closed;
     let internal_judge_advisory_excellent = judgment.is_excellent();
     let latency_slo_passed = turns
@@ -1997,6 +2145,8 @@ async fn run_autonomy_lab(
         unsolicited_follow_up_count,
         synthetic_operator_turn_count: 0,
         fresh_observation_every_wake,
+        candidate_authored_schedule_every_wake,
+        unique_fresh_observation_receipts,
         commitment_closed,
         independent_review_required: true,
         promotion_ready: false,
@@ -2273,6 +2423,7 @@ async fn run_conversation_lab(
                     .lock()
                     .expect("critic repair receipt poisoned")
                     .clone(),
+                schedule: None,
                 tool_observations: observations,
                 response_markdown,
                 terminal_state,
@@ -2442,6 +2593,8 @@ async fn calibrate_blind_judge(model: &ConfiguredModel) -> Result<(), AgentRunti
             },
         ],
         &[EvaluationObservationReceipt {
+            observation_ref: "observation://calibration/poor".into(),
+            observed_at: "2026-07-31T00:00:00Z".into(),
             tool_id: "calibration.observation".into(),
             summary: "No current collection receipt was observed.".into(),
             data: json!({"current_collection_receipt_observed": false}),
@@ -2471,6 +2624,8 @@ async fn calibrate_blind_judge(model: &ConfiguredModel) -> Result<(), AgentRunti
             },
         ],
         &[EvaluationObservationReceipt {
+            observation_ref: "observation://calibration/strong".into(),
+            observed_at: "2026-07-31T00:00:00Z".into(),
             tool_id: "calibration.observation".into(),
             summary: "No current collection receipt was observed; the configured source is readable but not administrable by the assistant.".into(),
             data: json!({
@@ -2623,6 +2778,7 @@ async fn judge_conversation_trajectory(
                 "turn_index": turn.turn_index,
                 "trigger": turn.trigger,
                 "trigger_input": turn.trigger_input,
+                "schedule_provenance": turn.schedule,
                 "assistant_message": turn.response_markdown,
                 "actual_route": turn.actual_route,
                 "actual_lane": turn.actual_lane,
@@ -2780,6 +2936,7 @@ fn blind_review_bundle(
                         "turn_index": turn.turn_index,
                         "trigger": turn.trigger,
                         "trigger_input": turn.trigger_input,
+                        "schedule_provenance": turn.schedule,
                         "assistant_message": turn.response_markdown,
                         "authoritative_observations": turn.tool_observations,
                         "terminal_state": turn.terminal_state,
@@ -3848,7 +4005,10 @@ mod tests {
                 repair_feedback: Vec::new(),
                 presentation_repair_feedback: Vec::new(),
                 critic_repair_feedback: Vec::new(),
+                schedule: None,
                 tool_observations: vec![EvaluationObservationReceipt {
+                    observation_ref: "observation://opaque/one".into(),
+                    observed_at: "2026-07-31T00:00:00Z".into(),
                     tool_id: "source_runtime.inspect".into(),
                     summary: "One source is current.".into(),
                     data: json!({"current": true, "source_count": 1}),
@@ -3919,6 +4079,7 @@ mod tests {
                 repair_feedback: Vec::new(),
                 presentation_repair_feedback: Vec::new(),
                 critic_repair_feedback: Vec::new(),
+                schedule: None,
                 tool_observations: Vec::new(),
                 response_markdown: Some("The recovery condition is not met yet.".into()),
                 terminal_state: "delivered".into(),
@@ -3940,6 +4101,85 @@ mod tests {
         assert_eq!(turn["trigger"], "scheduled_wake");
         assert!(turn.get("user_message").is_none());
         assert_eq!(turn["trigger_input"], "Resume the exact commitment.");
+    }
+
+    #[test]
+    fn schedule_receipt_proves_candidate_authorship_persistence_and_exact_trigger() {
+        let scenario = autonomy_lab_scenario();
+        let mut session =
+            evaluation_session(0, &scenario, "2026-07-31T00:00:00Z", "tenant:provenance");
+        let commitment = Commitment {
+            commitment_ref: "commitment:provenance".into(),
+            summary: "Re-observe the recovery threshold.".into(),
+            owner: WorkOwner::Cerebro,
+            status: CommitmentStatus::Waiting,
+            next_action: Some("Read the current receipt count.".into()),
+            blocker: None,
+            acceptance_criteria: vec!["receipt_count >= 3".into()],
+            artifact_refs: Vec::new(),
+            required_tool_ids: vec!["source_runtime.inspect".into()],
+            wake_at: Some("2026-07-31T00:05:00Z".into()),
+            verification: Some("decision_grade=true".into()),
+        };
+        let mut mission = session.mission.clone();
+        mission.commitments.push(commitment.clone());
+        session.events = vec![
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:00:00Z".into(),
+                event: SessionEvent::DraftProduced {
+                    request_id: "operator:provenance".into(),
+                    draft: cerebro_agent_runtime::session::GroundedDraft {
+                        state: cerebro_agent_runtime::FinalState::Answered,
+                        delivery: DeliveryDisposition::Visible,
+                        message: "I will re-check at the recorded time.".into(),
+                        claims: Vec::new(),
+                        coverage_notice: None,
+                        question: None,
+                        mission,
+                        memory_updates: Vec::new(),
+                        presentation_ready: true,
+                    },
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 2,
+                occurred_at: "2026-07-31T00:00:01Z".into(),
+                event: SessionEvent::DeliveryRecorded {
+                    request_id: "operator:provenance".into(),
+                    transport: "off_slack_lab".into(),
+                    delivery_ref: "delivery:provenance".into(),
+                    payload_digest: "sha256:opaque".into(),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 3,
+                occurred_at: "2026-07-31T00:05:00Z".into(),
+                event: SessionEvent::WakeTriggered {
+                    request_id: "wake:provenance".into(),
+                    commitment_ref: commitment.commitment_ref.clone(),
+                    occurrence_ref: "occurrence:provenance".into(),
+                    scheduled_for: commitment.wake_at.clone().unwrap(),
+                },
+            },
+        ];
+
+        let receipt = evaluation_schedule_receipt(
+            &session,
+            &commitment,
+            Some(("wake:provenance", "occurrence:provenance")),
+        )
+        .unwrap();
+        assert!(receipt.candidate_authored);
+        assert!(receipt.persisted_before_trigger);
+        assert!(receipt.trigger_bound_to_schedule);
+        assert!(receipt.schedule_ref.starts_with("schedule://sha256/"));
     }
 
     #[test]
