@@ -128,7 +128,9 @@ export class CerebroAskClient {
       body: JSON.stringify({
         actor_ref: input.actorRef,
         assessment_at: input.assessmentAt,
-        context_scope_ref: input.contextScopeRef ?? null,
+        ...(input.contextScopeRef === undefined
+          ? {}
+          : { context_scope_ref: input.contextScopeRef }),
         effect_authorizations: (input.effectAuthorizations ?? []).map((authorization) => ({
           actor_ref: input.actorRef,
           approval_ref: authorization.approvalRef,

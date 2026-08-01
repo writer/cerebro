@@ -227,6 +227,7 @@ test("Slack acknowledges a pending Rust response only after transport delivery",
   const result = await client.runAgentTurn({
     actorRef: "slack-user:U-ONE",
     assessmentAt: "2026-07-31T20:00:00Z",
+    contextScopeRef: `slack-context-scope://sha256/${"a".repeat(64)}`,
     question: "Investigate the connector failure.",
     requestId: "request-pending",
     signal: new AbortController().signal,
@@ -234,6 +235,10 @@ test("Slack acknowledges a pending Rust response only after transport delivery",
   });
   assert.equal(result.deliveryAckRequired, true);
   assert.equal(requests.length, 1);
+  assert.equal(
+    (await requests[0]?.clone().json()).context_scope_ref,
+    `slack-context-scope://sha256/${"a".repeat(64)}`,
+  );
 
   await client.recordAgentTurnDelivery({
     deliveredAt: "2026-07-31T20:01:00Z",

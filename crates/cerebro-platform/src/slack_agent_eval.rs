@@ -427,6 +427,8 @@ struct ConversationLabReceipt {
     selected_scenario_count: usize,
     declared_scenario_count: usize,
     targeted_regression_passed: bool,
+    latency_gate_passed: bool,
+    advisory_semantic_gate_passed: bool,
     promotion_ready: bool,
     suite_passed: bool,
     scenarios: Vec<ConversationLabScenarioReceipt>,
@@ -2733,8 +2735,6 @@ async fn run_conversation_lab(
     model: Arc<ConfiguredModel>,
     judge: Arc<ConfiguredModel>,
 ) -> Result<(), Box<dyn Error>> {
-    preflight_judge(judge.as_ref()).await?;
-    calibrate_blind_judge(judge.as_ref()).await?;
     let blinding_salt = env::var("CEREBRO_SLACK_AGENT_EVAL_BLINDING_SALT")?;
     if blinding_salt.len() < 16 {
         return Err(
@@ -2751,6 +2751,8 @@ async fn run_conversation_lab(
     {
         return Err("external holdouts require the session_v2 runtime".into());
     }
+    preflight_judge(judge.as_ref()).await?;
+    calibrate_blind_judge(judge.as_ref()).await?;
     let use_session_v2 = runtime == ConversationRuntime::SessionV2;
     let declared_scenario_count = selection.declared_scenario_count;
     let selected_scenario_count = selection.scenarios.len();
@@ -2913,17 +2915,22 @@ async fn run_conversation_lab(
                     role: ConversationRole::Assistant,
                     content: markdown.clone(),
                 });
-                Some(
-                    simulate_operator(
-                        judge.as_ref(),
-                        &scenario,
-                        turn_index + 1,
-                        &transcript,
-                        &observations,
-                        &interaction_kinds,
-                    )
-                    .await?,
+                match simulate_operator(
+                    judge.as_ref(),
+                    &scenario,
+                    turn_index + 1,
+                    &transcript,
+                    &observations,
+                    &interaction_kinds,
                 )
+                .await
+                {
+                    Ok(decision) => Some(decision),
+                    Err(_) => {
+                        terminal_failure = true;
+                        None
+                    }
+                }
             } else {
                 terminal_failure = true;
                 None
@@ -3076,7 +3083,16 @@ async fn run_conversation_lab(
     }
 
     let targeted_regression_passed = receipts.iter().all(|receipt| receipt.review_ready);
-    let suite_passed = full_suite && targeted_regression_passed;
+    let latency_gate_passed = receipts.iter().all(|receipt| receipt.latency_slo_passed);
+    let advisory_semantic_gate_passed = receipts
+        .iter()
+        .all(|receipt| receipt.internal_judge_advisory_excellent);
+    let suite_passed = conversation_suite_passed(
+        full_suite,
+        targeted_regression_passed,
+        latency_gate_passed,
+        advisory_semantic_gate_passed,
+    );
     let blind_review_bundle = blind_review_bundle(&selection.source, &receipts);
     let blind_review_bytes = serde_json::to_vec_pretty(&blind_review_bundle)?;
     validate_blind_review_bytes(
@@ -3088,7 +3104,7 @@ async fn run_conversation_lab(
         fs::write(path, &blind_review_bytes)?;
     }
     let receipt = ConversationLabReceipt {
-        schema_version: "cerebro-rust-slack-agent-conversation-lab/v5",
+        schema_version: "cerebro-rust-slack-agent-conversation-lab/v6",
         commit_sha,
         evaluated_at,
         provider: "aws_bedrock",
@@ -3110,16 +3126,27 @@ async fn run_conversation_lab(
         selected_scenario_count,
         declared_scenario_count,
         targeted_regression_passed,
+        latency_gate_passed,
+        advisory_semantic_gate_passed,
         promotion_ready: false,
         suite_passed,
         scenarios: receipts,
     };
     println!("{}", serde_json::to_string_pretty(&receipt)?);
-    if targeted_regression_passed {
+    if suite_passed {
         Ok(())
     } else {
-        Err("the exact-head Rust conversation lab did not meet its trajectory goal".into())
+        Err("the exact-head Rust conversation lab did not meet every automated quality gate".into())
     }
+}
+
+fn conversation_suite_passed(
+    full_suite: bool,
+    targeted_regression_passed: bool,
+    latency_gate_passed: bool,
+    advisory_semantic_gate_passed: bool,
+) -> bool {
+    full_suite && targeted_regression_passed && latency_gate_passed && advisory_semantic_gate_passed
 }
 
 async fn preflight_judge(model: &ConfiguredModel) -> Result<(), AgentRuntimeError> {
@@ -4616,6 +4643,15 @@ mod tests {
         assert!(autonomy_suite_passed(true, true));
         assert!(!autonomy_suite_passed(true, false));
         assert!(!autonomy_suite_passed(false, true));
+    }
+
+    #[test]
+    fn conversation_suite_requires_every_automated_quality_gate() {
+        assert!(conversation_suite_passed(true, true, true, true));
+        assert!(!conversation_suite_passed(false, true, true, true));
+        assert!(!conversation_suite_passed(true, false, true, true));
+        assert!(!conversation_suite_passed(true, true, false, true));
+        assert!(!conversation_suite_passed(true, true, true, false));
     }
 
     #[test]
