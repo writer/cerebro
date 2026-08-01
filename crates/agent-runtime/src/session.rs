@@ -304,6 +304,10 @@ pub enum SessionEvent {
     ToolInvoked {
         observation: ToolObservation,
     },
+    EffectStarted {
+        call: ToolCall,
+        descriptor: ToolDescriptor,
+    },
     DraftProduced {
         request_id: String,
         draft: GroundedDraft,
@@ -882,6 +886,23 @@ pub async fn run_session_turn_recorded(
                         }
                     }
                 }
+                for call in &calls {
+                    if let Some(descriptor) = descriptors.get(&call.tool_id)
+                        && descriptor.authority_class == ToolAuthorityClass::Actuate
+                    {
+                        emit_event(
+                            &session,
+                            &input.assessment_at,
+                            &mut events,
+                            SessionEvent::EffectStarted {
+                                call: call.clone(),
+                                descriptor: descriptor.clone(),
+                            },
+                            journal,
+                        )
+                        .await?;
+                    }
+                }
                 let results = join_all(
                     calls
                         .iter()
@@ -889,14 +910,22 @@ pub async fn run_session_turn_recorded(
                 )
                 .await;
                 for (call, result) in calls.into_iter().zip(results) {
-                    let result = match result {
-                        Ok(result) => result,
-                        Err(_) => failed_tool_result(&session, &input, &call, assessment_at)?,
-                    };
                     let descriptor = descriptors
                         .get(&call.tool_id)
                         .expect("tool descriptor was validated")
                         .clone();
+                    let result = match result {
+                        Ok(result) => result,
+                        Err(_) if descriptor.authority_class == ToolAuthorityClass::Actuate => {
+                            uncertain_effect_result(
+                                &session.session_ref,
+                                &input.request_id,
+                                &call,
+                                &input.assessment_at,
+                            )
+                        }
+                        Err(_) => failed_tool_result(&session, &input, &call, assessment_at)?,
+                    };
                     let observation = ToolObservation {
                         sequence: observations.len() + 1,
                         call,
@@ -932,7 +961,7 @@ pub async fn run_session_turn_recorded(
                             continue;
                         }
                     };
-                validate_effect_closure(&observations, assessment_at)?;
+                validate_effect_closure(&observations, &draft, assessment_at)?;
                 let review = model
                     .review_message(ClaimReviewTurn {
                         session: session.clone(),
@@ -1038,16 +1067,32 @@ fn resume_turn_state(
     }
     let mut plan = None;
     let mut observations = Vec::new();
+    let mut pending_effects = BTreeMap::new();
     for event in &session.events[started_index..] {
         match &event.event {
             SessionEvent::PlanEstablished { plan: established } => {
                 plan = Some(established.clone());
             }
             SessionEvent::ToolInvoked { observation } => {
+                pending_effects.remove(&observation.call.call_id);
                 observations.push(observation.clone());
+            }
+            SessionEvent::EffectStarted { call, descriptor } => {
+                pending_effects.insert(
+                    call.call_id.clone(),
+                    (call.clone(), descriptor.clone(), event.occurred_at.clone()),
+                );
             }
             _ => {}
         }
+    }
+    for (_, (call, descriptor, occurred_at)) in pending_effects {
+        observations.push(ToolObservation {
+            sequence: observations.len() + 1,
+            result: uncertain_effect_result(&session.session_ref, request_id, &call, &occurred_at),
+            call,
+            descriptor,
+        });
     }
     (true, plan, observations)
 }
@@ -1162,6 +1207,7 @@ fn has_effect_authorization(
 
 fn validate_effect_closure(
     observations: &[ToolObservation],
+    draft: &GroundedDraft,
     assessment_at: OffsetDateTime,
 ) -> Result<(), AgentRuntimeError> {
     for (effect_index, effect) in observations.iter().enumerate().filter(|(_, observation)| {
@@ -1169,6 +1215,17 @@ fn validate_effect_closure(
     }) {
         if effect.result.state == ToolResultState::Failed {
             continue;
+        }
+        if effect.result.state == ToolResultState::OutcomeUnknown {
+            if matches!(draft.state, FinalState::Partial | FinalState::Blocked)
+                && draft
+                    .coverage_notice
+                    .as_deref()
+                    .is_some_and(|notice| draft.message.contains(notice))
+            {
+                continue;
+            }
+            return Err(AgentRuntimeError::UnverifiedEffect);
         }
         let targets = target_refs_from_input(&effect.call.input);
         if targets.is_empty() {
@@ -1327,6 +1384,49 @@ fn failed_tool_result(
             "The capability invocation failed; other bounded tools remain available.".into(),
         ),
     })
+}
+
+fn uncertain_effect_result(
+    session_ref: &str,
+    request_id: &str,
+    call: &ToolCall,
+    observed_at: &str,
+) -> ToolResult {
+    let evidence_ref = format!(
+        "evidence://agent-effect-outcome/{session_ref}/{request_id}/{}",
+        call.call_id
+    );
+    let summary = format!(
+        "The {} effect was durably started, but its provider outcome was not recorded; it will not be invoked again automatically.",
+        call.tool_id
+    );
+    ToolResult {
+        state: ToolResultState::OutcomeUnknown,
+        summary: summary.clone(),
+        data: Value::Null,
+        evidence: vec![crate::EvidenceRecord {
+            evidence_ref: evidence_ref.clone(),
+            statement: summary.clone(),
+            observed_at: observed_at.to_owned(),
+            fresh_until: None,
+            complete: false,
+            atoms: vec![EvidenceAtom {
+                atom_ref: format!("{evidence_ref}#tool-outcome"),
+                subject_ref: None,
+                assertion: EvidenceAssertion::ToolOutcome {
+                    state: ToolResultState::OutcomeUnknown,
+                    summary,
+                },
+                observed_at: observed_at.to_owned(),
+                fresh_until: None,
+                complete: true,
+            }],
+        }],
+        blocker: Some(
+            "Reconcile the provider state with a fresh observation before any further effect."
+                .into(),
+        ),
+    }
 }
 
 fn validate_message_review(
@@ -1858,7 +1958,13 @@ fn bounded(value: &str, max_bytes: usize) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::VecDeque, sync::Mutex};
+    use std::{
+        collections::VecDeque,
+        sync::{
+            Mutex,
+            atomic::{AtomicUsize, Ordering},
+        },
+    };
 
     use super::*;
     use crate::{ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult};
@@ -2066,6 +2172,30 @@ mod tests {
         }
     }
 
+    struct CountingEffectTools {
+        invocations: AtomicUsize,
+        descriptor: ToolDescriptor,
+    }
+
+    #[async_trait]
+    impl SessionTools for CountingEffectTools {
+        fn catalog(&self) -> Vec<ToolDescriptor> {
+            vec![self.descriptor.clone()]
+        }
+
+        async fn invoke(
+            &self,
+            _session: &AgentSession,
+            _input: &SessionTurnInput,
+            _call: &ToolCall,
+        ) -> Result<ToolResult, AgentRuntimeError> {
+            self.invocations.fetch_add(1, Ordering::SeqCst);
+            Err(AgentRuntimeError::ToolUnavailable(
+                "the resumed effect must not run again".into(),
+            ))
+        }
+    }
+
     #[test]
     fn validates_a_conversational_provenance_bound_answer() {
         let validated = validate_grounded_draft(
@@ -2224,6 +2354,7 @@ mod tests {
         assert!(
             validate_effect_closure(
                 &[effect.clone(), verification.clone()],
+                &draft(),
                 OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
             )
             .is_ok()
@@ -2232,6 +2363,7 @@ mod tests {
         assert!(
             validate_effect_closure(
                 &[effect, verification],
+                &draft(),
                 OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
             )
             .is_err()
@@ -2404,5 +2536,77 @@ mod tests {
         )
         .await;
         assert!(matches!(result, Err(AgentRuntimeError::InvalidToolCall(_))));
+    }
+
+    #[tokio::test]
+    async fn a_started_effect_with_no_result_resumes_unknown_and_is_not_reinvoked() {
+        let call = ToolCall {
+            call_id: "call:effect-1".into(),
+            tool_id: "connector.update".into(),
+            purpose: "Update connector alpha.".into(),
+            input: json!({"connector_ref": "connector:alpha", "enabled": true}),
+        };
+        let descriptor = ToolDescriptor {
+            tool_id: call.tool_id.clone(),
+            title: "Connector update".into(),
+            summary: "Updates one connector.".into(),
+            authority_class: ToolAuthorityClass::Actuate,
+            effect_class: ToolEffectClass::Write,
+            input_schema_ref: "schema:input".into(),
+            result_schema_ref: "schema:result".into(),
+        };
+        let mut resumed_session = session();
+        resumed_session.events = vec![
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: resumed_session.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::TurnStarted {
+                    request_id: "request:1".into(),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: resumed_session.session_ref.clone(),
+                sequence: 2,
+                occurred_at: "2026-07-31T00:01:01Z".into(),
+                event: SessionEvent::PlanEstablished { plan: plan() },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: resumed_session.session_ref.clone(),
+                sequence: 3,
+                occurred_at: "2026-07-31T00:01:02Z".into(),
+                event: SessionEvent::EffectStarted {
+                    call: call.clone(),
+                    descriptor: descriptor.clone(),
+                },
+            },
+        ];
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([SessionModelDecision::InvokeTools {
+                calls: vec![call],
+            }])),
+        };
+        let tools = CountingEffectTools {
+            invocations: AtomicUsize::new(0),
+            descriptor,
+        };
+
+        let result = run_session_turn(
+            &model,
+            &tools,
+            resumed_session,
+            SessionTurnInput {
+                request_id: "request:1".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:02:00Z".into(),
+            },
+        )
+        .await;
+
+        assert!(matches!(result, Err(AgentRuntimeError::InvalidToolCall(_))));
+        assert_eq!(tools.invocations.load(Ordering::SeqCst), 0);
     }
 }
