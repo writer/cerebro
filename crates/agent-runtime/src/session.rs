@@ -28,8 +28,8 @@ const MAX_COMMITMENTS: usize = 16;
 const MAX_OPEN_LOOPS: usize = 16;
 const MAX_VISIBLE_CLAIMS: usize = 32;
 const MAX_SESSION_STEPS: usize = 48;
-const MAX_MODEL_REPAIRS: usize = 6;
-const MAX_CRITIC_REPAIRS: usize = 3;
+const MAX_MODEL_REPAIRS: usize = 10;
+const MAX_CRITIC_REPAIRS: usize = 5;
 const MAX_DELIVERY_MESSAGE_BYTES: usize = 3_500;
 const MAX_MESSAGE_BYTES: usize = 16 * 1024;
 const MAX_TEXT_BYTES: usize = 4 * 1024;
@@ -2144,15 +2144,16 @@ fn normalize_redundant_baseline_alerts(
 }
 
 fn normalize_coverage_notice(draft: &mut GroundedDraft, observations: &[ToolObservation]) {
-    if draft
-        .coverage_notice
-        .as_deref()
-        .is_some_and(|notice| !notice.trim().is_empty())
-        || !matches!(draft.state, FinalState::Partial | FinalState::Blocked)
-    {
+    if !matches!(draft.state, FinalState::Partial | FinalState::Blocked) {
         return;
     }
-    let notice = observations.iter().rev().find_map(|observation| {
+    let existing = draft
+        .coverage_notice
+        .as_deref()
+        .map(str::trim)
+        .filter(|notice| !notice.is_empty())
+        .map(str::to_owned);
+    let generated = observations.iter().rev().find_map(|observation| {
         let incomplete = observation.result.state != ToolResultState::Succeeded
             || observation.result.blocker.is_some()
             || !observation
@@ -2161,17 +2162,40 @@ fn normalize_coverage_notice(draft: &mut GroundedDraft, observations: &[ToolObse
                 .iter()
                 .any(|evidence| evidence.complete);
         incomplete.then(|| {
-            observation
+            let detail = observation
                 .result
                 .blocker
                 .as_deref()
                 .unwrap_or(&observation.result.summary)
                 .chars()
-                .take(MAX_TEXT_BYTES.min(800))
-                .collect::<String>()
+                .take(800)
+                .collect::<String>();
+            format!("Coverage gap: {}", detail.trim())
         })
     });
-    draft.coverage_notice = notice;
+    let notice = existing.or(generated).unwrap_or_else(|| match draft.state {
+        FinalState::Partial => {
+            "Coverage gap: The available observations do not establish every conclusion requested in this turn."
+                .into()
+        }
+        FinalState::Blocked => {
+            "Coverage gap: The required authoritative observation was not available for this turn."
+                .into()
+        }
+        _ => unreachable!("coverage normalization is restricted to partial and blocked drafts"),
+    });
+    draft.coverage_notice = Some(notice.clone());
+    if !draft.message.contains(&notice) {
+        let visible_notice = format!("\n\n{notice}");
+        draft.message.push_str(&visible_notice);
+        draft.claims.push(GroundedClaim {
+            claim_ref: format!("claim:normalized-coverage:{}", draft.claims.len() + 1),
+            planned_claim_ref: None,
+            text: visible_notice,
+            required_for_answer: true,
+            content: ClaimContent::StableExplanation,
+        });
+    }
 }
 
 fn collect_false_boolean_pointers(value: &Value, prefix: &str, output: &mut Vec<String>) {
@@ -5125,7 +5149,47 @@ mod tests {
 
         assert_eq!(
             partial.coverage_notice.as_deref(),
-            Some("The source runtime returned a bounded read failure.")
+            Some("Coverage gap: The source runtime returned a bounded read failure.")
+        );
+        assert!(
+            partial
+                .message
+                .ends_with("\n\nCoverage gap: The source runtime returned a bounded read failure.")
+        );
+        assert_eq!(
+            partial
+                .claims
+                .iter()
+                .map(|claim| claim.text.as_str())
+                .collect::<String>(),
+            partial.message
+        );
+    }
+
+    #[test]
+    fn partial_draft_with_successful_reads_gets_a_visible_generic_coverage_boundary() {
+        let mut partial = draft();
+        partial.state = FinalState::Partial;
+        partial.coverage_notice = None;
+
+        normalize_coverage_notice(
+            &mut partial,
+            &[observation(true, Some("2026-07-31T00:06:00Z"))],
+        );
+
+        let notice = partial
+            .coverage_notice
+            .as_deref()
+            .expect("partial drafts require a normalized notice");
+        assert!(notice.contains("do not establish every conclusion"));
+        assert!(partial.message.contains(notice));
+        assert_eq!(
+            partial
+                .claims
+                .iter()
+                .map(|claim| claim.text.as_str())
+                .collect::<String>(),
+            partial.message
         );
     }
 
