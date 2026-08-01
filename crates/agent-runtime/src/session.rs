@@ -442,12 +442,29 @@ pub struct SessionModelTurn {
 #[serde(deny_unknown_fields)]
 pub struct CommitmentCheckpoint {
     pub commitment_ref: String,
+    pub source_request_id: String,
     pub recorded_at: String,
+    pub delivery_ref: String,
+    pub payload_digest: String,
+    pub trigger_occurrence_ref: Option<String>,
     pub delivery: DeliveryDisposition,
     pub state: FinalState,
     pub summary: String,
+    pub observations: Vec<CommitmentCheckpointObservation>,
     pub commitment_status: CommitmentStatus,
     pub next_wake_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommitmentCheckpointObservation {
+    pub tool_id: String,
+    pub input_digest: String,
+    pub observed_at: Option<String>,
+    pub state: ToolResultState,
+    pub complete: bool,
+    pub summary: String,
+    pub data: Value,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1777,13 +1794,14 @@ fn normalize_redundant_baseline_alerts(
             .collect::<Vec<_>>();
         policy.alert_any.retain(|alert| {
             let baseline_matches = observation_condition_matches(alert, observations);
-            let acceptance_replaces_baseline = acceptance_targets.iter().any(
-                |(tool_id, data_pointer, equals)| {
-                    tool_id == &alert.tool_id
-                        && data_pointer == &alert.data_pointer
-                        && equals != &alert.equals
-                },
-            );
+            let acceptance_replaces_baseline =
+                acceptance_targets
+                    .iter()
+                    .any(|(tool_id, data_pointer, equals)| {
+                        tool_id == &alert.tool_id
+                            && data_pointer == &alert.data_pointer
+                            && equals != &alert.equals
+                    });
             !(baseline_matches && acceptance_replaces_baseline)
         });
     }
@@ -1931,44 +1949,104 @@ fn prior_commitment_checkpoint(
     let SessionTurnTrigger::Wake { commitment_ref, .. } = trigger else {
         return None;
     };
-    session.events.iter().enumerate().rev().find_map(|(index, record)| {
-        let SessionEvent::DraftProduced { request_id, draft } = &record.event else {
-            return None;
-        };
-        let commitment = draft
-            .mission
-            .commitments
-            .iter()
-            .find(|candidate| candidate.commitment_ref == *commitment_ref)?;
-        let later_events = &session.events[index + 1..];
-        later_events.iter().find(|candidate| {
-            matches!(
-                &candidate.event,
-                SessionEvent::DeliveryRecorded {
-                    request_id: delivered_request,
-                    ..
-                } if delivered_request == request_id
-            )
-        })?;
-        let completion = later_events.iter().find(|candidate| {
-            matches!(
-                &candidate.event,
-                SessionEvent::TurnCompleted {
-                    request_id: completed_request,
-                    ..
-                } if completed_request == request_id
-            )
-        })?;
-        Some(CommitmentCheckpoint {
-            commitment_ref: commitment_ref.clone(),
-            recorded_at: completion.occurred_at.clone(),
-            delivery: draft.delivery,
-            state: draft.state,
-            summary: draft.message.clone(),
-            commitment_status: commitment.status,
-            next_wake_at: commitment.wake_at.clone(),
+    session
+        .events
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(index, record)| {
+            let SessionEvent::DraftProduced { request_id, draft } = &record.event else {
+                return None;
+            };
+            let commitment = draft
+                .mission
+                .commitments
+                .iter()
+                .find(|candidate| candidate.commitment_ref == *commitment_ref)?;
+            let later_events = &session.events[index + 1..];
+            let delivery = later_events
+                .iter()
+                .find_map(|candidate| match &candidate.event {
+                    SessionEvent::DeliveryRecorded {
+                        request_id: delivered_request,
+                        delivery_ref,
+                        payload_digest,
+                        ..
+                    } if delivered_request == request_id => {
+                        Some((delivery_ref.clone(), payload_digest.clone()))
+                    }
+                    _ => None,
+                })?;
+            let completion = later_events.iter().find(|candidate| {
+                matches!(
+                    &candidate.event,
+                    SessionEvent::TurnCompleted {
+                        request_id: completed_request,
+                        ..
+                    } if completed_request == request_id
+                )
+            })?;
+            let turn_start = session.events[..index].iter().rposition(|candidate| {
+                matches!(
+                    &candidate.event,
+                    SessionEvent::TurnStarted {
+                        request_id: started_request,
+                    } if started_request == request_id
+                )
+            })?;
+            let observations = session.events[turn_start + 1..index]
+                .iter()
+                .filter_map(|candidate| match &candidate.event {
+                    SessionEvent::ToolInvoked { observation } => {
+                        Some(CommitmentCheckpointObservation {
+                            tool_id: observation.call.tool_id.clone(),
+                            input_digest: observation.call.input_digest(),
+                            observed_at: observation
+                                .result
+                                .evidence
+                                .iter()
+                                .map(|evidence| evidence.observed_at.clone())
+                                .max(),
+                            state: observation.result.state,
+                            complete: observation
+                                .result
+                                .evidence
+                                .iter()
+                                .any(|evidence| evidence.complete),
+                            summary: observation.result.summary.clone(),
+                            data: observation.result.data.clone(),
+                        })
+                    }
+                    _ => None,
+                })
+                .collect();
+            let trigger_occurrence_ref =
+                session.events[..index]
+                    .iter()
+                    .rev()
+                    .find_map(|candidate| match &candidate.event {
+                        SessionEvent::WakeTriggered {
+                            request_id: triggered_request,
+                            occurrence_ref,
+                            ..
+                        } if triggered_request == request_id => Some(occurrence_ref.clone()),
+                        _ => None,
+                    });
+            Some(CommitmentCheckpoint {
+                commitment_ref: commitment_ref.clone(),
+                source_request_id: request_id.clone(),
+                recorded_at: completion.occurred_at.clone(),
+                delivery_ref: delivery.0,
+                payload_digest: delivery.1,
+                trigger_occurrence_ref,
+                delivery: draft.delivery,
+                state: draft.state,
+                summary: draft.message.clone(),
+                observations,
+                commitment_status: commitment.status,
+                next_wake_at: commitment.wake_at.clone(),
+            })
         })
-    })
 }
 
 fn record_operating_repair(
@@ -3998,6 +4076,24 @@ mod tests {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: awakened.session_ref.clone(),
                 sequence: 1,
+                occurred_at: "2026-07-31T00:00:59Z".into(),
+                event: SessionEvent::TurnStarted {
+                    request_id: "request:initiating-operator-turn".into(),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 2,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::ToolInvoked {
+                    observation: observation(true, Some("2026-07-31T00:06:00Z")),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 3,
                 occurred_at: "2026-07-31T00:01:00Z".into(),
                 event: SessionEvent::DraftProduced {
                     request_id: "request:initiating-operator-turn".into(),
@@ -4007,7 +4103,7 @@ mod tests {
             SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: awakened.session_ref.clone(),
-                sequence: 2,
+                sequence: 4,
                 occurred_at: "2026-07-31T00:01:01Z".into(),
                 event: SessionEvent::DeliveryRecorded {
                     request_id: "request:initiating-operator-turn".into(),
@@ -4019,7 +4115,7 @@ mod tests {
             SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: awakened.session_ref.clone(),
-                sequence: 3,
+                sequence: 5,
                 occurred_at: "2026-07-31T00:01:02Z".into(),
                 event: SessionEvent::TurnCompleted {
                     request_id: "request:initiating-operator-turn".into(),
@@ -4041,6 +4137,13 @@ mod tests {
             "Two of three receipts are current; checking again."
         );
         assert_eq!(checkpoint.recorded_at, "2026-07-31T00:01:02Z");
+        assert_eq!(
+            checkpoint.source_request_id,
+            "request:initiating-operator-turn"
+        );
+        assert_eq!(checkpoint.delivery_ref, "occurrence:initiating-turn");
+        assert_eq!(checkpoint.observations.len(), 1);
+        assert_eq!(checkpoint.observations[0].tool_id, "connector.read");
         assert!(prior_commitment_checkpoint(&awakened, &SessionTurnTrigger::Operator).is_none());
     }
 
@@ -4049,25 +4152,38 @@ mod tests {
         let mut awakened = session();
         let mut prior_draft = draft();
         prior_draft.mission.commitments.push(scheduled_commitment());
-        awakened.events = vec![SessionEventRecord {
-            schema_version: AGENT_SESSION_EVENT_V2.into(),
-            session_ref: awakened.session_ref.clone(),
-            sequence: 1,
-            occurred_at: "2026-07-31T00:01:00Z".into(),
-            event: SessionEvent::DraftProduced {
-                request_id: "request:unfinished".into(),
-                draft: prior_draft,
+        awakened.events = vec![
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:00:59Z".into(),
+                event: SessionEvent::TurnStarted {
+                    request_id: "request:unfinished".into(),
+                },
             },
-        }];
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 2,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::DraftProduced {
+                    request_id: "request:unfinished".into(),
+                    draft: prior_draft,
+                },
+            },
+        ];
 
-        assert!(prior_commitment_checkpoint(
-            &awakened,
-            &SessionTurnTrigger::Wake {
-                commitment_ref: "commitment:scheduled-check".into(),
-                occurrence_ref: "occurrence:next-wake".into(),
-            },
-        )
-        .is_none());
+        assert!(
+            prior_commitment_checkpoint(
+                &awakened,
+                &SessionTurnTrigger::Wake {
+                    commitment_ref: "commitment:scheduled-check".into(),
+                    occurrence_ref: "occurrence:next-wake".into(),
+                },
+            )
+            .is_none()
+        );
     }
 
     #[tokio::test]
