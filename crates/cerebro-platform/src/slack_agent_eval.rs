@@ -4633,6 +4633,7 @@ mod tests {
             acceptance_criteria: vec!["receipt_count >= 3".into()],
             artifact_refs: Vec::new(),
             required_tool_ids: vec!["source_runtime.inspect".into()],
+            attention_policy: None,
             wake_at: Some("2026-07-31T00:05:00Z".into()),
             verification: Some("decision_grade=true".into()),
         };

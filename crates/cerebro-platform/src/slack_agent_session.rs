@@ -1003,6 +1003,7 @@ mod tests {
             acceptance_criteria: vec!["A current state is observed.".into()],
             artifact_refs: Vec::new(),
             required_tool_ids: Vec::new(),
+            attention_policy: None,
             wake_at: Some("2020-01-01T00:00:00Z".into()),
             verification: Some("The current observation is recorded.".into()),
         };

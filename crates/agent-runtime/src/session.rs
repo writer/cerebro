@@ -95,8 +95,25 @@ pub struct Commitment {
     pub artifact_refs: Vec<String>,
     #[serde(default)]
     pub required_tool_ids: Vec<String>,
+    #[serde(default)]
+    pub attention_policy: Option<CommitmentAttentionPolicy>,
     pub wake_at: Option<String>,
     pub verification: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommitmentAttentionPolicy {
+    pub acceptance_all: Vec<ObservationCondition>,
+    pub alert_any: Vec<ObservationCondition>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservationCondition {
+    pub tool_id: String,
+    pub data_pointer: String,
+    pub equals: Value,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1450,17 +1467,35 @@ fn validate_wake_completion(
         .required_tool_ids
         .iter()
         .filter(|tool_id| {
-            !observations.iter().any(|observation| {
-                observation.call.tool_id == **tool_id
-                    && observation_is_complete_and_fresh(observation, assessment_at)
-            })
+            !observations
+                .iter()
+                .any(|observation| observation.call.tool_id.as_str() == tool_id.as_str())
         })
         .cloned()
         .collect::<Vec<_>>();
     if !missing_required_tools.is_empty() {
         return Err(AgentRuntimeError::InvalidFinal(format!(
-            "scheduled wake requires successful, complete, fresh observations from: {}",
+            "scheduled wake must invoke its required tools before finishing: {}",
             missing_required_tools.join(", ")
+        )));
+    }
+    let unhealthy_required_tools = current
+        .required_tool_ids
+        .iter()
+        .filter(|tool_id| {
+            !observations.iter().any(|observation| {
+                observation.call.tool_id.as_str() == tool_id.as_str()
+                    && observation_is_complete_and_fresh(observation, assessment_at)
+            })
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if !unhealthy_required_tools.is_empty()
+        && (draft.delivery != DeliveryDisposition::Visible || draft.state == FinalState::Answered)
+    {
+        return Err(AgentRuntimeError::InvalidFinal(format!(
+            "failed, incomplete, or stale required observations must produce a visible partial or blocked update: {}",
+            unhealthy_required_tools.join(", ")
         )));
     }
     let next = draft
@@ -1473,13 +1508,39 @@ fn validate_wake_completion(
                 "a wake must close or explicitly reschedule its exact commitment".into(),
             )
         })?;
-    if matches!(
+    if next.required_tool_ids != current.required_tool_ids
+        || next.attention_policy != current.attention_policy
+        || next.acceptance_criteria != current.acceptance_criteria
+        || next.verification != current.verification
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "a scheduled wake cannot rewrite its required tools or typed attention policy".into(),
+        ));
+    }
+    let accepted = unhealthy_required_tools.is_empty()
+        && current.attention_policy.as_ref().is_some_and(|policy| {
+            !policy.acceptance_all.is_empty()
+                && policy
+                    .acceptance_all
+                    .iter()
+                    .all(|condition| observation_condition_matches(condition, observations))
+        });
+    let alert = !accepted
+        && current.attention_policy.as_ref().is_some_and(|policy| {
+            policy
+                .alert_any
+                .iter()
+                .any(|condition| observation_condition_matches(condition, observations))
+        });
+    let closed = matches!(
         next.status,
         CommitmentStatus::Completed | CommitmentStatus::Cancelled
-    ) {
-        if draft.delivery != DeliveryDisposition::Visible {
+    );
+    if accepted {
+        if !closed || draft.delivery != DeliveryDisposition::Visible {
             return Err(AgentRuntimeError::InvalidFinal(
-                "a wake that closes its commitment must notify the operator".into(),
+                "the typed acceptance condition is satisfied; close the commitment and notify the operator"
+                    .into(),
             ));
         }
         if next.wake_at.is_some() {
@@ -1488,6 +1549,24 @@ fn validate_wake_completion(
             ));
         }
         return Ok(());
+    }
+    if closed {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "the commitment cannot close before its typed acceptance condition is satisfied".into(),
+        ));
+    }
+    if unhealthy_required_tools.is_empty() {
+        let required_delivery = if alert {
+            DeliveryDisposition::Visible
+        } else {
+            DeliveryDisposition::Silent
+        };
+        if draft.delivery != required_delivery {
+            return Err(AgentRuntimeError::InvalidFinal(format!(
+                "the runtime attention policy requires {:?} delivery for this nonterminal wake",
+                required_delivery
+            )));
+        }
     }
     let next_wake = next
         .wake_at
@@ -1504,6 +1583,17 @@ fn validate_wake_completion(
         ));
     }
     Ok(())
+}
+
+fn observation_condition_matches(
+    condition: &ObservationCondition,
+    observations: &[ToolObservation],
+) -> bool {
+    observations.iter().any(|observation| {
+        observation.call.tool_id == condition.tool_id
+            && observation.result.state == ToolResultState::Succeeded
+            && observation.result.data.pointer(&condition.data_pointer) == Some(&condition.equals)
+    })
 }
 
 fn validate_commitment_baselines(
@@ -1527,6 +1617,7 @@ fn validate_commitment_baselines(
                 .is_none_or(|current| {
                     current.required_tool_ids != commitment.required_tool_ids
                         || current.acceptance_criteria != commitment.acceptance_criteria
+                        || current.attention_policy != commitment.attention_policy
                         || current.verification != commitment.verification
                 })
     }) {
@@ -2613,6 +2704,44 @@ fn validate_mission(mission: &MissionState) -> Result<(), AgentRuntimeError> {
                 "unfinished Cerebro commitments require an exact wake time, next action, acceptance criteria, and verification condition".into(),
             ));
         }
+        if commitment.owner == WorkOwner::Cerebro
+            && !matches!(
+                commitment.status,
+                CommitmentStatus::Completed | CommitmentStatus::Cancelled
+            )
+            && !commitment.required_tool_ids.is_empty()
+        {
+            let policy = commitment.attention_policy.as_ref().ok_or_else(|| {
+                AgentRuntimeError::InvalidFinal(
+                    "unfinished observed commitments require a typed attention policy".into(),
+                )
+            })?;
+            if policy.acceptance_all.is_empty()
+                || policy
+                    .acceptance_all
+                    .iter()
+                    .chain(&policy.alert_any)
+                    .any(|condition| {
+                        !commitment.required_tool_ids.contains(&condition.tool_id)
+                            || !bounded(&condition.tool_id, MAX_TEXT_BYTES)
+                            || !condition.data_pointer.starts_with('/')
+                            || !bounded(&condition.data_pointer, MAX_TEXT_BYTES)
+                            || !matches!(
+                                &condition.equals,
+                                Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_)
+                            )
+                            || condition
+                                .equals
+                                .as_str()
+                                .is_some_and(|value| !bounded(value, MAX_TEXT_BYTES))
+                    })
+            {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "typed attention conditions must reference required tools and bounded JSON pointers"
+                        .into(),
+                ));
+            }
+        }
         if commitment
             .wake_at
             .as_deref()
@@ -2786,6 +2915,14 @@ mod tests {
             acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
             artifact_refs: Vec::new(),
             required_tool_ids: vec!["connector.read".into()],
+            attention_policy: Some(CommitmentAttentionPolicy {
+                acceptance_all: vec![ObservationCondition {
+                    tool_id: "connector.read".into(),
+                    data_pointer: "/status".into(),
+                    equals: json!("healthy"),
+                }],
+                alert_any: Vec::new(),
+            }),
             wake_at: Some("2026-07-31T00:00:30Z".into()),
             verification: Some("A current connector observation closes the check.".into()),
         }
@@ -3040,6 +3177,7 @@ mod tests {
             acceptance_criteria: vec!["Cause established.".into()],
             artifact_refs: Vec::new(),
             required_tool_ids: Vec::new(),
+            attention_policy: None,
             wake_at: None,
             verification: None,
         });
@@ -3775,7 +3913,8 @@ mod tests {
             commitment_ref: "commitment:scheduled-check".into(),
             occurrence_ref: "occurrence:delivery-boundary".into(),
         };
-        let current = observation(true, Some("2026-07-31T00:06:00Z"));
+        let mut current = observation(true, Some("2026-07-31T00:06:00Z"));
+        current.result.data = json!({"status": "recovering"});
 
         let mut rescheduled = draft();
         rescheduled.delivery = DeliveryDisposition::Silent;
@@ -3798,7 +3937,67 @@ mod tests {
         let error =
             validate_wake_completion(&awakened, &rescheduled, &trigger, assessment_at, &[current])
                 .unwrap_err();
-        assert!(error.to_string().contains("must notify the operator"));
+        assert!(error.to_string().contains("cannot close before"));
+    }
+
+    #[test]
+    fn runtime_policy_forces_visible_regression_and_acceptance() {
+        let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut awakened = session();
+        let mut commitment = scheduled_commitment();
+        commitment
+            .attention_policy
+            .as_mut()
+            .unwrap()
+            .alert_any
+            .push(ObservationCondition {
+                tool_id: "connector.read".into(),
+                data_pointer: "/regressed".into(),
+                equals: json!(true),
+            });
+        awakened.mission.commitments.push(commitment);
+        let trigger = SessionTurnTrigger::Wake {
+            commitment_ref: "commitment:scheduled-check".into(),
+            occurrence_ref: "occurrence:typed-attention".into(),
+        };
+
+        let mut regression = observation(true, Some("2026-07-31T00:06:00Z"));
+        regression.result.data = json!({"status": "recovering", "regressed": true});
+        let mut rescheduled = draft();
+        rescheduled.mission = awakened.mission.clone();
+        rescheduled.mission.commitments[0].wake_at = Some("2026-07-31T00:06:00Z".into());
+        rescheduled.delivery = DeliveryDisposition::Silent;
+        let error = validate_wake_completion(
+            &awakened,
+            &rescheduled,
+            &trigger,
+            assessment_at,
+            std::slice::from_ref(&regression),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("Visible"));
+        rescheduled.delivery = DeliveryDisposition::Visible;
+        assert!(
+            validate_wake_completion(
+                &awakened,
+                &rescheduled,
+                &trigger,
+                assessment_at,
+                &[regression],
+            )
+            .is_ok()
+        );
+
+        let accepted = observation(true, Some("2026-07-31T00:06:00Z"));
+        let mut completed = draft();
+        completed.mission = awakened.mission.clone();
+        completed.mission.commitments[0].status = CommitmentStatus::Completed;
+        completed.mission.commitments[0].wake_at = None;
+        completed.delivery = DeliveryDisposition::Visible;
+        assert!(
+            validate_wake_completion(&awakened, &completed, &trigger, assessment_at, &[accepted],)
+                .is_ok()
+        );
     }
 
     #[tokio::test]

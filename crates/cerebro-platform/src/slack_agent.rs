@@ -1867,6 +1867,25 @@ fn session_decision_schema() -> Value {
         },
         "required": ["decision", "lane", "resolved_entities", "claims", "selected_tools", "stop_conditions", "user_visible_work"]
     });
+    let observation_condition = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "tool_id": {"type": "string", "minLength": 1},
+            "data_pointer": {"type": "string", "minLength": 1},
+            "equals": {}
+        },
+        "required": ["tool_id", "data_pointer", "equals"]
+    });
+    let attention_policy = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "acceptance_all": {"type": "array", "minItems": 1, "maxItems": 16, "items": observation_condition.clone()},
+            "alert_any": {"type": "array", "maxItems": 16, "items": observation_condition}
+        },
+        "required": ["acceptance_all", "alert_any"]
+    });
     let commitment = json!({
         "type": "object",
         "additionalProperties": false,
@@ -1880,10 +1899,11 @@ fn session_decision_schema() -> Value {
             "acceptance_criteria": string_array(),
             "artifact_refs": string_array(),
             "required_tool_ids": string_array(),
+            "attention_policy": {"oneOf": [attention_policy, {"type": "null"}]},
             "wake_at": {"type": ["string", "null"]},
             "verification": {"type": ["string", "null"]},
         },
-        "required": ["commitment_ref", "summary", "owner", "status", "next_action", "blocker", "acceptance_criteria", "artifact_refs", "required_tool_ids", "wake_at", "verification"]
+        "required": ["commitment_ref", "summary", "owner", "status", "next_action", "blocker", "acceptance_criteria", "artifact_refs", "required_tool_ids", "attention_policy", "wake_at", "verification"]
     });
     let open_loop = json!({
         "type": "object",
@@ -2282,7 +2302,7 @@ Use only evidence atom refs present in observations. A missing JSON field is unk
 
 A polling observation proves state at observed_at, not the unobserved moment when that state changed. Say “at this check” or “is now” rather than “just became,” “just hit,” or equivalent transition language unless an observation records the transition itself. A source becoming decision-grade for one bounded finding supports using that source as decision-grade evidence for that finding. It does not prove that the finding record was updated, that every evidentiary component stopped being provisional, or that all current data is trustworthy. Re-observe those downstream scopes before claiming them.
 
-Update mission with the real objective, desired outcome, scope, acceptance criteria, commitments, and open loops. assessment_at is the authoritative current turn time. When the operator explicitly delegates a bounded safe re-observation and the acceptance condition is not yet met, create an unfinished Cerebro-owned commitment with a future RFC3339 wake_at derived from assessment_at, next_action, acceptance criteria, verification condition, and required_tool_ids naming every exact read tool the wake must invoke for fresh evidence. Use an empty required_tool_ids only when the continuation genuinely needs no current evidence. A wake cannot finish until it invokes every required tool in that wake. That accepted commitment is executor-bound follow-through; the runtime rejects unbound promises. A scheduled wake never authorizes an external effect. Ask exactly one question only when one decision or identifier blocks all useful progress. Memory updates are optional: use an empty array unless durable continuity materially helps. Every memory evidence_atom_ref must exactly match an atom in the current observations; memory is continuity, never proof of current state.
+Update mission with the real objective, desired outcome, scope, acceptance criteria, commitments, and open loops. assessment_at is the authoritative current turn time. When the operator explicitly delegates a bounded safe re-observation and the acceptance condition is not yet met, create an unfinished Cerebro-owned commitment with a future RFC3339 wake_at derived from assessment_at, next_action, acceptance criteria, verification condition, and required_tool_ids naming every exact read tool the wake must invoke for fresh evidence. For a commitment with required tools, set attention_policy to typed JSON-pointer conditions over those tools: acceptance_all contains every condition that must be true before closure, and alert_any contains explicit regression, conflict, stale, or mismatch signals that require an operator update before acceptance. Use exact pointers and values present in the baseline observations. The host evaluates these conditions and owns visible versus silent delivery; prose cannot override them. Set attention_policy=null only when required_tool_ids is empty. A new or materially changed commitment cannot be accepted until every required tool has a successful, complete, fresh same-turn baseline. Use an empty required_tool_ids only when the continuation genuinely needs no current evidence. A wake cannot finish until it invokes every required tool in that wake. That accepted commitment is executor-bound follow-through; the runtime rejects unbound promises. A scheduled wake never authorizes an external effect. Ask exactly one question only when one decision or identifier blocks all useful progress. Memory updates are optional: use an empty array unless durable continuity materially helps. Every memory evidence_atom_ref must exactly match an atom in the current observations; memory is continuity, never proof of current state.
 
 Describe scheduled follow-through with the same precision as its record. Promise to check again at the one recorded wake and update the operator after that observation. Never say recurring, every N minutes, continuously, immediately, the moment, as soon as, or equivalent unless a separate exact runtime record proves that stronger guarantee. A later reschedule is a new bounded commitment state, not evidence that a recurring monitor already exists.
 
