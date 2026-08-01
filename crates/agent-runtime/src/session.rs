@@ -2396,12 +2396,11 @@ fn validate_plan_completion(
                     CommitmentStatus::Completed | CommitmentStatus::Cancelled
                 )
                 && commitment.required_tool_ids == follow_through.required_tool_ids
-                && commitment.acceptance_criteria == follow_through.acceptance_criteria
                 && commitment.wake_at.is_some()
         });
         if !persisted {
             return Err(AgentRuntimeError::InvalidFinal(
-                "the research plan requires executor-bound follow-through, but the final mission does not persist its exact tools and acceptance criteria"
+                "the research plan requires executor-bound follow-through, but the final mission does not persist its exact required tools and wake"
                     .into(),
             ));
         }
