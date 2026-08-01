@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     env,
     error::Error,
     fs,
@@ -190,6 +190,23 @@ struct ConversationHoldoutPack {
     schema_version: String,
     pack_ref: String,
     scenarios: Vec<ConversationLabScenario>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AutonomyPhaseFixture {
+    observations: BTreeMap<String, AutonomyToolFixture>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AutonomyToolFixture {
+    summary: String,
+    data: Value,
+    state: ToolResultState,
+    complete: bool,
+    blocker: Option<String>,
+    freshness_seconds: i64,
 }
 
 struct ConversationScenarioSelection {
@@ -552,6 +569,7 @@ struct EvalTools {
     case_ref: String,
     scenario_anchor_at: Option<String>,
     autonomy_phase: Mutex<u8>,
+    autonomy_fixtures: Option<Vec<AutonomyPhaseFixture>>,
     observations: Mutex<Vec<EvaluationObservationReceipt>>,
     runtime_cursor_format: Mutex<String>,
 }
@@ -562,6 +580,7 @@ impl EvalTools {
             case_ref: case_ref.into(),
             scenario_anchor_at: None,
             autonomy_phase: Mutex::new(0),
+            autonomy_fixtures: None,
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
         }
@@ -572,6 +591,22 @@ impl EvalTools {
             case_ref: case_ref.into(),
             scenario_anchor_at: Some(scenario_anchor_at),
             autonomy_phase: Mutex::new(0),
+            autonomy_fixtures: None,
+            observations: Mutex::new(Vec::new()),
+            runtime_cursor_format: Mutex::new("legacy_revision".into()),
+        }
+    }
+
+    fn for_autonomy(
+        case_ref: impl Into<String>,
+        scenario_anchor_at: String,
+        fixtures: Vec<AutonomyPhaseFixture>,
+    ) -> Self {
+        Self {
+            case_ref: case_ref.into(),
+            scenario_anchor_at: Some(scenario_anchor_at),
+            autonomy_phase: Mutex::new(0),
+            autonomy_fixtures: Some(fixtures),
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
         }
@@ -685,9 +720,21 @@ impl AgentTools for EvalTools {
     ) -> Result<ToolResult, AgentRuntimeError> {
         let observed_at = OffsetDateTime::parse(&request.assessment_at, &Rfc3339)
             .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
-        let fresh_until = observed_at
+        let default_fresh_until = observed_at
             .checked_add(Duration::minutes(5))
             .ok_or_else(|| AgentRuntimeError::InvalidToolCall("evidence time overflow".into()))?;
+        let autonomy_fixture = self.autonomy_fixtures.as_ref().and_then(|phases| {
+            let phase = usize::from(
+                *self
+                    .autonomy_phase
+                    .lock()
+                    .expect("evaluation autonomy phase poisoned"),
+            );
+            phases
+                .get(phase)
+                .and_then(|phase| phase.observations.get(&call.tool_id))
+                .cloned()
+        });
         let expected_action = json!({
             "connector_ref": "governed-evidence-connector",
             "cursor_format": "current_revision",
@@ -733,6 +780,11 @@ impl AgentTools for EvalTools {
                 summary: "A fresh independent collection completed after the exact cursor-format update; the governed connector returned a complete current receipt.".into(),
                 data: json!({"connector_ref": "governed-evidence-connector", "cursor_format": "current_revision", "collection_receipt": "complete", "current": true}),
             }
+        } else if let Some(fixture) = &autonomy_fixture {
+            EvaluationFixture {
+                summary: fixture.summary.clone(),
+                data: fixture.data.clone(),
+            }
         } else if self.case_ref.contains("autonomous-recovery") {
             autonomy_evaluation_fixture(
                 &call.tool_id,
@@ -753,15 +805,39 @@ impl AgentTools for EvalTools {
         };
         let summary = fixture.summary;
         let data = fixture.data;
-        let state = if call.tool_id == "graph.reason" {
-            ToolResultState::Failed
+        let state = autonomy_fixture.as_ref().map_or_else(
+            || {
+                if call.tool_id == "graph.reason" {
+                    ToolResultState::Failed
+                } else {
+                    ToolResultState::Succeeded
+                }
+            },
+            |fixture| fixture.state,
+        );
+        let complete = autonomy_fixture
+            .as_ref()
+            .map_or(state == ToolResultState::Succeeded, |fixture| {
+                fixture.complete
+            });
+        let blocker = autonomy_fixture.as_ref().map_or_else(
+            || {
+                (!complete).then(|| {
+                    "The broad relationship reasoning operation did not return grounded evidence."
+                        .into()
+                })
+            },
+            |fixture| fixture.blocker.clone(),
+        );
+        let fresh_until = if let Some(fixture) = &autonomy_fixture {
+            observed_at
+                .checked_add(Duration::seconds(fixture.freshness_seconds))
+                .ok_or_else(|| {
+                    AgentRuntimeError::InvalidToolCall("evidence time overflow".into())
+                })?
         } else {
-            ToolResultState::Succeeded
+            default_fresh_until
         };
-        let complete = state == ToolResultState::Succeeded;
-        let blocker = (!complete).then(|| {
-            "The broad relationship reasoning operation did not return grounded evidence.".into()
-        });
         let observation_ref = format!(
             "observation://sha256/{}",
             sha256_hex(
@@ -862,6 +938,37 @@ fn autonomy_evaluation_fixture(tool_id: &str, phase: u8) -> EvaluationFixture {
         },
         _ => generic_evaluation_fixture(tool_id),
     }
+}
+
+fn embedded_autonomy_phase_fixtures() -> Vec<AutonomyPhaseFixture> {
+    (0..=AUTONOMY_WAKE_COUNT)
+        .map(|phase| {
+            let phase = u8::try_from(phase).expect("embedded autonomy phase count is bounded");
+            let observations = [
+                "source_runtime.inspect",
+                "source_runtime.overview",
+                "mcp.cerebro.sources.health",
+                "mcp.cerebro.findings.search",
+            ]
+            .into_iter()
+            .map(|tool_id| {
+                let fixture = autonomy_evaluation_fixture(tool_id, phase);
+                (
+                    tool_id.into(),
+                    AutonomyToolFixture {
+                        summary: fixture.summary,
+                        data: fixture.data,
+                        state: ToolResultState::Succeeded,
+                        complete: true,
+                        blocker: None,
+                        freshness_seconds: 300,
+                    },
+                )
+            })
+            .collect();
+            AutonomyPhaseFixture { observations }
+        })
+        .collect()
 }
 
 #[async_trait]
@@ -1930,7 +2037,11 @@ async fn run_autonomy_lab(
         &scenario.scenario_ref,
     );
     let mut session = evaluation_session(0, &scenario, &evaluated_at, "rust-autonomy-lab-tenant");
-    let tools = EvalTools::for_conversation(&scenario.fixture_ref, evaluated_at.clone());
+    let tools = EvalTools::for_autonomy(
+        &scenario.fixture_ref,
+        evaluated_at.clone(),
+        embedded_autonomy_phase_fixtures(),
+    );
     let mut transcript = Vec::new();
     let mut turns = Vec::new();
     let mut all_observations = Vec::new();
@@ -3880,6 +3991,58 @@ mod tests {
             3
         );
         assert_eq!(final_observation.data["decision_grade"], true);
+    }
+
+    #[tokio::test]
+    async fn external_autonomy_fixture_controls_hidden_phase_state_and_freshness() {
+        let tools = EvalTools::for_autonomy(
+            "case://external/hidden",
+            "2026-07-31T00:00:00Z".into(),
+            vec![AutonomyPhaseFixture {
+                observations: BTreeMap::from([(
+                    "source_runtime.inspect".into(),
+                    AutonomyToolFixture {
+                        summary: "The hidden receipt is stale.".into(),
+                        data: json!({"receipt_state": "stale"}),
+                        state: ToolResultState::Partial,
+                        complete: false,
+                        blocker: Some("The receipt expired before this check.".into()),
+                        freshness_seconds: -1,
+                    },
+                )]),
+            }],
+        );
+        let request = AgentTurnRequest {
+            schema_version: AGENT_TURN_REQUEST_V1.into(),
+            tenant_id: "tenant:hidden".into(),
+            request_id: "request:hidden".into(),
+            thread_ref: "thread:hidden".into(),
+            actor_ref: "operator:hidden".into(),
+            assessment_at: "2026-07-31T00:00:00Z".into(),
+            message: "Check the hidden receipt.".into(),
+            history: Vec::new(),
+            working_state: None,
+            effect_authorizations: Vec::new(),
+        };
+        let result = AgentTools::invoke(
+            &tools,
+            &request,
+            &ToolCall {
+                call_id: "call:hidden".into(),
+                tool_id: "source_runtime.inspect".into(),
+                purpose: "Read the hidden phase fixture.".into(),
+                input: json!({}),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.state, ToolResultState::Partial);
+        assert!(!result.evidence[0].complete);
+        assert_eq!(result.data["receipt_state"], "stale");
+        assert_eq!(
+            result.evidence[0].fresh_until.as_deref(),
+            Some("2026-07-30T23:59:59Z")
+        );
     }
 
     #[test]
