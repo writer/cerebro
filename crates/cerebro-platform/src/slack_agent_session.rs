@@ -1380,29 +1380,29 @@ mod tests {
                 .unwrap();
         }
 
-        let completed = context_test_session(
-            source_session_ref,
-            "slack-thread://postgres-context/completed",
+        let completed = context_test_session(ContextTestSessionInput {
+            session_ref: source_session_ref,
+            thread_ref: "slack-thread://postgres-context/completed",
             tenant_id,
             actor_ref,
-            &context_scope_ref,
-            "completed-request",
-            "Remember the completed source-thread decision.",
-            "I will retain that completed decision for this channel.",
-            false,
-        );
+            context_scope_ref: &context_scope_ref,
+            request_id: "completed-request",
+            user_text: "Remember the completed source-thread decision.",
+            assistant_text: "I will retain that completed decision for this channel.",
+            pending_delivery: false,
+        });
         store.create(&completed).await.unwrap();
-        let pending = context_test_session(
-            pending_session_ref,
-            "slack-thread://postgres-context/pending",
+        let pending = context_test_session(ContextTestSessionInput {
+            session_ref: pending_session_ref,
+            thread_ref: "slack-thread://postgres-context/pending",
             tenant_id,
             actor_ref,
-            &context_scope_ref,
-            "pending-request",
-            "This pending message must not be recalled.",
-            "This delivery has not been acknowledged.",
-            true,
-        );
+            context_scope_ref: &context_scope_ref,
+            request_id: "pending-request",
+            user_text: "This pending message must not be recalled.",
+            assistant_text: "This delivery has not been acknowledged.",
+            pending_delivery: true,
+        });
         store.create(&pending).await.unwrap();
         drop(store);
 
@@ -1465,17 +1465,30 @@ mod tests {
         }
     }
 
-    fn context_test_session(
-        session_ref: &str,
-        thread_ref: &str,
-        tenant_id: &str,
-        actor_ref: &str,
-        context_scope_ref: &str,
-        request_id: &str,
-        user_text: &str,
-        assistant_text: &str,
+    struct ContextTestSessionInput<'a> {
+        session_ref: &'a str,
+        thread_ref: &'a str,
+        tenant_id: &'a str,
+        actor_ref: &'a str,
+        context_scope_ref: &'a str,
+        request_id: &'a str,
+        user_text: &'a str,
+        assistant_text: &'a str,
         pending_delivery: bool,
-    ) -> AgentSession {
+    }
+
+    fn context_test_session(input: ContextTestSessionInput<'_>) -> AgentSession {
+        let ContextTestSessionInput {
+            session_ref,
+            thread_ref,
+            tenant_id,
+            actor_ref,
+            context_scope_ref,
+            request_id,
+            user_text,
+            assistant_text,
+            pending_delivery,
+        } = input;
         let mission = MissionState {
             mission_ref: format!("mission:{request_id}"),
             objective: "Preserve bounded Slack continuity.".into(),
