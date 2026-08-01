@@ -387,6 +387,7 @@ pub struct PendingDelivery {
 pub struct SessionModelTurn {
     pub session: AgentSession,
     pub trigger: SessionTurnTrigger,
+    pub assessment_at: String,
     pub plan: Option<ResearchPlan>,
     pub available_tools: Vec<ToolDescriptor>,
     pub observations: Vec<ToolObservation>,
@@ -816,6 +817,7 @@ pub async fn run_session_turn_recorded(
             .advance(SessionModelTurn {
                 session: session.clone(),
                 trigger: trigger.clone(),
+                assessment_at: input.assessment_at.clone(),
                 plan: plan.clone(),
                 available_tools: available_tools.clone(),
                 observations: observations.clone(),

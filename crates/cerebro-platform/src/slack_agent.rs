@@ -2097,6 +2097,7 @@ fn model_turn_payload(turn: &ModelTurn) -> Value {
 
 fn session_turn_payload(turn: &SessionModelTurn) -> Value {
     json!({
+        "assessment_at": &turn.assessment_at,
         "available_tools": &turn.available_tools,
         "observations": &turn.observations,
         "plan": &turn.plan,
@@ -2200,7 +2201,7 @@ Return one flat JSON object with decision, plan, calls, and draft every time. Se
 - Then invoke_tools with one or more independent read calls. Keep effects alone in their own decision. The Rust host enforces exact approval and will return an approval request when authorization is absent.
 - Continue reading until the required claims are supported, contradicted, or bounded by an exact source failure. Do not keep calling tools after the answer is established.
 - Finish with one GroundedDraft. message is the actual Slack reply and should be direct, conversational, insightful, and complete. Lead with what matters. Include the recommendation and safe follow-through when the evidence supports them.
-- Do not claim Cerebro can trigger, line up, route, schedule, or execute later work unless the exact capability is present and the runtime records that work now. A prospective recommendation is not a capability or execution receipt.
+- Do not claim Cerebro can trigger, line up, route, schedule, or execute later work unless the exact capability is present and the runtime records that work now. An accepted unfinished Cerebro-owned commitment is the runtime's exact record and scheduler input; no separate scheduling tool call is required. A prospective recommendation without that accepted commitment is not a capability or execution receipt.
 
 GroundedDraft state describes the evidence coverage and response for this turn, not whether the long-lived mission has ended:
 - answered: every required current claim for this trigger is supported or directly contradicted by complete fresh evidence. Use answered when a current check is complete even if its result says a recovery threshold is not met and an executor-bound commitment remains open.
@@ -2222,7 +2223,7 @@ Set planned_claim_ref on each message unit that answers or visibly disposes a pl
 
 Use only evidence atom refs present in observations. A missing JSON field is unknown unless a FieldCoverage atom explicitly says it was not returned. Partial or stale evidence cannot support a required current observation. Never invent an owner, identity, cause, timestamp, deadline, route, tool outcome, or action receipt.
 
-Update mission with the real objective, desired outcome, scope, acceptance criteria, commitments, and open loops. Create an unfinished Cerebro-owned commitment only for bounded safe continuation with an exact wake_at, next_action, acceptance criteria, and verification condition; the runtime rejects unbound promises. A scheduled wake never authorizes an external effect. Ask exactly one question only when one decision or identifier blocks all useful progress. Memory updates are optional: use an empty array unless durable continuity materially helps. Every memory evidence_atom_ref must exactly match an atom in the current observations; memory is continuity, never proof of current state.
+Update mission with the real objective, desired outcome, scope, acceptance criteria, commitments, and open loops. assessment_at is the authoritative current turn time. When the operator explicitly delegates a bounded safe re-observation and the acceptance condition is not yet met, create an unfinished Cerebro-owned commitment with a future RFC3339 wake_at derived from assessment_at, next_action, acceptance criteria, and verification condition. That accepted commitment is executor-bound follow-through; the runtime rejects unbound promises. A scheduled wake never authorizes an external effect. Ask exactly one question only when one decision or identifier blocks all useful progress. Memory updates are optional: use an empty array unless durable continuity materially helps. Every memory evidence_atom_ref must exactly match an atom in the current observations; memory is continuity, never proof of current state.
 
 Set presentation_ready=true when message is ready to send. There is no second author in the normal path."#
 }
@@ -3937,6 +3938,10 @@ mod tests {
             instructions
                 .contains("Do not repeat a decision or draft that the runtime already rejected")
         );
+        assert!(instructions.contains(
+            "An accepted unfinished Cerebro-owned commitment is the runtime's exact record and scheduler input"
+        ));
+        assert!(instructions.contains("assessment_at is the authoritative current turn time"));
     }
 
     #[test]
