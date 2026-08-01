@@ -192,13 +192,13 @@ struct ConversationHoldoutPack {
     scenarios: Vec<ConversationLabScenario>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct AutonomyPhaseFixture {
     observations: BTreeMap<String, AutonomyToolFixture>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct AutonomyToolFixture {
     summary: String,
@@ -207,6 +207,43 @@ struct AutonomyToolFixture {
     complete: bool,
     blocker: Option<String>,
     freshness_seconds: i64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ExpectedDelivery {
+    Visible,
+    Silent,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ExpectedCommitmentState {
+    Active,
+    Closed,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct AutonomyHoldoutScenario {
+    scenario: ConversationLabScenario,
+    phases: Vec<AutonomyPhaseFixture>,
+    expected_delivery: Vec<ExpectedDelivery>,
+    expected_terminal_commitment: ExpectedCommitmentState,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AutonomyHoldoutPack {
+    schema_version: String,
+    pack_ref: String,
+    scenarios: Vec<AutonomyHoldoutScenario>,
+}
+
+struct AutonomyScenarioSelection {
+    scenario: AutonomyHoldoutScenario,
+    declared_scenario_count: usize,
+    source: HoldoutSourceReceipt,
 }
 
 struct ConversationScenarioSelection {
@@ -387,7 +424,10 @@ struct AutonomyLabReceipt {
     runtime_path: &'static str,
     candidate_identity_concealed_from_model_judge: bool,
     model_side_score_advisory: bool,
+    holdout_source: HoldoutSourceReceipt,
     blind_review_bundle_sha256: String,
+    declared_scenario_count: usize,
+    selected_scenario_ref: String,
     operator_message_count: usize,
     scheduled_wake_count: usize,
     unsolicited_follow_up_count: usize,
@@ -1997,6 +2037,108 @@ fn autonomy_lab_scenario() -> ConversationLabScenario {
     }
 }
 
+fn embedded_autonomy_holdout_scenario() -> AutonomyHoldoutScenario {
+    AutonomyHoldoutScenario {
+        scenario: autonomy_lab_scenario(),
+        phases: embedded_autonomy_phase_fixtures(),
+        expected_delivery: vec![
+            ExpectedDelivery::Visible,
+            ExpectedDelivery::Silent,
+            ExpectedDelivery::Visible,
+        ],
+        expected_terminal_commitment: ExpectedCommitmentState::Closed,
+    }
+}
+
+fn selected_autonomy_scenario() -> Result<AutonomyScenarioSelection, Box<dyn Error>> {
+    if let Ok(path) = env::var("CEREBRO_SLACK_AGENT_EVAL_AUTONOMY_HOLDOUT_PATH") {
+        let bytes = fs::read(path)?;
+        let digest = sha256_hex(&bytes);
+        let expected_digest = env::var("CEREBRO_SLACK_AGENT_EVAL_AUTONOMY_HOLDOUT_SHA256")?;
+        if digest != expected_digest.trim().to_ascii_lowercase() {
+            return Err(
+                "the external autonomy holdout pack does not match its pinned SHA-256".into(),
+            );
+        }
+        let pack: AutonomyHoldoutPack = serde_json::from_slice(&bytes)?;
+        if pack.schema_version != "cerebro-slack-agent-autonomy-holdout-pack/v1" {
+            return Err("unsupported autonomy holdout pack schema".into());
+        }
+        validate_autonomy_holdout_scenarios(&pack.scenarios)?;
+        let selected_ref = env::var("CEREBRO_SLACK_AGENT_EVAL_AUTONOMY_SCENARIO_REF")?;
+        let declared_scenario_count = pack.scenarios.len();
+        let mut matches = pack
+            .scenarios
+            .into_iter()
+            .filter(|candidate| candidate.scenario.scenario_ref == selected_ref)
+            .collect::<Vec<_>>();
+        if matches.len() != 1 {
+            return Err(
+                "the autonomy scenario selector must match exactly one packed scenario".into(),
+            );
+        }
+        return Ok(AutonomyScenarioSelection {
+            scenario: matches.pop().expect("one selected autonomy scenario"),
+            declared_scenario_count,
+            source: HoldoutSourceReceipt {
+                source_kind: "external_pinned_holdout",
+                pack_ref: pack.pack_ref,
+                pack_sha256: digest,
+                digest_verified: true,
+                runtime_loaded_after_exact_head_binding: true,
+            },
+        });
+    }
+
+    let scenario = embedded_autonomy_holdout_scenario();
+    let bytes = serde_json::to_vec(&scenario)?;
+    Ok(AutonomyScenarioSelection {
+        scenario,
+        declared_scenario_count: 1,
+        source: HoldoutSourceReceipt {
+            source_kind: "embedded_development_regression",
+            pack_ref: "embedded-autonomy-regression".into(),
+            pack_sha256: sha256_hex(&bytes),
+            digest_verified: false,
+            runtime_loaded_after_exact_head_binding: false,
+        },
+    })
+}
+
+fn validate_autonomy_holdout_scenarios(
+    scenarios: &[AutonomyHoldoutScenario],
+) -> Result<(), Box<dyn Error>> {
+    if scenarios.len() < 6 {
+        return Err("an external autonomy promotion pack requires at least six scenarios".into());
+    }
+    let validation_tools = EvalTools::new("holdout-validation");
+    let allowed_tools = AgentTools::catalog(&validation_tools)
+        .into_iter()
+        .map(|descriptor| descriptor.tool_id)
+        .collect::<BTreeSet<_>>();
+    let mut scenario_refs = BTreeSet::new();
+    for scenario in scenarios {
+        if scenario.scenario.scenario_ref.trim().is_empty()
+            || !scenario_refs.insert(scenario.scenario.scenario_ref.as_str())
+            || !(2..=8).contains(&scenario.phases.len())
+            || scenario.expected_delivery.len() != scenario.phases.len()
+            || scenario.expected_delivery.first() != Some(&ExpectedDelivery::Visible)
+            || scenario.phases.iter().any(|phase| {
+                phase.observations.is_empty()
+                    || phase.observations.iter().any(|(tool_id, fixture)| {
+                        !allowed_tools.contains(tool_id)
+                            || fixture.summary.trim().is_empty()
+                            || !(-3_600..=86_400).contains(&fixture.freshness_seconds)
+                            || (fixture.complete && fixture.state != ToolResultState::Succeeded)
+                    })
+            })
+        {
+            return Err("an autonomy holdout scenario violates its identity, phase, delivery, tool, freshness, or completeness contract".into());
+        }
+    }
+    Ok(())
+}
+
 fn autonomy_suite_passed(
     review_ready: bool,
     internal_judge_advisory_excellent: bool,
@@ -2021,15 +2163,16 @@ async fn run_autonomy_lab(
             "CEREBRO_SLACK_AGENT_EVAL_BLINDING_SALT must contain at least 16 characters".into(),
         );
     }
-    let scenario = autonomy_lab_scenario();
-    let scenario_bytes = serde_json::to_vec(&scenario)?;
-    let holdout_source = HoldoutSourceReceipt {
-        source_kind: "embedded_development_regression",
-        pack_ref: "embedded-autonomy-regression".into(),
-        pack_sha256: sha256_hex(&scenario_bytes),
-        digest_verified: false,
-        runtime_loaded_after_exact_head_binding: false,
-    };
+    let selection = selected_autonomy_scenario()?;
+    let declared_scenario_count = selection.declared_scenario_count;
+    let holdout_source = selection.source;
+    let AutonomyHoldoutScenario {
+        scenario,
+        phases,
+        expected_delivery,
+        expected_terminal_commitment,
+    } = selection.scenario;
+    let wake_count = phases.len().saturating_sub(1);
     let candidate_label = blind_candidate_label(
         &blinding_salt,
         &commit_sha,
@@ -2037,11 +2180,7 @@ async fn run_autonomy_lab(
         &scenario.scenario_ref,
     );
     let mut session = evaluation_session(0, &scenario, &evaluated_at, "rust-autonomy-lab-tenant");
-    let tools = EvalTools::for_autonomy(
-        &scenario.fixture_ref,
-        evaluated_at.clone(),
-        embedded_autonomy_phase_fixtures(),
-    );
+    let tools = EvalTools::for_autonomy(&scenario.fixture_ref, evaluated_at.clone(), phases);
     let mut transcript = Vec::new();
     let mut turns = Vec::new();
     let mut all_observations = Vec::new();
@@ -2095,10 +2234,13 @@ async fn run_autonomy_lab(
         content: markdown.ok_or("the operator turn was not visible")?,
     });
     turns.push(turn);
+    if expected_delivery.first() != Some(&ExpectedDelivery::Visible) {
+        return Err("the initial autonomy turn violated its expected delivery state".into());
+    }
 
     let mut prior_assessment = OffsetDateTime::parse(&evaluated_at, &Rfc3339)?;
     let mut fresh_observation_every_wake = true;
-    for wake_index in 1..=AUTONOMY_WAKE_COUNT {
+    for wake_index in 1..=wake_count {
         let commitment = active_autonomy_commitment(&session)?;
         let wake_at_text = commitment
             .wake_at
@@ -2137,7 +2279,7 @@ async fn run_autonomy_lab(
                 request_id.clone(),
                 commitment.commitment_ref.clone(),
                 occurrence_ref.clone(),
-                wake_at_text,
+                wake_at_text.clone(),
             ),
         )
         .await
@@ -2153,15 +2295,10 @@ async fn run_autonomy_lab(
         let observations = tools.observations();
         let turn_observations = observations[observation_offset..].to_vec();
         observation_offset = observations.len();
-        fresh_observation_every_wake &= turn_observations.iter().any(|observation| {
-            matches!(
-                observation.tool_id.as_str(),
-                "source_runtime.inspect" | "source_runtime.overview" | "mcp.cerebro.sources.health"
-            ) && observation
-                .data
-                .get("consecutive_complete_current_receipts")
-                == Some(&json!(wake_index + 1))
-        });
+        fresh_observation_every_wake &= !turn_observations.is_empty()
+            && turn_observations
+                .iter()
+                .all(|observation| observation.observed_at == wake_at_text);
         all_observations.extend(turn_observations.iter().cloned());
         let schedule = evaluation_schedule_receipt(
             &session,
@@ -2180,6 +2317,15 @@ async fn run_autonomy_lab(
             },
             outcome,
         )?;
+        let delivered = markdown.is_some();
+        let expected_visible =
+            expected_delivery.get(wake_index) == Some(&ExpectedDelivery::Visible);
+        if delivered != expected_visible {
+            return Err(format!(
+                "scheduled wake {wake_index} violated its hidden attention expectation"
+            )
+            .into());
+        }
         if let Some(markdown) = markdown {
             transcript.push(ConversationMessage {
                 role: ConversationRole::Assistant,
@@ -2194,7 +2340,7 @@ async fn run_autonomy_lab(
             .iter()
             .find(|candidate| candidate.commitment_ref == commitment.commitment_ref)
             .ok_or("a wake removed its exact durable commitment")?;
-        if wake_index < AUTONOMY_WAKE_COUNT
+        if wake_index < wake_count
             && (matches!(
                 persisted.status,
                 CommitmentStatus::Completed | CommitmentStatus::Cancelled
@@ -2211,6 +2357,10 @@ async fn run_autonomy_lab(
             && commitment.status == CommitmentStatus::Completed
             && commitment.wake_at.is_none()
     });
+    let commitment_state_matches = match expected_terminal_commitment {
+        ExpectedCommitmentState::Closed => commitment_closed,
+        ExpectedCommitmentState::Active => !commitment_closed,
+    };
     let operator_message_count = session
         .messages
         .iter()
@@ -2276,13 +2426,18 @@ async fn run_autonomy_lab(
     )
     .await?;
     let review_ready = operator_message_count == 1
-        && turns.len() == AUTONOMY_WAKE_COUNT + 1
-        && unsolicited_follow_up_count == 1
+        && turns.len() == wake_count + 1
+        && unsolicited_follow_up_count
+            == expected_delivery
+                .iter()
+                .skip(1)
+                .filter(|delivery| **delivery == ExpectedDelivery::Visible)
+                .count()
         && fresh_observation_every_wake
         && candidate_authored_schedule_every_wake
         && rescheduled_schedule_chain_complete
         && unique_fresh_observation_receipts
-        && commitment_closed;
+        && commitment_state_matches;
     let internal_judge_advisory_excellent = judgment.is_excellent();
     let latency_slo_passed = turns
         .iter()
@@ -2333,9 +2488,12 @@ async fn run_autonomy_lab(
         runtime_path: "session_v2_typed_wake",
         candidate_identity_concealed_from_model_judge: true,
         model_side_score_advisory: true,
+        holdout_source: holdout_source.clone(),
         blind_review_bundle_sha256,
+        declared_scenario_count,
+        selected_scenario_ref: scenario_receipt.scenario_ref.clone(),
         operator_message_count,
-        scheduled_wake_count: AUTONOMY_WAKE_COUNT,
+        scheduled_wake_count: wake_count,
         unsolicited_follow_up_count,
         synthetic_operator_turn_count: 0,
         fresh_observation_every_wake,
@@ -4043,6 +4201,24 @@ mod tests {
             result.evidence[0].fresh_until.as_deref(),
             Some("2026-07-30T23:59:59Z")
         );
+    }
+
+    #[test]
+    fn external_autonomy_pack_requires_six_distinct_complete_scenario_contracts() {
+        let base = embedded_autonomy_holdout_scenario();
+        let scenarios = (0..6)
+            .map(|index| {
+                let mut scenario = base.clone();
+                scenario.scenario.scenario_ref = format!("hidden-scenario-{index}");
+                scenario
+            })
+            .collect::<Vec<_>>();
+        assert!(validate_autonomy_holdout_scenarios(&scenarios).is_ok());
+        assert!(validate_autonomy_holdout_scenarios(&scenarios[..5]).is_err());
+
+        let mut invalid = scenarios;
+        invalid[0].expected_delivery.pop();
+        assert!(validate_autonomy_holdout_scenarios(&invalid).is_err());
     }
 
     #[test]
