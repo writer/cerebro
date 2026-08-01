@@ -1141,6 +1141,14 @@ pub async fn run_session_turn_recorded(
                 repair_feedback.clear();
             }
             SessionModelDecision::Finish { draft } => {
+                if let Err(error) = validate_planned_follow_through_viability(
+                    plan.as_ref(),
+                    &observations,
+                    assessment_at,
+                ) {
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    continue;
+                }
                 if let Err(error) = validate_commitment_baselines(
                     &session,
                     &draft,
@@ -2456,6 +2464,60 @@ fn validate_plan_completion(
     Ok(())
 }
 
+fn validate_planned_follow_through_viability(
+    plan: Option<&ResearchPlan>,
+    observations: &[ToolObservation],
+    assessment_at: OffsetDateTime,
+) -> Result<(), AgentRuntimeError> {
+    let Some(follow_through) = plan.and_then(|plan| plan.follow_through.as_ref()) else {
+        return Ok(());
+    };
+    for tool_id in &follow_through.required_tool_ids {
+        if observations.iter().any(|observation| {
+            observation.call.tool_id == *tool_id
+                && observation_is_complete_and_fresh(observation, assessment_at)
+        }) {
+            continue;
+        }
+        let last_state = observations
+            .iter()
+            .rev()
+            .find(|observation| observation.call.tool_id == *tool_id)
+            .map(|observation| format!("; its last result was {:?}", observation.result.state));
+        let Some(last_state) = last_state else {
+            return Err(AgentRuntimeError::InvalidFinal(format!(
+                "the planned follow-through requires {tool_id}. Invoke that selected read for a successful, complete, fresh baseline before finishing."
+            )));
+        };
+        let successful_alternatives = observations
+            .iter()
+            .filter(|observation| {
+                !follow_through
+                    .required_tool_ids
+                    .contains(&observation.call.tool_id)
+                    && observation_is_complete_and_fresh(observation, assessment_at)
+            })
+            .map(|observation| observation.call.tool_id.clone())
+            .collect::<BTreeSet<_>>();
+        let next_step = if successful_alternatives.is_empty() {
+            "Establish a materially revised plan selecting another available read, invoke it, and bind follow-through only after a fresh baseline succeeds."
+                .into()
+        } else {
+            format!(
+                "Successful fresh alternatives are already observed: {}. Return establish_plan now and replace the failed required_tool_ids with the exact successful authorities needed by the acceptance criteria.",
+                successful_alternatives
+                    .into_iter()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+        return Err(AgentRuntimeError::InvalidFinal(format!(
+            "the planned follow-through requires {tool_id}, but it has no valid baseline{last_state}. Do not finish or copy the stale executor contract. {next_step}"
+        )));
+    }
+    Ok(())
+}
+
 pub fn validate_grounded_draft(
     session: &AgentSession,
     draft: &GroundedDraft,
@@ -3703,6 +3765,41 @@ mod tests {
         answer.mission.commitments[0] = scheduled_commitment();
         answer.mission.commitments[0].commitment_ref = "commitment:other".into();
         assert!(validate_plan_completion(Some(&plan), &answer).is_err());
+    }
+
+    #[test]
+    fn planned_follow_through_replans_before_copying_a_failed_executor() {
+        let mut plan = plan();
+        plan.selected_tools.push("graph.read".into());
+        plan.follow_through = Some(PlannedFollowThrough {
+            commitment_ref: "commitment:scheduled-check".into(),
+            required_tool_ids: vec!["connector.read".into()],
+            acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
+        });
+        let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+
+        let missing =
+            validate_planned_follow_through_viability(Some(&plan), &[], assessment_at).unwrap_err();
+        assert!(missing.to_string().contains("Invoke that selected read"));
+
+        let mut failed = observation(true, Some("2026-07-31T00:06:00Z"));
+        failed.result.state = ToolResultState::Failed;
+        let mut alternative = observation(true, Some("2026-07-31T00:06:00Z"));
+        alternative.call.tool_id = "graph.read".into();
+        let stale = validate_planned_follow_through_viability(
+            Some(&plan),
+            &[failed, alternative],
+            assessment_at,
+        )
+        .unwrap_err();
+        assert!(stale.to_string().contains("graph.read"));
+        assert!(stale.to_string().contains("Return establish_plan now"));
+
+        let current = observation(true, Some("2026-07-31T00:06:00Z"));
+        assert!(
+            validate_planned_follow_through_viability(Some(&plan), &[current], assessment_at)
+                .is_ok()
+        );
     }
 
     #[test]
