@@ -96,6 +96,21 @@ export function slackThreadScratchpadRef(
   return `slack-scratchpad://sha256/${digest(`${teamId}:${channelId}:${threadTs}`)}`;
 }
 
+export function slackChannelContextScopeRef(
+  teamId: string,
+  channelId: string,
+): string {
+  for (const [label, value] of [
+    ["team", teamId],
+    ["channel", channelId],
+  ] as const) {
+    if (!value.trim() || UNSAFE_CONTROL_CHARACTERS.test(value)) {
+      throw new SlackThreadScratchpadError(`The Slack ${label} identity is invalid.`);
+    }
+  }
+  return `slack-context-scope://sha256/${digest(`${teamId}:${channelId}`)}`;
+}
+
 export function slackScratchpadAuthorRef(teamId: string, userId: string): string {
   if (!teamId.trim() || !userId.trim() || UNSAFE_CONTROL_CHARACTERS.test(userId)) {
     throw new SlackThreadScratchpadError("The Slack scratchpad author is invalid.");

@@ -3,8 +3,9 @@ use cerebro_agent_runtime::{
     AgentRuntimeError, FinalState,
     session::{
         AGENT_SESSION_EVENT_V2, AgentSession, CommitmentStatus, DeliveryDisposition, GroundedDraft,
-        SessionEvent, SessionEventRecord, SessionJournal, SessionStatus, SessionStore, WorkOwner,
-        apply_session_events, message_digest,
+        MemoryKind, MemoryUpdate, SessionEvent, SessionEventRecord, SessionJournal, SessionMessage,
+        SessionMessageRole, SessionStatus, SessionStore, WorkOwner, apply_session_events,
+        message_digest,
     },
 };
 use native_tls::TlsConnector;
@@ -15,6 +16,8 @@ use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::sync::Mutex;
 use tokio_postgres::Client;
+
+const POSTGRES_AGENT_SESSION_SCHEMA_LOCK_KEY: i64 = 0x4342_524f_5345_5353;
 
 pub const POSTGRES_AGENT_SESSION_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS cerebro_agent_sessions (
@@ -81,6 +84,18 @@ CREATE TABLE IF NOT EXISTS cerebro_agent_memories (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (session_ref, memory_ref)
 );
+CREATE TABLE IF NOT EXISTS cerebro_agent_thread_contexts (
+  session_ref TEXT NOT NULL REFERENCES cerebro_agent_sessions(session_ref) ON DELETE CASCADE,
+  tenant_id TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  context_scope_ref TEXT NOT NULL,
+  thread_ref TEXT NOT NULL,
+  context_json JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (session_ref, actor_ref)
+);
+CREATE INDEX IF NOT EXISTS cerebro_agent_thread_contexts_recall_idx
+  ON cerebro_agent_thread_contexts (tenant_id, actor_ref, context_scope_ref, updated_at DESC);
 "#;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -177,12 +192,20 @@ impl PostgresAgentSessionStore {
     }
 
     async fn initialize(&self) -> Result<(), AgentRuntimeError> {
-        self.client
-            .lock()
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await.map_err(store_unavailable)?;
+        transaction
+            .query_one(
+                "SELECT pg_advisory_xact_lock($1)",
+                &[&POSTGRES_AGENT_SESSION_SCHEMA_LOCK_KEY],
+            )
             .await
+            .map_err(store_unavailable)?;
+        transaction
             .batch_execute(POSTGRES_AGENT_SESSION_SCHEMA)
             .await
-            .map_err(store_unavailable)
+            .map_err(store_unavailable)?;
+        transaction.commit().await.map_err(store_unavailable)
     }
 
     pub async fn load_by_thread(
@@ -201,6 +224,77 @@ impl PostgresAgentSessionStore {
             .await
             .map_err(store_unavailable)?;
         row.map(|row| decode_session(row.get(0))).transpose()
+    }
+
+    pub async fn bind_context_scope(
+        &self,
+        session_ref: &str,
+        context_scope_ref: &str,
+    ) -> Result<(), AgentRuntimeError> {
+        let changed = self
+            .client
+            .lock()
+            .await
+            .execute(
+                "UPDATE cerebro_agent_sessions SET snapshot_json = jsonb_set(snapshot_json, '{context_scope_ref}', to_jsonb($2::text), true), updated_at = NOW() WHERE session_ref = $1 AND (snapshot_json->>'context_scope_ref' IS NULL OR snapshot_json->>'context_scope_ref' = $2)",
+                &[&session_ref, &context_scope_ref],
+            )
+            .await
+            .map_err(store_unavailable)?;
+        if changed != 1 {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "conversation scope does not match the stored Slack session".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn recall_thread_contexts(
+        &self,
+        tenant_id: &str,
+        actor_ref: &str,
+        context_scope_ref: &str,
+        exclude_session_ref: &str,
+        limit: i64,
+    ) -> Result<Vec<MemoryUpdate>, AgentRuntimeError> {
+        if !(1..=24).contains(&limit) {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "prior-thread recall limit is invalid".into(),
+            ));
+        }
+        let rows = self
+            .client
+            .lock()
+            .await
+            .query(
+                "SELECT session_ref, context_json FROM cerebro_agent_thread_contexts WHERE tenant_id = $1 AND actor_ref = $2 AND context_scope_ref = $3 AND session_ref <> $4 ORDER BY updated_at DESC, session_ref DESC LIMIT $5",
+                &[&tenant_id, &actor_ref, &context_scope_ref, &exclude_session_ref, &limit],
+            )
+            .await
+            .map_err(store_unavailable)?;
+        rows.into_iter()
+            .map(|row| {
+                let session_ref: String = row.get(0);
+                let context: Value = row.get(1);
+                let digest = Sha256::digest(session_ref.as_bytes())
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>();
+                let statement = bounded_context_text(
+                    &serde_json::to_string(&context).map_err(invalid_snapshot)?,
+                    3_500,
+                );
+                Ok(MemoryUpdate {
+                    memory_ref: format!("recalled-thread:{digest}"),
+                    kind: MemoryKind::Handoff,
+                    statement: format!(
+                        "Prior Slack thread context from the same operator and channel: {statement}"
+                    ),
+                    evidence_atom_refs: Vec::new(),
+                    promotion_requested: false,
+                })
+            })
+            .collect()
     }
 
     pub async fn acquire_turn(
@@ -1046,7 +1140,107 @@ async fn project_session_state(
             .await
             .map_err(store_unavailable)?;
     }
+    if session.pending_delivery.is_none()
+        && let (Some(context_scope_ref), Some(operator_message)) = (
+            session.context_scope_ref.as_deref(),
+            completed_operator_message(&session.events, &session.messages),
+        )
+        && session
+            .messages
+            .iter()
+            .any(|message| message.role == SessionMessageRole::Assistant)
+    {
+        let actor_ref = operator_message.actor_ref.as_str();
+        let latest_user_message = Some(bounded_context_text(&operator_message.text, 4_000));
+        let latest_assistant_message = session
+            .messages
+            .iter()
+            .rev()
+            .find(|message| message.role == SessionMessageRole::Assistant)
+            .map(|message| bounded_context_text(&message.text, 8_000));
+        let commitments = session
+            .mission
+            .commitments
+            .iter()
+            .take(12)
+            .map(|commitment| {
+                serde_json::json!({
+                    "commitment_ref": commitment.commitment_ref,
+                    "summary": bounded_context_text(&commitment.summary, 1_000),
+                    "status": commitment.status,
+                    "next_action": commitment
+                        .next_action
+                        .as_deref()
+                        .map(|value| bounded_context_text(value, 1_000)),
+                })
+            })
+            .collect::<Vec<_>>();
+        let open_loops = session
+            .mission
+            .open_loops
+            .iter()
+            .take(12)
+            .map(|open_loop| {
+                serde_json::json!({
+                    "open_loop_ref": open_loop.open_loop_ref,
+                    "summary": bounded_context_text(&open_loop.summary, 1_000),
+                    "owner": open_loop.owner,
+                    "next_action": open_loop
+                        .next_action
+                        .as_deref()
+                        .map(|value| bounded_context_text(value, 1_000)),
+                    "blocked_by": open_loop
+                        .blocked_by
+                        .as_deref()
+                        .map(|value| bounded_context_text(value, 1_000)),
+                })
+            })
+            .collect::<Vec<_>>();
+        let context_json = serde_json::json!({
+            "source_session_ref": session.session_ref,
+            "source_thread_ref": session.thread_ref,
+            "objective": bounded_context_text(&session.mission.objective, 2_000),
+            "desired_outcome": bounded_context_text(&session.mission.desired_outcome, 2_000),
+            "status": session.mission.status,
+            "open_loops": open_loops,
+            "commitments": commitments,
+            "latest_user_message": latest_user_message,
+            "latest_assistant_message": latest_assistant_message,
+        });
+        transaction
+            .execute(
+                "INSERT INTO cerebro_agent_thread_contexts (session_ref, tenant_id, actor_ref, context_scope_ref, thread_ref, context_json) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (session_ref, actor_ref) DO UPDATE SET context_scope_ref = EXCLUDED.context_scope_ref, context_json = EXCLUDED.context_json, updated_at = NOW()",
+                &[&session.session_ref, &session.tenant_id, &actor_ref, &context_scope_ref, &session.thread_ref, &context_json],
+            )
+            .await
+            .map_err(store_unavailable)?;
+    }
     Ok(())
+}
+
+fn completed_operator_message<'a>(
+    events: &[SessionEventRecord],
+    messages: &'a [SessionMessage],
+) -> Option<&'a SessionMessage> {
+    let request_id = match &events.last()?.event {
+        SessionEvent::TurnCompleted { request_id, .. } => request_id,
+        _ => return None,
+    };
+    let message_ref = format!("operator:{request_id}");
+    messages.iter().rev().find(|message| {
+        message.role == SessionMessageRole::User && message.message_ref == message_ref
+    })
+}
+
+fn bounded_context_text(value: &str, maximum_bytes: usize) -> String {
+    if value.len() <= maximum_bytes {
+        return value.to_owned();
+    }
+    let mut boundary = maximum_bytes.saturating_sub(3);
+    while boundary > 0 && !value.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    format!("{}...", &value[..boundary])
 }
 
 async fn insert_event(
@@ -1092,6 +1286,10 @@ mod tests {
 
     #[test]
     fn schema_has_isolated_event_and_wake_records() {
+        assert_eq!(
+            POSTGRES_AGENT_SESSION_SCHEMA_LOCK_KEY,
+            0x4342_524f_5345_5353
+        );
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("UNIQUE (tenant_id, thread_ref)"));
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("PRIMARY KEY (session_ref, sequence)"));
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("lease_expires_at TIMESTAMPTZ"));
@@ -1103,6 +1301,258 @@ mod tests {
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("delivery_ref TEXT"));
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("delivery_attempt_ref TEXT"));
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("cerebro_agent_memories"));
+        assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("cerebro_agent_thread_contexts"));
+        assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("PRIMARY KEY (session_ref, actor_ref)"));
+        assert!(
+            POSTGRES_AGENT_SESSION_SCHEMA
+                .contains("tenant_id, actor_ref, context_scope_ref, updated_at DESC")
+        );
+    }
+
+    #[test]
+    fn prior_thread_context_text_is_utf8_safe_and_bounded() {
+        let value = "é".repeat(20);
+        let bounded = bounded_context_text(&value, 13);
+
+        assert!(bounded.len() <= 13);
+        assert!(bounded.ends_with("..."));
+    }
+
+    #[test]
+    fn completed_context_is_attributed_to_the_exact_turn_actor() {
+        let messages = vec![
+            SessionMessage {
+                role: SessionMessageRole::User,
+                message_ref: "operator:first-request".into(),
+                actor_ref: "slack-user:first".into(),
+                text: "First operator message".into(),
+                received_at: "2026-07-31T00:00:00Z".into(),
+            },
+            SessionMessage {
+                role: SessionMessageRole::User,
+                message_ref: "operator:second-request".into(),
+                actor_ref: "slack-user:second".into(),
+                text: "Second operator message".into(),
+                received_at: "2026-07-31T00:01:00Z".into(),
+            },
+        ];
+        let events = vec![SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: "agent-session:test".into(),
+            sequence: 1,
+            occurred_at: "2026-07-31T00:02:00Z".into(),
+            event: SessionEvent::TurnCompleted {
+                request_id: "second-request".into(),
+                state: FinalState::Answered,
+            },
+        }];
+
+        let completed = completed_operator_message(&events, &messages).unwrap();
+
+        assert_eq!(completed.actor_ref, "slack-user:second");
+        assert_eq!(completed.text, "Second operator message");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires CEREBRO_TEST_POSTGRES_DSN"]
+    async fn postgres_completed_thread_context_recall_is_actor_and_scope_isolated() {
+        let Ok(dsn) = std::env::var("CEREBRO_TEST_POSTGRES_DSN") else {
+            return;
+        };
+        let source_session_ref = "agent-session:postgres-context-completed";
+        let pending_session_ref = "agent-session:postgres-context-pending";
+        let tenant_id = "tenant:postgres-context";
+        let actor_ref = "slack-user:postgres-context-owner";
+        let other_actor_ref = "slack-user:postgres-context-other";
+        let context_scope_ref = format!("slack-context-scope://sha256/{}", "a".repeat(64));
+        let other_scope_ref = format!("slack-context-scope://sha256/{}", "b".repeat(64));
+        let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
+        for session_ref in [source_session_ref, pending_session_ref] {
+            store
+                .client
+                .lock()
+                .await
+                .execute(
+                    "DELETE FROM cerebro_agent_sessions WHERE session_ref = $1",
+                    &[&session_ref],
+                )
+                .await
+                .unwrap();
+        }
+
+        let completed = context_test_session(ContextTestSessionInput {
+            session_ref: source_session_ref,
+            thread_ref: "slack-thread://postgres-context/completed",
+            tenant_id,
+            actor_ref,
+            context_scope_ref: &context_scope_ref,
+            request_id: "completed-request",
+            user_text: "Remember the completed source-thread decision.",
+            assistant_text: "I will retain that completed decision for this channel.",
+            pending_delivery: false,
+        });
+        store.create(&completed).await.unwrap();
+        let pending = context_test_session(ContextTestSessionInput {
+            session_ref: pending_session_ref,
+            thread_ref: "slack-thread://postgres-context/pending",
+            tenant_id,
+            actor_ref,
+            context_scope_ref: &context_scope_ref,
+            request_id: "pending-request",
+            user_text: "This pending message must not be recalled.",
+            assistant_text: "This delivery has not been acknowledged.",
+            pending_delivery: true,
+        });
+        store.create(&pending).await.unwrap();
+        drop(store);
+
+        let restarted = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
+        let recalled = restarted
+            .recall_thread_contexts(
+                tenant_id,
+                actor_ref,
+                &context_scope_ref,
+                "agent-session:postgres-context-target",
+                12,
+            )
+            .await
+            .unwrap();
+        assert_eq!(recalled.len(), 1);
+        assert!(
+            recalled[0]
+                .statement
+                .contains("completed source-thread decision")
+        );
+        assert!(!recalled[0].statement.contains("pending message"));
+        assert!(
+            restarted
+                .recall_thread_contexts(
+                    tenant_id,
+                    other_actor_ref,
+                    &context_scope_ref,
+                    "agent-session:postgres-context-target",
+                    12,
+                )
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            restarted
+                .recall_thread_contexts(
+                    tenant_id,
+                    actor_ref,
+                    &other_scope_ref,
+                    "agent-session:postgres-context-target",
+                    12,
+                )
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        for session_ref in [source_session_ref, pending_session_ref] {
+            restarted
+                .client
+                .lock()
+                .await
+                .execute(
+                    "DELETE FROM cerebro_agent_sessions WHERE session_ref = $1",
+                    &[&session_ref],
+                )
+                .await
+                .unwrap();
+        }
+    }
+
+    struct ContextTestSessionInput<'a> {
+        session_ref: &'a str,
+        thread_ref: &'a str,
+        tenant_id: &'a str,
+        actor_ref: &'a str,
+        context_scope_ref: &'a str,
+        request_id: &'a str,
+        user_text: &'a str,
+        assistant_text: &'a str,
+        pending_delivery: bool,
+    }
+
+    fn context_test_session(input: ContextTestSessionInput<'_>) -> AgentSession {
+        let ContextTestSessionInput {
+            session_ref,
+            thread_ref,
+            tenant_id,
+            actor_ref,
+            context_scope_ref,
+            request_id,
+            user_text,
+            assistant_text,
+            pending_delivery,
+        } = input;
+        let mission = MissionState {
+            mission_ref: format!("mission:{request_id}"),
+            objective: "Preserve bounded Slack continuity.".into(),
+            desired_outcome: "Recall only completed context for the same actor and channel.".into(),
+            resolved_scope: Vec::new(),
+            scope_assumptions: Vec::new(),
+            acceptance_criteria: vec!["Actor and scope boundaries remain exact.".into()],
+            commitments: Vec::new(),
+            open_loops: Vec::new(),
+            status: SessionStatus::Completed,
+        };
+        let user_message = SessionMessage {
+            role: SessionMessageRole::User,
+            message_ref: format!("operator:{request_id}"),
+            actor_ref: actor_ref.into(),
+            text: user_text.into(),
+            received_at: "2026-07-31T00:00:00Z".into(),
+        };
+        let assistant_message = SessionMessage {
+            role: SessionMessageRole::Assistant,
+            message_ref: format!("assistant:{request_id}"),
+            actor_ref: "cerebro".into(),
+            text: assistant_text.into(),
+            received_at: "2026-07-31T00:00:01Z".into(),
+        };
+        let draft = GroundedDraft {
+            state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
+            message: assistant_text.into(),
+            claims: Vec::new(),
+            coverage_notice: None,
+            question: None,
+            mission: mission.clone(),
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        };
+        AgentSession {
+            schema_version: cerebro_agent_runtime::session::AGENT_SESSION_V2.into(),
+            session_ref: session_ref.into(),
+            tenant_id: tenant_id.into(),
+            thread_ref: thread_ref.into(),
+            context_scope_ref: Some(context_scope_ref.into()),
+            mission,
+            messages: vec![user_message, assistant_message],
+            events: vec![SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session_ref.into(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:00:02Z".into(),
+                event: SessionEvent::TurnCompleted {
+                    request_id: request_id.into(),
+                    state: FinalState::Answered,
+                },
+            }],
+            effect_authorizations: Vec::new(),
+            pending_delivery: pending_delivery.then_some(
+                cerebro_agent_runtime::session::PendingDelivery {
+                    request_id: request_id.into(),
+                    draft,
+                    produced_at: "2026-07-31T00:00:01Z".into(),
+                },
+            ),
+            memories: Vec::new(),
+        }
     }
 
     #[tokio::test]
@@ -1142,6 +1592,7 @@ mod tests {
             session_ref: session_ref.into(),
             tenant_id: "tenant:postgres-wake".into(),
             thread_ref: "thread:postgres-wake".into(),
+            context_scope_ref: None,
             mission: MissionState {
                 mission_ref: "mission:postgres-wake".into(),
                 objective: "Verify durable wake fencing.".into(),
@@ -1387,6 +1838,7 @@ mod tests {
             session_ref: session_ref.into(),
             tenant_id: "tenant:postgres-wake-exhaustion".into(),
             thread_ref: "thread:postgres-wake-exhaustion".into(),
+            context_scope_ref: None,
             mission: MissionState {
                 mission_ref: "mission:postgres-wake-exhaustion".into(),
                 objective: "Verify exhausted wake visibility.".into(),

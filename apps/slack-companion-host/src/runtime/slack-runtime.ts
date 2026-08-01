@@ -13,6 +13,7 @@ import {
   preflightAssistantTurnInvocation,
   projectAssistantTurnProgress,
   projectSlackMultipartDelivery,
+  slackChannelContextScopeRef,
   slackScratchpadAuthorRef,
   slackThreadScratchpadRef,
   verifiedTurnScratchpadContent,
@@ -134,6 +135,7 @@ const graphCatalog = createToolCatalog([{
 
 export interface AssistantQuestionInput {
   actorRef: string;
+  contextScopeRef?: string;
   requestKey: string;
   scratchpadContext?: string;
   threadContext?: string;
@@ -265,6 +267,9 @@ export class AssistantQuestionService {
         const answer = await this.askClient.runAgentTurn({
           actorRef: input.actorRef,
           assessmentAt: openedAt.toISOString(),
+          ...(input.contextScopeRef === undefined
+            ? {}
+            : { contextScopeRef: input.contextScopeRef }),
           ...(resumingApproval === undefined
             ? {}
             : {
@@ -895,6 +900,23 @@ export class SlackCompanionRuntime {
       });
     });
 
+    this.app.event("message", async ({ context, event, client }) => {
+      if (!context.teamId) return;
+      await handleSlackThreadReply({
+        agentDeliveries: this.agentDeliveries,
+        botUserId: context.botUserId,
+        client,
+        config: this.config,
+        event,
+        host: this.host,
+        outcomes: this.outcomes,
+        questions: this.questions,
+        scratchpads: this.scratchpads,
+        teamId: context.teamId,
+        threadRoutes: this.threadRoutes,
+      });
+    });
+
     this.app.event("reaction_added", async ({ context, event }) => {
       if (!context.teamId || !this.config.allowedTeamIds.has(context.teamId)) return;
       if (event.reaction !== "-1" && event.reaction !== "thumbsdown") return;
@@ -983,6 +1005,89 @@ function logAgentDeliveryFailure(operation: string, error: unknown): void {
   })}\n`);
 }
 
+export async function handleSlackThreadReply(input: {
+  agentDeliveries?: FileAgentDeliveryOutbox;
+  botUserId?: string;
+  client: SlackMentionClient;
+  config: SlackRuntimeConfig;
+  event: unknown;
+  host: AssistantTurnHostAdapter;
+  outcomes: FileOutcomeStore;
+  questions: AssistantQuestionService;
+  scratchpads?: SlackThreadScratchpadPort;
+  teamId: string;
+  threadRoutes: FileSlackThreadRouteStore;
+}): Promise<boolean> {
+  if (!input.config.allowedTeamIds.has(input.teamId) || !input.botUserId) return false;
+  const event = humanSlackThreadReply(input.event, input.botUserId);
+  if (!event) return false;
+  const threadRef = slackThreadScratchpadRef(
+    input.teamId,
+    event.channel,
+    event.threadTs,
+  );
+  const route = await input.threadRoutes.read(threadRef);
+  const appRef = `slack-app:${input.config.environmentLabel}:${input.config.appName}`;
+  if (
+    !route
+    || route.appRef !== appRef
+    || route.botUserId !== input.botUserId
+    || route.channelId !== event.channel
+    || route.teamId !== input.teamId
+    || route.threadRef !== threadRef
+    || route.threadTs !== event.threadTs
+  ) return false;
+  return handleSlackMention({
+    agentDeliveries: input.agentDeliveries,
+    client: input.client,
+    config: input.config,
+    event: {
+      botUserId: input.botUserId,
+      channel: event.channel,
+      eventTs: event.eventTs,
+      hasThreadContext: true,
+      teamId: input.teamId,
+      text: event.text,
+      threadTs: event.threadTs,
+      userId: event.userId,
+    },
+    host: input.host,
+    outcomes: input.outcomes,
+    questions: input.questions,
+    scratchpads: input.scratchpads,
+    threadRoutes: input.threadRoutes,
+  });
+}
+
+export function humanSlackThreadReply(
+  value: unknown,
+  botUserId: string,
+): Omit<SlackMentionEvent, "botUserId" | "hasThreadContext" | "teamId"> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const event = value as Record<string, unknown>;
+  if (
+    event.type !== "message"
+    || typeof event.channel !== "string"
+    || typeof event.ts !== "string"
+    || typeof event.thread_ts !== "string"
+    || typeof event.user !== "string"
+    || typeof event.text !== "string"
+    || !event.text.trim()
+    || event.user === botUserId
+    || event.subtype !== undefined
+    || event.bot_id !== undefined
+    || event.app_id !== undefined
+    || event.text.includes(`<@${botUserId}>`)
+  ) return undefined;
+  return {
+    channel: event.channel,
+    eventTs: event.ts,
+    text: event.text,
+    threadTs: event.thread_ts,
+    userId: event.user,
+  };
+}
+
 export async function handleSlackMention(input: {
   agentDeliveries?: FileAgentDeliveryOutbox;
   client: SlackMentionClient;
@@ -1034,6 +1139,10 @@ export async function handleSlackMention(input: {
       input.event.teamId,
       input.event.channel,
       input.event.threadTs,
+    );
+    const contextScopeRef = slackChannelContextScopeRef(
+      input.event.teamId,
+      input.event.channel,
     );
     await input.threadRoutes?.bind({
       appRef: `slack-app:${input.config.environmentLabel}:${input.config.appName}`,
@@ -1170,6 +1279,7 @@ export async function handleSlackMention(input: {
     deliveredMessageTs = progress.ts;
     const result = await input.questions.answer({
       actorRef: slackScratchpadAuthorRef(input.event.teamId, input.event.userId),
+      contextScopeRef,
       requestKey,
       scratchpadContext,
       threadContext,

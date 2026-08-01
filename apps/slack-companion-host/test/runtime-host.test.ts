@@ -31,9 +31,52 @@ import {
   formatEnvironmentMessage,
   formatSlackThreadContext,
   handleSlackMention,
+  humanSlackThreadReply,
   readSlackThreadContext,
   slackDeliveryReferences,
 } from "../src/runtime/slack-runtime.js";
+
+test("owned Slack threads accept human replies without another mention", () => {
+  assert.deepEqual(
+    humanSlackThreadReply({
+      channel: "C-ONE",
+      text: "Keep going from the prior answer.",
+      thread_ts: "1710000000.000001",
+      ts: "1710000001.000002",
+      type: "message",
+      user: "U-ONE",
+    }, "U-BOT"),
+    {
+      channel: "C-ONE",
+      eventTs: "1710000001.000002",
+      text: "Keep going from the prior answer.",
+      threadTs: "1710000000.000001",
+      userId: "U-ONE",
+    },
+  );
+});
+
+test("ambient, bot, edited, and explicitly mentioned Slack messages stay off the reply path", () => {
+  const base = {
+    channel: "C-ONE",
+    text: "Keep going.",
+    thread_ts: "1710000000.000001",
+    ts: "1710000001.000002",
+    type: "message",
+    user: "U-ONE",
+  };
+  for (const event of [
+    { ...base, thread_ts: undefined },
+    { ...base, user: "U-BOT" },
+    { ...base, bot_id: "B-ONE" },
+    { ...base, app_id: "A-ONE" },
+    { ...base, subtype: "message_changed" },
+    { ...base, text: "<@U-BOT> keep going." },
+    { ...base, text: "   " },
+  ]) {
+    assert.equal(humanSlackThreadReply(event, "U-BOT"), undefined);
+  }
+});
 
 const testAnswerAuthority: SlackAnswerAuthorityPort = {
   async authorizeQuestion(candidate) {
@@ -184,6 +227,7 @@ test("Slack acknowledges a pending Rust response only after transport delivery",
   const result = await client.runAgentTurn({
     actorRef: "slack-user:U-ONE",
     assessmentAt: "2026-07-31T20:00:00Z",
+    contextScopeRef: `slack-context-scope://sha256/${"a".repeat(64)}`,
     question: "Investigate the connector failure.",
     requestId: "request-pending",
     signal: new AbortController().signal,
@@ -191,6 +235,10 @@ test("Slack acknowledges a pending Rust response only after transport delivery",
   });
   assert.equal(result.deliveryAckRequired, true);
   assert.equal(requests.length, 1);
+  assert.equal(
+    (await requests[0]?.clone().json()).context_scope_ref,
+    `slack-context-scope://sha256/${"a".repeat(64)}`,
+  );
 
   await client.recordAgentTurnDelivery({
     deliveredAt: "2026-07-31T20:01:00Z",

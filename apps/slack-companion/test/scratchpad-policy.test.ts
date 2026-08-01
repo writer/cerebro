@@ -6,6 +6,7 @@ import {
   normalizeScratchpadContent,
   parseSlackThreadScratchpadCommand,
   recordSlackThreadWorkingTurn,
+  slackChannelContextScopeRef,
   slackScratchpadAuthorRef,
   slackThreadScratchpadRef,
   validateSlackThreadScratchpad,
@@ -47,6 +48,19 @@ test("scratchpad identities do not expose Slack workspace, channel, or user ids"
   assert.match(
     slackScratchpadAuthorRef("T-ONE", "U-ONE"),
     /^slack-user:\/\/sha256\/[a-f0-9]{64}$/u,
+  );
+  const channelScope = slackChannelContextScopeRef("T-ONE", "C-ONE");
+  assert.match(
+    channelScope,
+    /^slack-context-scope:\/\/sha256\/[a-f0-9]{64}$/u,
+  );
+  assert.equal(
+    channelScope,
+    slackChannelContextScopeRef("T-ONE", "C-ONE"),
+  );
+  assert.notEqual(
+    channelScope,
+    slackChannelContextScopeRef("T-ONE", "C-TWO"),
   );
 });
 

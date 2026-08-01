@@ -20,6 +20,7 @@ use crate::{
 
 pub const AGENT_SESSION_V2: &str = "agent-session/v2";
 pub const AGENT_SESSION_EVENT_V2: &str = "agent-session-event/v2";
+pub const MAX_SESSION_MEMORIES: usize = 128;
 
 const MAX_PLAN_CLAIMS: usize = 16;
 const MAX_PLAN_TOOLS: usize = 16;
@@ -35,7 +36,6 @@ const MAX_MESSAGE_BYTES: usize = 16 * 1024;
 const MAX_TEXT_BYTES: usize = 4 * 1024;
 const MAX_SESSION_MESSAGES: usize = 400;
 const MAX_SESSION_MESSAGE_BYTES: usize = 1024 * 1024;
-const MAX_MEMORIES: usize = 128;
 const MAX_RECALLED_OBSERVATIONS: usize = 96;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -420,6 +420,8 @@ pub struct AgentSession {
     pub session_ref: String,
     pub tenant_id: String,
     pub thread_ref: String,
+    #[serde(default)]
+    pub context_scope_ref: Option<String>,
     pub mission: MissionState,
     pub messages: Vec<SessionMessage>,
     pub events: Vec<SessionEventRecord>,
@@ -4107,7 +4109,7 @@ fn validate_session(session: &AgentSession) -> Result<(), AgentRuntimeError> {
         ));
     }
     let mut memory_refs = BTreeSet::new();
-    if session.memories.len() > MAX_MEMORIES
+    if session.memories.len() > MAX_SESSION_MEMORIES
         || session.memories.iter().any(|memory| {
             !bounded(&memory.memory_ref, MAX_TEXT_BYTES)
                 || !bounded(&memory.statement, MAX_TEXT_BYTES)
@@ -4299,6 +4301,7 @@ mod tests {
             session_ref: "session:1".into(),
             tenant_id: "tenant:1".into(),
             thread_ref: "thread:1".into(),
+            context_scope_ref: None,
             mission: mission(),
             messages: vec![SessionMessage {
                 role: SessionMessageRole::User,
