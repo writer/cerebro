@@ -17,7 +17,7 @@ use cerebro_agent_runtime::{
     ToolResultState, WorkingOutcome, WorkingState, run_turn,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
@@ -62,7 +62,7 @@ struct EvalCaseReceipt {
     latency_ms: u128,
     false_converse: bool,
     answer_quality_issues: Vec<String>,
-    tool_observations: Vec<String>,
+    tool_observations: Vec<EvaluationObservationReceipt>,
     response_markdown: Option<String>,
     semantic_judgment: Option<ConversationQualityJudgment>,
     passed: bool,
@@ -238,7 +238,7 @@ struct ConversationLabTurnReceipt {
     repair_feedback: Vec<Vec<String>>,
     presentation_repair_feedback: Vec<Vec<String>>,
     critic_repair_feedback: Vec<Vec<String>>,
-    tool_observations: Vec<String>,
+    tool_observations: Vec<EvaluationObservationReceipt>,
     response_markdown: Option<String>,
     terminal_state: String,
     operator_decision: Option<OperatorDecision>,
@@ -407,10 +407,17 @@ impl AgentModel for MeasuredModel {
     }
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct EvaluationObservationReceipt {
+    tool_id: String,
+    summary: String,
+    data: Value,
+}
+
 struct EvalTools {
     case_ref: String,
     scenario_anchor_at: Option<String>,
-    observations: Mutex<Vec<String>>,
+    observations: Mutex<Vec<EvaluationObservationReceipt>>,
 }
 
 impl EvalTools {
@@ -430,7 +437,7 @@ impl EvalTools {
         }
     }
 
-    fn observations(&self) -> Vec<String> {
+    fn observations(&self) -> Vec<EvaluationObservationReceipt> {
         self.observations
             .lock()
             .expect("evaluation observation receipt poisoned")
@@ -539,14 +546,19 @@ impl AgentTools for EvalTools {
             &request.assessment_at,
         );
         let summary = fixture.summary;
+        let data = fixture.data;
         self.observations
             .lock()
             .expect("evaluation observation receipt poisoned")
-            .push(format!("{}: {}", call.tool_id, summary));
+            .push(EvaluationObservationReceipt {
+                tool_id: call.tool_id.clone(),
+                summary: summary.clone(),
+                data: data.clone(),
+            });
         Ok(ToolResult {
             state: ToolResultState::Succeeded,
             summary: summary.clone(),
-            data: fixture.data,
+            data,
             evidence: vec![cerebro_agent_runtime::EvidenceRecord {
                 evidence_ref: format!(
                     "evidence://rust-hillclimb/{}/{}",
@@ -1386,7 +1398,11 @@ async fn calibrate_blind_judge(model: &ConfiguredModel) -> Result<(), AgentRunti
                 content: "Yes, everything is fine.".into(),
             },
         ],
-        &["No current collection receipt was observed.".into()],
+        &[EvaluationObservationReceipt {
+            tool_id: "calibration.observation".into(),
+            summary: "No current collection receipt was observed.".into(),
+            data: json!({"current_collection_receipt_observed": false}),
+        }],
     )
     .await?;
     if poor.verdict != QualityVerdict::Poor || poor.scores.task_completion > 2 {
@@ -1408,7 +1424,15 @@ async fn calibrate_blind_judge(model: &ConfiguredModel) -> Result<(), AgentRunti
                 content: "No current receipt is available, so I cannot call the control verified. The control owner needs to restore collection; I will treat the next complete receipt as the verification trigger and keep the gap open until then.".into(),
             },
         ],
-        &["No current collection receipt was observed; the configured source is readable but not administrable by the assistant.".into()],
+        &[EvaluationObservationReceipt {
+            tool_id: "calibration.observation".into(),
+            summary: "No current collection receipt was observed; the configured source is readable but not administrable by the assistant.".into(),
+            data: json!({
+                "current_collection_receipt_observed": false,
+                "configured_source_readable": true,
+                "assistant_can_administer_source": false
+            }),
+        }],
     )
     .await?;
     if strong.verdict == QualityVerdict::Poor || strong.scores.factual_grounding < 4 {
@@ -1423,7 +1447,7 @@ async fn blind_calibration_judgment(
     model: &ConfiguredModel,
     mission: &str,
     transcript: Vec<ConversationMessage>,
-    observations: &[String],
+    observations: &[EvaluationObservationReceipt],
 ) -> Result<ConversationQualityJudgment, AgentRuntimeError> {
     let value = model
         .complete_evaluation_judgment(
@@ -1450,7 +1474,7 @@ async fn simulate_operator(
     scenario: &ConversationLabScenario,
     completed_turns: usize,
     transcript: &[ConversationMessage],
-    observations: &[String],
+    observations: &[EvaluationObservationReceipt],
     interaction_kinds: &[OperatorInteractionKind],
 ) -> Result<OperatorDecision, AgentRuntimeError> {
     let mut repair_feedback = Vec::new();
@@ -1539,7 +1563,7 @@ async fn judge_conversation_trajectory(
     scenario: &ConversationLabScenario,
     candidate_label: &str,
     transcript: &[ConversationMessage],
-    observations: &[String],
+    observations: &[EvaluationObservationReceipt],
     turns: &[ConversationLabTurnReceipt],
 ) -> Result<ConversationQualityJudgment, AgentRuntimeError> {
     let mut repair_feedback = Vec::new();
@@ -1679,7 +1703,7 @@ fn blind_review_bundle(
         })
         .collect::<Vec<_>>();
     json!({
-        "schema_version": "cerebro-rust-slack-agent-blind-review/v1",
+        "schema_version": "cerebro-slack-agent-blind-review/v2",
         "identity_disclosure": "model_provider_implementation_and_commit_withheld",
         "holdout_pack_sha256": holdout_source.pack_sha256,
         "rubric": {
@@ -1875,7 +1899,7 @@ fn select_eval_cases(
 async fn judge_conversation_quality(
     model: &ConfiguredModel,
     request: &AgentTurnRequest,
-    observations: &[String],
+    observations: &[EvaluationObservationReceipt],
     response_markdown: &str,
     acceptance_contract: &str,
 ) -> Result<ConversationQualityJudgment, AgentRuntimeError> {
@@ -2607,6 +2631,68 @@ mod tests {
         let encoded = serde_json::to_string(&bundle).unwrap();
         assert!(!encoded.contains("opus"));
         assert!(!encoded.contains("bedrock"));
+        assert!(!encoded.contains("rust"));
+        assert!(!encoded.contains("model_id"));
+        assert!(!encoded.contains("commit_sha"));
+    }
+
+    #[test]
+    fn blind_review_bundle_preserves_structured_authoritative_evidence() {
+        let receipts = vec![ConversationLabScenarioReceipt {
+            scenario_ref: "sealed-scenario".into(),
+            candidate_label: "candidate-opaque".into(),
+            mission: "Reach a grounded conclusion.".into(),
+            attempted_turn_count: 1,
+            delivered_exchange_count: 1,
+            unanswered_user_turn_count: 0,
+            maximum_turn_latency_ms: 10,
+            total_turn_latency_ms: 10,
+            transcript: Vec::new(),
+            final_judgment: None,
+            final_judgment_error: None,
+            passed: false,
+            turns: vec![ConversationLabTurnReceipt {
+                turn_index: 0,
+                user_message: "What is current?".into(),
+                actual_route: None,
+                actual_lane: None,
+                latency_ms: 10,
+                route_attempt_count: 1,
+                operating_step_count: 1,
+                presentation_attempt_count: 1,
+                critic_attempt_count: 1,
+                repair_feedback: Vec::new(),
+                presentation_repair_feedback: Vec::new(),
+                critic_repair_feedback: Vec::new(),
+                tool_observations: vec![EvaluationObservationReceipt {
+                    tool_id: "source_runtime.inspect".into(),
+                    summary: "One source is current.".into(),
+                    data: json!({"current": true, "source_count": 1}),
+                }],
+                response_markdown: Some("One source is current.".into()),
+                terminal_state: "delivered".into(),
+                operator_decision: None,
+            }],
+        }];
+        let bundle = blind_review_bundle(
+            &HoldoutSourceReceipt {
+                source_kind: "external_pinned_holdout",
+                pack_ref: "hidden".into(),
+                pack_sha256: "c".repeat(64),
+                digest_verified: true,
+                runtime_loaded_after_exact_head_binding: true,
+            },
+            &receipts,
+        );
+
+        let observation = &bundle["candidates"][0]["turns"][0]["authoritative_observations"][0];
+        assert_eq!(observation["tool_id"], "source_runtime.inspect");
+        assert_eq!(observation["summary"], "One source is current.");
+        assert_eq!(observation["data"]["current"], true);
+        assert_eq!(observation["data"]["source_count"], 1);
+
+        let encoded = serde_json::to_string(&bundle).unwrap();
+        assert!(!encoded.contains("rust"));
         assert!(!encoded.contains("model_id"));
         assert!(!encoded.contains("commit_sha"));
     }
