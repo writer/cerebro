@@ -41,6 +41,7 @@ import {
   type AgentDeliveryOutboxRecord,
 } from "./agent-delivery-outbox.js";
 import type { SlackRuntimeConfig } from "./config.js";
+import { FileSlackThreadRouteStore } from "./slack-thread-route-store.js";
 import {
   FileOutcomeStore,
   type PendingAssistantOutcome,
@@ -659,6 +660,7 @@ export class SlackCompanionRuntime {
     private readonly outcomes: FileOutcomeStore,
     private readonly scratchpads: SlackThreadScratchpadPort,
     private readonly agentDeliveries: FileAgentDeliveryOutbox,
+    private readonly threadRoutes: FileSlackThreadRouteStore,
     private readonly archetype?: ArchetypeSlackWorkspace,
   ) {
     this.app = new App({
@@ -863,6 +865,7 @@ export class SlackCompanionRuntime {
         questions: this.questions,
         scratchpads: this.scratchpads,
         agentDeliveries: this.agentDeliveries,
+        threadRoutes: this.threadRoutes,
       });
     });
 
@@ -955,6 +958,7 @@ export async function handleSlackMention(input: {
   outcomes: FileOutcomeStore;
   questions: AssistantQuestionService;
   scratchpads?: SlackThreadScratchpadPort;
+  threadRoutes?: FileSlackThreadRouteStore;
 }): Promise<boolean> {
   const requestKey = [
     input.event.teamId,
@@ -997,6 +1001,13 @@ export async function handleSlackMention(input: {
       input.event.channel,
       input.event.threadTs,
     );
+    await input.threadRoutes?.bind({
+      appRef: `slack-app:${input.config.environmentLabel}:${input.config.appName}`,
+      channelId: input.event.channel,
+      teamId: input.event.teamId,
+      threadRef: scratchpadRef,
+      threadTs: input.event.threadTs,
+    });
     const scratchpadCommand = parseRuntimeScratchpadCommand(input.event.text);
     if (scratchpadCommand && input.scratchpads) {
       const commandText = await executeScratchpadCommand(

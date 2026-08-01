@@ -5,6 +5,7 @@ import { CerebroAskClient } from "./runtime/cerebro-ask-client.js";
 import { loadSlackRuntimeConfig } from "./runtime/config.js";
 import { FileOutcomeStore } from "./runtime/outcome-store.js";
 import { FileThreadScratchpadStore } from "./runtime/thread-scratchpad-store.js";
+import { FileSlackThreadRouteStore } from "./runtime/slack-thread-route-store.js";
 import { SlackAnswerAuthorityClient } from "./runtime/slack-answer-authority-client.js";
 import {
   AssistantQuestionService,
@@ -19,6 +20,7 @@ async function main(): Promise<void> {
   const approvals = new FileAgentApprovalStore(config.memoryDirectory);
   const agentDeliveries = new FileAgentDeliveryOutbox(config.memoryDirectory);
   const scratchpads = new FileThreadScratchpadStore(config.memoryDirectory);
+  const threadRoutes = new FileSlackThreadRouteStore(config.memoryDirectory);
   const host = createAssistantTurnHost(outcomes);
   const questions = new AssistantQuestionService(host, new CerebroAskClient({
     ...(config.rustAgentEnabled
@@ -49,6 +51,7 @@ async function main(): Promise<void> {
     outcomes,
     scratchpads,
     agentDeliveries,
+    threadRoutes,
     archetype,
   );
   await runtime.start();

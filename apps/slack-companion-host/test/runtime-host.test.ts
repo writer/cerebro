@@ -9,6 +9,7 @@ import { FileAgentDeliveryOutbox } from "../src/runtime/agent-delivery-outbox.js
 import { CerebroAskClient, CerebroAskError } from "../src/runtime/cerebro-ask-client.js";
 import { loadSlackRuntimeConfig, SlackRuntimeConfigError } from "../src/runtime/config.js";
 import { FileOutcomeStore } from "../src/runtime/outcome-store.js";
+import { FileSlackThreadRouteStore } from "../src/runtime/slack-thread-route-store.js";
 import {
   SlackAnswerAuthorityClient,
   SlackAnswerAuthorityError,
@@ -290,6 +291,50 @@ test("Slack agent delivery outbox survives restart until both delivery boundarie
     assert.deepEqual(await thirdProcess.list(), [slackDelivered]);
     await thirdProcess.complete(prepared.recordRef);
     assert.deepEqual(await thirdProcess.list(), []);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Slack persists one immutable private route for an opaque Rust thread reference", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-thread-route-"));
+  const threadRef = `slack-scratchpad://sha256/${"a".repeat(64)}`;
+  try {
+    const firstProcess = new FileSlackThreadRouteStore(
+      root,
+      () => new Date("2026-07-31T20:00:00.000Z"),
+    );
+    const route = await firstProcess.bind({
+      appRef: "slack-app:production:Cerebro",
+      channelId: "C-ONE",
+      teamId: "T-ONE",
+      threadRef,
+      threadTs: "1753992060.000100",
+    });
+    assert.equal(route.boundAt, "2026-07-31T20:00:00.000Z");
+
+    const secondProcess = new FileSlackThreadRouteStore(
+      root,
+      () => new Date("2026-07-31T21:00:00.000Z"),
+    );
+    assert.deepEqual(await secondProcess.read(threadRef), route);
+    assert.deepEqual(await secondProcess.bind({
+      appRef: "slack-app:production:Cerebro",
+      channelId: "C-ONE",
+      teamId: "T-ONE",
+      threadRef,
+      threadTs: "1753992060.000100",
+    }), route);
+    await assert.rejects(
+      secondProcess.bind({
+        appRef: "slack-app:production:Cerebro",
+        channelId: "C-TWO",
+        teamId: "T-ONE",
+        threadRef,
+        threadTs: "1753992060.000100",
+      }),
+      /route changed/u,
+    );
   } finally {
     await rm(root, { force: true, recursive: true });
   }
