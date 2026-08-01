@@ -743,9 +743,8 @@ impl SessionTools for EvalTools {
         input: &SessionTurnInput,
         call: &cerebro_agent_runtime::ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
-        let latest = session.messages.last().ok_or_else(|| {
-            AgentRuntimeError::InvalidRequest("evaluation session has no operator message".into())
-        })?;
+        let request_text =
+            cerebro_agent_runtime::session::session_turn_request_text(session, input)?;
         let request = AgentTurnRequest {
             schema_version: AGENT_TURN_REQUEST_V1.into(),
             tenant_id: session.tenant_id.clone(),
@@ -753,17 +752,20 @@ impl SessionTools for EvalTools {
             thread_ref: session.thread_ref.clone(),
             actor_ref: input.actor_ref.clone(),
             assessment_at: input.assessment_at.clone(),
-            message: latest.text.clone(),
+            message: request_text,
             history: session
                 .messages
                 .iter()
                 .take(session.messages.len().saturating_sub(1))
-                .map(|message| ConversationMessage {
-                    role: match message.role {
+                .map(|message| {
+                    let role = match message.role {
                         SessionMessageRole::Assistant => ConversationRole::Assistant,
                         SessionMessageRole::User => ConversationRole::User,
-                    },
-                    content: message.text.clone(),
+                    };
+                    ConversationMessage {
+                        role,
+                        content: message.text.clone(),
+                    }
                 })
                 .collect(),
             working_state: None,
@@ -1349,6 +1351,7 @@ async fn run_evaluation_session_turn(
             request_id: request.request_id.clone(),
             actor_ref: request.actor_ref.clone(),
             assessment_at: request.assessment_at.clone(),
+            trigger: cerebro_agent_runtime::session::SessionTurnTrigger::Operator,
         },
     )
     .await?;

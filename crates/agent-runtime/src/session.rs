@@ -294,6 +294,12 @@ pub enum SessionEvent {
     UserMessageQueued {
         message: SessionMessage,
     },
+    WakeTriggered {
+        request_id: String,
+        commitment_ref: String,
+        occurrence_ref: String,
+        scheduled_for: String,
+    },
     TurnStarted {
         request_id: String,
     },
@@ -380,6 +386,7 @@ pub struct PendingDelivery {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct SessionModelTurn {
     pub session: AgentSession,
+    pub trigger: SessionTurnTrigger,
     pub plan: Option<ResearchPlan>,
     pub available_tools: Vec<ToolDescriptor>,
     pub observations: Vec<ToolObservation>,
@@ -423,6 +430,7 @@ pub struct MessageReview {
 #[derive(Clone, Debug, Serialize)]
 pub struct ClaimReviewTurn {
     pub session: AgentSession,
+    pub trigger: SessionTurnTrigger,
     pub draft: GroundedDraft,
     pub observations: Vec<ToolObservation>,
 }
@@ -486,6 +494,17 @@ pub struct SessionTurnInput {
     pub request_id: String,
     pub actor_ref: String,
     pub assessment_at: String,
+    pub trigger: SessionTurnTrigger,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SessionTurnTrigger {
+    Operator,
+    Wake {
+        commitment_ref: String,
+        occurrence_ref: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -657,6 +676,22 @@ pub fn apply_session_events(
                 }
                 next.messages.push(message.clone());
             }
+            SessionEvent::WakeTriggered {
+                request_id,
+                commitment_ref,
+                occurrence_ref,
+                scheduled_for,
+            } => {
+                if !bounded(request_id, MAX_TEXT_BYTES)
+                    || !bounded(commitment_ref, MAX_TEXT_BYTES)
+                    || !bounded(occurrence_ref, MAX_TEXT_BYTES)
+                    || OffsetDateTime::parse(scheduled_for, &Rfc3339).is_err()
+                {
+                    return Err(AgentRuntimeError::InvalidRequest(
+                        "wake control identity or scheduled time is invalid".into(),
+                    ));
+                }
+            }
             SessionEvent::DraftProduced { request_id, draft } => {
                 if next.pending_delivery.is_some() {
                     return Err(AgentRuntimeError::InvalidRequest(
@@ -726,6 +761,7 @@ pub async fn run_session_turn_recorded(
 ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
     validate_session(&session)?;
     validate_turn_input(&session, &input)?;
+    let trigger = input.trigger.clone();
     let assessment_at = OffsetDateTime::parse(&input.assessment_at, &Rfc3339)
         .map_err(|_| AgentRuntimeError::InvalidRequest("assessment_at is invalid".into()))?;
     let available_tools = tools.catalog();
@@ -779,6 +815,7 @@ pub async fn run_session_turn_recorded(
         let decision = match model
             .advance(SessionModelTurn {
                 session: session.clone(),
+                trigger: trigger.clone(),
                 plan: plan.clone(),
                 available_tools: available_tools.clone(),
                 observations: observations.clone(),
@@ -853,6 +890,20 @@ pub async fn run_session_turn_recorded(
                     )?;
                     continue;
                 };
+                if matches!(trigger, SessionTurnTrigger::Wake { .. })
+                    && calls.iter().any(|call| {
+                        descriptors.get(&call.tool_id).is_some_and(|descriptor| {
+                            descriptor.authority_class == ToolAuthorityClass::Actuate
+                        })
+                    })
+                {
+                    record_operating_repair(
+                        &mut repairs,
+                        &mut repair_feedback,
+                        "Scheduled wakes cannot authorize external effects. Finish with the observed state and an exact prospective action that still requires fresh operator authorization.".into(),
+                    )?;
+                    continue;
+                }
                 let mut proposed_call_ids = call_ids.clone();
                 let mut proposed_call_fingerprints = call_fingerprints.clone();
                 if let Err(error) = validate_calls(
@@ -979,6 +1030,12 @@ pub async fn run_session_turn_recorded(
                 repair_feedback.clear();
             }
             SessionModelDecision::Finish { draft } => {
+                if let Err(error) =
+                    validate_wake_completion(&session, &draft, &trigger, assessment_at)
+                {
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    continue;
+                }
                 if let Err(error) = validate_plan_completion(plan.as_ref(), &draft) {
                     record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
                     continue;
@@ -1002,6 +1059,7 @@ pub async fn run_session_turn_recorded(
                 let review = model
                     .review_message(ClaimReviewTurn {
                         session: session.clone(),
+                        trigger: trigger.clone(),
                         draft: draft.clone(),
                         observations: observations.clone(),
                     })
@@ -1072,12 +1130,162 @@ fn validate_turn_input(
             "session turn identity or assessment time is invalid".into(),
         ));
     }
-    let latest = session.messages.last().ok_or_else(|| {
-        AgentRuntimeError::InvalidRequest("session turn requires a queued user message".into())
-    })?;
-    if latest.role != SessionMessageRole::User || latest.actor_ref != input.actor_ref {
-        return Err(AgentRuntimeError::InvalidRequest(
-            "turn actor does not match the latest queued message".into(),
+    match &input.trigger {
+        SessionTurnTrigger::Operator => {
+            let latest = session.messages.last().ok_or_else(|| {
+                AgentRuntimeError::InvalidRequest(
+                    "operator turn requires a queued user message".into(),
+                )
+            })?;
+            if latest.role != SessionMessageRole::User || latest.actor_ref != input.actor_ref {
+                return Err(AgentRuntimeError::InvalidRequest(
+                    "turn actor does not match the latest queued user message".into(),
+                ));
+            }
+        }
+        SessionTurnTrigger::Wake {
+            commitment_ref,
+            occurrence_ref,
+        } => {
+            if input.actor_ref != "cerebro-scheduler"
+                || !bounded(commitment_ref, MAX_TEXT_BYTES)
+                || !bounded(occurrence_ref, MAX_TEXT_BYTES)
+                || !session.events.iter().any(|event| {
+                    matches!(
+                        &event.event,
+                        SessionEvent::WakeTriggered {
+                            request_id,
+                            commitment_ref: recorded_commitment,
+                            occurrence_ref: recorded_occurrence,
+                            ..
+                        } if request_id == &input.request_id
+                            && recorded_commitment == commitment_ref
+                            && recorded_occurrence == occurrence_ref
+                    )
+                })
+            {
+                return Err(AgentRuntimeError::InvalidRequest(
+                    "wake trigger is not bound to its durable scheduler event".into(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn session_turn_request_text(
+    session: &AgentSession,
+    input: &SessionTurnInput,
+) -> Result<String, AgentRuntimeError> {
+    match &input.trigger {
+        SessionTurnTrigger::Operator => session
+            .messages
+            .last()
+            .filter(|message| message.role == SessionMessageRole::User)
+            .map(|message| message.text.clone())
+            .ok_or_else(|| {
+                AgentRuntimeError::InvalidRequest("operator turn has no queued user request".into())
+            }),
+        SessionTurnTrigger::Wake { commitment_ref, .. } => {
+            let commitment = session
+                .mission
+                .commitments
+                .iter()
+                .find(|commitment| commitment.commitment_ref == *commitment_ref)
+                .ok_or_else(|| {
+                    AgentRuntimeError::InvalidRequest(
+                        "wake turn has no matching durable commitment".into(),
+                    )
+                })?;
+            Ok(format!(
+                "Resume the scheduled commitment {}. Next action: {} Acceptance criteria: {} Verification: {}",
+                commitment.commitment_ref,
+                commitment.next_action.as_deref().unwrap_or("not recorded"),
+                commitment.acceptance_criteria.join("; "),
+                commitment.verification.as_deref().unwrap_or("not recorded"),
+            ))
+        }
+    }
+}
+
+fn validate_wake_completion(
+    session: &AgentSession,
+    draft: &GroundedDraft,
+    trigger: &SessionTurnTrigger,
+    assessment_at: OffsetDateTime,
+) -> Result<(), AgentRuntimeError> {
+    let SessionTurnTrigger::Wake { commitment_ref, .. } = trigger else {
+        return Ok(());
+    };
+    let current = session
+        .mission
+        .commitments
+        .iter()
+        .find(|commitment| commitment.commitment_ref == *commitment_ref)
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal(
+                "the wake does not match a current durable commitment".into(),
+            )
+        })?;
+    if current.owner != WorkOwner::Cerebro
+        || matches!(
+            current.status,
+            CommitmentStatus::Completed | CommitmentStatus::Cancelled
+        )
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "the wake commitment is not active Cerebro-owned work".into(),
+        ));
+    }
+    let due_at = current
+        .wake_at
+        .as_deref()
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal("the wake commitment has no due time".into())
+        })
+        .and_then(|value| {
+            OffsetDateTime::parse(value, &Rfc3339).map_err(|_| {
+                AgentRuntimeError::InvalidFinal("the wake commitment due time is invalid".into())
+            })
+        })?;
+    if due_at > assessment_at {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "the wake commitment is not due yet".into(),
+        ));
+    }
+    let next = draft
+        .mission
+        .commitments
+        .iter()
+        .find(|commitment| commitment.commitment_ref == *commitment_ref)
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal(
+                "a wake must close or explicitly reschedule its exact commitment".into(),
+            )
+        })?;
+    if matches!(
+        next.status,
+        CommitmentStatus::Completed | CommitmentStatus::Cancelled
+    ) {
+        if next.wake_at.is_some() {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "a closed wake commitment cannot retain a due time".into(),
+            ));
+        }
+        return Ok(());
+    }
+    let next_wake = next
+        .wake_at
+        .as_deref()
+        .and_then(|value| OffsetDateTime::parse(value, &Rfc3339).ok())
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal(
+                "an unfinished wake commitment requires a replacement due time".into(),
+            )
+        })?;
+    if next_wake <= assessment_at {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "a rescheduled wake commitment must move to a future due time".into(),
         ));
     }
     Ok(())
@@ -2004,9 +2212,19 @@ fn validate_mission(mission: &MissionState) -> Result<(), AgentRuntimeError> {
                 commitment.status,
                 CommitmentStatus::Completed | CommitmentStatus::Cancelled
             )
+            && (commitment.wake_at.is_none()
+                || commitment
+                    .next_action
+                    .as_deref()
+                    .is_none_or(|value| !bounded(value, MAX_TEXT_BYTES))
+                || commitment.acceptance_criteria.is_empty()
+                || commitment
+                    .verification
+                    .as_deref()
+                    .is_none_or(|value| !bounded(value, MAX_TEXT_BYTES)))
         {
             return Err(AgentRuntimeError::InvalidFinal(
-                "unfinished Cerebro commitments require an active background executor".into(),
+                "unfinished Cerebro commitments require an exact wake time, next action, acceptance criteria, and verification condition".into(),
             ));
         }
         if commitment
@@ -2170,6 +2388,21 @@ mod tests {
         }
     }
 
+    fn scheduled_commitment() -> Commitment {
+        Commitment {
+            commitment_ref: "commitment:scheduled-check".into(),
+            summary: "Re-observe connector alpha at the scheduled boundary.".into(),
+            owner: WorkOwner::Cerebro,
+            status: CommitmentStatus::Waiting,
+            next_action: Some("Read connector alpha and compare the current state.".into()),
+            blocker: None,
+            acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
+            artifact_refs: Vec::new(),
+            wake_at: Some("2026-07-31T00:00:30Z".into()),
+            verification: Some("A current connector observation closes the check.".into()),
+        }
+    }
+
     fn plan() -> ResearchPlan {
         ResearchPlan {
             decision: "Establish the current connector state.".into(),
@@ -2312,6 +2545,37 @@ mod tests {
         descriptor: ToolDescriptor,
     }
 
+    struct WakeTools {
+        effects: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl SessionTools for WakeTools {
+        fn catalog(&self) -> Vec<ToolDescriptor> {
+            let read = observation(true, Some("2026-08-01T00:00:00Z")).descriptor;
+            let mut update = read.clone();
+            update.tool_id = "connector.update".into();
+            update.authority_class = ToolAuthorityClass::Actuate;
+            update.effect_class = ToolEffectClass::Write;
+            vec![read, update]
+        }
+
+        async fn invoke(
+            &self,
+            _session: &AgentSession,
+            _input: &SessionTurnInput,
+            call: &ToolCall,
+        ) -> Result<ToolResult, AgentRuntimeError> {
+            if call.tool_id == "connector.update" {
+                self.effects.fetch_add(1, Ordering::SeqCst);
+                return Err(AgentRuntimeError::InvalidToolCall(
+                    "a wake effect reached the tool adapter".into(),
+                ));
+            }
+            Ok(observation(true, Some("2026-08-01T00:00:00Z")).result)
+        }
+    }
+
     #[async_trait]
     impl SessionTools for CountingEffectTools {
         fn catalog(&self) -> Vec<ToolDescriptor> {
@@ -2391,6 +2655,17 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn accepts_only_executor_bound_cerebro_commitments() {
+        let mut scheduled = draft();
+        scheduled.mission.commitments.push(scheduled_commitment());
+        scheduled.mission.status = SessionStatus::WaitingForExternal;
+        assert!(validate_mission(&scheduled.mission).is_ok());
+
+        scheduled.mission.commitments[0].verification = None;
+        assert!(validate_mission(&scheduled.mission).is_err());
     }
 
     #[test]
@@ -2517,6 +2792,7 @@ mod tests {
             request_id: "request:1".into(),
             actor_ref: "user:1".into(),
             assessment_at: "2026-07-31T00:01:00Z".into(),
+            trigger: SessionTurnTrigger::Operator,
         };
         let mut authorized = session();
         authorized.effect_authorizations.push(EffectAuthorization {
@@ -2642,6 +2918,7 @@ mod tests {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                trigger: SessionTurnTrigger::Operator,
             },
         )
         .await
@@ -2681,6 +2958,161 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn due_wake_runs_as_scheduler_control_without_faking_a_user_message() {
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let original_message_count = awakened.messages.len();
+        awakened = apply_session_events(
+            &awakened,
+            &[SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::WakeTriggered {
+                    request_id: "wake-request:1".into(),
+                    commitment_ref: "commitment:scheduled-check".into(),
+                    occurrence_ref: "occurrence:1".into(),
+                    scheduled_for: "2026-07-31T00:00:30Z".into(),
+                },
+            }],
+        )
+        .unwrap();
+        assert_eq!(awakened.messages.len(), original_message_count);
+        let mut completed = draft();
+        completed.mission = awakened.mission.clone();
+        let commitment = completed
+            .mission
+            .commitments
+            .iter_mut()
+            .find(|commitment| commitment.commitment_ref == "commitment:scheduled-check")
+            .unwrap();
+        commitment.status = CommitmentStatus::Completed;
+        commitment.next_action = None;
+        commitment.wake_at = None;
+        completed.mission.status = SessionStatus::Completed;
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::EstablishPlan { plan: plan() },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:wake:1".into(),
+                        tool_id: "connector.read".into(),
+                        purpose: "Complete the scheduled connector observation.".into(),
+                        input: json!({"connector_ref": "connector:alpha"}),
+                    }],
+                },
+                SessionModelDecision::Finish { draft: completed },
+            ])),
+        };
+
+        let outcome = run_session_turn_recorded(
+            &model,
+            &ConnectorTools,
+            &NoopSessionJournal,
+            awakened,
+            SessionTurnInput {
+                request_id: "wake-request:1".into(),
+                actor_ref: "cerebro-scheduler".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                trigger: SessionTurnTrigger::Wake {
+                    commitment_ref: "commitment:scheduled-check".into(),
+                    occurrence_ref: "occurrence:1".into(),
+                },
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(matches!(
+            outcome,
+            SessionTurnOutcome::PendingDelivery { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn scheduled_wake_cannot_consume_effect_authority() {
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        awakened.mission.status = SessionStatus::WaitingForExternal;
+        awakened = apply_session_events(
+            &awakened,
+            &[SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::WakeTriggered {
+                    request_id: "wake-request:effect".into(),
+                    commitment_ref: "commitment:scheduled-check".into(),
+                    occurrence_ref: "occurrence:effect".into(),
+                    scheduled_for: "2026-07-31T00:00:30Z".into(),
+                },
+            }],
+        )
+        .unwrap();
+        let mut wake_plan = plan();
+        wake_plan.selected_tools.push("connector.update".into());
+        let mut completed = draft();
+        completed.mission = awakened.mission.clone();
+        let commitment = &mut completed.mission.commitments[0];
+        commitment.status = CommitmentStatus::Completed;
+        commitment.next_action = None;
+        commitment.wake_at = None;
+        completed.mission.status = SessionStatus::Completed;
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::EstablishPlan { plan: wake_plan },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:wake:read".into(),
+                        tool_id: "connector.read".into(),
+                        purpose: "Read connector alpha.".into(),
+                        input: json!({"connector_ref": "connector:alpha"}),
+                    }],
+                },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:wake:effect".into(),
+                        tool_id: "connector.update".into(),
+                        purpose: "Attempt an unauthorized scheduled effect.".into(),
+                        input: json!({"connector_ref": "connector:alpha"}),
+                    }],
+                },
+                SessionModelDecision::Finish { draft: completed },
+            ])),
+        };
+        let tools = WakeTools {
+            effects: AtomicUsize::new(0),
+        };
+
+        let outcome = run_session_turn_recorded(
+            &model,
+            &tools,
+            &NoopSessionJournal,
+            awakened,
+            SessionTurnInput {
+                request_id: "wake-request:effect".into(),
+                actor_ref: "cerebro-scheduler".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                trigger: SessionTurnTrigger::Wake {
+                    commitment_ref: "commitment:scheduled-check".into(),
+                    occurrence_ref: "occurrence:effect".into(),
+                },
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(matches!(
+            outcome,
+            SessionTurnOutcome::PendingDelivery { .. }
+        ));
+        assert_eq!(tools.effects.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
     async fn critic_can_raise_distinct_issues_across_bounded_revisions() {
         let model = RefiningSessionModel {
             decisions: Mutex::new(VecDeque::from([
@@ -2717,6 +3149,7 @@ mod tests {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                trigger: SessionTurnTrigger::Operator,
             },
         )
         .await
@@ -2755,6 +3188,7 @@ mod tests {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                trigger: SessionTurnTrigger::Operator,
             },
         )
         .await
@@ -2793,6 +3227,7 @@ mod tests {
                 request_id: "request:2".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                trigger: SessionTurnTrigger::Operator,
             },
         )
         .await
@@ -2835,6 +3270,7 @@ mod tests {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                trigger: SessionTurnTrigger::Operator,
             },
         )
         .await;
@@ -2908,6 +3344,7 @@ mod tests {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:02:00Z".into(),
+                trigger: SessionTurnTrigger::Operator,
             },
         )
         .await;
