@@ -1221,6 +1221,7 @@ pub async fn run_session_turn_recorded(
             }
             SessionModelDecision::Finish { mut draft } => {
                 normalize_redundant_baseline_alerts(&session, &mut draft, &observations);
+                normalize_passive_wake_handback(&trigger, &mut draft);
                 normalize_coverage_notice(&mut draft, &observations);
                 if let Err(error) = validate_planned_follow_through_viability(
                     plan.as_ref(),
@@ -2143,7 +2144,7 @@ fn normalize_redundant_baseline_alerts(
     }
 }
 
-fn normalize_coverage_notice(draft: &mut GroundedDraft, observations: &[ToolObservation]) {
+fn normalize_coverage_notice(draft: &mut GroundedDraft, _observations: &[ToolObservation]) {
     if !matches!(draft.state, FinalState::Partial | FinalState::Blocked) {
         return;
     }
@@ -2153,37 +2154,20 @@ fn normalize_coverage_notice(draft: &mut GroundedDraft, observations: &[ToolObse
         .map(str::trim)
         .filter(|notice| !notice.is_empty())
         .map(str::to_owned);
-    let generated = observations.iter().rev().find_map(|observation| {
-        let incomplete = observation.result.state != ToolResultState::Succeeded
-            || observation.result.blocker.is_some()
-            || !observation
-                .result
-                .evidence
-                .iter()
-                .any(|evidence| evidence.complete);
-        incomplete.then(|| {
-            let detail = observation
-                .result
-                .blocker
-                .as_deref()
-                .unwrap_or(&observation.result.summary)
-                .chars()
-                .take(800)
-                .collect::<String>();
-            format!("Coverage gap: {}", detail.trim())
-        })
-    });
-    let notice = existing.or(generated).unwrap_or_else(|| match draft.state {
+    if let Some(existing) = existing.filter(|notice| draft.message.contains(notice)) {
+        draft.coverage_notice = Some(existing);
+        return;
+    }
+    let notice: String = match draft.state {
         FinalState::Partial => {
-            "Coverage gap: The available observations do not establish every conclusion requested in this turn."
-                .into()
+            "Coverage gap: The requested conclusion remains only partially supported.".into()
         }
         FinalState::Blocked => {
-            "Coverage gap: The required authoritative observation was not available for this turn."
+            "Coverage gap: The requested conclusion is blocked by missing authoritative evidence."
                 .into()
         }
         _ => unreachable!("coverage normalization is restricted to partial and blocked drafts"),
-    });
+    };
     draft.coverage_notice = Some(notice.clone());
     if !draft.message.contains(&notice) {
         let visible_notice = format!("\n\n{notice}");
@@ -2196,6 +2180,28 @@ fn normalize_coverage_notice(draft: &mut GroundedDraft, observations: &[ToolObse
             content: ClaimContent::StableExplanation,
         });
     }
+}
+
+fn normalize_passive_wake_handback(trigger: &SessionTurnTrigger, draft: &mut GroundedDraft) {
+    if !matches!(trigger, SessionTurnTrigger::Wake { .. }) {
+        return;
+    }
+    const PASSIVE_HANDBACKS: [&str; 3] = [
+        "\n\nLet me know if you want to adjust the approach.",
+        " Let me know if you want to adjust the approach.",
+        "Let me know if you want to adjust the approach.",
+    ];
+    for claim in &mut draft.claims {
+        for handback in PASSIVE_HANDBACKS {
+            claim.text = claim.text.replace(handback, "");
+        }
+    }
+    draft.claims.retain(|claim| !claim.text.is_empty());
+    draft.message = draft
+        .claims
+        .iter()
+        .map(|claim| claim.text.as_str())
+        .collect();
 }
 
 fn collect_false_boolean_pointers(value: &Value, prefix: &str, output: &mut Vec<String>) {
@@ -5149,13 +5155,11 @@ mod tests {
 
         assert_eq!(
             partial.coverage_notice.as_deref(),
-            Some("Coverage gap: The source runtime returned a bounded read failure.")
+            Some("Coverage gap: The requested conclusion remains only partially supported.")
         );
-        assert!(
-            partial
-                .message
-                .ends_with("\n\nCoverage gap: The source runtime returned a bounded read failure.")
-        );
+        assert!(partial.message.ends_with(
+            "\n\nCoverage gap: The requested conclusion remains only partially supported."
+        ));
         assert_eq!(
             partial
                 .claims
@@ -5181,7 +5185,7 @@ mod tests {
             .coverage_notice
             .as_deref()
             .expect("partial drafts require a normalized notice");
-        assert!(notice.contains("do not establish every conclusion"));
+        assert!(notice.contains("remains only partially supported"));
         assert!(partial.message.contains(notice));
         assert_eq!(
             partial
@@ -5190,6 +5194,44 @@ mod tests {
                 .map(|claim| claim.text.as_str())
                 .collect::<String>(),
             partial.message
+        );
+    }
+
+    #[test]
+    fn scheduled_wake_removes_a_passive_operator_handback() {
+        let mut progress = draft();
+        let handback = " Let me know if you want to adjust the approach.";
+        progress.message.push_str(handback);
+        progress.claims.push(GroundedClaim {
+            claim_ref: "claim:passive-handback".into(),
+            planned_claim_ref: None,
+            text: handback.into(),
+            required_for_answer: false,
+            content: ClaimContent::StableExplanation,
+        });
+
+        normalize_passive_wake_handback(
+            &SessionTurnTrigger::Wake {
+                commitment_ref: "commitment:scheduled-check".into(),
+                occurrence_ref: "occurrence:passive-handback".into(),
+            },
+            &mut progress,
+        );
+
+        assert!(!progress.message.contains("Let me know"));
+        assert!(
+            progress
+                .claims
+                .iter()
+                .all(|claim| !claim.text.contains("Let me know"))
+        );
+        assert_eq!(
+            progress
+                .claims
+                .iter()
+                .map(|claim| claim.text.as_str())
+                .collect::<String>(),
+            progress.message
         );
     }
 
