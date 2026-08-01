@@ -716,7 +716,9 @@ pub async fn run_turn(
             }
             ModelDecision::Finish { draft } => {
                 let draft = normalize_converse_draft(lane, draft, &observations);
-                if let Err(error) = validate_final(&request, lane, &draft, &observations) {
+                if let Err(error) =
+                    validate_final(&request, lane, resumed_mission, &draft, &observations)
+                {
                     operating_repairs += 1;
                     if operating_repairs > MAX_OPERATING_REPAIRS {
                         return Ok(repair_limit_outcome(
@@ -749,7 +751,9 @@ pub async fn run_turn(
                     },
                 )
                 .await?;
-                if let Err(error) = validate_final(&request, lane, &draft, &observations) {
+                if let Err(error) =
+                    validate_final(&request, lane, resumed_mission, &draft, &observations)
+                {
                     operating_repairs += 1;
                     if operating_repairs > MAX_OPERATING_REPAIRS {
                         return Ok(repair_limit_outcome(
@@ -1285,6 +1289,7 @@ fn validate_tool_result(result: &ToolResult) -> Result<(), AgentRuntimeError> {
 fn validate_final(
     request: &AgentTurnRequest,
     lane: ExecutionLane,
+    resumed_mission: bool,
     draft: &FinalDraft,
     observations: &[ToolObservation],
 ) -> Result<(), AgentRuntimeError> {
@@ -1347,6 +1352,12 @@ fn validate_final(
     {
         return Err(AgentRuntimeError::InvalidFinal(
             "display fields are invalid".into(),
+        ));
+    }
+    if resumed_mission && repeats_recent_assistant_reply(&render_final(draft), &request.history) {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "the continuation substantially repeats a recent assistant reply. Advance the work: produce the next useful artifact, consolidate the blocker into a handoff, answer a newly resolved point, or state the exact new fact that changed. Do not echo the prior refusal or question"
+                .into(),
         ));
     }
     match draft.state {
@@ -1470,6 +1481,39 @@ fn validate_final(
         }
     }
     Ok(())
+}
+
+fn repeats_recent_assistant_reply(candidate: &str, history: &[ConversationMessage]) -> bool {
+    let candidate_words = significant_words(candidate);
+    if candidate_words.len() < 6 {
+        return false;
+    }
+    history
+        .iter()
+        .rev()
+        .filter(|message| message.role == ConversationRole::Assistant)
+        .take(3)
+        .any(|message| {
+            let prior_words = significant_words(&message.content);
+            if prior_words.len() < 6 {
+                return false;
+            }
+            let shared = candidate_words.intersection(&prior_words).count();
+            let smaller = candidate_words.len().min(prior_words.len());
+            let larger = candidate_words.len().max(prior_words.len());
+            shared * 100 >= smaller * 82 && shared * 100 >= larger * 65
+        })
+}
+
+fn significant_words(text: &str) -> BTreeSet<String> {
+    const STOP_WORDS: [&str; 14] = [
+        "and", "are", "but", "for", "from", "has", "have", "that", "the", "this", "was", "were",
+        "with", "you",
+    ];
+    text.split(|character: char| !character.is_alphanumeric())
+        .map(str::to_lowercase)
+        .filter(|word| word.chars().count() >= 3 && !STOP_WORDS.contains(&word.as_str()))
+        .collect()
 }
 
 fn finalize_unknown_effect(

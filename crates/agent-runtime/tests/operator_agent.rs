@@ -1642,6 +1642,77 @@ async fn continuation_resumes_the_retained_conversation_lane_without_reads() {
 }
 
 #[tokio::test]
+async fn continuation_repairs_a_repeated_blocker_into_forward_progress() {
+    let repeated_summary = "I still need the finding identifier before I can finish the handoff.";
+    let coverage_notice = "The finding identifier is not present in this thread.";
+    let mut turn = request("Keep going.");
+    turn.history = vec![
+        ConversationMessage {
+            role: ConversationRole::User,
+            content: "Finish the handoff.".into(),
+        },
+        ConversationMessage {
+            role: ConversationRole::Assistant,
+            content: format!("{repeated_summary}\n\n{coverage_notice}"),
+        },
+    ];
+    turn.working_state = Some(WorkingState {
+        mission_ref: Some("mission://blocked-handoff".into()),
+        current_request: "Finish the remediation handoff.".into(),
+        last_outcome: WorkingOutcome::Blocked,
+        last_blocker: Some(coverage_notice.into()),
+        active_lane: Some(ExecutionLane::Converse),
+        requires_current_evidence: Some(false),
+        open_loops: vec!["Produce the useful blocked-state handoff.".into()],
+    });
+    let blocked_draft = |summary: &str| FinalDraft {
+        state: FinalState::Blocked,
+        headline: "Handoff state".into(),
+        summary: summary.into(),
+        summary_evidence_refs: vec![],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec!["Attach the finding identifier when it becomes available.".into()],
+        coverage_notice: Some(coverage_notice.into()),
+        question: None,
+    };
+    let model = ScriptedModel {
+        routes: Mutex::new(VecDeque::from([RouteDecision {
+            lane: ExecutionLane::Continue,
+            confidence: RouteConfidence::High,
+            reason: "Continue the retained conversational handoff.".into(),
+            requires_current_evidence: false,
+        }])),
+        decisions: Mutex::new(VecDeque::from([
+            ModelDecision::Finish {
+                draft: blocked_draft(repeated_summary),
+            },
+            ModelDecision::Finish {
+                draft: blocked_draft(
+                    "The handoff is ready as a blocked-state artifact: scope and next action are preserved, and the owner can attach the missing identifier without reconstructing the thread.",
+                ),
+            },
+        ])),
+        presentations: Mutex::new(VecDeque::new()),
+        critiques: Mutex::new(VecDeque::new()),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } =
+        run_turn(&model, &tools, turn).await.unwrap()
+    else {
+        panic!("expected the repeated blocker to repair");
+    };
+    assert!(markdown.contains("blocked-state artifact"));
+    assert!(!markdown.starts_with(repeated_summary));
+}
+
+#[tokio::test]
 async fn evidence_bearing_continuation_repairs_to_a_fresh_read() {
     let mut turn = request("Keep at it.");
     turn.working_state = Some(WorkingState {
