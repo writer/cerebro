@@ -40,7 +40,8 @@ const OPERATOR_DECISION_TOOL: &str = "submit_operator_decision";
 const EVALUATION_PROBE_TOOL: &str = "submit_evaluation_probe";
 const LAB_MIN_EXCHANGES: usize = 4;
 const LAB_MAX_TURNS: usize = 12;
-const LAB_MAX_TURN_LATENCY_MS: u128 = 60_000;
+const LAB_MAX_OPERATOR_TURN_LATENCY_MS: u128 = 300_000;
+const LAB_MAX_SCHEDULED_WAKE_LATENCY_MS: u128 = 60_000;
 const AUTONOMY_WAKE_COUNT: usize = 2;
 const AUTONOMY_MAX_WAKE_DELAY: Duration = Duration::hours(24);
 
@@ -341,6 +342,14 @@ enum LabTurnTrigger {
     ScheduledWake,
 }
 
+fn lab_turn_latency_slo_passed(trigger: LabTurnTrigger, latency_ms: u128) -> bool {
+    latency_ms
+        <= match trigger {
+            LabTurnTrigger::Operator => LAB_MAX_OPERATOR_TURN_LATENCY_MS,
+            LabTurnTrigger::ScheduledWake => LAB_MAX_SCHEDULED_WAKE_LATENCY_MS,
+        }
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct EvaluationScheduleReceipt {
     schedule_ref: String,
@@ -401,7 +410,8 @@ struct ConversationLabReceipt {
     blind_review_bundle_sha256: String,
     minimum_exchanges: usize,
     maximum_turns: usize,
-    maximum_turn_latency_ms: u128,
+    operator_turn_latency_slo_ms: u128,
+    scheduled_wake_latency_slo_ms: u128,
     independent_review_required: bool,
     promotion_gate: &'static str,
     run_scope: &'static str,
@@ -437,6 +447,8 @@ struct AutonomyLabReceipt {
     rescheduled_schedule_chain_complete: bool,
     unique_fresh_observation_receipts: bool,
     commitment_closed: bool,
+    operator_turn_latency_slo_ms: u128,
+    scheduled_wake_latency_slo_ms: u128,
     independent_review_required: bool,
     promotion_ready: bool,
     suite_passed: bool,
@@ -2533,7 +2545,7 @@ async fn run_autonomy_lab(
     let internal_judge_advisory_excellent = judgment.is_excellent();
     let latency_slo_passed = turns
         .iter()
-        .all(|turn| turn.latency_ms <= LAB_MAX_TURN_LATENCY_MS);
+        .all(|turn| lab_turn_latency_slo_passed(turn.trigger, turn.latency_ms));
     let scenario_receipt = ConversationLabScenarioReceipt {
         scenario_ref: scenario.scenario_ref,
         candidate_label,
@@ -2571,7 +2583,7 @@ async fn run_autonomy_lab(
         latency_slo_passed,
     );
     let receipt = AutonomyLabReceipt {
-        schema_version: "cerebro-rust-slack-agent-autonomy-lab/v1",
+        schema_version: "cerebro-rust-slack-agent-autonomy-lab/v2",
         commit_sha,
         evaluated_at,
         provider: "aws_bedrock",
@@ -2593,6 +2605,8 @@ async fn run_autonomy_lab(
         rescheduled_schedule_chain_complete,
         unique_fresh_observation_receipts,
         commitment_closed,
+        operator_turn_latency_slo_ms: LAB_MAX_OPERATOR_TURN_LATENCY_MS,
+        scheduled_wake_latency_slo_ms: LAB_MAX_SCHEDULED_WAKE_LATENCY_MS,
         independent_review_required: true,
         promotion_ready: false,
         suite_passed,
@@ -2930,7 +2944,9 @@ async fn run_conversation_lab(
             && unanswered_user_turn_count == 0
             && required_failure_path_exercised
             && required_action_path_exercised;
-        let latency_slo_passed = maximum_turn_latency_ms <= LAB_MAX_TURN_LATENCY_MS;
+        let latency_slo_passed = turns
+            .iter()
+            .all(|turn| lab_turn_latency_slo_passed(turn.trigger, turn.latency_ms));
         let internal_judge_advisory_excellent = final_judgment
             .as_ref()
             .is_some_and(ConversationQualityJudgment::is_excellent);
@@ -2966,7 +2982,7 @@ async fn run_conversation_lab(
         fs::write(path, &blind_review_bytes)?;
     }
     let receipt = ConversationLabReceipt {
-        schema_version: "cerebro-rust-slack-agent-conversation-lab/v4",
+        schema_version: "cerebro-rust-slack-agent-conversation-lab/v5",
         commit_sha,
         evaluated_at,
         provider: "aws_bedrock",
@@ -2980,7 +2996,8 @@ async fn run_conversation_lab(
         blind_review_bundle_sha256,
         minimum_exchanges: LAB_MIN_EXCHANGES,
         maximum_turns: LAB_MAX_TURNS,
-        maximum_turn_latency_ms: LAB_MAX_TURN_LATENCY_MS,
+        operator_turn_latency_slo_ms: LAB_MAX_OPERATOR_TURN_LATENCY_MS,
+        scheduled_wake_latency_slo_ms: LAB_MAX_SCHEDULED_WAKE_LATENCY_MS,
         independent_review_required: true,
         promotion_gate: "fresh_blind_curmudgeon_consensus_required",
         run_scope: if full_suite { "full" } else { "targeted" },
@@ -4383,6 +4400,26 @@ mod tests {
     fn autonomy_suite_fails_closed_when_a_turn_misses_the_latency_slo() {
         assert!(autonomy_suite_passed(true, true, true));
         assert!(!autonomy_suite_passed(true, true, false));
+    }
+
+    #[test]
+    fn autonomy_latency_budget_allows_deep_operator_work_but_bounds_wakes() {
+        assert!(lab_turn_latency_slo_passed(
+            LabTurnTrigger::Operator,
+            215_416
+        ));
+        assert!(!lab_turn_latency_slo_passed(
+            LabTurnTrigger::Operator,
+            LAB_MAX_OPERATOR_TURN_LATENCY_MS + 1
+        ));
+        assert!(lab_turn_latency_slo_passed(
+            LabTurnTrigger::ScheduledWake,
+            46_149
+        ));
+        assert!(!lab_turn_latency_slo_passed(
+            LabTurnTrigger::ScheduledWake,
+            LAB_MAX_SCHEDULED_WAKE_LATENCY_MS + 1
+        ));
     }
 
     #[test]
