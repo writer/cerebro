@@ -1650,8 +1650,28 @@ fn validate_commitment_baselines(
                         format!("; its last result was {:?}", observation.result.state)
                     })
                     .unwrap_or_default();
+                let successful_alternatives = observations
+                    .iter()
+                    .filter(|observation| {
+                        observation.call.tool_id != *tool_id
+                            && observation_is_complete_and_fresh(observation, assessment_at)
+                    })
+                    .map(|observation| observation.call.tool_id.clone())
+                    .collect::<BTreeSet<_>>();
+                let revision = if successful_alternatives.is_empty() {
+                    "Establish a materially revised plan selecting another available read, invoke it for a fresh baseline, and bind follow-through to that successful authority."
+                        .into()
+                } else {
+                    format!(
+                        "Fresh successful alternatives are already observed: {}. Return establish_plan now, preserve the commitment identity and acceptance criteria, and bind required_tool_ids to the exact successful authority that supports the follow-through.",
+                        successful_alternatives
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                };
                 return Err(AgentRuntimeError::InvalidFinal(format!(
-                    "the new or changed commitment requires {tool_id}, but this turn has no successful, complete, fresh baseline observation from that tool{last_state}. Do not finish with this executor contract. Establish a materially revised plan selecting another available read, invoke it for a fresh baseline, and bind follow-through to that successful authority."
+                    "the new or changed commitment requires {tool_id}, but this turn has no successful, complete, fresh baseline observation from that tool{last_state}. Do not finish with this executor contract. {revision}"
                 )));
             }
         }
@@ -3987,12 +4007,25 @@ mod tests {
             &session,
             &scheduled,
             Some(&plan()),
-            &[failed],
+            std::slice::from_ref(&failed),
             assessment_at,
         )
         .unwrap_err();
         assert!(error.to_string().contains("last result was Failed"));
         assert!(error.to_string().contains("materially revised plan"));
+
+        let mut alternative = observation(true, Some("2026-07-31T00:06:00Z"));
+        alternative.call.tool_id = "graph.read".into();
+        let error = validate_commitment_baselines(
+            &session,
+            &scheduled,
+            Some(&plan()),
+            &[failed.clone(), alternative],
+            assessment_at,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("graph.read"));
+        assert!(error.to_string().contains("Return establish_plan now"));
 
         let already_accepted = observation(true, Some("2026-07-31T00:06:00Z"));
         let error = validate_commitment_baselines(
