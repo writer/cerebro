@@ -450,10 +450,18 @@ pub struct BehavioralReview {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct AttentionReview {
+    pub delivery: DeliveryDisposition,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct MessageReview {
     pub message_digest: String,
     pub claim_reviews: Vec<ClaimReview>,
     pub undeclared_material: Vec<String>,
+    pub attention: AttentionReview,
     pub behavioral: BehavioralReview,
 }
 
@@ -2038,6 +2046,17 @@ fn validate_message_review(
         }
         issues.push(format!("undeclared material: {material}"));
     }
+    if !bounded(&review.attention.reason, MAX_TEXT_BYTES) {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "message review contains an invalid attention rationale".into(),
+        ));
+    }
+    if review.attention.delivery != draft.delivery {
+        issues.push(format!(
+            "the independent attention review requires {:?} delivery: {}",
+            review.attention.delivery, review.attention.reason
+        ));
+    }
     let behavioral = &review.behavioral;
     if !behavioral.answers_newest_request {
         issues.push("the response does not answer the newest operator request".into());
@@ -2769,6 +2788,10 @@ mod tests {
                 message_digest,
                 claim_reviews,
                 undeclared_material: Vec::new(),
+                attention: AttentionReview {
+                    delivery: turn.draft.delivery,
+                    reason: "The scripted review accepts the requested delivery boundary.".into(),
+                },
                 behavioral: BehavioralReview {
                     answers_newest_request: true,
                     conversational: true,
@@ -2830,6 +2853,10 @@ mod tests {
                 message_digest: message_digest(&turn.draft.message),
                 claim_reviews,
                 undeclared_material: Vec::new(),
+                attention: AttentionReview {
+                    delivery: turn.draft.delivery,
+                    reason: "The scripted review accepts the requested delivery boundary.".into(),
+                },
                 behavioral,
             })
         }
@@ -3052,6 +3079,10 @@ mod tests {
                 })
                 .collect(),
             undeclared_material: vec!["The prefix claims a current fact.".into()],
+            attention: AttentionReview {
+                delivery: draft.delivery,
+                reason: "This response requires normal visible delivery.".into(),
+            },
             behavioral: BehavioralReview {
                 answers_newest_request: true,
                 conversational: false,
@@ -3070,6 +3101,14 @@ mod tests {
             issues
                 .iter()
                 .any(|issue| issue.contains("conversationally"))
+        );
+        let mut attention_mismatch = review.clone();
+        attention_mismatch.attention.delivery = DeliveryDisposition::Silent;
+        let issues = validate_message_review(&draft, &attention_mismatch).unwrap();
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.contains("independent attention review"))
         );
         let mut wrong_digest = review;
         wrong_digest.message_digest = format!("sha256:{}", "0".repeat(64));
