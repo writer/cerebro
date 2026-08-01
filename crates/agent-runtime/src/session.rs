@@ -1140,7 +1140,8 @@ pub async fn run_session_turn_recorded(
                 repairs = 0;
                 repair_feedback.clear();
             }
-            SessionModelDecision::Finish { draft } => {
+            SessionModelDecision::Finish { mut draft } => {
+                normalize_redundant_baseline_alerts(&session, &mut draft, &observations);
                 if let Err(error) = validate_planned_follow_through_viability(
                     plan.as_ref(),
                     &observations,
@@ -1741,6 +1742,51 @@ fn validate_commitment_baselines(
         }
     }
     Ok(())
+}
+
+fn normalize_redundant_baseline_alerts(
+    session: &AgentSession,
+    draft: &mut GroundedDraft,
+    observations: &[ToolObservation],
+) {
+    for commitment in draft.mission.commitments.iter_mut().filter(|commitment| {
+        commitment.owner == WorkOwner::Cerebro
+            && !matches!(
+                commitment.status,
+                CommitmentStatus::Completed | CommitmentStatus::Cancelled
+            )
+            && session
+                .mission
+                .commitments
+                .iter()
+                .all(|current| current.commitment_ref != commitment.commitment_ref)
+    }) {
+        let Some(policy) = commitment.attention_policy.as_mut() else {
+            continue;
+        };
+        let acceptance_targets = policy
+            .acceptance_all
+            .iter()
+            .map(|condition| {
+                (
+                    condition.tool_id.clone(),
+                    condition.data_pointer.clone(),
+                    condition.equals.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        policy.alert_any.retain(|alert| {
+            let baseline_matches = observation_condition_matches(alert, observations);
+            let acceptance_replaces_baseline = acceptance_targets.iter().any(
+                |(tool_id, data_pointer, equals)| {
+                    tool_id == &alert.tool_id
+                        && data_pointer == &alert.data_pointer
+                        && equals != &alert.equals
+                },
+            );
+            !(baseline_matches && acceptance_replaces_baseline)
+        });
+    }
 }
 
 fn collect_false_boolean_pointers(value: &Value, prefix: &str, output: &mut Vec<String>) {
@@ -4331,6 +4377,60 @@ mod tests {
         assert!(error.to_string().contains("already true at baseline"));
         assert!(error.to_string().contains("/streak_reset"));
         assert!(error.to_string().contains("desired future success"));
+    }
+
+    #[test]
+    fn redundant_current_state_alerts_are_removed_when_acceptance_owns_the_transition() {
+        let session = session();
+        let mut scheduled = draft();
+        let mut commitment = scheduled_commitment();
+        commitment.attention_policy = Some(CommitmentAttentionPolicy {
+            acceptance_all: vec![ObservationCondition {
+                tool_id: "connector.read".into(),
+                data_pointer: "/decision_grade".into(),
+                equals: json!(true),
+            }],
+            alert_any: vec![
+                ObservationCondition {
+                    tool_id: "connector.read".into(),
+                    data_pointer: "/decision_grade".into(),
+                    equals: json!(false),
+                },
+                ObservationCondition {
+                    tool_id: "connector.read".into(),
+                    data_pointer: "/streak_reset".into(),
+                    equals: json!(true),
+                },
+            ],
+        });
+        scheduled.mission.commitments.push(commitment);
+        let mut baseline = observation(true, Some("2026-07-31T00:06:00Z"));
+        baseline.result.data = json!({"decision_grade": false, "streak_reset": false});
+
+        normalize_redundant_baseline_alerts(
+            &session,
+            &mut scheduled,
+            std::slice::from_ref(&baseline),
+        );
+
+        let alerts = &scheduled.mission.commitments[0]
+            .attention_policy
+            .as_ref()
+            .unwrap()
+            .alert_any;
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].data_pointer, "/streak_reset");
+        let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        assert!(
+            validate_commitment_baselines(
+                &session,
+                &scheduled,
+                Some(&plan()),
+                &[baseline],
+                assessment_at,
+            )
+            .is_ok()
+        );
     }
 
     #[test]
