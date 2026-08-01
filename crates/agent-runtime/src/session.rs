@@ -14,7 +14,8 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
     AgentRuntimeError, ApprovalRequest, EffectAuthorization, ExecutionLane, FinalState,
-    ToolAuthorityClass, ToolCall, ToolDescriptor, ToolObservation, ToolResult, ToolResultState,
+    ToolAuthorityClass, ToolCall, ToolDescriptor, ToolEffectClass, ToolObservation, ToolResult,
+    ToolResultState,
 };
 
 pub const AGENT_SESSION_V2: &str = "agent-session/v2";
@@ -922,7 +923,7 @@ pub async fn run_session_turn_recorded(
                     )?;
                     continue;
                 }
-                let Some(established) = plan.as_ref() else {
+                let Some(mut established) = plan.clone() else {
                     record_operating_repair(
                         &mut repairs,
                         &mut repair_feedback,
@@ -930,6 +931,25 @@ pub async fn run_session_turn_recorded(
                     )?;
                     continue;
                 };
+                if let Some(expanded) = expand_plan_for_read_calls(
+                    &established,
+                    &calls,
+                    &descriptors,
+                    &available_tool_ids,
+                )? {
+                    emit_event(
+                        &session,
+                        &input.assessment_at,
+                        &mut events,
+                        SessionEvent::PlanEstablished {
+                            plan: expanded.clone(),
+                        },
+                        journal,
+                    )
+                    .await?;
+                    plan = Some(expanded.clone());
+                    established = expanded;
+                }
                 if matches!(trigger, SessionTurnTrigger::Wake { .. })
                     && calls.iter().any(|call| {
                         descriptors.get(&call.tool_id).is_some_and(|descriptor| {
@@ -948,7 +968,7 @@ pub async fn run_session_turn_recorded(
                 let mut proposed_call_fingerprints = call_fingerprints.clone();
                 if let Err(error) = validate_calls(
                     &calls,
-                    established,
+                    &established,
                     &descriptors,
                     observations.len(),
                     &mut proposed_call_ids,
@@ -1157,6 +1177,43 @@ pub async fn run_session_turn_recorded(
         }
     }
     Err(AgentRuntimeError::ModelStepLimit)
+}
+
+fn expand_plan_for_read_calls(
+    plan: &ResearchPlan,
+    calls: &[ToolCall],
+    descriptors: &BTreeMap<String, ToolDescriptor>,
+    available_tool_ids: &[String],
+) -> Result<Option<ResearchPlan>, AgentRuntimeError> {
+    let missing = calls
+        .iter()
+        .filter(|call| !plan.selected_tools.contains(&call.tool_id))
+        .map(|call| call.tool_id.clone())
+        .collect::<BTreeSet<_>>();
+    if missing.is_empty()
+        || missing.iter().any(|tool_id| {
+            descriptors.get(tool_id).is_none_or(|descriptor| {
+                descriptor.authority_class == ToolAuthorityClass::Actuate
+                    || descriptor.effect_class != ToolEffectClass::Read
+            })
+        })
+    {
+        return Ok(None);
+    }
+    let mut expanded = plan.clone();
+    if expanded.lane == ExecutionLane::Lookup {
+        expanded.lane = ExecutionLane::Investigate;
+    }
+    for tool_id in missing {
+        expanded.selected_tools.push(tool_id.clone());
+        for claim in &mut expanded.claims {
+            if !claim.source_candidates.contains(&tool_id) {
+                claim.source_candidates.push(tool_id.clone());
+            }
+        }
+    }
+    validate_plan(&expanded, available_tool_ids)?;
+    Ok(Some(expanded))
 }
 
 fn wake_research_plan(
@@ -3171,6 +3228,67 @@ mod tests {
         let plan = plan();
         assert!(validate_plan(&plan, &["connector.read".into()]).is_ok());
         assert!(validate_plan(&plan, &["graph.read".into()]).is_err());
+    }
+
+    #[test]
+    fn read_calls_can_adapt_a_plan_but_effects_cannot() {
+        let catalog = SessionTools::catalog(&WakeTools {
+            effects: AtomicUsize::new(0),
+        });
+        let connector_read = catalog
+            .iter()
+            .find(|descriptor| descriptor.tool_id == "connector.read")
+            .unwrap()
+            .clone();
+        let connector_update = catalog
+            .iter()
+            .find(|descriptor| descriptor.tool_id == "connector.update")
+            .unwrap()
+            .clone();
+        let mut graph_read = connector_read.clone();
+        graph_read.tool_id = "graph.read".into();
+        let descriptors = BTreeMap::from([
+            ("connector.read".into(), connector_read),
+            ("graph.read".into(), graph_read),
+            ("connector.update".into(), connector_update),
+        ]);
+        let read_call = ToolCall {
+            call_id: "call:adaptive-read".into(),
+            tool_id: "graph.read".into(),
+            purpose: "Read one additional bounded view.".into(),
+            input: json!({}),
+        };
+        let expanded = expand_plan_for_read_calls(
+            &plan(),
+            &[read_call],
+            &descriptors,
+            &["connector.read".into(), "graph.read".into()],
+        )
+        .unwrap()
+        .expect("an available read should widen the plan");
+        assert!(expanded.selected_tools.contains(&"graph.read".into()));
+        assert!(
+            expanded.claims[0]
+                .source_candidates
+                .contains(&"graph.read".into())
+        );
+
+        let effect_call = ToolCall {
+            call_id: "call:unplanned-effect".into(),
+            tool_id: "connector.update".into(),
+            purpose: "Attempt an unplanned effect.".into(),
+            input: json!({}),
+        };
+        assert!(
+            expand_plan_for_read_calls(
+                &plan(),
+                &[effect_call],
+                &descriptors,
+                &["connector.read".into(), "connector.update".into()],
+            )
+            .unwrap()
+            .is_none()
+        );
     }
 
     #[tokio::test]
