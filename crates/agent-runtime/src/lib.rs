@@ -158,6 +158,8 @@ pub struct AgentTurnRequest {
     pub tenant_id: String,
     pub request_id: String,
     pub thread_ref: String,
+    #[serde(default)]
+    pub context_scope_ref: Option<String>,
     pub actor_ref: String,
     pub assessment_at: String,
     pub message: String,
@@ -2589,6 +2591,7 @@ mod grounding_tests {
                 tenant_id: "tenant".into(),
                 request_id: "request".into(),
                 thread_ref: "thread".into(),
+                context_scope_ref: None,
                 actor_ref: "actor".into(),
                 assessment_at: "2026-07-31T12:00:00Z".into(),
                 message: "Who owns it?".into(),

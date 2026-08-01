@@ -929,6 +929,7 @@ mod tests {
             tenant_id: "tenant-a".into(),
             request_id: "request-a".into(),
             thread_ref: "slack-thread://a".into(),
+            context_scope_ref: None,
             actor_ref: "slack-user://a".into(),
             assessment_at: "2026-07-31T12:00:00Z".into(),
             message: "Continue the analysis.".into(),

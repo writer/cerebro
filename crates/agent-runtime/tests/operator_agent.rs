@@ -589,6 +589,7 @@ fn request(message: &str) -> AgentTurnRequest {
         tenant_id: "tenant-one".into(),
         request_id: "request-one".into(),
         thread_ref: "thread-one".into(),
+        context_scope_ref: None,
         actor_ref: "actor-one".into(),
         assessment_at: "2026-07-29T20:01:00Z".into(),
         message: message.into(),
