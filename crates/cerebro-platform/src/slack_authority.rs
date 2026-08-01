@@ -25,7 +25,10 @@ use cerebro_slack_authority::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::slack_agent::{AgentWakeTurn, SlackAgentService};
+use crate::{
+    slack_agent::{AgentWakeDeliveryReceipt, AgentWakeTurn, SlackAgentService},
+    slack_agent_session::AgentPendingWakeDelivery,
+};
 
 const DEFAULT_BIND: &str = "127.0.0.1:8091";
 const MAX_REQUEST_BYTES: usize = 96 * 1024;
@@ -45,6 +48,11 @@ struct WakeRunRequest {
 #[derive(Serialize)]
 struct WakeRunResponse {
     wake: Option<AgentWakeTurn>,
+}
+
+#[derive(Serialize)]
+struct WakeDeliveryClaimResponse {
+    delivery: Option<AgentPendingWakeDelivery>,
 }
 
 struct AuthorityRuntime {
@@ -172,8 +180,53 @@ fn router(question_policy: QuestionPolicy, agent: Option<SlackAgentService>) -> 
         .route("/v1/turns/run", post(run_turn_route))
         .route("/v1/turns/deliveries", post(record_delivery_route))
         .route("/v1/wakes/run", post(run_due_wake_route))
+        .route(
+            "/v1/wakes/pending-deliveries/claim",
+            post(claim_pending_wake_delivery_route),
+        )
+        .route("/v1/wakes/deliveries", post(record_wake_delivery_route))
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .with_state(Arc::new(AuthorityRuntime::new(question_policy, agent)))
+}
+
+async fn claim_pending_wake_delivery_route(
+    State(runtime): State<Arc<AuthorityRuntime>>,
+    Json(request): Json<WakeRunRequest>,
+) -> Result<Json<WakeDeliveryClaimResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let agent = runtime.agent.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                code: "agent_not_configured",
+                message: "The Rust Slack agent runtime is not configured.".into(),
+            }),
+        )
+    })?;
+    let delivery = agent
+        .claim_pending_wake_delivery(&request.worker_ref)
+        .await
+        .map_err(agent_error)?;
+    Ok(Json(WakeDeliveryClaimResponse { delivery }))
+}
+
+async fn record_wake_delivery_route(
+    State(runtime): State<Arc<AuthorityRuntime>>,
+    Json(receipt): Json<AgentWakeDeliveryReceipt>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let agent = runtime.agent.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                code: "agent_not_configured",
+                message: "The Rust Slack agent runtime is not configured.".into(),
+            }),
+        )
+    })?;
+    agent
+        .record_wake_delivery(receipt)
+        .await
+        .map_err(agent_error)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn run_due_wake_route(
@@ -501,6 +554,64 @@ mod tests {
         )
         .unwrap();
         assert_eq!(body["code"], "agent_not_configured");
+    }
+
+    #[tokio::test]
+    async fn wake_delivery_routes_fail_closed_when_the_agent_is_not_configured() {
+        let app = test_router();
+        let claim = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/wakes/pending-deliveries/claim")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"worker_ref":"slack-host:test"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(claim.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let receipt = app
+            .oneshot(
+                Request::post("/v1/wakes/deliveries")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(format!(
+                        r#"{{
+                          "lease":{{
+                            "commitment_ref":"commitment:test",
+                            "delivery_attempt_ref":"wake-delivery-attempt://sha256/{}",
+                            "delivery_ref":"wake-delivery://sha256/{}",
+                            "fence":2,
+                            "lease_expires_at":"2026-07-29T20:05:00Z",
+                            "lease_owner":"slack-host:test",
+                            "lease_token":"wake-delivery-lease://sha256/{}",
+                            "payload_digest":"sha256:{}",
+                            "request_id":"wake-request:test",
+                            "schedule_generation":1,
+                            "session_ref":"session:test"
+                          }},
+                          "receipt":{{
+                            "schema_version":"agent-delivery-receipt/v1",
+                            "tenant_id":"writer-sec-dev",
+                            "thread_ref":"thread:test",
+                            "request_id":"wake-request:test",
+                            "transport":"slack",
+                            "delivery_ref":"slack-message:test",
+                            "payload_digest":"sha256:{}",
+                            "delivered_at":"2026-07-29T20:00:00Z"
+                          }}
+                        }}"#,
+                        "a".repeat(64),
+                        "c".repeat(64),
+                        "d".repeat(64),
+                        "b".repeat(64),
+                        "b".repeat(64),
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(receipt.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[test]

@@ -44,7 +44,10 @@ use sha2::{Digest, Sha256};
 use time::{Duration as TimeDuration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::slack_agent_mcp::McpAgentTools;
-use super::slack_agent_session::{AgentWakeClaim, PostgresAgentSessionStore, PostgresTurnJournal};
+use super::slack_agent_session::{
+    AgentPendingWakeDelivery, AgentWakeClaim, AgentWakeDeliveryLease, PostgresAgentSessionStore,
+    PostgresTurnJournal,
+};
 
 const MAX_MODEL_RESPONSE_BYTES: usize = 512 * 1024;
 const MAX_MODEL_HISTORY_ITEMS: usize = 24;
@@ -74,9 +77,18 @@ pub struct SlackAgentService {
 
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct AgentWakeTurn {
-    pub claim: AgentWakeClaim,
-    pub outcome: AgentTurnOutcome,
-    pub thread_ref: String,
+    pub commitment_ref: String,
+    pub request_id: String,
+    pub schedule_generation: u64,
+    pub session_ref: String,
+    pub state: &'static str,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentWakeDeliveryReceipt {
+    pub lease: AgentWakeDeliveryLease,
+    pub receipt: AgentDeliveryReceipt,
 }
 
 impl SlackAgentService {
@@ -194,17 +206,14 @@ impl SlackAgentService {
         };
         let result = self.run_claimed_wake(store, &claim).await;
         match result {
-            Ok((outcome, payload_digest, thread_ref)) => {
-                store
-                    .mark_wake_awaiting_delivery(&claim, &payload_digest)
-                    .await?;
-                store
-                    .release_turn(&claim.session_ref, &claim.request_id, &claim.lease_owner)
-                    .await?;
+            Ok(payload_digest) => {
+                store.prepare_wake_delivery(&claim, &payload_digest).await?;
                 Ok(Some(AgentWakeTurn {
-                    claim,
-                    outcome,
-                    thread_ref,
+                    commitment_ref: claim.commitment_ref,
+                    request_id: claim.request_id,
+                    schedule_generation: claim.schedule_generation,
+                    session_ref: claim.session_ref,
+                    state: "awaiting_delivery",
                 }))
             }
             Err(error) => {
@@ -214,11 +223,21 @@ impl SlackAgentService {
         }
     }
 
+    pub async fn claim_pending_wake_delivery(
+        &self,
+        worker_ref: &str,
+    ) -> Result<Option<AgentPendingWakeDelivery>, AgentRuntimeError> {
+        let store = self.sessions.as_ref().ok_or_else(|| {
+            AgentRuntimeError::ModelUnavailable("durable session store is not configured".into())
+        })?;
+        store.claim_pending_wake_delivery(worker_ref, 300).await
+    }
+
     async fn run_claimed_wake(
         &self,
         store: &Arc<PostgresAgentSessionStore>,
         claim: &AgentWakeClaim,
-    ) -> Result<(AgentTurnOutcome, String, String), AgentRuntimeError> {
+    ) -> Result<String, AgentRuntimeError> {
         let mut session = store.load(&claim.session_ref).await?.ok_or_else(|| {
             AgentRuntimeError::InvalidRequest("wake session does not exist".into())
         })?;
@@ -228,9 +247,7 @@ impl SlackAgentService {
                     "wake session has an unrelated pending delivery".into(),
                 ));
             }
-            let payload_digest = message_digest(&pending.draft.message);
-            let outcome = pending_wake_outcome(&session, claim)?;
-            return Ok((outcome, payload_digest, session.thread_ref));
+            return pending_wake_payload_digest(&session, claim);
         }
         let triggered = session.events.iter().any(|event| {
             matches!(
@@ -300,11 +317,7 @@ impl SlackAgentService {
             ));
         };
         let payload_digest = message_digest(markdown);
-        Ok((
-            session_outcome_to_turn(outcome),
-            payload_digest,
-            session.thread_ref,
-        ))
+        Ok(payload_digest)
     }
 
     async fn run_session_v2(
@@ -439,19 +452,7 @@ impl SlackAgentService {
         &self,
         receipt: AgentDeliveryReceipt,
     ) -> Result<(), AgentRuntimeError> {
-        if receipt.schema_version != AGENT_DELIVERY_RECEIPT_V1
-            || receipt.tenant_id != self.tenant_id
-            || receipt.thread_ref.trim().is_empty()
-            || receipt.request_id.trim().is_empty()
-            || receipt.transport.trim().is_empty()
-            || receipt.delivery_ref.trim().is_empty()
-            || !is_sha256_digest(&receipt.payload_digest)
-            || OffsetDateTime::parse(&receipt.delivered_at, &Rfc3339).is_err()
-        {
-            return Err(AgentRuntimeError::InvalidRequest(
-                "delivery receipt identity, transport, or timestamp is invalid".into(),
-            ));
-        }
+        validate_delivery_receipt(&receipt, &self.tenant_id)?;
         let store = self.sessions.as_ref().ok_or_else(|| {
             AgentRuntimeError::InvalidRequest(
                 "delivery receipts require the durable session runtime".into(),
@@ -461,29 +462,8 @@ impl SlackAgentService {
             .load_by_thread(&receipt.tenant_id, &receipt.thread_ref)
             .await?
             .ok_or_else(|| AgentRuntimeError::InvalidRequest("session does not exist".into()))?;
-        if let Some(recorded) = session.events.iter().find_map(|event| match &event.event {
-            SessionEvent::DeliveryRecorded {
-                request_id,
-                transport,
-                delivery_ref,
-                payload_digest,
-            } if request_id == &receipt.request_id => {
-                Some((transport, delivery_ref, payload_digest))
-            }
-            _ => None,
-        }) {
-            if recorded
-                == (
-                    &receipt.transport,
-                    &receipt.delivery_ref,
-                    &receipt.payload_digest,
-                )
-            {
-                return Ok(());
-            }
-            return Err(AgentRuntimeError::InvalidRequest(
-                "delivery receipt changed after the request was recorded".into(),
-            ));
+        if delivery_replay_matches(&session, &receipt)? {
+            return Ok(());
         }
         let pending = session.pending_delivery.as_ref().ok_or_else(|| {
             AgentRuntimeError::InvalidRequest("delivery receipt has no pending response".into())
@@ -499,6 +479,7 @@ impl SlackAgentService {
             ));
         }
         let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
+        let receipt_for_replay = receipt.clone();
         let events = vec![
             SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
@@ -523,10 +504,149 @@ impl SlackAgentService {
                 },
             },
         ];
-        store
+        match store
             .append(&session.session_ref, expected_sequence, &events)
             .await
+        {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                let replayed = match store.load(&session.session_ref).await? {
+                    Some(current) => delivery_replay_matches(&current, &receipt_for_replay)?,
+                    None => false,
+                };
+                if replayed { Ok(()) } else { Err(error) }
+            }
+        }
     }
+
+    pub async fn record_wake_delivery(
+        &self,
+        delivery: AgentWakeDeliveryReceipt,
+    ) -> Result<(), AgentRuntimeError> {
+        let AgentWakeDeliveryReceipt { lease, receipt } = delivery;
+        validate_delivery_receipt(&receipt, &self.tenant_id)?;
+        if receipt.request_id != lease.request_id || receipt.payload_digest != lease.payload_digest
+        {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "wake delivery receipt changed after the payload was claimed".into(),
+            ));
+        }
+        let store = self.sessions.as_ref().ok_or_else(|| {
+            AgentRuntimeError::InvalidRequest(
+                "wake delivery receipts require the durable session runtime".into(),
+            )
+        })?;
+        let session = store
+            .load(&lease.session_ref)
+            .await?
+            .ok_or_else(|| AgentRuntimeError::InvalidRequest("session does not exist".into()))?;
+        if session.tenant_id != receipt.tenant_id || session.thread_ref != receipt.thread_ref {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "wake delivery receipt belongs to another session".into(),
+            ));
+        }
+        if delivery_replay_matches(&session, &receipt)? {
+            return Ok(());
+        }
+        let pending = session.pending_delivery.as_ref().ok_or_else(|| {
+            AgentRuntimeError::InvalidRequest("wake delivery has no pending response".into())
+        })?;
+        if pending.request_id != receipt.request_id
+            || message_digest(&pending.draft.message) != receipt.payload_digest
+        {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "wake delivery does not match the durable pending response".into(),
+            ));
+        }
+        let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
+        let receipt_for_replay = receipt.clone();
+        let events = vec![
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: expected_sequence + 1,
+                occurred_at: receipt.delivered_at.clone(),
+                event: SessionEvent::DeliveryRecorded {
+                    request_id: receipt.request_id.clone(),
+                    transport: receipt.transport,
+                    delivery_ref: receipt.delivery_ref,
+                    payload_digest: receipt.payload_digest,
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: expected_sequence + 2,
+                occurred_at: receipt.delivered_at,
+                event: SessionEvent::TurnCompleted {
+                    request_id: receipt.request_id,
+                    state: pending.draft.state,
+                },
+            },
+        ];
+        match store
+            .append_wake_delivery_fenced(&lease, expected_sequence, &events)
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                let replayed = match store.load(&session.session_ref).await? {
+                    Some(current) => delivery_replay_matches(&current, &receipt_for_replay)?,
+                    None => false,
+                };
+                if replayed { Ok(()) } else { Err(error) }
+            }
+        }
+    }
+}
+
+fn delivery_replay_matches(
+    session: &AgentSession,
+    receipt: &AgentDeliveryReceipt,
+) -> Result<bool, AgentRuntimeError> {
+    let Some(recorded) = session.events.iter().find_map(|event| match &event.event {
+        SessionEvent::DeliveryRecorded {
+            request_id,
+            transport,
+            delivery_ref,
+            payload_digest,
+        } if request_id == &receipt.request_id => Some((transport, delivery_ref, payload_digest)),
+        _ => None,
+    }) else {
+        return Ok(false);
+    };
+    if recorded
+        == (
+            &receipt.transport,
+            &receipt.delivery_ref,
+            &receipt.payload_digest,
+        )
+    {
+        return Ok(true);
+    }
+    Err(AgentRuntimeError::InvalidRequest(
+        "delivery receipt changed after the request was recorded".into(),
+    ))
+}
+
+fn validate_delivery_receipt(
+    receipt: &AgentDeliveryReceipt,
+    tenant_id: &str,
+) -> Result<(), AgentRuntimeError> {
+    if receipt.schema_version != AGENT_DELIVERY_RECEIPT_V1
+        || receipt.tenant_id != tenant_id
+        || receipt.thread_ref.trim().is_empty()
+        || receipt.request_id.trim().is_empty()
+        || receipt.transport.trim().is_empty()
+        || receipt.delivery_ref.trim().is_empty()
+        || !is_sha256_digest(&receipt.payload_digest)
+        || OffsetDateTime::parse(&receipt.delivered_at, &Rfc3339).is_err()
+    {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "delivery receipt identity, transport, or timestamp is invalid".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn is_sha256_digest(value: &str) -> bool {
@@ -824,10 +944,10 @@ fn replay_pending_session_turn(
     ))
 }
 
-fn pending_wake_outcome(
+fn pending_wake_payload_digest(
     session: &AgentSession,
     claim: &AgentWakeClaim,
-) -> Result<AgentTurnOutcome, AgentRuntimeError> {
+) -> Result<String, AgentRuntimeError> {
     let pending = session.pending_delivery.as_ref().ok_or_else(|| {
         AgentRuntimeError::InvalidRequest("wake session has no pending delivery".into())
     })?;
@@ -836,7 +956,7 @@ fn pending_wake_outcome(
             "pending wake delivery belongs to another request".into(),
         ));
     }
-    let started_index = session
+    session
         .events
         .iter()
         .rposition(|event| {
@@ -848,17 +968,7 @@ fn pending_wake_outcome(
         .ok_or_else(|| {
             AgentRuntimeError::InvalidRequest("pending wake has no turn start event".into())
         })?;
-    let events = session.events[started_index..].to_vec();
-    Ok(session_outcome_to_turn(
-        SessionTurnOutcome::PendingDelivery {
-            lane: event_lane(&events),
-            markdown: pending.draft.message.clone(),
-            final_state: pending.draft.state,
-            evidence_atom_refs: draft_evidence_refs(&pending.draft),
-            mission: pending.draft.mission.clone(),
-            events,
-        },
-    ))
+    Ok(message_digest(&pending.draft.message))
 }
 
 fn event_lane(events: &[SessionEventRecord]) -> ExecutionLane {
@@ -3329,6 +3439,50 @@ mod tests {
     use super::*;
     use cerebro_organizational_store::SourceRuntimeCollectionObservation;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn exact_delivery_receipt_replays_but_a_changed_receipt_conflicts() {
+        let request = AgentTurnRequest {
+            schema_version: "agent-turn-request/v1".into(),
+            tenant_id: "tenant:delivery-replay".into(),
+            request_id: "request:delivery-replay".into(),
+            thread_ref: "thread:delivery-replay".into(),
+            actor_ref: "actor:delivery-replay".into(),
+            assessment_at: "2026-07-31T20:00:00Z".into(),
+            message: "Test delivery replay.".into(),
+            history: Vec::new(),
+            working_state: None,
+            effect_authorizations: Vec::new(),
+        };
+        let mut session = new_session(&request).unwrap();
+        let receipt = AgentDeliveryReceipt {
+            schema_version: AGENT_DELIVERY_RECEIPT_V1.into(),
+            tenant_id: request.tenant_id,
+            thread_ref: request.thread_ref,
+            request_id: request.request_id,
+            transport: "slack".into(),
+            delivery_ref: "slack-message:delivery-replay".into(),
+            payload_digest: format!("sha256:{}", "a".repeat(64)),
+            delivered_at: "2026-07-31T20:01:00Z".into(),
+        };
+        session.events.push(SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: session.session_ref.clone(),
+            sequence: 1,
+            occurred_at: receipt.delivered_at.clone(),
+            event: SessionEvent::DeliveryRecorded {
+                request_id: receipt.request_id.clone(),
+                transport: receipt.transport.clone(),
+                delivery_ref: receipt.delivery_ref.clone(),
+                payload_digest: receipt.payload_digest.clone(),
+            },
+        });
+
+        assert!(delivery_replay_matches(&session, &receipt).unwrap());
+        let mut changed = receipt;
+        changed.delivery_ref.push_str(":changed");
+        assert!(delivery_replay_matches(&session, &changed).is_err());
+    }
 
     #[tokio::test]
     async fn startup_recovers_from_transient_dependency_timeouts() {
