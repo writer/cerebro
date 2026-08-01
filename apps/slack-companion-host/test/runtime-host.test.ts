@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { FileAgentApprovalStore } from "../src/runtime/agent-approval-store.js";
 import { CerebroAskClient, CerebroAskError } from "../src/runtime/cerebro-ask-client.js";
 import { loadSlackRuntimeConfig, SlackRuntimeConfigError } from "../src/runtime/config.js";
 import { FileOutcomeStore } from "../src/runtime/outcome-store.js";
@@ -167,6 +168,98 @@ test("Slack acknowledges a pending Rust response only after transport delivery",
     thread_ref: "slack-thread:T-ONE:C-ONE:thread-one",
     transport: "slack",
   });
+});
+
+test("Slack persists an exact Rust approval and resumes the original turn once", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-agent-approval-"));
+  const approvalRef = `approval://agent-effect/${"a".repeat(64)}`;
+  const inputDigest = `sha256:${"b".repeat(64)}`;
+  const requests: Request[] = [];
+  try {
+    const service = new AssistantQuestionService(
+      createAssistantTurnHost(new FileOutcomeStore(root)),
+      new CerebroAskClient({
+        agentRuntimeUrl: "http://127.0.0.1:8091",
+        answerAuthority: testAnswerAuthority,
+        apiKey: "unused",
+        baseUrl: "https://legacy.example.com",
+        fetchImpl: async (input, init) => {
+          const request = new Request(input, init);
+          requests.push(request);
+          if (requests.length === 1) {
+            return Response.json({
+              lane: "act",
+              outcome: "approval_required",
+              request: {
+                approval_ref: approvalRef,
+                input_digest: inputDigest,
+                purpose: "Disable connector alpha.",
+                tool_id: "connector.update",
+              },
+              schema_version: "agent-turn-result/v1",
+            });
+          }
+          return Response.json({
+            evidence_refs: ["evidence://connector/alpha/disabled"],
+            final_state: "answered",
+            lane: "act",
+            markdown: "Connector alpha is disabled and the current state is verified.",
+            outcome: "pending_delivery",
+            schema_version: "agent-turn-result/v1",
+            tool_call_count: 2,
+          });
+        },
+        tenantId: "writer",
+      }),
+      {
+        approvalStore: new FileAgentApprovalStore(root, () =>
+          new Date("2026-07-31T20:00:00.000Z")
+        ),
+        clock: () => new Date("2026-07-31T20:00:00.000Z"),
+        timeoutSignal: () => new AbortController().signal,
+      },
+    );
+    const original = await service.answer({
+      actorRef: "slack-user:U-ONE",
+      requestKey: "T-ONE:C-ONE:thread-one:event-original",
+      text: "Disable connector alpha.",
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+    });
+    assert.match(original.text, /approve aaaaaaaaaaaa/u);
+    const originalBody = await requests[0]?.clone().json() as Record<string, unknown>;
+
+    const wrongActor = await service.answer({
+      actorRef: "slack-user:U-TWO",
+      requestKey: "T-ONE:C-ONE:thread-one:event-wrong-actor",
+      text: "approve aaaaaaaaaaaa",
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+    });
+    assert.match(wrongActor.text, /person who requested it/u);
+    assert.equal(requests.length, 1);
+
+    const approved = await service.answer({
+      actorRef: "slack-user:U-ONE",
+      requestKey: "T-ONE:C-ONE:thread-one:event-approval",
+      text: "approve aaaaaaaaaaaa",
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+    });
+    assert.equal(requests.length, 2);
+    assert.equal(approved.agentDelivery?.requestId, originalBody.request_id);
+    const approvalBody = await requests[1]?.clone().json() as Record<string, unknown>;
+    assert.equal(approvalBody.request_id, originalBody.request_id);
+    assert.equal(approvalBody.message, "Disable connector alpha.");
+    assert.deepEqual(approvalBody.effect_authorizations, [{
+      actor_ref: "slack-user:U-ONE",
+      approval_ref: approvalRef,
+      input_digest: inputDigest,
+      request_id: originalBody.request_id,
+      tenant_id: "writer",
+      thread_ref: "slack-thread:T-ONE:C-ONE:thread-one",
+      tool_id: "connector.update",
+    }]);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
 });
 
 test("informal operational check-ins use the Rust agent instead of legacy Ask", async () => {

@@ -1,4 +1,5 @@
 import { ArchetypeWorkspaceClient } from "./archetype-client.js";
+import { FileAgentApprovalStore } from "./runtime/agent-approval-store.js";
 import { CerebroAskClient } from "./runtime/cerebro-ask-client.js";
 import { loadSlackRuntimeConfig } from "./runtime/config.js";
 import { FileOutcomeStore } from "./runtime/outcome-store.js";
@@ -14,6 +15,7 @@ import { ArchetypeSlackWorkspace } from "./runtime/archetype-workspace.js";
 async function main(): Promise<void> {
   const config = loadSlackRuntimeConfig();
   const outcomes = new FileOutcomeStore(config.memoryDirectory);
+  const approvals = new FileAgentApprovalStore(config.memoryDirectory);
   const scratchpads = new FileThreadScratchpadStore(config.memoryDirectory);
   const host = createAssistantTurnHost(outcomes);
   const questions = new AssistantQuestionService(host, new CerebroAskClient({
@@ -26,7 +28,9 @@ async function main(): Promise<void> {
     apiKey: config.cerebroReadApiKey,
     baseUrl: config.cerebroBaseUrl,
     tenantId: config.cerebroTenantId,
-  }));
+  }), {
+    approvalStore: approvals,
+  });
   const archetype = config.archetype
     ? new ArchetypeSlackWorkspace(new ArchetypeWorkspaceClient({
       allowedEmailDomains: config.archetype.allowedEmailDomains,

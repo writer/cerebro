@@ -11,9 +11,17 @@ export interface CerebroAskResult {
   executionLane: "act" | "continue" | "converse" | "ignore" | "investigate" | "lookup";
   finalState?: "answered" | "blocked" | "needs_input" | "partial";
   markdown: string;
+  pendingApproval?: AgentApprovalRequest;
   safeRefusal: boolean;
   traceId?: string;
   workingState?: RustWorkingState;
+}
+
+export interface AgentApprovalRequest {
+  approvalRef: string;
+  inputDigest: string;
+  purpose: string;
+  toolId: string;
 }
 
 export interface CerebroAskHistoryMessage {
@@ -61,6 +69,7 @@ export class CerebroAskClient {
   async runAgentTurn(input: {
     actorRef: string;
     assessmentAt: string;
+    effectAuthorizations?: readonly AgentApprovalRequest[];
     history?: readonly CerebroAskHistoryMessage[];
     question: string;
     requestId: string;
@@ -88,7 +97,15 @@ export class CerebroAskClient {
       body: JSON.stringify({
         actor_ref: input.actorRef,
         assessment_at: input.assessmentAt,
-        effect_authorizations: [],
+        effect_authorizations: (input.effectAuthorizations ?? []).map((authorization) => ({
+          actor_ref: input.actorRef,
+          approval_ref: authorization.approvalRef,
+          input_digest: authorization.inputDigest,
+          request_id: input.requestId,
+          tenant_id: this.options.tenantId,
+          thread_ref: input.threadRef,
+          tool_id: authorization.toolId,
+        })),
         history: input.history ?? [],
         message: input.question,
         request_id: input.requestId,
@@ -141,6 +158,7 @@ export class CerebroAskClient {
       };
     }
     if (outcome.outcome === "approval_required") {
+      const approvalCode = approvalCommandCode(outcome.request.approval_ref);
       return {
         citationValidationPassed: false,
         executionLane: outcome.lane,
@@ -150,8 +168,14 @@ export class CerebroAskClient {
           "",
           outcome.request.purpose,
           "",
-          `Approve the exact ${outcome.request.tool_id} operation before I continue.`,
+          `To run the exact ${outcome.request.tool_id} operation, reply \`approve ${approvalCode}\`.`,
         ].join("\n"),
+        pendingApproval: {
+          approvalRef: outcome.request.approval_ref,
+          inputDigest: outcome.request.input_digest,
+          purpose: outcome.request.purpose,
+          toolId: outcome.request.tool_id,
+        },
         safeRefusal: true,
         traceId: input.requestId,
       };
@@ -348,6 +372,8 @@ type RustAgentTurnOutcome =
       lane: "act";
       outcome: "approval_required";
       request: {
+        approval_ref: string;
+        input_digest: string;
         purpose: string;
         tool_id: string;
       };
@@ -373,6 +399,14 @@ function citationValidation(
     referenced_urn_count: validation.referenced_urn_count,
     row_urn_count: validation.row_urn_count,
   };
+}
+
+export function approvalCommandCode(approvalRef: string): string {
+  const suffix = approvalRef.split("/").at(-1)?.trim();
+  if (!suffix || !/^[a-f0-9]{64}$/u.test(suffix)) {
+    throw new CerebroAskError("unavailable", "The Rust agent returned an invalid approval identity.");
+  }
+  return suffix.slice(0, 12);
 }
 
 interface RustWorkingState {

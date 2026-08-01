@@ -1185,8 +1185,13 @@ fn matching_effect_authorization<'a>(
     call: &ToolCall,
 ) -> Option<&'a EffectAuthorization> {
     let digest = call.input_digest();
+    let expected_approval_ref = format!(
+        "approval://agent-effect/{}",
+        digest.trim_start_matches("sha256:")
+    );
     session.effect_authorizations.iter().find(|authorization| {
-        authorization.tenant_id == session.tenant_id
+        authorization.approval_ref == expected_approval_ref
+            && authorization.tenant_id == session.tenant_id
             && authorization.request_id == input.request_id
             && authorization.thread_ref == session.thread_ref
             && authorization.actor_ref == input.actor_ref
@@ -2368,6 +2373,38 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn effect_authorization_requires_the_runtime_issued_approval_identity() {
+        let call = ToolCall {
+            call_id: "call:effect-approval".into(),
+            tool_id: "connector.update".into(),
+            purpose: "Update connector alpha.".into(),
+            input: json!({"connector_ref": "connector:alpha", "enabled": false}),
+        };
+        let input = SessionTurnInput {
+            request_id: "request:1".into(),
+            actor_ref: "user:1".into(),
+            assessment_at: "2026-07-31T00:01:00Z".into(),
+        };
+        let mut authorized = session();
+        authorized.effect_authorizations.push(EffectAuthorization {
+            approval_ref: "approval://agent-effect/not-the-issued-identity".into(),
+            tenant_id: authorized.tenant_id.clone(),
+            request_id: input.request_id.clone(),
+            thread_ref: authorized.thread_ref.clone(),
+            actor_ref: input.actor_ref.clone(),
+            tool_id: call.tool_id.clone(),
+            input_digest: call.input_digest(),
+        });
+        assert!(matching_effect_authorization(&authorized, &input, &call).is_none());
+
+        authorized.effect_authorizations[0].approval_ref = format!(
+            "approval://agent-effect/{}",
+            call.input_digest().trim_start_matches("sha256:")
+        );
+        assert!(matching_effect_authorization(&authorized, &input, &call).is_some());
     }
 
     #[test]

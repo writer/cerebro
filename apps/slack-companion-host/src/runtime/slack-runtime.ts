@@ -31,9 +31,11 @@ import {
   CerebroAnswerRejectedError,
   CerebroAskClient,
   CerebroAskError,
+  approvalCommandCode,
   type CerebroAskHistoryMessage,
   type CerebroAskResult,
 } from "./cerebro-ask-client.js";
+import type { FileAgentApprovalStore } from "./agent-approval-store.js";
 import type { SlackRuntimeConfig } from "./config.js";
 import {
   FileOutcomeStore,
@@ -152,11 +154,13 @@ export interface AssistantQuestionResult {
 }
 
 export interface AssistantQuestionServiceOptions {
+  approvalStore?: FileAgentApprovalStore;
   clock?: () => Date;
   timeoutSignal?: (milliseconds: number) => AbortSignal;
 }
 
 export class AssistantQuestionService {
+  private readonly approvalStore?: FileAgentApprovalStore;
   private readonly clock: () => Date;
   private readonly timeoutSignal: (milliseconds: number) => AbortSignal;
   private sourceAttempts = 0;
@@ -170,6 +174,7 @@ export class AssistantQuestionService {
     private readonly askClient: CerebroAskClient,
     options: AssistantQuestionServiceOptions = {},
   ) {
+    this.approvalStore = options.approvalStore;
     this.clock = options.clock ?? (() => new Date());
     this.timeoutSignal = options.timeoutSignal ?? ((milliseconds) => AbortSignal.timeout(milliseconds));
   }
@@ -207,12 +212,60 @@ export class AssistantQuestionService {
         selected_capability_count: 12,
       });
       try {
+        const pendingApproval = await this.approvalStore?.read(input.threadRef);
+        const approvalCommand = /^approve(?:\s+([a-f0-9]{12}))?$/iu.exec(currentRequest);
+        if (approvalCommand && !pendingApproval) {
+          return approvalCommandResult(
+            budget.latency_budget_ms,
+            openedAt,
+            requestId,
+            "There is no pending Cerebro operation to approve in this thread.",
+          );
+        }
+        if (approvalCommand && pendingApproval?.actorRef !== input.actorRef) {
+          return approvalCommandResult(
+            budget.latency_budget_ms,
+            openedAt,
+            requestId,
+            "This operation must be approved by the person who requested it.",
+          );
+        }
+        if (
+          approvalCommand
+          && pendingApproval
+          && approvalCommand[1]?.toLowerCase() !== approvalCommandCode(pendingApproval.approvalRef)
+        ) {
+          return approvalCommandResult(
+            budget.latency_budget_ms,
+            openedAt,
+            requestId,
+            `That approval code does not match the pending operation. Reply \`approve ${approvalCommandCode(pendingApproval.approvalRef)}\` to run it.`,
+          );
+        }
+        if (!approvalCommand && pendingApproval) {
+          await this.approvalStore?.clear(input.threadRef, pendingApproval.approvalRef);
+        }
+        const resumingApproval = approvalCommand && pendingApproval
+          ? pendingApproval
+          : undefined;
+        const turnRequestId = resumingApproval?.requestId ?? requestId;
+        const turnQuestion = resumingApproval?.question ?? currentRequest;
         const answer = await this.askClient.runAgentTurn({
           actorRef: input.actorRef,
           assessmentAt: openedAt.toISOString(),
+          ...(resumingApproval === undefined
+            ? {}
+            : {
+                effectAuthorizations: [{
+                  approvalRef: resumingApproval.approvalRef,
+                  inputDigest: resumingApproval.inputDigest,
+                  purpose: resumingApproval.purpose,
+                  toolId: resumingApproval.toolId,
+                }],
+              }),
           history,
-          question: currentRequest,
-          requestId,
+          question: turnQuestion,
+          requestId: turnRequestId,
           signal: this.timeoutSignal(budget.latency_budget_ms),
           threadRef: input.threadRef,
           ...(input.workingState === undefined
@@ -241,6 +294,17 @@ export class AssistantQuestionService {
                 },
               }),
         });
+        if (answer.pendingApproval) {
+          await this.approvalStore?.record({
+            actorRef: input.actorRef,
+            approval: answer.pendingApproval,
+            question: turnQuestion,
+            requestId: turnRequestId,
+            threadRef: input.threadRef,
+          });
+        } else if (resumingApproval) {
+          await this.approvalStore?.clear(input.threadRef, resumingApproval.approvalRef);
+        }
         const usefulAnswerAt =
           answer.finalState === "answered" || answer.finalState === "partial"
             ? this.clock()
@@ -249,7 +313,7 @@ export class AssistantQuestionService {
           ...(answer.deliveryAckRequired
             ? {
                 agentDelivery: {
-                  requestId,
+                  requestId: turnRequestId,
                   threadRef: input.threadRef,
                 },
               }
@@ -273,7 +337,7 @@ export class AssistantQuestionService {
                 ? { blocker: "The Rust agent reported a blocked turn." }
                 : {}
               : { blocker: answer.workingState.last_blocker }),
-            currentRequest: answer.workingState?.current_request ?? currentRequest,
+            currentRequest: answer.workingState?.current_request ?? turnQuestion,
             ...(answer.workingState?.open_loops === undefined
               ? {}
               : { openLoops: answer.workingState.open_loops }),
@@ -292,7 +356,7 @@ export class AssistantQuestionService {
             ? {
                 verifiedTurn: {
                   answer: answer.markdown,
-                  question: currentRequest,
+                  question: turnQuestion,
                   traceId: answer.traceId,
                 },
               }
@@ -1230,6 +1294,30 @@ function pendingOutcome(input: {
     user_correction_count: 0,
     useful_answer_at: input.usefulAnswerAt?.toISOString(),
     verified: input.verified,
+  };
+}
+
+function approvalCommandResult(
+  budgetMs: number,
+  openedAt: Date,
+  requestId: string,
+  text: string,
+): AssistantQuestionResult {
+  return {
+    pending: pendingOutcome({
+      budgetMs,
+      executionLane: "act",
+      openedAt,
+      outcomeState: "needs_user",
+      requestId,
+      verified: false,
+    }),
+    text,
+    workingTurn: {
+      blocker: text,
+      currentRequest: "Approve the pending Cerebro operation.",
+      outcome: "needs_user",
+    },
   };
 }
 
