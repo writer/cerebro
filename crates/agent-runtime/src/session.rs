@@ -1114,9 +1114,23 @@ pub async fn run_session_turn_recorded(
                 repair_feedback.clear();
             }
             SessionModelDecision::Finish { draft } => {
-                if let Err(error) =
-                    validate_wake_completion(&session, &draft, &trigger, assessment_at, &events)
-                {
+                if let Err(error) = validate_commitment_baselines(
+                    &session,
+                    &draft,
+                    plan.as_ref(),
+                    &observations,
+                    assessment_at,
+                ) {
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    continue;
+                }
+                if let Err(error) = validate_wake_completion(
+                    &session,
+                    &draft,
+                    &trigger,
+                    assessment_at,
+                    &observations,
+                ) {
                     record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
                     continue;
                 }
@@ -1376,7 +1390,7 @@ fn validate_wake_completion(
     draft: &GroundedDraft,
     trigger: &SessionTurnTrigger,
     assessment_at: OffsetDateTime,
-    turn_events: &[SessionEventRecord],
+    observations: &[ToolObservation],
 ) -> Result<(), AgentRuntimeError> {
     let SessionTurnTrigger::Wake { commitment_ref, .. } = trigger else {
         if draft.delivery != DeliveryDisposition::Visible {
@@ -1432,22 +1446,20 @@ fn validate_wake_completion(
             "the wake commitment is not due yet".into(),
         ));
     }
-    let invoked_tool_ids = turn_events
-        .iter()
-        .filter_map(|event| match &event.event {
-            SessionEvent::ToolInvoked { observation } => Some(observation.call.tool_id.as_str()),
-            _ => None,
-        })
-        .collect::<BTreeSet<_>>();
     let missing_required_tools = current
         .required_tool_ids
         .iter()
-        .filter(|tool_id| !invoked_tool_ids.contains(tool_id.as_str()))
+        .filter(|tool_id| {
+            !observations.iter().any(|observation| {
+                observation.call.tool_id == **tool_id
+                    && observation_is_complete_and_fresh(observation, assessment_at)
+            })
+        })
         .cloned()
         .collect::<Vec<_>>();
     if !missing_required_tools.is_empty() {
         return Err(AgentRuntimeError::InvalidFinal(format!(
-            "scheduled wake must invoke its required fresh tools before finishing: {}",
+            "scheduled wake requires successful, complete, fresh observations from: {}",
             missing_required_tools.join(", ")
         )));
     }
@@ -1492,6 +1504,63 @@ fn validate_wake_completion(
         ));
     }
     Ok(())
+}
+
+fn validate_commitment_baselines(
+    session: &AgentSession,
+    draft: &GroundedDraft,
+    plan: Option<&ResearchPlan>,
+    observations: &[ToolObservation],
+    assessment_at: OffsetDateTime,
+) -> Result<(), AgentRuntimeError> {
+    for commitment in draft.mission.commitments.iter().filter(|commitment| {
+        commitment.owner == WorkOwner::Cerebro
+            && !matches!(
+                commitment.status,
+                CommitmentStatus::Completed | CommitmentStatus::Cancelled
+            )
+            && session
+                .mission
+                .commitments
+                .iter()
+                .find(|current| current.commitment_ref == commitment.commitment_ref)
+                .is_none_or(|current| {
+                    current.required_tool_ids != commitment.required_tool_ids
+                        || current.acceptance_criteria != commitment.acceptance_criteria
+                        || current.verification != commitment.verification
+                })
+    }) {
+        for tool_id in &commitment.required_tool_ids {
+            if plan.is_none_or(|plan| !plan.selected_tools.contains(tool_id)) {
+                return Err(AgentRuntimeError::InvalidFinal(format!(
+                    "the new or changed commitment requires {tool_id}, but the active plan does not select that tool"
+                )));
+            }
+            if !observations.iter().any(|observation| {
+                observation.call.tool_id == *tool_id
+                    && observation_is_complete_and_fresh(observation, assessment_at)
+            }) {
+                return Err(AgentRuntimeError::InvalidFinal(format!(
+                    "the new or changed commitment requires {tool_id}, but this turn has no successful, complete, fresh baseline observation from that tool"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn observation_is_complete_and_fresh(
+    observation: &ToolObservation,
+    assessment_at: OffsetDateTime,
+) -> bool {
+    observation.result.state == ToolResultState::Succeeded
+        && observation.result.evidence.iter().any(|evidence| {
+            evidence.complete
+                && evidence.fresh_until.as_deref().is_some_and(|fresh_until| {
+                    OffsetDateTime::parse(fresh_until, &Rfc3339)
+                        .is_ok_and(|fresh_until| fresh_until >= assessment_at)
+                })
+        })
 }
 
 fn resume_turn_state(
@@ -3566,18 +3635,96 @@ mod tests {
             .unwrap_err();
         assert!(error.to_string().contains("connector.read"));
 
-        let event = SessionEventRecord {
-            schema_version: AGENT_SESSION_EVENT_V2.into(),
-            session_ref: awakened.session_ref.clone(),
-            sequence: 1,
-            occurred_at: "2026-07-31T00:01:00Z".into(),
-            event: SessionEvent::ToolInvoked {
-                observation: observation(true, Some("2026-07-31T00:06:00Z")),
+        let current = observation(true, Some("2026-07-31T00:06:00Z"));
+        assert!(
+            validate_wake_completion(&awakened, &completed, &trigger, assessment_at, &[current],)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn new_commitments_require_a_same_turn_complete_fresh_baseline() {
+        let session = session();
+        let mut scheduled = draft();
+        scheduled.mission.commitments.push(scheduled_commitment());
+        let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+
+        let error =
+            validate_commitment_baselines(&session, &scheduled, Some(&plan()), &[], assessment_at)
+                .unwrap_err();
+        assert!(error.to_string().contains("baseline observation"));
+
+        let current = observation(true, Some("2026-07-31T00:06:00Z"));
+        assert!(
+            validate_commitment_baselines(
+                &session,
+                &scheduled,
+                Some(&plan()),
+                std::slice::from_ref(&current),
+                assessment_at,
+            )
+            .is_ok()
+        );
+
+        let incomplete = observation(false, Some("2026-07-31T00:06:00Z"));
+        assert!(
+            validate_commitment_baselines(
+                &session,
+                &scheduled,
+                Some(&plan()),
+                &[incomplete],
+                assessment_at,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn resumed_wake_counts_its_persisted_fresh_observation() {
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        awakened.mission.status = SessionStatus::WaitingForExternal;
+        awakened.events = vec![
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::TurnStarted {
+                    request_id: "wake-request:resumed".into(),
+                },
             },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 2,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::ToolInvoked {
+                    observation: observation(true, Some("2026-07-31T00:06:00Z")),
+                },
+            },
+        ];
+        let (resumed, _, observations) = resume_turn_state(&awakened, "wake-request:resumed");
+        assert!(resumed);
+
+        let mut completed = draft();
+        completed.mission = awakened.mission.clone();
+        completed.mission.commitments[0].status = CommitmentStatus::Completed;
+        completed.mission.commitments[0].next_action = None;
+        completed.mission.commitments[0].wake_at = None;
+        let trigger = SessionTurnTrigger::Wake {
+            commitment_ref: "commitment:scheduled-check".into(),
+            occurrence_ref: "occurrence:resumed".into(),
         };
         assert!(
-            validate_wake_completion(&awakened, &completed, &trigger, assessment_at, &[event],)
-                .is_ok()
+            validate_wake_completion(
+                &awakened,
+                &completed,
+                &trigger,
+                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+                &observations,
+            )
+            .is_ok()
         );
     }
 
@@ -3628,15 +3775,7 @@ mod tests {
             commitment_ref: "commitment:scheduled-check".into(),
             occurrence_ref: "occurrence:delivery-boundary".into(),
         };
-        let tool_event = SessionEventRecord {
-            schema_version: AGENT_SESSION_EVENT_V2.into(),
-            session_ref: awakened.session_ref.clone(),
-            sequence: 1,
-            occurred_at: "2026-07-31T00:01:00Z".into(),
-            event: SessionEvent::ToolInvoked {
-                observation: observation(true, Some("2026-07-31T00:06:00Z")),
-            },
-        };
+        let current = observation(true, Some("2026-07-31T00:06:00Z"));
 
         let mut rescheduled = draft();
         rescheduled.delivery = DeliveryDisposition::Silent;
@@ -3649,21 +3788,16 @@ mod tests {
                 &rescheduled,
                 &trigger,
                 assessment_at,
-                std::slice::from_ref(&tool_event),
+                std::slice::from_ref(&current),
             )
             .is_ok()
         );
 
         rescheduled.mission.commitments[0].status = CommitmentStatus::Completed;
         rescheduled.mission.commitments[0].wake_at = None;
-        let error = validate_wake_completion(
-            &awakened,
-            &rescheduled,
-            &trigger,
-            assessment_at,
-            &[tool_event],
-        )
-        .unwrap_err();
+        let error =
+            validate_wake_completion(&awakened, &rescheduled, &trigger, assessment_at, &[current])
+                .unwrap_err();
         assert!(error.to_string().contains("must notify the operator"));
     }
 
