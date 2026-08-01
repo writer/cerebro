@@ -654,6 +654,20 @@ test("runtime config rejects an invalid production binding", () => {
   }), SlackRuntimeConfigError);
 });
 
+test("production Slack cannot fall back from the Rust agent runtime", () => {
+  assert.throws(() => loadSlackRuntimeConfig({
+    CEREBRO_BASE_URL: "https://cerebro.example.com",
+    CEREBRO_READ_API_KEY: "bound-at-runtime",
+    CEREBRO_SLACK_APP_NAME: "Cerebro",
+    CEREBRO_SLACK_ENVIRONMENT_LABEL: "production",
+    CEREBRO_SLACK_PRODUCTION: "true",
+    CEREBRO_TENANT_ID: "tenant-one",
+    SLACK_ALLOWED_TEAM_IDS: "T-ONE",
+    SLACK_APP_TOKEN: "bound-at-runtime",
+    SLACK_BOT_TOKEN: "bound-at-runtime",
+  }), /Production Slack requires the Rust agent runtime/u);
+});
+
 test("non-production messages and App Home keep the configured environment visible", () => {
   const development = {
     appName: "Cerebro Development",

@@ -58,6 +58,16 @@ export function loadSlackRuntimeConfig(
     csv(env.SLACK_LIFECYCLE_CHANNEL_IDS?.trim() ?? ""),
   );
   const learningTableName = env.SECURITY_LEARNING_TABLE_NAME?.trim();
+  const production = booleanBinding(env.CEREBRO_SLACK_PRODUCTION);
+  const rustAgentEnabled = optionalBooleanBinding(
+    env.CEREBRO_SLACK_AGENT_ENABLED,
+    false,
+  );
+  if (production && !rustAgentEnabled) {
+    throw new SlackRuntimeConfigError(
+      "Production Slack requires the Rust agent runtime.",
+    );
+  }
   if (
     lifecycleNoticesEnabled
     && (lifecycleChannelIds.size === 0 || !learningTableName)
@@ -85,11 +95,8 @@ export function loadSlackRuntimeConfig(
     memoryDirectory: env.CEREBRO_SLACK_RUNTIME_MEMORY_DIR?.trim()
       || "/memory/slack-runtime",
     port: port(env.PORT),
-    production: booleanBinding(env.CEREBRO_SLACK_PRODUCTION),
-    rustAgentEnabled: optionalBooleanBinding(
-      env.CEREBRO_SLACK_AGENT_ENABLED,
-      false,
-    ),
+    production,
+    rustAgentEnabled,
     computerSandboxGateways: computerSandboxGateways(env),
   });
 }

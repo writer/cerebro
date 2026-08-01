@@ -38,11 +38,6 @@ use cerebro_agent_runtime::{
 use cerebro_organizational_model::TenantId;
 use cerebro_organizational_store::{Neo4jProjector, PostgresLedger, SourceRuntimeObservation};
 use cerebro_source_catalog::{AuthModel, CollectionAuthority, SourceCatalog};
-use futures_util::StreamExt;
-use reqwest::{
-    Client, Url,
-    header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue},
-};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -80,6 +75,9 @@ pub struct SlackAgentService {
 impl SlackAgentService {
     pub async fn from_env(tenant_id: String) -> Result<Option<Self>, Box<dyn Error>> {
         if !enabled(&env::var("CEREBRO_SLACK_AGENT_ENABLED").unwrap_or_default()) {
+            if enabled(&env::var("CEREBRO_SLACK_PRODUCTION").unwrap_or_default()) {
+                return Err("production Slack requires the Rust agent runtime".into());
+            }
             return Ok(None);
         }
         let service = Self::initialize(tenant_id).await?;
@@ -87,6 +85,9 @@ impl SlackAgentService {
     }
 
     async fn initialize(tenant_id: String) -> Result<Self, Box<dyn Error>> {
+        if !enabled(&env::var("CEREBRO_SLACK_AGENT_SESSION_V2_ENABLED").unwrap_or_default()) {
+            return Err("the Rust Slack agent requires durable session V2".into());
+        }
         let neo4j_uri = required_env("CEREBRO_NEO4J_URI")?;
         let neo4j_username = required_env("CEREBRO_NEO4J_USERNAME")?;
         let neo4j_password = required_env("CEREBRO_NEO4J_PASSWORD")?;
@@ -112,14 +113,9 @@ impl SlackAgentService {
             || PostgresLedger::connect_tls(&postgres_dsn),
         )
         .await?;
-        let sessions =
-            if enabled(&env::var("CEREBRO_SLACK_AGENT_SESSION_V2_ENABLED").unwrap_or_default()) {
-                Some(Arc::new(
-                    PostgresAgentSessionStore::connect(&postgres_dsn).await?,
-                ))
-            } else {
-                None
-            };
+        let sessions = Some(Arc::new(
+            PostgresAgentSessionStore::connect(&postgres_dsn).await?,
+        ));
         let model = retry_startup(
             STARTUP_DEPENDENCY_ATTEMPTS,
             STARTUP_DEPENDENCY_RETRY_DELAY,
@@ -407,6 +403,11 @@ fn is_sha256_digest(value: &str) -> bool {
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     })
+}
+
+fn is_bedrock_opus_model(value: &str) -> bool {
+    let model = value.trim();
+    model.starts_with("anthropic.claude-opus-") || model.contains(".anthropic.claude-opus-")
 }
 
 fn new_session(request: &AgentTurnRequest) -> Result<AgentSession, AgentRuntimeError> {
@@ -760,11 +761,13 @@ fn next_startup_retry_delay(current: StdDuration, maximum: StdDuration) -> StdDu
 
 pub(super) enum ConfiguredModel {
     AmazonBedrock(BedrockModel),
-    OpenAiCompatible(OpenAiCompatibleModel),
 }
 
 impl ConfiguredModel {
     pub(super) async fn amazon_bedrock(model: String) -> Result<Self, Box<dyn Error>> {
+        if !is_bedrock_opus_model(&model) {
+            return Err("the Rust Slack agent requires an Amazon Bedrock Claude Opus model".into());
+        }
         let config = aws_config::defaults(BehaviorVersion::latest()).load().await;
         Ok(Self::AmazonBedrock(BedrockModel {
             client: BedrockClient::new(&config),
@@ -773,13 +776,10 @@ impl ConfiguredModel {
     }
 
     pub(super) async fn from_env() -> Result<Self, Box<dyn Error>> {
-        match required_env("CEREBRO_SLACK_AGENT_MODEL_PROVIDER")?.as_str() {
-            "amazon-bedrock" => {
-                Self::amazon_bedrock(required_env("CEREBRO_SLACK_AGENT_MODEL")?).await
-            }
-            "openai-compatible" => Ok(Self::OpenAiCompatible(OpenAiCompatibleModel::from_env()?)),
-            _ => Err("CEREBRO_SLACK_AGENT_MODEL_PROVIDER is unsupported".into()),
+        if required_env("CEREBRO_SLACK_AGENT_MODEL_PROVIDER")? != "amazon-bedrock" {
+            return Err("the Rust Slack agent requires the amazon-bedrock adapter".into());
         }
+        Self::amazon_bedrock(required_env("CEREBRO_SLACK_AGENT_MODEL")?).await
     }
 
     pub(super) async fn complete_evaluation_judgment(
@@ -802,9 +802,6 @@ impl ConfiguredModel {
                     )
                     .await
             }
-            Self::OpenAiCompatible(_) => Err(AgentRuntimeError::ModelUnavailable(
-                "the conversation quality harness requires Amazon Bedrock".into(),
-            )),
         }
     }
 
@@ -827,11 +824,6 @@ impl ConfiguredModel {
                         decision_schema,
                     )
                     .await
-            }
-            Self::OpenAiCompatible(model) => {
-                let content = model.complete(instructions, payload, max_tokens).await?;
-                serde_json::from_str(&content)
-                    .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))
             }
         }
     }
@@ -878,14 +870,12 @@ impl AgentModel for ConfiguredModel {
     async fn route(&self, turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
         match self {
             Self::AmazonBedrock(model) => model.route(turn).await,
-            Self::OpenAiCompatible(model) => model.route(turn).await,
         }
     }
 
     async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
         match self {
             Self::AmazonBedrock(model) => model.next(turn).await,
-            Self::OpenAiCompatible(model) => model.next(turn).await,
         }
     }
 
@@ -895,14 +885,12 @@ impl AgentModel for ConfiguredModel {
     ) -> Result<PresentationDecision, AgentRuntimeError> {
         match self {
             Self::AmazonBedrock(model) => model.present(turn).await,
-            Self::OpenAiCompatible(model) => model.present(turn).await,
         }
     }
 
     async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
         match self {
             Self::AmazonBedrock(model) => model.critique(turn).await,
-            Self::OpenAiCompatible(model) => model.critique(turn).await,
         }
     }
 }
@@ -1034,150 +1022,25 @@ impl AgentModel for BedrockModel {
     }
 }
 
-pub(super) struct OpenAiCompatibleModel {
-    client: Client,
-    endpoint: Url,
-    model: String,
-}
-
-impl OpenAiCompatibleModel {
-    fn from_env() -> Result<Self, Box<dyn Error>> {
-        let endpoint = Url::parse(&required_env("CEREBRO_SLACK_AGENT_MODEL_URL")?)?;
-        if endpoint.scheme() != "https"
-            && endpoint
-                .host_str()
-                .is_none_or(|host| host != "127.0.0.1" && host != "localhost" && host != "::1")
-        {
-            return Err("CEREBRO_SLACK_AGENT_MODEL_URL must use HTTPS or loopback".into());
-        }
-        let mut headers = HeaderMap::new();
-        let mut authorization = HeaderValue::from_str(&format!(
-            "Bearer {}",
-            required_env("CEREBRO_SLACK_AGENT_MODEL_API_KEY")?
-        ))?;
-        authorization.set_sensitive(true);
-        headers.insert(AUTHORIZATION, authorization);
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        let client = Client::builder()
-            .default_headers(headers)
-            .timeout(StdDuration::from_secs(90))
-            .build()?;
-        Ok(Self {
-            client,
-            endpoint,
-            model: required_env("CEREBRO_SLACK_AGENT_MODEL")?,
-        })
-    }
-
-    async fn complete(
-        &self,
-        instructions: &str,
-        payload: Value,
-        max_tokens: i32,
-    ) -> Result<String, AgentRuntimeError> {
-        validate_generation_budget(max_tokens)?;
-        let response = self
-            .client
-            .post(self.endpoint.clone())
-            .json(&json!({
-                "model": self.model,
-                "response_format": {"type": "json_object"},
-                "max_tokens": max_tokens,
-                "messages": [
-                    {"role": "system", "content": instructions},
-                    {"role": "user", "content": serde_json::to_string(&payload).unwrap_or_default()}
-                ]
-            }))
-            .send()
-            .await
-            .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
-        let status = response.status();
-        if !status.is_success() {
-            return Err(AgentRuntimeError::ModelUnavailable(format!(
-                "provider returned {status}"
-            )));
-        }
-        let mut body = Vec::new();
-        let mut stream = response.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            let chunk =
-                chunk.map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
-            if body.len().saturating_add(chunk.len()) > MAX_MODEL_RESPONSE_BYTES {
-                return Err(AgentRuntimeError::ModelUnavailable(
-                    "provider response exceeded the size limit".into(),
-                ));
-            }
-            body.extend_from_slice(&chunk);
-        }
-        completion_content(&body)
-    }
-}
-
-#[async_trait]
-impl AgentModel for OpenAiCompatibleModel {
-    async fn route(&self, turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
-        let content = self
-            .complete(
-                route_instructions(),
-                route_turn_payload(&turn),
-                ROUTER_MAX_TOKENS,
-            )
-            .await?;
-        parse_route_content(&content)
-    }
-
-    async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
-        let content = self
-            .complete(
-                model_instructions(),
-                model_turn_payload(&turn),
-                DECISION_MAX_TOKENS,
-            )
-            .await?;
-        parse_model_content(&content)
-    }
-
-    async fn present(
-        &self,
-        turn: PresentationTurn,
-    ) -> Result<PresentationDecision, AgentRuntimeError> {
-        let content = self
-            .complete(
-                presentation_instructions(),
-                presentation_turn_payload(&turn),
-                PRESENTATION_MAX_TOKENS,
-            )
-            .await?;
-        parse_presentation_content(&content)
-    }
-
-    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
-        let content = self
-            .complete(
-                critic_instructions(),
-                critique_turn_payload(&turn),
-                CRITIC_MAX_TOKENS,
-            )
-            .await?;
-        parse_critique_content(&content)
-    }
-}
-
+#[cfg(test)]
 #[derive(Deserialize)]
 struct ChatCompletion {
     choices: Vec<ChatChoice>,
 }
 
+#[cfg(test)]
 #[derive(Deserialize)]
 struct ChatChoice {
     message: ChatMessage,
 }
 
+#[cfg(test)]
 #[derive(Deserialize)]
 struct ChatMessage {
     content: String,
 }
 
+#[cfg(test)]
 fn completion_content(body: &[u8]) -> Result<String, AgentRuntimeError> {
     let completion: ChatCompletion = serde_json::from_slice(body)
         .map_err(|error| AgentRuntimeError::ModelUnavailable(error.to_string()))?;
@@ -1199,6 +1062,7 @@ fn validate_generation_budget(max_tokens: i32) -> Result<(), AgentRuntimeError> 
     Ok(())
 }
 
+#[cfg(test)]
 fn structured_json(content: &str) -> &str {
     let content = content.trim();
     content
@@ -1209,6 +1073,7 @@ fn structured_json(content: &str) -> &str {
         .unwrap_or(content)
 }
 
+#[cfg(test)]
 fn parse_route_content(content: &str) -> Result<RouteDecision, AgentRuntimeError> {
     serde_json::from_str(structured_json(content))
         .map_err(|error| AgentRuntimeError::InvalidRoute(format!("router output: {error}")))
@@ -1219,6 +1084,7 @@ fn parse_route_value(value: Value) -> Result<RouteDecision, AgentRuntimeError> {
         .map_err(|error| AgentRuntimeError::InvalidRoute(format!("router output: {error}")))
 }
 
+#[cfg(test)]
 fn parse_model_content(content: &str) -> Result<ModelDecision, AgentRuntimeError> {
     let value = serde_json::from_str(structured_json(content))
         .map_err(|error| AgentRuntimeError::InvalidFinal(format!("model output: {error}")))?;
@@ -1302,6 +1168,7 @@ fn parse_model_value(mut value: Value) -> Result<ModelDecision, AgentRuntimeErro
         .map_err(|error| AgentRuntimeError::InvalidFinal(format!("model output: {error}")))
 }
 
+#[cfg(test)]
 fn parse_presentation_content(content: &str) -> Result<PresentationDecision, AgentRuntimeError> {
     let value = serde_json::from_str(structured_json(content)).map_err(|error| {
         AgentRuntimeError::InvalidFinal(format!("presentation output: {error}"))
@@ -1351,6 +1218,7 @@ fn decode_presentation_messages(text: &str) -> Value {
     Value::Array(vec![Value::String(text.to_owned())])
 }
 
+#[cfg(test)]
 fn parse_critique_content(content: &str) -> Result<CritiqueDecision, AgentRuntimeError> {
     serde_json::from_str(structured_json(content))
         .map_err(|error| AgentRuntimeError::InvalidFinal(format!("critic output: {error}")))
@@ -3702,6 +3570,16 @@ mod tests {
             gaps.iter()
                 .any(|gap| gap == "latest_collection_has_rejected_records")
         );
+    }
+
+    #[test]
+    fn production_model_gate_accepts_opus_and_rejects_nova_or_smaller_claude_models() {
+        assert!(is_bedrock_opus_model("us.anthropic.claude-opus-4-8"));
+        assert!(is_bedrock_opus_model("anthropic.claude-opus-4-1-v1:0"));
+        assert!(!is_bedrock_opus_model("amazon.nova-pro-v1:0"));
+        assert!(!is_bedrock_opus_model(
+            "us.anthropic.claude-sonnet-4-5-v1:0"
+        ));
     }
 
     #[test]
