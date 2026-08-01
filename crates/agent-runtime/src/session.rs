@@ -1854,7 +1854,10 @@ fn normalize_redundant_baseline_alerts(
 }
 
 fn normalize_coverage_notice(draft: &mut GroundedDraft, observations: &[ToolObservation]) {
-    if draft.coverage_notice.is_some()
+    if draft
+        .coverage_notice
+        .as_deref()
+        .is_some_and(|notice| !notice.trim().is_empty())
         || !matches!(draft.state, FinalState::Partial | FinalState::Blocked)
     {
         return;
@@ -4777,7 +4780,7 @@ mod tests {
     fn failed_observation_supplies_a_missing_partial_coverage_notice() {
         let mut partial = draft();
         partial.state = FinalState::Partial;
-        partial.coverage_notice = None;
+        partial.coverage_notice = Some("   ".into());
         let mut failed = observation(false, Some("2026-07-31T00:06:00Z"));
         failed.result.state = ToolResultState::Failed;
         failed.result.blocker = Some("The source runtime returned a bounded read failure.".into());
