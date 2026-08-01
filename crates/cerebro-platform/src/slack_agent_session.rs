@@ -16,6 +16,8 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::sync::Mutex;
 use tokio_postgres::Client;
 
+const POSTGRES_AGENT_SESSION_SCHEMA_LOCK_KEY: i64 = 0x4342_524f_5345_5353;
+
 pub const POSTGRES_AGENT_SESSION_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS cerebro_agent_sessions (
   session_ref TEXT PRIMARY KEY,
@@ -177,12 +179,20 @@ impl PostgresAgentSessionStore {
     }
 
     async fn initialize(&self) -> Result<(), AgentRuntimeError> {
-        self.client
-            .lock()
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await.map_err(store_unavailable)?;
+        transaction
+            .query_one(
+                "SELECT pg_advisory_xact_lock($1)",
+                &[&POSTGRES_AGENT_SESSION_SCHEMA_LOCK_KEY],
+            )
             .await
+            .map_err(store_unavailable)?;
+        transaction
             .batch_execute(POSTGRES_AGENT_SESSION_SCHEMA)
             .await
-            .map_err(store_unavailable)
+            .map_err(store_unavailable)?;
+        transaction.commit().await.map_err(store_unavailable)
     }
 
     pub async fn load_by_thread(
@@ -1092,6 +1102,10 @@ mod tests {
 
     #[test]
     fn schema_has_isolated_event_and_wake_records() {
+        assert_eq!(
+            POSTGRES_AGENT_SESSION_SCHEMA_LOCK_KEY,
+            0x4342_524f_5345_5353
+        );
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("UNIQUE (tenant_id, thread_ref)"));
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("PRIMARY KEY (session_ref, sequence)"));
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("lease_expires_at TIMESTAMPTZ"));
