@@ -36,12 +36,15 @@ connectrpc.workspace = true
 futures-util.workspace = true
 hmac.workspace = true
 jsonwebtoken.workspace = true
+native-tls.workspace = true
+postgres-native-tls.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 tokio.workspace = true
+tokio-postgres.workspace = true
 time.workspace = true
 zeroize.workspace = true
 

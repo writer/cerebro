@@ -78,6 +78,7 @@ test("runtime config activates Archetype only with complete private bindings", (
   const base = {
     CEREBRO_BASE_URL: "https://cerebro.example.com",
     CEREBRO_READ_API_KEY: "bound-at-runtime",
+    CEREBRO_SLACK_AGENT_ENABLED: "true",
     CEREBRO_SLACK_APP_NAME: "Cerebro",
     CEREBRO_SLACK_ENVIRONMENT_LABEL: "production",
     CEREBRO_SLACK_PRODUCTION: "true",

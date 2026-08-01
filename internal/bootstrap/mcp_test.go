@@ -2611,6 +2611,10 @@ LIMIT 25`,
 			"arguments": map[string]any{
 				"question":  "Which asset should I review first?",
 				"scope_urn": "urn:cerebro:writer:asset:prod-db",
+				"history": []any{
+					map[string]any{"role": "user", "content": "We are reviewing the production database."},
+					map[string]any{"role": "assistant", "content": "The prior evidence was incomplete."},
+				},
 			},
 		},
 	})
@@ -2643,6 +2647,12 @@ LIMIT 25`,
 	metadata := content["metadata"].(map[string]any)
 	if metadata["returned"] != float64(1) || metadata["stateless"] != true {
 		t.Fatalf("graph.reason metadata = %#v", metadata)
+	}
+	if len(llm.DraftRequests) != 1 || len(llm.DraftRequests[0].History) != 2 {
+		t.Fatalf("graph.reason history = %#v, want two forwarded messages", llm.DraftRequests)
+	}
+	if llm.DraftRequests[0].History[1].Content != "The prior evidence was incomplete." {
+		t.Fatalf("graph.reason newest history = %#v", llm.DraftRequests[0].History)
 	}
 
 	overrideResponse, _ := postMCP(t, server, "", map[string]any{

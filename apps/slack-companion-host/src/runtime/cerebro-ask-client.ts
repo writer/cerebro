@@ -7,11 +7,51 @@ export type AssistantTurnSourceGapState =
 
 export interface CerebroAskResult {
   citationValidationPassed: boolean;
+  deliveryAckRequired?: boolean;
   executionLane: "act" | "continue" | "converse" | "ignore" | "investigate" | "lookup";
   finalState?: "answered" | "blocked" | "needs_input" | "partial";
   markdown: string;
+  pendingApproval?: AgentApprovalRequest;
   safeRefusal: boolean;
   traceId?: string;
+  workingState?: RustWorkingState;
+}
+
+export interface RustWakeExecutionReceipt {
+  commitment_ref: string;
+  request_id: string;
+  schedule_generation: number;
+  session_ref: string;
+  state: "awaiting_delivery";
+}
+
+export interface RustWakeDeliveryLease {
+  commitment_ref: string;
+  delivery_attempt_ref: string;
+  delivery_ref: string;
+  fence: number;
+  lease_expires_at: string;
+  lease_owner: string;
+  lease_token: string;
+  payload_digest: string;
+  request_id: string;
+  schedule_generation: number;
+  session_ref: string;
+}
+
+export interface RustPendingWakeDelivery {
+  lease: RustWakeDeliveryLease;
+  markdown: string;
+  mode: "reconcile" | "send";
+  tenant_id: string;
+  thread_ref: string;
+}
+
+export interface AgentApprovalRequest {
+  approvalRef: string;
+  inputDigest: string;
+  purpose: string;
+  toolId: string;
 }
 
 export interface CerebroAskHistoryMessage {
@@ -59,16 +99,20 @@ export class CerebroAskClient {
   async runAgentTurn(input: {
     actorRef: string;
     assessmentAt: string;
+    effectAuthorizations?: readonly AgentApprovalRequest[];
     history?: readonly CerebroAskHistoryMessage[];
     question: string;
     requestId: string;
     signal: AbortSignal;
     threadRef: string;
     workingState?: {
+      active_lane?: CerebroAskResult["executionLane"];
       current_request: string;
       last_blocker?: string;
-      last_outcome: "blocked" | "completed" | "needs_user";
+      last_outcome: "blocked" | "completed" | "needs_user" | "owned" | "unknown";
       mission_ref: string;
+      open_loops?: readonly string[];
+      requires_current_evidence?: boolean;
     };
   }): Promise<CerebroAskResult> {
     if (!this.options.agentRuntimeUrl) {
@@ -83,7 +127,15 @@ export class CerebroAskClient {
       body: JSON.stringify({
         actor_ref: input.actorRef,
         assessment_at: input.assessmentAt,
-        effect_authorizations: [],
+        effect_authorizations: (input.effectAuthorizations ?? []).map((authorization) => ({
+          actor_ref: input.actorRef,
+          approval_ref: authorization.approvalRef,
+          input_digest: authorization.inputDigest,
+          request_id: input.requestId,
+          tenant_id: this.options.tenantId,
+          thread_ref: input.threadRef,
+          tool_id: authorization.toolId,
+        })),
         history: input.history ?? [],
         message: input.question,
         request_id: input.requestId,
@@ -117,19 +169,26 @@ export class CerebroAskClient {
       }
       throw new CerebroAskError("unavailable", errorMessage(error));
     }
-    if (outcome.outcome === "delivered") {
+    if (outcome.outcome === "delivered" || outcome.outcome === "pending_delivery") {
       return {
         citationValidationPassed:
           outcome.final_state === "answered"
           && outcome.evidence_refs.length > 0,
         executionLane: outcome.lane,
+        ...(outcome.outcome === "pending_delivery"
+          ? { deliveryAckRequired: true }
+          : {}),
         finalState: outcome.final_state,
         markdown: outcome.markdown,
         safeRefusal: outcome.final_state !== "answered",
         traceId: input.requestId,
+        ...(outcome.working_state == null
+          ? {}
+          : { workingState: outcome.working_state }),
       };
     }
     if (outcome.outcome === "approval_required") {
+      const approvalCode = approvalCommandCode(outcome.request.approval_ref);
       return {
         citationValidationPassed: false,
         executionLane: outcome.lane,
@@ -139,8 +198,14 @@ export class CerebroAskClient {
           "",
           outcome.request.purpose,
           "",
-          `Approve the exact ${outcome.request.tool_id} operation before I continue.`,
+          `To run the exact ${outcome.request.tool_id} operation, reply \`approve ${approvalCode}\`.`,
         ].join("\n"),
+        pendingApproval: {
+          approvalRef: outcome.request.approval_ref,
+          inputDigest: outcome.request.input_digest,
+          purpose: outcome.request.purpose,
+          toolId: outcome.request.tool_id,
+        },
         safeRefusal: true,
         traceId: input.requestId,
       };
@@ -153,6 +218,144 @@ export class CerebroAskClient {
       safeRefusal: true,
       traceId: input.requestId,
     };
+  }
+
+  async recordAgentTurnDelivery(input: {
+    deliveredAt: string;
+    deliveryRef: string;
+    payloadDigest: string;
+    requestId: string;
+    signal: AbortSignal;
+    threadRef: string;
+  }): Promise<void> {
+    if (!this.options.agentRuntimeUrl) return;
+    const response = await this.fetchImpl(
+      `${this.options.agentRuntimeUrl}/v1/turns/deliveries`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          delivered_at: input.deliveredAt,
+          delivery_ref: input.deliveryRef,
+          payload_digest: input.payloadDigest,
+          request_id: input.requestId,
+          schema_version: "agent-delivery-receipt/v1",
+          tenant_id: this.options.tenantId,
+          thread_ref: input.threadRef,
+          transport: "slack",
+        }),
+        signal: input.signal,
+      },
+    ).catch((error: unknown) => {
+      throw new CerebroAskError("unavailable", errorMessage(error));
+    });
+    if (!response.ok) {
+      throw new CerebroAskError(
+        sourceState(response.status),
+        `The Rust agent rejected the Slack delivery receipt with status ${response.status}.`,
+      );
+    }
+  }
+
+  async runDueWake(input: {
+    signal: AbortSignal;
+    workerRef: string;
+  }): Promise<RustWakeExecutionReceipt | undefined> {
+    const runtimeUrl = this.requiredAgentRuntimeUrl();
+    const response = await this.fetchImpl(`${runtimeUrl}/v1/wakes/run`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ worker_ref: input.workerRef }),
+      signal: input.signal,
+    }).catch((error: unknown) => {
+      throw new CerebroAskError("unavailable", errorMessage(error));
+    });
+    if (!response.ok) {
+      throw new CerebroAskError(
+        sourceState(response.status),
+        `The Rust wake executor failed with status ${response.status}.`,
+      );
+    }
+    return parseWakeRunResponse(await response.json());
+  }
+
+  async claimPendingWakeDelivery(input: {
+    signal: AbortSignal;
+    workerRef: string;
+  }): Promise<RustPendingWakeDelivery | undefined> {
+    const runtimeUrl = this.requiredAgentRuntimeUrl();
+    const response = await this.fetchImpl(
+      `${runtimeUrl}/v1/wakes/pending-deliveries/claim`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ worker_ref: input.workerRef }),
+        signal: input.signal,
+      },
+    ).catch((error: unknown) => {
+      throw new CerebroAskError("unavailable", errorMessage(error));
+    });
+    if (!response.ok) {
+      throw new CerebroAskError(
+        sourceState(response.status),
+        `The Rust wake delivery claim failed with status ${response.status}.`,
+      );
+    }
+    return parseWakeDeliveryClaim(await response.json(), this.options.tenantId);
+  }
+
+  async recordWakeDelivery(input: {
+    deliveredAt: string;
+    delivery: RustPendingWakeDelivery;
+    destinationReceipt: string;
+    signal: AbortSignal;
+  }): Promise<void> {
+    const runtimeUrl = this.requiredAgentRuntimeUrl();
+    const response = await this.fetchImpl(`${runtimeUrl}/v1/wakes/deliveries`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        lease: input.delivery.lease,
+        receipt: {
+          delivered_at: input.deliveredAt,
+          delivery_ref: input.destinationReceipt,
+          payload_digest: input.delivery.lease.payload_digest,
+          request_id: input.delivery.lease.request_id,
+          schema_version: "agent-delivery-receipt/v1",
+          tenant_id: input.delivery.tenant_id,
+          thread_ref: input.delivery.thread_ref,
+          transport: "slack",
+        },
+      }),
+      signal: input.signal,
+    }).catch((error: unknown) => {
+      throw new CerebroAskError("unavailable", errorMessage(error));
+    });
+    if (!response.ok) {
+      throw new CerebroAskError(
+        sourceState(response.status),
+        `The Rust wake delivery receipt failed with status ${response.status}.`,
+      );
+    }
+  }
+
+  private requiredAgentRuntimeUrl(): string {
+    if (!this.options.agentRuntimeUrl) {
+      throw new CerebroAskError("not_configured", "The Rust agent runtime is not configured.");
+    }
+    return this.options.agentRuntimeUrl;
   }
 
   async ask(
@@ -292,12 +495,15 @@ type RustAgentTurnOutcome =
       final_state: "answered" | "blocked" | "needs_input" | "partial";
       lane: CerebroAskResult["executionLane"];
       markdown: string;
-      outcome: "delivered";
+      outcome: "delivered" | "pending_delivery";
+      working_state: RustWorkingState | null;
     }
   | {
       lane: "act";
       outcome: "approval_required";
       request: {
+        approval_ref: string;
+        input_digest: string;
         purpose: string;
         tool_id: string;
       };
@@ -305,6 +511,110 @@ type RustAgentTurnOutcome =
   | {
       outcome: "ignored";
     };
+
+function parseWakeRunResponse(value: unknown): RustWakeExecutionReceipt | undefined {
+  const response = objectWithKeys(value, ["wake"], "wake execution response");
+  if (response.wake === null) return undefined;
+  const wake = objectWithKeys(response.wake, [
+    "commitment_ref",
+    "request_id",
+    "schedule_generation",
+    "session_ref",
+    "state",
+  ], "wake execution receipt");
+  if (
+    !text(wake.commitment_ref)
+    || !text(wake.request_id)
+    || !positiveInteger(wake.schedule_generation)
+    || !text(wake.session_ref)
+    || wake.state !== "awaiting_delivery"
+  ) {
+    throw new CerebroAskError("unavailable", "The Rust wake execution receipt is invalid.");
+  }
+  return wake as unknown as RustWakeExecutionReceipt;
+}
+
+function parseWakeDeliveryClaim(
+  value: unknown,
+  tenantId: string,
+): RustPendingWakeDelivery | undefined {
+  const response = objectWithKeys(value, ["delivery"], "wake delivery claim response");
+  if (response.delivery === null) return undefined;
+  const delivery = objectWithKeys(response.delivery, [
+    "lease",
+    "markdown",
+    "mode",
+    "tenant_id",
+    "thread_ref",
+  ], "wake delivery claim");
+  const lease = objectWithKeys(delivery.lease, [
+    "commitment_ref",
+    "delivery_attempt_ref",
+    "delivery_ref",
+    "fence",
+    "lease_expires_at",
+    "lease_owner",
+    "lease_token",
+    "payload_digest",
+    "request_id",
+    "schedule_generation",
+    "session_ref",
+  ], "wake delivery lease");
+  if (
+    !text(lease.commitment_ref)
+    || !/^wake-delivery-attempt:\/\/sha256\/[a-f0-9]{64}$/u.test(
+      text(lease.delivery_attempt_ref),
+    )
+    || !/^wake-delivery:\/\/sha256\/[a-f0-9]{64}$/u.test(text(lease.delivery_ref))
+    || !positiveInteger(lease.fence)
+    || !canonicalTimestamp(lease.lease_expires_at)
+    || !text(lease.lease_owner)
+    || !/^wake-delivery-lease:\/\/sha256\/[a-f0-9]{64}$/u.test(text(lease.lease_token))
+    || !/^sha256:[a-f0-9]{64}$/u.test(text(lease.payload_digest))
+    || !text(lease.request_id)
+    || !positiveInteger(lease.schedule_generation)
+    || !text(lease.session_ref)
+    || !text(delivery.markdown)
+    || (delivery.mode !== "send" && delivery.mode !== "reconcile")
+    || delivery.tenant_id !== tenantId
+    || !/^slack-scratchpad:\/\/sha256\/[a-f0-9]{64}$/u.test(text(delivery.thread_ref))
+  ) {
+    throw new CerebroAskError("unavailable", "The Rust wake delivery claim is invalid.");
+  }
+  return {
+    lease: lease as unknown as RustWakeDeliveryLease,
+    markdown: text(delivery.markdown),
+    mode: delivery.mode,
+    tenant_id: delivery.tenant_id,
+    thread_ref: delivery.thread_ref as string,
+  };
+}
+
+function objectWithKeys(
+  value: unknown,
+  keys: readonly string[],
+  label: string,
+): Record<string, unknown> {
+  if (
+    value === null
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || JSON.stringify(Object.keys(value).sort()) !== JSON.stringify([...keys].sort())
+  ) {
+    throw new CerebroAskError("unavailable", `The Rust ${label} is invalid.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function positiveInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) > 0;
+}
+
+function canonicalTimestamp(value: unknown): boolean {
+  return typeof value === "string"
+    && Number.isFinite(Date.parse(value))
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/u.test(value);
+}
 
 function citationValidation(
   value: unknown,
@@ -323,6 +633,24 @@ function citationValidation(
     referenced_urn_count: validation.referenced_urn_count,
     row_urn_count: validation.row_urn_count,
   };
+}
+
+export function approvalCommandCode(approvalRef: string): string {
+  const suffix = approvalRef.split("/").at(-1)?.trim();
+  if (!suffix || !/^[a-f0-9]{64}$/u.test(suffix)) {
+    throw new CerebroAskError("unavailable", "The Rust agent returned an invalid approval identity.");
+  }
+  return suffix.slice(0, 12);
+}
+
+interface RustWorkingState {
+  active_lane?: Exclude<CerebroAskResult["executionLane"], "continue" | "ignore">;
+  current_request: string;
+  last_blocker?: string;
+  last_outcome: "blocked" | "completed" | "needs_user" | "owned" | "unknown";
+  mission_ref?: string;
+  open_loops?: string[];
+  requires_current_evidence?: boolean;
 }
 
 function unsupportedQuery(

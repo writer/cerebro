@@ -31,10 +31,22 @@ import {
   CerebroAnswerRejectedError,
   CerebroAskClient,
   CerebroAskError,
+  approvalCommandCode,
   type CerebroAskHistoryMessage,
   type CerebroAskResult,
 } from "./cerebro-ask-client.js";
+import type { FileAgentApprovalStore } from "./agent-approval-store.js";
+import {
+  FileAgentDeliveryOutbox,
+  type AgentDeliveryOutboxRecord,
+} from "./agent-delivery-outbox.js";
 import type { SlackRuntimeConfig } from "./config.js";
+import { FileSlackThreadRouteStore } from "./slack-thread-route-store.js";
+import { FileWakeDeliveryOutbox } from "./wake-delivery-outbox.js";
+import {
+  type SlackWakeDeliveryClient,
+  WakeDeliveryWorker,
+} from "./wake-delivery-worker.js";
 import {
   FileOutcomeStore,
   type PendingAssistantOutcome,
@@ -96,6 +108,7 @@ export interface SlackMentionClient extends SlackThreadRepliesClient {
 }
 
 export interface SlackMentionEvent {
+  botUserId?: string;
   channel: string;
   eventTs: string;
   hasThreadContext: boolean;
@@ -130,6 +143,11 @@ export interface AssistantQuestionInput {
 }
 
 export interface AssistantQuestionResult {
+  agentDelivery?: {
+    payloadDigest: string;
+    requestId: string;
+    threadRef: string;
+  };
   pending: Omit<PendingAssistantOutcome, "delivered_message_ts">;
   text: string;
   verifiedTurn?: {
@@ -138,18 +156,23 @@ export interface AssistantQuestionResult {
     traceId: string;
   };
   workingTurn?: {
+    activeLane?: Exclude<AssistantExecutionLane, "continue" | "ignore">;
     blocker?: string;
     currentRequest: string;
+    openLoops?: readonly string[];
     outcome: SlackThreadWorkingOutcome;
+    requiresCurrentEvidence?: boolean;
   };
 }
 
 export interface AssistantQuestionServiceOptions {
+  approvalStore?: FileAgentApprovalStore;
   clock?: () => Date;
   timeoutSignal?: (milliseconds: number) => AbortSignal;
 }
 
 export class AssistantQuestionService {
+  private readonly approvalStore?: FileAgentApprovalStore;
   private readonly clock: () => Date;
   private readonly timeoutSignal: (milliseconds: number) => AbortSignal;
   private sourceAttempts = 0;
@@ -163,6 +186,7 @@ export class AssistantQuestionService {
     private readonly askClient: CerebroAskClient,
     options: AssistantQuestionServiceOptions = {},
   ) {
+    this.approvalStore = options.approvalStore;
     this.clock = options.clock ?? (() => new Date());
     this.timeoutSignal = options.timeoutSignal ?? ((milliseconds) => AbortSignal.timeout(milliseconds));
   }
@@ -200,33 +224,120 @@ export class AssistantQuestionService {
         selected_capability_count: 12,
       });
       try {
+        const pendingApproval = await this.approvalStore?.read(input.threadRef);
+        const approvalCommand = /^approve(?:\s+([a-f0-9]{12}))?$/iu.exec(currentRequest);
+        if (approvalCommand && !pendingApproval) {
+          return approvalCommandResult(
+            budget.latency_budget_ms,
+            openedAt,
+            requestId,
+            "There is no pending Cerebro operation to approve in this thread.",
+          );
+        }
+        if (approvalCommand && pendingApproval?.actorRef !== input.actorRef) {
+          return approvalCommandResult(
+            budget.latency_budget_ms,
+            openedAt,
+            requestId,
+            "This operation must be approved by the person who requested it.",
+          );
+        }
+        if (
+          approvalCommand
+          && pendingApproval
+          && approvalCommand[1]?.toLowerCase() !== approvalCommandCode(pendingApproval.approvalRef)
+        ) {
+          return approvalCommandResult(
+            budget.latency_budget_ms,
+            openedAt,
+            requestId,
+            `That approval code does not match the pending operation. Reply \`approve ${approvalCommandCode(pendingApproval.approvalRef)}\` to run it.`,
+          );
+        }
+        if (!approvalCommand && pendingApproval) {
+          await this.approvalStore?.clear(input.threadRef, pendingApproval.approvalRef);
+        }
+        const resumingApproval = approvalCommand && pendingApproval
+          ? pendingApproval
+          : undefined;
+        const turnRequestId = resumingApproval?.requestId ?? requestId;
+        const turnQuestion = resumingApproval?.question ?? currentRequest;
         const answer = await this.askClient.runAgentTurn({
           actorRef: input.actorRef,
           assessmentAt: openedAt.toISOString(),
+          ...(resumingApproval === undefined
+            ? {}
+            : {
+                effectAuthorizations: [{
+                  approvalRef: resumingApproval.approvalRef,
+                  inputDigest: resumingApproval.inputDigest,
+                  purpose: resumingApproval.purpose,
+                  toolId: resumingApproval.toolId,
+                }],
+              }),
           history,
-          question: currentRequest,
-          requestId,
+          question: turnQuestion,
+          requestId: turnRequestId,
           signal: this.timeoutSignal(budget.latency_budget_ms),
           threadRef: input.threadRef,
           ...(input.workingState === undefined
             ? {}
             : {
                 workingState: {
+                  ...(input.workingState.active_lane === undefined
+                    ? {}
+                    : { active_lane: input.workingState.active_lane }),
                   current_request:
-                    input.workingState.recent_requests[0] ?? currentRequest,
+                    durableMissionRequest(input.workingState, currentRequest),
                   ...(input.workingState.blocker === undefined
                     ? {}
                     : { last_blocker: input.workingState.blocker }),
                   last_outcome: input.workingState.last_outcome,
                   mission_ref: input.workingState.thread_ref,
+                  ...(input.workingState.open_loops === undefined
+                    ? {}
+                    : { open_loops: input.workingState.open_loops }),
+                  ...(input.workingState.requires_current_evidence === undefined
+                    ? {}
+                    : {
+                        requires_current_evidence:
+                          input.workingState.requires_current_evidence,
+                      }),
                 },
               }),
         });
+        if (answer.pendingApproval) {
+          await this.approvalStore?.record({
+            actorRef: input.actorRef,
+            approval: answer.pendingApproval,
+            question: turnQuestion,
+            requestId: turnRequestId,
+            threadRef: input.threadRef,
+          });
+        } else if (resumingApproval) {
+          await this.approvalStore?.clear(input.threadRef, resumingApproval.approvalRef);
+        }
         const usefulAnswerAt =
           answer.finalState === "answered" || answer.finalState === "partial"
             ? this.clock()
             : undefined;
+        const slackText = boundedSlackText(answer.markdown);
+        if (answer.deliveryAckRequired && slackText !== answer.markdown) {
+          throw new CerebroAskError(
+            "unavailable",
+            "The Rust agent response exceeds the exact Slack delivery envelope.",
+          );
+        }
         return {
+          ...(answer.deliveryAckRequired
+            ? {
+                agentDelivery: {
+                  payloadDigest: `sha256:${digest(answer.markdown)}`,
+                  requestId: turnRequestId,
+                  threadRef: input.threadRef,
+                },
+              }
+            : {}),
           pending: pendingOutcome({
             budgetMs: budget.latency_budget_ms,
             executionLane: answer.executionLane,
@@ -236,19 +347,36 @@ export class AssistantQuestionService {
             usefulAnswerAt,
             verified: answer.citationValidationPassed,
           }),
-          text: boundedSlackText(answer.markdown),
+          text: slackText,
           workingTurn: {
-            ...(answer.finalState === "blocked"
-              ? { blocker: "The Rust agent reported a blocked turn." }
-              : {}),
-            currentRequest,
-            outcome: agentWorkingOutcome(answer.finalState),
+            ...(answer.workingState?.active_lane === undefined
+              ? {}
+              : { activeLane: answer.workingState.active_lane }),
+            ...(answer.workingState?.last_blocker === undefined
+              ? answer.finalState === "blocked"
+                ? { blocker: "The Rust agent reported a blocked turn." }
+                : {}
+              : { blocker: answer.workingState.last_blocker }),
+            currentRequest: answer.workingState?.current_request ?? turnQuestion,
+            ...(answer.workingState?.open_loops === undefined
+              ? {}
+              : { openLoops: answer.workingState.open_loops }),
+            outcome: agentWorkingOutcome(
+              answer.finalState,
+              answer.workingState?.last_outcome,
+            ),
+            ...(answer.workingState?.requires_current_evidence === undefined
+              ? {}
+              : {
+                  requiresCurrentEvidence:
+                    answer.workingState.requires_current_evidence,
+                }),
           },
           ...(answer.citationValidationPassed && answer.traceId
             ? {
                 verifiedTurn: {
                   answer: answer.markdown,
-                  question: currentRequest,
+                  question: turnQuestion,
                   traceId: answer.traceId,
                 },
               }
@@ -470,6 +598,19 @@ export class AssistantQuestionService {
     }
   }
 
+  async acknowledgeAgentDelivery(input: {
+    deliveredAt: string;
+    deliveryRef: string;
+    payloadDigest: string;
+    requestId: string;
+    threadRef: string;
+  }): Promise<void> {
+    await this.askClient.recordAgentTurnDelivery({
+      ...input,
+      signal: this.timeoutSignal(10_000),
+    });
+  }
+
   private recordSourceResult(succeeded: boolean, latencyMs: number): void {
     this.sourceAttempts += 1;
     this.sourceLatencyMs += latencyMs;
@@ -511,11 +652,14 @@ export class AssistantQuestionService {
 }
 
 export class SlackCompanionRuntime {
+  private agentDeliveryTimer?: NodeJS.Timeout;
   private readonly app: App;
   private healthServer?: Server;
   private outcomeTimer?: NodeJS.Timeout;
   private releaseNoticeMonitor?: ReleaseNoticeMonitor;
   private ready = false;
+  private wakeDeliveryTimer?: NodeJS.Timeout;
+  private readonly wakeWorker?: WakeDeliveryWorker;
 
   constructor(
     private readonly config: SlackRuntimeConfig,
@@ -523,6 +667,10 @@ export class SlackCompanionRuntime {
     private readonly questions: AssistantQuestionService,
     private readonly outcomes: FileOutcomeStore,
     private readonly scratchpads: SlackThreadScratchpadPort,
+    private readonly agentDeliveries: FileAgentDeliveryOutbox,
+    private readonly threadRoutes: FileSlackThreadRouteStore,
+    agentClient: CerebroAskClient,
+    wakeDeliveries: FileWakeDeliveryOutbox,
     private readonly archetype?: ArchetypeSlackWorkspace,
   ) {
     this.app = new App({
@@ -531,6 +679,15 @@ export class SlackCompanionRuntime {
       socketMode: true,
       token: config.botToken,
     });
+    if (config.rustAgentEnabled) {
+      this.wakeWorker = new WakeDeliveryWorker(
+        agentClient,
+        this.app.client as unknown as SlackWakeDeliveryClient,
+        threadRoutes,
+        wakeDeliveries,
+        { workerRef: `slack-host:${config.environmentLabel}:${config.appName}` },
+      );
+    }
     this.registerRoutes();
   }
 
@@ -577,6 +734,17 @@ export class SlackCompanionRuntime {
       });
     }
     await this.assessOutcomes();
+    await this.flushAgentDeliveries();
+    this.agentDeliveryTimer = setInterval(
+      () => void this.flushAgentDeliveries(),
+      30_000,
+    );
+    this.agentDeliveryTimer.unref();
+    if (this.wakeWorker) {
+      void this.pollWakeWorker();
+      this.wakeDeliveryTimer = setInterval(() => void this.pollWakeWorker(), 30_000);
+      this.wakeDeliveryTimer.unref();
+    }
     this.outcomeTimer = setInterval(() => void this.assessOutcomes(), 60 * 60 * 1_000);
     this.outcomeTimer.unref();
   }
@@ -584,6 +752,8 @@ export class SlackCompanionRuntime {
   async stop(): Promise<void> {
     this.ready = false;
     this.releaseNoticeMonitor?.stop();
+    if (this.agentDeliveryTimer) clearInterval(this.agentDeliveryTimer);
+    if (this.wakeDeliveryTimer) clearInterval(this.wakeDeliveryTimer);
     if (this.outcomeTimer) clearInterval(this.outcomeTimer);
     await Promise.all([
       this.app.stop(),
@@ -708,6 +878,7 @@ export class SlackCompanionRuntime {
         config: this.config,
         event: {
           channel: event.channel,
+          botUserId: context.botUserId,
           eventTs: event.ts,
           hasThreadContext: Boolean(event.thread_ts),
           teamId: context.teamId,
@@ -719,6 +890,8 @@ export class SlackCompanionRuntime {
         outcomes: this.outcomes,
         questions: this.questions,
         scratchpads: this.scratchpads,
+        agentDeliveries: this.agentDeliveries,
+        threadRoutes: this.threadRoutes,
       });
     });
 
@@ -742,6 +915,47 @@ export class SlackCompanionRuntime {
       })}\n`);
     }
   }
+
+  private async pollWakeWorker(): Promise<void> {
+    try {
+      await this.wakeWorker?.tick();
+    } catch (error) {
+      logAgentDeliveryFailure("wake_worker", error);
+    }
+  }
+
+  private async flushAgentDeliveries(): Promise<void> {
+    let records: AgentDeliveryOutboxRecord[];
+    try {
+      records = await this.agentDeliveries.list();
+    } catch (error) {
+      logAgentDeliveryFailure("read_outbox", error);
+      return;
+    }
+    for (const record of records) {
+      try {
+        let current = record;
+        if (current.state === "prepared") {
+          await this.app.client.chat.update({
+            channel: current.channel,
+            text: current.text,
+            ts: current.messageTs,
+          });
+          current = await this.agentDeliveries.markSlackDelivered(current.recordRef);
+        }
+        await this.questions.acknowledgeAgentDelivery({
+          deliveredAt: current.deliveredAt,
+          deliveryRef: current.deliveryRef,
+          payloadDigest: current.payloadDigest,
+          requestId: current.requestId,
+          threadRef: current.threadRef,
+        });
+        await this.agentDeliveries.complete(current.recordRef);
+      } catch (error) {
+        logAgentDeliveryFailure("flush_outbox", error);
+      }
+    }
+  }
 }
 
 export async function closeHealthServer(server?: Server): Promise<void> {
@@ -760,7 +974,17 @@ function logArchetypeFailure(operation: string, error: unknown): void {
   })}\n`);
 }
 
+function logAgentDeliveryFailure(operation: string, error: unknown): void {
+  process.stderr.write(`${JSON.stringify({
+    component: "slack-agent-delivery",
+    error_kind: error instanceof Error ? error.name : "unknown",
+    operation,
+    state: "retrying",
+  })}\n`);
+}
+
 export async function handleSlackMention(input: {
+  agentDeliveries?: FileAgentDeliveryOutbox;
   client: SlackMentionClient;
   config: SlackRuntimeConfig;
   event: SlackMentionEvent;
@@ -768,6 +992,7 @@ export async function handleSlackMention(input: {
   outcomes: FileOutcomeStore;
   questions: AssistantQuestionService;
   scratchpads?: SlackThreadScratchpadPort;
+  threadRoutes?: FileSlackThreadRouteStore;
 }): Promise<boolean> {
   const requestKey = [
     input.event.teamId,
@@ -810,6 +1035,14 @@ export async function handleSlackMention(input: {
       input.event.channel,
       input.event.threadTs,
     );
+    await input.threadRoutes?.bind({
+      appRef: `slack-app:${input.config.environmentLabel}:${input.config.appName}`,
+      botUserId: input.event.botUserId ?? "",
+      channelId: input.event.channel,
+      teamId: input.event.teamId,
+      threadRef: scratchpadRef,
+      threadTs: input.event.threadTs,
+    });
     const scratchpadCommand = parseRuntimeScratchpadCommand(input.event.text);
     if (scratchpadCommand && input.scratchpads) {
       const commandText = await executeScratchpadCommand(
@@ -946,12 +1179,16 @@ export async function handleSlackMention(input: {
         ? {}
         : { workingState: scratchpad.working_state }),
     });
-    const deliveredText = formatEnvironmentMessage(input.config, result.text);
-    await input.client.chat.update({
-      channel: input.event.channel,
-      text: deliveredText,
-      ts: deliveredMessageTs,
-    });
+    const deliveredText = result.agentDelivery
+      ? result.text
+      : formatEnvironmentMessage(input.config, result.text);
+    const deliveredPayloadDigest = `sha256:${digest(deliveredText)}`;
+    if (
+      result.agentDelivery
+      && result.agentDelivery.payloadDigest !== deliveredPayloadDigest
+    ) {
+      throw new Error("The Slack payload changed after the Rust agent prepared delivery.");
+    }
     const deliveredAt = new Date().toISOString();
     const references = slackDeliveryReferences(
       input.event.teamId,
@@ -960,6 +1197,43 @@ export async function handleSlackMention(input: {
       deliveredMessageTs,
       deliveredText,
     );
+    const outboxRecord = result.agentDelivery && input.agentDeliveries
+      ? await input.agentDeliveries.prepare({
+          channel: input.event.channel,
+          deliveredAt,
+          deliveryRef: references.destinationReceipt,
+          messageTs: deliveredMessageTs,
+          payloadDigest: deliveredPayloadDigest,
+          requestId: result.agentDelivery.requestId,
+          text: deliveredText,
+          threadRef: result.agentDelivery.threadRef,
+        })
+      : undefined;
+    await input.client.chat.update({
+      channel: input.event.channel,
+      text: deliveredText,
+      ts: deliveredMessageTs,
+    });
+    if (outboxRecord) {
+      await input.agentDeliveries?.markSlackDelivered(outboxRecord.recordRef);
+    }
+    if (result.agentDelivery) {
+      try {
+        await input.questions.acknowledgeAgentDelivery({
+          deliveredAt,
+          deliveryRef: references.destinationReceipt,
+          payloadDigest: deliveredPayloadDigest,
+          requestId: result.agentDelivery.requestId,
+          threadRef: result.agentDelivery.threadRef,
+        });
+        if (outboxRecord) {
+          await input.agentDeliveries?.complete(outboxRecord.recordRef);
+        }
+      } catch (error) {
+        if (!outboxRecord) throw error;
+        logAgentDeliveryFailure("acknowledge", error);
+      }
+    }
     await input.host.recordDelivery({
       created_at: result.pending.opened_at,
       delivery_id: `slack-delivery-${requestDigest}`,
@@ -969,7 +1243,7 @@ export async function handleSlackMention(input: {
         destination_receipt: references.destinationReceipt,
         idempotency_key: `slack-delivery-${requestDigest}:part:1`,
         part_id: "answer",
-        payload_digest: `sha256:${digest(deliveredText)}`,
+        payload_digest: deliveredPayloadDigest,
         payload_ref: references.payloadRef,
         sequence: 1,
         state: "delivered",
@@ -982,11 +1256,23 @@ export async function handleSlackMention(input: {
     if (input.scratchpads && result.workingTurn) {
       try {
         await input.scratchpads.recordWorkingTurn({
+          ...(result.workingTurn.activeLane === undefined
+            ? {}
+            : { active_lane: result.workingTurn.activeLane }),
           ...(result.workingTurn.blocker === undefined
             ? {}
             : { blocker: result.workingTurn.blocker }),
           current_request: result.workingTurn.currentRequest,
+          ...(result.workingTurn.openLoops === undefined
+            ? {}
+            : { open_loops: result.workingTurn.openLoops }),
           outcome: result.workingTurn.outcome,
+          ...(result.workingTurn.requiresCurrentEvidence === undefined
+            ? {}
+            : {
+                requires_current_evidence:
+                  result.workingTurn.requiresCurrentEvidence,
+              }),
           thread_ref: scratchpadRef,
         });
       } catch (error) {
@@ -1157,6 +1443,30 @@ function pendingOutcome(input: {
   };
 }
 
+function approvalCommandResult(
+  budgetMs: number,
+  openedAt: Date,
+  requestId: string,
+  text: string,
+): AssistantQuestionResult {
+  return {
+    pending: pendingOutcome({
+      budgetMs,
+      executionLane: "act",
+      openedAt,
+      outcomeState: "needs_user",
+      requestId,
+      verified: false,
+    }),
+    text,
+    workingTurn: {
+      blocker: text,
+      currentRequest: "Approve the pending Cerebro operation.",
+      outcome: "needs_user",
+    },
+  };
+}
+
 function agentOutcomeState(
   state: CerebroAskResult["finalState"],
 ): PendingAssistantOutcome["outcome_state"] {
@@ -1167,7 +1477,9 @@ function agentOutcomeState(
 
 function agentWorkingOutcome(
   state: CerebroAskResult["finalState"],
+  runtimeOutcome?: "blocked" | "completed" | "needs_user" | "owned" | "unknown",
 ): SlackThreadWorkingOutcome {
+  if (runtimeOutcome === "owned") return "owned";
   if (state === "blocked") return "blocked";
   if (state === "needs_input") return "needs_user";
   return "completed";
@@ -1402,6 +1714,31 @@ export function slackDeliveryReferences(
 
 function normalizedSlackText(value: string): string {
   return value.replace(/<@[A-Z0-9]+>/gu, " ").replace(/\s+/gu, " ").trim();
+}
+
+function durableMissionRequest(
+  workingState: SlackThreadWorkingStateV1,
+  currentRequest: string,
+): string {
+  return workingState.recent_requests.find((request) =>
+    !continuationOnlyRequest(request)
+  ) ?? currentRequest;
+}
+
+function continuationOnlyRequest(value: string): boolean {
+  const normalized = value
+    .toLocaleLowerCase("en-US")
+    .replace(/[.!?]+$/gu, "")
+    .trim();
+  return [
+    "continue",
+    "go on",
+    "keep going",
+    "proceed",
+    "resume",
+    "carry on",
+    "do it",
+  ].includes(normalized);
 }
 
 function sourceRecoveryAction(state: CerebroAskError["sourceState"]): string {

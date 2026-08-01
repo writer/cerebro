@@ -2,17 +2,27 @@ export const SLACK_THREAD_SCRATCHPAD_LIMITS = Object.freeze({
   lifetime_ms: 7 * 24 * 60 * 60 * 1_000,
   max_note_utf8_bytes: 900,
   max_notes: 20,
+  max_open_loops: 6,
   max_recent_requests: 3,
   max_total_utf8_bytes: 8_000,
 });
 
-export type SlackThreadWorkingOutcome = "blocked" | "completed" | "needs_user";
+export type SlackThreadWorkingOutcome = "blocked" | "completed" | "needs_user" | "owned";
+
+export type SlackThreadWorkingLane =
+  | "act"
+  | "converse"
+  | "investigate"
+  | "lookup";
 
 export interface SlackThreadWorkingStateV1 {
+  readonly active_lane?: SlackThreadWorkingLane;
   readonly blocker?: string;
   readonly expires_at: string;
   readonly last_outcome: SlackThreadWorkingOutcome;
   readonly recent_requests: readonly string[];
+  readonly open_loops?: readonly string[];
+  readonly requires_current_evidence?: boolean;
   readonly schema_version: "slack-thread-working-state/v1";
   readonly thread_ref: string;
   readonly updated_at: string;
@@ -53,9 +63,12 @@ export interface AddSlackThreadScratchpadNoteResult {
 }
 
 export interface RecordSlackThreadWorkingTurn {
+  readonly active_lane?: SlackThreadWorkingLane;
   readonly blocker?: string;
   readonly current_request: string;
+  readonly open_loops?: readonly string[];
   readonly outcome: SlackThreadWorkingOutcome;
+  readonly requires_current_evidence?: boolean;
   readonly thread_ref: string;
 }
 

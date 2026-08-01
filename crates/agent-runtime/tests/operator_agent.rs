@@ -7,16 +7,18 @@ use async_trait::async_trait;
 use cerebro_agent_runtime::{
     AGENT_TURN_REQUEST_V1, AgentModel, AgentRuntimeError, AgentTools, AgentTurnOutcome,
     AgentTurnRequest, ConversationMessage, ConversationRole, CritiqueChecks, CritiqueDecision,
-    CritiqueTurn, EffectAuthorization, EvidenceClaim, EvidenceRecord, ExecutionLane, FinalDraft,
-    FinalState, ModelDecision, ModelTurn, RouteConfidence, RouteDecision, RouteTurn,
-    ToolAuthorityClass, ToolCall, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
-    WorkingOutcome, WorkingState, run_turn,
+    CritiqueGroundingBasis, CritiqueGroundingCheck, CritiqueGroundingSupport, CritiqueTurn,
+    EffectAuthorization, EvidenceClaim, EvidenceRecord, ExecutionLane, FinalDraft, FinalState,
+    ModelDecision, ModelTurn, PresentationDecision, PresentationTurn, RouteConfidence,
+    RouteDecision, RouteTurn, ToolAuthorityClass, ToolCall, ToolDescriptor, ToolEffectClass,
+    ToolResult, ToolResultState, WorkingOutcome, WorkingState, run_turn,
 };
 use serde_json::json;
 
 struct ScriptedModel {
     routes: Mutex<VecDeque<RouteDecision>>,
     decisions: Mutex<VecDeque<ModelDecision>>,
+    presentations: Mutex<VecDeque<PresentationDecision>>,
     critiques: Mutex<VecDeque<CritiqueDecision>>,
 }
 
@@ -38,26 +40,171 @@ impl AgentModel for ScriptedModel {
             .ok_or_else(|| AgentRuntimeError::InvalidFinal("model script ended".into()))
     }
 
-    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+    async fn present(
+        &self,
+        turn: PresentationTurn,
+    ) -> Result<PresentationDecision, AgentRuntimeError> {
         Ok(self
-            .critiques
+            .presentations
             .lock()
             .unwrap()
             .pop_front()
-            .unwrap_or_else(approved_critique))
+            .unwrap_or_else(|| PresentationDecision {
+                messages: vec![turn.draft.summary],
+            }))
+    }
+
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(match self.critiques.lock().unwrap().pop_front() {
+            Some(decision) => decision,
+            None => approved_critique(&turn),
+        })
     }
 }
 
-fn approved_critique() -> CritiqueDecision {
+fn approved_critique(turn: &CritiqueTurn) -> CritiqueDecision {
+    let observed = turn
+        .observations
+        .iter()
+        .flat_map(|observation| &observation.result.evidence)
+        .next();
     CritiqueDecision::Approve {
         checks: CritiqueChecks {
             answers_newest_request: true,
+            conversational: true,
             evidence_boundary_correct: true,
             no_raw_record_dump: true,
             operator_facing: true,
+            owns_follow_through: true,
             right_sized: true,
         },
+        grounding: turn
+            .grounding_units
+            .iter()
+            .map(|unit| {
+                let context = best_test_context(turn, &unit.text);
+                let basis = test_grounding_basis(
+                    &unit.text,
+                    observed.is_some(),
+                    turn.observations
+                        .iter()
+                        .any(|observation| observation.result.state != ToolResultState::Succeeded),
+                    &context,
+                );
+                CritiqueGroundingCheck {
+                    unit_id: unit.unit_id.clone(),
+                    basis,
+                    support: observed
+                        .map(|evidence| {
+                            vec![CritiqueGroundingSupport {
+                                evidence_ref: evidence.evidence_ref.clone(),
+                                data_pointer: None,
+                                supporting_text: evidence.statement.clone(),
+                            }]
+                        })
+                        .unwrap_or_default(),
+                    context_excerpt: matches!(
+                        basis,
+                        CritiqueGroundingBasis::OperatorSupplied
+                            | CritiqueGroundingBasis::RetainedContext
+                    )
+                    .then(|| context.map(|(_, excerpt)| excerpt))
+                    .flatten(),
+                    observation_sequence: (basis == CritiqueGroundingBasis::ToolOutcome)
+                        .then(|| {
+                            turn.observations
+                                .last()
+                                .map(|observation| observation.sequence)
+                        })
+                        .flatten(),
+                }
+            })
+            .collect(),
     }
+}
+
+fn test_grounding_basis(
+    text: &str,
+    observed: bool,
+    failed_observation: bool,
+    context: &Option<(CritiqueGroundingBasis, String)>,
+) -> CritiqueGroundingBasis {
+    let normalized = text.to_ascii_lowercase();
+    if observed {
+        CritiqueGroundingBasis::DirectObservation
+    } else if failed_observation {
+        CritiqueGroundingBasis::ToolOutcome
+    } else if (text.contains('<') && text.contains('>')) || normalized.contains("not returned") {
+        CritiqueGroundingBasis::Placeholder
+    } else if text.trim_end().ends_with('?') {
+        CritiqueGroundingBasis::NonFactual
+    } else if [
+        "ask ", "attach ", "check ", "confirm ", "provide ", "request ", "resume ", "run ", "use ",
+        "wait ",
+    ]
+    .into_iter()
+    .any(|prefix| normalized.starts_with(prefix))
+    {
+        CritiqueGroundingBasis::Recommendation
+    } else if let Some((basis, _)) = context {
+        *basis
+    } else {
+        CritiqueGroundingBasis::StableExplanation
+    }
+}
+
+fn best_test_context(turn: &CritiqueTurn, text: &str) -> Option<(CritiqueGroundingBasis, String)> {
+    let words = test_grounding_words(text);
+    let operator = turn
+        .request
+        .history
+        .iter()
+        .filter(|message| message.role == ConversationRole::User)
+        .map(|message| message.content.as_str())
+        .chain(std::iter::once(turn.request.message.as_str()))
+        .max_by_key(|candidate| words.intersection(&test_grounding_words(candidate)).count())
+        .filter(|candidate| {
+            words
+                .intersection(&test_grounding_words(candidate))
+                .next()
+                .is_some()
+        })
+        .map(|excerpt| (CritiqueGroundingBasis::OperatorSupplied, excerpt.to_owned()));
+    let retained = turn.request.working_state.as_ref().and_then(|state| {
+        std::iter::once(state.current_request.as_str())
+            .chain(state.last_blocker.as_deref())
+            .chain(state.open_loops.iter().map(String::as_str))
+            .max_by_key(|candidate| words.intersection(&test_grounding_words(candidate)).count())
+            .filter(|candidate| {
+                words
+                    .intersection(&test_grounding_words(candidate))
+                    .next()
+                    .is_some()
+            })
+            .map(|excerpt| (CritiqueGroundingBasis::RetainedContext, excerpt.to_owned()))
+    });
+    operator.or(retained)
+}
+
+fn test_grounding_words(value: &str) -> std::collections::BTreeSet<String> {
+    value
+        .split(|character: char| !character.is_alphanumeric())
+        .map(str::to_ascii_lowercase)
+        .filter(|word| word.chars().count() >= 3)
+        .filter(|word| {
+            ![
+                "and", "are", "but", "for", "from", "has", "have", "that", "the", "this", "was",
+                "were", "with", "you", "your", "after", "before", "into",
+            ]
+            .contains(&word.as_str())
+        })
+        .map(|word| match word.as_str() {
+            "our" | "ours" | "we" | "cerebro" => "cerebro".into(),
+            "owner" | "owns" | "owned" | "ownership" | "responsibility" => "own".into(),
+            "checked" | "checks" | "recheck" => "check".into(),
+            _ => word,
+        })
+        .collect()
 }
 
 fn route(lane: ExecutionLane) -> RouteDecision {
@@ -73,6 +220,7 @@ fn scripted(lane: ExecutionLane, decisions: VecDeque<ModelDecision>) -> Scripted
     ScriptedModel {
         routes: Mutex::new(VecDeque::from([route(lane)])),
         decisions: Mutex::new(decisions),
+        presentations: Mutex::new(VecDeque::new()),
         critiques: Mutex::new(VecDeque::new()),
     }
 }
@@ -100,6 +248,168 @@ struct CriticSchemaRepairModel {
 
 struct CriticIssueRepairModel {
     attempts: Mutex<usize>,
+}
+
+struct ExhaustedCriticModel;
+
+struct FinalLengthRepairModel {
+    attempts: Mutex<usize>,
+}
+
+struct FinalHeadlineRepairModel {
+    attempts: Mutex<usize>,
+}
+
+struct ContinuationEvidenceRepairModel {
+    attempts: Mutex<usize>,
+}
+
+#[async_trait]
+impl AgentModel for ContinuationEvidenceRepairModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Continue))
+    }
+
+    async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        let mut attempts = self.attempts.lock().unwrap();
+        *attempts += 1;
+        match *attempts {
+            1 => Ok(ModelDecision::Finish {
+                draft: FinalDraft {
+                    state: FinalState::Answered,
+                    headline: "Resumed status".into(),
+                    summary: "The retained status is still current.".into(),
+                    summary_evidence_refs: vec![],
+                    checked: vec![],
+                    changed: vec![],
+                    verified: vec![],
+                    current_state: vec![],
+                    next_actions: vec![],
+                    coverage_notice: None,
+                    question: None,
+                },
+            }),
+            2 => {
+                assert!(turn.revision_feedback[0].contains("durable mission resumed"));
+                assert!(turn.revision_feedback[0].contains("Invoke one available bounded"));
+                Ok(ModelDecision::InvokeTool {
+                    call: ToolCall {
+                        call_id: "resume-read".into(),
+                        tool_id: "runtime_status".into(),
+                        purpose: "Refresh the current status before continuing.".into(),
+                        input: json!({"runtime_ref": "runtime://resumed"}),
+                    },
+                })
+            }
+            _ => Ok(ModelDecision::Finish {
+                draft: FinalDraft {
+                    state: FinalState::Answered,
+                    headline: "Resumed status observed".into(),
+                    summary: "A fresh bounded read confirms the resumed status.".into(),
+                    summary_evidence_refs: vec!["evidence://resumed".into()],
+                    checked: vec![],
+                    changed: vec![],
+                    verified: vec![],
+                    current_state: vec![],
+                    next_actions: vec![],
+                    coverage_notice: None,
+                    question: None,
+                },
+            }),
+        }
+    }
+
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(approved_critique(&turn))
+    }
+}
+
+#[async_trait]
+impl AgentModel for FinalHeadlineRepairModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Lookup))
+    }
+
+    async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        let mut attempts = self.attempts.lock().unwrap();
+        *attempts += 1;
+        if *attempts == 1 {
+            return Ok(ModelDecision::InvokeTool {
+                call: ToolCall {
+                    call_id: "headline-read".into(),
+                    tool_id: "runtime_status".into(),
+                    purpose: "Read the current runtime status.".into(),
+                    input: json!({"runtime_ref": "runtime://headline"}),
+                },
+            });
+        }
+        if *attempts == 3 {
+            assert!(turn.revision_feedback[0].contains("prior headline was 161 bytes"));
+            assert!(turn.revision_feedback[0].contains("no longer than 160 bytes"));
+        }
+        Ok(ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: if *attempts == 2 {
+                    "x".repeat(161)
+                } else {
+                    "Runtime status is current".into()
+                },
+                summary: "The runtime returned a current bounded status observation.".into(),
+                summary_evidence_refs: vec!["evidence://headline".into()],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        })
+    }
+
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(approved_critique(&turn))
+    }
+}
+
+#[async_trait]
+impl AgentModel for FinalLengthRepairModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Converse))
+    }
+
+    async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        let mut attempts = self.attempts.lock().unwrap();
+        *attempts += 1;
+        let summary = if *attempts == 1 {
+            "x".repeat(2_501)
+        } else {
+            assert!(turn.revision_feedback[0].contains("prior summary was 2501 bytes"));
+            assert!(turn.revision_feedback[0].contains("Rewrite it materially shorter"));
+            "Owner: <provider admin>. The approved connector repair is the action boundary. Cerebro re-checks the receipt after the change. Acceptance: a fresh successful receipt with no unresolved gap."
+                .into()
+        };
+        Ok(ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Connector handoff".into(),
+                summary,
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        })
+    }
+
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(approved_critique(&turn))
+    }
 }
 
 #[async_trait]
@@ -142,7 +452,7 @@ impl AgentModel for CriticIssueRepairModel {
             }
             _ => {
                 assert!(turn.repair_feedback[0].contains("bounded critic contract"));
-                Ok(approved_critique())
+                Ok(approved_critique(&turn))
             }
         }
     }
@@ -182,7 +492,38 @@ impl AgentModel for CriticSchemaRepairModel {
             ));
         }
         assert!(turn.repair_feedback[0].contains("critic decision"));
-        Ok(approved_critique())
+        Ok(approved_critique(&turn))
+    }
+}
+
+#[async_trait]
+impl AgentModel for ExhaustedCriticModel {
+    async fn route(&self, _turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        Ok(route(ExecutionLane::Converse))
+    }
+
+    async fn next(&self, _turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        Ok(ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Bounded answer".into(),
+                summary: "The answer stays bounded.".into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        })
+    }
+
+    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Err(AgentRuntimeError::InvalidFinal(
+            "critic omitted its grounding ledger".into(),
+        ))
     }
 }
 
@@ -218,8 +559,8 @@ impl AgentModel for SchemaRepairModel {
         })
     }
 
-    async fn critique(&self, _turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
-        Ok(approved_critique())
+    async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        Ok(approved_critique(&turn))
     }
 }
 
@@ -283,6 +624,7 @@ fn evidence(reference: &str, statement: &str) -> EvidenceRecord {
         observed_at: "2026-07-29T20:00:00Z".into(),
         fresh_until: Some("2026-07-29T20:05:00Z".into()),
         complete: true,
+        atoms: Vec::new(),
     }
 }
 
@@ -301,6 +643,149 @@ fn claim(text: &str, reference: &str) -> EvidenceClaim {
         text: text.into(),
         evidence_refs: vec![reference.into()],
     }
+}
+
+#[tokio::test]
+async fn conversational_artifact_edits_do_not_require_system_evidence() {
+    let draft = FinalDraft {
+        state: FinalState::Answered,
+        headline: String::new(),
+        summary: "Owner: <named provider admin>. Confirm this placeholder. Cerebro owns the fresh receipt check after the provider change.".into(),
+        summary_evidence_refs: vec!["evidence://history-only".into()],
+        checked: vec![],
+        changed: vec![claim(
+            "The requested owner lines were added to the conversational artifact.",
+            "evidence://history-only",
+        )],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: Some("No new tool observation was required for this text edit.".into()),
+        question: None,
+    };
+    let model = scripted(
+        ExecutionLane::Converse,
+        VecDeque::from([ModelDecision::Finish { draft }]),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } = run_turn(
+        &model,
+        &tools,
+        request("Add the owner placeholder and our re-check responsibility to the handoff."),
+    )
+    .await
+    .unwrap() else {
+        panic!("expected a delivered artifact edit")
+    };
+
+    assert!(markdown.contains("Owner: <named provider admin>"));
+    assert!(!markdown.contains("No new tool observation"));
+}
+
+#[tokio::test]
+async fn precise_conversational_question_becomes_the_durable_open_loop() {
+    let question = "Which incident channel should receive the finished handoff?";
+    let model = scripted(
+        ExecutionLane::Converse,
+        VecDeque::from([ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::NeedsInput,
+                headline: "One routing decision remains".into(),
+                summary: "The handoff is ready; one routing decision remains.".into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: Some(question.into()),
+            },
+        }]),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { working_state, .. } = run_turn(
+        &model,
+        &tools,
+        request("Prepare the incident handoff for the right channel."),
+    )
+    .await
+    .unwrap() else {
+        panic!("expected one precise question")
+    };
+    let working_state = working_state.expect("working state");
+    assert_eq!(working_state.last_outcome, WorkingOutcome::NeedsUser);
+    assert_eq!(working_state.open_loops, vec![question]);
+}
+
+#[tokio::test]
+async fn oversized_final_receives_precise_length_feedback_and_repairs() {
+    let model = FinalLengthRepairModel {
+        attempts: Mutex::new(0),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } = run_turn(
+        &model,
+        &tools,
+        request("Finalize the approved connector handoff for Slack."),
+    )
+    .await
+    .unwrap() else {
+        panic!("expected a repaired handoff")
+    };
+
+    assert!(markdown.starts_with("Owner: <provider admin>."));
+    assert!(markdown.len() < 1_800);
+}
+
+#[tokio::test]
+async fn oversized_headline_receives_precise_length_feedback_and_repairs() {
+    let model = FinalHeadlineRepairModel {
+        attempts: Mutex::new(0),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "runtime_status",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(BTreeMap::from([(
+            "headline-read".into(),
+            success(
+                "The runtime returned current status.",
+                evidence("evidence://headline", "The runtime status is current."),
+            ),
+        )])),
+    };
+
+    let AgentTurnOutcome::Delivered {
+        markdown,
+        tool_call_count,
+        ..
+    } = run_turn(&model, &tools, request("Read the current runtime status."))
+        .await
+        .unwrap()
+    else {
+        panic!("expected a repaired grounded answer")
+    };
+
+    assert_eq!(tool_call_count, 1);
+    assert_eq!(
+        markdown,
+        "The runtime returned a current bounded status observation."
+    );
 }
 
 fn final_draft() -> FinalDraft {
@@ -546,6 +1031,139 @@ async fn repairs_a_raw_catalog_dump_into_a_direct_capability_answer() {
 }
 
 #[tokio::test]
+async fn presents_completed_work_as_a_conversational_slack_reply() {
+    let draft = FinalDraft {
+        state: FinalState::Answered,
+        headline: "Control evidence approach".into(),
+        summary: "## Checked\nThe control and evidence boundaries are understood.".into(),
+        summary_evidence_refs: vec![],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: None,
+        question: None,
+    };
+    let model = ScriptedModel {
+        routes: Mutex::new(VecDeque::from([route(ExecutionLane::Converse)])),
+        decisions: Mutex::new(VecDeque::from([ModelDecision::Finish { draft }])),
+        presentations: Mutex::new(VecDeque::from([
+            PresentationDecision {
+                messages: vec![
+                    "## Evidence\nThe control and evidence boundaries are understood.".into(),
+                ],
+            },
+            PresentationDecision {
+                messages: vec!["I can build that lineage. Let me know if you want me to continue.".into()],
+            },
+            PresentationDecision {
+                messages: vec!["The right way to approach this is to build one lineage per control, then compare expected evidence with what the systems actually produce and what the auditor tested.".into()],
+            },
+        ])),
+        critiques: Mutex::new(VecDeque::new()),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } = run_turn(
+        &model,
+        &tools,
+        request("How should I build a control-to-evidence lineage map?"),
+    )
+    .await
+    .unwrap() else {
+        panic!("expected a conversational presentation");
+    };
+    assert!(markdown.starts_with("The right way to approach this"));
+    assert!(!markdown.contains("##"));
+    assert!(!markdown.contains("Checked"));
+}
+
+#[tokio::test]
+async fn repairs_internal_query_refusals_into_an_operator_facing_boundary() {
+    let lookup = ToolCall {
+        call_id: "graph-reason".into(),
+        tool_id: "graph_reason".into(),
+        purpose: "Inspect current graph evidence for the request.".into(),
+        input: json!({"question": "Continue the current analysis."}),
+    };
+    let leaked = FinalDraft {
+        state: FinalState::Blocked,
+        headline: "Graph query blocked".into(),
+        summary:
+            "row-expanding Cypher expressions such as UNWIND, range(), and collect() are forbidden"
+                .into(),
+        summary_evidence_refs: vec![],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: Some("The read-only Cypher validator refused the draft.".into()),
+        question: None,
+    };
+    let repaired = FinalDraft {
+        state: FinalState::Blocked,
+        headline: "Current graph answer is unavailable".into(),
+        summary: "I could not produce a grounded graph answer for this request. The other bounded evidence capabilities remain available, so the investigation should continue there instead of treating this failed read as a result.".into(),
+        summary_evidence_refs: vec![],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: Some(
+            "No source-backed graph observation supports the requested conclusion yet.".into(),
+        ),
+        question: None,
+    };
+    let model = scripted(
+        ExecutionLane::Investigate,
+        VecDeque::from([
+            ModelDecision::InvokeTool {
+                call: lookup.clone(),
+            },
+            ModelDecision::Finish { draft: leaked },
+            ModelDecision::Finish { draft: repaired },
+        ]),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "graph_reason",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(BTreeMap::from([(
+            lookup.call_id,
+            ToolResult {
+                state: ToolResultState::Failed,
+                summary: "Graph reasoning returned a blocked result.".into(),
+                data: json!({"state": "blocked", "reason_code": "validator_refusal"}),
+                evidence: vec![],
+                blocker: Some(
+                    "Graph reasoning did not produce a grounded answer. Continue with other bounded evidence capabilities."
+                        .into(),
+                ),
+            },
+        )])),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } =
+        run_turn(&model, &tools, request("Continue the current analysis."))
+            .await
+            .unwrap()
+    else {
+        panic!("expected a delivered blocked boundary");
+    };
+    assert!(!markdown.contains("Cypher"));
+    assert!(!markdown.contains("UNWIND"));
+    assert!(markdown.contains("could not produce a grounded graph answer"));
+}
+
+#[tokio::test]
 async fn requests_exact_approval_before_an_effect() {
     let change = ToolCall {
         call_id: "change".into(),
@@ -729,10 +1347,18 @@ async fn rejects_effect_claims_without_later_independent_verification() {
         )])),
     };
 
-    assert_eq!(
-        run_turn(&model, &tools, turn).await,
-        Err(AgentRuntimeError::OperatingRepairLimit)
-    );
+    let AgentTurnOutcome::Delivered {
+        final_state,
+        markdown,
+        evidence_refs,
+        ..
+    } = run_turn(&model, &tools, turn).await.unwrap()
+    else {
+        panic!("expected an evidence-safe blocked handoff")
+    };
+    assert_eq!(final_state, FinalState::Blocked);
+    assert!(markdown.contains("not claiming completion"));
+    assert!(evidence_refs.is_empty());
 }
 
 #[tokio::test]
@@ -841,10 +1467,20 @@ async fn rejects_final_claims_that_cite_unobserved_evidence() {
         )])),
     };
 
-    assert_eq!(
-        run_turn(&model, &tools, request("What is the runtime status?")).await,
-        Err(AgentRuntimeError::OperatingRepairLimit)
-    );
+    let AgentTurnOutcome::Delivered {
+        final_state,
+        markdown,
+        evidence_refs,
+        ..
+    } = run_turn(&model, &tools, request("What is the runtime status?"))
+        .await
+        .unwrap()
+    else {
+        panic!("expected an evidence-safe blocked handoff")
+    };
+    assert_eq!(final_state, FinalState::Blocked);
+    assert!(!markdown.contains("runtime is healthy"));
+    assert!(evidence_refs.is_empty());
 }
 
 #[tokio::test]
@@ -889,10 +1525,20 @@ async fn refuses_to_present_stale_evidence_as_current() {
         )])),
     };
 
-    assert_eq!(
-        run_turn(&model, &tools, request("What is the runtime status?")).await,
-        Err(AgentRuntimeError::OperatingRepairLimit)
-    );
+    let AgentTurnOutcome::Delivered {
+        final_state,
+        markdown,
+        evidence_refs,
+        ..
+    } = run_turn(&model, &tools, request("What is the runtime status?"))
+        .await
+        .unwrap()
+    else {
+        panic!("expected an evidence-safe blocked handoff")
+    };
+    assert_eq!(final_state, FinalState::Blocked);
+    assert!(!markdown.contains("runtime is healthy"));
+    assert!(evidence_refs.is_empty());
 }
 
 #[tokio::test]
@@ -921,6 +1567,7 @@ async fn repairs_a_schema_valid_but_unsafe_route_before_operating() {
             route(ExecutionLane::Investigate),
         ])),
         decisions: Mutex::new(VecDeque::from([ModelDecision::Finish { draft }])),
+        presentations: Mutex::new(VecDeque::new()),
         critiques: Mutex::new(VecDeque::new()),
     };
     let tools = ScriptedTools {
@@ -964,12 +1611,10 @@ async fn repairs_a_draft_after_independent_critique() {
             ModelDecision::Finish { draft: first },
             ModelDecision::Finish { draft: repaired },
         ])),
-        critiques: Mutex::new(VecDeque::from([
-            CritiqueDecision::Revise {
-                issues: vec!["Name the evidence boundary in the capability statement.".into()],
-            },
-            approved_critique(),
-        ])),
+        presentations: Mutex::new(VecDeque::new()),
+        critiques: Mutex::new(VecDeque::from([CritiqueDecision::Revise {
+            issues: vec!["Name the evidence boundary in the capability statement.".into()],
+        }])),
     };
     let tools = ScriptedTools {
         descriptors: vec![],
@@ -1031,6 +1676,53 @@ async fn repairs_a_malformed_independent_critic_decision() {
 }
 
 #[tokio::test]
+async fn exhausted_critic_contract_fails_closed_without_delivering() {
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+    assert_eq!(
+        run_turn(
+            &ExhaustedCriticModel,
+            &tools,
+            request("Give me the bounded answer."),
+        )
+        .await,
+        Err(AgentRuntimeError::CriticRepairLimit)
+    );
+}
+
+#[tokio::test]
+async fn unsupported_next_action_cannot_enter_working_state() {
+    let model = scripted(
+        ExecutionLane::Converse,
+        VecDeque::from([ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Bounded answer".into(),
+                summary: "The answer is complete.".into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec!["Escalate to the platform team.".into()],
+                coverage_notice: None,
+                question: None,
+            },
+        }]),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+    assert!(matches!(
+        run_turn(&model, &tools, request("Give me the bounded answer.")).await,
+        Err(AgentRuntimeError::CriticRepairLimit)
+    ));
+}
+
+#[tokio::test]
 async fn repairs_empty_and_oversized_critic_issue_lists() {
     let model = CriticIssueRepairModel {
         attempts: Mutex::new(0),
@@ -1059,8 +1751,11 @@ async fn continues_the_exact_durable_mission_instead_of_restarting() {
     turn.working_state = Some(WorkingState {
         mission_ref: Some("mission://runtime-repair".into()),
         current_request: "Repair the runtime and verify the deployed state.".into(),
-        last_outcome: WorkingOutcome::Owned,
-        last_blocker: None,
+        last_outcome: WorkingOutcome::Blocked,
+        last_blocker: Some("Provider access is unavailable.".into()),
+        active_lane: Some(ExecutionLane::Act),
+        requires_current_evidence: Some(true),
+        open_loops: vec!["Verify the deployed state.".into()],
     });
     let model = ScriptedModel {
         routes: Mutex::new(VecDeque::from([
@@ -1071,17 +1766,20 @@ async fn continues_the_exact_durable_mission_instead_of_restarting() {
             draft: FinalDraft {
                 state: FinalState::Blocked,
                 headline: "Runtime repair still blocked".into(),
-                summary: "The saved repair remains blocked on provider access.".into(),
+                summary: "The retained repair is blocked on provider access.".into(),
                 summary_evidence_refs: vec![],
                 checked: vec![],
                 changed: vec![],
                 verified: vec![],
                 current_state: vec![],
                 next_actions: vec!["Resume after provider access is restored.".into()],
-                coverage_notice: Some("No new provider observation was available.".into()),
+                coverage_notice: Some(
+                    "Provider access is unavailable in the retained mission.".into(),
+                ),
                 question: None,
             },
         }])),
+        presentations: Mutex::new(VecDeque::new()),
         critiques: Mutex::new(VecDeque::new()),
     };
     let tools = ScriptedTools {
@@ -1100,5 +1798,412 @@ async fn continues_the_exact_durable_mission_instead_of_restarting() {
     };
     assert_eq!(lane, ExecutionLane::Act);
     assert_eq!(final_state, FinalState::Blocked);
-    assert!(markdown.contains("saved repair remains blocked"));
+    assert!(markdown.contains("retained repair is blocked"));
+}
+
+#[tokio::test]
+async fn continuation_resumes_the_retained_conversation_lane_without_reads() {
+    let mut turn = request("Go on.");
+    turn.working_state = Some(WorkingState {
+        mission_ref: Some("mission://handoff-draft".into()),
+        current_request: "Rewrite the handoff as a concise teammate update.".into(),
+        last_outcome: WorkingOutcome::Owned,
+        last_blocker: None,
+        active_lane: Some(ExecutionLane::Converse),
+        requires_current_evidence: Some(false),
+        open_loops: vec!["Finish the concise handoff.".into()],
+    });
+    let model = ScriptedModel {
+        routes: Mutex::new(VecDeque::from([RouteDecision {
+            lane: ExecutionLane::Continue,
+            confidence: RouteConfidence::High,
+            reason: "The user asked to resume the durable handoff draft.".into(),
+            requires_current_evidence: false,
+        }])),
+        decisions: Mutex::new(VecDeque::from([ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Handoff finished".into(),
+                summary: "The handoff is now concise and preserves its acceptance condition."
+                    .into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        }])),
+        presentations: Mutex::new(VecDeque::new()),
+        critiques: Mutex::new(VecDeque::new()),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { lane, .. } = run_turn(&model, &tools, turn).await.unwrap()
+    else {
+        panic!("expected the conversational mission to resume")
+    };
+    assert_eq!(lane, ExecutionLane::Converse);
+}
+
+#[tokio::test]
+async fn continuation_repairs_a_repeated_blocker_into_forward_progress() {
+    let repeated_summary = "I still need the finding identifier before I can finish the handoff.";
+    let coverage_notice = "The finding identifier is not present in this thread.";
+    let mut turn = request("Keep going.");
+    turn.history = vec![
+        ConversationMessage {
+            role: ConversationRole::User,
+            content: "Finish the handoff.".into(),
+        },
+        ConversationMessage {
+            role: ConversationRole::Assistant,
+            content: format!("{repeated_summary}\n\n{coverage_notice}"),
+        },
+    ];
+    turn.working_state = Some(WorkingState {
+        mission_ref: Some("mission://blocked-handoff".into()),
+        current_request: "Finish the remediation handoff.".into(),
+        last_outcome: WorkingOutcome::Blocked,
+        last_blocker: Some(coverage_notice.into()),
+        active_lane: Some(ExecutionLane::Converse),
+        requires_current_evidence: Some(false),
+        open_loops: vec!["Produce the useful blocked-state handoff.".into()],
+    });
+    let blocked_draft = |summary: &str| FinalDraft {
+        state: FinalState::Blocked,
+        headline: "Handoff state".into(),
+        summary: summary.into(),
+        summary_evidence_refs: vec![],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec!["Attach the finding identifier when it becomes available.".into()],
+        coverage_notice: Some(coverage_notice.into()),
+        question: None,
+    };
+    let model = ScriptedModel {
+        routes: Mutex::new(VecDeque::from([RouteDecision {
+            lane: ExecutionLane::Continue,
+            confidence: RouteConfidence::High,
+            reason: "Continue the retained conversational handoff.".into(),
+            requires_current_evidence: false,
+        }])),
+        decisions: Mutex::new(VecDeque::from([
+            ModelDecision::Finish {
+                draft: blocked_draft(repeated_summary),
+            },
+            ModelDecision::Finish {
+                draft: blocked_draft(
+                    "The handoff is ready as a blocked-state artifact: the next action is preserved. Owner: <owner>. Attach the missing identifier without reconstructing the thread.",
+                ),
+            },
+        ])),
+        presentations: Mutex::new(VecDeque::new()),
+        critiques: Mutex::new(VecDeque::new()),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { markdown, .. } =
+        run_turn(&model, &tools, turn).await.unwrap()
+    else {
+        panic!("expected the repeated blocker to repair");
+    };
+    assert!(markdown.contains("blocked-state artifact"));
+    assert!(!markdown.starts_with(repeated_summary));
+}
+
+#[tokio::test]
+async fn short_ambiguous_directive_without_authorization_resumes_the_artifact() {
+    let mut turn = request("ship it");
+    turn.working_state = Some(WorkingState {
+        mission_ref: Some("mission://approval-note".into()),
+        current_request: "Finish the approval note with honest placeholders.".into(),
+        last_outcome: WorkingOutcome::Owned,
+        last_blocker: None,
+        active_lane: Some(ExecutionLane::Converse),
+        requires_current_evidence: Some(false),
+        open_loops: vec!["Return the finished approval note.".into()],
+    });
+    let model = ScriptedModel {
+        routes: Mutex::new(VecDeque::from([
+            route(ExecutionLane::Act),
+            RouteDecision {
+                lane: ExecutionLane::Continue,
+                confidence: RouteConfidence::High,
+                reason: "The directive resumes the retained approval-note artifact.".into(),
+                requires_current_evidence: false,
+            },
+        ])),
+        decisions: Mutex::new(VecDeque::from([ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Approval note".into(),
+                summary:
+                    "Approve [RESTRICTION] for [TARGET]. No external change has been executed."
+                        .into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        }])),
+        presentations: Mutex::new(VecDeque::new()),
+        critiques: Mutex::new(VecDeque::new()),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { lane, markdown, .. } =
+        run_turn(&model, &tools, turn).await.unwrap()
+    else {
+        panic!("expected the artifact mission to resume");
+    };
+    assert_eq!(lane, ExecutionLane::Converse);
+    assert!(markdown.starts_with("Approve"));
+}
+
+#[tokio::test]
+async fn evidence_bearing_continuation_repairs_to_a_fresh_read() {
+    let mut turn = request("Keep at it.");
+    turn.working_state = Some(WorkingState {
+        mission_ref: Some("mission://current-status".into()),
+        current_request: "Finish the current runtime status assessment.".into(),
+        last_outcome: WorkingOutcome::Owned,
+        last_blocker: None,
+        active_lane: Some(ExecutionLane::Investigate),
+        requires_current_evidence: Some(true),
+        open_loops: vec!["Refresh the decision-bearing status.".into()],
+    });
+    let model = ContinuationEvidenceRepairModel {
+        attempts: Mutex::new(0),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "runtime_status",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(BTreeMap::from([(
+            "resume-read".into(),
+            success(
+                "The resumed status is current.",
+                evidence("evidence://resumed", "The resumed status is current."),
+            ),
+        )])),
+    };
+
+    let AgentTurnOutcome::Delivered {
+        lane,
+        tool_call_count,
+        markdown,
+        ..
+    } = run_turn(&model, &tools, turn).await.unwrap()
+    else {
+        panic!("expected a grounded continuation")
+    };
+    assert_eq!(lane, ExecutionLane::Investigate);
+    assert_eq!(tool_call_count, 1);
+    assert!(markdown.contains("fresh bounded read"));
+}
+
+#[tokio::test]
+async fn duplicate_call_identity_is_repaired_without_dropping_the_turn() {
+    let repeated = ToolCall {
+        call_id: "status-read".into(),
+        tool_id: "runtime_status".into(),
+        purpose: "Read the current runtime status.".into(),
+        input: json!({"runtime_ref": "runtime://one"}),
+    };
+    let model = scripted(
+        ExecutionLane::Lookup,
+        VecDeque::from([
+            ModelDecision::InvokeTool {
+                call: repeated.clone(),
+            },
+            ModelDecision::InvokeTool { call: repeated },
+            ModelDecision::Finish {
+                draft: FinalDraft {
+                    state: FinalState::Answered,
+                    headline: "Runtime status observed".into(),
+                    summary: "The current runtime status was observed once and reused.".into(),
+                    summary_evidence_refs: vec!["evidence://status".into()],
+                    checked: vec![],
+                    changed: vec![],
+                    verified: vec![],
+                    current_state: vec![],
+                    next_actions: vec![],
+                    coverage_notice: None,
+                    question: None,
+                },
+            },
+        ]),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "runtime_status",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(BTreeMap::from([(
+            "status-read".into(),
+            success(
+                "The runtime status is current.",
+                evidence("evidence://status", "The runtime status is current."),
+            ),
+        )])),
+    };
+
+    let AgentTurnOutcome::Delivered {
+        tool_call_count,
+        markdown,
+        ..
+    } = run_turn(&model, &tools, request("Read the current runtime status."))
+        .await
+        .unwrap()
+    else {
+        panic!("expected the duplicate identity to be repaired")
+    };
+    assert_eq!(tool_call_count, 1);
+    assert!(markdown.contains("observed once"));
+}
+
+#[tokio::test]
+async fn exhausted_operating_repairs_return_a_durable_blocker_instead_of_an_error() {
+    let invalid = FinalDraft {
+        state: FinalState::Answered,
+        headline: "Unsupported current answer".into(),
+        summary: "The current runtime is healthy.".into(),
+        summary_evidence_refs: vec![],
+        checked: vec![],
+        changed: vec![],
+        verified: vec![],
+        current_state: vec![],
+        next_actions: vec![],
+        coverage_notice: None,
+        question: None,
+    };
+    let model = scripted(
+        ExecutionLane::Lookup,
+        (0..=cerebro_agent_runtime::MAX_OPERATING_REPAIRS)
+            .map(|_| ModelDecision::Finish {
+                draft: invalid.clone(),
+            })
+            .collect(),
+    );
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered {
+        final_state,
+        markdown,
+        working_state,
+        ..
+    } = run_turn(&model, &tools, request("Read the current runtime status."))
+        .await
+        .unwrap()
+    else {
+        panic!("expected a durable blocked outcome")
+    };
+    assert_eq!(final_state, FinalState::Blocked);
+    assert!(markdown.contains("no external change was applied"));
+    assert_eq!(
+        working_state.expect("working state").last_outcome,
+        WorkingOutcome::Blocked
+    );
+}
+
+#[tokio::test]
+async fn exhausted_tool_budget_forces_a_grounded_finish_instead_of_dropping_the_turn() {
+    let calls = (1..=4)
+        .map(|index| ToolCall {
+            call_id: format!("lookup-{index}"),
+            tool_id: "runtime_status".into(),
+            purpose: format!("Read bounded status field {index}."),
+            input: json!({"field": index}),
+        })
+        .collect::<Vec<_>>();
+    let mut decisions = calls
+        .iter()
+        .cloned()
+        .map(|call| ModelDecision::InvokeTool { call })
+        .collect::<VecDeque<_>>();
+    decisions.push_back(ModelDecision::Finish {
+        draft: FinalDraft {
+            state: FinalState::Partial,
+            headline: "Bounded status collected".into(),
+            summary:
+                "Three bounded status fields were observed; the fourth remains a coverage gap."
+                    .into(),
+            summary_evidence_refs: vec!["evidence://status-1".into()],
+            checked: vec![claim(
+                "Three bounded status fields were observed.",
+                "evidence://status-1",
+            )],
+            changed: vec![],
+            verified: vec![],
+            current_state: vec![],
+            next_actions: vec!["Resolve the unobserved fourth field.".into()],
+            coverage_notice: Some("The fourth field was outside the turn budget.".into()),
+            question: None,
+        },
+    });
+    let model = scripted(ExecutionLane::Lookup, decisions);
+    let results = calls
+        .iter()
+        .take(3)
+        .enumerate()
+        .map(|(index, call)| {
+            (
+                call.call_id.clone(),
+                success(
+                    "Returned one bounded status field.",
+                    evidence(
+                        &format!("evidence://status-{}", index + 1),
+                        "The runtime returned one bounded status field.",
+                    ),
+                ),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let tools = ScriptedTools {
+        descriptors: vec![tool(
+            "runtime_status",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        )],
+        results: Mutex::new(results),
+    };
+
+    let AgentTurnOutcome::Delivered {
+        final_state,
+        tool_call_count,
+        markdown,
+        ..
+    } = run_turn(&model, &tools, request("Read the bounded runtime status."))
+        .await
+        .unwrap()
+    else {
+        panic!("expected a grounded partial answer")
+    };
+    assert_eq!(final_state, FinalState::Partial);
+    assert_eq!(tool_call_count, 3);
+    assert!(markdown.contains("fourth remains a coverage gap"));
 }

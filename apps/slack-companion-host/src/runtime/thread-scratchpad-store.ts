@@ -116,10 +116,21 @@ export class FileThreadScratchpadStore implements SlackThreadScratchpadPort {
       const state = recordSlackThreadWorkingTurn(
         scratchpad.working_state,
         {
+          ...(input.active_lane === undefined
+            ? {}
+            : { activeLane: input.active_lane }),
           ...(input.blocker === undefined ? {} : { blocker: input.blocker }),
           currentRequest: input.current_request,
           now,
+          ...(input.open_loops === undefined
+            ? {}
+            : { openLoops: input.open_loops }),
           outcome: input.outcome,
+          ...(input.requires_current_evidence === undefined
+            ? {}
+            : {
+                requiresCurrentEvidence: input.requires_current_evidence,
+              }),
           threadRef: input.thread_ref,
         },
       );

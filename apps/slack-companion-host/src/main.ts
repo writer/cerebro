@@ -1,8 +1,12 @@
 import { ArchetypeWorkspaceClient } from "./archetype-client.js";
+import { FileAgentApprovalStore } from "./runtime/agent-approval-store.js";
+import { FileAgentDeliveryOutbox } from "./runtime/agent-delivery-outbox.js";
 import { CerebroAskClient } from "./runtime/cerebro-ask-client.js";
 import { loadSlackRuntimeConfig } from "./runtime/config.js";
 import { FileOutcomeStore } from "./runtime/outcome-store.js";
 import { FileThreadScratchpadStore } from "./runtime/thread-scratchpad-store.js";
+import { FileSlackThreadRouteStore } from "./runtime/slack-thread-route-store.js";
+import { FileWakeDeliveryOutbox } from "./runtime/wake-delivery-outbox.js";
 import { SlackAnswerAuthorityClient } from "./runtime/slack-answer-authority-client.js";
 import {
   AssistantQuestionService,
@@ -14,9 +18,13 @@ import { ArchetypeSlackWorkspace } from "./runtime/archetype-workspace.js";
 async function main(): Promise<void> {
   const config = loadSlackRuntimeConfig();
   const outcomes = new FileOutcomeStore(config.memoryDirectory);
+  const approvals = new FileAgentApprovalStore(config.memoryDirectory);
+  const agentDeliveries = new FileAgentDeliveryOutbox(config.memoryDirectory);
   const scratchpads = new FileThreadScratchpadStore(config.memoryDirectory);
+  const threadRoutes = new FileSlackThreadRouteStore(config.memoryDirectory);
+  const wakeDeliveries = new FileWakeDeliveryOutbox(config.memoryDirectory);
   const host = createAssistantTurnHost(outcomes);
-  const questions = new AssistantQuestionService(host, new CerebroAskClient({
+  const agentClient = new CerebroAskClient({
     ...(config.rustAgentEnabled
       ? { agentRuntimeUrl: config.slackAnswerAuthorityUrl }
       : {}),
@@ -26,7 +34,10 @@ async function main(): Promise<void> {
     apiKey: config.cerebroReadApiKey,
     baseUrl: config.cerebroBaseUrl,
     tenantId: config.cerebroTenantId,
-  }));
+  });
+  const questions = new AssistantQuestionService(host, agentClient, {
+    approvalStore: approvals,
+  });
   const archetype = config.archetype
     ? new ArchetypeSlackWorkspace(new ArchetypeWorkspaceClient({
       allowedEmailDomains: config.archetype.allowedEmailDomains,
@@ -42,6 +53,10 @@ async function main(): Promise<void> {
     questions,
     outcomes,
     scratchpads,
+    agentDeliveries,
+    threadRoutes,
+    agentClient,
+    wakeDeliveries,
     archetype,
   );
   await runtime.start();

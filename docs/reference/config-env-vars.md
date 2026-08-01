@@ -96,11 +96,10 @@ deployment secret store, not checked-in configuration.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CEREBRO_SLACK_AGENT_ENABLED` | `false` | Enable the Rust Slack operating loop. |
-| `CEREBRO_SLACK_AGENT_MODEL_PROVIDER` | unset | Model adapter. Supported values are enforced by the Rust runtime. |
-| `CEREBRO_SLACK_AGENT_MODEL` | unset | Model identifier used for routing, tool selection, response drafting, and independent critique. |
-| `CEREBRO_SLACK_AGENT_MODEL_URL` | unset | HTTPS or loopback model endpoint when the selected provider requires one. |
-| `CEREBRO_SLACK_AGENT_MODEL_API_KEY` | unset | Model API credential. Store as a secret. |
+| `CEREBRO_SLACK_AGENT_ENABLED` | `false` | Enable the Rust Slack operating loop. Production Slack fails startup unless this is `true`. |
+| `CEREBRO_SLACK_AGENT_SESSION_V2_ENABLED` | `false` | Enable durable Rust agent sessions. The Rust Slack agent fails startup unless this is `true`. |
+| `CEREBRO_SLACK_AGENT_MODEL_PROVIDER` | unset | Must be `amazon-bedrock` for the Rust Slack agent. |
+| `CEREBRO_SLACK_AGENT_MODEL` | unset | Amazon Bedrock Claude Opus model identifier used for the complete session loop and independent claim review. Other model families fail startup. |
 | `CEREBRO_SLACK_AGENT_MCP_URL` | unset | Optional HTTPS or loopback MCP endpoint whose tool catalog is added to the Slack agent. When unset, built-in graph, source catalog, and source-runtime tools remain available. |
 | `CEREBRO_SLACK_AGENT_MCP_BEARER_TOKEN` | unset | Tenant-scoped bearer token for the MCP endpoint. Required when the MCP URL is set. Store as a secret. |
 | `CEREBRO_SLACK_AGENT_MCP_TOOLSETS` | `task` | MCP toolset selection sent as `X-Cerebro-MCP-Toolsets`. Use the bounded task surface by default; deployment owners may select additional domain toolsets. |

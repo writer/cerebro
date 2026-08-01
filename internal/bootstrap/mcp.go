@@ -1800,11 +1800,9 @@ func (app *App) authorizeMCPGraphFactSelectors(r *http.Request, runtimeID string
 }
 
 func (app *App) mcpGraphReason(r *http.Request, args map[string]any) (any, error) {
-	request := graphagent.AskRequest{
-		TenantID: mcpStringArg(args, "tenant_id"),
-		Question: mcpStringArg(args, "question"),
-		ScopeURN: mcpStringArg(args, "scope_urn"),
-		Model:    mcpStringArg(args, "model"),
+	request, err := graphagent.DecodeMCPAskRequest(graphagent.MCPAskArguments{TenantID: mcpStringArg(args, "tenant_id"), Question: mcpStringArg(args, "question"), ScopeURN: mcpStringArg(args, "scope_urn"), Model: mcpStringArg(args, "model"), History: args["history"]})
+	if err != nil {
+		return nil, err
 	}
 	resolved, err := resolveAgentPlatformRequestContext(r.Context(), request.TenantID, "", nil)
 	if err != nil {
@@ -2794,6 +2792,7 @@ func mcpTools() []mcpTool {
 				"question":  map[string]any{"type": "string"},
 				"scope_urn": map[string]any{"type": "string"},
 				"model":     map[string]any{"type": "string"},
+				"history":   graphagent.GraphHistoryInputSchema(),
 			}, []string{"question"}),
 			OutputSchema: mcpOutputSchema(map[string]any{
 				"trace_id":            map[string]any{"type": "string"},

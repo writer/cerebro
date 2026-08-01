@@ -881,6 +881,7 @@ name = "cerebro-agent-runtime"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures-util",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -1005,6 +1006,8 @@ dependencies = [
  "futures-util",
  "hmac",
  "jsonwebtoken",
+ "native-tls",
+ "postgres-native-tls",
  "prost",
  "prost-types",
  "reqwest",
