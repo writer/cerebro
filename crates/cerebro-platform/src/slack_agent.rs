@@ -8,7 +8,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use aws_config::BehaviorVersion;
+use aws_config::{BehaviorVersion, retry::RetryConfig};
 use aws_sdk_bedrockruntime::{
     Client as BedrockClient,
     types::{
@@ -1097,7 +1097,10 @@ impl ConfiguredModel {
         if !is_bedrock_opus_model(&model) {
             return Err("the Rust Slack agent requires an Amazon Bedrock Claude Opus model".into());
         }
-        let config = aws_config::defaults(BehaviorVersion::latest()).load().await;
+        let config = aws_config::defaults(BehaviorVersion::latest())
+            .retry_config(RetryConfig::standard().with_max_attempts(5))
+            .load()
+            .await;
         Ok(Self::AmazonBedrock(BedrockModel {
             client: BedrockClient::new(&config),
             model,
@@ -1273,7 +1276,7 @@ impl BedrockModel {
         let response = request.send().await.map_err(|error| {
             let detail = error
                 .as_service_error()
-                .map_or_else(|| error.to_string(), |service| format!("{service:?}"));
+                .map_or_else(|| format!("{error:?}"), |service| format!("{service:?}"));
             AgentRuntimeError::ModelUnavailable(format!("Bedrock request failed: {detail}"))
         })?;
         let content = response

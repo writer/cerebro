@@ -2496,6 +2496,67 @@ mod grounding_tests {
         assert_eq!(ExecutionLane::Investigate.budget().max_tool_calls, 14);
     }
 
+    #[test]
+    fn runtime_errors_keep_specific_operator_diagnostics() {
+        let cases = vec![
+            (
+                AgentRuntimeError::DuplicateCallId,
+                "repeated a tool call identity",
+            ),
+            (
+                AgentRuntimeError::EvidenceNotObserved("evidence:missing".into()),
+                "unobserved evidence evidence:missing",
+            ),
+            (
+                AgentRuntimeError::EvidenceNotAuthoritative("evidence:stale".into()),
+                "stale or incomplete evidence as authoritative: evidence:stale",
+            ),
+            (AgentRuntimeError::HistoryInvalid, "history is invalid"),
+            (
+                AgentRuntimeError::InvalidFinal("missing claim".into()),
+                "final answer is invalid: missing claim",
+            ),
+            (
+                AgentRuntimeError::InvalidRequest("missing actor".into()),
+                "turn request is invalid: missing actor",
+            ),
+            (
+                AgentRuntimeError::InvalidRoute("unknown lane".into()),
+                "semantic route is invalid: unknown lane",
+            ),
+            (
+                AgentRuntimeError::InvalidToolCall("unknown input".into()),
+                "tool call is invalid: unknown input",
+            ),
+            (
+                AgentRuntimeError::ModelUnavailable("dispatch failed".into()),
+                "agent model is unavailable: dispatch failed",
+            ),
+            (AgentRuntimeError::ModelStepLimit, "turn step limit"),
+            (
+                AgentRuntimeError::OperatingRepairLimit,
+                "operating decision repair loop",
+            ),
+            (
+                AgentRuntimeError::PresentationRepairLimit,
+                "presentation repair loop",
+            ),
+            (AgentRuntimeError::CriticRepairLimit, "critic repair loop"),
+            (AgentRuntimeError::ToolBudgetExceeded, "tool budget"),
+            (
+                AgentRuntimeError::ToolUnavailable("connector.read".into()),
+                "tool connector.read is unavailable",
+            ),
+            (
+                AgentRuntimeError::UnverifiedEffect,
+                "later independent verification",
+            ),
+        ];
+        for (error, expected) in cases {
+            assert!(error.to_string().contains(expected), "{error:?}");
+        }
+    }
+
     fn passing_checks() -> CritiqueChecks {
         CritiqueChecks {
             answers_newest_request: true,
