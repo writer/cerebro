@@ -42,6 +42,11 @@ import {
 } from "./agent-delivery-outbox.js";
 import type { SlackRuntimeConfig } from "./config.js";
 import { FileSlackThreadRouteStore } from "./slack-thread-route-store.js";
+import { FileWakeDeliveryOutbox } from "./wake-delivery-outbox.js";
+import {
+  type SlackWakeDeliveryClient,
+  WakeDeliveryWorker,
+} from "./wake-delivery-worker.js";
 import {
   FileOutcomeStore,
   type PendingAssistantOutcome,
@@ -103,6 +108,7 @@ export interface SlackMentionClient extends SlackThreadRepliesClient {
 }
 
 export interface SlackMentionEvent {
+  botUserId?: string;
   channel: string;
   eventTs: string;
   hasThreadContext: boolean;
@@ -652,6 +658,8 @@ export class SlackCompanionRuntime {
   private outcomeTimer?: NodeJS.Timeout;
   private releaseNoticeMonitor?: ReleaseNoticeMonitor;
   private ready = false;
+  private wakeDeliveryTimer?: NodeJS.Timeout;
+  private readonly wakeWorker?: WakeDeliveryWorker;
 
   constructor(
     private readonly config: SlackRuntimeConfig,
@@ -661,6 +669,8 @@ export class SlackCompanionRuntime {
     private readonly scratchpads: SlackThreadScratchpadPort,
     private readonly agentDeliveries: FileAgentDeliveryOutbox,
     private readonly threadRoutes: FileSlackThreadRouteStore,
+    agentClient: CerebroAskClient,
+    wakeDeliveries: FileWakeDeliveryOutbox,
     private readonly archetype?: ArchetypeSlackWorkspace,
   ) {
     this.app = new App({
@@ -669,6 +679,15 @@ export class SlackCompanionRuntime {
       socketMode: true,
       token: config.botToken,
     });
+    if (config.rustAgentEnabled) {
+      this.wakeWorker = new WakeDeliveryWorker(
+        agentClient,
+        this.app.client as unknown as SlackWakeDeliveryClient,
+        threadRoutes,
+        wakeDeliveries,
+        { workerRef: `slack-host:${config.environmentLabel}:${config.appName}` },
+      );
+    }
     this.registerRoutes();
   }
 
@@ -721,6 +740,11 @@ export class SlackCompanionRuntime {
       30_000,
     );
     this.agentDeliveryTimer.unref();
+    if (this.wakeWorker) {
+      void this.pollWakeWorker();
+      this.wakeDeliveryTimer = setInterval(() => void this.pollWakeWorker(), 30_000);
+      this.wakeDeliveryTimer.unref();
+    }
     this.outcomeTimer = setInterval(() => void this.assessOutcomes(), 60 * 60 * 1_000);
     this.outcomeTimer.unref();
   }
@@ -729,6 +753,7 @@ export class SlackCompanionRuntime {
     this.ready = false;
     this.releaseNoticeMonitor?.stop();
     if (this.agentDeliveryTimer) clearInterval(this.agentDeliveryTimer);
+    if (this.wakeDeliveryTimer) clearInterval(this.wakeDeliveryTimer);
     if (this.outcomeTimer) clearInterval(this.outcomeTimer);
     await Promise.all([
       this.app.stop(),
@@ -853,6 +878,7 @@ export class SlackCompanionRuntime {
         config: this.config,
         event: {
           channel: event.channel,
+          botUserId: context.botUserId,
           eventTs: event.ts,
           hasThreadContext: Boolean(event.thread_ts),
           teamId: context.teamId,
@@ -887,6 +913,14 @@ export class SlackCompanionRuntime {
         operation: "assess_due",
         state: "failed",
       })}\n`);
+    }
+  }
+
+  private async pollWakeWorker(): Promise<void> {
+    try {
+      await this.wakeWorker?.tick();
+    } catch (error) {
+      logAgentDeliveryFailure("wake_worker", error);
     }
   }
 
@@ -1003,6 +1037,7 @@ export async function handleSlackMention(input: {
     );
     await input.threadRoutes?.bind({
       appRef: `slack-app:${input.config.environmentLabel}:${input.config.appName}`,
+      botUserId: input.event.botUserId ?? "",
       channelId: input.event.channel,
       teamId: input.event.teamId,
       threadRef: scratchpadRef,

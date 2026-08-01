@@ -6,6 +6,7 @@ const ROUTE_SCHEMA_VERSION = "private-slack-thread-route/v1";
 
 export interface SlackThreadRoute {
   appRef: string;
+  botUserId: string;
   boundAt: string;
   channelId: string;
   schemaVersion: typeof ROUTE_SCHEMA_VERSION;
@@ -80,6 +81,7 @@ function validateRoute(value: unknown): SlackThreadRoute {
   if (
     JSON.stringify(Object.keys(route).sort()) !== JSON.stringify([
       "appRef",
+      "botUserId",
       "boundAt",
       "channelId",
       "schemaVersion",
@@ -89,6 +91,7 @@ function validateRoute(value: unknown): SlackThreadRoute {
     ])
     || route.schemaVersion !== ROUTE_SCHEMA_VERSION
     || !requiredText(route.appRef)
+    || !requiredText(route.botUserId)
     || !requiredText(route.channelId)
     || !requiredText(route.teamId)
     || !/^slack-scratchpad:\/\/sha256\/[a-f0-9]{64}$/u.test(requiredText(route.threadRef))
