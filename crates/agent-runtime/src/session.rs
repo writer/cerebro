@@ -1671,7 +1671,7 @@ async fn repair_fallback_outcome(
     } else if supported.is_some() {
         "Coverage gap: The available evidence does not support the full requested conclusion. No action or future follow-up was recorded."
     } else {
-        "Coverage gap: No current authoritative observation was obtained. I did not evaluate the requested condition, execute an action, or record a new follow-up."
+        "Coverage gap: No authoritative observation was obtained. I did not evaluate the requested condition, execute an action, or record a new follow-up."
     }
     .to_owned();
     let (state, mut message, mut claims) = if let Some((summary, atom_ref)) = uncertain_effect {
@@ -1694,7 +1694,9 @@ async fn repair_fallback_outcome(
                     planned_claim_ref: None,
                     text: notice,
                     required_for_answer: true,
-                    content: ClaimContent::StableExplanation,
+                    content: ClaimContent::Observation {
+                        atom_refs: vec![atom_ref],
+                    },
                 },
             ],
         )
@@ -1718,7 +1720,9 @@ async fn repair_fallback_outcome(
                     planned_claim_ref: None,
                     text: notice,
                     required_for_answer: true,
-                    content: ClaimContent::StableExplanation,
+                    content: ClaimContent::Observation {
+                        atom_refs: vec![atom_ref],
+                    },
                 },
             ],
         )
@@ -1742,7 +1746,9 @@ async fn repair_fallback_outcome(
                     planned_claim_ref: None,
                     text: notice,
                     required_for_answer: true,
-                    content: ClaimContent::StableExplanation,
+                    content: ClaimContent::Observation {
+                        atom_refs: vec![atom_ref],
+                    },
                 },
             ],
         )
@@ -1766,7 +1772,9 @@ async fn repair_fallback_outcome(
                     planned_claim_ref: None,
                     text: notice,
                     required_for_answer: true,
-                    content: ClaimContent::StableExplanation,
+                    content: ClaimContent::Observation {
+                        atom_refs: vec![atom_ref],
+                    },
                 },
             ],
         )
