@@ -31,8 +31,8 @@ use cerebro_agent_runtime::{
         EvidenceAtomization, MessageReview, MissionState, SessionAgentModel, SessionEvent,
         SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
         SessionModelTurn, SessionStatus, SessionStore, SessionTools, SessionTurnInput,
-        SessionTurnOutcome, apply_session_events, evidence_atoms_from_json, message_digest,
-        run_session_turn_recorded,
+        SessionTurnOutcome, SessionTurnTrigger, apply_session_events, evidence_atoms_from_json,
+        message_digest, run_session_turn_recorded,
     },
 };
 use cerebro_organizational_model::TenantId;
@@ -44,7 +44,7 @@ use sha2::{Digest, Sha256};
 use time::{Duration as TimeDuration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::slack_agent_mcp::McpAgentTools;
-use super::slack_agent_session::{PostgresAgentSessionStore, PostgresTurnJournal};
+use super::slack_agent_session::{AgentWakeClaim, PostgresAgentSessionStore, PostgresTurnJournal};
 
 const MAX_MODEL_RESPONSE_BYTES: usize = 512 * 1024;
 const MAX_MODEL_HISTORY_ITEMS: usize = 24;
@@ -70,6 +70,13 @@ pub struct SlackAgentService {
     tools: Arc<PlatformAgentTools>,
     sessions: Option<Arc<PostgresAgentSessionStore>>,
     tenant_id: String,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct AgentWakeTurn {
+    pub claim: AgentWakeClaim,
+    pub outcome: AgentTurnOutcome,
+    pub thread_ref: String,
 }
 
 impl SlackAgentService {
@@ -173,6 +180,131 @@ impl SlackAgentService {
         )
         .await
         .map_err(|_| AgentRuntimeError::ModelUnavailable("turn deadline exceeded".into()))?
+    }
+
+    pub async fn run_due_wake(
+        &self,
+        worker_ref: &str,
+    ) -> Result<Option<AgentWakeTurn>, AgentRuntimeError> {
+        let store = self.sessions.as_ref().ok_or_else(|| {
+            AgentRuntimeError::ModelUnavailable("durable session store is not configured".into())
+        })?;
+        let Some(claim) = store.claim_due_wake(worker_ref, 1_000).await? else {
+            return Ok(None);
+        };
+        let result = self.run_claimed_wake(store, &claim).await;
+        match result {
+            Ok((outcome, payload_digest, thread_ref)) => {
+                store
+                    .mark_wake_awaiting_delivery(&claim, &payload_digest)
+                    .await?;
+                store
+                    .release_turn(&claim.session_ref, &claim.request_id, &claim.lease_owner)
+                    .await?;
+                Ok(Some(AgentWakeTurn {
+                    claim,
+                    outcome,
+                    thread_ref,
+                }))
+            }
+            Err(error) => {
+                let _ = store.fail_wake(&claim, &error.to_string()).await;
+                Err(error)
+            }
+        }
+    }
+
+    async fn run_claimed_wake(
+        &self,
+        store: &Arc<PostgresAgentSessionStore>,
+        claim: &AgentWakeClaim,
+    ) -> Result<(AgentTurnOutcome, String, String), AgentRuntimeError> {
+        let mut session = store.load(&claim.session_ref).await?.ok_or_else(|| {
+            AgentRuntimeError::InvalidRequest("wake session does not exist".into())
+        })?;
+        if let Some(pending) = &session.pending_delivery {
+            if pending.request_id != claim.request_id {
+                return Err(AgentRuntimeError::InvalidRequest(
+                    "wake session has an unrelated pending delivery".into(),
+                ));
+            }
+            let payload_digest = message_digest(&pending.draft.message);
+            let outcome = pending_wake_outcome(&session, claim)?;
+            return Ok((outcome, payload_digest, session.thread_ref));
+        }
+        let triggered = session.events.iter().any(|event| {
+            matches!(
+                &event.event,
+                SessionEvent::WakeTriggered {
+                    request_id,
+                    commitment_ref,
+                    occurrence_ref,
+                    ..
+                } if request_id == &claim.request_id
+                    && commitment_ref == &claim.commitment_ref
+                    && occurrence_ref == &claim.occurrence_ref
+            )
+        });
+        if !triggered {
+            let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
+            let occurred_at = OffsetDateTime::now_utc()
+                .format(&Rfc3339)
+                .map_err(|error| AgentRuntimeError::InvalidRequest(error.to_string()))?;
+            let event = SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: expected_sequence + 1,
+                occurred_at,
+                event: SessionEvent::WakeTriggered {
+                    request_id: claim.request_id.clone(),
+                    commitment_ref: claim.commitment_ref.clone(),
+                    occurrence_ref: claim.occurrence_ref.clone(),
+                    scheduled_for: claim.wake_at.clone(),
+                },
+            };
+            store
+                .append_wake_fenced(claim, expected_sequence, std::slice::from_ref(&event))
+                .await?;
+            session = apply_session_events(&session, &[event])?;
+        }
+        session.effect_authorizations.clear();
+        let assessment_at = OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .map_err(|error| AgentRuntimeError::InvalidRequest(error.to_string()))?;
+        let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
+        let journal =
+            PostgresTurnJournal::new_wake(store.clone(), claim.clone(), expected_sequence);
+        let outcome = tokio::time::timeout(
+            StdDuration::from_secs(900),
+            run_session_turn_recorded(
+                self.model.as_ref(),
+                self.tools.as_ref(),
+                &journal,
+                session.clone(),
+                SessionTurnInput {
+                    request_id: claim.request_id.clone(),
+                    actor_ref: "cerebro-scheduler".into(),
+                    assessment_at,
+                    trigger: SessionTurnTrigger::Wake {
+                        commitment_ref: claim.commitment_ref.clone(),
+                        occurrence_ref: claim.occurrence_ref.clone(),
+                    },
+                },
+            ),
+        )
+        .await
+        .map_err(|_| AgentRuntimeError::ModelUnavailable("wake turn deadline exceeded".into()))??;
+        let SessionTurnOutcome::PendingDelivery { ref markdown, .. } = outcome else {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "scheduled wakes cannot request effect approval".into(),
+            ));
+        };
+        let payload_digest = message_digest(markdown);
+        Ok((
+            session_outcome_to_turn(outcome),
+            payload_digest,
+            session.thread_ref,
+        ))
     }
 
     async fn run_session_v2(
@@ -686,6 +818,43 @@ fn replay_pending_session_turn(
             markdown: pending.draft.message.clone(),
             final_state: pending.draft.state,
             evidence_atom_refs,
+            mission: pending.draft.mission.clone(),
+            events,
+        },
+    ))
+}
+
+fn pending_wake_outcome(
+    session: &AgentSession,
+    claim: &AgentWakeClaim,
+) -> Result<AgentTurnOutcome, AgentRuntimeError> {
+    let pending = session.pending_delivery.as_ref().ok_or_else(|| {
+        AgentRuntimeError::InvalidRequest("wake session has no pending delivery".into())
+    })?;
+    if pending.request_id != claim.request_id {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "pending wake delivery belongs to another request".into(),
+        ));
+    }
+    let started_index = session
+        .events
+        .iter()
+        .rposition(|event| {
+            matches!(
+                &event.event,
+                SessionEvent::TurnStarted { request_id } if request_id == &claim.request_id
+            )
+        })
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidRequest("pending wake has no turn start event".into())
+        })?;
+    let events = session.events[started_index..].to_vec();
+    Ok(session_outcome_to_turn(
+        SessionTurnOutcome::PendingDelivery {
+            lane: event_lane(&events),
+            markdown: pending.draft.message.clone(),
+            final_state: pending.draft.state,
+            evidence_atom_refs: draft_evidence_refs(&pending.draft),
             mission: pending.draft.mission.clone(),
             events,
         },

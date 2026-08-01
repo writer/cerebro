@@ -23,9 +23,9 @@ use cerebro_slack_authority::{
     QuestionAuthorityError, QuestionCandidate, QuestionDecision, QuestionExecutionLane,
     QuestionPolicy, authorize_question, validate_answer,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use crate::slack_agent::SlackAgentService;
+use crate::slack_agent::{AgentWakeTurn, SlackAgentService};
 
 const DEFAULT_BIND: &str = "127.0.0.1:8091";
 const MAX_REQUEST_BYTES: usize = 96 * 1024;
@@ -34,6 +34,17 @@ const MAX_REQUEST_BYTES: usize = 96 * 1024;
 struct ErrorResponse {
     code: &'static str,
     message: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WakeRunRequest {
+    worker_ref: String,
+}
+
+#[derive(Serialize)]
+struct WakeRunResponse {
+    wake: Option<AgentWakeTurn>,
 }
 
 struct AuthorityRuntime {
@@ -160,8 +171,29 @@ fn router(question_policy: QuestionPolicy, agent: Option<SlackAgentService>) -> 
         .route("/v1/answers/validate", post(validate_answer_route))
         .route("/v1/turns/run", post(run_turn_route))
         .route("/v1/turns/deliveries", post(record_delivery_route))
+        .route("/v1/wakes/run", post(run_due_wake_route))
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .with_state(Arc::new(AuthorityRuntime::new(question_policy, agent)))
+}
+
+async fn run_due_wake_route(
+    State(runtime): State<Arc<AuthorityRuntime>>,
+    Json(request): Json<WakeRunRequest>,
+) -> Result<Json<WakeRunResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let agent = runtime.agent.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                code: "agent_not_configured",
+                message: "The Rust Slack agent runtime is not configured.".into(),
+            }),
+        )
+    })?;
+    let wake = agent
+        .run_due_wake(&request.worker_ref)
+        .await
+        .map_err(agent_error)?;
+    Ok(Json(WakeRunResponse { wake }))
 }
 
 async fn record_delivery_route(
