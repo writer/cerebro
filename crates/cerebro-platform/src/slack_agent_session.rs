@@ -1326,9 +1326,14 @@ mod tests {
                 .await
                 .is_err()
         );
-        // An exact Slack acceptance receipt can arrive after its delivery lease expires.
+        assert!(
+            store
+                .append_wake_delivery_fenced(&pending_delivery.lease, 2, &delivery_events)
+                .await
+                .is_err()
+        );
         store
-            .append_wake_delivery_fenced(&pending_delivery.lease, 2, &delivery_events)
+            .append_wake_delivery_fenced(&recovered_delivery.lease, 2, &delivery_events)
             .await
             .unwrap();
         let row = store
@@ -1347,6 +1352,148 @@ mod tests {
             u64::try_from(row.get::<_, i64>(2)).unwrap(),
             recovered_delivery.lease.fence
         );
+        store
+            .client
+            .lock()
+            .await
+            .execute(
+                "DELETE FROM cerebro_agent_sessions WHERE session_ref = $1",
+                &[&session_ref],
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires CEREBRO_TEST_POSTGRES_DSN"]
+    async fn postgres_fifth_wake_failure_blocks_and_queues_one_visible_delivery() {
+        let Ok(dsn) = std::env::var("CEREBRO_TEST_POSTGRES_DSN") else {
+            return;
+        };
+        let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
+        let session_ref = "agent-session:postgres-wake-exhaustion-test";
+        store
+            .client
+            .lock()
+            .await
+            .execute(
+                "DELETE FROM cerebro_agent_sessions WHERE session_ref = $1",
+                &[&session_ref],
+            )
+            .await
+            .unwrap();
+        let session = AgentSession {
+            schema_version: cerebro_agent_runtime::session::AGENT_SESSION_V2.into(),
+            session_ref: session_ref.into(),
+            tenant_id: "tenant:postgres-wake-exhaustion".into(),
+            thread_ref: "thread:postgres-wake-exhaustion".into(),
+            mission: MissionState {
+                mission_ref: "mission:postgres-wake-exhaustion".into(),
+                objective: "Verify exhausted wake visibility.".into(),
+                desired_outcome: "The operator sees a durable blocked update.".into(),
+                resolved_scope: Vec::new(),
+                scope_assumptions: Vec::new(),
+                acceptance_criteria: vec!["A current state is observed.".into()],
+                commitments: vec![Commitment {
+                    commitment_ref: "commitment:postgres-wake-exhaustion".into(),
+                    summary: "the persisted recovery check".into(),
+                    owner: WorkOwner::Cerebro,
+                    status: CommitmentStatus::Waiting,
+                    next_action: Some("Read the current state.".into()),
+                    blocker: None,
+                    acceptance_criteria: vec!["A current state is observed.".into()],
+                    artifact_refs: Vec::new(),
+                    required_tool_ids: Vec::new(),
+                    attention_policy: None,
+                    wake_at: Some("2020-01-01T00:00:00Z".into()),
+                    verification: Some("The current observation is recorded.".into()),
+                }],
+                open_loops: Vec::new(),
+                status: SessionStatus::WaitingForExternal,
+            },
+            messages: vec![SessionMessage {
+                role: SessionMessageRole::User,
+                message_ref: "message:postgres-wake-exhaustion".into(),
+                actor_ref: "user:postgres-wake-exhaustion".into(),
+                text: "Keep owning this recovery check.".into(),
+                received_at: "2020-01-01T00:00:00Z".into(),
+            }],
+            events: Vec::new(),
+            effect_authorizations: Vec::new(),
+            pending_delivery: None,
+            memories: Vec::new(),
+        };
+        store.create(&session).await.unwrap();
+        let claim = store
+            .claim_due_wake("worker:postgres-wake-exhaustion", 60)
+            .await
+            .unwrap()
+            .expect("the exhausted wake fixture should be claimable");
+        store
+            .client
+            .lock()
+            .await
+            .execute(
+                "UPDATE cerebro_agent_wakes SET attempt_count = 5 WHERE session_ref = $1 AND commitment_ref = $2",
+                &[&session_ref, &claim.commitment_ref],
+            )
+            .await
+            .unwrap();
+        let mut stale = claim.clone();
+        stale.fence = stale.fence.saturating_sub(1);
+        assert!(
+            store
+                .fail_wake(&stale, "scheduled wake execution failed")
+                .await
+                .is_err()
+        );
+
+        assert_eq!(
+            store
+                .fail_wake(&claim, "scheduled wake execution failed")
+                .await
+                .unwrap(),
+            AgentWakeFailureDisposition::ExhaustedAwaitingDelivery
+        );
+        let reloaded = store.load(session_ref).await.unwrap().unwrap();
+        assert_eq!(reloaded.mission.status, SessionStatus::Blocked);
+        assert_eq!(
+            reloaded.mission.commitments[0].status,
+            CommitmentStatus::Blocked
+        );
+        assert!(reloaded.mission.commitments[0].wake_at.is_none());
+        let pending = reloaded
+            .pending_delivery
+            .as_ref()
+            .expect("exhaustion must retain one visible pending delivery");
+        assert_eq!(pending.draft.delivery, DeliveryDisposition::Visible);
+        assert_eq!(pending.draft.state, FinalState::Blocked);
+        assert!(
+            store
+                .claim_due_wake("worker:must-not-run-sixth-attempt", 60)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let delivery = store
+            .claim_pending_wake_delivery("delivery-worker:exhaustion", 60)
+            .await
+            .unwrap()
+            .expect("the exhausted wake update must survive reload and remain deliverable");
+        assert_eq!(delivery.mode, AgentWakeDeliveryMode::Send);
+        assert_eq!(delivery.markdown, pending.draft.message);
+        let row = store
+            .client
+            .lock()
+            .await
+            .query_one(
+                "SELECT state, attempt_count FROM cerebro_agent_wakes WHERE session_ref = $1 AND commitment_ref = $2",
+                &[&session_ref, &claim.commitment_ref],
+            )
+            .await
+            .unwrap();
+        assert_eq!(row.get::<_, String>(0), "awaiting_delivery");
+        assert_eq!(row.get::<_, i32>(1), 5);
         store
             .client
             .lock()
