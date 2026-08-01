@@ -3263,7 +3263,16 @@ fn validate_claim(
             }
             return Ok(());
         }
-        ClaimContent::StableExplanation | ClaimContent::Question => return Ok(()),
+        ClaimContent::StableExplanation => {
+            if contains_unbound_future_promise(&claim.text) {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "future Cerebro work must cite the exact active commitment that records it"
+                        .into(),
+                ));
+            }
+            return Ok(());
+        }
+        ClaimContent::Question => return Ok(()),
     };
 
     if atom_refs.is_empty() {
@@ -3500,6 +3509,25 @@ fn validate_mission(mission: &MissionState) -> Result<(), AgentRuntimeError> {
 
 fn bounded(value: &str, max_bytes: usize) -> bool {
     !value.trim().is_empty() && value.len() <= max_bytes
+}
+
+fn contains_unbound_future_promise(value: &str) -> bool {
+    let normalized = value.to_lowercase().replace('’', "'");
+    [
+        "i'll check",
+        "i will check",
+        "i'll re-check",
+        "i will re-check",
+        "i'll monitor",
+        "i will monitor",
+        "i'll follow up",
+        "i will follow up",
+        "i'll update you",
+        "i will update you",
+        "check scheduled",
+    ]
+    .iter()
+    .any(|promise| normalized.contains(promise))
 }
 
 #[cfg(test)]
@@ -3924,6 +3952,28 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn rejects_future_work_disguised_as_a_stable_explanation() {
+        let mut promise = draft();
+        promise.message = "I’ll check back at 14:27 UTC.".into();
+        promise.claims = vec![GroundedClaim {
+            claim_ref: "claim:unbound-future-work".into(),
+            planned_claim_ref: None,
+            text: promise.message.clone(),
+            required_for_answer: true,
+            content: ClaimContent::StableExplanation,
+        }];
+
+        let error = validate_grounded_draft(
+            &session(),
+            &promise,
+            &[observation(true, Some("2026-08-01T00:00:00Z"))],
+            OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+        )
+        .expect_err("future work requires a real commitment claim");
+        assert!(error.to_string().contains("exact active commitment"));
     }
 
     #[test]
