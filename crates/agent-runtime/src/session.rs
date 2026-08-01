@@ -1373,6 +1373,18 @@ pub async fn run_session_turn_recorded(
                     );
                     continue;
                 }
+                let response_contract_issues =
+                    validate_explicit_response_contract(&session, &trigger, &draft);
+                if !response_contract_issues.is_empty() {
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        response_contract_issues.join(" "),
+                    );
+                    continue;
+                }
                 let review = match model
                     .review_message(ClaimReviewTurn {
                         session: session.clone(),
@@ -1511,7 +1523,7 @@ async fn repair_fallback_outcome(
             .clone();
         Some((observation.result.summary.trim().to_owned(), atom_ref))
     });
-    let supported = observations.iter().find_map(|observation| {
+    let supported = observations.iter().rev().find_map(|observation| {
         if !matches!(
             observation.result.state,
             ToolResultState::Succeeded | ToolResultState::Partial
@@ -1634,7 +1646,7 @@ async fn repair_fallback_outcome(
     } else if rescheduled_wake.is_some() {
         "Coverage gap: This check returned no authoritative observation, so the acceptance condition remains unverified."
     } else if supported.is_some() {
-        "Coverage gap: The available evidence does not support the full requested conclusion. No action or future follow-up was recorded."
+        "Coverage gap: I could not safely complete the newest request from the current evidence."
     } else if failed.is_some() {
         "Coverage gap: The source read failed. I did not evaluate the requested condition, execute an action, or record a new follow-up."
     } else {
@@ -1748,6 +1760,9 @@ async fn repair_fallback_outcome(
         memory_updates: Vec::new(),
         presentation_ready: true,
     };
+    if !validate_explicit_response_contract(session, trigger, &draft).is_empty() {
+        return Err(AgentRuntimeError::PresentationRepairLimit);
+    }
     let validated = validate_grounded_draft(session, &draft, observations, assessment_at)?;
     emit_event(
         session,
@@ -3234,6 +3249,254 @@ fn validate_message_review(
     Ok(issues)
 }
 
+fn validate_explicit_response_contract(
+    session: &AgentSession,
+    trigger: &SessionTurnTrigger,
+    draft: &GroundedDraft,
+) -> Vec<String> {
+    if !matches!(trigger, SessionTurnTrigger::Operator) {
+        return Vec::new();
+    }
+    let Some(request) = session
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == SessionMessageRole::User)
+        .map(|message| message.text.to_lowercase())
+    else {
+        return Vec::new();
+    };
+
+    let mut issues = Vec::new();
+    if (request.contains("no headings") || request.contains("without headings"))
+        && contains_slack_heading(&draft.message)
+    {
+        issues.push("the operator explicitly requested no headings".into());
+    }
+    if (request.contains("no bullets")
+        || request.contains("without bullets")
+        || request.contains("no headings or bullets")
+        || request.contains("without headings or bullets"))
+        && contains_list_item(&draft.message)
+    {
+        issues.push("the operator explicitly requested no bullets".into());
+    }
+    if let Some(expected) = requested_bullet_count(&request) {
+        let actual = visible_prose_lines(&draft.message)
+            .into_iter()
+            .filter(|line| is_list_item(line))
+            .count();
+        if actual != expected {
+            issues.push(format!(
+                "the operator requested exactly {expected} bullets, but the response contains {actual}"
+            ));
+        }
+    }
+    if let Some((minimum, maximum)) = requested_sentence_range(&request) {
+        let actual = sentence_count(&draft.message);
+        if actual < minimum || actual > maximum {
+            let expected = if minimum == maximum {
+                minimum.to_string()
+            } else {
+                format!("{minimum} to {maximum}")
+            };
+            issues.push(format!(
+                "the operator requested {expected} sentences, but the response contains {actual}"
+            ));
+        }
+    }
+    if let Some(maximum) = requested_maximum(&request, "word", "words") {
+        let actual = draft.message.split_whitespace().count();
+        if actual > maximum {
+            issues.push(format!(
+                "the operator requested at most {maximum} words, but the response contains {actual}"
+            ));
+        }
+    }
+    if let Some(maximum) = requested_maximum(&request, "character", "characters") {
+        let actual = draft.message.chars().count();
+        if actual > maximum {
+            issues.push(format!(
+                "the operator requested at most {maximum} characters, but the response contains {actual}"
+            ));
+        }
+    }
+    issues
+}
+
+fn requested_sentence_range(request: &str) -> Option<(usize, usize)> {
+    const COUNTS: [(&str, usize); 10] = [
+        ("one", 1),
+        ("two", 2),
+        ("three", 3),
+        ("four", 4),
+        ("five", 5),
+        ("six", 6),
+        ("seven", 7),
+        ("eight", 8),
+        ("nine", 9),
+        ("ten", 10),
+    ];
+    if request.contains("a sentence or two") || request.contains("one or two sentences") {
+        return Some((1, 2));
+    }
+    for (word, count) in COUNTS {
+        if request.contains(&format!("exactly {word} sentences"))
+            || request.contains(&format!("{word} plain sentences"))
+            || request.contains(&format!("in {word} sentences"))
+        {
+            return Some((count, count));
+        }
+    }
+    for count in 1..=10 {
+        if request.contains(&format!("exactly {count} sentences"))
+            || request.contains(&format!("in {count} sentences"))
+        {
+            return Some((count, count));
+        }
+    }
+    None
+}
+
+fn requested_bullet_count(request: &str) -> Option<usize> {
+    const COUNTS: [(&str, usize); 6] = [
+        ("one", 1),
+        ("two", 2),
+        ("three", 3),
+        ("four", 4),
+        ("five", 5),
+        ("six", 6),
+    ];
+    for (word, count) in COUNTS {
+        if request.contains(&format!("{word} bullets"))
+            || request.contains(&format!("{word} short bullets"))
+        {
+            return Some(count);
+        }
+    }
+    for count in 1..=6 {
+        if request.contains(&format!("{count} bullets")) {
+            return Some(count);
+        }
+    }
+    None
+}
+
+fn requested_maximum(request: &str, singular: &str, plural: &str) -> Option<usize> {
+    let tokens = request
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    for index in 0..tokens.len() {
+        if tokens.get(index) == Some(&"under")
+            && let (Some(number), Some(unit)) = (tokens.get(index + 1), tokens.get(index + 2))
+            && (*unit == singular || *unit == plural)
+            && let Ok(limit) = number.parse::<usize>()
+        {
+            return Some(limit.saturating_sub(1));
+        }
+        if tokens.get(index) == Some(&"at")
+            && tokens.get(index + 1) == Some(&"most")
+            && let (Some(number), Some(unit)) = (tokens.get(index + 2), tokens.get(index + 3))
+            && (*unit == singular || *unit == plural)
+            && let Ok(limit) = number.parse::<usize>()
+        {
+            return Some(limit);
+        }
+        if tokens.get(index) == Some(&"no")
+            && tokens.get(index + 1) == Some(&"more")
+            && tokens.get(index + 2) == Some(&"than")
+            && let (Some(number), Some(unit)) = (tokens.get(index + 3), tokens.get(index + 4))
+            && (*unit == singular || *unit == plural)
+            && let Ok(limit) = number.parse::<usize>()
+        {
+            return Some(limit);
+        }
+    }
+    None
+}
+
+fn contains_slack_heading(message: &str) -> bool {
+    visible_prose_lines(message).into_iter().any(|line| {
+        let line = line.trim();
+        (line.starts_with('#') && line.as_bytes().get(1) == Some(&b' '))
+            || (line.len() < 100
+                && line.starts_with('*')
+                && line.ends_with('*')
+                && !line[1..line.len() - 1].contains('*')
+                && !line.ends_with(".*")
+                && !line.ends_with("!*"))
+    })
+}
+
+fn contains_list_item(message: &str) -> bool {
+    visible_prose_lines(message).into_iter().any(is_list_item)
+}
+
+fn is_list_item(line: &str) -> bool {
+    let line = line.trim_start();
+    if line.starts_with("- ")
+        || line.starts_with("* ")
+        || line.starts_with("+ ")
+        || line.starts_with("• ")
+    {
+        return true;
+    }
+    let digits = line
+        .bytes()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    digits > 0
+        && matches!(
+            line.as_bytes().get(digits..digits + 2),
+            Some(b". ") | Some(b") ")
+        )
+}
+
+fn sentence_count(message: &str) -> usize {
+    let prose = visible_prose_lines(message).join("\n");
+    let prose = ["e.g.", "i.e.", "u.s.", "U.S."]
+        .into_iter()
+        .fold(prose, |value, abbreviation| {
+            value.replace(abbreviation, &abbreviation.replace('.', "∯"))
+        });
+    let mut count = 0;
+    let mut has_text = false;
+    let mut characters = prose.chars().peekable();
+    while let Some(character) = characters.next() {
+        if !character.is_whitespace() {
+            has_text = true;
+        }
+        if matches!(character, '.' | '!' | '?') {
+            while characters
+                .peek()
+                .is_some_and(|next| matches!(next, '.' | '!' | '?'))
+            {
+                characters.next();
+            }
+            if characters.peek().is_none_or(|next| next.is_whitespace()) {
+                count += usize::from(has_text);
+                has_text = false;
+            }
+        }
+    }
+    count + usize::from(has_text)
+}
+
+fn visible_prose_lines(message: &str) -> Vec<&str> {
+    let mut fenced = false;
+    message
+        .lines()
+        .filter(|line| {
+            if line.trim_start().starts_with("```") {
+                fenced = !fenced;
+                return false;
+            }
+            !fenced
+        })
+        .collect()
+}
+
 pub fn message_digest(message: &str) -> String {
     let digest = Sha256::digest(message.as_bytes())
         .iter()
@@ -3410,7 +3673,6 @@ fn explicitly_delegates_future_observation(request: &str) -> bool {
         "keep monitoring",
         "keep watching",
         "check again",
-        "keep going",
         "keep owning",
         "own the recovery",
         "notify me when",
@@ -3815,6 +4077,18 @@ fn validate_claim(
     context: &ClaimValidationContext<'_, '_>,
     cited_atoms: &mut BTreeSet<String>,
 ) -> Result<(), AgentRuntimeError> {
+    if contains_unbound_future_promise(&claim.text)
+        && !matches!(
+            claim.content,
+            ClaimContent::Commitment { .. }
+                | ClaimContent::OperatorContext { .. }
+                | ClaimContent::Question
+        )
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "future Cerebro work must cite the exact active commitment that records it".into(),
+        ));
+    }
     let atom_refs = match &claim.content {
         ClaimContent::Observation { atom_refs } => {
             validate_observation_wording(&claim.text, atom_refs, context)?;
@@ -3899,15 +4173,7 @@ fn validate_claim(
             }
             return Ok(());
         }
-        ClaimContent::StableExplanation => {
-            if contains_unbound_future_promise(&claim.text) {
-                return Err(AgentRuntimeError::InvalidFinal(
-                    "future Cerebro work must cite the exact active commitment that records it"
-                        .into(),
-                ));
-            }
-            return Ok(());
-        }
+        ClaimContent::StableExplanation => return Ok(()),
         ClaimContent::Question => return Ok(()),
     };
 
@@ -4255,16 +4521,25 @@ fn contains_unbound_future_promise(value: &str) -> bool {
         "i will check",
         "i'll re-check",
         "i will re-check",
+        "i'll recheck",
+        "i will recheck",
+        "i'll re-inspect",
+        "i will re-inspect",
         "i'll monitor",
         "i will monitor",
+        "i'll report",
+        "i will report",
         "i'll follow up",
         "i will follow up",
         "i'll update you",
         "i will update you",
         "check scheduled",
+        "recheck is still on",
     ]
     .iter()
     .any(|promise| normalized.contains(promise))
+        || ((normalized.contains("i've set") || normalized.contains("i have set"))
+            && (normalized.contains("recheck") || normalized.contains("re-check")))
 }
 
 #[cfg(test)]
@@ -4734,6 +5009,72 @@ mod tests {
     }
 
     #[test]
+    fn rejects_future_work_under_non_commitment_claim_bases() {
+        let observed = observation(true, Some("2026-08-01T00:00:00Z"));
+        for content in [
+            ClaimContent::Observation {
+                atom_refs: vec!["atom:status".into()],
+            },
+            ClaimContent::Recommendation {
+                action: ActionSpec {
+                    tool_id: None,
+                    target_ref: Some("connector:alpha".into()),
+                    input: json!({}),
+                },
+                rationale_atom_refs: vec!["atom:status".into()],
+            },
+            ClaimContent::Hypothesis {
+                supporting_atom_refs: vec!["atom:status".into()],
+                alternatives: vec!["The connector may remain degraded.".into()],
+            },
+        ] {
+            let mut promise = draft();
+            promise.message =
+                "I've set a recheck and I'll re-inspect the receipt, then I'll report back.".into();
+            promise.claims = vec![GroundedClaim {
+                claim_ref: "claim:unbound-future-work".into(),
+                planned_claim_ref: None,
+                text: promise.message.clone(),
+                required_for_answer: true,
+                content,
+            }];
+            let error = validate_grounded_draft(
+                &session(),
+                &promise,
+                std::slice::from_ref(&observed),
+                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+            )
+            .expect_err("every future Cerebro promise requires commitment basis");
+            assert!(error.to_string().contains("exact active commitment"));
+        }
+    }
+
+    #[test]
+    fn operator_context_may_quote_future_language_without_creating_a_commitment() {
+        let mut quoted = draft();
+        quoted.message = "You asked: I'll re-inspect the receipt.".into();
+        quoted.claims = vec![GroundedClaim {
+            claim_ref: "claim:quoted-operator-context".into(),
+            planned_claim_ref: None,
+            text: quoted.message.clone(),
+            required_for_answer: false,
+            content: ClaimContent::OperatorContext {
+                message_sequence: 1,
+                exact_excerpt: "Check connector alpha.".into(),
+            },
+        }];
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &quoted,
+                &[],
+                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
     fn accepts_only_executor_bound_cerebro_commitments() {
         let mut scheduled = draft();
         scheduled.mission.commitments.push(scheduled_commitment());
@@ -4848,6 +5189,143 @@ mod tests {
         let mut wrong_digest = review;
         wrong_digest.message_digest = format!("sha256:{}", "0".repeat(64));
         assert!(validate_message_review(&draft, &wrong_digest).is_err());
+    }
+
+    #[test]
+    fn explicit_operator_format_contracts_are_runtime_enforced() {
+        let mut exact_sentences = session();
+        exact_sentences.messages[0].text =
+            "Give me exactly three plain sentences I can paste. No headings, no bullets.".into();
+        let mut response = draft();
+        response.message = "Here you go.\n\n*Current state*\n\n- One.\n- Two.\nExtra.".into();
+        let issues = validate_explicit_response_contract(
+            &exact_sentences,
+            &SessionTurnTrigger::Operator,
+            &response,
+        );
+        assert!(issues.iter().any(|issue| issue.contains("no headings")));
+        assert!(issues.iter().any(|issue| issue.contains("no bullets")));
+        assert!(issues.iter().any(|issue| issue.contains("3 sentences")));
+
+        response.message = "We can read collected evidence. We cannot administer the provider. Read access carries no change authority.".into();
+        assert!(
+            validate_explicit_response_contract(
+                &exact_sentences,
+                &SessionTurnTrigger::Operator,
+                &response,
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn explicit_bullet_and_sentence_ranges_are_runtime_enforced() {
+        let mut two_bullets = session();
+        two_bullets.messages[0].text = "In two short bullets, give me the distinction.".into();
+        let mut response = draft();
+        response.message = "- Declared support.\n- Evidence landed.".into();
+        assert!(
+            validate_explicit_response_contract(
+                &two_bullets,
+                &SessionTurnTrigger::Operator,
+                &response,
+            )
+            .is_empty()
+        );
+        response.message.push_str("\n- Extra caveat.");
+        assert!(
+            validate_explicit_response_contract(
+                &two_bullets,
+                &SessionTurnTrigger::Operator,
+                &response,
+            )
+            .iter()
+            .any(|issue| issue.contains("exactly 2 bullets"))
+        );
+
+        two_bullets.messages[0].text = "Close it in a sentence or two.".into();
+        response.message = "One. Two. Three.".into();
+        assert!(
+            validate_explicit_response_contract(
+                &two_bullets,
+                &SessionTurnTrigger::Operator,
+                &response,
+            )
+            .iter()
+            .any(|issue| issue.contains("1 to 2 sentences"))
+        );
+    }
+
+    #[test]
+    fn explicit_brevity_contracts_and_code_fences_are_runtime_enforced() {
+        let mut bounded = session();
+        bounded.messages[0].text = "Use no more than 6 words and no headings or bullets.".into();
+        let mut response = draft();
+        response.message = "This answer contains exactly six words.".into();
+        assert!(
+            validate_explicit_response_contract(
+                &bounded,
+                &SessionTurnTrigger::Operator,
+                &response,
+            )
+            .is_empty()
+        );
+        response.message.push_str(" Extra.");
+        assert!(validate_explicit_response_contract(
+            &bounded,
+            &SessionTurnTrigger::Operator,
+            &response,
+        )
+        .iter()
+        .any(|issue| issue.contains("at most 6 words")));
+
+        bounded.messages[0].text = "Keep this under 20 characters.".into();
+        response.message = "Exactly nineteen now".into();
+        assert!(validate_explicit_response_contract(
+            &bounded,
+            &SessionTurnTrigger::Operator,
+            &response,
+        )
+        .iter()
+        .any(|issue| issue.contains("at most 19 characters")));
+
+        bounded.messages[0].text = "Explain without headings or bullets.".into();
+        response.message =
+            "Code stays literal:\n```text\n# heading\n- bullet\n```\nPlain answer.".into();
+        assert!(
+            validate_explicit_response_contract(
+                &bounded,
+                &SessionTurnTrigger::Operator,
+                &response,
+            )
+            .is_empty()
+        );
+        response.message.push_str("\n+ Real bullet");
+        assert!(validate_explicit_response_contract(
+            &bounded,
+            &SessionTurnTrigger::Operator,
+            &response,
+        )
+        .iter()
+        .any(|issue| issue.contains("no bullets")));
+    }
+
+    #[test]
+    fn wake_delivery_does_not_inherit_operator_format_contracts() {
+        let mut operator_session = session();
+        operator_session.messages[0].text = "Exactly three sentences.".into();
+        let response = draft();
+        assert!(
+            validate_explicit_response_contract(
+                &operator_session,
+                &SessionTurnTrigger::Wake {
+                    commitment_ref: "commitment:scheduled-check".into(),
+                    occurrence_ref: "occurrence:1".into(),
+                },
+                &response,
+            )
+            .is_empty()
+        );
     }
 
     #[test]
@@ -6397,6 +6875,36 @@ mod tests {
     }
 
     #[test]
+    fn plain_continuation_does_not_delegate_future_observation() {
+        assert!(!explicitly_delegates_future_observation("Keep going."));
+        assert!(!explicitly_delegates_future_observation(
+            "Keep going—finish the handoff."
+        ));
+        assert!(explicitly_delegates_future_observation(
+            "Keep going and keep checking until the next receipt lands."
+        ));
+
+        let mut continued = session();
+        continued.messages.push(SessionMessage {
+            role: SessionMessageRole::User,
+            message_ref: "message:continuation".into(),
+            actor_ref: "user:one".into(),
+            text: "Keep going—finish the handoff.".into(),
+            received_at: "2026-07-31T00:00:30Z".into(),
+        });
+        let mut proposed = plan();
+        proposed.follow_through = None;
+        assert!(validate_explicit_follow_through(&continued, &proposed).is_ok());
+
+        continued
+            .messages
+            .last_mut()
+            .expect("the continuation request was added")
+            .text = "Keep checking and only interrupt me for a gap or final result.".into();
+        assert!(validate_explicit_follow_through(&continued, &proposed).is_err());
+    }
+
+    #[test]
     fn delivery_disposition_enforces_human_attention_boundaries() {
         let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
         let mut operator_draft = draft();
@@ -6902,6 +7410,105 @@ mod tests {
         assert!(markdown.contains("upstream request timed out"));
         assert!(markdown.contains("The source read failed"));
         assert!(!markdown.contains("No current authoritative observation was obtained"));
+    }
+
+    #[tokio::test]
+    async fn operator_repair_fallback_uses_the_latest_supported_observation() {
+        let mut first = observation(true, Some("2026-08-01T00:00:00Z"));
+        first.result.summary = "The catalog declares five source families.".into();
+        first.result.evidence[0].atoms.push(EvidenceAtom {
+            atom_ref: "evidence:1#tool-outcome".into(),
+            subject_ref: Some("connector:alpha".into()),
+            assertion: EvidenceAssertion::ToolOutcome {
+                state: ToolResultState::Succeeded,
+                summary: first.result.summary.clone(),
+            },
+            observed_at: "2026-07-31T00:00:00Z".into(),
+            fresh_until: Some("2026-08-01T00:00:00Z".into()),
+            complete: true,
+        });
+        let mut latest = first.clone();
+        latest.sequence = 2;
+        latest.call.call_id = "call:2".into();
+        latest.result.summary = "The latest receipt is complete and current.".into();
+        latest.result.evidence[0].evidence_ref = "evidence:2".into();
+        for (index, atom) in latest.result.evidence[0].atoms.iter_mut().enumerate() {
+            atom.atom_ref = format!("evidence:2#atom:{index}");
+        }
+        let latest_outcome = latest
+            .result
+            .evidence
+            .first_mut()
+            .and_then(|evidence| evidence.atoms.last_mut())
+            .expect("the tool-outcome atom was copied");
+        latest_outcome.atom_ref = "evidence:2#tool-outcome".into();
+        latest_outcome.assertion = EvidenceAssertion::ToolOutcome {
+            state: ToolResultState::Succeeded,
+            summary: latest.result.summary.clone(),
+        };
+
+        let input = SessionTurnInput {
+            request_id: "request:latest-fallback".into(),
+            actor_ref: "user:1".into(),
+            assessment_at: "2026-07-31T00:01:00Z".into(),
+            trigger: SessionTurnTrigger::Operator,
+        };
+        let outcome = repair_fallback_outcome(
+            &session(),
+            &input,
+            &input.trigger,
+            None,
+            &[first, latest],
+            Vec::new(),
+            &NoopSessionJournal,
+        )
+        .await
+        .expect("repair fallback should preserve the newest supported observation");
+        let SessionTurnOutcome::PendingDelivery { markdown, .. } = outcome else {
+            panic!("operator fallback should be visible")
+        };
+        assert!(markdown.contains("latest receipt is complete and current"));
+        assert!(!markdown.contains("catalog declares five source families"));
+        assert!(!markdown.contains("No action or future follow-up was recorded"));
+        assert!(markdown.contains("could not safely complete the newest request"));
+    }
+
+    #[tokio::test]
+    async fn repair_fallback_cannot_bypass_an_explicit_response_contract() {
+        let mut exact = session();
+        exact.messages[0].text = "Give me exactly three sentences.".into();
+        let mut supported = observation(true, Some("2026-08-01T00:00:00Z"));
+        supported.result.evidence[0].atoms.push(EvidenceAtom {
+            atom_ref: "evidence:1#tool-outcome".into(),
+            subject_ref: Some("connector:alpha".into()),
+            assertion: EvidenceAssertion::ToolOutcome {
+                state: ToolResultState::Succeeded,
+                summary: supported.result.summary.clone(),
+            },
+            observed_at: "2026-07-31T00:00:00Z".into(),
+            fresh_until: Some("2026-08-01T00:00:00Z".into()),
+            complete: true,
+        });
+        let input = SessionTurnInput {
+            request_id: "request:strict-fallback".into(),
+            actor_ref: "user:1".into(),
+            assessment_at: "2026-07-31T00:01:00Z".into(),
+            trigger: SessionTurnTrigger::Operator,
+        };
+        assert_eq!(
+            repair_fallback_outcome(
+                &exact,
+                &input,
+                &input.trigger,
+                None,
+                &[supported],
+                Vec::new(),
+                &NoopSessionJournal,
+            )
+            .await
+            .expect_err("a repair fallback must not violate explicit presentation constraints"),
+            AgentRuntimeError::PresentationRepairLimit
+        );
     }
 
     #[tokio::test]
