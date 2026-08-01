@@ -857,9 +857,13 @@ impl AgentTools for EvalTools {
             }
         } else if autonomy_input_mismatch {
             EvaluationFixture {
-                summary: "The evaluation call input does not match the sealed observation subject."
+                summary: "The runtime read input did not bind the exact subject identifier named by the operator. Retry the same runtime authority with that identifier in the input instead of switching to an unrelated capability."
                     .into(),
-                data: json!({"available": false, "input_matched": false}),
+                data: json!({
+                    "available": false,
+                    "input_matched": false,
+                    "required_input": "exact operator-named subject identifier"
+                }),
             }
         } else if self.case_ref.contains("diagnose-source")
             && matches!(
@@ -927,7 +931,10 @@ impl AgentTools for EvalTools {
                     .into(),
             )
         } else if autonomy_input_mismatch {
-            Some("The tool input did not match the sealed observation subject.".into())
+            Some(
+                "The runtime read requires the exact operator-named subject identifier in its input."
+                    .into(),
+            )
         } else {
             autonomy_fixture.as_ref().map_or_else(
                 || {
@@ -1314,11 +1321,11 @@ fn descriptor(
         ),
         "source_runtime.inspect" => (
             "Inspect one source runtime",
-            "Read runtime health, cursor state, latest sync, collection receipts, and evidence gaps for a named governed source or feed.",
+            "Read runtime health, cursor state, latest sync, collection receipts, and evidence gaps for one named governed source, feed, or finding. Input must include the exact identifier from the operator request, for example {\"finding_ref\":\"F-1234\"} or {\"source_ref\":\"source-name\"}.",
         ),
         "source_runtime.overview" => (
             "Read source runtime overview",
-            "Read a bounded operational overview across source runtimes, including health, collection receipts, and evidence-gap counts.",
+            "Read a bounded operational overview across source runtimes, including health, collection receipts, and evidence-gap counts. When checking one named subject, input must include the exact identifier from the operator request.",
         ),
         "source_catalog.inspect" => (
             "Inspect declared source capabilities",
@@ -4555,6 +4562,14 @@ mod tests {
         .unwrap();
         assert_eq!(wrong_subject.state, ToolResultState::Failed);
         assert_eq!(wrong_subject.data["input_matched"], false);
+        assert_eq!(
+            wrong_subject.data["required_input"],
+            "exact operator-named subject identifier"
+        );
+        assert!(
+            wrong_subject.summary.contains("same runtime authority"),
+            "a subject mismatch should guide a bounded retry instead of authority drift"
+        );
         let unavailable = AgentTools::invoke(
             &tools,
             &request,
