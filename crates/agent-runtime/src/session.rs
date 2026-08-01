@@ -1885,8 +1885,8 @@ fn prior_commitment_checkpoint(
     let SessionTurnTrigger::Wake { commitment_ref, .. } = trigger else {
         return None;
     };
-    session.events.iter().rev().find_map(|record| {
-        let SessionEvent::DraftProduced { draft, .. } = &record.event else {
+    session.events.iter().enumerate().rev().find_map(|(index, record)| {
+        let SessionEvent::DraftProduced { request_id, draft } = &record.event else {
             return None;
         };
         let commitment = draft
@@ -1894,9 +1894,28 @@ fn prior_commitment_checkpoint(
             .commitments
             .iter()
             .find(|candidate| candidate.commitment_ref == *commitment_ref)?;
+        let later_events = &session.events[index + 1..];
+        later_events.iter().find(|candidate| {
+            matches!(
+                &candidate.event,
+                SessionEvent::DeliveryRecorded {
+                    request_id: delivered_request,
+                    ..
+                } if delivered_request == request_id
+            )
+        })?;
+        let completion = later_events.iter().find(|candidate| {
+            matches!(
+                &candidate.event,
+                SessionEvent::TurnCompleted {
+                    request_id: completed_request,
+                    ..
+                } if completed_request == request_id
+            )
+        })?;
         Some(CommitmentCheckpoint {
             commitment_ref: commitment_ref.clone(),
-            recorded_at: record.occurred_at.clone(),
+            recorded_at: completion.occurred_at.clone(),
             delivery: draft.delivery,
             state: draft.state,
             summary: draft.message.clone(),
@@ -3928,16 +3947,40 @@ mod tests {
         prior_draft.delivery = DeliveryDisposition::Silent;
         prior_draft.message = "Two of three receipts are current; checking again.".into();
         prior_draft.mission.commitments.push(scheduled_commitment());
-        awakened.events = vec![SessionEventRecord {
-            schema_version: AGENT_SESSION_EVENT_V2.into(),
-            session_ref: awakened.session_ref.clone(),
-            sequence: 1,
-            occurred_at: "2026-07-31T00:01:00Z".into(),
-            event: SessionEvent::DraftProduced {
-                request_id: "request:initiating-operator-turn".into(),
-                draft: prior_draft,
+        awakened.events = vec![
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::DraftProduced {
+                    request_id: "request:initiating-operator-turn".into(),
+                    draft: prior_draft,
+                },
             },
-        }];
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 2,
+                occurred_at: "2026-07-31T00:01:01Z".into(),
+                event: SessionEvent::DeliveryRecorded {
+                    request_id: "request:initiating-operator-turn".into(),
+                    transport: "internal_scheduler".into(),
+                    delivery_ref: "occurrence:initiating-turn".into(),
+                    payload_digest: format!("sha256:{}", "a".repeat(64)),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 3,
+                occurred_at: "2026-07-31T00:01:02Z".into(),
+                event: SessionEvent::TurnCompleted {
+                    request_id: "request:initiating-operator-turn".into(),
+                    state: FinalState::Answered,
+                },
+            },
+        ];
         let checkpoint = prior_commitment_checkpoint(
             &awakened,
             &SessionTurnTrigger::Wake {
@@ -3951,7 +3994,34 @@ mod tests {
             checkpoint.summary,
             "Two of three receipts are current; checking again."
         );
+        assert_eq!(checkpoint.recorded_at, "2026-07-31T00:01:02Z");
         assert!(prior_commitment_checkpoint(&awakened, &SessionTurnTrigger::Operator).is_none());
+    }
+
+    #[test]
+    fn commitment_checkpoint_ignores_unfinished_or_undelivered_drafts() {
+        let mut awakened = session();
+        let mut prior_draft = draft();
+        prior_draft.mission.commitments.push(scheduled_commitment());
+        awakened.events = vec![SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: awakened.session_ref.clone(),
+            sequence: 1,
+            occurred_at: "2026-07-31T00:01:00Z".into(),
+            event: SessionEvent::DraftProduced {
+                request_id: "request:unfinished".into(),
+                draft: prior_draft,
+            },
+        }];
+
+        assert!(prior_commitment_checkpoint(
+            &awakened,
+            &SessionTurnTrigger::Wake {
+                commitment_ref: "commitment:scheduled-check".into(),
+                occurrence_ref: "occurrence:next-wake".into(),
+            },
+        )
+        .is_none());
     }
 
     #[tokio::test]
