@@ -2,9 +2,9 @@ use async_trait::async_trait;
 use cerebro_agent_runtime::{
     AgentRuntimeError, FinalState,
     session::{
-        AGENT_SESSION_EVENT_V2, AgentSession, CommitmentStatus, DeliveryDisposition, SessionEvent,
-        SessionEventRecord, SessionJournal, SessionStore, WorkOwner, apply_session_events,
-        message_digest,
+        AGENT_SESSION_EVENT_V2, AgentSession, CommitmentStatus, DeliveryDisposition, GroundedDraft,
+        SessionEvent, SessionEventRecord, SessionJournal, SessionStatus, SessionStore, WorkOwner,
+        apply_session_events, message_digest,
     },
 };
 use native_tls::TlsConnector;
@@ -96,6 +96,12 @@ pub struct AgentWakeClaim {
     pub schedule_generation: u64,
     pub session_ref: String,
     pub wake_at: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AgentWakeFailureDisposition {
+    RetryScheduled,
+    ExhaustedAwaitingDelivery,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -547,32 +553,151 @@ impl PostgresAgentSessionStore {
     pub async fn fail_wake(
         &self,
         claim: &AgentWakeClaim,
-        error: &str,
-    ) -> Result<(), AgentRuntimeError> {
+        failure_class: &str,
+    ) -> Result<AgentWakeFailureDisposition, AgentRuntimeError> {
         let fence = i64::try_from(claim.fence).map_err(|_| {
             AgentRuntimeError::InvalidRequest("wake fence exceeds storage range".into())
         })?;
         let generation = i64::try_from(claim.schedule_generation).map_err(|_| {
             AgentRuntimeError::InvalidRequest("wake generation exceeds storage range".into())
         })?;
-        let error = error.chars().take(2_048).collect::<String>();
-        let changed = self
-            .client
-            .lock()
-            .await
-            .execute(
-                "UPDATE cerebro_agent_wakes SET state = CASE WHEN attempt_count >= 5 THEN 'failed' ELSE 'scheduled' END, lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL, last_error = $7, updated_at = NOW() WHERE session_ref = $1 AND commitment_ref = $2 AND schedule_generation = $3 AND fence = $4 AND lease_owner = $5 AND lease_token = $6 AND state = 'leased'",
-                &[&claim.session_ref, &claim.commitment_ref, &generation, &fence, &claim.lease_owner, &claim.lease_token, &error],
+        let failure_class = failure_class.chars().take(160).collect::<String>();
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await.map_err(store_unavailable)?;
+        let row = transaction
+            .query_opt(
+                "SELECT w.attempt_count, s.snapshot_json, s.last_sequence FROM cerebro_agent_wakes w JOIN cerebro_agent_sessions s ON s.session_ref = w.session_ref WHERE w.session_ref = $1 AND w.commitment_ref = $2 AND w.schedule_generation = $3 AND w.fence = $4 AND w.lease_owner = $5 AND w.lease_token = $6 AND w.request_id = $7 AND w.state = 'leased' AND w.lease_expires_at > NOW() AND s.active_request_id = $7 AND s.lease_owner = $5 AND s.lease_expires_at > NOW() FOR UPDATE OF w, s",
+                &[&claim.session_ref, &claim.commitment_ref, &generation, &fence, &claim.lease_owner, &claim.lease_token, &claim.request_id],
             )
             .await
             .map_err(store_unavailable)?;
-        if changed != 1 {
+        let Some(row) = row else {
             return Err(AgentRuntimeError::InvalidRequest(
-                "wake claim was lost before failure recording".into(),
+                "wake claim or session lease was lost before failure recording".into(),
+            ));
+        };
+        let attempt_count: i32 = row.get(0);
+        if attempt_count < 5 {
+            let changed = transaction
+                .execute(
+                    "UPDATE cerebro_agent_wakes SET state = 'scheduled', lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL, last_error = $8, updated_at = NOW() WHERE session_ref = $1 AND commitment_ref = $2 AND schedule_generation = $3 AND fence = $4 AND lease_owner = $5 AND lease_token = $6 AND request_id = $7 AND state = 'leased' AND lease_expires_at > NOW()",
+                    &[&claim.session_ref, &claim.commitment_ref, &generation, &fence, &claim.lease_owner, &claim.lease_token, &claim.request_id, &failure_class],
+                )
+                .await
+                .map_err(store_unavailable)?;
+            let released = transaction
+                .execute(
+                    "UPDATE cerebro_agent_sessions SET active_request_id = NULL, lease_owner = NULL, lease_expires_at = NULL, updated_at = NOW() WHERE session_ref = $1 AND active_request_id = $2 AND lease_owner = $3 AND lease_expires_at > NOW()",
+                    &[&claim.session_ref, &claim.request_id, &claim.lease_owner],
+                )
+                .await
+                .map_err(store_unavailable)?;
+            if changed != 1 || released != 1 {
+                return Err(AgentRuntimeError::InvalidRequest(
+                    "wake retry could not release its exact leases".into(),
+                ));
+            }
+            transaction.commit().await.map_err(store_unavailable)?;
+            return Ok(AgentWakeFailureDisposition::RetryScheduled);
+        }
+
+        let session = decode_session(row.get(1))?;
+        if session.pending_delivery.is_some() {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "exhausted wake cannot replace a pending delivery".into(),
             ));
         }
-        self.release_turn(&claim.session_ref, &claim.request_id, &claim.lease_owner)
+        let stored_sequence: i64 = row.get(2);
+        let expected_sequence = i64::try_from(
+            session.events.last().map_or(0, |event| event.sequence),
+        )
+        .map_err(|_| {
+            AgentRuntimeError::InvalidRequest("session sequence exceeds storage range".into())
+        })?;
+        if stored_sequence != expected_sequence {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "session snapshot sequence is inconsistent".into(),
+            ));
+        }
+        let mut mission = session.mission.clone();
+        let commitment = mission
+            .commitments
+            .iter_mut()
+            .find(|commitment| commitment.commitment_ref == claim.commitment_ref)
+            .ok_or_else(|| {
+                AgentRuntimeError::InvalidRequest(
+                    "exhausted wake has no matching durable commitment".into(),
+                )
+            })?;
+        commitment.status = CommitmentStatus::Blocked;
+        commitment.blocker = Some(format!(
+            "Scheduled continuation exhausted five attempts: {failure_class}"
+        ));
+        commitment.next_action = None;
+        commitment.wake_at = None;
+        let commitment_summary = commitment.summary.clone();
+        mission.status = SessionStatus::Blocked;
+        let message = format!(
+            "Cerebro could not complete the scheduled check for {commitment_summary} after five attempts. The commitment is blocked because the runtime could not finish the check ({failure_class}). No further checks are scheduled."
+        );
+        let draft = GroundedDraft {
+            state: FinalState::Blocked,
+            delivery: DeliveryDisposition::Visible,
+            message: message.clone(),
+            claims: Vec::new(),
+            coverage_notice: Some(format!(
+                "Scheduled continuation exhausted five attempts: {failure_class}"
+            )),
+            question: None,
+            mission,
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        };
+        let payload_digest = message_digest(&message);
+        let occurred_at = OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .map_err(|error| AgentRuntimeError::InvalidRequest(error.to_string()))?;
+        let event = SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: claim.session_ref.clone(),
+            sequence: u64::try_from(expected_sequence).map_err(|_| {
+                AgentRuntimeError::InvalidRequest("session sequence is invalid".into())
+            })? + 1,
+            occurred_at,
+            event: SessionEvent::WakeExhausted {
+                request_id: claim.request_id.clone(),
+                commitment_ref: claim.commitment_ref.clone(),
+                occurrence_ref: claim.occurrence_ref.clone(),
+                schedule_generation: claim.schedule_generation,
+                failure_class: failure_class.clone(),
+                draft,
+            },
+        };
+        let updated = apply_session_events(&session, std::slice::from_ref(&event))?;
+        let snapshot = serde_json::to_value(&updated).map_err(invalid_snapshot)?;
+        let changed = transaction
+            .execute(
+                "UPDATE cerebro_agent_wakes SET state = 'awaiting_delivery', lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL, pending_payload_digest = $8, delivery_ref = NULL, delivery_attempt_ref = NULL, last_error = $9, updated_at = NOW() WHERE session_ref = $1 AND commitment_ref = $2 AND schedule_generation = $3 AND fence = $4 AND lease_owner = $5 AND lease_token = $6 AND request_id = $7 AND state = 'leased' AND lease_expires_at > NOW() AND attempt_count = 5",
+                &[&claim.session_ref, &claim.commitment_ref, &generation, &fence, &claim.lease_owner, &claim.lease_token, &claim.request_id, &payload_digest, &failure_class],
+            )
             .await
+            .map_err(store_unavailable)?;
+        insert_event(&transaction, &event).await?;
+        let released = transaction
+            .execute(
+                "UPDATE cerebro_agent_sessions SET snapshot_json = $4, last_sequence = $5, active_request_id = NULL, lease_owner = NULL, lease_expires_at = NULL, updated_at = NOW() WHERE session_ref = $1 AND active_request_id = $2 AND lease_owner = $3 AND lease_expires_at > NOW()",
+                &[&claim.session_ref, &claim.request_id, &claim.lease_owner, &snapshot, &(expected_sequence + 1)],
+            )
+            .await
+            .map_err(store_unavailable)?;
+        if changed != 1 || released != 1 {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "exhausted wake could not commit its exact blocked delivery".into(),
+            ));
+        }
+        project_session_state(&transaction, &updated).await?;
+        transaction.commit().await.map_err(store_unavailable)?;
+        Ok(AgentWakeFailureDisposition::ExhaustedAwaitingDelivery)
     }
 
     pub async fn append_wake_fenced(
@@ -650,10 +775,13 @@ impl PostgresAgentSessionStore {
             let generation = i64::try_from(lease.schedule_generation).map_err(|_| {
                 AgentRuntimeError::InvalidRequest("wake generation exceeds storage range".into())
             })?;
+            let fence = i64::try_from(lease.fence).map_err(|_| {
+                AgentRuntimeError::InvalidRequest("wake fence exceeds storage range".into())
+            })?;
             let current = transaction
                 .query_opt(
-                    "SELECT 1 FROM cerebro_agent_wakes WHERE session_ref = $1 AND commitment_ref = $2 AND schedule_generation = $3 AND request_id = $4 AND pending_payload_digest = $5 AND delivery_ref = $6 AND delivery_attempt_ref = $7 AND state = 'awaiting_delivery' FOR UPDATE",
-                    &[&lease.session_ref, &lease.commitment_ref, &generation, &lease.request_id, &lease.payload_digest, &lease.delivery_ref, &lease.delivery_attempt_ref],
+                    "SELECT 1 FROM cerebro_agent_wakes WHERE session_ref = $1 AND commitment_ref = $2 AND schedule_generation = $3 AND request_id = $4 AND pending_payload_digest = $5 AND delivery_ref = $6 AND delivery_attempt_ref = $7 AND fence = $8 AND lease_owner = $9 AND lease_token = $10 AND state = 'awaiting_delivery' AND lease_expires_at > NOW() FOR UPDATE",
+                    &[&lease.session_ref, &lease.commitment_ref, &generation, &lease.request_id, &lease.payload_digest, &lease.delivery_ref, &lease.delivery_attempt_ref, &fence, &lease.lease_owner, &lease.lease_token],
                 )
                 .await
                 .map_err(store_unavailable)?;
@@ -861,7 +989,9 @@ async fn project_session_state(
             commitment.owner == WorkOwner::Cerebro
                 && !matches!(
                     commitment.status,
-                    CommitmentStatus::Completed | CommitmentStatus::Cancelled
+                    CommitmentStatus::Blocked
+                        | CommitmentStatus::Completed
+                        | CommitmentStatus::Cancelled
                 )
                 && commitment.wake_at.is_some()
         })
@@ -872,7 +1002,7 @@ async fn project_session_state(
         .collect::<Vec<_>>();
     transaction
         .execute(
-            "UPDATE cerebro_agent_wakes SET state = 'cancelled', lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL, pending_payload_digest = NULL, delivery_ref = NULL, delivery_attempt_ref = NULL, updated_at = NOW() WHERE session_ref = $1 AND state IN ('scheduled', 'leased', 'awaiting_delivery', 'failed') AND NOT (commitment_ref = ANY($2))",
+            "UPDATE cerebro_agent_wakes SET state = 'cancelled', lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL, pending_payload_digest = NULL, delivery_ref = NULL, delivery_attempt_ref = NULL, updated_at = NOW() WHERE session_ref = $1 AND state IN ('scheduled', 'leased', 'failed') AND NOT (commitment_ref = ANY($2))",
             &[&session.session_ref, &active_refs],
         )
         .await

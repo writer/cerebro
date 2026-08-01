@@ -45,8 +45,8 @@ use time::{Duration as TimeDuration, OffsetDateTime, format_description::well_kn
 
 use super::slack_agent_mcp::McpAgentTools;
 use super::slack_agent_session::{
-    AgentPendingWakeDelivery, AgentWakeClaim, AgentWakeDeliveryLease, PostgresAgentSessionStore,
-    PostgresTurnJournal,
+    AgentPendingWakeDelivery, AgentWakeClaim, AgentWakeDeliveryLease, AgentWakeFailureDisposition,
+    PostgresAgentSessionStore, PostgresTurnJournal,
 };
 
 const MAX_MODEL_RESPONSE_BYTES: usize = 512 * 1024;
@@ -237,8 +237,21 @@ impl SlackAgentService {
                 }))
             }
             Err(error) => {
-                let _ = store.fail_wake(&claim, &error.to_string()).await;
-                Err(error)
+                match store
+                    .fail_wake(&claim, "scheduled wake execution failed")
+                    .await?
+                {
+                    AgentWakeFailureDisposition::RetryScheduled => Err(error),
+                    AgentWakeFailureDisposition::ExhaustedAwaitingDelivery => {
+                        Ok(Some(AgentWakeTurn {
+                            commitment_ref: claim.commitment_ref,
+                            request_id: claim.request_id,
+                            schedule_generation: claim.schedule_generation,
+                            session_ref: claim.session_ref,
+                            state: "awaiting_delivery",
+                        }))
+                    }
+                }
             }
         }
     }

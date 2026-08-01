@@ -343,6 +343,14 @@ pub enum SessionEvent {
         occurrence_ref: String,
         scheduled_for: String,
     },
+    WakeExhausted {
+        request_id: String,
+        commitment_ref: String,
+        occurrence_ref: String,
+        schedule_generation: u64,
+        failure_class: String,
+        draft: GroundedDraft,
+    },
     TurnStarted {
         request_id: String,
     },
@@ -782,6 +790,21 @@ pub fn apply_session_events(
                         "session already has a response awaiting delivery".into(),
                     ));
                 }
+                next.pending_delivery = Some(PendingDelivery {
+                    request_id: request_id.clone(),
+                    draft: draft.clone(),
+                    produced_at: record.occurred_at.clone(),
+                });
+            }
+            SessionEvent::WakeExhausted {
+                request_id, draft, ..
+            } => {
+                if next.pending_delivery.is_some() {
+                    return Err(AgentRuntimeError::InvalidRequest(
+                        "session already has a response awaiting delivery".into(),
+                    ));
+                }
+                next.mission = draft.mission.clone();
                 next.pending_delivery = Some(PendingDelivery {
                     request_id: request_id.clone(),
                     draft: draft.clone(),
@@ -1654,7 +1677,9 @@ fn validate_commitment_baselines(
         commitment.owner == WorkOwner::Cerebro
             && !matches!(
                 commitment.status,
-                CommitmentStatus::Completed | CommitmentStatus::Cancelled
+                CommitmentStatus::Blocked
+                    | CommitmentStatus::Completed
+                    | CommitmentStatus::Cancelled
             )
             && session
                 .mission
@@ -1770,7 +1795,9 @@ fn normalize_redundant_baseline_alerts(
         commitment.owner == WorkOwner::Cerebro
             && !matches!(
                 commitment.status,
-                CommitmentStatus::Completed | CommitmentStatus::Cancelled
+                CommitmentStatus::Blocked
+                    | CommitmentStatus::Completed
+                    | CommitmentStatus::Cancelled
             )
             && session
                 .mission
@@ -3070,7 +3097,9 @@ fn validate_mission(mission: &MissionState) -> Result<(), AgentRuntimeError> {
         if commitment.owner == WorkOwner::Cerebro
             && !matches!(
                 commitment.status,
-                CommitmentStatus::Completed | CommitmentStatus::Cancelled
+                CommitmentStatus::Blocked
+                    | CommitmentStatus::Completed
+                    | CommitmentStatus::Cancelled
             )
             && (commitment.wake_at.is_none()
                 || commitment
@@ -3090,7 +3119,9 @@ fn validate_mission(mission: &MissionState) -> Result<(), AgentRuntimeError> {
         if commitment.owner == WorkOwner::Cerebro
             && !matches!(
                 commitment.status,
-                CommitmentStatus::Completed | CommitmentStatus::Cancelled
+                CommitmentStatus::Blocked
+                    | CommitmentStatus::Completed
+                    | CommitmentStatus::Cancelled
             )
             && !commitment.required_tool_ids.is_empty()
         {
@@ -4184,6 +4215,53 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn exhausted_wake_blocks_the_exact_commitment_and_creates_visible_delivery() {
+        let mut current = session();
+        current.mission.commitments.push(scheduled_commitment());
+        current.mission.status = SessionStatus::WaitingForExternal;
+        let mut blocked = draft();
+        blocked.state = FinalState::Blocked;
+        blocked.delivery = DeliveryDisposition::Visible;
+        blocked.message = "The scheduled check exhausted five attempts.".into();
+        blocked.coverage_notice = Some("The scheduled check could not complete.".into());
+        blocked.mission = current.mission.clone();
+        blocked.mission.status = SessionStatus::Blocked;
+        blocked.mission.commitments[0].status = CommitmentStatus::Blocked;
+        blocked.mission.commitments[0].blocker = Some("Five attempts exhausted.".into());
+        blocked.mission.commitments[0].next_action = None;
+        blocked.mission.commitments[0].wake_at = None;
+        let event = SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: current.session_ref.clone(),
+            sequence: 1,
+            occurred_at: "2026-07-31T00:01:00Z".into(),
+            event: SessionEvent::WakeExhausted {
+                request_id: "wake-request:exhausted".into(),
+                commitment_ref: "commitment:scheduled-check".into(),
+                occurrence_ref: "occurrence:exhausted".into(),
+                schedule_generation: 5,
+                failure_class: "scheduled wake execution failed".into(),
+                draft: blocked,
+            },
+        };
+
+        let updated = apply_session_events(&current, &[event]).unwrap();
+
+        assert_eq!(updated.mission.status, SessionStatus::Blocked);
+        assert_eq!(
+            updated.mission.commitments[0].status,
+            CommitmentStatus::Blocked
+        );
+        assert!(updated.mission.commitments[0].wake_at.is_none());
+        let pending = updated
+            .pending_delivery
+            .expect("exhaustion must produce a durable operator update");
+        assert_eq!(pending.request_id, "wake-request:exhausted");
+        assert_eq!(pending.draft.delivery, DeliveryDisposition::Visible);
+        assert_eq!(pending.draft.state, FinalState::Blocked);
     }
 
     #[tokio::test]
