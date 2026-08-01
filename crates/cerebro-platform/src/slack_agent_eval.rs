@@ -1190,10 +1190,72 @@ fn descriptor(
     authority_class: ToolAuthorityClass,
     effect_class: ToolEffectClass,
 ) -> ToolDescriptor {
+    let (title, summary) = match tool_id {
+        "capability.overview" => (
+            "Read current agent capabilities",
+            "Read the exact capability families bound to the agent. This describes the authority boundary, not current source evidence.",
+        ),
+        "source_runtime.inspect" => (
+            "Inspect one source runtime",
+            "Read runtime health, cursor state, latest sync, collection receipts, and evidence gaps for a named governed source or feed.",
+        ),
+        "source_runtime.overview" => (
+            "Read source runtime overview",
+            "Read a bounded operational overview across source runtimes, including health, collection receipts, and evidence-gap counts.",
+        ),
+        "source_catalog.inspect" => (
+            "Inspect declared source capabilities",
+            "Read a source's declared collection contract. This does not prove runtime health, provider permission, or current evidence.",
+        ),
+        "graph.search" => (
+            "Search governed security graph",
+            "Find bounded governed entities by label, identifier, and entity kind. This is not a source-runtime health or receipt check.",
+        ),
+        "graph.expand" => (
+            "Inspect governed entity context",
+            "Read bounded neighboring entities and assertions for one governed graph entity.",
+        ),
+        "graph.reason" => (
+            "Reason over governed graph evidence",
+            "Attempt bounded relationship reasoning over governed graph evidence after the relevant entities are identified.",
+        ),
+        "mcp.cerebro.findings.search" => (
+            "Search current security findings",
+            "Find bounded current findings, severity, status, ownership presence, and evidence state. This does not inspect source collection receipts.",
+        ),
+        "mcp.cerebro.assets.search" => (
+            "Search current governed assets",
+            "Find bounded assets and their current governed exposure or finding relationships.",
+        ),
+        "mcp.cerebro.investigation.context" => (
+            "Read investigation context",
+            "Read bounded current evidence and causal context for a named investigation or finding. This does not inspect source collection receipts.",
+        ),
+        "mcp.cerebro.risk.explain" => (
+            "Explain a supported current risk",
+            "Explain the decision impact and supported priority for a bounded finding, asset, or investigation from current evidence.",
+        ),
+        "mcp.cerebro.evidence.packet" => (
+            "Read a current evidence packet",
+            "Read the bounded evidence packet and coverage state for a named governed subject.",
+        ),
+        "mcp.cerebro.sources.health" => (
+            "Read governed source health",
+            "Read bounded health and current evidence coverage for a named governed source. Use source_runtime.inspect for cursor and collection-receipt details.",
+        ),
+        "mcp.cerebro.action.plan" => (
+            "Prepare a bounded action plan",
+            "Prepare a read-only action proposal with owner and verification boundaries. This does not execute the proposed effect.",
+        ),
+        _ => (
+            "Read a bounded evaluation capability",
+            "Return one bounded tenant-scoped evaluation observation.",
+        ),
+    };
     ToolDescriptor {
         tool_id: tool_id.into(),
-        title: tool_id.replace(['.', '_'], " "),
-        summary: "Return one bounded tenant-scoped evaluation observation.".into(),
+        title: title.into(),
+        summary: summary.into(),
         authority_class,
         effect_class,
         input_schema_ref: format!("schema://evaluation/{tool_id}/input/v1"),
@@ -4079,6 +4141,36 @@ mod tests {
     fn hosted_command_rejects_a_non_exact_commit() {
         assert!(validate_commit_sha("not-a-sha").is_err());
         assert!(validate_commit_sha(&"a".repeat(40)).is_ok());
+    }
+
+    #[test]
+    fn evaluation_tools_preserve_production_semantic_boundaries() {
+        let source = descriptor(
+            "source_runtime.inspect",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        );
+        assert!(source.summary.contains("collection receipts"));
+        let finding = descriptor(
+            "mcp.cerebro.findings.search",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        );
+        assert!(
+            finding
+                .summary
+                .contains("does not inspect source collection receipts")
+        );
+        let investigation = descriptor(
+            "mcp.cerebro.investigation.context",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        );
+        assert!(
+            investigation
+                .summary
+                .contains("named investigation or finding")
+        );
     }
 
     #[test]
