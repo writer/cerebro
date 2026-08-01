@@ -1663,15 +1663,15 @@ async fn repair_fallback_outcome(
     } else if rescheduled_wake.is_some() && failed_read.is_some() {
         "Coverage gap: The source read failed, so the acceptance condition remains unverified."
     } else if rescheduled_wake.is_some() && supported.is_some() {
-        "Coverage gap: This check is partial, so the acceptance condition remains unverified."
+        "Coverage gap: The available read is partial, so the acceptance condition remains unverified."
     } else if rescheduled_wake.is_some() {
-        "Coverage gap: This check returned no authoritative observation, so the acceptance condition remains unverified."
+        "Coverage gap: No authoritative observation was obtained, so the acceptance condition remains unverified."
     } else if failed_read.is_some() {
         "Coverage gap: The source read failed. I did not evaluate the requested condition, execute an action, or record a new follow-up."
     } else if supported.is_some() {
         "Coverage gap: The available evidence does not support the full requested conclusion. No action or future follow-up was recorded."
     } else {
-        "Coverage gap: No authoritative observation was obtained. I did not evaluate the requested condition, execute an action, or record a new follow-up."
+        "Coverage gap: No current authoritative observation was obtained. I did not evaluate the requested condition, execute an action, or record a new follow-up."
     }
     .to_owned();
     let (state, mut message, mut claims) = if let Some((summary, atom_ref)) = uncertain_effect {
