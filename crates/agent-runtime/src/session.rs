@@ -440,6 +440,7 @@ pub struct SessionModelTurn {
     pub trigger: SessionTurnTrigger,
     pub assessment_at: String,
     pub prior_commitment_checkpoint: Option<CommitmentCheckpoint>,
+    pub wake_assessment: Option<WakeAssessment>,
     pub plan: Option<ResearchPlan>,
     pub available_tools: Vec<ToolDescriptor>,
     pub observations: Vec<ToolObservation>,
@@ -474,6 +475,37 @@ pub struct CommitmentCheckpointObservation {
     pub complete: bool,
     pub summary: String,
     pub data: Value,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct WakeAssessment {
+    pub commitment_ref: String,
+    pub required_observations_present: bool,
+    pub required_observations_healthy: bool,
+    pub acceptance_met: bool,
+    pub matched_attention_signals: Vec<ObservationCondition>,
+    pub scalar_comparisons: Vec<WakeScalarComparison>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct WakeScalarComparison {
+    pub tool_id: String,
+    pub input_digest: String,
+    pub data_pointer: String,
+    pub previous: Option<Value>,
+    pub current: Option<Value>,
+    pub relation: WakeScalarRelation,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WakeScalarRelation {
+    AddedToCurrentRead,
+    Changed,
+    Unchanged,
+    NotReturnedByCurrentRead,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -523,6 +555,7 @@ pub struct ClaimReviewTurn {
     pub session: AgentSession,
     pub trigger: SessionTurnTrigger,
     pub prior_commitment_checkpoint: Option<CommitmentCheckpoint>,
+    pub wake_assessment: Option<WakeAssessment>,
     pub draft: GroundedDraft,
     pub observations: Vec<ToolObservation>,
 }
@@ -973,6 +1006,13 @@ pub async fn run_session_turn_recorded(
                 trigger: trigger.clone(),
                 assessment_at: input.assessment_at.clone(),
                 prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
+                wake_assessment: build_wake_assessment(
+                    &session,
+                    &trigger,
+                    prior_commitment_checkpoint.as_ref(),
+                    &observations,
+                    assessment_at,
+                ),
                 plan: plan.clone(),
                 available_tools: available_tools.clone(),
                 observations: observations.clone(),
@@ -1273,6 +1313,13 @@ pub async fn run_session_turn_recorded(
                         session: session.clone(),
                         trigger: trigger.clone(),
                         prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
+                        wake_assessment: build_wake_assessment(
+                            &session,
+                            &trigger,
+                            prior_commitment_checkpoint.as_ref(),
+                            &observations,
+                            assessment_at,
+                        ),
                         draft: draft.clone(),
                         observations: observations.clone(),
                     })
@@ -1974,6 +2021,133 @@ fn observation_condition_matches(
             && observation.result.state == ToolResultState::Succeeded
             && observation.result.data.pointer(&condition.data_pointer) == Some(&condition.equals)
     })
+}
+
+fn build_wake_assessment(
+    session: &AgentSession,
+    trigger: &SessionTurnTrigger,
+    checkpoint: Option<&CommitmentCheckpoint>,
+    observations: &[ToolObservation],
+    assessment_at: OffsetDateTime,
+) -> Option<WakeAssessment> {
+    let SessionTurnTrigger::Wake { commitment_ref, .. } = trigger else {
+        return None;
+    };
+    let commitment = session
+        .mission
+        .commitments
+        .iter()
+        .find(|commitment| commitment.commitment_ref == *commitment_ref)?;
+    let current_required = commitment
+        .required_tool_ids
+        .iter()
+        .filter_map(|tool_id| {
+            observations
+                .iter()
+                .rev()
+                .find(|observation| observation.call.tool_id == *tool_id)
+        })
+        .collect::<Vec<_>>();
+    let required_observations_present =
+        current_required.len() == commitment.required_tool_ids.len();
+    let required_observations_healthy = required_observations_present
+        && current_required
+            .iter()
+            .all(|observation| observation_is_complete_and_fresh(observation, assessment_at));
+    let acceptance_met = required_observations_healthy
+        && commitment.attention_policy.as_ref().is_some_and(|policy| {
+            !policy.acceptance_all.is_empty()
+                && policy
+                    .acceptance_all
+                    .iter()
+                    .all(|condition| observation_condition_matches(condition, observations))
+        });
+    let matched_attention_signals = commitment
+        .attention_policy
+        .as_ref()
+        .map(|policy| {
+            policy
+                .alert_any
+                .iter()
+                .filter(|condition| {
+                    observations.iter().any(|observation| {
+                        observation.call.tool_id == condition.tool_id
+                            && observation.result.data.pointer(&condition.data_pointer)
+                                == Some(&condition.equals)
+                    })
+                })
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut scalar_comparisons = Vec::new();
+    for current_observation in current_required {
+        let input_digest = current_observation.call.input_digest();
+        let prior = checkpoint.and_then(|checkpoint| {
+            checkpoint.observations.iter().rev().find(|prior| {
+                prior.tool_id == current_observation.call.tool_id
+                    && prior.input_digest == input_digest
+            })
+        });
+        let mut previous = BTreeMap::new();
+        if let Some(prior) = prior {
+            collect_scalar_json_pointers(&prior.data, "", &mut previous);
+        }
+        let mut current = BTreeMap::new();
+        collect_scalar_json_pointers(&current_observation.result.data, "", &mut current);
+        let pointers = previous
+            .keys()
+            .chain(current.keys())
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for data_pointer in pointers.into_iter().take(64) {
+            let previous_value = previous.get(&data_pointer).cloned();
+            let current_value = current.get(&data_pointer).cloned();
+            let relation = match (&previous_value, &current_value) {
+                (None, Some(_)) => WakeScalarRelation::AddedToCurrentRead,
+                (Some(previous), Some(current)) if previous == current => {
+                    WakeScalarRelation::Unchanged
+                }
+                (Some(_), Some(_)) => WakeScalarRelation::Changed,
+                (Some(_), None) => WakeScalarRelation::NotReturnedByCurrentRead,
+                (None, None) => continue,
+            };
+            scalar_comparisons.push(WakeScalarComparison {
+                tool_id: current_observation.call.tool_id.clone(),
+                input_digest: input_digest.clone(),
+                data_pointer,
+                previous: previous_value,
+                current: current_value,
+                relation,
+            });
+        }
+    }
+
+    Some(WakeAssessment {
+        commitment_ref: commitment_ref.clone(),
+        required_observations_present,
+        required_observations_healthy,
+        acceptance_met,
+        matched_attention_signals,
+        scalar_comparisons,
+    })
+}
+
+fn collect_scalar_json_pointers(value: &Value, prefix: &str, output: &mut BTreeMap<String, Value>) {
+    match value {
+        Value::Object(entries) => {
+            for (key, value) in entries {
+                let escaped = key.replace('~', "~0").replace('/', "~1");
+                collect_scalar_json_pointers(value, &format!("{prefix}/{escaped}"), output);
+            }
+        }
+        Value::Array(_) | Value::Null => {}
+        _ if !prefix.is_empty() => {
+            output.insert(prefix.to_owned(), value.clone());
+        }
+        _ => {}
+    }
 }
 
 fn validate_commitment_baselines(
@@ -5365,6 +5539,100 @@ mod tests {
 
         current.result.data["streak_reset"] = json!(true);
         assert!(validate_explicit_streak_reset_language(&candidate, &[current]).is_ok());
+    }
+
+    #[test]
+    fn wake_assessment_computes_typed_scalar_deltas_before_model_review() {
+        let mut awakened = session();
+        let mut commitment = scheduled_commitment();
+        commitment.attention_policy = Some(CommitmentAttentionPolicy {
+            acceptance_all: vec![ObservationCondition {
+                tool_id: "connector.read".into(),
+                data_pointer: "/decision_grade".into(),
+                equals: json!(true),
+            }],
+            alert_any: vec![ObservationCondition {
+                tool_id: "connector.read".into(),
+                data_pointer: "/receipt_fresh".into(),
+                equals: json!(false),
+            }],
+        });
+        awakened.mission.commitments.push(commitment);
+        let mut current = observation(false, Some("2026-07-31T00:06:00Z"));
+        current.result.state = ToolResultState::Partial;
+        current.result.data = json!({
+            "decision_grade": false,
+            "fresh_complete_receipts": 1,
+            "receipt_fresh": false,
+            "reported_receipts": 2
+        });
+        let checkpoint = CommitmentCheckpoint {
+            commitment_ref: "commitment:scheduled-check".into(),
+            source_request_id: "request:prior".into(),
+            recorded_at: "2026-07-31T00:00:00Z".into(),
+            delivery_ref: "delivery:prior".into(),
+            payload_digest: "sha256:prior".into(),
+            trigger_occurrence_ref: None,
+            delivery: DeliveryDisposition::Visible,
+            state: FinalState::Answered,
+            summary: "The feed has one fresh receipt.".into(),
+            observations: vec![CommitmentCheckpointObservation {
+                tool_id: current.call.tool_id.clone(),
+                input: current.call.input.clone(),
+                input_digest: current.call.input_digest(),
+                observed_at: Some("2026-07-31T00:00:00Z".into()),
+                state: ToolResultState::Succeeded,
+                complete: true,
+                summary: "The feed has one fresh receipt.".into(),
+                data: json!({
+                    "decision_grade": false,
+                    "fresh_complete_receipts": 1,
+                    "receipt_fresh": true
+                }),
+            }],
+            commitment_status: CommitmentStatus::Waiting,
+            next_wake_at: Some("2026-07-31T00:01:00Z".into()),
+        };
+        let assessment = build_wake_assessment(
+            &awakened,
+            &SessionTurnTrigger::Wake {
+                commitment_ref: "commitment:scheduled-check".into(),
+                occurrence_ref: "occurrence:typed-delta".into(),
+            },
+            Some(&checkpoint),
+            &[current],
+            OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+        )
+        .expect("a scheduled commitment produces a typed wake assessment");
+
+        assert!(assessment.required_observations_present);
+        assert!(!assessment.required_observations_healthy);
+        assert!(!assessment.acceptance_met);
+        assert_eq!(assessment.matched_attention_signals.len(), 1);
+        assert_eq!(
+            assessment
+                .scalar_comparisons
+                .iter()
+                .find(|comparison| comparison.data_pointer == "/fresh_complete_receipts")
+                .map(|comparison| comparison.relation),
+            Some(WakeScalarRelation::Unchanged)
+        );
+        assert_eq!(
+            assessment
+                .scalar_comparisons
+                .iter()
+                .find(|comparison| comparison.data_pointer == "/receipt_fresh")
+                .map(|comparison| comparison.relation),
+            Some(WakeScalarRelation::Changed)
+        );
+        assert_eq!(
+            assessment
+                .scalar_comparisons
+                .iter()
+                .find(|comparison| comparison.data_pointer == "/reported_receipts")
+                .map(|comparison| comparison.relation),
+            Some(WakeScalarRelation::AddedToCurrentRead)
+        );
     }
 
     #[test]
