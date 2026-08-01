@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -87,6 +88,14 @@ function wakeDeliveryFixture(
     tenant_id: "writer",
     thread_ref: `slack-scratchpad://sha256/${"a".repeat(64)}`,
   };
+}
+
+function wakeClientMessageId(delivery: RustPendingWakeDelivery): string {
+  const hex = createHash("sha256")
+    .update(delivery.lease.delivery_attempt_ref, "utf8")
+    .digest("hex")
+    .slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 test("Slack uses the Rust agent turn endpoint without calling the legacy ask route", async () => {
@@ -549,6 +558,7 @@ test("wake worker posts one metadata-bound reply and ACKs only after Slack accep
     assert.equal(posts.length, 1);
     assert.deepEqual(posts[0], {
       channel: "C-ONE",
+      client_msg_id: wakeClientMessageId(delivery),
       metadata: {
         event_payload: {
           delivery_attempt_ref: delivery.lease.delivery_attempt_ref,
@@ -559,6 +569,8 @@ test("wake worker posts one metadata-bound reply and ACKs only after Slack accep
       },
       text: delivery.markdown,
       thread_ts: "1753992060.000100",
+      unfurl_links: false,
+      unfurl_media: false,
     });
     assert.equal(
       new URL(requests.at(-1)?.url ?? "").pathname,
@@ -647,11 +659,12 @@ test("wake worker reconciles an ambiguous post by metadata and never posts again
   }
 });
 
-test("wake worker leaves an incomplete Slack history outcome unknown without reposting", async () => {
+test("wake worker paginates Slack history before deciding an outcome is absent", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-wake-worker-incomplete-"));
   const delivery = wakeDeliveryFixture("reconcile");
   let acknowledgements = 0;
   let posts = 0;
+  const cursors: Array<string | undefined> = [];
   try {
     const routes = new FileSlackThreadRouteStore(root);
     await routes.bind({
@@ -687,7 +700,25 @@ test("wake worker leaves an incomplete Slack history outcome unknown without rep
         },
       },
       conversations: {
-        async replies() {
+        async replies(input) {
+          cursors.push(input.cursor);
+          if (input.cursor === "more-history") {
+            return {
+              messages: [{
+                metadata: {
+                  event_payload: {
+                    delivery_attempt_ref: delivery.lease.delivery_attempt_ref,
+                    delivery_ref: delivery.lease.delivery_ref,
+                    payload_digest: delivery.lease.payload_digest,
+                  },
+                  event_type: "cerebro_wake_delivery",
+                },
+                text: delivery.markdown,
+                ts: "1753992061.000200",
+                user: "U-CEREBRO",
+              }],
+            };
+          }
           return {
             messages: [],
             response_metadata: { next_cursor: "more-history" },
@@ -702,8 +733,69 @@ test("wake worker leaves an incomplete Slack history outcome unknown without rep
     await worker.flush();
 
     assert.equal(posts, 0);
-    assert.equal(acknowledgements, 0);
-    assert.equal((await outbox.list())[0]?.state, "outcome_unknown");
+    assert.equal(acknowledgements, 1);
+    assert.deepEqual(cursors, [undefined, "more-history"]);
+    assert.deepEqual(await outbox.list(), []);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("wake worker safely resubmits an absent ambiguous send with the same idempotency key", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-wake-worker-idempotent-retry-"));
+  const delivery = wakeDeliveryFixture("reconcile");
+  let acknowledgements = 0;
+  const posts: Array<{ client_msg_id: string }> = [];
+  try {
+    const routes = new FileSlackThreadRouteStore(root);
+    await routes.bind({
+      appRef: "slack-app:production:Cerebro",
+      botUserId: "U-CEREBRO",
+      channelId: "C-ONE",
+      teamId: "T-ONE",
+      threadRef: delivery.thread_ref,
+      threadTs: "1753992060.000100",
+    });
+    const outbox = new FileWakeDeliveryOutbox(root);
+    await outbox.trackOutcomeUnknown({
+      channelId: "C-ONE",
+      delivery,
+      threadTs: "1753992060.000100",
+    });
+    const client = new CerebroAskClient({
+      agentRuntimeUrl: "http://127.0.0.1:8091",
+      answerAuthority: testAnswerAuthority,
+      apiKey: "unused",
+      baseUrl: "https://legacy.example.com",
+      fetchImpl: async () => {
+        acknowledgements += 1;
+        return new Response(null, { status: 204 });
+      },
+      tenantId: "writer",
+    });
+    const worker = new WakeDeliveryWorker(client, {
+      chat: {
+        async postMessage(input) {
+          posts.push(input);
+          return { ts: "1753992061.000200" };
+        },
+      },
+      conversations: {
+        async replies() {
+          return { messages: [] };
+        },
+      },
+    }, routes, outbox, {
+      signal: () => new AbortController().signal,
+      workerRef: "slack-host:test",
+    });
+
+    await worker.flush();
+
+    assert.equal(posts.length, 1);
+    assert.equal(posts[0]?.client_msg_id, wakeClientMessageId(delivery));
+    assert.equal(acknowledgements, 1);
+    assert.deepEqual(await outbox.list(), []);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
