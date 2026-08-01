@@ -7,6 +7,7 @@ export type AssistantTurnSourceGapState =
 
 export interface CerebroAskResult {
   citationValidationPassed: boolean;
+  deliveryAckRequired?: boolean;
   executionLane: "act" | "continue" | "converse" | "ignore" | "investigate" | "lookup";
   finalState?: "answered" | "blocked" | "needs_input" | "partial";
   markdown: string;
@@ -121,12 +122,15 @@ export class CerebroAskClient {
       }
       throw new CerebroAskError("unavailable", errorMessage(error));
     }
-    if (outcome.outcome === "delivered") {
+    if (outcome.outcome === "delivered" || outcome.outcome === "pending_delivery") {
       return {
         citationValidationPassed:
           outcome.final_state === "answered"
           && outcome.evidence_refs.length > 0,
         executionLane: outcome.lane,
+        ...(outcome.outcome === "pending_delivery"
+          ? { deliveryAckRequired: true }
+          : {}),
         finalState: outcome.final_state,
         markdown: outcome.markdown,
         safeRefusal: outcome.final_state !== "answered",
@@ -160,6 +164,44 @@ export class CerebroAskClient {
       safeRefusal: true,
       traceId: input.requestId,
     };
+  }
+
+  async recordAgentTurnDelivery(input: {
+    deliveredAt: string;
+    deliveryRef: string;
+    requestId: string;
+    signal: AbortSignal;
+    threadRef: string;
+  }): Promise<void> {
+    if (!this.options.agentRuntimeUrl) return;
+    const response = await this.fetchImpl(
+      `${this.options.agentRuntimeUrl}/v1/turns/deliveries`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          delivered_at: input.deliveredAt,
+          delivery_ref: input.deliveryRef,
+          request_id: input.requestId,
+          schema_version: "agent-delivery-receipt/v1",
+          tenant_id: this.options.tenantId,
+          thread_ref: input.threadRef,
+          transport: "slack",
+        }),
+        signal: input.signal,
+      },
+    ).catch((error: unknown) => {
+      throw new CerebroAskError("unavailable", errorMessage(error));
+    });
+    if (!response.ok) {
+      throw new CerebroAskError(
+        sourceState(response.status),
+        `The Rust agent rejected the Slack delivery receipt with status ${response.status}.`,
+      );
+    }
   }
 
   async ask(
@@ -299,7 +341,7 @@ type RustAgentTurnOutcome =
       final_state: "answered" | "blocked" | "needs_input" | "partial";
       lane: CerebroAskResult["executionLane"];
       markdown: string;
-      outcome: "delivered";
+      outcome: "delivered" | "pending_delivery";
       working_state: RustWorkingState | null;
     }
   | {

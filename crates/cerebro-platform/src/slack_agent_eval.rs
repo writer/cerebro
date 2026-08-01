@@ -11,10 +11,17 @@ use async_trait::async_trait;
 use cerebro_agent_runtime::{
     AGENT_TURN_REQUEST_V1, AgentModel, AgentRuntimeError, AgentTools, AgentTurnOutcome,
     AgentTurnRequest, ConversationMessage, ConversationRole, CritiqueDecision, CritiqueTurn,
-    DECISION_MAX_TOKENS, ExecutionLane, HARD_MAX_GENERATION_TOKENS, ModelDecision, ModelTurn,
-    PRESENTATION_MAX_TOKENS, PresentationDecision, PresentationTurn, ROUTER_MAX_TOKENS,
-    RouteDecision, RouteTurn, ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult,
-    ToolResultState, WorkingOutcome, WorkingState, run_turn,
+    DECISION_MAX_TOKENS, EffectAuthorization, ExecutionLane, HARD_MAX_GENERATION_TOKENS,
+    ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS, PresentationDecision, PresentationTurn,
+    ROUTER_MAX_TOKENS, RouteDecision, RouteTurn, ToolAuthorityClass, ToolCall, ToolDescriptor,
+    ToolEffectClass, ToolResult, ToolResultState, WorkingOutcome, WorkingState, run_turn,
+    session::{
+        AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2, AgentSession, ClaimReviewTurn,
+        EvidenceAtomization, MessageReview, MissionState, SessionAgentModel, SessionEvent,
+        SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
+        SessionModelTurn, SessionStatus, SessionTools, SessionTurnInput, SessionTurnOutcome,
+        apply_session_events, evidence_atoms_from_json, run_session_turn,
+    },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -188,6 +195,29 @@ struct ConversationScenarioSelection {
     source: HoldoutSourceReceipt,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ConversationRuntime {
+    LegacyV1,
+    SessionV2,
+}
+
+impl ConversationRuntime {
+    fn parse(value: &str) -> Result<Self, Box<dyn Error>> {
+        match value {
+            "legacy_v1" => Ok(Self::LegacyV1),
+            "session_v2" => Ok(Self::SessionV2),
+            _ => Err("CEREBRO_SLACK_AGENT_EVAL_RUNTIME must be legacy_v1 or session_v2".into()),
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::LegacyV1 => "legacy_v1",
+            Self::SessionV2 => "session_v2",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct HoldoutSourceReceipt {
     source_kind: &'static str,
@@ -257,7 +287,9 @@ struct ConversationLabScenarioReceipt {
     transcript: Vec<ConversationMessage>,
     final_judgment: Option<ConversationQualityJudgment>,
     final_judgment_error: Option<String>,
-    passed: bool,
+    review_ready: bool,
+    latency_slo_passed: bool,
+    internal_judge_advisory_excellent: bool,
     turns: Vec<ConversationLabTurnReceipt>,
 }
 
@@ -269,6 +301,7 @@ struct ConversationLabReceipt {
     provider: &'static str,
     model_id: String,
     judge_model_id: String,
+    runtime_path: &'static str,
     candidate_identity_concealed_from_model_judge: bool,
     model_judge_independent: bool,
     model_side_score_advisory: bool,
@@ -407,17 +440,52 @@ impl AgentModel for MeasuredModel {
     }
 }
 
+#[async_trait]
+impl SessionAgentModel for MeasuredModel {
+    async fn advance(
+        &self,
+        turn: SessionModelTurn,
+    ) -> Result<SessionModelDecision, AgentRuntimeError> {
+        *self
+            .operating_steps
+            .lock()
+            .expect("operating counter poisoned") += 1;
+        if !turn.repair_feedback.is_empty() {
+            self.operating_repair_feedback
+                .lock()
+                .expect("operating repair receipt poisoned")
+                .push(turn.repair_feedback.clone());
+        }
+        self.inner.advance(turn).await
+    }
+
+    async fn review_message(
+        &self,
+        turn: ClaimReviewTurn,
+    ) -> Result<MessageReview, AgentRuntimeError> {
+        *self
+            .critic_attempts
+            .lock()
+            .expect("critic counter poisoned") += 1;
+        self.inner.review_message(turn).await
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct EvaluationObservationReceipt {
     tool_id: String,
     summary: String,
     data: Value,
+    state: ToolResultState,
+    complete: bool,
+    blocker: Option<String>,
 }
 
 struct EvalTools {
     case_ref: String,
     scenario_anchor_at: Option<String>,
     observations: Mutex<Vec<EvaluationObservationReceipt>>,
+    runtime_cursor_format: Mutex<String>,
 }
 
 impl EvalTools {
@@ -426,6 +494,7 @@ impl EvalTools {
             case_ref: case_ref.into(),
             scenario_anchor_at: None,
             observations: Mutex::new(Vec::new()),
+            runtime_cursor_format: Mutex::new("legacy_revision".into()),
         }
     }
 
@@ -434,6 +503,7 @@ impl EvalTools {
             case_ref: case_ref.into(),
             scenario_anchor_at: Some(scenario_anchor_at),
             observations: Mutex::new(Vec::new()),
+            runtime_cursor_format: Mutex::new("legacy_revision".into()),
         }
     }
 
@@ -519,11 +589,15 @@ impl AgentTools for EvalTools {
                 ToolAuthorityClass::Propose,
                 ToolEffectClass::Read,
             ),
-            descriptor(
-                "runtime_config_update",
-                ToolAuthorityClass::Actuate,
-                ToolEffectClass::ExternalEffect,
-            ),
+            ToolDescriptor {
+                tool_id: "runtime_config_update".into(),
+                title: "Update one governed connector runtime setting".into(),
+                summary: "Apply only the exact authorized input {\"connector_ref\":\"governed-evidence-connector\",\"cursor_format\":\"current_revision\"}. A later source_runtime.inspect with the same connector_ref independently verifies the effect.".into(),
+                authority_class: ToolAuthorityClass::Actuate,
+                effect_class: ToolEffectClass::ExternalEffect,
+                input_schema_ref: "schema://evaluation/runtime_config_update/input/v1".into(),
+                result_schema_ref: "schema://evaluation/runtime_config_update/result/v1".into(),
+            },
         ]
     }
 
@@ -537,16 +611,72 @@ impl AgentTools for EvalTools {
         let fresh_until = observed_at
             .checked_add(Duration::minutes(5))
             .ok_or_else(|| AgentRuntimeError::InvalidToolCall("evidence time overflow".into()))?;
-        let fixture = evaluation_fixture(
-            &self.case_ref,
-            &call.tool_id,
-            self.scenario_anchor_at
-                .as_deref()
-                .unwrap_or(&request.assessment_at),
-            &request.assessment_at,
-        );
+        let expected_action = json!({
+            "connector_ref": "governed-evidence-connector",
+            "cursor_format": "current_revision",
+        });
+        let fixture = if call.tool_id == "runtime_config_update" {
+            if call.input != expected_action {
+                return Err(AgentRuntimeError::InvalidToolCall(
+                    "evaluation action input did not match the exact authorized connector change"
+                        .into(),
+                ));
+            }
+            *self
+                .runtime_cursor_format
+                .lock()
+                .expect("evaluation runtime state poisoned") = "current_revision".into();
+            EvaluationFixture {
+                summary: "The exact governed connector cursor-format update was applied; this effect receipt is not independent verification.".into(),
+                data: json!({
+                    "connector_ref": "governed-evidence-connector",
+                    "cursor_format": "current_revision",
+                    "effect_applied": true,
+                    "independently_verified": false,
+                    "verification_expectation": {
+                        "target_ref": "governed-evidence-connector",
+                        "input_digest": call.input_digest(),
+                        "assertions": {"/collection_receipt": "complete"}
+                    }
+                }),
+            }
+        } else if self.case_ref.contains("diagnose-source")
+            && matches!(
+                call.tool_id.as_str(),
+                "source_runtime.inspect" | "source_runtime.overview"
+            )
+            && self
+                .runtime_cursor_format
+                .lock()
+                .expect("evaluation runtime state poisoned")
+                .as_str()
+                == "current_revision"
+        {
+            EvaluationFixture {
+                summary: "A fresh independent collection completed after the exact cursor-format update; the governed connector returned a complete current receipt.".into(),
+                data: json!({"connector_ref": "governed-evidence-connector", "cursor_format": "current_revision", "collection_receipt": "complete", "current": true}),
+            }
+        } else {
+            evaluation_fixture(
+                &self.case_ref,
+                &call.tool_id,
+                self.scenario_anchor_at
+                    .as_deref()
+                    .unwrap_or(&request.assessment_at),
+                &request.assessment_at,
+            )
+        };
         let summary = fixture.summary;
         let data = fixture.data;
+        let state = if call.tool_id == "graph.reason" {
+            ToolResultState::Failed
+        } else {
+            ToolResultState::Succeeded
+        };
+        let complete = state == ToolResultState::Succeeded;
+        let blocker = (!complete).then(|| {
+            "The broad relationship reasoning operation did not return grounded evidence.".into()
+        });
         self.observations
             .lock()
             .expect("evaluation observation receipt poisoned")
@@ -554,27 +684,92 @@ impl AgentTools for EvalTools {
                 tool_id: call.tool_id.clone(),
                 summary: summary.clone(),
                 data: data.clone(),
+                state,
+                complete,
+                blocker: blocker.clone(),
             });
+        let evidence_ref = format!(
+            "evidence://rust-hillclimb/{}/{}",
+            request.request_id, call.call_id
+        );
+        let subject_ref = call
+            .input
+            .get("connector_ref")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
         Ok(ToolResult {
-            state: ToolResultState::Succeeded,
+            state,
             summary: summary.clone(),
-            data,
+            data: data.clone(),
             evidence: vec![cerebro_agent_runtime::EvidenceRecord {
-                evidence_ref: format!(
-                    "evidence://rust-hillclimb/{}/{}",
-                    request.request_id, call.call_id
-                ),
-                statement: summary,
+                evidence_ref: evidence_ref.clone(),
+                statement: summary.clone(),
                 observed_at: request.assessment_at.clone(),
                 fresh_until: Some(
                     fresh_until
                         .format(&Rfc3339)
                         .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
                 ),
-                complete: true,
+                complete,
+                atoms: evidence_atoms_from_json(EvidenceAtomization {
+                    evidence_ref: &evidence_ref,
+                    subject_ref: subject_ref.as_deref(),
+                    data: &data,
+                    state,
+                    summary: &summary,
+                    observed_at: &request.assessment_at,
+                    fresh_until: Some(
+                        &fresh_until.format(&Rfc3339).map_err(|error| {
+                            AgentRuntimeError::InvalidToolCall(error.to_string())
+                        })?,
+                    ),
+                    complete,
+                }),
             }],
-            blocker: None,
+            blocker,
         })
+    }
+}
+
+#[async_trait]
+impl SessionTools for EvalTools {
+    fn catalog(&self) -> Vec<ToolDescriptor> {
+        <Self as AgentTools>::catalog(self)
+    }
+
+    async fn invoke(
+        &self,
+        session: &AgentSession,
+        input: &SessionTurnInput,
+        call: &cerebro_agent_runtime::ToolCall,
+    ) -> Result<ToolResult, AgentRuntimeError> {
+        let latest = session.messages.last().ok_or_else(|| {
+            AgentRuntimeError::InvalidRequest("evaluation session has no operator message".into())
+        })?;
+        let request = AgentTurnRequest {
+            schema_version: AGENT_TURN_REQUEST_V1.into(),
+            tenant_id: session.tenant_id.clone(),
+            request_id: input.request_id.clone(),
+            thread_ref: session.thread_ref.clone(),
+            actor_ref: input.actor_ref.clone(),
+            assessment_at: input.assessment_at.clone(),
+            message: latest.text.clone(),
+            history: session
+                .messages
+                .iter()
+                .take(session.messages.len().saturating_sub(1))
+                .map(|message| ConversationMessage {
+                    role: match message.role {
+                        SessionMessageRole::Assistant => ConversationRole::Assistant,
+                        SessionMessageRole::User => ConversationRole::User,
+                    },
+                    content: message.text.clone(),
+                })
+                .collect(),
+            working_state: None,
+            effect_authorizations: session.effect_authorizations.clone(),
+        };
+        <Self as AgentTools>::invoke(self, &request, call).await
     }
 }
 
@@ -790,6 +985,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
             response_markdown,
         ) = match outcome {
             Ok(Ok(AgentTurnOutcome::Delivered {
+                lane,
+                final_state,
+                markdown,
+                ..
+            }))
+            | Ok(Ok(AgentTurnOutcome::PendingDelivery {
                 lane,
                 final_state,
                 markdown,
@@ -1065,6 +1266,134 @@ fn selected_case_refs() -> Result<Option<BTreeSet<String>>, Box<dyn Error>> {
     Ok(Some(refs))
 }
 
+fn evaluation_session(
+    scenario_index: usize,
+    scenario: &ConversationLabScenario,
+    assessment_at: &str,
+    tenant_id: &str,
+) -> AgentSession {
+    let session_ref = format!("evaluation-session:{scenario_index:02}");
+    AgentSession {
+        schema_version: AGENT_SESSION_V2.into(),
+        session_ref: session_ref.clone(),
+        tenant_id: tenant_id.into(),
+        thread_ref: format!("evaluation-thread:{scenario_index:02}"),
+        mission: MissionState {
+            mission_ref: format!("evaluation-mission:{scenario_index:02}"),
+            objective: scenario.initial_message.clone(),
+            desired_outcome:
+                "Handle the operator's visible request and subsequent thread messages.".into(),
+            resolved_scope: Vec::new(),
+            scope_assumptions: Vec::new(),
+            acceptance_criteria: Vec::new(),
+            commitments: Vec::new(),
+            open_loops: Vec::new(),
+            status: SessionStatus::Active,
+        },
+        messages: scenario
+            .seed_history
+            .iter()
+            .enumerate()
+            .map(|(index, message)| SessionMessage {
+                role: match message.role {
+                    ConversationRole::Assistant => SessionMessageRole::Assistant,
+                    ConversationRole::User => SessionMessageRole::User,
+                },
+                message_ref: format!("seed-message:{}", index + 1),
+                actor_ref: match message.role {
+                    ConversationRole::Assistant => "cerebro".into(),
+                    ConversationRole::User => "evaluation-operator".into(),
+                },
+                text: message.content.clone(),
+                received_at: assessment_at.into(),
+            })
+            .collect(),
+        events: Vec::new(),
+        effect_authorizations: Vec::new(),
+        pending_delivery: None,
+        memories: Vec::new(),
+    }
+}
+
+async fn run_evaluation_session_turn(
+    model: &MeasuredModel,
+    tools: &EvalTools,
+    session: &mut AgentSession,
+    request: AgentTurnRequest,
+) -> Result<AgentTurnOutcome, AgentRuntimeError> {
+    session.effect_authorizations = request.effect_authorizations.clone();
+    let sequence = session.events.last().map_or(1, |event| event.sequence + 1);
+    let queued = SessionEventRecord {
+        schema_version: AGENT_SESSION_EVENT_V2.into(),
+        session_ref: session.session_ref.clone(),
+        sequence,
+        occurred_at: request.assessment_at.clone(),
+        event: SessionEvent::UserMessageQueued {
+            message: SessionMessage {
+                role: SessionMessageRole::User,
+                message_ref: format!("operator:{}", request.request_id),
+                actor_ref: request.actor_ref.clone(),
+                text: request.message,
+                received_at: request.assessment_at.clone(),
+            },
+        },
+    };
+    *session = apply_session_events(session, &[queued])?;
+    let outcome = run_session_turn(
+        model,
+        tools,
+        session.clone(),
+        SessionTurnInput {
+            request_id: request.request_id.clone(),
+            actor_ref: request.actor_ref.clone(),
+            assessment_at: request.assessment_at.clone(),
+        },
+    )
+    .await?;
+    let events = match &outcome {
+        SessionTurnOutcome::PendingDelivery { events, .. }
+        | SessionTurnOutcome::ApprovalRequired { events, .. } => events,
+    };
+    *session = apply_session_events(session, events)?;
+    if let SessionTurnOutcome::PendingDelivery { final_state, .. } = &outcome {
+        let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
+        let delivered_at = request.assessment_at.clone();
+        *session = apply_session_events(
+            session,
+            &[
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: expected_sequence + 1,
+                    occurred_at: delivered_at.clone(),
+                    event: SessionEvent::DeliveryRecorded {
+                        request_id: request.request_id.clone(),
+                        transport: "off_slack_lab".into(),
+                        delivery_ref: format!("lab-delivery:{}", request.request_id),
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: expected_sequence + 2,
+                    occurred_at: delivered_at,
+                    event: SessionEvent::TurnCompleted {
+                        request_id: request.request_id.clone(),
+                        state: *final_state,
+                    },
+                },
+            ],
+        )?;
+    }
+    let stored = serde_json::to_value(&*session).map_err(|error| {
+        AgentRuntimeError::InvalidRequest(format!("evaluation session snapshot failed: {error}"))
+    })?;
+    *session = serde_json::from_value(stored).map_err(|error| {
+        AgentRuntimeError::InvalidRequest(format!("evaluation session reload failed: {error}"))
+    })?;
+    Ok(super::slack_agent::session_outcome_to_turn(outcome))
+}
+
 async fn run_conversation_lab(
     commit_sha: String,
     evaluated_at: String,
@@ -1082,6 +1411,16 @@ async fn run_conversation_lab(
         );
     }
     let selection = selected_lab_scenarios()?;
+    let runtime =
+        ConversationRuntime::parse(&env::var("CEREBRO_SLACK_AGENT_EVAL_RUNTIME").map_err(
+            |_| "CEREBRO_SLACK_AGENT_EVAL_RUNTIME must explicitly select legacy_v1 or session_v2",
+        )?)?;
+    if selection.source.source_kind == "external_pinned_holdout"
+        && runtime != ConversationRuntime::SessionV2
+    {
+        return Err("external holdouts require the session_v2 runtime".into());
+    }
+    let use_session_v2 = runtime == ConversationRuntime::SessionV2;
     let declared_scenario_count = selection.declared_scenario_count;
     let selected_scenario_count = selection.scenarios.len();
     let full_suite = selected_scenario_count == declared_scenario_count;
@@ -1102,43 +1441,91 @@ async fn run_conversation_lab(
         let mut all_observations = Vec::new();
         let mut working_state = None;
         let mut interaction_kinds = Vec::new();
+        let mut durable_session = use_session_v2.then(|| {
+            evaluation_session(
+                scenario_index,
+                &scenario,
+                &scenario_anchor_at,
+                "rust-conversation-lab-tenant",
+            )
+        });
+        let tools = EvalTools::for_conversation(&scenario.fixture_ref, scenario_anchor_at.clone());
 
         for turn_index in 0..LAB_MAX_TURNS {
             let assessment_at = OffsetDateTime::now_utc().format(&Rfc3339)?;
+            let request_id = format!("rust-conversation-lab-{scenario_index:02}-{turn_index:02}");
+            let thread_ref = format!("slack-thread://rust-conversation-lab/{scenario_index:02}");
+            let actor_ref = "slack-user://rust-conversation-lab".to_owned();
+            let effect_authorizations =
+                if scenario.scenario_ref == "exact_change_then_verify" && turn_index == 0 {
+                    let call = ToolCall {
+                        call_id: "authorization-digest-only".into(),
+                        tool_id: "runtime_config_update".into(),
+                        purpose: "Apply the exact governed connector cursor-format update.".into(),
+                        input: json!({
+                            "connector_ref": "governed-evidence-connector",
+                            "cursor_format": "current_revision",
+                        }),
+                    };
+                    vec![EffectAuthorization {
+                        approval_ref: format!("evaluation-approval:{request_id}"),
+                        tenant_id: "rust-conversation-lab-tenant".into(),
+                        request_id: request_id.clone(),
+                        thread_ref: thread_ref.clone(),
+                        actor_ref: actor_ref.clone(),
+                        tool_id: call.tool_id.clone(),
+                        input_digest: call.input_digest(),
+                    }]
+                } else {
+                    Vec::new()
+                };
             let request = AgentTurnRequest {
                 schema_version: AGENT_TURN_REQUEST_V1.into(),
                 tenant_id: "rust-conversation-lab-tenant".into(),
-                request_id: format!("rust-conversation-lab-{scenario_index:02}-{turn_index:02}"),
-                thread_ref: format!("slack-thread://rust-conversation-lab/{scenario_index:02}"),
-                actor_ref: "slack-user://rust-conversation-lab".into(),
+                request_id,
+                thread_ref,
+                actor_ref,
                 assessment_at,
                 message: current_message.clone(),
                 history: transcript.clone(),
                 working_state: working_state.clone(),
-                effect_authorizations: vec![],
+                effect_authorizations,
             };
             let original_route_context = RouteContext::from_request(&request);
             let measured = MeasuredModel::new(model.clone());
-            let tools =
-                EvalTools::for_conversation(&scenario.fixture_ref, scenario_anchor_at.clone());
             let started = Instant::now();
-            let outcome = tokio::time::timeout(
-                std::time::Duration::from_secs(180),
-                run_turn(&measured, &tools, request),
-            )
-            .await;
+            let outcome = if let Some(session) = durable_session.as_mut() {
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(900),
+                    run_evaluation_session_turn(&measured, &tools, session, request),
+                )
+                .await
+            } else {
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(180),
+                    run_turn(&measured, &tools, request),
+                )
+                .await
+            };
             let latency_ms = started.elapsed().as_millis();
             let routes = measured
                 .routes
                 .lock()
                 .expect("route receipt poisoned")
                 .clone();
-            let actual_route = accepted_route(&routes, &original_route_context);
+            let mut actual_route = accepted_route(&routes, &original_route_context);
             let observations = tools.observations();
             all_observations.extend(observations.iter().cloned());
             let (actual_lane, terminal_state, response_markdown, next_working_state) = match outcome
             {
                 Ok(Ok(AgentTurnOutcome::Delivered {
+                    lane,
+                    markdown,
+                    final_state,
+                    working_state,
+                    ..
+                }))
+                | Ok(Ok(AgentTurnOutcome::PendingDelivery {
                     lane,
                     markdown,
                     final_state,
@@ -1168,6 +1555,9 @@ async fn run_conversation_lab(
                 Ok(Err(error)) => (None, format!("error:{error}"), None, working_state.clone()),
                 Err(_) => (None, "timed_out".into(), None, working_state.clone()),
             };
+            if use_session_v2 {
+                actual_route = actual_lane;
+            }
             working_state = next_working_state;
 
             transcript.push(ConversationMessage {
@@ -1294,14 +1684,30 @@ async fn run_conversation_lab(
                     Err(error) => (None, Some(error.to_string())),
                 }
             };
-        let passed = !terminal_failure
-            && operator_satisfied
+        let required_failure_path_exercised = scenario.scenario_ref
+            != "recover_from_broad_reasoning_gap"
+            || all_observations
+                .iter()
+                .any(|observation| observation.state == ToolResultState::Failed);
+        let required_action_path_exercised = scenario.scenario_ref != "exact_change_then_verify"
+            || (all_observations.iter().any(|observation| {
+                observation.tool_id == "runtime_config_update"
+                    && observation.state == ToolResultState::Succeeded
+            }) && all_observations.iter().any(|observation| {
+                matches!(
+                    observation.tool_id.as_str(),
+                    "source_runtime.inspect" | "source_runtime.overview"
+                ) && observation.data.get("collection_receipt") == Some(&json!("complete"))
+            }));
+        let review_ready = !terminal_failure
             && delivered_exchange_count >= LAB_MIN_EXCHANGES
             && unanswered_user_turn_count == 0
-            && maximum_turn_latency_ms <= LAB_MAX_TURN_LATENCY_MS
-            && final_judgment
-                .as_ref()
-                .is_some_and(ConversationQualityJudgment::is_excellent);
+            && required_failure_path_exercised
+            && required_action_path_exercised;
+        let latency_slo_passed = maximum_turn_latency_ms <= LAB_MAX_TURN_LATENCY_MS;
+        let internal_judge_advisory_excellent = final_judgment
+            .as_ref()
+            .is_some_and(ConversationQualityJudgment::is_excellent);
         receipts.push(ConversationLabScenarioReceipt {
             scenario_ref: scenario.scenario_ref,
             candidate_label,
@@ -1314,12 +1720,14 @@ async fn run_conversation_lab(
             transcript,
             final_judgment,
             final_judgment_error,
-            passed,
+            review_ready,
+            latency_slo_passed,
+            internal_judge_advisory_excellent,
             turns,
         });
     }
 
-    let targeted_regression_passed = receipts.iter().all(|receipt| receipt.passed);
+    let targeted_regression_passed = receipts.iter().all(|receipt| receipt.review_ready);
     let suite_passed = full_suite && targeted_regression_passed;
     let blind_review_bundle = blind_review_bundle(&selection.source, &receipts);
     let blind_review_bytes = serde_json::to_vec_pretty(&blind_review_bundle)?;
@@ -1328,12 +1736,13 @@ async fn run_conversation_lab(
         fs::write(path, &blind_review_bytes)?;
     }
     let receipt = ConversationLabReceipt {
-        schema_version: "cerebro-rust-slack-agent-conversation-lab/v3",
+        schema_version: "cerebro-rust-slack-agent-conversation-lab/v4",
         commit_sha,
         evaluated_at,
         provider: "aws_bedrock",
         model_id,
         judge_model_id,
+        runtime_path: runtime.as_str(),
         candidate_identity_concealed_from_model_judge: true,
         model_judge_independent: false,
         model_side_score_advisory: true,
@@ -1402,6 +1811,9 @@ async fn calibrate_blind_judge(model: &ConfiguredModel) -> Result<(), AgentRunti
             tool_id: "calibration.observation".into(),
             summary: "No current collection receipt was observed.".into(),
             data: json!({"current_collection_receipt_observed": false}),
+            state: ToolResultState::Succeeded,
+            complete: true,
+            blocker: None,
         }],
     )
     .await?;
@@ -1432,6 +1844,9 @@ async fn calibrate_blind_judge(model: &ConfiguredModel) -> Result<(), AgentRunti
                 "configured_source_readable": true,
                 "assistant_can_administer_source": false
             }),
+            state: ToolResultState::Succeeded,
+            complete: true,
+            blocker: None,
         }],
     )
     .await?;
@@ -1576,7 +1991,6 @@ async fn judge_conversation_trajectory(
                 "assistant_message": turn.response_markdown,
                 "actual_route": turn.actual_route,
                 "actual_lane": turn.actual_lane,
-                "latency_ms": turn.latency_ms,
                 "route_attempt_count": turn.route_attempt_count,
                 "operating_step_count": turn.operating_step_count,
                 "presentation_attempt_count": turn.presentation_attempt_count,
@@ -1687,7 +2101,6 @@ fn blind_review_bundle(
                         "assistant_message": turn.response_markdown,
                         "authoritative_observations": turn.tool_observations,
                         "terminal_state": turn.terminal_state,
-                        "latency_ms": turn.latency_ms,
                     })
                 })
                 .collect::<Vec<_>>();
@@ -1698,12 +2111,11 @@ fn blind_review_bundle(
                 "turns": turns,
                 "delivered_exchange_count": receipt.delivered_exchange_count,
                 "unanswered_user_turn_count": receipt.unanswered_user_turn_count,
-                "maximum_turn_latency_ms": receipt.maximum_turn_latency_ms,
             })
         })
         .collect::<Vec<_>>();
     json!({
-        "schema_version": "cerebro-slack-agent-blind-review/v2",
+        "schema_version": "cerebro-slack-agent-blind-review/v3",
         "identity_disclosure": "model_provider_implementation_and_commit_withheld",
         "holdout_pack_sha256": holdout_source.pack_sha256,
         "rubric": {
@@ -2637,6 +3049,41 @@ mod tests {
     }
 
     #[test]
+    fn evaluation_session_contains_only_candidate_visible_context() {
+        let scenario = ConversationLabScenario {
+            scenario_ref: "sealed".into(),
+            fixture_ref: "case://sealed".into(),
+            mission: "HIDDEN_MISSION_SENTINEL".into(),
+            operator_brief: "HIDDEN_OPERATOR_BRIEF_SENTINEL".into(),
+            initial_message: "Please investigate the visible problem.".into(),
+            seed_history: vec![ConversationMessage {
+                role: ConversationRole::User,
+                content: "Visible earlier context.".into(),
+            }],
+        };
+        let session = evaluation_session(1, &scenario, "2026-07-31T00:00:00Z", "tenant");
+        let encoded = serde_json::to_string(&session).unwrap();
+        assert!(encoded.contains("Please investigate the visible problem."));
+        assert!(encoded.contains("Visible earlier context."));
+        assert!(!encoded.contains("HIDDEN_MISSION_SENTINEL"));
+        assert!(!encoded.contains("HIDDEN_OPERATOR_BRIEF_SENTINEL"));
+    }
+
+    #[test]
+    fn conversation_runtime_requires_an_explicit_named_path() {
+        assert_eq!(
+            ConversationRuntime::parse("session_v2").unwrap(),
+            ConversationRuntime::SessionV2
+        );
+        assert_eq!(
+            ConversationRuntime::parse("legacy_v1").unwrap(),
+            ConversationRuntime::LegacyV1
+        );
+        assert!(ConversationRuntime::parse("").is_err());
+        assert!(ConversationRuntime::parse("session-v2").is_err());
+    }
+
+    #[test]
     fn blind_review_bundle_preserves_structured_authoritative_evidence() {
         let receipts = vec![ConversationLabScenarioReceipt {
             scenario_ref: "sealed-scenario".into(),
@@ -2650,7 +3097,9 @@ mod tests {
             transcript: Vec::new(),
             final_judgment: None,
             final_judgment_error: None,
-            passed: false,
+            review_ready: true,
+            latency_slo_passed: true,
+            internal_judge_advisory_excellent: false,
             turns: vec![ConversationLabTurnReceipt {
                 turn_index: 0,
                 user_message: "What is current?".into(),
@@ -2668,6 +3117,9 @@ mod tests {
                     tool_id: "source_runtime.inspect".into(),
                     summary: "One source is current.".into(),
                     data: json!({"current": true, "source_count": 1}),
+                    state: ToolResultState::Succeeded,
+                    complete: true,
+                    blocker: None,
                 }],
                 response_markdown: Some("One source is current.".into()),
                 terminal_state: "delivered".into(),
@@ -2690,11 +3142,14 @@ mod tests {
         assert_eq!(observation["summary"], "One source is current.");
         assert_eq!(observation["data"]["current"], true);
         assert_eq!(observation["data"]["source_count"], 1);
+        assert_eq!(observation["state"], "succeeded");
+        assert_eq!(observation["complete"], true);
 
         let encoded = serde_json::to_string(&bundle).unwrap();
         assert!(!encoded.contains("rust"));
         assert!(!encoded.contains("model_id"));
         assert!(!encoded.contains("commit_sha"));
+        assert!(!encoded.contains("latency_ms"));
     }
 
     #[test]

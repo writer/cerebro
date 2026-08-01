@@ -19,8 +19,11 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+pub mod session;
+
 pub const AGENT_TURN_REQUEST_V1: &str = "agent-turn-request/v1";
 pub const AGENT_TURN_RESULT_V1: &str = "agent-turn-result/v1";
+pub const AGENT_DELIVERY_RECEIPT_V1: &str = "agent-delivery-receipt/v1";
 pub const MAX_HISTORY_ITEMS: usize = 200;
 pub const MAX_HISTORY_ITEM_BYTES: usize = 1024 * 1024;
 pub const MAX_HISTORY_TOTAL_BYTES: usize = 1024 * 1024;
@@ -236,6 +239,8 @@ pub struct EvidenceRecord {
     pub observed_at: String,
     pub fresh_until: Option<String>,
     pub complete: bool,
+    #[serde(default)]
+    pub atoms: Vec<session::EvidenceAtom>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -248,7 +253,7 @@ pub struct ToolResult {
     pub blocker: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ToolObservation {
     pub sequence: usize,
     pub call: ToolCall,
@@ -460,9 +465,30 @@ pub struct ApprovalRequest {
     pub purpose: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentDeliveryReceipt {
+    pub schema_version: String,
+    pub tenant_id: String,
+    pub thread_ref: String,
+    pub request_id: String,
+    pub transport: String,
+    pub delivery_ref: String,
+    pub delivered_at: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum AgentTurnOutcome {
+    PendingDelivery {
+        schema_version: &'static str,
+        lane: ExecutionLane,
+        markdown: String,
+        final_state: FinalState,
+        evidence_refs: Vec<String>,
+        tool_call_count: usize,
+        working_state: Option<WorkingState>,
+    },
     Delivered {
         schema_version: &'static str,
         lane: ExecutionLane,
@@ -2526,6 +2552,7 @@ mod grounding_tests {
                         observed_at: "2026-07-31T11:59:00Z".into(),
                         fresh_until: Some("2026-07-31T12:05:00Z".into()),
                         complete: true,
+                        atoms: Vec::new(),
                     }],
                     blocker: None,
                 },

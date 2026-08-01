@@ -624,6 +624,7 @@ fn evidence(reference: &str, statement: &str) -> EvidenceRecord {
         observed_at: "2026-07-29T20:00:00Z".into(),
         fresh_until: Some("2026-07-29T20:05:00Z".into()),
         complete: true,
+        atoms: Vec::new(),
     }
 }
 

@@ -113,6 +113,62 @@ test("Slack uses the Rust agent turn endpoint without calling the legacy ask rou
   assert.equal(result.citationValidationPassed, true);
 });
 
+test("Slack acknowledges a pending Rust response only after transport delivery", async () => {
+  const requests: Request[] = [];
+  const client = new CerebroAskClient({
+    agentRuntimeUrl: "http://127.0.0.1:8091",
+    answerAuthority: testAnswerAuthority,
+    apiKey: "unused",
+    baseUrl: "https://legacy.example.com",
+    fetchImpl: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      if (new URL(request.url).pathname === "/v1/turns/run") {
+        return Response.json({
+          evidence_refs: ["evidence://graph/current"],
+          final_state: "answered",
+          lane: "investigate",
+          markdown: "The current graph state is verified.",
+          outcome: "pending_delivery",
+          schema_version: "agent-turn-result/v1",
+          tool_call_count: 2,
+        });
+      }
+      return new Response(null, { status: 204 });
+    },
+    tenantId: "writer",
+  });
+
+  const result = await client.runAgentTurn({
+    actorRef: "slack-user:U-ONE",
+    assessmentAt: "2026-07-31T20:00:00Z",
+    question: "Investigate the connector failure.",
+    requestId: "request-pending",
+    signal: new AbortController().signal,
+    threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+  });
+  assert.equal(result.deliveryAckRequired, true);
+  assert.equal(requests.length, 1);
+
+  await client.recordAgentTurnDelivery({
+    deliveredAt: "2026-07-31T20:01:00Z",
+    deliveryRef: "slack-message://sha256/receipt",
+    requestId: "request-pending",
+    signal: new AbortController().signal,
+    threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+  });
+  assert.equal(new URL(requests[1]?.url ?? "").pathname, "/v1/turns/deliveries");
+  assert.deepEqual(await requests[1]?.clone().json(), {
+    delivered_at: "2026-07-31T20:01:00Z",
+    delivery_ref: "slack-message://sha256/receipt",
+    request_id: "request-pending",
+    schema_version: "agent-delivery-receipt/v1",
+    tenant_id: "writer",
+    thread_ref: "slack-thread:T-ONE:C-ONE:thread-one",
+    transport: "slack",
+  });
+});
+
 test("informal operational check-ins use the Rust agent instead of legacy Ask", async () => {
   let request: Request | undefined;
   const client = new CerebroAskClient({

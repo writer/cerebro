@@ -595,6 +595,7 @@ fn mcp_evidence(
                 .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
         ),
         complete,
+        atoms: Vec::new(),
     })
 }
 

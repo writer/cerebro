@@ -130,6 +130,10 @@ export interface AssistantQuestionInput {
 }
 
 export interface AssistantQuestionResult {
+  agentDelivery?: {
+    requestId: string;
+    threadRef: string;
+  };
   pending: Omit<PendingAssistantOutcome, "delivered_message_ts">;
   text: string;
   verifiedTurn?: {
@@ -242,6 +246,14 @@ export class AssistantQuestionService {
             ? this.clock()
             : undefined;
         return {
+          ...(answer.deliveryAckRequired
+            ? {
+                agentDelivery: {
+                  requestId,
+                  threadRef: input.threadRef,
+                },
+              }
+            : {}),
           pending: pendingOutcome({
             budgetMs: budget.latency_budget_ms,
             executionLane: answer.executionLane,
@@ -500,6 +512,18 @@ export class AssistantQuestionService {
         },
       };
     }
+  }
+
+  async acknowledgeAgentDelivery(input: {
+    deliveredAt: string;
+    deliveryRef: string;
+    requestId: string;
+    threadRef: string;
+  }): Promise<void> {
+    await this.askClient.recordAgentTurnDelivery({
+      ...input,
+      signal: this.timeoutSignal(10_000),
+    });
   }
 
   private recordSourceResult(succeeded: boolean, latencyMs: number): void {
@@ -992,6 +1016,14 @@ export async function handleSlackMention(input: {
       deliveredMessageTs,
       deliveredText,
     );
+    if (result.agentDelivery) {
+      await input.questions.acknowledgeAgentDelivery({
+        deliveredAt,
+        deliveryRef: references.destinationReceipt,
+        requestId: result.agentDelivery.requestId,
+        threadRef: result.agentDelivery.threadRef,
+      });
+    }
     await input.host.recordDelivery({
       created_at: result.pending.opened_at,
       delivery_id: `slack-delivery-${requestDigest}`,
