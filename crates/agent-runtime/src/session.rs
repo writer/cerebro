@@ -3169,6 +3169,7 @@ pub fn validate_grounded_draft(
 ) -> Result<ValidatedDraft, AgentRuntimeError> {
     validate_session(session)?;
     validate_mission(&draft.mission)?;
+    validate_explicit_streak_reset_language(draft, observations)?;
     if !bounded(&draft.message, MAX_DELIVERY_MESSAGE_BYTES)
         || draft.claims.len() > MAX_VISIBLE_CLAIMS
         || !draft.presentation_ready
@@ -3292,6 +3293,45 @@ pub fn validate_grounded_draft(
         markdown: draft.message.trim().to_owned(),
         evidence_atom_refs: cited_atoms.into_iter().collect(),
     })
+}
+
+fn validate_explicit_streak_reset_language(
+    draft: &GroundedDraft,
+    observations: &[ToolObservation],
+) -> Result<(), AgentRuntimeError> {
+    let claims_reset = draft.claims.iter().any(|claim| {
+        let text = claim.text.to_ascii_lowercase();
+        text.contains("streak reset")
+            || text.contains("streak has reset")
+            || text.contains("streak was reset")
+            || text.contains("reset the streak")
+    });
+    if !claims_reset {
+        return Ok(());
+    }
+    let observed_reset = observations
+        .iter()
+        .any(|observation| json_has_true_named_field(&observation.result.data, "streak_reset"));
+    if observed_reset {
+        return Ok(());
+    }
+    Err(AgentRuntimeError::InvalidFinal(
+        "the response says the receipt streak reset, but no current observation reports streak_reset=true. If a stale receipt merely failed to advance an unchanged fresh count, say the count remains at its current value"
+            .into(),
+    ))
+}
+
+fn json_has_true_named_field(value: &Value, field: &str) -> bool {
+    match value {
+        Value::Object(entries) => entries.iter().any(|(key, value)| {
+            (key == field && value.as_bool() == Some(true))
+                || json_has_true_named_field(value, field)
+        }),
+        Value::Array(items) => items
+            .iter()
+            .any(|item| json_has_true_named_field(item, field)),
+        _ => false,
+    }
 }
 
 struct ClaimValidationContext<'a, 'b> {
@@ -5299,6 +5339,32 @@ mod tests {
                 .collect::<String>(),
             progress.message
         );
+    }
+
+    #[test]
+    fn receipt_streak_reset_language_requires_an_explicit_current_signal() {
+        let mut candidate = draft();
+        candidate.claims[0].text = "The fresh receipt streak reset to one.".into();
+        candidate.message = candidate
+            .claims
+            .iter()
+            .map(|claim| claim.text.as_str())
+            .collect();
+        let mut current = observation(true, Some("2026-07-31T00:06:00Z"));
+        current.result.data = json!({
+            "fresh_complete_receipts": 1,
+            "streak_reset": false
+        });
+
+        assert!(
+            validate_explicit_streak_reset_language(&candidate, &[current.clone()])
+                .unwrap_err()
+                .to_string()
+                .contains("streak_reset=true")
+        );
+
+        current.result.data["streak_reset"] = json!(true);
+        assert!(validate_explicit_streak_reset_language(&candidate, &[current]).is_ok());
     }
 
     #[test]
