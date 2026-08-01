@@ -210,6 +210,13 @@ struct AutonomyToolFixture {
     freshness_seconds: i64,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct AutonomyAuthorityGroup {
+    fixture_tool_id: String,
+    accepted_tool_ids: Vec<String>,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum ExpectedDelivery {
@@ -228,6 +235,8 @@ enum ExpectedCommitmentState {
 #[serde(deny_unknown_fields)]
 struct AutonomyHoldoutScenario {
     scenario: ConversationLabScenario,
+    #[serde(default)]
+    authority_groups: Vec<AutonomyAuthorityGroup>,
     phases: Vec<AutonomyPhaseFixture>,
     expected_delivery: Vec<ExpectedDelivery>,
     expected_terminal_commitment: ExpectedCommitmentState,
@@ -622,6 +631,7 @@ struct EvalTools {
     scenario_anchor_at: Option<String>,
     autonomy_phase: Mutex<u8>,
     autonomy_fixtures: Option<Vec<AutonomyPhaseFixture>>,
+    autonomy_authority_groups: Vec<AutonomyAuthorityGroup>,
     observations: Mutex<Vec<EvaluationObservationReceipt>>,
     runtime_cursor_format: Mutex<String>,
 }
@@ -633,6 +643,7 @@ impl EvalTools {
             scenario_anchor_at: None,
             autonomy_phase: Mutex::new(0),
             autonomy_fixtures: None,
+            autonomy_authority_groups: Vec::new(),
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
         }
@@ -644,6 +655,7 @@ impl EvalTools {
             scenario_anchor_at: Some(scenario_anchor_at),
             autonomy_phase: Mutex::new(0),
             autonomy_fixtures: None,
+            autonomy_authority_groups: Vec::new(),
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
         }
@@ -653,12 +665,14 @@ impl EvalTools {
         case_ref: impl Into<String>,
         scenario_anchor_at: String,
         fixtures: Vec<AutonomyPhaseFixture>,
+        authority_groups: Vec<AutonomyAuthorityGroup>,
     ) -> Self {
         Self {
             case_ref: case_ref.into(),
             scenario_anchor_at: Some(scenario_anchor_at),
             autonomy_phase: Mutex::new(0),
             autonomy_fixtures: Some(fixtures),
+            autonomy_authority_groups: authority_groups,
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
         }
@@ -786,12 +800,10 @@ impl AgentTools for EvalTools {
                 .get(phase)
                 .and_then(|phase| {
                     phase.observations.get(&call.tool_id).or_else(|| {
-                        matches!(
-                            call.tool_id.as_str(),
-                            "source_runtime.overview" | "mcp.cerebro.sources.health"
-                        )
-                        .then(|| phase.observations.get("source_runtime.inspect"))
-                        .flatten()
+                        self.autonomy_authority_groups
+                            .iter()
+                            .find(|group| group.accepted_tool_ids.contains(&call.tool_id))
+                            .and_then(|group| phase.observations.get(&group.fixture_tool_id))
                     })
                 })
                 .cloned()
@@ -2144,6 +2156,14 @@ fn autonomy_lab_scenario() -> ConversationLabScenario {
 fn embedded_autonomy_holdout_scenario() -> AutonomyHoldoutScenario {
     AutonomyHoldoutScenario {
         scenario: autonomy_lab_scenario(),
+        authority_groups: vec![AutonomyAuthorityGroup {
+            fixture_tool_id: "source_runtime.inspect".into(),
+            accepted_tool_ids: vec![
+                "source_runtime.inspect".into(),
+                "source_runtime.overview".into(),
+                "mcp.cerebro.sources.health".into(),
+            ],
+        }],
         phases: embedded_autonomy_phase_fixtures(),
         expected_delivery: vec![
             ExpectedDelivery::Visible,
@@ -2165,7 +2185,7 @@ fn selected_autonomy_scenario() -> Result<AutonomyScenarioSelection, Box<dyn Err
             );
         }
         let pack: AutonomyHoldoutPack = serde_json::from_slice(&bytes)?;
-        if pack.schema_version != "cerebro-slack-agent-autonomy-holdout-pack/v1" {
+        if pack.schema_version != "cerebro-slack-agent-autonomy-holdout-pack/v2" {
             return Err("unsupported autonomy holdout pack schema".into());
         }
         validate_autonomy_holdout_scenarios(&pack.scenarios)?;
@@ -2222,8 +2242,22 @@ fn validate_autonomy_holdout_scenarios(
         .collect::<BTreeSet<_>>();
     let mut scenario_refs = BTreeSet::new();
     for scenario in scenarios {
+        let mut grouped_tools = BTreeSet::new();
+        let authority_groups_valid = !scenario.authority_groups.is_empty()
+            && scenario.authority_groups.iter().all(|group| {
+                allowed_tools.contains(&group.fixture_tool_id)
+                    && !group.accepted_tool_ids.is_empty()
+                    && group.accepted_tool_ids.iter().all(|tool_id| {
+                        allowed_tools.contains(tool_id) && grouped_tools.insert(tool_id.as_str())
+                    })
+                    && scenario
+                        .phases
+                        .iter()
+                        .any(|phase| phase.observations.contains_key(&group.fixture_tool_id))
+            });
         if scenario.scenario.scenario_ref.trim().is_empty()
             || !scenario_refs.insert(scenario.scenario.scenario_ref.as_str())
+            || !authority_groups_valid
             || !(2..=8).contains(&scenario.phases.len())
             || scenario.expected_delivery.len() != scenario.phases.len()
             || scenario.expected_delivery.first() != Some(&ExpectedDelivery::Visible)
@@ -2272,6 +2306,7 @@ async fn run_autonomy_lab(
     let holdout_source = selection.source;
     let AutonomyHoldoutScenario {
         scenario,
+        authority_groups,
         phases,
         expected_delivery,
         expected_terminal_commitment,
@@ -2284,7 +2319,12 @@ async fn run_autonomy_lab(
         &scenario.scenario_ref,
     );
     let mut session = evaluation_session(0, &scenario, &evaluated_at, "rust-autonomy-lab-tenant");
-    let tools = EvalTools::for_autonomy(&scenario.fixture_ref, evaluated_at.clone(), phases);
+    let tools = EvalTools::for_autonomy(
+        &scenario.fixture_ref,
+        evaluated_at.clone(),
+        phases,
+        authority_groups,
+    );
     let mut transcript = Vec::new();
     let mut turns = Vec::new();
     let mut all_observations = Vec::new();
@@ -4307,6 +4347,13 @@ mod tests {
                         freshness_seconds: -1,
                     },
                 )]),
+            }],
+            vec![AutonomyAuthorityGroup {
+                fixture_tool_id: "source_runtime.inspect".into(),
+                accepted_tool_ids: vec![
+                    "source_runtime.overview".into(),
+                    "mcp.cerebro.sources.health".into(),
+                ],
             }],
         );
         let request = AgentTurnRequest {
