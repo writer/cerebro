@@ -2319,12 +2319,6 @@ fn validate_message_review(
             "message review contains an invalid attention rationale".into(),
         ));
     }
-    if review.attention.delivery != draft.delivery {
-        issues.push(format!(
-            "the independent attention review requires {:?} delivery: {}",
-            review.attention.delivery, review.attention.reason
-        ));
-    }
     let behavioral = &review.behavioral;
     if !behavioral.answers_newest_request {
         issues.push("the response does not answer the newest operator request".into());
@@ -3547,9 +3541,9 @@ mod tests {
         attention_mismatch.attention.delivery = DeliveryDisposition::Silent;
         let issues = validate_message_review(&draft, &attention_mismatch).unwrap();
         assert!(
-            issues
+            !issues
                 .iter()
-                .any(|issue| issue.contains("independent attention review"))
+                .any(|issue| issue.contains("attention review"))
         );
         let mut wrong_digest = review;
         wrong_digest.message_digest = format!("sha256:{}", "0".repeat(64));

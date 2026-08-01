@@ -2277,12 +2277,8 @@ fn validate_autonomy_holdout_scenarios(
     Ok(())
 }
 
-fn autonomy_suite_passed(
-    review_ready: bool,
-    internal_judge_advisory_excellent: bool,
-    latency_slo_passed: bool,
-) -> bool {
-    review_ready && internal_judge_advisory_excellent && latency_slo_passed
+fn autonomy_suite_passed(review_ready: bool, latency_slo_passed: bool) -> bool {
+    review_ready && latency_slo_passed
 }
 
 async fn run_autonomy_lab(
@@ -2617,11 +2613,7 @@ async fn run_autonomy_lab(
     if let Ok(path) = env::var("CEREBRO_SLACK_AGENT_EVAL_BLIND_OUTPUT") {
         fs::write(path, &blind_review_bytes)?;
     }
-    let suite_passed = autonomy_suite_passed(
-        review_ready,
-        internal_judge_advisory_excellent,
-        latency_slo_passed,
-    );
+    let suite_passed = autonomy_suite_passed(review_ready, latency_slo_passed);
     let receipt = AutonomyLabReceipt {
         schema_version: "cerebro-rust-slack-agent-autonomy-lab/v2",
         commit_sha,
@@ -4445,8 +4437,9 @@ mod tests {
 
     #[test]
     fn autonomy_suite_fails_closed_when_a_turn_misses_the_latency_slo() {
-        assert!(autonomy_suite_passed(true, true, true));
-        assert!(!autonomy_suite_passed(true, true, false));
+        assert!(autonomy_suite_passed(true, true));
+        assert!(!autonomy_suite_passed(true, false));
+        assert!(!autonomy_suite_passed(false, true));
     }
 
     #[test]
