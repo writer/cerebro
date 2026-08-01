@@ -772,7 +772,16 @@ impl AgentTools for EvalTools {
             );
             phases
                 .get(phase)
-                .and_then(|phase| phase.observations.get(&call.tool_id))
+                .and_then(|phase| {
+                    phase.observations.get(&call.tool_id).or_else(|| {
+                        matches!(
+                            call.tool_id.as_str(),
+                            "source_runtime.overview" | "mcp.cerebro.sources.health"
+                        )
+                        .then(|| phase.observations.get("source_runtime.inspect"))
+                        .flatten()
+                    })
+                })
                 .cloned()
         });
         let unavailable_autonomy_tool = self.autonomy_fixtures.is_some()
@@ -4314,6 +4323,27 @@ mod tests {
             result.evidence[0].fresh_until.as_deref(),
             Some("2026-07-30T23:59:59Z")
         );
+        for tool_id in ["source_runtime.overview", "mcp.cerebro.sources.health"] {
+            let equivalent = AgentTools::invoke(
+                &tools,
+                &request,
+                &ToolCall {
+                    call_id: format!("call:{tool_id}"),
+                    tool_id: tool_id.into(),
+                    purpose: "Read the equivalent source authority view.".into(),
+                    input: json!({}),
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(equivalent.state, ToolResultState::Partial);
+            assert!(!equivalent.evidence[0].complete);
+            assert_eq!(equivalent.data["receipt_state"], "stale");
+            assert_eq!(
+                equivalent.evidence[0].fresh_until.as_deref(),
+                Some("2026-07-30T23:59:59Z")
+            );
+        }
         let unavailable = AgentTools::invoke(
             &tools,
             &request,
