@@ -20,7 +20,7 @@ use cerebro_agent_runtime::{
         EvidenceAtomization, MessageReview, MissionState, SessionAgentModel, SessionEvent,
         SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
         SessionModelTurn, SessionStatus, SessionTools, SessionTurnInput, SessionTurnOutcome,
-        apply_session_events, evidence_atoms_from_json, run_session_turn,
+        apply_session_events, evidence_atoms_from_json, message_digest, run_session_turn,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -1370,6 +1370,14 @@ async fn run_evaluation_session_turn(
                         request_id: request.request_id.clone(),
                         transport: "off_slack_lab".into(),
                         delivery_ref: format!("lab-delivery:{}", request.request_id),
+                        payload_digest: message_digest(
+                            &session
+                                .pending_delivery
+                                .as_ref()
+                                .expect("the completed lab turn has a pending response")
+                                .draft
+                                .message,
+                        ),
                     },
                 },
                 SessionEventRecord {

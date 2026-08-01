@@ -474,6 +474,7 @@ pub struct AgentDeliveryReceipt {
     pub request_id: String,
     pub transport: String,
     pub delivery_ref: String,
+    pub payload_digest: String,
     pub delivered_at: String,
 }
 

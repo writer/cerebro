@@ -28,6 +28,7 @@ const MAX_OPEN_LOOPS: usize = 16;
 const MAX_VISIBLE_CLAIMS: usize = 32;
 const MAX_SESSION_STEPS: usize = 48;
 const MAX_MODEL_REPAIRS: usize = 3;
+const MAX_DELIVERY_MESSAGE_BYTES: usize = 3_500;
 const MAX_MESSAGE_BYTES: usize = 16 * 1024;
 const MAX_TEXT_BYTES: usize = 4 * 1024;
 const MAX_SESSION_MESSAGES: usize = 400;
@@ -332,6 +333,7 @@ pub enum SessionEvent {
         request_id: String,
         transport: String,
         delivery_ref: String,
+        payload_digest: String,
     },
     MemoryRecorded {
         update: MemoryUpdate,
@@ -1511,7 +1513,7 @@ fn validate_message_review(
     Ok(issues)
 }
 
-fn message_digest(message: &str) -> String {
+pub fn message_digest(message: &str) -> String {
     let digest = Sha256::digest(message.as_bytes())
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -1612,7 +1614,7 @@ pub fn validate_grounded_draft(
 ) -> Result<ValidatedDraft, AgentRuntimeError> {
     validate_session(session)?;
     validate_mission(&draft.mission)?;
-    if !bounded(&draft.message, MAX_MESSAGE_BYTES)
+    if !bounded(&draft.message, MAX_DELIVERY_MESSAGE_BYTES)
         || draft.claims.len() > MAX_VISIBLE_CLAIMS
         || !draft.presentation_ready
         || draft
@@ -2439,6 +2441,7 @@ mod tests {
                     request_id: "request:1".into(),
                     transport: "slack".into(),
                     delivery_ref: "slack-message:1".into(),
+                    payload_digest: message_digest(&draft().message),
                 },
             }],
         )

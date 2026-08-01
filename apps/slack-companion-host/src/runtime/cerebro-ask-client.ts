@@ -193,6 +193,7 @@ export class CerebroAskClient {
   async recordAgentTurnDelivery(input: {
     deliveredAt: string;
     deliveryRef: string;
+    payloadDigest: string;
     requestId: string;
     signal: AbortSignal;
     threadRef: string;
@@ -209,6 +210,7 @@ export class CerebroAskClient {
         body: JSON.stringify({
           delivered_at: input.deliveredAt,
           delivery_ref: input.deliveryRef,
+          payload_digest: input.payloadDigest,
           request_id: input.requestId,
           schema_version: "agent-delivery-receipt/v1",
           tenant_id: this.options.tenantId,

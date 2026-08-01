@@ -31,7 +31,7 @@ use cerebro_agent_runtime::{
         EvidenceAtomization, MessageReview, MissionState, SessionAgentModel, SessionEvent,
         SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
         SessionModelTurn, SessionStatus, SessionStore, SessionTools, SessionTurnInput,
-        SessionTurnOutcome, apply_session_events, evidence_atoms_from_json,
+        SessionTurnOutcome, apply_session_events, evidence_atoms_from_json, message_digest,
         run_session_turn_recorded,
     },
 };
@@ -316,6 +316,7 @@ impl SlackAgentService {
             || receipt.request_id.trim().is_empty()
             || receipt.transport.trim().is_empty()
             || receipt.delivery_ref.trim().is_empty()
+            || !is_sha256_digest(&receipt.payload_digest)
             || OffsetDateTime::parse(&receipt.delivered_at, &Rfc3339).is_err()
         {
             return Err(AgentRuntimeError::InvalidRequest(
@@ -331,17 +332,29 @@ impl SlackAgentService {
             .load_by_thread(&receipt.tenant_id, &receipt.thread_ref)
             .await?
             .ok_or_else(|| AgentRuntimeError::InvalidRequest("session does not exist".into()))?;
-        if session.events.iter().any(|event| {
-            matches!(
-                &event.event,
-                SessionEvent::DeliveryRecorded {
-                    request_id,
-                    delivery_ref,
-                    ..
-                } if request_id == &receipt.request_id && delivery_ref == &receipt.delivery_ref
-            )
+        if let Some(recorded) = session.events.iter().find_map(|event| match &event.event {
+            SessionEvent::DeliveryRecorded {
+                request_id,
+                transport,
+                delivery_ref,
+                payload_digest,
+            } if request_id == &receipt.request_id => {
+                Some((transport, delivery_ref, payload_digest))
+            }
+            _ => None,
         }) {
-            return Ok(());
+            if recorded
+                == (
+                    &receipt.transport,
+                    &receipt.delivery_ref,
+                    &receipt.payload_digest,
+                )
+            {
+                return Ok(());
+            }
+            return Err(AgentRuntimeError::InvalidRequest(
+                "delivery receipt changed after the request was recorded".into(),
+            ));
         }
         let pending = session.pending_delivery.as_ref().ok_or_else(|| {
             AgentRuntimeError::InvalidRequest("delivery receipt has no pending response".into())
@@ -349,6 +362,11 @@ impl SlackAgentService {
         if pending.request_id != receipt.request_id {
             return Err(AgentRuntimeError::InvalidRequest(
                 "delivery receipt belongs to another request".into(),
+            ));
+        }
+        if receipt.payload_digest != message_digest(&pending.draft.message) {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "delivery receipt payload does not match the pending response".into(),
             ));
         }
         let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
@@ -362,6 +380,7 @@ impl SlackAgentService {
                     request_id: receipt.request_id.clone(),
                     transport: receipt.transport,
                     delivery_ref: receipt.delivery_ref,
+                    payload_digest: receipt.payload_digest,
                 },
             },
             SessionEventRecord {
@@ -379,6 +398,15 @@ impl SlackAgentService {
             .append(&session.session_ref, expected_sequence, &events)
             .await
     }
+}
+
+fn is_sha256_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
 }
 
 fn new_session(request: &AgentTurnRequest) -> Result<AgentSession, AgentRuntimeError> {

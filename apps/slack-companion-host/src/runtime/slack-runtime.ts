@@ -133,6 +133,7 @@ export interface AssistantQuestionInput {
 
 export interface AssistantQuestionResult {
   agentDelivery?: {
+    payloadDigest: string;
     requestId: string;
     threadRef: string;
   };
@@ -309,10 +310,18 @@ export class AssistantQuestionService {
           answer.finalState === "answered" || answer.finalState === "partial"
             ? this.clock()
             : undefined;
+        const slackText = boundedSlackText(answer.markdown);
+        if (answer.deliveryAckRequired && slackText !== answer.markdown) {
+          throw new CerebroAskError(
+            "unavailable",
+            "The Rust agent response exceeds the exact Slack delivery envelope.",
+          );
+        }
         return {
           ...(answer.deliveryAckRequired
             ? {
                 agentDelivery: {
+                  payloadDigest: `sha256:${digest(answer.markdown)}`,
                   requestId: turnRequestId,
                   threadRef: input.threadRef,
                 },
@@ -327,7 +336,7 @@ export class AssistantQuestionService {
             usefulAnswerAt,
             verified: answer.citationValidationPassed,
           }),
-          text: boundedSlackText(answer.markdown),
+          text: slackText,
           workingTurn: {
             ...(answer.workingState?.active_lane === undefined
               ? {}
@@ -581,6 +590,7 @@ export class AssistantQuestionService {
   async acknowledgeAgentDelivery(input: {
     deliveredAt: string;
     deliveryRef: string;
+    payloadDigest: string;
     requestId: string;
     threadRef: string;
   }): Promise<void> {
@@ -1066,7 +1076,16 @@ export async function handleSlackMention(input: {
         ? {}
         : { workingState: scratchpad.working_state }),
     });
-    const deliveredText = formatEnvironmentMessage(input.config, result.text);
+    const deliveredText = result.agentDelivery
+      ? result.text
+      : formatEnvironmentMessage(input.config, result.text);
+    const deliveredPayloadDigest = `sha256:${digest(deliveredText)}`;
+    if (
+      result.agentDelivery
+      && result.agentDelivery.payloadDigest !== deliveredPayloadDigest
+    ) {
+      throw new Error("The Slack payload changed after the Rust agent prepared delivery.");
+    }
     await input.client.chat.update({
       channel: input.event.channel,
       text: deliveredText,
@@ -1084,6 +1103,7 @@ export async function handleSlackMention(input: {
       await input.questions.acknowledgeAgentDelivery({
         deliveredAt,
         deliveryRef: references.destinationReceipt,
+        payloadDigest: deliveredPayloadDigest,
         requestId: result.agentDelivery.requestId,
         threadRef: result.agentDelivery.threadRef,
       });
@@ -1097,7 +1117,7 @@ export async function handleSlackMention(input: {
         destination_receipt: references.destinationReceipt,
         idempotency_key: `slack-delivery-${requestDigest}:part:1`,
         part_id: "answer",
-        payload_digest: `sha256:${digest(deliveredText)}`,
+        payload_digest: deliveredPayloadDigest,
         payload_ref: references.payloadRef,
         sequence: 1,
         state: "delivered",
