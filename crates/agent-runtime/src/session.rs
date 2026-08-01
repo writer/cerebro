@@ -1696,6 +1696,16 @@ fn validate_commitment_baselines(
                         .into(),
                 ));
             }
+            if policy
+                .alert_any
+                .iter()
+                .any(|condition| observation_condition_matches(condition, observations))
+            {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "the new commitment's alert_any condition is already true at baseline; alerts must describe a future regression, conflict, stale, or mismatch state"
+                        .into(),
+                ));
+            }
             let covered = policy
                 .acceptance_all
                 .iter()
@@ -4222,11 +4232,27 @@ mod tests {
                 &session,
                 &scheduled,
                 Some(&plan()),
-                &[baseline],
+                std::slice::from_ref(&baseline),
                 assessment_at,
             )
             .is_ok()
         );
+
+        scheduled.mission.commitments[0]
+            .attention_policy
+            .as_mut()
+            .unwrap()
+            .alert_any[0]
+            .equals = json!(false);
+        let error = validate_commitment_baselines(
+            &session,
+            &scheduled,
+            Some(&plan()),
+            std::slice::from_ref(&baseline),
+            assessment_at,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("already true at baseline"));
     }
 
     #[test]
