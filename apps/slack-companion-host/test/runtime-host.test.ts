@@ -174,6 +174,126 @@ test("Slack acknowledges a pending Rust response only after transport delivery",
   });
 });
 
+test("Slack validates and acknowledges the exact Rust wake delivery claim", async () => {
+  const requests: Request[] = [];
+  const threadRef = `slack-scratchpad://sha256/${"a".repeat(64)}`;
+  const delivery = {
+    lease: {
+      commitment_ref: "commitment:wake-test",
+      delivery_attempt_ref: `wake-delivery-attempt://sha256/${"b".repeat(64)}`,
+      delivery_ref: `wake-delivery://sha256/${"c".repeat(64)}`,
+      fence: 4,
+      lease_expires_at: "2026-07-31T20:05:00.123456Z",
+      lease_owner: "slack-host:test",
+      lease_token: `wake-delivery-lease://sha256/${"d".repeat(64)}`,
+      payload_digest: `sha256:${"e".repeat(64)}`,
+      request_id: "wake-request:test",
+      schedule_generation: 2,
+      session_ref: "session:wake-test",
+    },
+    markdown: "The scheduled check completed.",
+    mode: "send" as const,
+    tenant_id: "writer",
+    thread_ref: threadRef,
+  };
+  const client = new CerebroAskClient({
+    agentRuntimeUrl: "http://127.0.0.1:8091",
+    answerAuthority: testAnswerAuthority,
+    apiKey: "unused",
+    baseUrl: "https://legacy.example.com",
+    fetchImpl: async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      switch (new URL(request.url).pathname) {
+        case "/v1/wakes/run":
+          return Response.json({
+            wake: {
+              commitment_ref: "commitment:wake-test",
+              request_id: "wake-request:test",
+              schedule_generation: 2,
+              session_ref: "session:wake-test",
+              state: "awaiting_delivery",
+            },
+          });
+        case "/v1/wakes/pending-deliveries/claim":
+          return Response.json({ delivery });
+        default:
+          return new Response(null, { status: 204 });
+      }
+    },
+    tenantId: "writer",
+  });
+
+  assert.equal((await client.runDueWake({
+    signal: new AbortController().signal,
+    workerRef: "slack-host:test",
+  }))?.state, "awaiting_delivery");
+  const claimed = await client.claimPendingWakeDelivery({
+    signal: new AbortController().signal,
+    workerRef: "slack-host:test",
+  });
+  assert.deepEqual(claimed, delivery);
+  await client.recordWakeDelivery({
+    deliveredAt: "2026-07-31T20:01:00.000Z",
+    delivery: claimed!,
+    destinationReceipt: "slack-message://sha256/receipt",
+    signal: new AbortController().signal,
+  });
+
+  assert.deepEqual(await requests[2]?.clone().json(), {
+    lease: delivery.lease,
+    receipt: {
+      delivered_at: "2026-07-31T20:01:00.000Z",
+      delivery_ref: "slack-message://sha256/receipt",
+      payload_digest: delivery.lease.payload_digest,
+      request_id: delivery.lease.request_id,
+      schema_version: "agent-delivery-receipt/v1",
+      tenant_id: "writer",
+      thread_ref: threadRef,
+      transport: "slack",
+    },
+  });
+});
+
+test("Slack rejects a wake delivery claim for another tenant before transport", async () => {
+  const client = new CerebroAskClient({
+    agentRuntimeUrl: "http://127.0.0.1:8091",
+    answerAuthority: testAnswerAuthority,
+    apiKey: "unused",
+    baseUrl: "https://legacy.example.com",
+    fetchImpl: async () => Response.json({
+      delivery: {
+        lease: {
+          commitment_ref: "commitment:wake-test",
+          delivery_attempt_ref: `wake-delivery-attempt://sha256/${"b".repeat(64)}`,
+          delivery_ref: `wake-delivery://sha256/${"c".repeat(64)}`,
+          fence: 4,
+          lease_expires_at: "2026-07-31T20:05:00Z",
+          lease_owner: "slack-host:test",
+          lease_token: `wake-delivery-lease://sha256/${"d".repeat(64)}`,
+          payload_digest: `sha256:${"e".repeat(64)}`,
+          request_id: "wake-request:test",
+          schedule_generation: 2,
+          session_ref: "session:wake-test",
+        },
+        markdown: "The scheduled check completed.",
+        mode: "send",
+        tenant_id: "other-tenant",
+        thread_ref: `slack-scratchpad://sha256/${"a".repeat(64)}`,
+      },
+    }),
+    tenantId: "writer",
+  });
+
+  await assert.rejects(
+    client.claimPendingWakeDelivery({
+      signal: new AbortController().signal,
+      workerRef: "slack-host:test",
+    }),
+    /claim is invalid/u,
+  );
+});
+
 test("Slack persists an exact Rust approval and resumes the original turn once", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-agent-approval-"));
   const approvalRef = `approval://agent-effect/${"a".repeat(64)}`;
