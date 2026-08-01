@@ -31,9 +31,52 @@ import {
   formatEnvironmentMessage,
   formatSlackThreadContext,
   handleSlackMention,
+  humanSlackThreadReply,
   readSlackThreadContext,
   slackDeliveryReferences,
 } from "../src/runtime/slack-runtime.js";
+
+test("owned Slack threads accept human replies without another mention", () => {
+  assert.deepEqual(
+    humanSlackThreadReply({
+      channel: "C-ONE",
+      text: "Keep going from the prior answer.",
+      thread_ts: "1710000000.000001",
+      ts: "1710000001.000002",
+      type: "message",
+      user: "U-ONE",
+    }, "U-BOT"),
+    {
+      channel: "C-ONE",
+      eventTs: "1710000001.000002",
+      text: "Keep going from the prior answer.",
+      threadTs: "1710000000.000001",
+      userId: "U-ONE",
+    },
+  );
+});
+
+test("ambient, bot, edited, and explicitly mentioned Slack messages stay off the reply path", () => {
+  const base = {
+    channel: "C-ONE",
+    text: "Keep going.",
+    thread_ts: "1710000000.000001",
+    ts: "1710000001.000002",
+    type: "message",
+    user: "U-ONE",
+  };
+  for (const event of [
+    { ...base, thread_ts: undefined },
+    { ...base, user: "U-BOT" },
+    { ...base, bot_id: "B-ONE" },
+    { ...base, app_id: "A-ONE" },
+    { ...base, subtype: "message_changed" },
+    { ...base, text: "<@U-BOT> keep going." },
+    { ...base, text: "   " },
+  ]) {
+    assert.equal(humanSlackThreadReply(event, "U-BOT"), undefined);
+  }
+});
 
 const testAnswerAuthority: SlackAnswerAuthorityPort = {
   async authorizeQuestion(candidate) {

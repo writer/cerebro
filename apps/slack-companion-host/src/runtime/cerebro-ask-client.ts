@@ -99,6 +99,7 @@ export class CerebroAskClient {
   async runAgentTurn(input: {
     actorRef: string;
     assessmentAt: string;
+    contextScopeRef?: string;
     effectAuthorizations?: readonly AgentApprovalRequest[];
     history?: readonly CerebroAskHistoryMessage[];
     question: string;
@@ -127,6 +128,7 @@ export class CerebroAskClient {
       body: JSON.stringify({
         actor_ref: input.actorRef,
         assessment_at: input.assessmentAt,
+        context_scope_ref: input.contextScopeRef ?? null,
         effect_authorizations: (input.effectAuthorizations ?? []).map((authorization) => ({
           actor_ref: input.actorRef,
           approval_ref: authorization.approvalRef,

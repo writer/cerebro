@@ -3,8 +3,9 @@ use cerebro_agent_runtime::{
     AgentRuntimeError, FinalState,
     session::{
         AGENT_SESSION_EVENT_V2, AgentSession, CommitmentStatus, DeliveryDisposition, GroundedDraft,
-        SessionEvent, SessionEventRecord, SessionJournal, SessionStatus, SessionStore, WorkOwner,
-        apply_session_events, message_digest,
+        MemoryKind, MemoryUpdate, SessionEvent, SessionEventRecord, SessionJournal, SessionMessage,
+        SessionMessageRole, SessionStatus, SessionStore, WorkOwner, apply_session_events,
+        message_digest,
     },
 };
 use native_tls::TlsConnector;
@@ -83,6 +84,18 @@ CREATE TABLE IF NOT EXISTS cerebro_agent_memories (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (session_ref, memory_ref)
 );
+CREATE TABLE IF NOT EXISTS cerebro_agent_thread_contexts (
+  session_ref TEXT NOT NULL REFERENCES cerebro_agent_sessions(session_ref) ON DELETE CASCADE,
+  tenant_id TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  context_scope_ref TEXT NOT NULL,
+  thread_ref TEXT NOT NULL,
+  context_json JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (session_ref, actor_ref)
+);
+CREATE INDEX IF NOT EXISTS cerebro_agent_thread_contexts_recall_idx
+  ON cerebro_agent_thread_contexts (tenant_id, actor_ref, context_scope_ref, updated_at DESC);
 "#;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -211,6 +224,77 @@ impl PostgresAgentSessionStore {
             .await
             .map_err(store_unavailable)?;
         row.map(|row| decode_session(row.get(0))).transpose()
+    }
+
+    pub async fn bind_context_scope(
+        &self,
+        session_ref: &str,
+        context_scope_ref: &str,
+    ) -> Result<(), AgentRuntimeError> {
+        let changed = self
+            .client
+            .lock()
+            .await
+            .execute(
+                "UPDATE cerebro_agent_sessions SET snapshot_json = jsonb_set(snapshot_json, '{context_scope_ref}', to_jsonb($2::text), true), updated_at = NOW() WHERE session_ref = $1 AND (snapshot_json->>'context_scope_ref' IS NULL OR snapshot_json->>'context_scope_ref' = $2)",
+                &[&session_ref, &context_scope_ref],
+            )
+            .await
+            .map_err(store_unavailable)?;
+        if changed != 1 {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "conversation scope does not match the stored Slack session".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn recall_thread_contexts(
+        &self,
+        tenant_id: &str,
+        actor_ref: &str,
+        context_scope_ref: &str,
+        exclude_session_ref: &str,
+        limit: i64,
+    ) -> Result<Vec<MemoryUpdate>, AgentRuntimeError> {
+        if !(1..=24).contains(&limit) {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "prior-thread recall limit is invalid".into(),
+            ));
+        }
+        let rows = self
+            .client
+            .lock()
+            .await
+            .query(
+                "SELECT session_ref, context_json FROM cerebro_agent_thread_contexts WHERE tenant_id = $1 AND actor_ref = $2 AND context_scope_ref = $3 AND session_ref <> $4 ORDER BY updated_at DESC, session_ref DESC LIMIT $5",
+                &[&tenant_id, &actor_ref, &context_scope_ref, &exclude_session_ref, &limit],
+            )
+            .await
+            .map_err(store_unavailable)?;
+        rows.into_iter()
+            .map(|row| {
+                let session_ref: String = row.get(0);
+                let context: Value = row.get(1);
+                let digest = Sha256::digest(session_ref.as_bytes())
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>();
+                let statement = bounded_context_text(
+                    &serde_json::to_string(&context).map_err(invalid_snapshot)?,
+                    3_500,
+                );
+                Ok(MemoryUpdate {
+                    memory_ref: format!("recalled-thread:{digest}"),
+                    kind: MemoryKind::Handoff,
+                    statement: format!(
+                        "Prior Slack thread context from the same operator and channel: {statement}"
+                    ),
+                    evidence_atom_refs: Vec::new(),
+                    promotion_requested: false,
+                })
+            })
+            .collect()
     }
 
     pub async fn acquire_turn(
@@ -1056,7 +1140,107 @@ async fn project_session_state(
             .await
             .map_err(store_unavailable)?;
     }
+    if session.pending_delivery.is_none()
+        && let (Some(context_scope_ref), Some(operator_message)) = (
+            session.context_scope_ref.as_deref(),
+            completed_operator_message(&session.events, &session.messages),
+        )
+        && session
+            .messages
+            .iter()
+            .any(|message| message.role == SessionMessageRole::Assistant)
+    {
+        let actor_ref = operator_message.actor_ref.as_str();
+        let latest_user_message = Some(bounded_context_text(&operator_message.text, 4_000));
+        let latest_assistant_message = session
+            .messages
+            .iter()
+            .rev()
+            .find(|message| message.role == SessionMessageRole::Assistant)
+            .map(|message| bounded_context_text(&message.text, 8_000));
+        let commitments = session
+            .mission
+            .commitments
+            .iter()
+            .take(12)
+            .map(|commitment| {
+                serde_json::json!({
+                    "commitment_ref": commitment.commitment_ref,
+                    "summary": bounded_context_text(&commitment.summary, 1_000),
+                    "status": commitment.status,
+                    "next_action": commitment
+                        .next_action
+                        .as_deref()
+                        .map(|value| bounded_context_text(value, 1_000)),
+                })
+            })
+            .collect::<Vec<_>>();
+        let open_loops = session
+            .mission
+            .open_loops
+            .iter()
+            .take(12)
+            .map(|open_loop| {
+                serde_json::json!({
+                    "open_loop_ref": open_loop.open_loop_ref,
+                    "summary": bounded_context_text(&open_loop.summary, 1_000),
+                    "owner": open_loop.owner,
+                    "next_action": open_loop
+                        .next_action
+                        .as_deref()
+                        .map(|value| bounded_context_text(value, 1_000)),
+                    "blocked_by": open_loop
+                        .blocked_by
+                        .as_deref()
+                        .map(|value| bounded_context_text(value, 1_000)),
+                })
+            })
+            .collect::<Vec<_>>();
+        let context_json = serde_json::json!({
+            "source_session_ref": session.session_ref,
+            "source_thread_ref": session.thread_ref,
+            "objective": bounded_context_text(&session.mission.objective, 2_000),
+            "desired_outcome": bounded_context_text(&session.mission.desired_outcome, 2_000),
+            "status": session.mission.status,
+            "open_loops": open_loops,
+            "commitments": commitments,
+            "latest_user_message": latest_user_message,
+            "latest_assistant_message": latest_assistant_message,
+        });
+        transaction
+            .execute(
+                "INSERT INTO cerebro_agent_thread_contexts (session_ref, tenant_id, actor_ref, context_scope_ref, thread_ref, context_json) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (session_ref, actor_ref) DO UPDATE SET context_scope_ref = EXCLUDED.context_scope_ref, context_json = EXCLUDED.context_json, updated_at = NOW()",
+                &[&session.session_ref, &session.tenant_id, &actor_ref, &context_scope_ref, &session.thread_ref, &context_json],
+            )
+            .await
+            .map_err(store_unavailable)?;
+    }
     Ok(())
+}
+
+fn completed_operator_message<'a>(
+    events: &[SessionEventRecord],
+    messages: &'a [SessionMessage],
+) -> Option<&'a SessionMessage> {
+    let request_id = match &events.last()?.event {
+        SessionEvent::TurnCompleted { request_id, .. } => request_id,
+        _ => return None,
+    };
+    let message_ref = format!("operator:{request_id}");
+    messages.iter().rev().find(|message| {
+        message.role == SessionMessageRole::User && message.message_ref == message_ref
+    })
+}
+
+fn bounded_context_text(value: &str, maximum_bytes: usize) -> String {
+    if value.len() <= maximum_bytes {
+        return value.to_owned();
+    }
+    let mut boundary = maximum_bytes.saturating_sub(3);
+    while boundary > 0 && !value.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    format!("{}...", &value[..boundary])
 }
 
 async fn insert_event(
@@ -1117,6 +1301,56 @@ mod tests {
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("delivery_ref TEXT"));
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("delivery_attempt_ref TEXT"));
         assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("cerebro_agent_memories"));
+        assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("cerebro_agent_thread_contexts"));
+        assert!(POSTGRES_AGENT_SESSION_SCHEMA.contains("PRIMARY KEY (session_ref, actor_ref)"));
+        assert!(
+            POSTGRES_AGENT_SESSION_SCHEMA
+                .contains("tenant_id, actor_ref, context_scope_ref, updated_at DESC")
+        );
+    }
+
+    #[test]
+    fn prior_thread_context_text_is_utf8_safe_and_bounded() {
+        let value = "é".repeat(20);
+        let bounded = bounded_context_text(&value, 13);
+
+        assert!(bounded.len() <= 13);
+        assert!(bounded.ends_with("..."));
+    }
+
+    #[test]
+    fn completed_context_is_attributed_to_the_exact_turn_actor() {
+        let messages = vec![
+            SessionMessage {
+                role: SessionMessageRole::User,
+                message_ref: "operator:first-request".into(),
+                actor_ref: "slack-user:first".into(),
+                text: "First operator message".into(),
+                received_at: "2026-07-31T00:00:00Z".into(),
+            },
+            SessionMessage {
+                role: SessionMessageRole::User,
+                message_ref: "operator:second-request".into(),
+                actor_ref: "slack-user:second".into(),
+                text: "Second operator message".into(),
+                received_at: "2026-07-31T00:01:00Z".into(),
+            },
+        ];
+        let events = vec![SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: "agent-session:test".into(),
+            sequence: 1,
+            occurred_at: "2026-07-31T00:02:00Z".into(),
+            event: SessionEvent::TurnCompleted {
+                request_id: "second-request".into(),
+                state: FinalState::Answered,
+            },
+        }];
+
+        let completed = completed_operator_message(&events, &messages).unwrap();
+
+        assert_eq!(completed.actor_ref, "slack-user:second");
+        assert_eq!(completed.text, "Second operator message");
     }
 
     #[tokio::test]
@@ -1156,6 +1390,7 @@ mod tests {
             session_ref: session_ref.into(),
             tenant_id: "tenant:postgres-wake".into(),
             thread_ref: "thread:postgres-wake".into(),
+            context_scope_ref: None,
             mission: MissionState {
                 mission_ref: "mission:postgres-wake".into(),
                 objective: "Verify durable wake fencing.".into(),
@@ -1401,6 +1636,7 @@ mod tests {
             session_ref: session_ref.into(),
             tenant_id: "tenant:postgres-wake-exhaustion".into(),
             thread_ref: "thread:postgres-wake-exhaustion".into(),
+            context_scope_ref: None,
             mission: MissionState {
                 mission_ref: "mission:postgres-wake-exhaustion".into(),
                 objective: "Verify exhausted wake visibility.".into(),
