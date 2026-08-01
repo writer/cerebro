@@ -27,13 +27,14 @@ const MAX_COMMITMENTS: usize = 16;
 const MAX_OPEN_LOOPS: usize = 16;
 const MAX_VISIBLE_CLAIMS: usize = 32;
 const MAX_SESSION_STEPS: usize = 48;
-const MAX_MODEL_REPAIRS: usize = 3;
+const MAX_MODEL_REPAIRS: usize = 6;
 const MAX_DELIVERY_MESSAGE_BYTES: usize = 3_500;
 const MAX_MESSAGE_BYTES: usize = 16 * 1024;
 const MAX_TEXT_BYTES: usize = 4 * 1024;
 const MAX_SESSION_MESSAGES: usize = 400;
 const MAX_SESSION_MESSAGE_BYTES: usize = 1024 * 1024;
 const MAX_MEMORIES: usize = 128;
+const MAX_RECALLED_OBSERVATIONS: usize = 96;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -735,7 +736,12 @@ pub async fn run_session_turn_recorded(
         .iter()
         .map(|descriptor| (descriptor.tool_id.clone(), descriptor.clone()))
         .collect::<BTreeMap<_, _>>();
-    let (resumed, mut plan, mut observations) = resume_turn_state(&session, &input.request_id);
+    let (resumed, mut plan, turn_observations) = resume_turn_state(&session, &input.request_id);
+    let mut observations = if resumed {
+        turn_observations.clone()
+    } else {
+        prior_read_observations(&session)
+    };
     let mut events = Vec::new();
     if !resumed {
         emit_event(
@@ -749,11 +755,11 @@ pub async fn run_session_turn_recorded(
         )
         .await?;
     }
-    let mut call_ids = observations
+    let mut call_ids = turn_observations
         .iter()
         .map(|observation| observation.call.call_id.clone())
         .collect::<BTreeSet<_>>();
-    let mut call_fingerprints = observations
+    let mut call_fingerprints = turn_observations
         .iter()
         .map(|observation| {
             (
@@ -794,16 +800,17 @@ pub async fn run_session_turn_recorded(
 
         match decision {
             SessionModelDecision::EstablishPlan { plan: proposed } => {
-                if plan.is_some() {
-                    return Err(AgentRuntimeError::InvalidFinal(
-                        "the turn already has an established research plan".into(),
-                    ));
+                if let Err(error) = validate_plan(&proposed, &available_tool_ids) {
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    continue;
                 }
-                validate_plan(&proposed, &available_tool_ids)?;
-                if !observations.is_empty() {
-                    return Err(AgentRuntimeError::InvalidFinal(
-                        "the research plan cannot be replaced after tool execution begins".into(),
-                    ));
+                if plan.as_ref() == Some(&proposed) {
+                    record_operating_repair(
+                        &mut repairs,
+                        &mut repair_feedback,
+                        "The research plan is already active. Invoke a selected tool or finish from the available evidence; establish another plan only when the evidence requires a material revision.".into(),
+                    )?;
+                    continue;
                 }
                 emit_event(
                     &session,
@@ -826,19 +833,29 @@ pub async fn run_session_turn_recorded(
                             .into(),
                     ));
                 }
-                let established = plan.as_ref().ok_or_else(|| {
-                    AgentRuntimeError::InvalidToolCall(
-                        "establish a typed research plan before invoking evidence tools".into(),
-                    )
-                })?;
-                validate_calls(
+                let Some(established) = plan.as_ref() else {
+                    record_operating_repair(
+                        &mut repairs,
+                        &mut repair_feedback,
+                        "Establish a typed research plan before invoking evidence tools.".into(),
+                    )?;
+                    continue;
+                };
+                let mut proposed_call_ids = call_ids.clone();
+                let mut proposed_call_fingerprints = call_fingerprints.clone();
+                if let Err(error) = validate_calls(
                     &calls,
                     established,
                     &descriptors,
                     observations.len(),
-                    &mut call_ids,
-                    &mut call_fingerprints,
-                )?;
+                    &mut proposed_call_ids,
+                    &mut proposed_call_fingerprints,
+                ) {
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    continue;
+                }
+                call_ids = proposed_call_ids;
+                call_fingerprints = proposed_call_fingerprints;
                 if let Some(call) = calls.iter().find(|call| {
                     descriptors.get(&call.tool_id).is_some_and(|descriptor| {
                         descriptor.authority_class == ToolAuthorityClass::Actuate
@@ -950,7 +967,10 @@ pub async fn run_session_turn_recorded(
                 repair_feedback.clear();
             }
             SessionModelDecision::Finish { draft } => {
-                validate_plan_completion(plan.as_ref(), &draft)?;
+                if let Err(error) = validate_plan_completion(plan.as_ref(), &draft) {
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    continue;
+                }
                 let validated =
                     match validate_grounded_draft(&session, &draft, &observations, assessment_at) {
                         Ok(validated) => validated,
@@ -963,7 +983,10 @@ pub async fn run_session_turn_recorded(
                             continue;
                         }
                     };
-                validate_effect_closure(&observations, &draft, assessment_at)?;
+                if let Err(error) = validate_effect_closure(&observations, &draft, assessment_at) {
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    continue;
+                }
                 let review = model
                     .review_message(ClaimReviewTurn {
                         session: session.clone(),
@@ -1097,6 +1120,38 @@ fn resume_turn_state(
         });
     }
     (true, plan, observations)
+}
+
+fn prior_read_observations(session: &AgentSession) -> Vec<ToolObservation> {
+    let mut observations = session
+        .events
+        .iter()
+        .rev()
+        .filter_map(|event| match &event.event {
+            SessionEvent::ToolInvoked { observation }
+                if observation.descriptor.authority_class != ToolAuthorityClass::Actuate =>
+            {
+                Some(observation.clone())
+            }
+            _ => None,
+        })
+        .take(MAX_RECALLED_OBSERVATIONS)
+        .collect::<Vec<_>>();
+    observations.reverse();
+    observations
+}
+
+fn record_operating_repair(
+    repairs: &mut usize,
+    repair_feedback: &mut Vec<String>,
+    feedback: String,
+) -> Result<(), AgentRuntimeError> {
+    *repairs += 1;
+    if *repairs > MAX_MODEL_REPAIRS {
+        return Err(AgentRuntimeError::OperatingRepairLimit);
+    }
+    *repair_feedback = vec![feedback];
+    Ok(())
 }
 
 fn push_event(
@@ -2553,16 +2608,102 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tool_use_without_a_typed_plan_fails_closed() {
+    async fn an_identical_plan_retry_is_repaired_without_dropping_the_turn() {
         let model = ScriptedSessionModel {
-            decisions: Mutex::new(VecDeque::from([SessionModelDecision::InvokeTools {
-                calls: vec![ToolCall {
-                    call_id: "call:1".into(),
-                    tool_id: "connector.read".into(),
-                    purpose: "Read connector alpha.".into(),
-                    input: json!({"connector_ref": "connector:alpha"}),
-                }],
-            }])),
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::EstablishPlan { plan: plan() },
+                SessionModelDecision::EstablishPlan { plan: plan() },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:1".into(),
+                        tool_id: "connector.read".into(),
+                        purpose: "Read connector alpha.".into(),
+                        input: json!({"connector_ref": "connector:alpha"}),
+                    }],
+                },
+                SessionModelDecision::Finish { draft: draft() },
+            ])),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            session(),
+            SessionTurnInput {
+                request_id: "request:1".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(matches!(
+            outcome,
+            SessionTurnOutcome::PendingDelivery { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_new_turn_can_ground_itself_in_fresh_prior_session_evidence() {
+        let mut continued = session();
+        continued.events.push(SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: continued.session_ref.clone(),
+            sequence: 1,
+            occurred_at: "2026-07-31T00:00:30Z".into(),
+            event: SessionEvent::ToolInvoked {
+                observation: observation(true, Some("2026-08-01T00:00:00Z")),
+            },
+        });
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::EstablishPlan { plan: plan() },
+                SessionModelDecision::Finish { draft: draft() },
+            ])),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            continued,
+            SessionTurnInput {
+                request_id: "request:2".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let SessionTurnOutcome::PendingDelivery {
+            evidence_atom_refs,
+            events,
+            ..
+        } = outcome
+        else {
+            panic!("expected a pending-delivery session turn")
+        };
+        assert_eq!(evidence_atom_refs, vec!["atom:status"]);
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event.event, SessionEvent::ToolInvoked { .. }))
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_use_without_a_typed_plan_is_repaired_then_fails_closed() {
+        let invalid = SessionModelDecision::InvokeTools {
+            calls: vec![ToolCall {
+                call_id: "call:1".into(),
+                tool_id: "connector.read".into(),
+                purpose: "Read connector alpha.".into(),
+                input: json!({"connector_ref": "connector:alpha"}),
+            }],
+        };
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from(vec![invalid; MAX_MODEL_REPAIRS + 1])),
         };
         let result = run_session_turn(
             &model,
@@ -2575,7 +2716,10 @@ mod tests {
             },
         )
         .await;
-        assert!(matches!(result, Err(AgentRuntimeError::InvalidToolCall(_))));
+        assert!(matches!(
+            result,
+            Err(AgentRuntimeError::OperatingRepairLimit)
+        ));
     }
 
     #[tokio::test]
@@ -2646,7 +2790,7 @@ mod tests {
         )
         .await;
 
-        assert!(matches!(result, Err(AgentRuntimeError::InvalidToolCall(_))));
+        assert!(result.is_err());
         assert_eq!(tools.invocations.load(Ordering::SeqCst), 0);
     }
 }
