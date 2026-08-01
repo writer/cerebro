@@ -2158,6 +2158,10 @@ fn normalize_coverage_notice(draft: &mut GroundedDraft, _observations: &[ToolObs
         draft.coverage_notice = Some(existing);
         return;
     }
+    if let Some(visible_boundary) = visible_coverage_boundary(&draft.message, draft.state) {
+        draft.coverage_notice = Some(visible_boundary);
+        return;
+    }
     let notice: String = match draft.state {
         FinalState::Partial => {
             "Coverage gap: The requested conclusion remains only partially supported.".into()
@@ -2180,6 +2184,42 @@ fn normalize_coverage_notice(draft: &mut GroundedDraft, _observations: &[ToolObs
             content: ClaimContent::StableExplanation,
         });
     }
+}
+
+fn visible_coverage_boundary(message: &str, state: FinalState) -> Option<String> {
+    let preferred_markers: &[&str] = match state {
+        FinalState::Partial => &[
+            "not yet decision-grade",
+            "not decision-grade",
+            "cannot yet",
+            "remains unverified",
+            "remains incomplete",
+            "is stale",
+            "does not count",
+            "missing",
+        ],
+        FinalState::Blocked => &[
+            "could not",
+            "cannot",
+            "blocked",
+            "unavailable",
+            "missing",
+            "failed",
+            "unknown",
+        ],
+        _ => return None,
+    };
+    let sentences = message
+        .split_inclusive(['.', '!', '?'])
+        .map(str::trim)
+        .filter(|sentence| !sentence.is_empty() && sentence.len() <= 800)
+        .collect::<Vec<_>>();
+    preferred_markers.iter().find_map(|marker| {
+        sentences
+            .iter()
+            .find(|sentence| sentence.to_ascii_lowercase().contains(marker))
+            .map(|sentence| (*sentence).to_owned())
+    })
 }
 
 fn normalize_passive_wake_handback(trigger: &SessionTurnTrigger, draft: &mut GroundedDraft) {
@@ -5195,6 +5235,32 @@ mod tests {
                 .collect::<String>(),
             partial.message
         );
+    }
+
+    #[test]
+    fn partial_draft_reuses_a_natural_visible_coverage_boundary() {
+        let mut partial = draft();
+        partial.state = FinalState::Partial;
+        partial.coverage_notice = None;
+        partial.message = "The feed remains at one of three fresh receipts. The evidence is not yet decision-grade.".into();
+        partial.claims = vec![GroundedClaim {
+            claim_ref: "claim:visible-boundary".into(),
+            planned_claim_ref: None,
+            text: partial.message.clone(),
+            required_for_answer: true,
+            content: ClaimContent::StableExplanation,
+        }];
+
+        normalize_coverage_notice(
+            &mut partial,
+            &[observation(false, Some("2026-07-31T00:06:00Z"))],
+        );
+
+        assert_eq!(
+            partial.coverage_notice.as_deref(),
+            Some("The evidence is not yet decision-grade.")
+        );
+        assert_eq!(partial.message.matches("not yet decision-grade").count(), 1);
     }
 
     #[test]
