@@ -1637,6 +1637,16 @@ fn validate_commitment_baselines(
             }
         }
         if let Some(policy) = &commitment.attention_policy {
+            if policy
+                .acceptance_all
+                .iter()
+                .all(|condition| observation_condition_matches(condition, observations))
+            {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "the new commitment's typed acceptance condition is already satisfied by its baseline; finish the work instead of scheduling it"
+                        .into(),
+                ));
+            }
             let covered = policy
                 .acceptance_all
                 .iter()
@@ -3834,7 +3844,8 @@ mod tests {
                 .unwrap_err();
         assert!(error.to_string().contains("baseline observation"));
 
-        let current = observation(true, Some("2026-07-31T00:06:00Z"));
+        let mut current = observation(true, Some("2026-07-31T00:06:00Z"));
+        current.result.data = json!({"status": "recovering"});
         assert!(
             validate_commitment_baselines(
                 &session,
@@ -3857,6 +3868,17 @@ mod tests {
             )
             .is_err()
         );
+
+        let already_accepted = observation(true, Some("2026-07-31T00:06:00Z"));
+        let error = validate_commitment_baselines(
+            &session,
+            &scheduled,
+            Some(&plan()),
+            &[already_accepted],
+            assessment_at,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("already satisfied"));
     }
 
     #[test]

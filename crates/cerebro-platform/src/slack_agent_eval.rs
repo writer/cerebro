@@ -775,6 +775,9 @@ impl AgentTools for EvalTools {
                 .and_then(|phase| phase.observations.get(&call.tool_id))
                 .cloned()
         });
+        let unavailable_autonomy_tool = self.autonomy_fixtures.is_some()
+            && autonomy_fixture.is_none()
+            && call.tool_id != "runtime_config_update";
         let expected_action = json!({
             "connector_ref": "governed-evidence-connector",
             "cursor_format": "current_revision",
@@ -803,6 +806,13 @@ impl AgentTools for EvalTools {
                         "assertions": {"/collection_receipt": "complete"}
                     }
                 }),
+            }
+        } else if unavailable_autonomy_tool {
+            EvaluationFixture {
+                summary:
+                    "This capability has no observation for the current sealed scenario phase."
+                        .into(),
+                data: json!({"available": false}),
             }
         } else if self.case_ref.contains("diagnose-source")
             && matches!(
@@ -845,30 +855,41 @@ impl AgentTools for EvalTools {
         };
         let summary = fixture.summary;
         let data = fixture.data;
-        let state = autonomy_fixture.as_ref().map_or_else(
-            || {
-                if call.tool_id == "graph.reason" {
-                    ToolResultState::Failed
-                } else {
-                    ToolResultState::Succeeded
-                }
-            },
-            |fixture| fixture.state,
-        );
+        let state = if unavailable_autonomy_tool {
+            ToolResultState::Failed
+        } else {
+            autonomy_fixture.as_ref().map_or_else(
+                || {
+                    if call.tool_id == "graph.reason" {
+                        ToolResultState::Failed
+                    } else {
+                        ToolResultState::Succeeded
+                    }
+                },
+                |fixture| fixture.state,
+            )
+        };
         let complete = autonomy_fixture
             .as_ref()
             .map_or(state == ToolResultState::Succeeded, |fixture| {
                 fixture.complete
             });
-        let blocker = autonomy_fixture.as_ref().map_or_else(
-            || {
-                (!complete).then(|| {
+        let blocker = if unavailable_autonomy_tool {
+            Some(
+                "No sealed observation is available from this capability in the current phase."
+                    .into(),
+            )
+        } else {
+            autonomy_fixture.as_ref().map_or_else(
+                || {
+                    (!complete).then(|| {
                     "The broad relationship reasoning operation did not return grounded evidence."
                         .into()
                 })
-            },
-            |fixture| fixture.blocker.clone(),
-        );
+                },
+                |fixture| fixture.blocker.clone(),
+            )
+        };
         let fresh_until = if let Some(fixture) = &autonomy_fixture {
             observed_at
                 .checked_add(Duration::seconds(fixture.freshness_seconds))
@@ -4293,6 +4314,21 @@ mod tests {
             result.evidence[0].fresh_until.as_deref(),
             Some("2026-07-30T23:59:59Z")
         );
+        let unavailable = AgentTools::invoke(
+            &tools,
+            &request,
+            &ToolCall {
+                call_id: "call:unavailable".into(),
+                tool_id: "mcp.cerebro.findings.search".into(),
+                purpose: "Try a capability absent from the sealed phase.".into(),
+                input: json!({}),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(unavailable.state, ToolResultState::Failed);
+        assert!(!unavailable.evidence[0].complete);
+        assert_eq!(unavailable.data["available"], false);
     }
 
     #[test]
