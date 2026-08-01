@@ -1532,9 +1532,11 @@ fn validate_wake_completion(
         || next.acceptance_criteria != current.acceptance_criteria
         || next.verification != current.verification
     {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "a scheduled wake cannot rewrite its required tools or typed attention policy".into(),
-        ));
+        let expected = serde_json::to_string(current)
+            .unwrap_or_else(|_| "the current durable commitment".into());
+        return Err(AgentRuntimeError::InvalidFinal(format!(
+            "a scheduled wake cannot rewrite its executor contract. Copy required_tool_ids, attention_policy, acceptance_criteria, and verification exactly from this durable commitment, including when closing it: {expected}"
+        )));
     }
     let accepted = unhealthy_required_tools.is_empty()
         && current.attention_policy.as_ref().is_some_and(|policy| {
@@ -4232,6 +4234,34 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn wake_executor_repair_names_the_exact_durable_contract() {
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let mut completed = draft();
+        completed.mission = awakened.mission.clone();
+        completed.mission.commitments[0].status = CommitmentStatus::Completed;
+        completed.mission.commitments[0].next_action = None;
+        completed.mission.commitments[0].wake_at = None;
+        completed.mission.commitments[0].attention_policy = None;
+        let trigger = SessionTurnTrigger::Wake {
+            commitment_ref: "commitment:scheduled-check".into(),
+            occurrence_ref: "occurrence:executor-repair".into(),
+        };
+        let error = validate_wake_completion(
+            &awakened,
+            &completed,
+            &trigger,
+            OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+            &[observation(true, Some("2026-07-31T00:06:00Z"))],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("connector.read"));
+        assert!(error.to_string().contains("acceptance_all"));
+        assert!(error.to_string().contains("including when closing it"));
     }
 
     #[test]
