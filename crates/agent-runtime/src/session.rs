@@ -943,6 +943,30 @@ pub async fn run_session_turn_recorded(
     let mut rejected_reviews = BTreeSet::new();
 
     for _ in 0..MAX_SESSION_STEPS {
+        if repairs > MAX_MODEL_REPAIRS {
+            return repair_fallback_outcome(
+                &session,
+                &input,
+                &trigger,
+                plan.as_ref(),
+                &observations,
+                events,
+                journal,
+            )
+            .await;
+        }
+        if critic_repairs > MAX_CRITIC_REPAIRS {
+            return repair_fallback_outcome(
+                &session,
+                &input,
+                &trigger,
+                plan.as_ref(),
+                &observations,
+                events,
+                journal,
+            )
+            .await;
+        }
         let decision = match model
             .advance(SessionModelTurn {
                 session: session.clone(),
@@ -959,15 +983,23 @@ pub async fn run_session_turn_recorded(
             Ok(decision) => decision,
             Err(AgentRuntimeError::InvalidFinal(reason)) => {
                 repairs += 1;
-                if repairs > MAX_MODEL_REPAIRS {
-                    return Err(AgentRuntimeError::OperatingRepairLimit);
-                }
                 repair_feedback = vec![format!(
                     "The prior decision did not match the session contract: {reason}"
                 )];
                 continue;
             }
-            Err(error) => return Err(error),
+            Err(_) => {
+                return repair_fallback_outcome(
+                    &session,
+                    &input,
+                    &trigger,
+                    plan.as_ref(),
+                    &observations,
+                    events,
+                    journal,
+                )
+                .await;
+            }
         };
 
         match decision {
@@ -977,17 +1009,17 @@ pub async fn run_session_turn_recorded(
                         &mut repairs,
                         &mut repair_feedback,
                         "Claim review has started. The reviewed plan and evidence are frozen; revise only the final draft from that same evidence envelope.".into(),
-                    )?;
+                    );
                     continue;
                 }
                 if let Err(error) = validate_plan(&proposed, &available_tool_ids) {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
                     continue;
                 }
                 if matches!(trigger, SessionTurnTrigger::Operator)
                     && let Err(error) = validate_explicit_follow_through(&session, &proposed)
                 {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
                     continue;
                 }
                 if plan.as_ref() == Some(&proposed) {
@@ -995,7 +1027,7 @@ pub async fn run_session_turn_recorded(
                         &mut repairs,
                         &mut repair_feedback,
                         "The research plan is already active. Invoke a selected tool or finish from the available evidence; establish another plan only when the evidence requires a material revision.".into(),
-                    )?;
+                    );
                     continue;
                 }
                 emit_event(
@@ -1018,7 +1050,7 @@ pub async fn run_session_turn_recorded(
                         &mut repairs,
                         &mut repair_feedback,
                         "Claim review has started. Tool use is frozen; revise only the final draft from the already observed evidence.".into(),
-                    )?;
+                    );
                     continue;
                 }
                 let Some(mut established) = plan.clone() else {
@@ -1026,7 +1058,7 @@ pub async fn run_session_turn_recorded(
                         &mut repairs,
                         &mut repair_feedback,
                         "Establish a typed research plan before invoking evidence tools.".into(),
-                    )?;
+                    );
                     continue;
                 };
                 if let Some(expanded) = expand_plan_for_read_calls(
@@ -1059,7 +1091,7 @@ pub async fn run_session_turn_recorded(
                         &mut repairs,
                         &mut repair_feedback,
                         "Scheduled wakes cannot authorize external effects. Finish with the observed state and an exact prospective action that still requires fresh operator authorization.".into(),
-                    )?;
+                    );
                     continue;
                 }
                 let mut proposed_call_ids = call_ids.clone();
@@ -1072,7 +1104,7 @@ pub async fn run_session_turn_recorded(
                     &mut proposed_call_ids,
                     &mut proposed_call_fingerprints,
                 ) {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
                     continue;
                 }
                 call_ids = proposed_call_ids;
@@ -1195,7 +1227,7 @@ pub async fn run_session_turn_recorded(
                     &observations,
                     assessment_at,
                 ) {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
                     continue;
                 }
                 if let Err(error) = validate_commitment_baselines(
@@ -1205,7 +1237,7 @@ pub async fn run_session_turn_recorded(
                     &observations,
                     assessment_at,
                 ) {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
                     continue;
                 }
                 if let Err(error) = validate_wake_completion(
@@ -1215,11 +1247,11 @@ pub async fn run_session_turn_recorded(
                     assessment_at,
                     &observations,
                 ) {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
                     continue;
                 }
                 if let Err(error) = validate_plan_completion(plan.as_ref(), &draft) {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
                     continue;
                 }
                 let validated =
@@ -1227,18 +1259,15 @@ pub async fn run_session_turn_recorded(
                         Ok(validated) => validated,
                         Err(error) => {
                             repairs += 1;
-                            if repairs > MAX_MODEL_REPAIRS {
-                                return Err(AgentRuntimeError::OperatingRepairLimit);
-                            }
                             repair_feedback = vec![error.to_string()];
                             continue;
                         }
                     };
                 if let Err(error) = validate_effect_closure(&observations, &draft, assessment_at) {
-                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
+                    record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
                     continue;
                 }
-                let review = model
+                let review = match model
                     .review_message(ClaimReviewTurn {
                         session: session.clone(),
                         trigger: trigger.clone(),
@@ -1246,17 +1275,45 @@ pub async fn run_session_turn_recorded(
                         draft: draft.clone(),
                         observations: observations.clone(),
                     })
-                    .await?;
-                let issues = validate_message_review(&draft, &review)?;
+                    .await
+                {
+                    Ok(review) => review,
+                    Err(_) => {
+                        return repair_fallback_outcome(
+                            &session,
+                            &input,
+                            &trigger,
+                            plan.as_ref(),
+                            &observations,
+                            events,
+                            journal,
+                        )
+                        .await;
+                    }
+                };
+                let issues = match validate_message_review(&draft, &review) {
+                    Ok(issues) => issues,
+                    Err(_) => {
+                        return repair_fallback_outcome(
+                            &session,
+                            &input,
+                            &trigger,
+                            plan.as_ref(),
+                            &observations,
+                            events,
+                            journal,
+                        )
+                        .await;
+                    }
+                };
                 if !issues.is_empty() {
                     let mut issue_signature = issues.clone();
                     issue_signature.sort();
                     issue_signature.dedup();
                     if !rejected_reviews.insert((message_digest(&draft.message), issue_signature)) {
-                        return Err(AgentRuntimeError::CriticRepairLimit);
-                    }
-                    if critic_repairs >= MAX_CRITIC_REPAIRS {
-                        return Err(AgentRuntimeError::CriticRepairLimit);
+                        critic_repairs = MAX_CRITIC_REPAIRS + 1;
+                        repair_feedback = issues;
+                        continue;
                     }
                     critic_repairs += 1;
                     repair_feedback = issues;
@@ -1299,7 +1356,194 @@ pub async fn run_session_turn_recorded(
             }
         }
     }
-    Err(AgentRuntimeError::ModelStepLimit)
+    repair_fallback_outcome(
+        &session,
+        &input,
+        &trigger,
+        plan.as_ref(),
+        &observations,
+        events,
+        journal,
+    )
+    .await
+}
+
+async fn repair_fallback_outcome(
+    session: &AgentSession,
+    input: &SessionTurnInput,
+    trigger: &SessionTurnTrigger,
+    plan: Option<&ResearchPlan>,
+    observations: &[ToolObservation],
+    mut events: Vec<SessionEventRecord>,
+    journal: &dyn SessionJournal,
+) -> Result<SessionTurnOutcome, AgentRuntimeError> {
+    let mut mission = session.mission.clone();
+    let blocked_wake = match trigger {
+        SessionTurnTrigger::Wake { commitment_ref, .. } => {
+            if let Some(commitment) = mission
+                .commitments
+                .iter_mut()
+                .find(|commitment| commitment.commitment_ref == *commitment_ref)
+            {
+                commitment.status = CommitmentStatus::Blocked;
+                commitment.blocker = Some(
+                    "The scheduled check could not produce a grounded operator response.".into(),
+                );
+                commitment.wake_at = None;
+                mission.status = SessionStatus::Blocked;
+            }
+            true
+        }
+        SessionTurnTrigger::Operator => false,
+    };
+    let uncertain_effect = observations.iter().find_map(|observation| {
+        if observation.descriptor.authority_class != ToolAuthorityClass::Actuate
+            || observation.result.state != ToolResultState::OutcomeUnknown
+            || observation.result.summary.len() > 1_500
+            || observation.result.summary.trim().is_empty()
+        {
+            return None;
+        }
+        let atom_ref = observation
+            .result
+            .evidence
+            .iter()
+            .flat_map(|evidence| &evidence.atoms)
+            .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))?
+            .atom_ref
+            .clone();
+        Some((observation.result.summary.trim().to_owned(), atom_ref))
+    });
+    let supported = observations.iter().find_map(|observation| {
+        if !matches!(
+            observation.result.state,
+            ToolResultState::Succeeded | ToolResultState::Partial
+        ) || observation.result.summary.len() > 1_500
+            || observation.result.summary.trim().is_empty()
+            || observation
+                .result
+                .summary
+                .chars()
+                .any(|character| character.is_control() && character != '\n')
+        {
+            return None;
+        }
+        let atom_ref = observation
+            .result
+            .evidence
+            .iter()
+            .flat_map(|evidence| &evidence.atoms)
+            .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))?
+            .atom_ref
+            .clone();
+        Some((observation.result.summary.trim().to_owned(), atom_ref))
+    });
+    let coverage_notice = if uncertain_effect.is_some() {
+        mission.status = SessionStatus::Blocked;
+        "Coverage gap: The external action outcome is unknown. Reconcile the provider state with a fresh observation before another effect. I did not retry the action or record a new follow-up."
+    } else if blocked_wake {
+        "Coverage gap: I could not complete a grounded answer to this scheduled check. The follow-up is blocked and will not run again automatically. I did not execute an action or record another follow-up."
+    } else if supported.is_some() {
+        "Coverage gap: I could not complete a fully grounded answer to the newest request. I did not execute an action or record a new follow-up."
+    } else {
+        "Coverage gap: No current authoritative observation was obtained. I did not evaluate the requested condition, execute an action, or record a new follow-up."
+    }
+    .to_owned();
+    let (state, message, claims) = if let Some((summary, atom_ref)) = uncertain_effect {
+        let notice = format!("\n\n{coverage_notice}");
+        (
+            FinalState::Blocked,
+            format!("{summary}{notice}"),
+            vec![
+                GroundedClaim {
+                    claim_ref: format!("fallback-observation:{}", input.request_id),
+                    planned_claim_ref: None,
+                    text: summary,
+                    required_for_answer: true,
+                    content: ClaimContent::Observation {
+                        atom_refs: vec![atom_ref],
+                    },
+                },
+                GroundedClaim {
+                    claim_ref: format!("fallback-boundary:{}", input.request_id),
+                    planned_claim_ref: None,
+                    text: notice,
+                    required_for_answer: true,
+                    content: ClaimContent::StableExplanation,
+                },
+            ],
+        )
+    } else if let Some((summary, atom_ref)) = supported {
+        let notice = format!("\n\n{coverage_notice}");
+        (
+            FinalState::Partial,
+            format!("{summary}{notice}"),
+            vec![
+                GroundedClaim {
+                    claim_ref: format!("fallback-observation:{}", input.request_id),
+                    planned_claim_ref: None,
+                    text: summary,
+                    required_for_answer: true,
+                    content: ClaimContent::Observation {
+                        atom_refs: vec![atom_ref],
+                    },
+                },
+                GroundedClaim {
+                    claim_ref: format!("fallback-boundary:{}", input.request_id),
+                    planned_claim_ref: None,
+                    text: notice,
+                    required_for_answer: true,
+                    content: ClaimContent::StableExplanation,
+                },
+            ],
+        )
+    } else {
+        (
+            FinalState::Blocked,
+            coverage_notice.clone(),
+            vec![GroundedClaim {
+                claim_ref: format!("fallback-boundary:{}", input.request_id),
+                planned_claim_ref: None,
+                text: coverage_notice.clone(),
+                required_for_answer: true,
+                content: ClaimContent::StableExplanation,
+            }],
+        )
+    };
+    let draft = GroundedDraft {
+        state,
+        delivery: DeliveryDisposition::Visible,
+        message,
+        claims,
+        coverage_notice: Some(coverage_notice),
+        question: None,
+        mission,
+        memory_updates: Vec::new(),
+        presentation_ready: true,
+    };
+    let assessment_at = OffsetDateTime::parse(&input.assessment_at, &Rfc3339)
+        .map_err(|_| AgentRuntimeError::InvalidRequest("assessment_at is invalid".into()))?;
+    let validated = validate_grounded_draft(session, &draft, observations, assessment_at)?;
+    emit_event(
+        session,
+        &input.assessment_at,
+        &mut events,
+        SessionEvent::DraftProduced {
+            request_id: input.request_id.clone(),
+            draft: draft.clone(),
+        },
+        journal,
+    )
+    .await?;
+    Ok(SessionTurnOutcome::PendingDelivery {
+        lane: plan.map_or(ExecutionLane::Converse, |plan| plan.lane),
+        delivery: DeliveryDisposition::Visible,
+        markdown: validated.markdown,
+        final_state: state,
+        evidence_atom_refs: validated.evidence_atom_refs,
+        mission: draft.mission,
+        events,
+    })
 }
 
 fn expand_plan_for_read_calls(
@@ -2131,13 +2375,9 @@ fn record_operating_repair(
     repairs: &mut usize,
     repair_feedback: &mut Vec<String>,
     feedback: String,
-) -> Result<(), AgentRuntimeError> {
+) {
     *repairs += 1;
-    if *repairs > MAX_MODEL_REPAIRS {
-        return Err(AgentRuntimeError::OperatingRepairLimit);
-    }
     *repair_feedback = vec![feedback];
-    Ok(())
 }
 
 fn push_event(
@@ -5348,7 +5588,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tool_use_without_a_typed_plan_is_repaired_then_fails_closed() {
+    async fn tool_use_without_a_typed_plan_degrades_to_a_visible_blocked_answer() {
         let invalid = SessionModelDecision::InvokeTools {
             calls: vec![ToolCall {
                 call_id: "call:1".into(),
@@ -5372,14 +5612,22 @@ mod tests {
             },
         )
         .await;
-        assert!(matches!(
-            result,
-            Err(AgentRuntimeError::OperatingRepairLimit)
-        ));
+        let SessionTurnOutcome::PendingDelivery {
+            delivery,
+            final_state,
+            markdown,
+            ..
+        } = result.expect("repair exhaustion should produce a visible fallback")
+        else {
+            panic!("repair exhaustion should not request approval");
+        };
+        assert_eq!(delivery, DeliveryDisposition::Visible);
+        assert_eq!(final_state, FinalState::Blocked);
+        assert!(markdown.contains("No current authoritative observation was obtained"));
     }
 
     #[tokio::test]
-    async fn a_started_effect_with_no_result_resumes_unknown_and_is_not_reinvoked() {
+    async fn a_started_effect_with_no_result_resumes_unknown_without_reinvocation() {
         let call = ToolCall {
             call_id: "call:effect-1".into(),
             tool_id: "connector.update".into(),
@@ -5447,7 +5695,17 @@ mod tests {
         )
         .await;
 
-        assert!(result.is_err());
+        let SessionTurnOutcome::PendingDelivery {
+            final_state,
+            markdown,
+            ..
+        } = result.expect("an unknown effect should produce a visible reconciliation boundary")
+        else {
+            panic!("an unknown effect should not request another approval");
+        };
+        assert_eq!(final_state, FinalState::Blocked);
+        assert!(markdown.contains("effect was durably started"));
+        assert!(markdown.contains("external action outcome is unknown"));
         assert_eq!(tools.invocations.load(Ordering::SeqCst), 0);
     }
 }
