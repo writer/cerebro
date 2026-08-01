@@ -781,7 +781,7 @@ pub async fn run_session_turn_recorded(
     let mut observations = if resumed {
         turn_observations.clone()
     } else {
-        prior_read_observations(&session)
+        prior_read_observations(&session, assessment_at)
     };
     let mut events = Vec::new();
     if !resumed {
@@ -1353,7 +1353,10 @@ fn resume_turn_state(
     (true, plan, observations)
 }
 
-fn prior_read_observations(session: &AgentSession) -> Vec<ToolObservation> {
+fn prior_read_observations(
+    session: &AgentSession,
+    assessment_at: OffsetDateTime,
+) -> Vec<ToolObservation> {
     let mut observations = session
         .events
         .iter()
@@ -1362,7 +1365,19 @@ fn prior_read_observations(session: &AgentSession) -> Vec<ToolObservation> {
             SessionEvent::ToolInvoked { observation }
                 if observation.descriptor.authority_class != ToolAuthorityClass::Actuate =>
             {
-                Some(observation.clone())
+                observation
+                    .result
+                    .evidence
+                    .iter()
+                    .flat_map(|evidence| &evidence.atoms)
+                    .any(|atom| {
+                        atom.complete
+                            && atom.fresh_until.as_deref().is_some_and(|fresh_until| {
+                                OffsetDateTime::parse(fresh_until, &Rfc3339)
+                                    .is_ok_and(|fresh_until| fresh_until >= assessment_at)
+                            })
+                    })
+                    .then(|| observation.clone())
             }
             _ => None,
         })
@@ -3333,6 +3348,36 @@ mod tests {
             !events
                 .iter()
                 .any(|event| matches!(event.event, SessionEvent::ToolInvoked { .. }))
+        );
+    }
+
+    #[test]
+    fn stale_prior_turn_atoms_are_not_reintroduced_as_current_model_evidence() {
+        let mut continued = session();
+        continued.events.push(SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: continued.session_ref.clone(),
+            sequence: 1,
+            occurred_at: "2026-07-31T00:00:30Z".into(),
+            event: SessionEvent::ToolInvoked {
+                observation: observation(true, Some("2026-07-31T00:00:45Z")),
+            },
+        });
+
+        assert_eq!(
+            prior_read_observations(
+                &continued,
+                OffsetDateTime::parse("2026-07-31T00:00:40Z", &Rfc3339).unwrap(),
+            )
+            .len(),
+            1
+        );
+        assert!(
+            prior_read_observations(
+                &continued,
+                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+            )
+            .is_empty()
         );
     }
 

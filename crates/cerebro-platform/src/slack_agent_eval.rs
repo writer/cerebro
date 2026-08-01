@@ -1701,6 +1701,14 @@ fn autonomy_lab_scenario() -> ConversationLabScenario {
     }
 }
 
+fn autonomy_suite_passed(
+    review_ready: bool,
+    internal_judge_advisory_excellent: bool,
+    latency_slo_passed: bool,
+) -> bool {
+    review_ready && internal_judge_advisory_excellent && latency_slo_passed
+}
+
 async fn run_autonomy_lab(
     commit_sha: String,
     evaluated_at: String,
@@ -1914,6 +1922,9 @@ async fn run_autonomy_lab(
         && fresh_observation_every_wake
         && commitment_closed;
     let internal_judge_advisory_excellent = judgment.is_excellent();
+    let latency_slo_passed = turns
+        .iter()
+        .all(|turn| turn.latency_ms <= LAB_MAX_TURN_LATENCY_MS);
     let scenario_receipt = ConversationLabScenarioReceipt {
         scenario_ref: scenario.scenario_ref,
         candidate_label,
@@ -1927,9 +1938,7 @@ async fn run_autonomy_lab(
         final_judgment: Some(judgment),
         final_judgment_error: None,
         review_ready,
-        latency_slo_passed: turns
-            .iter()
-            .all(|turn| turn.latency_ms <= LAB_MAX_TURN_LATENCY_MS),
+        latency_slo_passed,
         internal_judge_advisory_excellent,
         turns,
     };
@@ -1944,7 +1953,11 @@ async fn run_autonomy_lab(
     if let Ok(path) = env::var("CEREBRO_SLACK_AGENT_EVAL_BLIND_OUTPUT") {
         fs::write(path, &blind_review_bytes)?;
     }
-    let suite_passed = review_ready && internal_judge_advisory_excellent;
+    let suite_passed = autonomy_suite_passed(
+        review_ready,
+        internal_judge_advisory_excellent,
+        latency_slo_passed,
+    );
     let receipt = AutonomyLabReceipt {
         schema_version: "cerebro-rust-slack-agent-autonomy-lab/v1",
         commit_sha,
@@ -3596,6 +3609,12 @@ mod tests {
             3
         );
         assert_eq!(final_observation.data["decision_grade"], true);
+    }
+
+    #[test]
+    fn autonomy_suite_fails_closed_when_a_turn_misses_the_latency_slo() {
+        assert!(autonomy_suite_passed(true, true, true));
+        assert!(!autonomy_suite_passed(true, true, false));
     }
 
     #[test]
