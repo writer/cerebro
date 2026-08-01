@@ -152,6 +152,7 @@ pub struct ResearchPlan {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlannedFollowThrough {
+    pub commitment_ref: String,
     pub required_tool_ids: Vec<String>,
     pub acceptance_criteria: Vec<String>,
 }
@@ -1139,8 +1140,7 @@ pub async fn run_session_turn_recorded(
                 repairs = 0;
                 repair_feedback.clear();
             }
-            SessionModelDecision::Finish { mut draft } => {
-                bind_planned_follow_through(plan.as_ref(), &mut draft);
+            SessionModelDecision::Finish { draft } => {
                 if let Err(error) = validate_commitment_baselines(
                     &session,
                     &draft,
@@ -2337,8 +2337,20 @@ pub fn validate_plan(
         ));
     }
     if let Some(follow_through) = &plan.follow_through
-        && (follow_through.required_tool_ids.is_empty()
+        && (!bounded(&follow_through.commitment_ref, MAX_TEXT_BYTES)
+            || follow_through.required_tool_ids.is_empty()
             || follow_through.acceptance_criteria.is_empty()
+            || follow_through.required_tool_ids.len()
+                != follow_through
+                    .required_tool_ids
+                    .iter()
+                    .collect::<BTreeSet<_>>()
+                    .len()
+            || follow_through.acceptance_criteria.len() > MAX_SCOPE_ITEMS
+            || follow_through
+                .acceptance_criteria
+                .iter()
+                .any(|criterion| !bounded(criterion, MAX_TEXT_BYTES))
             || follow_through
                 .required_tool_ids
                 .iter()
@@ -2390,50 +2402,30 @@ fn validate_plan_completion(
         ));
     }
     if let Some(follow_through) = &plan.follow_through {
-        let persisted = draft.mission.commitments.iter().any(|commitment| {
+        let persisted = draft
+            .mission
+            .commitments
+            .iter()
+            .find(|commitment| commitment.commitment_ref == follow_through.commitment_ref);
+        let exact = persisted.is_some_and(|commitment| {
             commitment.owner == WorkOwner::Cerebro
                 && !matches!(
                     commitment.status,
                     CommitmentStatus::Completed | CommitmentStatus::Cancelled
                 )
                 && commitment.required_tool_ids == follow_through.required_tool_ids
+                && commitment.acceptance_criteria == follow_through.acceptance_criteria
                 && commitment.wake_at.is_some()
         });
-        if !persisted {
-            return Err(AgentRuntimeError::InvalidFinal(
-                "the research plan requires executor-bound follow-through, but the final mission does not persist its exact required tools and wake"
-                    .into(),
-            ));
+        if !exact {
+            let expected = serde_json::to_string(follow_through)
+                .unwrap_or_else(|_| "the established follow-through".into());
+            return Err(AgentRuntimeError::InvalidFinal(format!(
+                "the final mission must persist this exact active, scheduled executor contract without rewriting another commitment: {expected}"
+            )));
         }
     }
     Ok(())
-}
-
-fn bind_planned_follow_through(plan: Option<&ResearchPlan>, draft: &mut GroundedDraft) {
-    let Some(follow_through) = plan.and_then(|plan| plan.follow_through.as_ref()) else {
-        return;
-    };
-    let mut candidates = draft.mission.commitments.iter_mut().filter(|commitment| {
-        commitment.owner == WorkOwner::Cerebro
-            && !matches!(
-                commitment.status,
-                CommitmentStatus::Completed | CommitmentStatus::Cancelled
-            )
-            && commitment.wake_at.is_some()
-    });
-    let Some(commitment) = candidates.next() else {
-        return;
-    };
-    if candidates.next().is_some() {
-        return;
-    }
-    commitment.required_tool_ids = follow_through.required_tool_ids.clone();
-    for criterion in &follow_through.acceptance_criteria {
-        if !commitment.acceptance_criteria.contains(criterion) {
-            commitment.acceptance_criteria.push(criterion.clone());
-        }
-    }
-    draft.mission.status = SessionStatus::WaitingForExternal;
 }
 
 pub fn validate_grounded_draft(
@@ -3646,6 +3638,7 @@ mod tests {
     fn planned_follow_through_cannot_disappear_from_the_final_mission() {
         let mut plan = plan();
         plan.follow_through = Some(PlannedFollowThrough {
+            commitment_ref: "commitment:scheduled-check".into(),
             required_tool_ids: vec!["connector.read".into()],
             acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
         });
@@ -3656,54 +3649,32 @@ mod tests {
     }
 
     #[test]
-    fn planned_follow_through_binds_the_single_scheduled_executor() {
+    fn planned_follow_through_requires_the_named_exact_executor() {
         let mut plan = plan();
         plan.follow_through = Some(PlannedFollowThrough {
+            commitment_ref: "commitment:scheduled-check".into(),
             required_tool_ids: vec!["connector.read".into()],
             acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
         });
         let mut answer = draft();
         let mut commitment = scheduled_commitment();
         commitment.required_tool_ids = vec!["graph.read".into()];
-        commitment.acceptance_criteria = vec!["The scheduled check runs.".into()];
         answer.mission.commitments.push(commitment);
-
-        bind_planned_follow_through(Some(&plan), &mut answer);
-
-        assert_eq!(
-            answer.mission.commitments[0].required_tool_ids,
-            vec!["connector.read"]
-        );
-        assert_eq!(
-            answer.mission.commitments[0].acceptance_criteria,
-            vec![
-                "The scheduled check runs.",
-                "A fresh connector state is recorded."
-            ]
-        );
-        assert_eq!(answer.mission.status, SessionStatus::WaitingForExternal);
-        assert!(validate_plan_completion(Some(&plan), &answer).is_ok());
-    }
-
-    #[test]
-    fn planned_follow_through_does_not_invent_or_choose_an_executor() {
-        let mut plan = plan();
-        plan.follow_through = Some(PlannedFollowThrough {
-            required_tool_ids: vec!["connector.read".into()],
-            acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
-        });
-        let mut answer = draft();
-        bind_planned_follow_through(Some(&plan), &mut answer);
-        assert!(answer.mission.commitments.is_empty());
-
-        answer.mission.commitments = vec![scheduled_commitment(), scheduled_commitment()];
-        answer.mission.commitments[1].commitment_ref = "commitment:second-check".into();
-        answer.mission.commitments[0].required_tool_ids = vec!["graph.read".into()];
-        bind_planned_follow_through(Some(&plan), &mut answer);
         assert_eq!(
             answer.mission.commitments[0].required_tool_ids,
             vec!["graph.read"]
         );
+        assert!(validate_plan_completion(Some(&plan), &answer).is_err());
+
+        answer.mission.commitments[0] = scheduled_commitment();
+        assert!(validate_plan_completion(Some(&plan), &answer).is_ok());
+
+        answer.mission.commitments[0].acceptance_criteria = vec!["Different criterion.".into()];
+        assert!(validate_plan_completion(Some(&plan), &answer).is_err());
+
+        answer.mission.commitments[0] = scheduled_commitment();
+        answer.mission.commitments[0].commitment_ref = "commitment:other".into();
+        assert!(validate_plan_completion(Some(&plan), &answer).is_err());
     }
 
     #[test]

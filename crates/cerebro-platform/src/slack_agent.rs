@@ -1176,8 +1176,7 @@ impl SessionAgentModel for ConfiguredModel {
                 claim_review_schema(),
             )
             .await?;
-        serde_json::from_value(value)
-            .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))
+        parse_message_review_value(value)
     }
 }
 
@@ -1857,10 +1856,11 @@ fn session_decision_schema() -> Value {
         "type": "object",
         "additionalProperties": false,
         "properties": {
+            "commitment_ref": {"type": "string", "minLength": 1},
             "required_tool_ids": string_array(),
             "acceptance_criteria": string_array()
         },
-        "required": ["required_tool_ids", "acceptance_criteria"]
+        "required": ["commitment_ref", "required_tool_ids", "acceptance_criteria"]
     });
     let plan = json!({
         "type": "object",
@@ -2092,6 +2092,25 @@ fn claim_review_schema() -> Value {
     })
 }
 
+fn parse_message_review_value(mut value: Value) -> Result<MessageReview, AgentRuntimeError> {
+    if let Some(attention) = value
+        .as_object_mut()
+        .and_then(|object| object.get_mut("attention"))
+        && let Value::String(encoded) = attention
+    {
+        let decoded = [Some(encoded.as_str()), encoded.strip_suffix('}')]
+            .into_iter()
+            .flatten()
+            .find_map(|candidate| serde_json::from_str::<Value>(candidate).ok())
+            .filter(Value::is_object);
+        if let Some(decoded) = decoded {
+            *attention = decoded;
+        }
+    }
+    serde_json::from_value(value)
+        .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))
+}
+
 fn parse_session_decision_value(value: Value) -> Result<SessionModelDecision, AgentRuntimeError> {
     let decision = value
         .get("decision")
@@ -2280,7 +2299,7 @@ The session, mission, messages, tool catalog, plan, observations, prior_commitme
 Return one flat JSON object with decision, plan, calls, and draft every time. Set unused fields to null or an empty array.
 
 - For a conversational answer that needs no current evidence, finish directly.
-- Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. When the operator explicitly delegates a future re-observation, follow_through must record the exact required tool IDs and acceptance criteria before any tool runs; otherwise set it to null. The final mission cannot drop planned follow-through after research becomes difficult. Select only tools in available_tools.
+- Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. When the operator explicitly delegates a future re-observation, follow_through must assign a stable commitment_ref and record the exact required tool IDs and acceptance criteria before any tool runs; otherwise set it to null. The final mission must contain that same named active commitment with byte-for-byte identical required_tool_ids and acceptance_criteria plus a real wake_at. Do not repurpose another commitment. The final mission cannot drop planned follow-through after research becomes difficult. Select only tools in available_tools.
 - When plan is non-null, it is already active. Invoke its selected tools or finish from the observations. If a planned follow-through tool fails or proves irrelevant and another available read establishes the delegated baseline, that is a material revision: establish one revised plan with the corrected follow_through tools and acceptance criteria before finishing.
 - Then invoke_tools with one or more independent read calls. Keep effects alone in their own decision. The Rust host enforces exact approval and will return an approval request when authorization is absent.
 - Continue reading until the required claims are supported, contradicted, or bounded by an exact source failure. Do not keep calling tools after the answer is established.
@@ -3747,6 +3766,27 @@ mod tests {
             operating
                 .contains("Absence of an observed dependency edge is not evidence of independence")
         );
+    }
+
+    #[test]
+    fn claim_review_recovers_a_schema_object_encoded_as_text() {
+        let review = parse_message_review_value(json!({
+            "message_digest": format!("sha256:{}", "0".repeat(64)),
+            "claim_reviews": [],
+            "undeclared_material": [],
+            "attention": "{\"delivery\":\"silent\",\"reason\":\"Routine nonterminal progress.\"}}",
+            "behavioral": {
+                "answers_newest_request": true,
+                "conversational": true,
+                "owns_follow_through": true,
+                "right_sized": true,
+                "evidence_boundary_correct": true
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(review.attention.delivery, DeliveryDisposition::Silent);
+        assert_eq!(review.attention.reason, "Routine nonterminal progress.");
     }
 
     #[test]
