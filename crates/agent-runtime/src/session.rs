@@ -1174,29 +1174,16 @@ fn wake_research_plan(
     if commitment.required_tool_ids.is_empty() {
         return None;
     }
-    let claims = if commitment.acceptance_criteria.is_empty() {
-        vec![PlannedClaim {
-            claim_ref: format!("wake-claim:{commitment_ref}:verification"),
-            question: commitment
-                .verification
-                .clone()
-                .unwrap_or_else(|| "Determine the current commitment state.".into()),
-            required: true,
-            source_candidates: commitment.required_tool_ids.clone(),
-        }]
-    } else {
-        commitment
-            .acceptance_criteria
-            .iter()
-            .enumerate()
-            .map(|(index, criterion)| PlannedClaim {
-                claim_ref: format!("wake-claim:{commitment_ref}:{index}"),
-                question: criterion.clone(),
-                required: true,
-                source_candidates: commitment.required_tool_ids.clone(),
-            })
-            .collect()
-    };
+    let claims = vec![PlannedClaim {
+        claim_ref: format!("wake-claim:{commitment_ref}:verification"),
+        question: commitment
+            .verification
+            .clone()
+            .or_else(|| commitment.acceptance_criteria.first().cloned())
+            .unwrap_or_else(|| "Determine the current commitment state.".into()),
+        required: true,
+        source_candidates: commitment.required_tool_ids.clone(),
+    }];
     let mut stop_conditions = commitment.acceptance_criteria.clone();
     if let Some(verification) = &commitment.verification {
         stop_conditions.push(verification.clone());
@@ -3376,7 +3363,7 @@ mod tests {
         assert_eq!(plan.claims.len(), 1);
         assert_eq!(
             plan.claims[0].question,
-            "A fresh connector state is recorded."
+            "A current connector observation closes the check."
         );
         assert!(
             validate_plan(&plan, &["connector.read".into()]).is_ok(),
