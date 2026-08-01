@@ -2245,6 +2245,7 @@ Return one flat JSON object with decision, plan, calls, and draft every time. Se
 - Continue reading until the required claims are supported, contradicted, or bounded by an exact source failure. Do not keep calling tools after the answer is established.
 - Finish with one GroundedDraft. message is the actual Slack reply and should be direct, conversational, insightful, and complete. Lead with what matters. Include the recommendation and safe follow-through when the evidence supports them.
 - Set delivery=visible for every operator turn. For a scheduled wake, set delivery=silent only when the fresh check completed normally, the acceptance condition is not met, and the exact commitment remains active with a later wake. Silent messages are durable internal audit summaries and are not sent to Slack. Set delivery=visible when the acceptance condition is met, the commitment closes, evidence regresses, a source fails, a blocker appears, or the operator must decide something. Do not send routine progress merely to prove the scheduler ran.
+- An operator request for autonomous follow-through still requires one visible acknowledgement that answers the request, states the current bounded condition, and records the next check. “Do not send progress updates” governs later routine nonterminal wakes; it never permits silently ignoring the operator's initiating message.
 - Do not claim Cerebro can trigger, line up, route, schedule, or execute later work unless the exact capability is present and the runtime records that work now. An accepted unfinished Cerebro-owned commitment is the runtime's exact record and scheduler input; no separate scheduling tool call is required. A prospective recommendation without that accepted commitment is not a capability or execution receipt.
 
 GroundedDraft state describes the evidence coverage and response for this turn, not whether the long-lived mission has ended:
@@ -2285,6 +2286,8 @@ Return the top-level message_digest exactly, one claim_review per claim_ref, any
 An observation sampled at one time proves the state at that check, not when the state transitioned. Reject “just became,” “just hit,” and equivalent transition claims without an observed transition event. Source readiness for one bounded finding does not prove that the finding record changed, that every component stopped being provisional, or that unrelated current data is trustworthy. Reject those widened downstream claims unless current observations cover the exact downstream scope.
 
 delivery=silent means this scheduled-wake draft is a durable internal audit summary and will not be posted to Slack. Accept that attention boundary only when the current check completed normally, the acceptance condition remains unmet, and the same commitment is rescheduled. Reject silent delivery when the condition is met, the commitment closes, evidence regresses, a source fails, a blocker appears, or operator input is required. Do not require routine healthy progress to interrupt the operator.
+
+The initiating operator turn must be visible even when the operator asks not to receive progress pings. A concise acknowledgement with the current bounded state and persisted next check answers that initiating request; it is not a later progress ping. Apply the quiet-progress preference only to scheduled nonterminal wakes after that acknowledgement.
 
 Set answers_newest_request only when the response addresses the newest request rather than merely narrating process. Set conversational only when a person can read it naturally in Slack. Set owns_follow_through when Cerebro completed all safe bounded work available in this turn and asks the operator only for an actual decision or missing identifier. Future Cerebro work counts only when backed by a real executor-bound commitment; do not require a future commitment when the current bounded check is honestly complete. Set right_sized only when the answer is neither a terse non-answer nor an unnecessary report. Set evidence_boundary_correct only when facts, hypotheses, recommendations, actions, verification, and unknowns are distinguished honestly.
 
@@ -4001,6 +4004,9 @@ mod tests {
         assert!(instructions.contains(
             "A polling observation proves state at observed_at, not the unobserved moment when that state changed"
         ));
+        assert!(instructions.contains(
+            "An operator request for autonomous follow-through still requires one visible acknowledgement"
+        ));
         assert!(instructions.contains("It does not prove that the finding record was updated"));
         assert!(claim_review_instructions().contains(
             "Reject words such as recurring, every N minutes, continuously, immediately, the moment, and as soon as"
@@ -4009,6 +4015,9 @@ mod tests {
             claim_review_instructions()
                 .contains("Reject “just became,” “just hit,” and equivalent transition claims")
         );
+        assert!(claim_review_instructions().contains(
+            "The initiating operator turn must be visible even when the operator asks not to receive progress pings"
+        ));
     }
 
     #[test]
