@@ -1642,8 +1642,16 @@ fn validate_commitment_baselines(
                 observation.call.tool_id == *tool_id
                     && observation_is_complete_and_fresh(observation, assessment_at)
             }) {
+                let last_state = observations
+                    .iter()
+                    .rev()
+                    .find(|observation| observation.call.tool_id == *tool_id)
+                    .map(|observation| {
+                        format!("; its last result was {:?}", observation.result.state)
+                    })
+                    .unwrap_or_default();
                 return Err(AgentRuntimeError::InvalidFinal(format!(
-                    "the new or changed commitment requires {tool_id}, but this turn has no successful, complete, fresh baseline observation from that tool"
+                    "the new or changed commitment requires {tool_id}, but this turn has no successful, complete, fresh baseline observation from that tool{last_state}. Do not finish with this executor contract. Establish a materially revised plan selecting another available read, invoke it for a fresh baseline, and bind follow-through to that successful authority."
                 )));
             }
         }
@@ -3972,6 +3980,19 @@ mod tests {
             )
             .is_err()
         );
+
+        let mut failed = observation(true, Some("2026-07-31T00:06:00Z"));
+        failed.result.state = ToolResultState::Failed;
+        let error = validate_commitment_baselines(
+            &session,
+            &scheduled,
+            Some(&plan()),
+            &[failed],
+            assessment_at,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("last result was Failed"));
+        assert!(error.to_string().contains("materially revised plan"));
 
         let already_accepted = observation(true, Some("2026-07-31T00:06:00Z"));
         let error = validate_commitment_baselines(
