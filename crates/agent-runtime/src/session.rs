@@ -1686,7 +1686,7 @@ async fn repair_fallback_outcome(
                     text: summary,
                     required_for_answer: true,
                     content: ClaimContent::Observation {
-                        atom_refs: vec![atom_ref],
+                        atom_refs: vec![atom_ref.clone()],
                     },
                 },
                 GroundedClaim {
@@ -1712,7 +1712,7 @@ async fn repair_fallback_outcome(
                     text: summary,
                     required_for_answer: true,
                     content: ClaimContent::Observation {
-                        atom_refs: vec![atom_ref],
+                        atom_refs: vec![atom_ref.clone()],
                     },
                 },
                 GroundedClaim {
@@ -1738,7 +1738,7 @@ async fn repair_fallback_outcome(
                     text: summary,
                     required_for_answer: true,
                     content: ClaimContent::Observation {
-                        atom_refs: vec![atom_ref],
+                        atom_refs: vec![atom_ref.clone()],
                     },
                 },
                 GroundedClaim {
@@ -1764,7 +1764,7 @@ async fn repair_fallback_outcome(
                     text: summary,
                     required_for_answer: true,
                     content: ClaimContent::Observation {
-                        atom_refs: vec![atom_ref],
+                        atom_refs: vec![atom_ref.clone()],
                     },
                 },
                 GroundedClaim {
