@@ -3814,7 +3814,10 @@ fn validate_claim(
     cited_atoms: &mut BTreeSet<String>,
 ) -> Result<(), AgentRuntimeError> {
     let atom_refs = match &claim.content {
-        ClaimContent::Observation { atom_refs } => atom_refs.as_slice(),
+        ClaimContent::Observation { atom_refs } => {
+            validate_observation_wording(&claim.text, atom_refs, context)?;
+            atom_refs.as_slice()
+        }
         ClaimContent::Derivation { .. } => {
             return Err(AgentRuntimeError::InvalidFinal(
                 "derivations require a deterministic runtime evaluator before delivery".into(),
@@ -3936,9 +3939,106 @@ fn validate_claim(
     Ok(())
 }
 
+fn validate_observation_wording(
+    text: &str,
+    atom_refs: &[String],
+    context: &ClaimValidationContext<'_, '_>,
+) -> Result<(), AgentRuntimeError> {
+    if contains_raw_json_field_syntax(text) {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "operator-facing observations must translate raw JSON field assignments into natural language"
+                .into(),
+        ));
+    }
+    let normalized = text.to_ascii_lowercase();
+    if normalized.contains("healthy")
+        && !atom_refs.iter().any(|atom_ref| {
+            context
+                .atoms
+                .get(atom_ref)
+                .is_some_and(|atom| evidence_atom_supports_health(atom.atom))
+        })
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "the response calls a source healthy without a cited health observation; describe only the observed receipt or runtime state"
+                .into(),
+        ));
+    }
+    for unsupported_transition in [
+        "arrived stale",
+        "came in stale",
+        "hasn't caught up",
+        "has not caught up",
+    ] {
+        if normalized.contains(unsupported_transition)
+            && !atom_refs.iter().any(|atom_ref| {
+                context.atoms.get(atom_ref).is_some_and(|atom| {
+                    evidence_atom_text(atom.atom).is_some_and(|evidence| {
+                        evidence
+                            .to_ascii_lowercase()
+                            .contains(unsupported_transition)
+                    })
+                })
+            })
+        {
+            return Err(AgentRuntimeError::InvalidFinal(format!(
+                "the response says '{unsupported_transition}', but the cited observation supplies only a state or scalar; report that exact state without inventing transition timing or pipeline cause"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn contains_raw_json_field_syntax(text: &str) -> bool {
+    text.split_whitespace().any(|token| {
+        let token = token.trim_matches(|character: char| {
+            matches!(
+                character,
+                '`' | '*' | '_' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | '.' | ':' | ';'
+            )
+        });
+        let Some((field, value)) = token.split_once('=') else {
+            return false;
+        };
+        field.contains('_')
+            && field
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+            && !value.is_empty()
+    })
+}
+
+fn evidence_atom_supports_health(atom: &EvidenceAtom) -> bool {
+    match &atom.assertion {
+        EvidenceAssertion::Value { predicate, value } => {
+            value
+                .as_str()
+                .is_some_and(|value| value.eq_ignore_ascii_case("healthy"))
+                || (predicate.to_ascii_lowercase().contains("health")
+                    && value.as_bool() == Some(true))
+        }
+        EvidenceAssertion::ToolOutcome { summary, .. }
+        | EvidenceAssertion::LegacyStatement { statement: summary } => {
+            summary.to_ascii_lowercase().contains("healthy")
+        }
+        EvidenceAssertion::Relation { predicate, .. } => {
+            predicate.to_ascii_lowercase().contains("healthy")
+        }
+        EvidenceAssertion::FieldCoverage { .. } => false,
+    }
+}
+
+fn evidence_atom_text(atom: &EvidenceAtom) -> Option<&str> {
+    match &atom.assertion {
+        EvidenceAssertion::ToolOutcome { summary, .. } => Some(summary),
+        EvidenceAssertion::LegacyStatement { statement } => Some(statement),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy)]
 struct AtomContext<'a> {
-    _atom: &'a EvidenceAtom,
+    atom: &'a EvidenceAtom,
     complete: bool,
     fresh_until: Option<OffsetDateTime>,
 }
@@ -3966,7 +4066,7 @@ fn evidence_atoms(
                         .insert(
                             atom.atom_ref.clone(),
                             AtomContext {
-                                _atom: atom,
+                                atom,
                                 complete: atom.complete,
                                 fresh_until,
                             },
@@ -5960,6 +6060,70 @@ mod tests {
 
         current.result.data["streak_reset"] = json!(true);
         assert!(validate_explicit_streak_reset_language(&candidate, &[current]).is_ok());
+    }
+
+    #[test]
+    fn observed_updates_reject_raw_fields_and_unobserved_transitions() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let current = observation(true, Some("2026-08-01T00:00:00Z"));
+
+        let mut raw_field = draft();
+        raw_field.claims[0].text = "`state_mismatch=true` confirms this gap.".into();
+        raw_field.message = raw_field
+            .claims
+            .iter()
+            .map(|claim| claim.text.as_str())
+            .collect();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &raw_field,
+                std::slice::from_ref(&current),
+                assessment,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("natural language")
+        );
+
+        let mut invented_transition = draft();
+        invented_transition.claims[0].text = "The newest receipt arrived stale.".into();
+        invented_transition.message = invented_transition
+            .claims
+            .iter()
+            .map(|claim| claim.text.as_str())
+            .collect();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &invented_transition,
+                std::slice::from_ref(&current),
+                assessment,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("transition timing")
+        );
+
+        let unsupported_health = draft();
+        let mut non_health_observation = current;
+        let EvidenceAssertion::Value { value, .. } =
+            &mut non_health_observation.result.evidence[0].atoms[0].assertion
+        else {
+            panic!("the fixture should expose one status value")
+        };
+        *value = json!("recovering");
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &unsupported_health,
+                &[non_health_observation],
+                assessment,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("without a cited health observation")
+        );
     }
 
     #[test]
