@@ -289,7 +289,9 @@ function validateSlackThreadWorkingState(
       && (
         !Array.isArray(state.open_loops)
         || state.open_loops.length > SLACK_THREAD_SCRATCHPAD_LIMITS.max_open_loops
-        || state.open_loops.some((item) => normalizeScratchpadContent(item) !== item)
+        || state.open_loops.some((item) =>
+          typeof item !== "string" || normalizeScratchpadContent(item) !== item
+        )
       )
     )
     || (

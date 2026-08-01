@@ -154,3 +154,20 @@ test("working state redacts secrets and retains only three distinct requests", (
   ]);
   assert.doesNotMatch(JSON.stringify(state), new RegExp(credential, "u"));
 });
+
+test("working state rejects non-string open loops with the bounded domain error", () => {
+  assert.throws(() => validateSlackThreadScratchpad({
+    notes: [],
+    schema_version: "slack-thread-scratchpad/v1",
+    thread_ref: "slack-scratchpad://sha256/thread",
+    working_state: {
+      expires_at: "2026-08-05T10:00:00.000Z",
+      last_outcome: "owned",
+      open_loops: [42],
+      recent_requests: ["Finish the current handoff."],
+      schema_version: "slack-thread-working-state/v1",
+      thread_ref: "slack-scratchpad://sha256/thread",
+      updated_at: "2026-07-29T10:00:00.000Z",
+    },
+  } as never, new Date("2026-07-30T10:00:00.000Z")), /thread working state is invalid/u);
+});
