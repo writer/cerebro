@@ -92,6 +92,8 @@ pub struct Commitment {
     pub blocker: Option<String>,
     pub acceptance_criteria: Vec<String>,
     pub artifact_refs: Vec<String>,
+    #[serde(default)]
+    pub required_tool_ids: Vec<String>,
     pub wake_at: Option<String>,
     pub verification: Option<String>,
 }
@@ -1036,7 +1038,7 @@ pub async fn run_session_turn_recorded(
             }
             SessionModelDecision::Finish { draft } => {
                 if let Err(error) =
-                    validate_wake_completion(&session, &draft, &trigger, assessment_at)
+                    validate_wake_completion(&session, &draft, &trigger, assessment_at, &events)
                 {
                     record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
                     continue;
@@ -1218,6 +1220,7 @@ fn validate_wake_completion(
     draft: &GroundedDraft,
     trigger: &SessionTurnTrigger,
     assessment_at: OffsetDateTime,
+    turn_events: &[SessionEventRecord],
 ) -> Result<(), AgentRuntimeError> {
     let SessionTurnTrigger::Wake { commitment_ref, .. } = trigger else {
         return Ok(());
@@ -1257,6 +1260,25 @@ fn validate_wake_completion(
         return Err(AgentRuntimeError::InvalidFinal(
             "the wake commitment is not due yet".into(),
         ));
+    }
+    let invoked_tool_ids = turn_events
+        .iter()
+        .filter_map(|event| match &event.event {
+            SessionEvent::ToolInvoked { observation } => Some(observation.call.tool_id.as_str()),
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
+    let missing_required_tools = current
+        .required_tool_ids
+        .iter()
+        .filter(|tool_id| !invoked_tool_ids.contains(tool_id.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing_required_tools.is_empty() {
+        return Err(AgentRuntimeError::InvalidFinal(format!(
+            "scheduled wake must invoke its required fresh tools before finishing: {}",
+            missing_required_tools.join(", ")
+        )));
     }
     let next = draft
         .mission
@@ -2261,9 +2283,15 @@ fn validate_mission(mission: &MissionState) -> Result<(), AgentRuntimeError> {
     }
     let mut refs = BTreeSet::new();
     for commitment in &mission.commitments {
+        let required_tool_ids = commitment.required_tool_ids.iter().collect::<BTreeSet<_>>();
         if !bounded(&commitment.commitment_ref, MAX_TEXT_BYTES)
             || !bounded(&commitment.summary, MAX_TEXT_BYTES)
             || !refs.insert(&commitment.commitment_ref)
+            || required_tool_ids.len() != commitment.required_tool_ids.len()
+            || commitment
+                .required_tool_ids
+                .iter()
+                .any(|tool_id| !bounded(tool_id, MAX_TEXT_BYTES))
         {
             return Err(AgentRuntimeError::InvalidFinal(
                 "commitments require unique bounded references and summaries".into(),
@@ -2460,6 +2488,7 @@ mod tests {
             blocker: None,
             acceptance_criteria: vec!["A fresh connector state is recorded.".into()],
             artifact_refs: Vec::new(),
+            required_tool_ids: vec!["connector.read".into()],
             wake_at: Some("2026-07-31T00:00:30Z".into()),
             verification: Some("A current connector observation closes the check.".into()),
         }
@@ -2705,6 +2734,7 @@ mod tests {
             blocker: None,
             acceptance_criteria: vec!["Cause established.".into()],
             artifact_refs: Vec::new(),
+            required_tool_ids: Vec::new(),
             wake_at: None,
             verification: None,
         });
@@ -3131,6 +3161,42 @@ mod tests {
             outcome,
             SessionTurnOutcome::PendingDelivery { .. }
         ));
+    }
+
+    #[test]
+    fn wake_completion_requires_the_commitments_fresh_tools_in_that_wake() {
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let mut completed = draft();
+        completed.mission = awakened.mission.clone();
+        completed.mission.commitments[0].status = CommitmentStatus::Completed;
+        completed.mission.commitments[0].next_action = None;
+        completed.mission.commitments[0].wake_at = None;
+        completed.mission.status = SessionStatus::Completed;
+        let trigger = SessionTurnTrigger::Wake {
+            commitment_ref: "commitment:scheduled-check".into(),
+            occurrence_ref: "occurrence:required-tools".into(),
+        };
+        let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+
+        let error = validate_wake_completion(&awakened, &completed, &trigger, assessment_at, &[])
+            .unwrap_err();
+        assert!(error.to_string().contains("connector.read"));
+
+        let event = SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: awakened.session_ref.clone(),
+            sequence: 1,
+            occurred_at: "2026-07-31T00:01:00Z".into(),
+            event: SessionEvent::ToolInvoked {
+                observation: observation(true, Some("2026-07-31T00:06:00Z")),
+            },
+        };
+        assert!(
+            validate_wake_completion(&awakened, &completed, &trigger, assessment_at, &[event],)
+                .is_ok()
+        );
     }
 
     #[tokio::test]

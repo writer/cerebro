@@ -1840,10 +1840,11 @@ fn session_decision_schema() -> Value {
             "blocker": {"type": ["string", "null"]},
             "acceptance_criteria": string_array(),
             "artifact_refs": string_array(),
+            "required_tool_ids": string_array(),
             "wake_at": {"type": ["string", "null"]},
             "verification": {"type": ["string", "null"]},
         },
-        "required": ["commitment_ref", "summary", "owner", "status", "next_action", "blocker", "acceptance_criteria", "artifact_refs", "wake_at", "verification"]
+        "required": ["commitment_ref", "summary", "owner", "status", "next_action", "blocker", "acceptance_criteria", "artifact_refs", "required_tool_ids", "wake_at", "verification"]
     });
     let open_loop = json!({
         "type": "object",
@@ -2226,7 +2227,7 @@ Set planned_claim_ref on each message unit that answers or visibly disposes a pl
 
 Use only evidence atom refs present in observations. A missing JSON field is unknown unless a FieldCoverage atom explicitly says it was not returned. Partial or stale evidence cannot support a required current observation. Never invent an owner, identity, cause, timestamp, deadline, route, tool outcome, or action receipt.
 
-Update mission with the real objective, desired outcome, scope, acceptance criteria, commitments, and open loops. assessment_at is the authoritative current turn time. When the operator explicitly delegates a bounded safe re-observation and the acceptance condition is not yet met, create an unfinished Cerebro-owned commitment with a future RFC3339 wake_at derived from assessment_at, next_action, acceptance criteria, and verification condition. That accepted commitment is executor-bound follow-through; the runtime rejects unbound promises. A scheduled wake never authorizes an external effect. Ask exactly one question only when one decision or identifier blocks all useful progress. Memory updates are optional: use an empty array unless durable continuity materially helps. Every memory evidence_atom_ref must exactly match an atom in the current observations; memory is continuity, never proof of current state.
+Update mission with the real objective, desired outcome, scope, acceptance criteria, commitments, and open loops. assessment_at is the authoritative current turn time. When the operator explicitly delegates a bounded safe re-observation and the acceptance condition is not yet met, create an unfinished Cerebro-owned commitment with a future RFC3339 wake_at derived from assessment_at, next_action, acceptance criteria, verification condition, and required_tool_ids naming every exact read tool the wake must invoke for fresh evidence. Use an empty required_tool_ids only when the continuation genuinely needs no current evidence. A wake cannot finish until it invokes every required tool in that wake. That accepted commitment is executor-bound follow-through; the runtime rejects unbound promises. A scheduled wake never authorizes an external effect. Ask exactly one question only when one decision or identifier blocks all useful progress. Memory updates are optional: use an empty array unless durable continuity materially helps. Every memory evidence_atom_ref must exactly match an atom in the current observations; memory is continuity, never proof of current state.
 
 Set presentation_ready=true when message is ready to send. There is no second author in the normal path."#
 }
