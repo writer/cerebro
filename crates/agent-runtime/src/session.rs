@@ -773,6 +773,7 @@ pub async fn run_session_turn_recorded(
     let mut repair_feedback = Vec::new();
     let mut repairs = 0;
     let mut critic_repairs = 0;
+    let mut rejected_reviews = BTreeSet::new();
 
     for _ in 0..MAX_SESSION_STEPS {
         let decision = match model
@@ -801,6 +802,14 @@ pub async fn run_session_turn_recorded(
 
         match decision {
             SessionModelDecision::EstablishPlan { plan: proposed } => {
+                if critic_repairs > 0 {
+                    record_operating_repair(
+                        &mut repairs,
+                        &mut repair_feedback,
+                        "Claim review has started. The reviewed plan and evidence are frozen; revise only the final draft from that same evidence envelope.".into(),
+                    )?;
+                    continue;
+                }
                 if let Err(error) = validate_plan(&proposed, &available_tool_ids) {
                     record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string())?;
                     continue;
@@ -829,10 +838,12 @@ pub async fn run_session_turn_recorded(
             }
             SessionModelDecision::InvokeTools { calls } => {
                 if critic_repairs > 0 {
-                    return Err(AgentRuntimeError::InvalidToolCall(
-                        "claim-review repair is tool-frozen and must finish from existing evidence"
-                            .into(),
-                    ));
+                    record_operating_repair(
+                        &mut repairs,
+                        &mut repair_feedback,
+                        "Claim review has started. Tool use is frozen; revise only the final draft from the already observed evidence.".into(),
+                    )?;
+                    continue;
                 }
                 let Some(established) = plan.as_ref() else {
                     record_operating_repair(
@@ -997,6 +1008,12 @@ pub async fn run_session_turn_recorded(
                     .await?;
                 let issues = validate_message_review(&draft, &review)?;
                 if !issues.is_empty() {
+                    let mut issue_signature = issues.clone();
+                    issue_signature.sort();
+                    issue_signature.dedup();
+                    if !rejected_reviews.insert((message_digest(&draft.message), issue_signature)) {
+                        return Err(AgentRuntimeError::CriticRepairLimit);
+                    }
                     if critic_repairs >= MAX_CRITIC_REPAIRS {
                         return Err(AgentRuntimeError::CriticRepairLimit);
                     }
@@ -2677,6 +2694,15 @@ mod tests {
                     }],
                 },
                 SessionModelDecision::Finish { draft: draft() },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:review-escape".into(),
+                        tool_id: "connector.read".into(),
+                        purpose: "Try to gather different evidence after review.".into(),
+                        input: json!({"connector_ref": "connector:other"}),
+                    }],
+                },
+                SessionModelDecision::EstablishPlan { plan: plan() },
                 SessionModelDecision::Finish { draft: draft() },
                 SessionModelDecision::Finish { draft: draft() },
             ])),

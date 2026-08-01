@@ -817,12 +817,14 @@ fn evaluation_fixture(
             .map(|(deadline, assessed)| (deadline - assessed).whole_minutes().max(0))
             .unwrap_or(0);
         return match tool_id {
-            "source_runtime.overview" | "source_runtime.inspect" => EvaluationFixture {
-                summary: format!(
-                    "Five of six governed sources are healthy. One evidence source is degraded after three rejected collection cursors; its fixed last complete receipt was at {last_complete_text}, while the other five completed within 12 minutes of the scenario anchor."
-                ),
-                data: json!({"source_count": 6, "healthy": 5, "degraded": 1, "degraded_reason": "rejected collection cursor", "degraded_last_complete_at": last_complete_text, "other_sources_max_age_minutes_at_scenario_anchor": 12}),
-            },
+            "source_runtime.overview" | "source_runtime.inspect" | "mcp.cerebro.sources.health" => {
+                EvaluationFixture {
+                    summary: format!(
+                        "Five of six governed sources are healthy. One evidence source is degraded after three rejected collection cursors; its fixed last complete receipt was at {last_complete_text}, while the other five completed within 12 minutes of the scenario anchor."
+                    ),
+                    data: json!({"source_count": 6, "healthy": 5, "degraded": 1, "degraded_reason": "rejected collection cursor", "degraded_last_complete_at": last_complete_text, "other_sources_max_age_minutes_at_scenario_anchor": 12}),
+                }
+            }
             "mcp.cerebro.findings.search" => EvaluationFixture {
                 summary: format!(
                     "One high-risk finding depends on the degraded source. Its one-hour evidence-freshness deadline is fixed at {deadline_text}; at this observation it has {remaining_margin_minutes} minutes of margin remaining."
@@ -892,7 +894,7 @@ fn generic_evaluation_fixture(tool_id: &str) -> EvaluationFixture {
         },
         "mcp.cerebro.action.plan" => EvaluationFixture {
             summary: "The bounded read-only plan assigns the remediation owner to restrict exposure, then requires a fresh independent asset observation before closure. Creating the plan is read-only; the planned restriction remains an unexecuted external effect that requires exact effect authorization.".into(),
-            data: json!({"action": "restrict exposure", "verification": "fresh independent asset observation", "plan_external_effect": false, "planned_action_external_effect": true, "planned_action_requires_effect_authorization": true}),
+            data: json!({"action": "restrict exposure", "restrict_owner": "recorded remediation owner (identity not returned)", "verification": "fresh independent asset observation", "verification_owner": "not_observed", "plan_external_effect": false, "planned_action_external_effect": true, "planned_action_requires_effect_authorization": true}),
         },
         _ => EvaluationFixture {
             summary: "The tenant-scoped evaluation source returned a current, bounded observation for the requested scope.".into(),
@@ -3265,6 +3267,22 @@ mod tests {
     }
 
     #[test]
+    fn operational_source_health_preserves_the_degraded_source() {
+        let fixture = evaluation_fixture(
+            "case://held-out/informal-operational-check-in",
+            "mcp.cerebro.sources.health",
+            "2026-07-31T20:00:00Z",
+            "2026-07-31T20:02:00Z",
+        );
+        assert_eq!(fixture.data["healthy"], 5);
+        assert_eq!(fixture.data["degraded"], 1);
+        assert_eq!(
+            fixture.data["degraded_reason"],
+            "rejected collection cursor"
+        );
+    }
+
+    #[test]
     fn action_plan_distinguishes_read_only_planning_from_the_planned_effect() {
         let fixture = evaluation_fixture(
             "case://shadow/action-plan",
@@ -3278,6 +3296,11 @@ mod tests {
             fixture.data["planned_action_requires_effect_authorization"],
             true
         );
+        assert_eq!(
+            fixture.data["restrict_owner"],
+            "recorded remediation owner (identity not returned)"
+        );
+        assert_eq!(fixture.data["verification_owner"], "not_observed");
     }
 
     #[test]
