@@ -1533,6 +1533,28 @@ async fn repair_fallback_outcome(
             .clone();
         Some((observation.result.summary.trim().to_owned(), atom_ref))
     });
+    let failed = observations.iter().rev().find_map(|observation| {
+        if observation.result.state != ToolResultState::Failed
+            || observation.result.summary.len() > 1_500
+            || observation.result.summary.trim().is_empty()
+            || observation
+                .result
+                .summary
+                .chars()
+                .any(|character| character.is_control() && character != '\n')
+        {
+            return None;
+        }
+        let atom_ref = observation
+            .result
+            .evidence
+            .iter()
+            .flat_map(|evidence| &evidence.atoms)
+            .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))?
+            .atom_ref
+            .clone();
+        Some((observation.result.summary.trim().to_owned(), atom_ref))
+    });
     let rescheduled_wake = match trigger {
         SessionTurnTrigger::Wake { commitment_ref, .. } if uncertain_effect.is_none() => {
             let next_wake_at = assessment_at
@@ -1605,10 +1627,14 @@ async fn repair_fallback_outcome(
         "Coverage gap: The external action outcome is unknown. Reconcile the provider state with a fresh observation before another effect. I did not retry the action or record a new follow-up."
     } else if rescheduled_wake.is_some() && supported.is_some() {
         "Coverage gap: This check is partial, so the acceptance condition remains unverified."
+    } else if rescheduled_wake.is_some() && failed.is_some() {
+        "Coverage gap: The source read failed, so the acceptance condition remains unverified."
     } else if rescheduled_wake.is_some() {
         "Coverage gap: This check returned no authoritative observation, so the acceptance condition remains unverified."
     } else if supported.is_some() {
         "Coverage gap: The available evidence does not support the full requested conclusion. No action or future follow-up was recorded."
+    } else if failed.is_some() {
+        "Coverage gap: The source read failed. I did not evaluate the requested condition, execute an action, or record a new follow-up."
     } else {
         "Coverage gap: No current authoritative observation was obtained. I did not evaluate the requested condition, execute an action, or record a new follow-up."
     }
@@ -1641,6 +1667,30 @@ async fn repair_fallback_outcome(
         let notice = format!("\n\n{coverage_notice}");
         (
             FinalState::Partial,
+            format!("{summary}{notice}"),
+            vec![
+                GroundedClaim {
+                    claim_ref: format!("fallback-observation:{}", input.request_id),
+                    planned_claim_ref: None,
+                    text: summary,
+                    required_for_answer: true,
+                    content: ClaimContent::Observation {
+                        atom_refs: vec![atom_ref],
+                    },
+                },
+                GroundedClaim {
+                    claim_ref: format!("fallback-boundary:{}", input.request_id),
+                    planned_claim_ref: None,
+                    text: notice,
+                    required_for_answer: true,
+                    content: ClaimContent::StableExplanation,
+                },
+            ],
+        )
+    } else if let Some((summary, atom_ref)) = failed {
+        let notice = format!("\n\n{coverage_notice}");
+        (
+            FinalState::Blocked,
             format!("{summary}{notice}"),
             vec![
                 GroundedClaim {
@@ -6633,6 +6683,58 @@ mod tests {
         assert_eq!(delivery, DeliveryDisposition::Visible);
         assert_eq!(final_state, FinalState::Blocked);
         assert!(markdown.contains("No current authoritative observation was obtained"));
+    }
+
+    #[tokio::test]
+    async fn repair_fallback_reports_the_concrete_failed_read() {
+        let mut failed = observation(true, Some("2026-08-01T00:00:00Z"));
+        failed.result.state = ToolResultState::Failed;
+        failed.result.summary =
+            "The source read failed because the upstream request timed out.".into();
+        failed.result.blocker = Some("The upstream request timed out.".into());
+        failed.result.evidence[0].atoms.push(EvidenceAtom {
+            atom_ref: "evidence:1#tool-outcome".into(),
+            subject_ref: Some("connector:alpha".into()),
+            assertion: EvidenceAssertion::ToolOutcome {
+                state: ToolResultState::Failed,
+                summary: failed.result.summary.clone(),
+            },
+            observed_at: "2026-07-31T00:00:00Z".into(),
+            fresh_until: Some("2026-08-01T00:00:00Z".into()),
+            complete: true,
+        });
+        let input = SessionTurnInput {
+            request_id: "request:failed-read".into(),
+            actor_ref: "user:1".into(),
+            assessment_at: "2026-07-31T00:01:00Z".into(),
+            trigger: SessionTurnTrigger::Operator,
+        };
+
+        let outcome = repair_fallback_outcome(
+            &session(),
+            &input,
+            &input.trigger,
+            None,
+            &[failed],
+            Vec::new(),
+            &NoopSessionJournal,
+        )
+        .await
+        .expect("a failed read should produce a grounded visible fallback");
+        let SessionTurnOutcome::PendingDelivery {
+            delivery,
+            final_state,
+            markdown,
+            ..
+        } = outcome
+        else {
+            panic!("a failed read should not request approval");
+        };
+        assert_eq!(delivery, DeliveryDisposition::Visible);
+        assert_eq!(final_state, FinalState::Blocked);
+        assert!(markdown.contains("upstream request timed out"));
+        assert!(markdown.contains("The source read failed"));
+        assert!(!markdown.contains("No current authoritative observation was obtained"));
     }
 
     #[tokio::test]
