@@ -2274,6 +2274,7 @@ Return one flat JSON object with decision, plan, calls, and draft every time. Se
 - When plan is non-null, it is already active. Do not establish it again; invoke its selected tools or finish from the observations.
 - Then invoke_tools with one or more independent read calls. Keep effects alone in their own decision. The Rust host enforces exact approval and will return an approval request when authorization is absent.
 - Continue reading until the required claims are supported, contradicted, or bounded by an exact source failure. Do not keep calling tools after the answer is established.
+- A failed or irrelevant read does not exhaust an explicitly delegated follow-through while a semantically direct available read can establish its baseline. Adapt the active plan to that read and invoke it before finishing. Do not drop the commitment or return a generic blocker merely because the first selected capability was wrong.
 - Finish with one GroundedDraft. message is the actual Slack reply and should be direct, conversational, insightful, and complete. Lead with what matters. Include the recommendation and safe follow-through when the evidence supports them.
 - Set delivery=visible for every operator turn. For a scheduled wake, set delivery=silent only when the fresh check completed normally, the acceptance condition is not met, and the exact commitment remains active with a later wake. Silent messages are durable internal audit summaries and are not sent to Slack. Set delivery=visible when the acceptance condition is met, the commitment closes, evidence regresses, a source fails, a blocker appears, or the operator must decide something. Do not send routine progress merely to prove the scheduler ran.
 - An operator request for autonomous follow-through still requires one visible acknowledgement that answers the request, states the current bounded condition, and records the next check. “Do not send progress updates” governs later routine nonterminal wakes; it never permits silently ignoring the operator's initiating message.
@@ -3722,6 +3723,9 @@ mod tests {
             "Never finish an evidence-bearing lane before at least one bounded observation"
         ));
         assert!(operating.contains("Conflicting observations remain a conflict"));
+        assert!(session_instructions().contains(
+            "A failed or irrelevant read does not exhaust an explicitly delegated follow-through"
+        ));
         assert!(session_instructions().contains(
             "prior_commitment_checkpoint is the durable summary from the most recent completed turn"
         ));
