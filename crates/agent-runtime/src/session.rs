@@ -2374,30 +2374,52 @@ pub fn validate_plan(
             "research plan selected an unavailable tool".into(),
         ));
     }
-    if let Some(follow_through) = &plan.follow_through
-        && (!bounded(&follow_through.commitment_ref, MAX_TEXT_BYTES)
-            || follow_through.required_tool_ids.is_empty()
-            || follow_through.acceptance_criteria.is_empty()
-            || follow_through.required_tool_ids.len()
-                != follow_through
-                    .required_tool_ids
-                    .iter()
-                    .collect::<BTreeSet<_>>()
-                    .len()
+    if let Some(follow_through) = &plan.follow_through {
+        if !bounded(&follow_through.commitment_ref, MAX_TEXT_BYTES) {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "planned follow-through requires one stable bounded commitment_ref".into(),
+            ));
+        }
+        if follow_through.required_tool_ids.is_empty() {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "planned follow-through requires at least one exact read tool".into(),
+            ));
+        }
+        if follow_through.required_tool_ids.len()
+            != follow_through
+                .required_tool_ids
+                .iter()
+                .collect::<BTreeSet<_>>()
+                .len()
+        {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "planned follow-through required_tool_ids must be unique".into(),
+            ));
+        }
+        let unselected = follow_through
+            .required_tool_ids
+            .iter()
+            .filter(|tool_id| !plan.selected_tools.contains(tool_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !unselected.is_empty() {
+            return Err(AgentRuntimeError::InvalidFinal(format!(
+                "planned follow-through tools must also appear in selected_tools: {}",
+                unselected.join(", ")
+            )));
+        }
+        if follow_through.acceptance_criteria.is_empty()
             || follow_through.acceptance_criteria.len() > MAX_SCOPE_ITEMS
             || follow_through
                 .acceptance_criteria
                 .iter()
                 .any(|criterion| !bounded(criterion, MAX_TEXT_BYTES))
-            || follow_through
-                .required_tool_ids
-                .iter()
-                .any(|tool_id| !plan.selected_tools.contains(tool_id)))
-    {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "planned follow-through requires selected tools and explicit acceptance criteria"
-                .into(),
-        ));
+        {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "planned follow-through acceptance_criteria require one or more bounded criteria"
+                    .into(),
+            ));
+        }
     }
     Ok(())
 }
@@ -3724,6 +3746,26 @@ mod tests {
         let plan = plan();
         assert!(validate_plan(&plan, &["connector.read".into()]).is_ok());
         assert!(validate_plan(&plan, &["graph.read".into()]).is_err());
+    }
+
+    #[test]
+    fn invalid_follow_through_plan_reports_the_exact_field() {
+        let mut invalid = plan();
+        invalid.follow_through = Some(PlannedFollowThrough {
+            commitment_ref: "commitment:later-check".into(),
+            required_tool_ids: vec!["graph.read".into()],
+            acceptance_criteria: vec!["A fresh state is recorded.".into()],
+        });
+        let error =
+            validate_plan(&invalid, &["connector.read".into(), "graph.read".into()]).unwrap_err();
+        assert!(error.to_string().contains("selected_tools: graph.read"));
+
+        invalid.selected_tools.push("graph.read".into());
+        invalid.follow_through.as_mut().unwrap().required_tool_ids =
+            vec!["graph.read".into(), "graph.read".into()];
+        let error =
+            validate_plan(&invalid, &["connector.read".into(), "graph.read".into()]).unwrap_err();
+        assert!(error.to_string().contains("must be unique"));
     }
 
     #[test]
