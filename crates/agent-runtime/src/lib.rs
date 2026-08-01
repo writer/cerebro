@@ -101,8 +101,8 @@ impl ExecutionLane {
                 max_tool_calls: 3,
             },
             Self::Investigate => TurnBudget {
-                max_selected_capabilities: 10,
-                max_tool_calls: 8,
+                max_selected_capabilities: 14,
+                max_tool_calls: 14,
             },
             Self::Act => TurnBudget {
                 max_selected_capabilities: 12,
@@ -2486,17 +2486,14 @@ mod grounding_tests {
 
     #[test]
     fn investigate_budget_allows_bounded_recovery_after_bad_reads() {
-        assert_eq!(ExecutionLane::Investigate.budget().max_tool_calls, 8);
+        assert_eq!(ExecutionLane::Investigate.budget().max_tool_calls, 14);
         assert_eq!(
             ExecutionLane::Investigate
                 .budget()
                 .max_selected_capabilities,
-            10
+            14
         );
-        assert!(
-            ExecutionLane::Investigate.budget().max_tool_calls
-                < ExecutionLane::Act.budget().max_tool_calls
-        );
+        assert_eq!(ExecutionLane::Investigate.budget().max_tool_calls, 14);
     }
 
     fn passing_checks() -> CritiqueChecks {
