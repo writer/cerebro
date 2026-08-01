@@ -101,8 +101,8 @@ impl ExecutionLane {
                 max_tool_calls: 3,
             },
             Self::Investigate => TurnBudget {
-                max_selected_capabilities: 7,
-                max_tool_calls: 5,
+                max_selected_capabilities: 10,
+                max_tool_calls: 8,
             },
             Self::Act => TurnBudget {
                 max_selected_capabilities: 12,
@@ -2483,6 +2483,21 @@ fn looks_like_user_handback(value: &str) -> bool {
 mod grounding_tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn investigate_budget_allows_bounded_recovery_after_bad_reads() {
+        assert_eq!(ExecutionLane::Investigate.budget().max_tool_calls, 8);
+        assert_eq!(
+            ExecutionLane::Investigate
+                .budget()
+                .max_selected_capabilities,
+            10
+        );
+        assert!(
+            ExecutionLane::Investigate.budget().max_tool_calls
+                < ExecutionLane::Act.budget().max_tool_calls
+        );
+    }
 
     fn passing_checks() -> CritiqueChecks {
         CritiqueChecks {
