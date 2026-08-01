@@ -1713,6 +1713,62 @@ async fn continuation_repairs_a_repeated_blocker_into_forward_progress() {
 }
 
 #[tokio::test]
+async fn short_ambiguous_directive_without_authorization_resumes_the_artifact() {
+    let mut turn = request("ship it");
+    turn.working_state = Some(WorkingState {
+        mission_ref: Some("mission://approval-note".into()),
+        current_request: "Finish the approval note with honest placeholders.".into(),
+        last_outcome: WorkingOutcome::Owned,
+        last_blocker: None,
+        active_lane: Some(ExecutionLane::Converse),
+        requires_current_evidence: Some(false),
+        open_loops: vec!["Return the finished approval note.".into()],
+    });
+    let model = ScriptedModel {
+        routes: Mutex::new(VecDeque::from([
+            route(ExecutionLane::Act),
+            RouteDecision {
+                lane: ExecutionLane::Continue,
+                confidence: RouteConfidence::High,
+                reason: "The directive resumes the retained approval-note artifact.".into(),
+                requires_current_evidence: false,
+            },
+        ])),
+        decisions: Mutex::new(VecDeque::from([ModelDecision::Finish {
+            draft: FinalDraft {
+                state: FinalState::Answered,
+                headline: "Approval note".into(),
+                summary:
+                    "Approve [RESTRICTION] for [TARGET]. No external change has been executed."
+                        .into(),
+                summary_evidence_refs: vec![],
+                checked: vec![],
+                changed: vec![],
+                verified: vec![],
+                current_state: vec![],
+                next_actions: vec![],
+                coverage_notice: None,
+                question: None,
+            },
+        }])),
+        presentations: Mutex::new(VecDeque::new()),
+        critiques: Mutex::new(VecDeque::new()),
+    };
+    let tools = ScriptedTools {
+        descriptors: vec![],
+        results: Mutex::new(BTreeMap::new()),
+    };
+
+    let AgentTurnOutcome::Delivered { lane, markdown, .. } =
+        run_turn(&model, &tools, turn).await.unwrap()
+    else {
+        panic!("expected the artifact mission to resume");
+    };
+    assert_eq!(lane, ExecutionLane::Converse);
+    assert!(markdown.starts_with("Approve"));
+}
+
+#[tokio::test]
 async fn evidence_bearing_continuation_repairs_to_a_fresh_read() {
     let mut turn = request("Keep at it.");
     turn.working_state = Some(WorkingState {
