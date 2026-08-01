@@ -1442,7 +1442,7 @@ fn validate_wake_completion(
             || draft.question.is_some())
     {
         return Err(AgentRuntimeError::InvalidFinal(
-            "silent wakes require a complete current check without a blocker or user question"
+            "routine nonterminal wake progress must use delivery=silent, state=answered, coverage_notice=null, question=null, preserve the exact commitment, and set a later wake_at"
                 .into(),
         ));
     }
@@ -1583,8 +1583,16 @@ fn validate_wake_completion(
             DeliveryDisposition::Silent
         };
         if draft.delivery != required_delivery {
+            let exact_state = match required_delivery {
+                DeliveryDisposition::Silent => {
+                    "Set delivery=silent, state=answered, coverage_notice=null, question=null, preserve the exact commitment, and set a later wake_at."
+                }
+                DeliveryDisposition::Visible => {
+                    "Set delivery=visible and report the current alert state while preserving and rescheduling the exact commitment."
+                }
+            };
             return Err(AgentRuntimeError::InvalidFinal(format!(
-                "the runtime attention policy requires {:?} delivery for this nonterminal wake",
+                "the runtime attention policy requires {:?} delivery for this nonterminal wake. {exact_state}",
                 required_delivery
             )));
         }
@@ -4397,6 +4405,18 @@ mod tests {
             )
             .is_ok()
         );
+
+        rescheduled.delivery = DeliveryDisposition::Visible;
+        let error = validate_wake_completion(
+            &awakened,
+            &rescheduled,
+            &trigger,
+            assessment_at,
+            std::slice::from_ref(&current),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("coverage_notice=null"));
+        rescheduled.delivery = DeliveryDisposition::Silent;
 
         rescheduled.mission.commitments[0].status = CommitmentStatus::Completed;
         rescheduled.mission.commitments[0].wake_at = None;
