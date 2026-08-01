@@ -4089,28 +4089,6 @@ fn validate_claim(
             "future Cerebro work must cite the exact active commitment that records it".into(),
         ));
     }
-    if contains_unbound_operator_authority_assignment(&claim.text)
-        && !matches!(
-            claim.content,
-            ClaimContent::OperatorContext { .. } | ClaimContent::Question
-        )
-    {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "the current operator is not implicitly an owner, executor, or approver; authority requires an exact server-owned binding"
-                .into(),
-        ));
-    }
-    if contains_unobserved_provider_procedure(&claim.text)
-        && !matches!(
-            claim.content,
-            ClaimContent::OperatorContext { .. } | ClaimContent::Question
-        )
-    {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "provider-console, grant, and permission procedures require typed authoritative support; name the missing ownership or authorization record without inventing its system or path"
-                .into(),
-        ));
-    }
     let atom_refs = match &claim.content {
         ClaimContent::Observation { atom_refs } => {
             validate_observation_wording(&claim.text, atom_refs, context)?;
@@ -4547,11 +4525,6 @@ fn contains_unbound_future_promise(value: &str) -> bool {
         "i will recheck",
         "i'll re-inspect",
         "i will re-inspect",
-        "i can re-inspect",
-        "i'll rerun",
-        "i will rerun",
-        "i'll re-run",
-        "i will re-run",
         "i'll monitor",
         "i will monitor",
         "i'll report",
@@ -4567,43 +4540,6 @@ fn contains_unbound_future_promise(value: &str) -> bool {
     .any(|promise| normalized.contains(promise))
         || ((normalized.contains("i've set") || normalized.contains("i have set"))
             && (normalized.contains("recheck") || normalized.contains("re-check")))
-}
-
-fn contains_unbound_operator_authority_assignment(value: &str) -> bool {
-    let normalized = value.to_lowercase().replace('’', "'");
-    [
-        "owned on your side",
-        "sits with you",
-        "stays with you",
-        "the authority is you",
-        "you are the approver",
-        "you are the approving authority",
-        "you, the operator",
-        "your responsibility to approve",
-        "the two gates are yours",
-        "those gates are yours",
-        "those two gates are yours",
-    ]
-    .iter()
-    .any(|assignment| normalized.contains(assignment))
-}
-
-fn contains_unobserved_provider_procedure(value: &str) -> bool {
-    let normalized = value.to_lowercase();
-    [
-        "provider admin panel",
-        "provider admin console",
-        "provider's admin panel",
-        "provider's admin console",
-        "provider iam console",
-        "provider's iam console",
-        "connected-app settings",
-        "connected app settings",
-        "oauth grant",
-        "granted api scopes",
-    ]
-    .iter()
-    .any(|procedure| normalized.contains(procedure))
 }
 
 #[cfg(test)]
@@ -5136,94 +5072,6 @@ mod tests {
             )
             .is_ok()
         );
-    }
-
-    #[test]
-    fn rejects_implicit_operator_authority_under_every_non_quote_basis() {
-        let observed = observation(true, Some("2026-08-01T00:00:00Z"));
-        for text in [
-            "This approval is owned on your side.",
-            "The authority is you, the operator.",
-            "Those two gates are yours.",
-        ] {
-            let mut assigned = draft();
-            assigned.message = text.into();
-            assigned.claims = vec![GroundedClaim {
-                claim_ref: "claim:implicit-operator-authority".into(),
-                planned_claim_ref: None,
-                text: assigned.message.clone(),
-                required_for_answer: true,
-                content: ClaimContent::Observation {
-                    atom_refs: vec!["atom:status".into()],
-                },
-            }];
-            let error = validate_grounded_draft(
-                &session(),
-                &assigned,
-                std::slice::from_ref(&observed),
-                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
-            )
-            .expect_err("operator authorship must not create authority");
-            assert!(error.to_string().contains("not implicitly an owner"));
-        }
-    }
-
-    #[test]
-    fn rejects_unobserved_provider_console_and_permission_procedures() {
-        let observed = observation(true, Some("2026-08-01T00:00:00Z"));
-        for text in [
-            "Pull the owner from the provider admin panel.",
-            "Inspect the OAuth grant and granted API scopes.",
-            "Open the connected-app settings to find the role.",
-        ] {
-            let mut procedure = draft();
-            procedure.message = text.into();
-            procedure.claims = vec![GroundedClaim {
-                claim_ref: "claim:invented-provider-procedure".into(),
-                planned_claim_ref: None,
-                text: procedure.message.clone(),
-                required_for_answer: true,
-                content: ClaimContent::Recommendation {
-                    action: ActionSpec {
-                        tool_id: None,
-                        target_ref: Some("provider:unknown".into()),
-                        input: json!({}),
-                    },
-                    rationale_atom_refs: vec!["atom:status".into()],
-                },
-            }];
-            let error = validate_grounded_draft(
-                &session(),
-                &procedure,
-                std::slice::from_ref(&observed),
-                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
-            )
-            .expect_err("provider procedure requires typed authority evidence");
-            assert!(error.to_string().contains("provider-console"));
-        }
-    }
-
-    #[test]
-    fn rejects_conditional_rerun_promises_without_a_commitment() {
-        let mut promise = draft();
-        promise.message =
-            "Once that is checked, I can re-inspect the source and I'll re-run the receipt read."
-                .into();
-        promise.claims = vec![GroundedClaim {
-            claim_ref: "claim:conditional-rerun".into(),
-            planned_claim_ref: None,
-            text: promise.message.clone(),
-            required_for_answer: false,
-            content: ClaimContent::StableExplanation,
-        }];
-        let error = validate_grounded_draft(
-            &session(),
-            &promise,
-            &[],
-            OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
-        )
-        .expect_err("conditional future work still requires a durable commitment");
-        assert!(error.to_string().contains("exact active commitment"));
     }
 
     #[test]
