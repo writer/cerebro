@@ -1377,25 +1377,9 @@ async fn repair_fallback_outcome(
     mut events: Vec<SessionEventRecord>,
     journal: &dyn SessionJournal,
 ) -> Result<SessionTurnOutcome, AgentRuntimeError> {
+    let assessment_at = OffsetDateTime::parse(&input.assessment_at, &Rfc3339)
+        .map_err(|_| AgentRuntimeError::InvalidRequest("assessment_at is invalid".into()))?;
     let mut mission = session.mission.clone();
-    let blocked_wake = match trigger {
-        SessionTurnTrigger::Wake { commitment_ref, .. } => {
-            if let Some(commitment) = mission
-                .commitments
-                .iter_mut()
-                .find(|commitment| commitment.commitment_ref == *commitment_ref)
-            {
-                commitment.status = CommitmentStatus::Blocked;
-                commitment.blocker = Some(
-                    "The scheduled check could not produce a grounded operator response.".into(),
-                );
-                commitment.wake_at = None;
-                mission.status = SessionStatus::Blocked;
-            }
-            true
-        }
-        SessionTurnTrigger::Operator => false,
-    };
     let uncertain_effect = observations.iter().find_map(|observation| {
         if observation.descriptor.authority_class != ToolAuthorityClass::Actuate
             || observation.result.state != ToolResultState::OutcomeUnknown
@@ -1438,18 +1422,71 @@ async fn repair_fallback_outcome(
             .clone();
         Some((observation.result.summary.trim().to_owned(), atom_ref))
     });
+    let rescheduled_wake = match trigger {
+        SessionTurnTrigger::Wake { commitment_ref, .. } if uncertain_effect.is_none() => {
+            let next_wake_at = assessment_at
+                .checked_add(Duration::minutes(5))
+                .ok_or_else(|| {
+                    AgentRuntimeError::InvalidFinal(
+                        "the repair fallback wake time overflowed".into(),
+                    )
+                })?
+                .format(&Rfc3339)
+                .map_err(|_| {
+                    AgentRuntimeError::InvalidFinal(
+                        "the repair fallback wake time could not be formatted".into(),
+                    )
+                })?;
+            let commitment = mission
+                .commitments
+                .iter_mut()
+                .find(|commitment| commitment.commitment_ref == *commitment_ref)
+                .ok_or_else(|| {
+                    AgentRuntimeError::InvalidFinal(
+                        "the repair fallback wake has no exact durable commitment".into(),
+                    )
+                })?;
+            commitment.status = CommitmentStatus::Waiting;
+            commitment.blocker = Some(
+                "This check could not produce a fully grounded response; a bounded retry is scheduled."
+                    .into(),
+            );
+            commitment.wake_at = Some(next_wake_at.clone());
+            mission.status = SessionStatus::WaitingForExternal;
+            Some((commitment_ref.clone(), next_wake_at))
+        }
+        SessionTurnTrigger::Wake { commitment_ref, .. } => {
+            if let Some(commitment) = mission
+                .commitments
+                .iter_mut()
+                .find(|commitment| commitment.commitment_ref == *commitment_ref)
+            {
+                commitment.status = CommitmentStatus::Blocked;
+                commitment.blocker = Some(
+                    "The scheduled check encountered an external effect with an unknown outcome."
+                        .into(),
+                );
+                commitment.wake_at = None;
+                mission.status = SessionStatus::Blocked;
+            }
+            None
+        }
+        SessionTurnTrigger::Operator => None,
+    };
     let coverage_notice = if uncertain_effect.is_some() {
         mission.status = SessionStatus::Blocked;
         "Coverage gap: The external action outcome is unknown. Reconcile the provider state with a fresh observation before another effect. I did not retry the action or record a new follow-up."
-    } else if blocked_wake {
-        "Coverage gap: I could not complete a grounded answer to this scheduled check. The follow-up is blocked and will not run again automatically. I did not execute an action or record another follow-up."
+    } else if rescheduled_wake.is_some() && supported.is_some() {
+        "Coverage gap: I could not complete a fully grounded answer to this scheduled check. The acceptance condition remains unverified."
+    } else if rescheduled_wake.is_some() {
+        "Coverage gap: No current authoritative observation was obtained for this scheduled check. The acceptance condition remains unverified."
     } else if supported.is_some() {
         "Coverage gap: I could not complete a fully grounded answer to the newest request. I did not execute an action or record a new follow-up."
     } else {
         "Coverage gap: No current authoritative observation was obtained. I did not evaluate the requested condition, execute an action, or record a new follow-up."
     }
     .to_owned();
-    let (state, message, claims) = if let Some((summary, atom_ref)) = uncertain_effect {
+    let (state, mut message, mut claims) = if let Some((summary, atom_ref)) = uncertain_effect {
         let notice = format!("\n\n{coverage_notice}");
         (
             FinalState::Blocked,
@@ -1510,6 +1547,17 @@ async fn repair_fallback_outcome(
             }],
         )
     };
+    if let Some((commitment_ref, wake_at)) = rescheduled_wake {
+        let follow_up = format!("\n\nI’ll check again at {wake_at}.");
+        message.push_str(&follow_up);
+        claims.push(GroundedClaim {
+            claim_ref: format!("fallback-commitment:{}", input.request_id),
+            planned_claim_ref: None,
+            text: follow_up,
+            required_for_answer: true,
+            content: ClaimContent::Commitment { commitment_ref },
+        });
+    }
     let draft = GroundedDraft {
         state,
         delivery: DeliveryDisposition::Visible,
@@ -1521,8 +1569,6 @@ async fn repair_fallback_outcome(
         memory_updates: Vec::new(),
         presentation_ready: true,
     };
-    let assessment_at = OffsetDateTime::parse(&input.assessment_at, &Rfc3339)
-        .map_err(|_| AgentRuntimeError::InvalidRequest("assessment_at is invalid".into()))?;
     let validated = validate_grounded_draft(session, &draft, observations, assessment_at)?;
     emit_event(
         session,
@@ -5674,6 +5720,80 @@ mod tests {
         assert_eq!(delivery, DeliveryDisposition::Visible);
         assert_eq!(final_state, FinalState::Blocked);
         assert!(markdown.contains("No current authoritative observation was obtained"));
+    }
+
+    #[tokio::test]
+    async fn scheduled_repair_fallback_reschedules_the_exact_commitment() {
+        let invalid = SessionModelDecision::InvokeTools {
+            calls: vec![ToolCall {
+                call_id: "call:scheduled-effect".into(),
+                tool_id: "connector.update".into(),
+                purpose: "Attempt an effect from a scheduled wake.".into(),
+                input: json!({"connector_ref": "connector:alpha", "enabled": true}),
+            }],
+        };
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from(vec![invalid; MAX_MODEL_REPAIRS + 1])),
+        };
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        awakened.mission.status = SessionStatus::WaitingForExternal;
+        awakened = apply_session_events(
+            &awakened,
+            &[SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::WakeTriggered {
+                    request_id: "wake-request:repair-fallback".into(),
+                    commitment_ref: "commitment:scheduled-check".into(),
+                    occurrence_ref: "occurrence:repair-fallback".into(),
+                    scheduled_for: "2026-07-31T00:00:30Z".into(),
+                },
+            }],
+        )
+        .unwrap();
+        let tools = WakeTools {
+            effects: AtomicUsize::new(0),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &tools,
+            awakened,
+            SessionTurnInput {
+                request_id: "wake-request:repair-fallback".into(),
+                actor_ref: "cerebro-scheduler".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                trigger: SessionTurnTrigger::Wake {
+                    commitment_ref: "commitment:scheduled-check".into(),
+                    occurrence_ref: "occurrence:repair-fallback".into(),
+                },
+            },
+        )
+        .await
+        .expect("a failed scheduled repair should remain durable");
+
+        let SessionTurnOutcome::PendingDelivery {
+            final_state,
+            markdown,
+            mission,
+            ..
+        } = outcome
+        else {
+            panic!("scheduled repair fallback should not request approval");
+        };
+        assert_eq!(final_state, FinalState::Blocked);
+        assert!(markdown.contains("I’ll check again at 2026-07-31T00:06:00Z"));
+        let commitment = mission
+            .commitments
+            .iter()
+            .find(|commitment| commitment.commitment_ref == "commitment:scheduled-check")
+            .expect("the exact commitment must survive repair fallback");
+        assert_eq!(commitment.status, CommitmentStatus::Waiting);
+        assert_eq!(commitment.wake_at.as_deref(), Some("2026-07-31T00:06:00Z"));
+        assert_eq!(tools.effects.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
