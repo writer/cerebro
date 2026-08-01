@@ -2202,6 +2202,13 @@ Return one flat JSON object with decision, plan, calls, and draft every time. Se
 - Finish with one GroundedDraft. message is the actual Slack reply and should be direct, conversational, insightful, and complete. Lead with what matters. Include the recommendation and safe follow-through when the evidence supports them.
 - Do not claim Cerebro can trigger, line up, route, schedule, or execute later work unless the exact capability is present and the runtime records that work now. A prospective recommendation is not a capability or execution receipt.
 
+GroundedDraft state describes the evidence coverage and response for this turn, not whether the long-lived mission has ended:
+- answered: every required current claim for this trigger is supported or directly contradicted by complete fresh evidence. Use answered when a current check is complete even if its result says a recovery threshold is not met and an executor-bound commitment remains open.
+- partial: useful evidence was observed, but at least one required current claim remains uncovered, incomplete, or stale. Set coverage_notice to concise text that appears verbatim in message and names that exact coverage gap.
+- blocked: the required evidence could not be observed. Set coverage_notice to concise text that appears verbatim in message and names the exact blocker.
+- needs_input: one precise user decision or identifier blocks all useful progress. Set question to the exact question text appearing verbatim in message.
+If repair_feedback is present, correct every item before returning. Do not repeat a decision or draft that the runtime already rejected.
+
 Claims are ordered visible message units. Concatenating every claim.text in order must reproduce message byte-for-byte, including Markdown and whitespace; this is how the runtime proves that no visible material bypassed review. Choose one typed content basis:
 - {"basis":"observation","atom_refs":[...]} for a current fact returned by a tool.
 - {"basis":"operator_context","message_sequence":N,"exact_excerpt":"..."} for something the operator explicitly supplied.
@@ -2215,7 +2222,7 @@ Set planned_claim_ref on each message unit that answers or visibly disposes a pl
 
 Use only evidence atom refs present in observations. A missing JSON field is unknown unless a FieldCoverage atom explicitly says it was not returned. Partial or stale evidence cannot support a required current observation. Never invent an owner, identity, cause, timestamp, deadline, route, tool outcome, or action receipt.
 
-Update mission with the real objective, desired outcome, scope, acceptance criteria, commitments, and open loops. Create an unfinished Cerebro-owned commitment only for bounded safe continuation with an exact wake_at, next_action, acceptance criteria, and verification condition; the runtime rejects unbound promises. A scheduled wake never authorizes an external effect. Ask exactly one question only when one decision or identifier blocks all useful progress. Memory updates must be compact declarative state with observed atom provenance; memory is continuity, never proof of current state.
+Update mission with the real objective, desired outcome, scope, acceptance criteria, commitments, and open loops. Create an unfinished Cerebro-owned commitment only for bounded safe continuation with an exact wake_at, next_action, acceptance criteria, and verification condition; the runtime rejects unbound promises. A scheduled wake never authorizes an external effect. Ask exactly one question only when one decision or identifier blocks all useful progress. Memory updates are optional: use an empty array unless durable continuity materially helps. Every memory evidence_atom_ref must exactly match an atom in the current observations; memory is continuity, never proof of current state.
 
 Set presentation_ready=true when message is ready to send. There is no second author in the normal path."#
 }
@@ -3911,6 +3918,25 @@ mod tests {
         assert!(!is_bedrock_opus_model(
             "us.anthropic.claude-sonnet-4-5-v1:0"
         ));
+    }
+
+    #[test]
+    fn session_prompt_distinguishes_turn_coverage_from_mission_completion() {
+        let instructions = session_instructions();
+        assert!(instructions.contains(
+            "GroundedDraft state describes the evidence coverage and response for this turn"
+        ));
+        assert!(instructions.contains(
+            "Use answered when a current check is complete even if its result says a recovery threshold is not met"
+        ));
+        assert!(
+            instructions
+                .contains("Set coverage_notice to concise text that appears verbatim in message")
+        );
+        assert!(
+            instructions
+                .contains("Do not repeat a decision or draft that the runtime already rejected")
+        );
     }
 
     #[test]
