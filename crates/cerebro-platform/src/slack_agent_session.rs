@@ -1,9 +1,10 @@
 use async_trait::async_trait;
 use cerebro_agent_runtime::{
-    AgentRuntimeError,
+    AgentRuntimeError, FinalState,
     session::{
-        AgentSession, CommitmentStatus, SessionEventRecord, SessionJournal, SessionStore,
-        WorkOwner, apply_session_events, message_digest,
+        AGENT_SESSION_EVENT_V2, AgentSession, CommitmentStatus, DeliveryDisposition, SessionEvent,
+        SessionEventRecord, SessionJournal, SessionStore, WorkOwner, apply_session_events,
+        message_digest,
     },
 };
 use native_tls::TlsConnector;
@@ -11,6 +12,7 @@ use postgres_native_tls::MakeTlsConnector;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::sync::Mutex;
 use tokio_postgres::Client;
 
@@ -353,6 +355,66 @@ impl PostgresAgentSessionStore {
         transaction.commit().await.map_err(store_unavailable)
     }
 
+    pub async fn complete_wake_silently(
+        &self,
+        claim: &AgentWakeClaim,
+        payload_digest: &str,
+        final_state: FinalState,
+    ) -> Result<(), AgentRuntimeError> {
+        let session = self.load(&claim.session_ref).await?.ok_or_else(|| {
+            AgentRuntimeError::InvalidRequest("wake session does not exist".into())
+        })?;
+        let pending = session.pending_delivery.as_ref().ok_or_else(|| {
+            AgentRuntimeError::InvalidRequest("silent wake has no pending draft".into())
+        })?;
+        if pending.request_id != claim.request_id
+            || pending.draft.delivery != DeliveryDisposition::Silent
+            || message_digest(&pending.draft.message) != payload_digest
+            || pending.draft.state != final_state
+        {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "silent wake completion does not match its exact pending draft".into(),
+            ));
+        }
+        let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
+        let occurred_at = OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .map_err(|error| AgentRuntimeError::InvalidRequest(error.to_string()))?;
+        let events = [
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: claim.session_ref.clone(),
+                sequence: expected_sequence + 1,
+                occurred_at: occurred_at.clone(),
+                event: SessionEvent::DeliveryRecorded {
+                    request_id: claim.request_id.clone(),
+                    transport: "internal_scheduler".into(),
+                    delivery_ref: claim.occurrence_ref.clone(),
+                    payload_digest: payload_digest.into(),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: claim.session_ref.clone(),
+                sequence: expected_sequence + 2,
+                occurred_at,
+                event: SessionEvent::TurnCompleted {
+                    request_id: claim.request_id.clone(),
+                    state: final_state,
+                },
+            },
+        ];
+        self.append_checked(
+            &claim.session_ref,
+            expected_sequence,
+            &events,
+            Some(claim),
+            None,
+            true,
+        )
+        .await
+    }
+
     pub async fn claim_pending_wake_delivery(
         &self,
         lease_owner: &str,
@@ -525,6 +587,7 @@ impl PostgresAgentSessionStore {
             events,
             Some(claim),
             None,
+            false,
         )
         .await
     }
@@ -541,6 +604,7 @@ impl PostgresAgentSessionStore {
             events,
             None,
             Some(lease),
+            false,
         )
         .await
     }
@@ -552,6 +616,7 @@ impl PostgresAgentSessionStore {
         events: &[SessionEventRecord],
         wake_claim: Option<&AgentWakeClaim>,
         wake_delivery_lease: Option<&AgentWakeDeliveryLease>,
+        release_wake_turn: bool,
     ) -> Result<(), AgentRuntimeError> {
         if events.is_empty() {
             return Ok(());
@@ -654,6 +719,25 @@ impl PostgresAgentSessionStore {
             .await
             .map_err(store_unavailable)?;
         project_session_state(&transaction, &updated).await?;
+        if release_wake_turn {
+            let claim = wake_claim.ok_or_else(|| {
+                AgentRuntimeError::InvalidRequest(
+                    "silent wake completion requires an exact wake claim".into(),
+                )
+            })?;
+            let session_changed = transaction
+                .execute(
+                    "UPDATE cerebro_agent_sessions SET active_request_id = NULL, lease_owner = NULL, lease_expires_at = NULL, updated_at = NOW() WHERE session_ref = $1 AND active_request_id = $2 AND lease_owner = $3",
+                    &[&claim.session_ref, &claim.request_id, &claim.lease_owner],
+                )
+                .await
+                .map_err(store_unavailable)?;
+            if session_changed != 1 {
+                return Err(AgentRuntimeError::InvalidRequest(
+                    "silent wake session lease was lost before completion".into(),
+                ));
+            }
+        }
         transaction.commit().await.map_err(store_unavailable)
     }
 }
@@ -760,7 +844,7 @@ impl SessionStore for PostgresAgentSessionStore {
         expected_sequence: u64,
         events: &[SessionEventRecord],
     ) -> Result<(), AgentRuntimeError> {
-        self.append_checked(session_ref, expected_sequence, events, None, None)
+        self.append_checked(session_ref, expected_sequence, events, None, None, false)
             .await
     }
 }
@@ -996,6 +1080,7 @@ mod tests {
         completed_mission.status = SessionStatus::Completed;
         let draft = GroundedDraft {
             state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
             message: "The scheduled check completed.".into(),
             claims: Vec::new(),
             coverage_notice: None,

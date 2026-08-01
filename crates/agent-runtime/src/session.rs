@@ -237,6 +237,8 @@ pub struct GroundedClaim {
 #[serde(deny_unknown_fields)]
 pub struct GroundedDraft {
     pub state: FinalState,
+    #[serde(default)]
+    pub delivery: DeliveryDisposition,
     pub message: String,
     pub claims: Vec<GroundedClaim>,
     pub coverage_notice: Option<String>,
@@ -244,6 +246,14 @@ pub struct GroundedDraft {
     pub mission: MissionState,
     pub memory_updates: Vec<MemoryUpdate>,
     pub presentation_ready: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryDisposition {
+    #[default]
+    Visible,
+    Silent,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -518,6 +528,7 @@ pub enum SessionTurnTrigger {
 pub enum SessionTurnOutcome {
     PendingDelivery {
         lane: ExecutionLane,
+        delivery: DeliveryDisposition,
         markdown: String,
         final_state: FinalState,
         evidence_atom_refs: Vec<String>,
@@ -710,7 +721,11 @@ pub fn apply_session_events(
                     produced_at: record.occurred_at.clone(),
                 });
             }
-            SessionEvent::DeliveryRecorded { request_id, .. } => {
+            SessionEvent::DeliveryRecorded {
+                request_id,
+                transport,
+                ..
+            } => {
                 let pending = next.pending_delivery.take().ok_or_else(|| {
                     AgentRuntimeError::InvalidRequest(
                         "delivery receipt has no pending response".into(),
@@ -727,13 +742,15 @@ pub fn apply_session_events(
                         .retain(|memory| memory.memory_ref != update.memory_ref);
                     next.memories.push(update);
                 }
-                next.messages.push(SessionMessage {
-                    role: SessionMessageRole::Assistant,
-                    message_ref: format!("assistant:{request_id}"),
-                    actor_ref: "cerebro".into(),
-                    text: pending.draft.message,
-                    received_at: record.occurred_at.clone(),
-                });
+                if transport != "internal_scheduler" {
+                    next.messages.push(SessionMessage {
+                        role: SessionMessageRole::Assistant,
+                        message_ref: format!("assistant:{request_id}"),
+                        actor_ref: "cerebro".into(),
+                        text: pending.draft.message,
+                        received_at: record.occurred_at.clone(),
+                    });
+                }
             }
             SessionEvent::MemoryRecorded { update } => {
                 next.memories
@@ -1113,6 +1130,7 @@ pub async fn run_session_turn_recorded(
                     lane: plan
                         .as_ref()
                         .map_or(ExecutionLane::Converse, |plan| plan.lane),
+                    delivery: draft.delivery,
                     markdown: validated.markdown,
                     final_state: draft.state,
                     evidence_atom_refs: validated.evidence_atom_refs,
@@ -1223,8 +1241,23 @@ fn validate_wake_completion(
     turn_events: &[SessionEventRecord],
 ) -> Result<(), AgentRuntimeError> {
     let SessionTurnTrigger::Wake { commitment_ref, .. } = trigger else {
+        if draft.delivery != DeliveryDisposition::Visible {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "operator turns must produce a visible response".into(),
+            ));
+        }
         return Ok(());
     };
+    if draft.delivery == DeliveryDisposition::Silent
+        && (draft.state != FinalState::Answered
+            || draft.coverage_notice.is_some()
+            || draft.question.is_some())
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "silent wakes require a complete current check without a blocker or user question"
+                .into(),
+        ));
+    }
     let current = session
         .mission
         .commitments
@@ -1294,6 +1327,11 @@ fn validate_wake_completion(
         next.status,
         CommitmentStatus::Completed | CommitmentStatus::Cancelled
     ) {
+        if draft.delivery != DeliveryDisposition::Visible {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "a wake that closes its commitment must notify the operator".into(),
+            ));
+        }
         if next.wake_at.is_some() {
             return Err(AgentRuntimeError::InvalidFinal(
                 "a closed wake commitment cannot retain a due time".into(),
@@ -2453,6 +2491,7 @@ mod tests {
     fn draft() -> GroundedDraft {
         GroundedDraft {
             state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
             message: "Connector alpha is healthy. I would leave it unchanged.".into(),
             claims: vec![
                 GroundedClaim {
@@ -3000,6 +3039,46 @@ mod tests {
     }
 
     #[test]
+    fn silent_scheduler_completion_commits_state_without_faking_a_slack_message() {
+        let initial = session();
+        let mut internal = draft();
+        internal.delivery = DeliveryDisposition::Silent;
+        let pending = apply_session_events(
+            &initial,
+            &[SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: initial.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::DraftProduced {
+                    request_id: "wake-request:quiet".into(),
+                    draft: internal.clone(),
+                },
+            }],
+        )
+        .unwrap();
+        let completed = apply_session_events(
+            &pending,
+            &[SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: pending.session_ref.clone(),
+                sequence: 2,
+                occurred_at: "2026-07-31T00:02:00Z".into(),
+                event: SessionEvent::DeliveryRecorded {
+                    request_id: "wake-request:quiet".into(),
+                    transport: "internal_scheduler".into(),
+                    delivery_ref: "occurrence:quiet".into(),
+                    payload_digest: message_digest(&internal.message),
+                },
+            }],
+        )
+        .unwrap();
+        assert!(completed.pending_delivery.is_none());
+        assert_eq!(completed.messages.len(), initial.messages.len());
+        assert_eq!(completed.mission, internal.mission);
+    }
+
+    #[test]
     fn durable_memory_events_are_recalled_in_the_session_snapshot() {
         let initial = session();
         let updated = apply_session_events(
@@ -3209,6 +3288,67 @@ mod tests {
             validate_wake_completion(&awakened, &completed, &trigger, assessment_at, &[event],)
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn delivery_disposition_enforces_human_attention_boundaries() {
+        let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut operator_draft = draft();
+        operator_draft.delivery = DeliveryDisposition::Silent;
+        let error = validate_wake_completion(
+            &session(),
+            &operator_draft,
+            &SessionTurnTrigger::Operator,
+            assessment_at,
+            &[],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("operator turns must produce"));
+
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let trigger = SessionTurnTrigger::Wake {
+            commitment_ref: "commitment:scheduled-check".into(),
+            occurrence_ref: "occurrence:delivery-boundary".into(),
+        };
+        let tool_event = SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: awakened.session_ref.clone(),
+            sequence: 1,
+            occurred_at: "2026-07-31T00:01:00Z".into(),
+            event: SessionEvent::ToolInvoked {
+                observation: observation(true, Some("2026-07-31T00:06:00Z")),
+            },
+        };
+
+        let mut rescheduled = draft();
+        rescheduled.delivery = DeliveryDisposition::Silent;
+        rescheduled.mission = awakened.mission.clone();
+        rescheduled.mission.commitments[0].status = CommitmentStatus::Waiting;
+        rescheduled.mission.commitments[0].wake_at = Some("2026-07-31T00:06:00Z".into());
+        assert!(
+            validate_wake_completion(
+                &awakened,
+                &rescheduled,
+                &trigger,
+                assessment_at,
+                std::slice::from_ref(&tool_event),
+            )
+            .is_ok()
+        );
+
+        rescheduled.mission.commitments[0].status = CommitmentStatus::Completed;
+        rescheduled.mission.commitments[0].wake_at = None;
+        let error = validate_wake_completion(
+            &awakened,
+            &rescheduled,
+            &trigger,
+            assessment_at,
+            &[tool_event],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("must notify the operator"));
     }
 
     #[tokio::test]

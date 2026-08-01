@@ -17,8 +17,8 @@ use cerebro_agent_runtime::{
     ToolEffectClass, ToolResult, ToolResultState, WorkingOutcome, WorkingState, run_turn,
     session::{
         AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2, AgentSession, ClaimReviewTurn, CommitmentStatus,
-        EvidenceAtomization, MessageReview, MissionState, SessionAgentModel, SessionEvent,
-        SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
+        DeliveryDisposition, EvidenceAtomization, MessageReview, MissionState, SessionAgentModel,
+        SessionEvent, SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
         SessionModelTurn, SessionStatus, SessionTools, SessionTurnInput, SessionTurnOutcome,
         SessionTurnTrigger, WorkOwner, apply_session_events, evidence_atoms_from_json,
         message_digest, run_session_turn, session_turn_request_text,
@@ -1425,7 +1425,7 @@ async fn run_evaluation_session_turn(
     tools: &EvalTools,
     session: &mut AgentSession,
     request: AgentTurnRequest,
-) -> Result<AgentTurnOutcome, AgentRuntimeError> {
+) -> Result<(AgentTurnOutcome, DeliveryDisposition), AgentRuntimeError> {
     session.effect_authorizations = request.effect_authorizations.clone();
     let sequence = session.events.last().map_or(1, |event| event.sequence + 1);
     let queued = SessionEventRecord {
@@ -1466,7 +1466,7 @@ async fn run_evaluation_session_wake(
     commitment_ref: String,
     occurrence_ref: String,
     scheduled_for: String,
-) -> Result<AgentTurnOutcome, AgentRuntimeError> {
+) -> Result<(AgentTurnOutcome, DeliveryDisposition), AgentRuntimeError> {
     session.effect_authorizations.clear();
     let sequence = session.events.last().map_or(1, |event| event.sequence + 1);
     *session = apply_session_events(
@@ -1506,13 +1506,17 @@ async fn run_evaluation_session_input(
     tools: &EvalTools,
     session: &mut AgentSession,
     input: SessionTurnInput,
-) -> Result<AgentTurnOutcome, AgentRuntimeError> {
+) -> Result<(AgentTurnOutcome, DeliveryDisposition), AgentRuntimeError> {
     let outcome = run_session_turn(model, tools, session.clone(), input.clone()).await?;
     let events = match &outcome {
         SessionTurnOutcome::PendingDelivery { events, .. }
         | SessionTurnOutcome::ApprovalRequired { events, .. } => events,
     };
     *session = apply_session_events(session, events)?;
+    let delivery = match &outcome {
+        SessionTurnOutcome::PendingDelivery { delivery, .. } => *delivery,
+        SessionTurnOutcome::ApprovalRequired { .. } => DeliveryDisposition::Visible,
+    };
     if let SessionTurnOutcome::PendingDelivery { final_state, .. } = &outcome {
         let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
         let delivered_at = input.assessment_at.clone();
@@ -1526,7 +1530,11 @@ async fn run_evaluation_session_input(
                     occurred_at: delivered_at.clone(),
                     event: SessionEvent::DeliveryRecorded {
                         request_id: input.request_id.clone(),
-                        transport: "off_slack_lab".into(),
+                        transport: match delivery {
+                            DeliveryDisposition::Visible => "off_slack_lab",
+                            DeliveryDisposition::Silent => "internal_scheduler",
+                        }
+                        .into(),
                         delivery_ref: format!("lab-delivery:{}", input.request_id),
                         payload_digest: message_digest(
                             &session
@@ -1557,7 +1565,10 @@ async fn run_evaluation_session_input(
     *session = serde_json::from_value(stored).map_err(|error| {
         AgentRuntimeError::InvalidRequest(format!("evaluation session reload failed: {error}"))
     })?;
-    Ok(super::slack_agent::session_outcome_to_turn(outcome))
+    Ok((
+        super::slack_agent::session_outcome_to_turn(outcome),
+        delivery,
+    ))
 }
 
 fn completed_lab_turn_receipt(
@@ -1567,8 +1578,9 @@ fn completed_lab_turn_receipt(
     trigger_input: String,
     latency_ms: u128,
     tool_observations: Vec<EvaluationObservationReceipt>,
-    outcome: AgentTurnOutcome,
-) -> Result<(ConversationLabTurnReceipt, String), Box<dyn Error>> {
+    outcome: (AgentTurnOutcome, DeliveryDisposition),
+) -> Result<(ConversationLabTurnReceipt, Option<String>), Box<dyn Error>> {
+    let (outcome, delivery) = outcome;
     let (actual_lane, terminal_state, response_markdown) = match outcome {
         AgentTurnOutcome::Delivered {
             lane,
@@ -1589,6 +1601,8 @@ fn completed_lab_turn_receipt(
             return Err("the off-Slack autonomy lab ignored a required turn".into());
         }
     };
+    let visible_markdown =
+        (delivery == DeliveryDisposition::Visible).then(|| response_markdown.clone());
     Ok((
         ConversationLabTurnReceipt {
             turn_index,
@@ -1629,11 +1643,15 @@ fn completed_lab_turn_receipt(
                 .expect("critic repair receipt poisoned")
                 .clone(),
             tool_observations,
-            response_markdown: Some(response_markdown.clone()),
-            terminal_state,
+            response_markdown: visible_markdown.clone(),
+            terminal_state: if delivery == DeliveryDisposition::Silent {
+                "completed_silently".into()
+            } else {
+                terminal_state
+            },
             operator_decision: None,
         },
-        response_markdown,
+        visible_markdown,
     ))
 }
 
@@ -1787,7 +1805,7 @@ async fn run_autonomy_lab(
     )?;
     transcript.push(ConversationMessage {
         role: ConversationRole::Assistant,
-        content: markdown,
+        content: markdown.ok_or("the operator turn was not visible")?,
     });
     turns.push(turn);
 
@@ -1867,10 +1885,12 @@ async fn run_autonomy_lab(
             turn_observations,
             outcome,
         )?;
-        transcript.push(ConversationMessage {
-            role: ConversationRole::Assistant,
-            content: markdown,
-        });
+        if let Some(markdown) = markdown {
+            transcript.push(ConversationMessage {
+                role: ConversationRole::Assistant,
+                content: markdown,
+            });
+        }
         turns.push(turn);
 
         let persisted = session
@@ -1918,7 +1938,7 @@ async fn run_autonomy_lab(
     .await?;
     let review_ready = operator_message_count == 1
         && turns.len() == AUTONOMY_WAKE_COUNT + 1
-        && unsolicited_follow_up_count == AUTONOMY_WAKE_COUNT
+        && unsolicited_follow_up_count == 1
         && fresh_observation_every_wake
         && commitment_closed;
     let internal_judge_advisory_excellent = judgment.is_excellent();
@@ -1930,7 +1950,10 @@ async fn run_autonomy_lab(
         candidate_label,
         mission: scenario.mission,
         attempted_turn_count: turns.len(),
-        delivered_exchange_count: turns.len(),
+        delivered_exchange_count: turns
+            .iter()
+            .filter(|turn| turn.response_markdown.is_some())
+            .count(),
         unanswered_user_turn_count: 0,
         maximum_turn_latency_ms: turns.iter().map(|turn| turn.latency_ms).max().unwrap_or(0),
         total_turn_latency_ms: turns.iter().map(|turn| turn.latency_ms).sum(),
@@ -2100,10 +2123,11 @@ async fn run_conversation_lab(
                 )
                 .await
             } else {
-                tokio::time::timeout(
-                    std::time::Duration::from_secs(180),
-                    run_turn(&measured, &tools, request),
-                )
+                tokio::time::timeout(std::time::Duration::from_secs(180), async {
+                    run_turn(&measured, &tools, request)
+                        .await
+                        .map(|outcome| (outcome, DeliveryDisposition::Visible))
+                })
                 .await
             };
             let latency_ms = started.elapsed().as_millis();
@@ -2117,26 +2141,32 @@ async fn run_conversation_lab(
             all_observations.extend(observations.iter().cloned());
             let (actual_lane, terminal_state, response_markdown, next_working_state) = match outcome
             {
-                Ok(Ok(AgentTurnOutcome::Delivered {
-                    lane,
-                    markdown,
-                    final_state,
-                    working_state,
-                    ..
-                }))
-                | Ok(Ok(AgentTurnOutcome::PendingDelivery {
-                    lane,
-                    markdown,
-                    final_state,
-                    working_state,
-                    ..
-                })) => (
+                Ok(Ok((
+                    AgentTurnOutcome::Delivered {
+                        lane,
+                        markdown,
+                        final_state,
+                        working_state,
+                        ..
+                    },
+                    _,
+                )))
+                | Ok(Ok((
+                    AgentTurnOutcome::PendingDelivery {
+                        lane,
+                        markdown,
+                        final_state,
+                        working_state,
+                        ..
+                    },
+                    _,
+                ))) => (
                     Some(lane),
                     format!("delivered:{final_state:?}"),
                     Some(markdown),
                     working_state,
                 ),
-                Ok(Ok(AgentTurnOutcome::ApprovalRequired { lane, request, .. })) => (
+                Ok(Ok((AgentTurnOutcome::ApprovalRequired { lane, request, .. }, _))) => (
                     Some(lane),
                     "approval_required".into(),
                     Some(format!(
@@ -2145,7 +2175,7 @@ async fn run_conversation_lab(
                     )),
                     working_state.clone(),
                 ),
-                Ok(Ok(AgentTurnOutcome::Ignored { .. })) => (
+                Ok(Ok((AgentTurnOutcome::Ignored { .. }, _))) => (
                     Some(ExecutionLane::Ignore),
                     "ignored".into(),
                     None,
