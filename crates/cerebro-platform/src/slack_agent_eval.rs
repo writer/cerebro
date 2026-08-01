@@ -290,13 +290,21 @@ enum LabTurnTrigger {
 #[derive(Clone, Debug, Serialize)]
 struct EvaluationScheduleReceipt {
     schedule_ref: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    predecessor_schedule_ref: Option<String>,
+    candidate_draft_ref: String,
+    persistence_ref: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trigger_ref: Option<String>,
     scheduled_for: String,
+    next_action: Option<String>,
     required_tool_ids: Vec<String>,
     acceptance_criteria: Vec<String>,
     verification: Option<String>,
     candidate_authored: bool,
     persisted_before_trigger: bool,
-    trigger_bound_to_schedule: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trigger_bound_to_schedule: Option<bool>,
 }
 
 struct EvaluationTurnEvidence {
@@ -369,6 +377,7 @@ struct AutonomyLabReceipt {
     synthetic_operator_turn_count: usize,
     fresh_observation_every_wake: bool,
     candidate_authored_schedule_every_wake: bool,
+    rescheduled_schedule_chain_complete: bool,
     unique_fresh_observation_receipts: bool,
     commitment_closed: bool,
     independent_review_required: bool,
@@ -1757,6 +1766,7 @@ fn evaluation_schedule_receipt(
     trigger: Option<(&str, &str)>,
 ) -> Result<EvaluationScheduleReceipt, Box<dyn Error>> {
     let commitment_bytes = serde_json::to_vec(commitment)?;
+    let schedule_ref = format!("schedule://sha256/{}", sha256_hex(&commitment_bytes));
     let authored = session.events.iter().find_map(|event| match &event.event {
         SessionEvent::DraftProduced { request_id, draft } => draft
             .mission
@@ -1766,45 +1776,106 @@ fn evaluation_schedule_receipt(
             .then_some((event.sequence, request_id.as_str())),
         _ => None,
     });
-    let persisted_sequence = authored.and_then(|(authored_sequence, authored_request)| {
+    let predecessor_schedule_ref = authored.and_then(|(authored_sequence, _)| {
+        session.events.iter().rev().find_map(|event| {
+            if event.sequence >= authored_sequence {
+                return None;
+            }
+            let SessionEvent::DraftProduced { draft, .. } = &event.event else {
+                return None;
+            };
+            let predecessor = draft.mission.commitments.iter().find(|candidate| {
+                candidate.commitment_ref == commitment.commitment_ref
+                    && *candidate != commitment
+                    && candidate.wake_at.is_some()
+            })?;
+            serde_json::to_vec(predecessor)
+                .ok()
+                .map(|bytes| format!("schedule://sha256/{}", sha256_hex(&bytes)))
+        })
+    });
+    let candidate_draft_ref = authored.map_or_else(
+        || "candidate-draft://unproven".into(),
+        |(sequence, request_id)| {
+            format!(
+                "candidate-draft://sha256/{}",
+                sha256_hex(format!("{schedule_ref}\0{sequence}\0{request_id}").as_bytes())
+            )
+        },
+    );
+    let persisted = authored.and_then(|(authored_sequence, authored_request)| {
         session.events.iter().find_map(|event| match &event.event {
             SessionEvent::DeliveryRecorded { request_id, .. }
                 if request_id == authored_request && event.sequence > authored_sequence =>
             {
-                Some(event.sequence)
+                Some((event.sequence, request_id.as_str()))
             }
             _ => None,
         })
     });
-    let trigger_bound_to_schedule = trigger.is_some_and(|(request_id, occurrence_ref)| {
-        session.events.iter().any(|event| {
-            matches!(
-                &event.event,
-                SessionEvent::WakeTriggered {
-                    request_id: recorded_request,
-                    commitment_ref,
-                    occurrence_ref: recorded_occurrence,
-                    scheduled_for,
-                } if recorded_request == request_id
-                    && commitment_ref == &commitment.commitment_ref
-                    && recorded_occurrence == occurrence_ref
-                    && commitment.wake_at.as_deref() == Some(scheduled_for.as_str())
-                    && persisted_sequence.is_some_and(|sequence| sequence < event.sequence)
+    let persistence_ref = persisted.map_or_else(
+        || "schedule-persistence://unproven".into(),
+        |(sequence, request_id)| {
+            format!(
+                "schedule-persistence://sha256/{}",
+                sha256_hex(
+                    format!("{candidate_draft_ref}\0{schedule_ref}\0{sequence}\0{request_id}")
+                        .as_bytes()
+                )
             )
+        },
+    );
+    let bound_trigger = trigger.and_then(|(request_id, occurrence_ref)| {
+        session.events.iter().find_map(|event| match &event.event {
+            SessionEvent::WakeTriggered {
+                request_id: recorded_request,
+                commitment_ref,
+                occurrence_ref: recorded_occurrence,
+                scheduled_for,
+            } if recorded_request == request_id
+                && commitment_ref == &commitment.commitment_ref
+                && recorded_occurrence == occurrence_ref
+                && commitment.wake_at.as_deref() == Some(scheduled_for.as_str())
+                && persisted.is_some_and(|(sequence, _)| sequence < event.sequence) =>
+            {
+                Some((
+                    event.sequence,
+                    request_id,
+                    occurrence_ref,
+                    scheduled_for.as_str(),
+                ))
+            }
+            _ => None,
         })
     });
+    let trigger_ref = bound_trigger.map(|(sequence, request_id, occurrence_ref, scheduled_for)| {
+        format!(
+            "schedule-trigger://sha256/{}",
+            sha256_hex(
+                format!(
+                    "{persistence_ref}\0{schedule_ref}\0{sequence}\0{request_id}\0{occurrence_ref}\0{scheduled_for}"
+                )
+                .as_bytes()
+            )
+        )
+    });
     Ok(EvaluationScheduleReceipt {
-        schedule_ref: format!("schedule://sha256/{}", sha256_hex(&commitment_bytes)),
+        schedule_ref,
+        predecessor_schedule_ref,
+        candidate_draft_ref,
+        persistence_ref,
+        trigger_ref,
         scheduled_for: commitment
             .wake_at
             .clone()
             .ok_or("the evaluation schedule has no due time")?,
+        next_action: commitment.next_action.clone(),
         required_tool_ids: commitment.required_tool_ids.clone(),
         acceptance_criteria: commitment.acceptance_criteria.clone(),
         verification: commitment.verification.clone(),
         candidate_authored: authored.is_some(),
-        persisted_before_trigger: persisted_sequence.is_some(),
-        trigger_bound_to_schedule,
+        persisted_before_trigger: persisted.is_some(),
+        trigger_bound_to_schedule: trigger.map(|_| bound_trigger.is_some()),
     })
 }
 
@@ -2044,8 +2115,19 @@ async fn run_autonomy_lab(
         turn.schedule.as_ref().is_some_and(|schedule| {
             schedule.candidate_authored
                 && schedule.persisted_before_trigger
-                && (turn.trigger == LabTurnTrigger::Operator || schedule.trigger_bound_to_schedule)
+                && (turn.trigger == LabTurnTrigger::Operator
+                    || schedule.trigger_bound_to_schedule == Some(true))
         })
+    });
+    let rescheduled_schedule_chain_complete = turns.windows(2).all(|pair| {
+        let Some(previous) = pair[0].schedule.as_ref() else {
+            return false;
+        };
+        let Some(current) = pair[1].schedule.as_ref() else {
+            return false;
+        };
+        current.schedule_ref == previous.schedule_ref
+            || current.predecessor_schedule_ref.as_deref() == Some(previous.schedule_ref.as_str())
     });
     let observation_refs = turns
         .iter()
@@ -2087,6 +2169,7 @@ async fn run_autonomy_lab(
         && unsolicited_follow_up_count == 1
         && fresh_observation_every_wake
         && candidate_authored_schedule_every_wake
+        && rescheduled_schedule_chain_complete
         && unique_fresh_observation_receipts
         && commitment_closed;
     let internal_judge_advisory_excellent = judgment.is_excellent();
@@ -2146,6 +2229,7 @@ async fn run_autonomy_lab(
         synthetic_operator_turn_count: 0,
         fresh_observation_every_wake,
         candidate_authored_schedule_every_wake,
+        rescheduled_schedule_chain_complete,
         unique_fresh_observation_receipts,
         commitment_closed,
         independent_review_required: true,
@@ -4178,8 +4262,24 @@ mod tests {
         .unwrap();
         assert!(receipt.candidate_authored);
         assert!(receipt.persisted_before_trigger);
-        assert!(receipt.trigger_bound_to_schedule);
+        assert_eq!(receipt.trigger_bound_to_schedule, Some(true));
         assert!(receipt.schedule_ref.starts_with("schedule://sha256/"));
+        assert!(
+            receipt
+                .candidate_draft_ref
+                .starts_with("candidate-draft://sha256/")
+        );
+        assert!(
+            receipt
+                .persistence_ref
+                .starts_with("schedule-persistence://sha256/")
+        );
+        assert!(
+            receipt
+                .trigger_ref
+                .as_deref()
+                .is_some_and(|value| value.starts_with("schedule-trigger://sha256/"))
+        );
     }
 
     #[test]
