@@ -617,6 +617,7 @@ impl SessionAgentModel for MeasuredModel {
 #[derive(Clone, Debug, Serialize)]
 struct EvaluationObservationReceipt {
     observation_ref: String,
+    source_occurrence_ref: String,
     observed_at: String,
     tool_id: String,
     summary: String,
@@ -789,20 +790,23 @@ impl AgentTools for EvalTools {
         let default_fresh_until = observed_at
             .checked_add(Duration::minutes(5))
             .ok_or_else(|| AgentRuntimeError::InvalidToolCall("evidence time overflow".into()))?;
+        let autonomy_phase = usize::from(
+            *self
+                .autonomy_phase
+                .lock()
+                .expect("evaluation autonomy phase poisoned"),
+        );
         let autonomy_fixture = self.autonomy_fixtures.as_ref().and_then(|phases| {
-            let phase = usize::from(
-                *self
-                    .autonomy_phase
-                    .lock()
-                    .expect("evaluation autonomy phase poisoned"),
-            );
             phases
-                .get(phase)
+                .get(autonomy_phase)
                 .and_then(|phase| {
                     phase.observations.get(&call.tool_id).or_else(|| {
                         self.autonomy_authority_groups
                             .iter()
-                            .find(|group| group.accepted_tool_ids.contains(&call.tool_id))
+                            .find(|group| {
+                                group.accepted_tool_ids.contains(&call.tool_id)
+                                    && same_authority_family(&group.fixture_tool_id, &call.tool_id)
+                            })
                             .and_then(|group| phase.observations.get(&group.fixture_tool_id))
                     })
                 })
@@ -811,6 +815,10 @@ impl AgentTools for EvalTools {
         let unavailable_autonomy_tool = self.autonomy_fixtures.is_some()
             && autonomy_fixture.is_none()
             && call.tool_id != "runtime_config_update";
+        let autonomy_input_mismatch = autonomy_fixture.as_ref().is_some_and(|fixture| {
+            autonomy_fixture_subject(&fixture.data)
+                .is_some_and(|subject| !json_contains_subject(&call.input, subject))
+        });
         let expected_action = json!({
             "connector_ref": "governed-evidence-connector",
             "cursor_format": "current_revision",
@@ -846,6 +854,12 @@ impl AgentTools for EvalTools {
                     "This capability has no observation for the current sealed scenario phase."
                         .into(),
                 data: json!({"available": false}),
+            }
+        } else if autonomy_input_mismatch {
+            EvaluationFixture {
+                summary: "The evaluation call input does not match the sealed observation subject."
+                    .into(),
+                data: json!({"available": false, "input_matched": false}),
             }
         } else if self.case_ref.contains("diagnose-source")
             && matches!(
@@ -888,7 +902,7 @@ impl AgentTools for EvalTools {
         };
         let summary = fixture.summary;
         let data = fixture.data;
-        let state = if unavailable_autonomy_tool {
+        let state = if unavailable_autonomy_tool || autonomy_input_mismatch {
             ToolResultState::Failed
         } else {
             autonomy_fixture.as_ref().map_or_else(
@@ -912,6 +926,8 @@ impl AgentTools for EvalTools {
                 "No sealed observation is available from this capability in the current phase."
                     .into(),
             )
+        } else if autonomy_input_mismatch {
+            Some("The tool input did not match the sealed observation subject.".into())
         } else {
             autonomy_fixture.as_ref().map_or_else(
                 || {
@@ -945,11 +961,28 @@ impl AgentTools for EvalTools {
                 .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?
             )
         );
+        let source_occurrence_ref = if autonomy_fixture.is_some() && !autonomy_input_mismatch {
+            format!(
+                "source-occurrence://sha256/{}",
+                sha256_hex(
+                    format!(
+                        "{}\0{}\0{}",
+                        self.case_ref,
+                        autonomy_phase,
+                        autonomy_fixture_subject(&data).unwrap_or("unscoped")
+                    )
+                    .as_bytes()
+                )
+            )
+        } else {
+            observation_ref.clone()
+        };
         self.observations
             .lock()
             .expect("evaluation observation receipt poisoned")
             .push(EvaluationObservationReceipt {
                 observation_ref,
+                source_occurrence_ref,
                 observed_at: request.assessment_at.clone(),
                 tool_id: call.tool_id.clone(),
                 summary: summary.clone(),
@@ -999,6 +1032,36 @@ impl AgentTools for EvalTools {
             blocker,
         })
     }
+}
+
+fn autonomy_fixture_subject(data: &Value) -> Option<&str> {
+    ["finding_ref", "source_ref", "connector_ref", "runtime_ref"]
+        .into_iter()
+        .find_map(|field| data.get(field).and_then(Value::as_str))
+}
+
+fn json_contains_subject(value: &Value, subject: &str) -> bool {
+    match value {
+        Value::String(candidate) => candidate.contains(subject),
+        Value::Array(values) => values
+            .iter()
+            .any(|candidate| json_contains_subject(candidate, subject)),
+        Value::Object(object) => object
+            .values()
+            .any(|candidate| json_contains_subject(candidate, subject)),
+        _ => false,
+    }
+}
+
+fn same_authority_family(fixture_tool_id: &str, candidate_tool_id: &str) -> bool {
+    fn family(tool_id: &str) -> &str {
+        if tool_id.starts_with("source_runtime.") {
+            "source_runtime"
+        } else {
+            tool_id
+        }
+    }
+    family(fixture_tool_id) == family(candidate_tool_id)
 }
 
 fn autonomy_evaluation_fixture(tool_id: &str, phase: u8) -> EvaluationFixture {
@@ -2534,20 +2597,16 @@ async fn run_autonomy_lab(
         current.schedule_ref == previous.schedule_ref
             || current.predecessor_schedule_ref.as_deref() == Some(previous.schedule_ref.as_str())
     });
-    let observation_refs = turns
-        .iter()
-        .flat_map(|turn| {
-            turn.tool_observations
-                .iter()
-                .map(|observation| observation.observation_ref.as_str())
-        })
-        .collect::<Vec<_>>();
-    let unique_fresh_observation_receipts = observation_refs.len()
-        == observation_refs
+    let mut seen_source_occurrences = BTreeSet::new();
+    let source_occurrences_unique_across_turns = turns.iter().all(|turn| {
+        turn.tool_observations
             .iter()
-            .copied()
+            .map(|observation| observation.source_occurrence_ref.as_str())
             .collect::<BTreeSet<_>>()
-            .len()
+            .into_iter()
+            .all(|occurrence_ref| seen_source_occurrences.insert(occurrence_ref))
+    });
+    let unique_fresh_observation_receipts = source_occurrences_unique_across_turns
         && turns
             .iter()
             .filter(|turn| turn.trigger == LabTurnTrigger::ScheduledWake)
@@ -3092,6 +3151,7 @@ async fn calibrate_blind_judge(model: &ConfiguredModel) -> Result<(), AgentRunti
         ],
         &[EvaluationObservationReceipt {
             observation_ref: "observation://calibration/poor".into(),
+            source_occurrence_ref: "source-occurrence://calibration/poor".into(),
             observed_at: "2026-07-31T00:00:00Z".into(),
             tool_id: "calibration.observation".into(),
             summary: "No current collection receipt was observed.".into(),
@@ -3123,6 +3183,7 @@ async fn calibrate_blind_judge(model: &ConfiguredModel) -> Result<(), AgentRunti
         ],
         &[EvaluationObservationReceipt {
             observation_ref: "observation://calibration/strong".into(),
+            source_occurrence_ref: "source-occurrence://calibration/strong".into(),
             observed_at: "2026-07-31T00:00:00Z".into(),
             tool_id: "calibration.observation".into(),
             summary: "No current collection receipt was observed; the configured source is readable but not administrable by the assistant.".into(),
@@ -4398,7 +4459,7 @@ mod tests {
                     "source_runtime.inspect".into(),
                     AutonomyToolFixture {
                         summary: "The hidden receipt is stale.".into(),
-                        data: json!({"receipt_state": "stale"}),
+                        data: json!({"finding_ref": "F-1234", "receipt_state": "stale"}),
                         state: ToolResultState::Partial,
                         complete: false,
                         blocker: Some("The receipt expired before this check.".into()),
@@ -4433,7 +4494,7 @@ mod tests {
                 call_id: "call:hidden".into(),
                 tool_id: "source_runtime.inspect".into(),
                 purpose: "Read the hidden phase fixture.".into(),
-                input: json!({}),
+                input: json!({"query": "F-1234"}),
             },
         )
         .await
@@ -4445,7 +4506,7 @@ mod tests {
             result.evidence[0].fresh_until.as_deref(),
             Some("2026-07-30T23:59:59Z")
         );
-        for tool_id in ["source_runtime.overview", "mcp.cerebro.sources.health"] {
+        for tool_id in ["source_runtime.overview"] {
             let equivalent = AgentTools::invoke(
                 &tools,
                 &request,
@@ -4453,7 +4514,7 @@ mod tests {
                     call_id: format!("call:{tool_id}"),
                     tool_id: tool_id.into(),
                     purpose: "Read the equivalent source authority view.".into(),
-                    input: json!({}),
+                    input: json!({"query": "F-1234"}),
                 },
             )
             .await
@@ -4466,6 +4527,34 @@ mod tests {
                 Some("2026-07-30T23:59:59Z")
             );
         }
+        let wrong_authority = AgentTools::invoke(
+            &tools,
+            &request,
+            &ToolCall {
+                call_id: "call:wrong-authority".into(),
+                tool_id: "mcp.cerebro.sources.health".into(),
+                purpose: "Try a different authority family.".into(),
+                input: json!({"query": "F-1234"}),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(wrong_authority.state, ToolResultState::Failed);
+        assert_eq!(wrong_authority.data["available"], false);
+        let wrong_subject = AgentTools::invoke(
+            &tools,
+            &request,
+            &ToolCall {
+                call_id: "call:wrong-subject".into(),
+                tool_id: "source_runtime.inspect".into(),
+                purpose: "Try the sealed authority with another subject.".into(),
+                input: json!({"query": "F-9999"}),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(wrong_subject.state, ToolResultState::Failed);
+        assert_eq!(wrong_subject.data["input_matched"], false);
         let unavailable = AgentTools::invoke(
             &tools,
             &request,
@@ -4751,6 +4840,7 @@ mod tests {
                 schedule: None,
                 tool_observations: vec![EvaluationObservationReceipt {
                     observation_ref: "observation://opaque/one".into(),
+                    source_occurrence_ref: "source-occurrence://opaque/one".into(),
                     observed_at: "2026-07-31T00:00:00Z".into(),
                     tool_id: "source_runtime.inspect".into(),
                     summary: "One source is current.".into(),
