@@ -1259,7 +1259,10 @@ impl BedrockModel {
             )
             .tool_config(tool_configuration);
         let response = request.send().await.map_err(|error| {
-            AgentRuntimeError::ModelUnavailable(format!("Bedrock request failed: {error}"))
+            let detail = error
+                .as_service_error()
+                .map_or_else(|| error.to_string(), |service| format!("{service:?}"));
+            AgentRuntimeError::ModelUnavailable(format!("Bedrock request failed: {detail}"))
         })?;
         let content = response
             .output()
