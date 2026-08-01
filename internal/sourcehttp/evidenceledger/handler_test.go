@@ -46,7 +46,7 @@ func TestEvidenceLedgerHTTPJourney(t *testing.T) {
 	artifactID := mustIdentifier(t, compliance.IdentifierArtifact)
 	periodStart := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	periodEnd := time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC)
-	validUntil := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	validUntil := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second)
 	register := registerEvidenceVersionRequest{
 		Artifact: ports.EvidenceArtifact{
 			TenantID: "tenant-1", Title: "Access review export", Type: "access_review",
