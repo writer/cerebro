@@ -404,7 +404,7 @@ pub struct SessionModelTurn {
     pub session: AgentSession,
     pub trigger: SessionTurnTrigger,
     pub assessment_at: String,
-    pub prior_wake_checkpoint: Option<WakeCheckpoint>,
+    pub prior_commitment_checkpoint: Option<CommitmentCheckpoint>,
     pub plan: Option<ResearchPlan>,
     pub available_tools: Vec<ToolDescriptor>,
     pub observations: Vec<ToolObservation>,
@@ -413,7 +413,7 @@ pub struct SessionModelTurn {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct WakeCheckpoint {
+pub struct CommitmentCheckpoint {
     pub commitment_ref: String,
     pub recorded_at: String,
     pub delivery: DeliveryDisposition,
@@ -469,7 +469,7 @@ pub struct MessageReview {
 pub struct ClaimReviewTurn {
     pub session: AgentSession,
     pub trigger: SessionTurnTrigger,
-    pub prior_wake_checkpoint: Option<WakeCheckpoint>,
+    pub prior_commitment_checkpoint: Option<CommitmentCheckpoint>,
     pub draft: GroundedDraft,
     pub observations: Vec<ToolObservation>,
 }
@@ -819,7 +819,7 @@ pub async fn run_session_turn_recorded(
         .iter()
         .map(|descriptor| (descriptor.tool_id.clone(), descriptor.clone()))
         .collect::<BTreeMap<_, _>>();
-    let prior_wake_checkpoint = prior_wake_checkpoint(&session, &trigger);
+    let prior_commitment_checkpoint = prior_commitment_checkpoint(&session, &trigger);
     let (resumed, mut plan, turn_observations) = resume_turn_state(&session, &input.request_id);
     let mut observations = if resumed {
         turn_observations.clone()
@@ -880,7 +880,7 @@ pub async fn run_session_turn_recorded(
                 session: session.clone(),
                 trigger: trigger.clone(),
                 assessment_at: input.assessment_at.clone(),
-                prior_wake_checkpoint: prior_wake_checkpoint.clone(),
+                prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
                 plan: plan.clone(),
                 available_tools: available_tools.clone(),
                 observations: observations.clone(),
@@ -1144,7 +1144,7 @@ pub async fn run_session_turn_recorded(
                     .review_message(ClaimReviewTurn {
                         session: session.clone(),
                         trigger: trigger.clone(),
-                        prior_wake_checkpoint: prior_wake_checkpoint.clone(),
+                        prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
                         draft: draft.clone(),
                         observations: observations.clone(),
                     })
@@ -1597,36 +1597,23 @@ fn recalled_observations_for_trigger(
     }
 }
 
-fn prior_wake_checkpoint(
+fn prior_commitment_checkpoint(
     session: &AgentSession,
     trigger: &SessionTurnTrigger,
-) -> Option<WakeCheckpoint> {
+) -> Option<CommitmentCheckpoint> {
     let SessionTurnTrigger::Wake { commitment_ref, .. } = trigger else {
         return None;
     };
     session.events.iter().rev().find_map(|record| {
-        let SessionEvent::DraftProduced { request_id, draft } = &record.event else {
+        let SessionEvent::DraftProduced { draft, .. } = &record.event else {
             return None;
         };
-        let matches_commitment = session.events.iter().any(|candidate| {
-            matches!(
-                &candidate.event,
-                SessionEvent::WakeTriggered {
-                    request_id: wake_request_id,
-                    commitment_ref: wake_commitment_ref,
-                    ..
-                } if wake_request_id == request_id && wake_commitment_ref == commitment_ref
-            )
-        });
-        if !matches_commitment {
-            return None;
-        }
         let commitment = draft
             .mission
             .commitments
             .iter()
             .find(|candidate| candidate.commitment_ref == *commitment_ref)?;
-        Some(WakeCheckpoint {
+        Some(CommitmentCheckpoint {
             commitment_ref: commitment_ref.clone(),
             recorded_at: record.occurred_at.clone(),
             delivery: draft.delivery,
@@ -3389,50 +3376,36 @@ mod tests {
     }
 
     #[test]
-    fn wake_checkpoint_recovers_the_last_internal_summary_for_the_exact_commitment() {
+    fn commitment_checkpoint_recovers_the_latest_summary_for_the_exact_commitment() {
         let mut awakened = session();
         let mut prior_draft = draft();
         prior_draft.delivery = DeliveryDisposition::Silent;
         prior_draft.message = "Two of three receipts are current; checking again.".into();
         prior_draft.mission.commitments.push(scheduled_commitment());
-        awakened.events = vec![
-            SessionEventRecord {
-                schema_version: AGENT_SESSION_EVENT_V2.into(),
-                session_ref: awakened.session_ref.clone(),
-                sequence: 1,
-                occurred_at: "2026-07-31T00:01:00Z".into(),
-                event: SessionEvent::WakeTriggered {
-                    request_id: "request:prior-wake".into(),
-                    commitment_ref: "commitment:scheduled-check".into(),
-                    occurrence_ref: "occurrence:prior-wake".into(),
-                    scheduled_for: "2026-07-31T00:01:00Z".into(),
-                },
+        awakened.events = vec![SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: awakened.session_ref.clone(),
+            sequence: 1,
+            occurred_at: "2026-07-31T00:01:00Z".into(),
+            event: SessionEvent::DraftProduced {
+                request_id: "request:initiating-operator-turn".into(),
+                draft: prior_draft,
             },
-            SessionEventRecord {
-                schema_version: AGENT_SESSION_EVENT_V2.into(),
-                session_ref: awakened.session_ref.clone(),
-                sequence: 2,
-                occurred_at: "2026-07-31T00:01:00Z".into(),
-                event: SessionEvent::DraftProduced {
-                    request_id: "request:prior-wake".into(),
-                    draft: prior_draft,
-                },
-            },
-        ];
-        let checkpoint = prior_wake_checkpoint(
+        }];
+        let checkpoint = prior_commitment_checkpoint(
             &awakened,
             &SessionTurnTrigger::Wake {
                 commitment_ref: "commitment:scheduled-check".into(),
                 occurrence_ref: "occurrence:next-wake".into(),
             },
         )
-        .expect("the prior internal wake should remain available as continuity");
+        .expect("the initiating commitment summary should remain available as continuity");
         assert_eq!(checkpoint.delivery, DeliveryDisposition::Silent);
         assert_eq!(
             checkpoint.summary,
             "Two of three receipts are current; checking again."
         );
-        assert!(prior_wake_checkpoint(&awakened, &SessionTurnTrigger::Operator).is_none());
+        assert!(prior_commitment_checkpoint(&awakened, &SessionTurnTrigger::Operator).is_none());
     }
 
     #[tokio::test]
