@@ -1636,8 +1636,50 @@ fn validate_commitment_baselines(
                 )));
             }
         }
+        if let Some(policy) = &commitment.attention_policy {
+            let covered = policy
+                .acceptance_all
+                .iter()
+                .chain(&policy.alert_any)
+                .map(|condition| (condition.tool_id.as_str(), condition.data_pointer.as_str()))
+                .collect::<BTreeSet<_>>();
+            for observation in observations.iter().filter(|observation| {
+                commitment
+                    .required_tool_ids
+                    .contains(&observation.call.tool_id)
+            }) {
+                let mut false_signals = Vec::new();
+                collect_false_boolean_pointers(&observation.result.data, "", &mut false_signals);
+                if let Some(pointer) = false_signals.into_iter().find(|pointer| {
+                    !covered.contains(&(observation.call.tool_id.as_str(), pointer.as_str()))
+                }) {
+                    return Err(AgentRuntimeError::InvalidFinal(format!(
+                        "the new commitment's typed attention policy does not classify baseline boolean signal {}{}",
+                        observation.call.tool_id, pointer
+                    )));
+                }
+            }
+        }
     }
     Ok(())
+}
+
+fn collect_false_boolean_pointers(value: &Value, prefix: &str, output: &mut Vec<String>) {
+    match value {
+        Value::Bool(false) if !prefix.is_empty() => output.push(prefix.to_owned()),
+        Value::Object(object) => {
+            for (key, value) in object {
+                let escaped = key.replace('~', "~0").replace('/', "~1");
+                collect_false_boolean_pointers(value, &format!("{prefix}/{escaped}"), output);
+            }
+        }
+        Value::Array(values) => {
+            for (index, value) in values.iter().enumerate() {
+                collect_false_boolean_pointers(value, &format!("{prefix}/{index}"), output);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn observation_is_complete_and_fresh(
@@ -3814,6 +3856,55 @@ mod tests {
                 assessment_at,
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn new_commitments_must_classify_false_baseline_signals() {
+        let session = session();
+        let mut scheduled = draft();
+        let mut commitment = scheduled_commitment();
+        commitment.attention_policy = Some(CommitmentAttentionPolicy {
+            acceptance_all: vec![ObservationCondition {
+                tool_id: "connector.read".into(),
+                data_pointer: "/decision_grade".into(),
+                equals: json!(true),
+            }],
+            alert_any: Vec::new(),
+        });
+        scheduled.mission.commitments.push(commitment);
+        let mut baseline = observation(true, Some("2026-07-31T00:06:00Z"));
+        baseline.result.data = json!({"decision_grade": false, "streak_reset": false});
+        let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let error = validate_commitment_baselines(
+            &session,
+            &scheduled,
+            Some(&plan()),
+            std::slice::from_ref(&baseline),
+            assessment_at,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("/streak_reset"));
+
+        scheduled.mission.commitments[0]
+            .attention_policy
+            .as_mut()
+            .unwrap()
+            .alert_any
+            .push(ObservationCondition {
+                tool_id: "connector.read".into(),
+                data_pointer: "/streak_reset".into(),
+                equals: json!(true),
+            });
+        assert!(
+            validate_commitment_baselines(
+                &session,
+                &scheduled,
+                Some(&plan()),
+                &[baseline],
+                assessment_at,
+            )
+            .is_ok()
         );
     }
 
