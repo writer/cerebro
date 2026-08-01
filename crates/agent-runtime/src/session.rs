@@ -1533,8 +1533,34 @@ async fn repair_fallback_outcome(
             .clone();
         Some((observation.result.summary.trim().to_owned(), atom_ref))
     });
-    let failed = observations.iter().rev().find_map(|observation| {
+    let failed_read = observations.iter().rev().find_map(|observation| {
         if observation.result.state != ToolResultState::Failed
+            || observation.descriptor.authority_class != ToolAuthorityClass::Observe
+            || observation.descriptor.effect_class != ToolEffectClass::Read
+            || observation.result.summary.len() > 1_500
+            || observation.result.summary.trim().is_empty()
+            || observation
+                .result
+                .summary
+                .chars()
+                .any(|character| character.is_control() && character != '\n')
+        {
+            return None;
+        }
+        let atom_ref = observation
+            .result
+            .evidence
+            .iter()
+            .flat_map(|evidence| &evidence.atoms)
+            .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))?
+            .atom_ref
+            .clone();
+        Some((observation.result.summary.trim().to_owned(), atom_ref))
+    });
+    let failed_effect = observations.iter().rev().find_map(|observation| {
+        if observation.result.state != ToolResultState::Failed
+            || (observation.descriptor.authority_class != ToolAuthorityClass::Actuate
+                && observation.descriptor.effect_class == ToolEffectClass::Read)
             || observation.result.summary.len() > 1_500
             || observation.result.summary.trim().is_empty()
             || observation
@@ -1556,7 +1582,9 @@ async fn repair_fallback_outcome(
         Some((observation.result.summary.trim().to_owned(), atom_ref))
     });
     let rescheduled_wake = match trigger {
-        SessionTurnTrigger::Wake { commitment_ref, .. } if uncertain_effect.is_none() => {
+        SessionTurnTrigger::Wake { commitment_ref, .. }
+            if uncertain_effect.is_none() && failed_effect.is_none() =>
+        {
             let next_wake_at = assessment_at
                 .checked_add(Duration::minutes(5))
                 .ok_or_else(|| {
@@ -1595,46 +1623,53 @@ async fn repair_fallback_outcome(
                 .find(|commitment| commitment.commitment_ref == *commitment_ref)
             {
                 commitment.status = CommitmentStatus::Blocked;
-                commitment.blocker = Some(
+                commitment.blocker = Some(if uncertain_effect.is_some() {
                     "The scheduled check encountered an external effect with an unknown outcome."
-                        .into(),
-                );
+                        .into()
+                } else {
+                    "The scheduled check attempted an external effect that failed. It was not retried."
+                        .into()
+                });
                 commitment.wake_at = None;
                 mission.status = SessionStatus::Blocked;
             }
             None
         }
-        SessionTurnTrigger::Operator if uncertain_effect.is_none() => plan
-            .and_then(|plan| plan.follow_through.as_ref())
-            .map(|follow_through| {
-                let commitment = planned_commitment(follow_through, assessment_at)?;
-                let wake_at = commitment
-                    .wake_at
-                    .clone()
-                    .expect("a planned commitment always has a wake time");
-                mission
-                    .commitments
-                    .retain(|candidate| candidate.commitment_ref != follow_through.commitment_ref);
-                mission.commitments.push(commitment);
-                mission.status = SessionStatus::WaitingForExternal;
-                Ok((follow_through.commitment_ref.clone(), wake_at))
-            })
-            .transpose()?,
+        SessionTurnTrigger::Operator if uncertain_effect.is_none() && failed_effect.is_none() => {
+            plan.and_then(|plan| plan.follow_through.as_ref())
+                .map(|follow_through| {
+                    let commitment = planned_commitment(follow_through, assessment_at)?;
+                    let wake_at = commitment
+                        .wake_at
+                        .clone()
+                        .expect("a planned commitment always has a wake time");
+                    mission.commitments.retain(|candidate| {
+                        candidate.commitment_ref != follow_through.commitment_ref
+                    });
+                    mission.commitments.push(commitment);
+                    mission.status = SessionStatus::WaitingForExternal;
+                    Ok((follow_through.commitment_ref.clone(), wake_at))
+                })
+                .transpose()?
+        }
         SessionTurnTrigger::Operator => None,
     };
     let coverage_notice = if uncertain_effect.is_some() {
         mission.status = SessionStatus::Blocked;
         "Coverage gap: The external action outcome is unknown. Reconcile the provider state with a fresh observation before another effect. I did not retry the action or record a new follow-up."
+    } else if failed_effect.is_some() {
+        mission.status = SessionStatus::Blocked;
+        "Coverage gap: The external action failed. No successful effect was recorded, and I did not retry it or record a new follow-up."
+    } else if rescheduled_wake.is_some() && failed_read.is_some() {
+        "Coverage gap: The source read failed, so the acceptance condition remains unverified."
     } else if rescheduled_wake.is_some() && supported.is_some() {
         "Coverage gap: This check is partial, so the acceptance condition remains unverified."
-    } else if rescheduled_wake.is_some() && failed.is_some() {
-        "Coverage gap: The source read failed, so the acceptance condition remains unverified."
     } else if rescheduled_wake.is_some() {
         "Coverage gap: This check returned no authoritative observation, so the acceptance condition remains unverified."
+    } else if failed_read.is_some() {
+        "Coverage gap: The source read failed. I did not evaluate the requested condition, execute an action, or record a new follow-up."
     } else if supported.is_some() {
         "Coverage gap: The available evidence does not support the full requested conclusion. No action or future follow-up was recorded."
-    } else if failed.is_some() {
-        "Coverage gap: The source read failed. I did not evaluate the requested condition, execute an action, or record a new follow-up."
     } else {
         "Coverage gap: No current authoritative observation was obtained. I did not evaluate the requested condition, execute an action, or record a new follow-up."
     }
@@ -1663,10 +1698,10 @@ async fn repair_fallback_outcome(
                 },
             ],
         )
-    } else if let Some((summary, atom_ref)) = supported {
+    } else if let Some((summary, atom_ref)) = failed_effect {
         let notice = format!("\n\n{coverage_notice}");
         (
-            FinalState::Partial,
+            FinalState::Blocked,
             format!("{summary}{notice}"),
             vec![
                 GroundedClaim {
@@ -1687,10 +1722,34 @@ async fn repair_fallback_outcome(
                 },
             ],
         )
-    } else if let Some((summary, atom_ref)) = failed {
+    } else if let Some((summary, atom_ref)) = failed_read {
         let notice = format!("\n\n{coverage_notice}");
         (
             FinalState::Blocked,
+            format!("{summary}{notice}"),
+            vec![
+                GroundedClaim {
+                    claim_ref: format!("fallback-observation:{}", input.request_id),
+                    planned_claim_ref: None,
+                    text: summary,
+                    required_for_answer: true,
+                    content: ClaimContent::Observation {
+                        atom_refs: vec![atom_ref],
+                    },
+                },
+                GroundedClaim {
+                    claim_ref: format!("fallback-boundary:{}", input.request_id),
+                    planned_claim_ref: None,
+                    text: notice,
+                    required_for_answer: true,
+                    content: ClaimContent::StableExplanation,
+                },
+            ],
+        )
+    } else if let Some((summary, atom_ref)) = supported {
+        let notice = format!("\n\n{coverage_notice}");
+        (
+            FinalState::Partial,
             format!("{summary}{notice}"),
             vec![
                 GroundedClaim {
@@ -3826,7 +3885,10 @@ fn validate_claim(
         ClaimContent::Recommendation {
             rationale_atom_refs,
             ..
-        } => rationale_atom_refs.as_slice(),
+        } => {
+            validate_observation_wording(&claim.text, rationale_atom_refs, context)?;
+            rationale_atom_refs.as_slice()
+        }
         ClaimContent::Hypothesis {
             supporting_atom_refs,
             alternatives,
@@ -3836,6 +3898,7 @@ fn validate_claim(
                     "a hypothesis must preserve at least one alternative".into(),
                 ));
             }
+            validate_observation_wording(&claim.text, supporting_atom_refs, context)?;
             supporting_atom_refs.as_slice()
         }
         ClaimContent::OperatorContext {
@@ -3861,6 +3924,12 @@ fn validate_claim(
             return Ok(());
         }
         ClaimContent::Commitment { commitment_ref } => {
+            if contains_raw_machine_field_syntax(&claim.text) {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "operator-facing commitments must translate machine fields into natural language"
+                        .into(),
+                ));
+            }
             let commitment = context
                 .commitments
                 .get(commitment_ref.as_str())
@@ -3898,6 +3967,7 @@ fn validate_claim(
             return Ok(());
         }
         ClaimContent::StableExplanation => {
+            validate_stable_explanation_wording(&claim.text)?;
             if contains_unbound_future_promise(&claim.text) {
                 return Err(AgentRuntimeError::InvalidFinal(
                     "future Cerebro work must cite the exact active commitment that records it"
@@ -3944,7 +4014,7 @@ fn validate_observation_wording(
     atom_refs: &[String],
     context: &ClaimValidationContext<'_, '_>,
 ) -> Result<(), AgentRuntimeError> {
-    if contains_raw_json_field_syntax(text) {
+    if contains_raw_machine_field_syntax(text) {
         return Err(AgentRuntimeError::InvalidFinal(
             "operator-facing observations must translate raw JSON field assignments into natural language"
                 .into(),
@@ -3953,10 +4023,14 @@ fn validate_observation_wording(
     let normalized = text.to_ascii_lowercase();
     if normalized.contains("healthy")
         && !atom_refs.iter().any(|atom_ref| {
-            context
-                .atoms
-                .get(atom_ref)
-                .is_some_and(|atom| evidence_atom_supports_health(atom.atom))
+            context.atoms.get(atom_ref).is_some_and(|atom| {
+                evidence_atom_supports_health(atom.atom)
+                    && atom
+                        .atom
+                        .subject_ref
+                        .as_deref()
+                        .is_none_or(|subject_ref| observation_text_names_subject(text, subject_ref))
+            })
         })
     {
         return Err(AgentRuntimeError::InvalidFinal(
@@ -3969,6 +4043,10 @@ fn validate_observation_wording(
         "came in stale",
         "hasn't caught up",
         "has not caught up",
+        "can't be verified until",
+        "cannot be verified until",
+        "lagging behind",
+        "propagated from",
     ] {
         if normalized.contains(unsupported_transition)
             && !atom_refs.iter().any(|atom_ref| {
@@ -3989,43 +4067,98 @@ fn validate_observation_wording(
     Ok(())
 }
 
-fn contains_raw_json_field_syntax(text: &str) -> bool {
-    text.split_whitespace().any(|token| {
-        let token = token.trim_matches(|character: char| {
-            matches!(
-                character,
-                '`' | '*' | '_' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | '.' | ':' | ';'
-            )
-        });
-        let Some((field, value)) = token.split_once('=') else {
-            return false;
-        };
-        field.contains('_')
-            && field
-                .chars()
-                .all(|character| character.is_ascii_alphanumeric() || character == '_')
-            && !value.is_empty()
-    })
+fn validate_stable_explanation_wording(text: &str) -> Result<(), AgentRuntimeError> {
+    let normalized = text.to_ascii_lowercase();
+    let presents_dynamic_state = [
+        "this check",
+        "currently",
+        "changed from",
+        "arrived stale",
+        "came in stale",
+        "hasn't caught up",
+        "has not caught up",
+        "can't be verified until",
+        "cannot be verified until",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase))
+        || ((normalized.contains(" is healthy") || normalized.contains(" are healthy"))
+            && !normalized.contains(" means "));
+    if presents_dynamic_state
+        || (contains_raw_machine_field_syntax(text)
+            && ["confirms", "reports", "shows", "changed", "remains"]
+                .iter()
+                .any(|verb| normalized.contains(verb)))
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "a stable explanation cannot carry a current observation, transition, or causal dependency; use an evidence-bound claim"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+fn contains_raw_machine_field_syntax(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if !bytes[index].is_ascii_alphabetic() {
+            index += 1;
+            continue;
+        }
+        let start = index;
+        let mut has_underscore = false;
+        let mut has_camel_boundary = false;
+        let mut previous_lower = false;
+        while index < bytes.len() && (bytes[index].is_ascii_alphanumeric() || bytes[index] == b'_')
+        {
+            has_underscore |= bytes[index] == b'_';
+            has_camel_boundary |= previous_lower && bytes[index].is_ascii_uppercase();
+            previous_lower = bytes[index].is_ascii_lowercase();
+            index += 1;
+        }
+        if !has_underscore && !has_camel_boundary {
+            continue;
+        }
+        let mut next = index;
+        while next < bytes.len() && bytes[next].is_ascii_whitespace() {
+            next += 1;
+        }
+        let backticked =
+            start > 0 && bytes[start - 1] == b'`' && index < bytes.len() && bytes[index] == b'`';
+        let assigned = next < bytes.len() && matches!(bytes[next], b'=' | b':');
+        let plain_boolean = text[next..].starts_with("is true")
+            || text[next..].starts_with("is false")
+            || text[next..].starts_with("changed")
+            || text[next..].starts_with("remains");
+        let table_field = text[..start].rfind('\n').map_or(0, |line| line + 1);
+        let table_field = text[table_field..].contains('|');
+        if backticked || assigned || plain_boolean || table_field {
+            return true;
+        }
+    }
+    false
 }
 
 fn evidence_atom_supports_health(atom: &EvidenceAtom) -> bool {
     match &atom.assertion {
-        EvidenceAssertion::Value { predicate, value } => {
-            value
-                .as_str()
-                .is_some_and(|value| value.eq_ignore_ascii_case("healthy"))
-                || (predicate.to_ascii_lowercase().contains("health")
-                    && value.as_bool() == Some(true))
-        }
-        EvidenceAssertion::ToolOutcome { summary, .. }
-        | EvidenceAssertion::LegacyStatement { statement: summary } => {
-            summary.to_ascii_lowercase().contains("healthy")
-        }
-        EvidenceAssertion::Relation { predicate, .. } => {
-            predicate.to_ascii_lowercase().contains("healthy")
-        }
-        EvidenceAssertion::FieldCoverage { .. } => false,
+        EvidenceAssertion::Value { value, .. } => value
+            .as_str()
+            .is_some_and(|value| value.eq_ignore_ascii_case("healthy")),
+        EvidenceAssertion::Relation { .. }
+        | EvidenceAssertion::ToolOutcome { .. }
+        | EvidenceAssertion::LegacyStatement { .. }
+        | EvidenceAssertion::FieldCoverage { .. } => false,
     }
+}
+
+fn observation_text_names_subject(text: &str, subject_ref: &str) -> bool {
+    let leaf = subject_ref
+        .rsplit([':', '/', '#'])
+        .find(|part| !part.is_empty())
+        .unwrap_or(subject_ref)
+        .to_ascii_lowercase();
+    leaf.len() < 2 || text.to_ascii_lowercase().contains(&leaf)
 }
 
 fn evidence_atom_text(atom: &EvidenceAtom) -> Option<&str> {
@@ -6085,6 +6218,18 @@ mod tests {
             .to_string()
             .contains("natural language")
         );
+        raw_field.claims[0].content = ClaimContent::StableExplanation;
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &raw_field,
+                std::slice::from_ref(&current),
+                assessment,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("stable explanation")
+        );
 
         let mut invented_transition = draft();
         invented_transition.claims[0].text = "The newest receipt arrived stale.".into();
@@ -6112,7 +6257,7 @@ mod tests {
         else {
             panic!("the fixture should expose one status value")
         };
-        *value = json!("recovering");
+        *value = json!("unhealthy");
         assert!(
             validate_grounded_draft(
                 &session(),
@@ -6123,6 +6268,15 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("without a cited health observation")
+        );
+
+        let mut cross_subject = observation(true, Some("2026-08-01T00:00:00Z"));
+        cross_subject.result.evidence[0].atoms[0].subject_ref = Some("connector:beta".into());
+        assert!(
+            validate_grounded_draft(&session(), &draft(), &[cross_subject], assessment,)
+                .unwrap_err()
+                .to_string()
+                .contains("without a cited health observation")
         );
     }
 
@@ -6879,7 +7033,7 @@ mod tests {
             &input,
             &input.trigger,
             None,
-            &[failed],
+            &[failed.clone()],
             Vec::new(),
             &NoopSessionJournal,
         )
@@ -6899,6 +7053,63 @@ mod tests {
         assert!(markdown.contains("upstream request timed out"));
         assert!(markdown.contains("The source read failed"));
         assert!(!markdown.contains("No current authoritative observation was obtained"));
+
+        let mut supported = observation(true, Some("2026-08-01T00:00:00Z"));
+        supported.result.evidence[0].evidence_ref = "evidence:other".into();
+        supported.result.evidence[0].atoms[0].atom_ref = "atom:other-status".into();
+        supported.result.evidence[0].atoms.push(EvidenceAtom {
+            atom_ref: "evidence:other#tool-outcome".into(),
+            subject_ref: Some("connector:other".into()),
+            assertion: EvidenceAssertion::ToolOutcome {
+                state: ToolResultState::Succeeded,
+                summary: supported.result.summary.clone(),
+            },
+            observed_at: "2026-07-31T00:00:00Z".into(),
+            fresh_until: Some("2026-08-01T00:00:00Z".into()),
+            complete: true,
+        });
+        let mixed = repair_fallback_outcome(
+            &session(),
+            &input,
+            &input.trigger,
+            None,
+            &[supported, failed.clone()],
+            Vec::new(),
+            &NoopSessionJournal,
+        )
+        .await
+        .expect("a failed required read must outrank an unrelated successful read");
+        let SessionTurnOutcome::PendingDelivery { markdown, .. } = mixed else {
+            panic!("a mixed read fallback should not request approval");
+        };
+        assert!(markdown.contains("upstream request timed out"));
+
+        let mut failed_effect = failed;
+        failed_effect.descriptor.authority_class = ToolAuthorityClass::Actuate;
+        failed_effect.descriptor.effect_class = ToolEffectClass::Write;
+        failed_effect.result.summary = "The connector update failed before completion.".into();
+        let EvidenceAssertion::ToolOutcome { summary, .. } =
+            &mut failed_effect.result.evidence[0].atoms[1].assertion
+        else {
+            panic!("the failed fixture should carry a tool outcome atom")
+        };
+        *summary = failed_effect.result.summary.clone();
+        let effect = repair_fallback_outcome(
+            &session(),
+            &input,
+            &input.trigger,
+            None,
+            &[failed_effect],
+            Vec::new(),
+            &NoopSessionJournal,
+        )
+        .await
+        .expect("a failed effect should produce a visible blocked fallback");
+        let SessionTurnOutcome::PendingDelivery { markdown, .. } = effect else {
+            panic!("a failed effect should not request approval");
+        };
+        assert!(markdown.contains("The external action failed"));
+        assert!(!markdown.contains("did not evaluate the requested condition, execute an action"));
     }
 
     #[tokio::test]
