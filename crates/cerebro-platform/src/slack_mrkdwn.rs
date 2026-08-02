@@ -373,12 +373,10 @@ fn raw_url_emphasis_boundary(
             .chars()
             .next()
             .is_none_or(|character| !character.is_alphanumeric());
-        let remaining_run_count =
-            allowed_delimiter_run_count(&token[index..], delimiter, allowed_runs);
         if allowed_runs.contains(&run_len)
             && previous_can_close
             && suffix_starts_outside_word
-            && remaining_run_count.is_multiple_of(2)
+            && emphasis_suffix_is_well_formed(value, start + index, end, delimiter, allowed_runs)
         {
             return Some(start + run_start);
         }
@@ -386,23 +384,47 @@ fn raw_url_emphasis_boundary(
     None
 }
 
-fn allowed_delimiter_run_count(value: &[u8], delimiter: u8, allowed_runs: &[usize]) -> usize {
+fn emphasis_suffix_is_well_formed(
+    value: &str,
+    start: usize,
+    end: usize,
+    delimiter: u8,
+    allowed_runs: &[usize],
+) -> bool {
+    let bytes = &value.as_bytes()[start..end];
     let mut index = 0;
-    let mut count = 0;
-    while index < value.len() {
-        if value[index] != delimiter {
+    let mut open = false;
+    while index < bytes.len() {
+        if bytes[index] != delimiter {
             index += 1;
             continue;
         }
         let run_start = index;
-        while index < value.len() && value[index] == delimiter {
+        while index < bytes.len() && bytes[index] == delimiter {
             index += 1;
         }
-        if allowed_runs.contains(&(index - run_start)) {
-            count += 1;
+        if !allowed_runs.contains(&(index - run_start)) {
+            return false;
+        }
+        let previous = value[..start + run_start].chars().next_back();
+        let next = value[start + index..end].chars().next();
+        let previous_is_word = previous.is_some_and(char::is_alphanumeric);
+        let has_later_run = bytes[index..].contains(&delimiter);
+        let clear_intraword_asterisk_open = delimiter == b'*'
+            && previous.is_some_and(char::is_alphabetic)
+            && next.is_some_and(char::is_alphabetic)
+            && has_later_run;
+        let can_open = next.is_some_and(char::is_alphanumeric)
+            && (!previous_is_word || clear_intraword_asterisk_open);
+        let can_close = previous.is_some_and(|character| !character.is_whitespace())
+            && next.is_none_or(|character| !character.is_alphanumeric());
+        match (open, can_open, can_close) {
+            (false, true, _) => open = true,
+            (true, _, true) => open = false,
+            _ => return false,
         }
     }
-    count
+    !open
 }
 
 fn markdown_link(value: &str, start: usize, image: bool) -> Option<(usize, &str, &str)> {
@@ -720,6 +742,14 @@ mod tests {
             (
                 "**See https://example.com**;b**continue**",
                 "*See https://example.com*;b*continue*",
+            ),
+            (
+                "**See https://example.com/a**/b**/c**",
+                "*See https://example.com/a**/b**/c*",
+            ),
+            (
+                "**See https://example.com/a**-b**-c**",
+                "*See https://example.com/a**-b**-c*",
             ),
         ] {
             let rendered = render_slack_mrkdwn(input);
