@@ -4811,6 +4811,12 @@ fn validate_claim(
         }
         ClaimContent::StableExplanation => {
             validate_stable_explanation_wording(&claim.text)?;
+            if contains_self_ownership_assertion(&claim.text) {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "a stable explanation cannot assign work to Cerebro; cite a subject-bound authority binding or an exact active commitment"
+                        .into(),
+                ));
+            }
             if contains_operational_capability_assertion(&claim.text) {
                 return Err(AgentRuntimeError::InvalidFinal(
                     "a stable explanation cannot assert a specific operational capability or authority; use current capability evidence and name only the bound tools and declared authority it establishes"
@@ -8482,6 +8488,7 @@ mod tests {
             "Cerebro can schedule a recheck.",
             "Audit activity is inherently bursty and should report later.",
             "A persistent connector gap argues for a provider-side fix by the source owner.",
+            "Owner: me.",
         ] {
             let mut candidate = draft();
             candidate.claims[0].text = text.into();
