@@ -1172,9 +1172,9 @@ fn validate_route(
         ));
     }
     if request_explicitly_requires_investigation(&request.message)
-        && !matches!(
+        && matches!(
             decision.lane,
-            ExecutionLane::Investigate | ExecutionLane::Act
+            ExecutionLane::Converse | ExecutionLane::Lookup
         )
     {
         return Err(AgentRuntimeError::InvalidRoute(
@@ -2996,6 +2996,36 @@ mod grounding_tests {
             requires_current_evidence: true,
         };
         assert!(validate_route(&synthesis, &lookup).is_err());
+
+        let mut continuation = synthesis.clone();
+        continuation.working_state = Some(WorkingState {
+            mission_ref: Some("mission:synthetic".into()),
+            current_request: synthesis.message.clone(),
+            last_outcome: WorkingOutcome::Owned,
+            last_blocker: None,
+            active_lane: Some(ExecutionLane::Investigate),
+            requires_current_evidence: Some(true),
+            open_loops: vec!["Reconcile the current state.".into()],
+        });
+        let continue_route = RouteDecision {
+            lane: ExecutionLane::Continue,
+            confidence: RouteConfidence::High,
+            reason: "Resume the exact durable investigation.".into(),
+            requires_current_evidence: true,
+        };
+        assert!(validate_route(&continuation, &continue_route).is_ok());
+
+        let ignored = RouteDecision {
+            lane: ExecutionLane::Ignore,
+            confidence: RouteConfidence::High,
+            reason: "Ignore transport metadata.".into(),
+            requires_current_evidence: false,
+        };
+        assert!(matches!(
+            validate_route(&synthesis, &ignored),
+            Err(AgentRuntimeError::InvalidRoute(reason))
+                if reason.contains("transport events")
+        ));
     }
 
     #[test]

@@ -29,9 +29,9 @@ use cerebro_agent_runtime::{
     session::{
         AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
         ALL_STABLE_EXPLANATION_IDS, AgentSession, ClaimReviewTurn, DeliveryDisposition,
-        EvidenceAssertion, EvidenceAtomization, MAX_SESSION_MEMORIES, MessageReview, MissionState,
-        SemanticEvidenceAtomization, SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent,
-        SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
+        EvidenceAssertion, EvidenceAtom, EvidenceAtomization, MAX_SESSION_MEMORIES, MessageReview,
+        MissionState, SemanticEvidenceAtomization, SemanticEvidenceEnvelope, SessionAgentModel,
+        SessionEvent, SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
         SessionModelTurn, SessionStatus, SessionStore, SessionTools, SessionTurnInput,
         SessionTurnOutcome, SessionTurnTrigger, apply_session_events, evidence_atoms_from_json,
         message_digest, run_session_turn_recorded, semantic_evidence_atoms,
@@ -2076,6 +2076,8 @@ fn session_decision_schema() -> Value {
         "oneOf": [
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["observation"]}, "atom_refs": string_array()}, "required": ["basis", "atom_refs"]},
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["operator_context"]}, "message_sequence": {"type": "integer", "minimum": 1}, "exact_excerpt": {"type": "string", "minLength": 1}}, "required": ["basis", "message_sequence", "exact_excerpt"]},
+            {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["conversational_synthesis"]}, "source_message_sequences": {"type": "array", "maxItems": 16, "items": {"type": "integer", "minimum": 1}}}, "required": ["basis", "source_message_sequences"]},
+            {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["historical_context"]}, "atom_ref": {"type": "string", "minLength": 1}, "exact_excerpt": {"type": "string", "minLength": 1, "maxLength": 1000}}, "required": ["basis", "atom_ref", "exact_excerpt"]},
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["retained_plan"]}, "open_loop_ref": {"type": "string", "minLength": 1}}, "required": ["basis", "open_loop_ref"]},
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["commitment"]}, "commitment_ref": {"type": "string", "minLength": 1}}, "required": ["basis", "commitment_ref"]},
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["recommendation"]}, "action": action, "directive": {"type": "string", "enum": ["leave_unchanged", "perform_bounded_check", "wait_for_fresh_observation", "inspect_target", "verify_target", "reconcile_provider_state", "request_approval", "remediate_target"]}, "rationale_atom_refs": string_array()}, "required": ["basis", "action", "directive", "rationale_atom_refs"]},
@@ -2480,6 +2482,8 @@ If repair_feedback is present, correct every item before returning. Do not repea
 Claims are ordered visible message units. Concatenating every claim.text in order must reproduce message byte-for-byte, including Markdown and whitespace; this is how the runtime proves that no visible material bypassed review. Choose one typed content basis:
 - {"basis":"observation","atom_refs":[...]} for a current fact returned by a tool.
 - {"basis":"operator_context","message_sequence":N,"exact_excerpt":"..."} for something the operator explicitly supplied.
+- {"basis":"conversational_synthesis","source_message_sequences":[...]} for natural reasoning, drafting, explanation, or synthesis that does not assert current system state, operational capability, ownership, execution, or verification. Cite the bounded session messages used, or use an empty array for genuinely timeless reasoning. This basis is how you answer ordinary human questions in your own words; it is not evidence and cannot carry a hidden live fact.
+- {"basis":"historical_context","atom_ref":"...","exact_excerpt":"..."} for an exact excerpt from a typed Slack conversation-event atom returned by slack.thread.read or slack.history.search. text must be exactly: Earlier in Slack: "EXACT_EXCERPT". This is attributed historical context, never proof of current provider state or that a prior plan was executed.
 - {"basis":"retained_plan","open_loop_ref":"..."} for continuity only, never current evidence. text must be exactly: The recorded open question remains in context.
 - {"basis":"commitment","commitment_ref":"..."} only for the exact bounded future follow-through recorded by an active Cerebro-owned commitment in this draft. text must be exactly “I’ll check again at WAKE_AT.” using that commitment's RFC 3339 wake_at. It supports one next runtime wake for next_action at wake_at under the recorded acceptance criteria and verification condition. It does not support a recurring cadence, continuous monitoring, instantaneous detection, notification "the moment" state changes, an external effect, or a future result.
 - {"basis":"recommendation","action":{"tool_id":null,"target_ref":"...","input":{}},"directive":"...","rationale_atom_refs":[...]} for advice, not an executed effect. Recommendation prose is runtime-closed: leave_unchanged => "I recommend leaving the current target unchanged."; perform_bounded_check => "I recommend that the external owner perform the next bounded check."; wait_for_fresh_observation => "I recommend waiting for a fresh authoritative observation."; inspect_target => "I recommend inspecting the current target."; verify_target => "I recommend independently verifying the current target."; reconcile_provider_state => "I recommend reconciling the provider state before another effect."; request_approval => "I recommend requesting approval for the bounded action."; remediate_target => "I recommend remediating the current target, then verifying it independently." Use the exact rendering and put factual rationale in separate observation or hypothesis claims with its own typed atoms.
@@ -2539,7 +2543,7 @@ delivery=silent means this scheduled-wake draft is a durable internal audit summ
 
 The initiating operator turn must be visible even when the operator asks not to receive progress pings. A concise acknowledgement with the current bounded state and persisted next check answers that initiating request; it is not a later progress ping. Apply the quiet-progress preference only to scheduled nonterminal wakes after that acknowledgement.
 
-Set answers_newest_request only when the response addresses the newest request rather than merely narrating process. Set conversational only when a person can read it naturally in Slack. Set owns_follow_through when Cerebro completed all safe bounded work available in this turn and asks the operator only for an actual decision or missing identifier. Future Cerebro work counts only when backed by a real executor-bound commitment; do not require a future commitment when the current bounded check is honestly complete. Set right_sized only when the answer is neither a terse non-answer nor an unnecessary report. Set evidence_boundary_correct only when facts, hypotheses, recommendations, actions, verification, and unknowns are distinguished honestly.
+Set answers_newest_request only when the response addresses the newest request rather than merely narrating process. Set conversational only when a person can read it naturally in Slack. Conversational synthesis is valid for useful timeless reasoning and transformations of bounded conversation context, but reject it if it smuggles in current system state, operational capability, ownership, execution, or verification. Set owns_follow_through when Cerebro completed all safe bounded work available in this turn and asks the operator only for an actual decision or missing identifier. Future Cerebro work counts only when backed by a real executor-bound commitment; do not require a future commitment when the current bounded check is honestly complete. Set right_sized only when the answer is neither a terse non-answer nor an unnecessary report. Set evidence_boundary_correct only when facts, hypotheses, recommendations, actions, verification, and unknowns are distinguished honestly.
 
 Reject negative or scope-wide current claims such as "no new," "nothing else," or "only" unless a bounded observation covers that scope. Reject claims that an earlier anomaly recovered unless both the earlier state and the later recovery are observed. Reject claims that Cerebro can trigger, line up, route, schedule, or execute work unless current observations establish that exact capability and action boundary.
 
@@ -3403,7 +3407,8 @@ fn atomize_tool_result(
     ) {
         for evidence in &mut result.evidence {
             evidence.fresh_until = None;
-            evidence.atoms.clear();
+            evidence.atoms =
+                slack_conversation_event_atoms(&call.tool_id, &evidence.evidence_ref, &result.data);
         }
         return Ok(result);
     }
@@ -3446,6 +3451,113 @@ fn atomize_tool_result(
             }));
     }
     Ok(result)
+}
+
+fn slack_conversation_event_atoms(
+    tool_id: &str,
+    evidence_ref: &str,
+    data: &Value,
+) -> Vec<EvidenceAtom> {
+    let mut atoms = Vec::new();
+    let mut push_event = |suffix: String,
+                          thread_ref: &str,
+                          actor_ref: &str,
+                          role: &str,
+                          occurred_at: &str,
+                          text: &str| {
+        if text.trim().is_empty() || text.len() > 2_000 || occurred_at.trim().is_empty() {
+            return;
+        }
+        atoms.push(EvidenceAtom {
+            atom_ref: format!("{evidence_ref}#conversation:{suffix}"),
+            subject_ref: Some(thread_ref.to_owned()),
+            assertion: EvidenceAssertion::ConversationEvent {
+                thread_ref: thread_ref.to_owned(),
+                actor_ref: actor_ref.to_owned(),
+                role: role.to_owned(),
+                occurred_at: occurred_at.to_owned(),
+                text: text.to_owned(),
+            },
+            observed_at: occurred_at.to_owned(),
+            fresh_until: None,
+            complete: true,
+        });
+    };
+    match tool_id {
+        "slack.thread.read" => {
+            for (index, message) in data
+                .get("messages")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                let Some(thread_ref) = message
+                    .get("thread_ref")
+                    .and_then(Value::as_str)
+                    .or_else(|| data.get("thread_ref").and_then(Value::as_str))
+                else {
+                    continue;
+                };
+                let Some(actor_ref) = message.get("actor_ref").and_then(Value::as_str) else {
+                    continue;
+                };
+                let Some(role) = message.get("role").and_then(Value::as_str) else {
+                    continue;
+                };
+                let Some(occurred_at) = message.get("received_at").and_then(Value::as_str) else {
+                    continue;
+                };
+                let Some(text) = message.get("text").and_then(Value::as_str) else {
+                    continue;
+                };
+                push_event(
+                    index.to_string(),
+                    thread_ref,
+                    actor_ref,
+                    role,
+                    occurred_at,
+                    text,
+                );
+            }
+        }
+        "slack.history.search" => {
+            for (index, thread) in data
+                .get("threads")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                let Some(thread_ref) = thread.get("thread_ref").and_then(Value::as_str) else {
+                    continue;
+                };
+                let Some(occurred_at) = thread.get("updated_at").and_then(Value::as_str) else {
+                    continue;
+                };
+                let Some(context) = thread.get("context").and_then(Value::as_object) else {
+                    continue;
+                };
+                for (field, actor_ref, role) in [
+                    ("latest_user_message", "historical-operator", "user"),
+                    ("latest_assistant_message", "cerebro", "assistant"),
+                ] {
+                    if let Some(text) = context.get(field).and_then(Value::as_str) {
+                        push_event(
+                            format!("{index}:{field}"),
+                            thread_ref,
+                            actor_ref,
+                            role,
+                            occurred_at,
+                            text,
+                        );
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    atoms
 }
 
 fn production_input_subject<'a>(
@@ -3711,8 +3823,11 @@ impl PlatformAgentTools {
                 "Read {} messages from this owned Slack thread.",
                 page.messages.len()
             ),
-            data: serde_json::to_value(page)
-                .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
+            data: json!({
+                "thread_ref": request.thread_ref,
+                "messages": page.messages,
+                "next_cursor": page.next_cursor,
+            }),
             evidence: vec![evidence],
             blocker: (!complete).then(|| {
                 "Older messages remain available through the returned bounded cursor.".into()
@@ -4926,13 +5041,38 @@ mod tests {
                 fresh_until: Some("2026-08-01T00:05:00Z"),
                 complete: true,
             });
+            let data = if tool_id == "slack.thread.read" {
+                json!({
+                    "thread_ref": "thread:synthetic",
+                    "messages": [{
+                        "actor_ref": "operator:synthetic",
+                        "message_ref": "message:synthetic",
+                        "received_at": "2026-08-01T00:00:00Z",
+                        "role": "user",
+                        "text": "Keep the decision reversible."
+                    }],
+                    "next_cursor": null
+                })
+            } else {
+                json!({
+                    "threads": [{
+                        "thread_ref": "thread:prior-synthetic",
+                        "updated_at": "2026-08-01T00:00:00Z",
+                        "context": {
+                            "latest_user_message": "Keep the decision reversible.",
+                            "latest_assistant_message": null
+                        }
+                    }],
+                    "next_cursor": null
+                })
+            };
             let result =
                 atomize_tool_result(
                     &call,
                     ToolResult {
                         state: ToolResultState::Succeeded,
                         summary: "Read retained Slack context.".into(),
-                        data: json!({"messages": [], "next_cursor": null}),
+                        data,
                         evidence: vec![EvidenceRecord {
                             evidence_ref: format!("evidence://slack-context/{tool_id}"),
                             statement:
@@ -4949,7 +5089,13 @@ mod tests {
                 .unwrap();
 
             assert!(result.evidence[0].fresh_until.is_none(), "{tool_id}");
-            assert!(result.evidence[0].atoms.is_empty(), "{tool_id}");
+            assert_eq!(result.evidence[0].atoms.len(), 1, "{tool_id}");
+            assert!(matches!(
+                &result.evidence[0].atoms[0].assertion,
+                EvidenceAssertion::ConversationEvent { text, .. }
+                    if text == "Keep the decision reversible."
+            ));
+            assert!(result.evidence[0].atoms[0].fresh_until.is_none());
         }
     }
 

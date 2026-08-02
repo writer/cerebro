@@ -66,6 +66,15 @@ pub(super) fn render_slack_mrkdwn(markdown: &str) -> String {
 
 fn render_inline_slack_mrkdwn(value: &str) -> String {
     let mut output = String::with_capacity(value.len());
+    let markup_source = inline_markup_outside_code(value);
+    let close_strong_asterisk =
+        !strong_delimiter_count_outside_urls(&markup_source, "**").is_multiple_of(2);
+    let close_strong_underscore =
+        !strong_delimiter_count_outside_urls(&markup_source, "__").is_multiple_of(2);
+    let close_single_asterisk =
+        !single_delimiter_count_outside_urls(&markup_source, '*').is_multiple_of(2);
+    let close_single_underscore =
+        !single_delimiter_count_outside_urls(&markup_source, '_').is_multiple_of(2);
     let mut cursor = 0;
     while let Some(offset) = value[cursor..].find('`') {
         let open = cursor + offset;
@@ -77,14 +86,49 @@ fn render_inline_slack_mrkdwn(value: &str) -> String {
         let delimiter = &value[open..open + delimiter_len];
         let content_start = open + delimiter_len;
         let Some(close_offset) = value[content_start..].find(delimiter) else {
-            output.push_str(&value[open..]);
-            return output;
+            output.push_str(&render_inline_markup(&value[content_start..]));
+            cursor = value.len();
+            break;
         };
         let close = content_start + close_offset + delimiter_len;
         output.push_str(&value[open..close]);
         cursor = close;
     }
     output.push_str(&render_inline_markup(&value[cursor..]));
+    if close_strong_asterisk {
+        output.push('*');
+    }
+    if close_strong_underscore {
+        output.push('*');
+    }
+    if close_single_asterisk {
+        output.push('*');
+    }
+    if close_single_underscore {
+        output.push('_');
+    }
+    output
+}
+
+fn inline_markup_outside_code(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut cursor = 0;
+    while let Some(offset) = value[cursor..].find('`') {
+        let open = cursor + offset;
+        output.push_str(&value[cursor..open]);
+        let delimiter_len = value[open..]
+            .bytes()
+            .take_while(|byte| *byte == b'`')
+            .count();
+        let delimiter = &value[open..open + delimiter_len];
+        let content_start = open + delimiter_len;
+        let Some(close_offset) = value[content_start..].find(delimiter) else {
+            output.push_str(&value[content_start..]);
+            return output;
+        };
+        cursor = content_start + close_offset + delimiter_len;
+    }
+    output.push_str(&value[cursor..]);
     output
 }
 
@@ -116,8 +160,6 @@ fn inert_slack_control_syntax(value: &str) -> String {
 }
 
 fn render_inline_markup(value: &str) -> String {
-    let close_asterisk = !strong_delimiter_count_outside_urls(value, "**").is_multiple_of(2);
-    let close_underscore = !strong_delimiter_count_outside_urls(value, "__").is_multiple_of(2);
     let mut output = String::with_capacity(value.len());
     let mut cursor = 0;
     while cursor < value.len() {
@@ -158,14 +200,43 @@ fn render_inline_markup(value: &str) -> String {
         output.push(character);
         cursor += character.len_utf8();
     }
-    let mut output = inert_slack_control_syntax(&output);
-    if close_asterisk {
-        output.push('*');
+    inert_slack_control_syntax(&output)
+}
+
+fn single_delimiter_count_outside_urls(value: &str, delimiter: char) -> usize {
+    let mut count = 0;
+    let mut cursor = 0;
+    while cursor < value.len() {
+        let image = value[cursor..].starts_with("![");
+        if (image || value[cursor..].starts_with('['))
+            && let Some((end, _, _)) = markdown_link(value, cursor, image)
+        {
+            cursor = end;
+            continue;
+        }
+        if let Some(end) = raw_url_end(value, cursor) {
+            cursor = end;
+            continue;
+        }
+        let remainder = &value[cursor..];
+        if remainder.starts_with(delimiter) {
+            let run = remainder
+                .chars()
+                .take_while(|character| *character == delimiter)
+                .count();
+            if run == 1 {
+                count += 1;
+            }
+            cursor += run;
+            continue;
+        }
+        cursor += remainder
+            .chars()
+            .next()
+            .expect("single delimiter cursor remains on a character boundary")
+            .len_utf8();
     }
-    if close_underscore {
-        output.push('*');
-    }
-    output
+    count
 }
 
 fn strong_delimiter_count_outside_urls(value: &str, delimiter: &str) -> usize {
@@ -255,7 +326,8 @@ fn markdown_bullet(value: &str) -> Option<(&str, &str)> {
 }
 
 fn markdown_table_cells(value: &str) -> Option<Vec<String>> {
-    let body = value.strip_prefix('|')?.strip_suffix('|')?;
+    let body = value.strip_prefix('|').unwrap_or(value);
+    let body = body.strip_suffix('|').unwrap_or(body);
     let mut cells = Vec::new();
     let mut cell = String::new();
     let mut escaped = false;
@@ -377,6 +449,10 @@ mod tests {
             ),
             "• *Check* — *State* — *Owner*\n• Session — *Ready* — @U123\n• Empty —  — retained"
         );
+        assert_eq!(
+            render_slack_mrkdwn("Check | State\n--- | ---\nSource | Healthy"),
+            "• *Check* — *State*\n• Source — Healthy"
+        );
     }
 
     #[test]
@@ -399,6 +475,22 @@ mod tests {
         assert_eq!(
             render_slack_mrkdwn("The source is __healthy."),
             "The source is *healthy.*"
+        );
+        assert_eq!(
+            render_slack_mrkdwn("Use `literal text."),
+            "Use literal text."
+        );
+        assert_eq!(
+            render_slack_mrkdwn("The *source is healthy."),
+            "The *source is healthy.*"
+        );
+        assert_eq!(
+            render_slack_mrkdwn("The _source is healthy."),
+            "The _source is healthy._"
+        );
+        assert_eq!(
+            render_slack_mrkdwn("**Source `provider-x` is down**"),
+            "*Source `provider-x` is down*"
         );
     }
 
