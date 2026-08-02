@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/writer/cerebro/tools/droidreview/bodyread"
+	"github.com/writer/cerebro/tools/reviewcheck/bodyread"
 )
 
 func TestOpenAPIContractDescribesCurrentBootstrapSurface(t *testing.T) {

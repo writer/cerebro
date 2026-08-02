@@ -41,7 +41,7 @@
       "id": "release-train-skew-visible",
       "path_globs": [
         ".github/workflows/**",
-        "scripts/droid_post_merge_health.py",
+        "scripts/post_merge_health.py",
         "scripts/land_pr.py"
       ],
       "summary": "The release train is high cadence. Post-merge tooling should distinguish failed checks from expected tag lag, and should always show whether the latest release tag includes the merged commit."

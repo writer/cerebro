@@ -13,9 +13,10 @@
 - Candidate finding lifecycle writes remain atomic and idempotent.
 - Public request origin, DPoP `htu`, and trusted proxy handling use the canonical origin helpers.
 
-## Droid Review Context
+## Deterministic Review
 
-- Fast local preflight: `make droid-review-preflight`.
+- Fast local invariant check: `make review-invariants`.
 - Focus review on changed behavior and the invariants above.
-- Escalate to a deep manual Droid tag review for broad auth, graph, source HTTP, or state-machine changes.
-- Land with `make land-pr PR=<number>` so Droid finishes before branch deletion.
+- The required `deterministic-review` check runs the exact PR range through invariant, contract, structural, architecture, scanner, vulnerability, leak, and workflow-permission gates.
+- Use a manual `@droid` task only when explicitly requested for broad auth, graph, source HTTP, or state-machine investigation; it is not an automatic merge gate.
+- Land with `make land-pr PR=<number>` so the deterministic review check and required checks pass before branch deletion.

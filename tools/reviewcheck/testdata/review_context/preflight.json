@@ -1,10 +1,9 @@
 {
   "changed_files": [
     "internal/graphagent/ask.go",
-    ".github/workflows/droid-review.yml"
+    ".github/workflows/deterministic-review.yml"
   ],
-  "run_droid_review": true,
-  "review_model": "glm-5.2",
+  "review_required": true,
   "review_reason": "code, workflow, API, source, or security-sensitive paths changed",
   "findings": [],
   "checks": ["cypher-safety"],

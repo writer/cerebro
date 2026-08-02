@@ -1,0 +1,127 @@
+name: Deterministic Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-review:
+    name: deterministic-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify the exact review range
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${HEAD_SHA}"
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git cat-file -e "${HEAD_SHA}^{commit}"
+          git merge-base --is-ancestor "${BASE_SHA}" "${HEAD_SHA}"
+          echo "review range: ${BASE_SHA}...${HEAD_SHA}"
+
+      - name: Install workflow linters
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          python3 -m pip install --user 'zizmor==1.29.0'
+          {
+            echo "$(go env GOPATH)/bin"
+            echo "$HOME/.local/bin"
+          } >> "$GITHUB_PATH"
+
+      - name: Validate workflow syntax and permissions
+        run: |
+          set -euo pipefail
+          actionlint .github/workflows/deterministic-review.yml
+          zizmor .github/workflows/deterministic-review.yml
+
+      - name: Install Semgrep
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user 'semgrep==1.167.0'
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run deterministic repository review
+        shell: bash
+        env:
+          REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          REVIEW_INVARIANTS_JSON_OUT: tmp/review-invariants.json
+        run: make deterministic-review
+
+      - name: Run Semgrep
+        shell: bash
+        run: |
+          set -euo pipefail
+          semgrep scan \
+            --config .semgrep/cerebro.yml \
+            --error \
+            --sarif \
+            --output semgrep.sarif
+
+      - name: Run reachable vulnerability scan
+        run: make govulncheck
+
+      - name: Run changed-range leak scan
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ./scripts/leak_check.sh range "${BASE_SHA}...${HEAD_SHA}"
+
+      - name: Run ShellCheck on changed shell scripts
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          shell_files=()
+          while IFS= read -r path; do
+            if [ -f "$path" ]; then
+              shell_files+=("$path")
+            fi
+          done < <(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...${HEAD_SHA}" -- '*.sh')
+          if [ "${#shell_files[@]}" -gt 0 ]; then
+            command -v shellcheck >/dev/null
+            shellcheck "${shell_files[@]}"
+          else
+            echo "no changed shell scripts"
+          fi
+
+      - name: Upload deterministic review evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: deterministic-review-evidence
+          if-no-files-found: ignore
+          path: |
+            tmp/review-invariants.json
+            semgrep.sarif

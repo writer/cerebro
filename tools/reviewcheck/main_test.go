@@ -30,11 +30,8 @@ func TestSuspiciousCypherTokenFlagsWriteQueryLiterals(t *testing.T) {
 func TestClassifyReviewSkipsDocsOnly(t *testing.T) {
 	result := classifyReview([]string{"docs/notes.md", ".factory/templates/example.md"})
 
-	if result.RunDroidReview {
-		t.Fatalf("RunDroidReview = true, want false for docs-only changes")
-	}
-	if result.ReviewModel != reviewModel() {
-		t.Fatalf("ReviewModel = %q, want %q", result.ReviewModel, reviewModel())
+	if result.ReviewRequired {
+		t.Fatalf("ReviewRequired = true, want false for docs-only changes")
 	}
 }
 
@@ -62,8 +59,7 @@ func TestWriteJSONFilePersistsPreflightShape(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "preflight.json")
 	result := preflightResult{
 		ChangedFiles:   []string{"internal/graphagent/ask.go"},
-		RunDroidReview: true,
-		ReviewModel:    reviewModel(),
+		ReviewRequired: true,
 		ReviewReason:   "code changed",
 		Checks:         []string{"cypher-safety"},
 		Findings:       []checkFinding{{Rule: "cypher-safety", File: "internal/graphagent/ask.go", Line: 12, Message: "bad cypher"}},
@@ -81,7 +77,7 @@ func TestWriteJSONFilePersistsPreflightShape(t *testing.T) {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("decode preflight json: %v", err)
 	}
-	if !decoded.RunDroidReview || len(decoded.ProbePlan) != 1 || decoded.Findings[0].Rule != "cypher-safety" {
+	if !decoded.ReviewRequired || len(decoded.ProbePlan) != 1 || decoded.Findings[0].Rule != "cypher-safety" {
 		t.Fatalf("decoded preflight = %#v", decoded)
 	}
 }
@@ -115,8 +111,8 @@ func TestPreflightFixtureProbePlanIsStable(t *testing.T) {
 	if err := json.Unmarshal(raw, &fixture); err != nil {
 		t.Fatalf("decode preflight fixture: %v", err)
 	}
-	if !fixture.RunDroidReview {
-		t.Fatalf("fixture run_droid_review = false, want true")
+	if !fixture.ReviewRequired {
+		t.Fatalf("fixture review_required = false, want true")
 	}
 	var passNames []string
 	for _, pass := range fixture.ProbePlan {

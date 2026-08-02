@@ -38,7 +38,7 @@ class ChangedChecksTests(unittest.TestCase):
         self.assertIn("finding-dsl-check", names)
 
     def test_script_paths_select_python_tests(self):
-        names = self.command_names(["scripts/droid_review_context.py"])
+        names = self.command_names(["scripts/droid_ci_context.py"])
         self.assertIn("python-script-tests", names)
 
     def test_rust_workspace_paths_select_graph_action_check(self):

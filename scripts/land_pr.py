@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Conservative PR landing helper for Cerebro.
 
-The helper exists to keep automated review branches alive until Droid has
-finished. It intentionally waits for core checks, then merges and deletes the
-branch only after the review gates and merge have succeeded.
+The helper waits for the exact required status checks and active review
+threads, then merges with the observed head SHA and deletes the branch only
+after the merge succeeds.
 """
 
 from __future__ import annotations
@@ -40,14 +40,11 @@ DEFAULT_REQUIRED_CHECKS = (
     "docker-smoke",
     "web-docker-smoke",
     "structural",
-    "droid-review-preflight",
-    "droid-review",
+    "deterministic-review",
     "verify",
 )
 DEFAULT_MAX_CHANGED_LINES = 5000
 DEFAULT_MAX_CHANGED_FILES = 50
-DROID_BOT_LOGIN = "factory-droid[bot]"
-DROID_FINISHED_MARKERS = ("Droid finished", "Review complete for PR")
 
 
 def run_gh(args: list[str], repo: str, *, check: bool = True) -> str:
@@ -85,27 +82,6 @@ def fetch_checks(pr_number: int, repo: str) -> list[dict[str, object]]:
         check=False,
     )
     return json.loads(raw or "[]")
-
-
-def fetch_comments(pr_number: int, repo: str) -> list[dict[str, object]]:
-    raw = run_gh(
-        [
-            "api",
-            f"repos/{repo}/issues/{pr_number}/comments?per_page=100",
-            "--paginate",
-            "--jq",
-            "[.[] | {user:{login:.user.login,type:.user.type}, author_association:.author_association, body:.body, url:.html_url, created_at:.created_at}]",
-        ],
-        repo,
-    )
-    comments: list[dict[str, object]] = []
-    for page in raw.splitlines():
-        if not page.strip():
-            continue
-        parsed = json.loads(page)
-        if isinstance(parsed, list):
-            comments.extend(item for item in parsed if isinstance(item, dict))
-    return comments
 
 
 def repo_parts(repo: str) -> tuple[str, str]:
@@ -240,45 +216,6 @@ def check_pr_size(
     return False, f"{reason}; rerun with --allow-large-pr after confirming the diff is intentionally large"
 
 
-def is_droid_comment(comment: dict[str, object]) -> bool:
-    user = comment.get("user")
-    if isinstance(user, dict):
-        login = str(user.get("login") or "").lower()
-        user_type = str(user.get("type") or "")
-    else:
-        login = str(user or "").lower()
-        user_type = str(comment.get("user_type") or "")
-    return login == DROID_BOT_LOGIN and (not user_type or user_type == "Bot")
-
-
-def is_finished_droid_review(body: object) -> bool:
-    text = str(body or "")
-    return any(marker in text for marker in DROID_FINISHED_MARKERS)
-
-
-def latest_droid_comment(comments: list[dict[str, object]]) -> dict[str, object] | None:
-    droid_comments = [comment for comment in comments if is_droid_comment(comment)]
-    return droid_comments[-1] if droid_comments else None
-
-
-def check_droid_finished(comments: list[dict[str, object]]) -> tuple[bool, str]:
-    droid_comments = [comment for comment in comments if is_droid_comment(comment)]
-    for comment in droid_comments:
-        body = str(comment.get("body") or "")
-        superseded = "Superseded Droid error" in body or "Superseded Droid review" in body
-        if "Droid encountered an error" in body and not superseded:
-            return False, f"Droid has an unsuperseded error comment: {comment.get('url') or ''}"
-        if "Droid is reviewing code and running a security check" in body and not superseded and not is_finished_droid_review(body):
-            return False, f"Droid has an unsuperseded in progress comment: {comment.get('url') or ''}"
-    comment = latest_droid_comment(comments)
-    if not comment:
-        return False, "missing Droid review comment"
-    body = str(comment.get("body") or "")
-    if not is_finished_droid_review(body):
-        return False, f"Droid latest comment is not a finished review: {comment.get('url') or ''}"
-    return True, ""
-
-
 def check_no_active_review_threads(threads: list[dict[str, object]]) -> tuple[bool, str]:
     if not threads:
         return True, ""
@@ -345,7 +282,7 @@ def delete_branch_if_safe(pr: dict[str, object], repo: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Wait for Droid/leak checks, merge, then delete the PR branch.")
+    parser = argparse.ArgumentParser(description="Wait for required checks, merge, then delete the PR branch.")
     parser.add_argument("pr_number", type=int)
     parser.add_argument("--repo", default="writer/cerebro")
     parser.add_argument("--timeout-seconds", type=int, default=1800)
@@ -387,12 +324,6 @@ def main() -> int:
             fetch_checks(args.pr_number, args.repo),
             tuple(args.required_check) if args.required_check else DEFAULT_REQUIRED_CHECKS,
         ),
-    )
-    wait_for_gate(
-        "Droid review",
-        args.timeout_seconds,
-        args.interval_seconds,
-        lambda: check_droid_finished(fetch_comments(args.pr_number, args.repo)),
     )
     wait_for_gate(
         "review threads",

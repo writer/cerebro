@@ -18,7 +18,7 @@ class DroidReviewContextTests(unittest.TestCase):
             """
             {"passes":[
               {"name":"ask-trajectory","path_globs":["internal/graphagent/**"],"invariants":["ask"],"commands":["go test ./internal/graphagent"],"required_evidence":["route"]},
-              {"name":"workflow-permissions","path_globs":["scripts/**"],"invariants":["workflow"],"commands":["make droid-review-sast"],"required_evidence":["permissions"]}
+              {"name":"workflow-permissions","path_globs":["scripts/**"],"invariants":["workflow"],"commands":["make deterministic-review"],"required_evidence":["permissions"]}
             ]}
             """
         )
@@ -117,7 +117,7 @@ class DroidReviewContextTests(unittest.TestCase):
             self.assertIn("source snippets withheld", markdown)
 
     def test_fixture_driven_context_contains_pass_memory_feedback(self):
-        fixture_root = REPO_ROOT / "tools" / "droidreview" / "testdata" / "review_context"
+        fixture_root = REPO_ROOT / "tools" / "reviewcheck" / "testdata" / "review_context"
         args = type("Args", (), {})()
         args.base = "base"
         args.head = "head"

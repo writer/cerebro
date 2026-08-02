@@ -257,8 +257,8 @@ def run_commands(commands: list[CommandPlan], repo: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base", default=os.environ.get("DROID_REVIEW_BASE", "origin/main"))
-    parser.add_argument("--head", default=os.environ.get("DROID_REVIEW_HEAD", "HEAD"))
+    parser.add_argument("--base", default=os.environ.get("REVIEW_BASE", "origin/main"))
+    parser.add_argument("--head", default=os.environ.get("REVIEW_HEAD", "HEAD"))
     parser.add_argument("--repo", default=".")
     parser.add_argument("--json", action="store_true", help="Print the command plan as JSON.")
     parser.add_argument("--run", action="store_true", help="Execute the selected commands.")

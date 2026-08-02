@@ -17,23 +17,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/tools/droidreview/bodyread"
-	"github.com/writer/cerebro/tools/droidreview/urnlinter"
+	"github.com/writer/cerebro/tools/reviewcheck/bodyread"
+	"github.com/writer/cerebro/tools/reviewcheck/urnlinter"
 )
-
-const bugReviewModel = "glm-5.2"
-
-func reviewModel() string {
-	if model := os.Getenv("DROID_REVIEW_MODEL"); model != "" {
-		return model
-	}
-	return bugReviewModel
-}
 
 type preflightResult struct {
 	ChangedFiles   []string          `json:"changed_files"`
-	RunDroidReview bool              `json:"run_droid_review"`
-	ReviewModel    string            `json:"review_model"`
+	ReviewRequired bool              `json:"review_required"`
 	ReviewReason   string            `json:"review_reason"`
 	Findings       []checkFinding    `json:"findings"`
 	Checks         []string          `json:"checks"`
@@ -61,7 +51,7 @@ func main() {
 	flag.StringVar(&base, "base", "origin/main", "base git revision for changed-file preflight")
 	flag.StringVar(&head, "head", "HEAD", "head git revision for changed-file preflight")
 	flag.StringVar(&repo, "repo", ".", "repository root")
-	flag.StringVar(&jsonOut, "json-out", "", "optional path for structured Droid preflight JSON")
+	flag.StringVar(&jsonOut, "json-out", "", "optional path for structured deterministic review JSON")
 	flag.Parse()
 
 	started := time.Now()
@@ -95,7 +85,10 @@ func writeJSONFile(path string, result preflightResult) error {
 func run(base, head, repo string) (preflightResult, error) {
 	files, err := changedFiles(base, head, repo)
 	if err != nil {
-		return preflightResult{RunDroidReview: true, ReviewModel: reviewModel()}, err
+		return preflightResult{
+			ReviewRequired: true,
+			ReviewReason:   "unable to resolve the review range",
+		}, err
 	}
 	result := classifyReview(files)
 	result.Checks = []string{
@@ -154,21 +147,21 @@ func run(base, head, repo string) (preflightResult, error) {
 	}
 	if len(result.Findings) > 0 {
 		var message strings.Builder
-		message.WriteString("Droid review preflight found invariant violations:\n")
+		message.WriteString("deterministic review found invariant violations:\n")
 		for _, finding := range result.Findings {
 			fmt.Fprintf(&message, "- [%s] %s:%d %s\n", finding.Rule, finding.File, finding.Line, finding.Message)
 		}
 		return result, fmt.Errorf("%s", strings.TrimRight(message.String(), "\n"))
 	}
-	fmt.Printf("Droid review preflight passed for %d changed files. run_droid_review=%t review_model=%s reason=%q\n", len(files), result.RunDroidReview, result.ReviewModel, result.ReviewReason)
+	fmt.Printf("deterministic review passed for %d changed files. review_required=%t reason=%q\n", len(files), result.ReviewRequired, result.ReviewReason)
 	return result, nil
 }
 
 func reviewProbePlan(files []string) []reviewProbePass {
 	passes := []reviewProbePass{{
 		Name:     "changed-invariants",
-		Why:      "Map changed paths to repository invariants before reviewing diffs.",
-		Commands: []string{"make droid-review-preflight"},
+		Why:      "Map changed paths to repository invariants before accepting the diff.",
+		Commands: []string{"make review-invariants"},
 	}}
 	if anyFile(files, func(file string) bool {
 		return strings.HasPrefix(file, "internal/graphagent/") || strings.HasPrefix(file, "internal/graphquery/")
@@ -184,15 +177,15 @@ func reviewProbePlan(files []string) []reviewProbePass {
 	}) {
 		passes = append(passes, reviewProbePass{
 			Name:     "security-context",
-			Why:      "Workflow, script, and connector changes need scanner context plus manual exploitability validation.",
-			Commands: []string{"make droid-review-sast"},
+			Why:      "Workflow, script, and connector changes need deterministic scanner and permission validation.",
+			Commands: []string{"make deterministic-review"},
 		})
 	}
 	if anyFile(files, func(file string) bool { return strings.HasSuffix(file, ".go") }) {
 		passes = append(passes, reviewProbePass{
 			Name:     "focused-go-tests",
 			Why:      "Run the narrow Go packages touched by the diff before relying on the full verify gate.",
-			Commands: []string{"go test ./tools/droidreview/..."},
+			Commands: []string{"go test ./tools/reviewcheck/..."},
 		})
 	}
 	return passes
@@ -250,13 +243,12 @@ func gitOutput(repo string, args ...string) (string, error) {
 func classifyReview(files []string) preflightResult {
 	result := preflightResult{
 		ChangedFiles:   files,
-		RunDroidReview: false,
-		ReviewModel:    reviewModel(),
-		ReviewReason:   "docs/templates only; fast preflight and CI are sufficient",
+		ReviewRequired: false,
+		ReviewReason:   "docs/templates only; deterministic review still runs and should remain green",
 	}
 	for _, file := range files {
-		if requiresBugReview(file) {
-			result.RunDroidReview = true
+		if requiresReview(file) {
+			result.ReviewRequired = true
 			result.ReviewReason = "code, workflow, API, source, or security-sensitive paths changed"
 			break
 		}
@@ -264,7 +256,7 @@ func classifyReview(files []string) preflightResult {
 	return result
 }
 
-func requiresBugReview(file string) bool {
+func requiresReview(file string) bool {
 	switch {
 	case strings.HasSuffix(file, ".go"),
 		file == "go.mod",
@@ -425,16 +417,15 @@ func lineForIndex(body []byte, index int) int {
 
 func writeGitHubMetadata(result preflightResult, duration time.Duration, runErr error) {
 	if path := os.Getenv("GITHUB_OUTPUT"); path != "" {
-		if err := appendFile(path, []byte(fmt.Sprintf("run_droid_review=%t\nreview_model=%s\nreview_reason=%s\n", result.RunDroidReview, result.ReviewModel, sanitizeOutput(result.ReviewReason)))); err != nil {
-			log.Printf("droidreview: write GITHUB_OUTPUT: %v", err)
+		if err := appendFile(path, []byte(fmt.Sprintf("review_required=%t\nreview_reason=%s\n", result.ReviewRequired, sanitizeOutput(result.ReviewReason)))); err != nil {
+			log.Printf("reviewcheck: write GITHUB_OUTPUT: %v", err)
 		}
 	}
 	if path := os.Getenv("GITHUB_STEP_SUMMARY"); path != "" {
 		var summary strings.Builder
-		summary.WriteString("\n### Droid Review Decision\n\n")
+		summary.WriteString("\n### Deterministic Review\n\n")
 		fmt.Fprintf(&summary, "- Changed files: %d\n", len(result.ChangedFiles))
-		fmt.Fprintf(&summary, "- Run Droid model review: `%t`\n", result.RunDroidReview)
-		fmt.Fprintf(&summary, "- Review model: `%s`\n", result.ReviewModel)
+		fmt.Fprintf(&summary, "- Review required for changed behavior: `%t`\n", result.ReviewRequired)
 		fmt.Fprintf(&summary, "- Reason: %s\n", result.ReviewReason)
 		fmt.Fprintf(&summary, "- Preflight duration: %.1fs\n", duration.Seconds())
 		if runErr != nil {
@@ -461,7 +452,7 @@ func writeGitHubMetadata(result preflightResult, duration time.Duration, runErr 
 			}
 		}
 		if err := appendFile(path, []byte(summary.String())); err != nil {
-			log.Printf("droidreview: write GITHUB_STEP_SUMMARY: %v", err)
+			log.Printf("reviewcheck: write GITHUB_STEP_SUMMARY: %v", err)
 		}
 	}
 }
