@@ -1561,12 +1561,35 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         " in the metaphor ",
         " as a metaphor ",
         " as an example ",
+        " in this thought experiment ",
+        " thought experiment ",
+        " in this scenario ",
+        " scenario ",
+        " sorting algorithm ",
         " hypothetical ",
         " fictional ",
         " imagine ",
     ]
     .iter()
     .any(|marker| normalized.contains(marker));
+    let generic_concept_subject = words.iter().any(|word| {
+        matches!(
+            *word,
+            "algorithm" | "argument" | "concept" | "example" | "idea" | "theory"
+        )
+    });
+    let named_subject_in_request = clause
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .enumerate()
+        .any(|(index, token)| {
+            index > 0
+                && token.chars().next().is_some_and(char::is_uppercase)
+                && !matches!(
+                    token,
+                    "A" | "An" | "I" | "It" | "That" | "The" | "These" | "This" | "Those"
+                )
+        });
     let generic_state_request = clause.trim_end().ends_with('?')
         || words.first().is_some_and(|word| {
             matches!(
@@ -1592,6 +1615,7 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
             )
         });
     let generic_live_predicate = !conceptual_naming
+        && !generic_concept_subject
         && generic_state_request
         && words.iter().enumerate().any(|(predicate_index, word)| {
             if !matches!(
@@ -1613,9 +1637,11 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                     | "reachable"
                     | "resolved"
                     | "responsive"
+                    | "restarted"
                     | "restored"
                     | "running"
                     | "stable"
+                    | "synchronized"
                     | "up"
                     | "unavailable"
                     | "working"
@@ -1670,6 +1696,7 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
             (has_subject_bound_verb && !question_explains_generic_subject) || has_time_boundary
         });
     let named_current_follow_up = !conceptual_naming
+        && !generic_concept_subject
         && generic_state_request
         && ((normalized.starts_with(" what about ") || normalized.starts_with(" how about "))
             && ["now", "today", "currently", "recently", "already", "latest"]
@@ -1697,14 +1724,29 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                         "everything" | "it" | "life" | "that" | "things" | "this"
                     )
                 })));
-    let generic_live_ownership = normalized.contains(" who handles ")
-        || normalized.contains(" who owns ")
-        || normalized.contains(" owns remediation ")
-        || normalized.contains(" handles remediation ")
-        || normalized.contains(" is owned by ");
-    let generic_live_capability = normalized.contains(" are we able to ")
-        || normalized.contains(" can we ship ")
-        || normalized.contains(" can you execute ");
+    let generic_live_ownership = !conceptual_naming
+        && (normalized.contains(" who handles ")
+            || normalized.contains(" who owns ")
+            || normalized.contains(" owns remediation ")
+            || normalized.contains(" handles remediation ")
+            || normalized.contains(" is owned by "));
+    let generic_live_capability = !conceptual_naming
+        && (normalized.contains(" are we able to ")
+            || normalized.contains(" can we ship ")
+            || normalized.contains(" can you execute "));
+    let generic_live_timeout = words
+        .first()
+        .is_some_and(|word| matches!(*word, "did" | "does" | "has" | "have" | "is" | "was"))
+        && (normalized.contains(" time out ") || normalized.contains(" timed out "));
+    let generic_named_state_question = !conceptual_naming
+        && !generic_concept_subject
+        && named_subject_in_request
+        && words.first().is_some_and(|word| {
+            matches!(
+                *word,
+                "are" | "did" | "does" | "has" | "have" | "is" | "was" | "were"
+            )
+        });
     let generic_live_read = [
         " after you check ",
         " and check ",
@@ -1725,6 +1767,8 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         || named_current_follow_up
         || generic_live_ownership
         || generic_live_capability
+        || generic_live_timeout
+        || generic_named_state_question
         || generic_live_read;
     if request_is_artifact_transformation(clause) {
         return false;
@@ -1878,7 +1922,16 @@ fn presentation_markup_is_balanced(value: &str) -> bool {
                 cursor += 2;
                 continue;
             }
-            if remaining.starts_with("__") {
+            if let Some(stripped) = remaining.strip_prefix("__") {
+                let previous_is_word = line[..cursor]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_alphanumeric);
+                let next_is_word = stripped.chars().next().is_some_and(char::is_alphanumeric);
+                if previous_is_word && next_is_word {
+                    cursor += 2;
+                    continue;
+                }
                 strong_underscores += 1;
                 cursor += 2;
                 continue;
@@ -1921,7 +1974,16 @@ fn presentation_markup_is_balanced(value: &str) -> bool {
                     && previous_nonspace.is_some_and(|value| value.is_ascii_digit())
                     && next_nonspace.is_some_and(|value| value.is_ascii_digit());
                 let underscore_infix = delimiter == '_' && previous_is_word && next_is_word;
-                if !*open && !previous_is_word && next_is_word {
+                let glob_prefix = delimiter == '*'
+                    && remaining[delimiter.len_utf8()..].starts_with('.')
+                    && remaining[delimiter.len_utf8() + 1..]
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_alphanumeric);
+                if glob_prefix {
+                    cursor += delimiter.len_utf8();
+                    continue;
+                } else if !*open && !previous_is_word && next_is_word {
                     *open = true;
                 } else if *open
                     && previous_can_close
@@ -3358,6 +3420,14 @@ mod grounding_tests {
             "Why is feeling down hard?",
             "What should I think about now?",
             "In this movie, why is Atlas healthy?",
+            "In this novel, who owns the ring?",
+            "In this novel, can Cerebro read minds?",
+            "In this thought experiment, why is Atlas healthy?",
+            "Is this sorting algorithm stable?",
+            "Why is patience valuable?",
+            "What about the second argument now?",
+            "Does this idea work?",
+            "In this scenario, why is Atlas healthy?",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),
@@ -3395,6 +3465,10 @@ mod grounding_tests {
             "Did Atlas crash? Give me your take.",
             "Does Atlas work? Give me your take.",
             "Did Atlas break? Give me your take.",
+            "Did Atlas time out? Give me your take.",
+            "Has Atlas restarted?",
+            "Has Atlas stalled?",
+            "Is Atlas flaky?",
             "How's Atlas now?",
             "Any update on Atlas?",
             "Is Story Service operational?",
@@ -3484,6 +3558,8 @@ mod grounding_tests {
             "snake_case remains readable.",
             "The ratio is 2*3.",
             "To explain multiplication: 2 * 3 = 6.",
+            "The configuration variable is FOO__BAR.",
+            "Inspect *.rs files first.",
         ] {
             assert!(
                 validate_presentation(&PresentationDecision {

@@ -5705,6 +5705,7 @@ fn validate_conversational_synthesis(
         || crate::looks_like_report_copy(body)
         || contains_raw_machine_field_syntax(body)
         || !synthesis_is_relevant(body, &cited_context)
+        || !synthesis_answers_newest_message(body, &newest_operator_message.1.text)
     {
         return Err(AgentRuntimeError::InvalidFinal(
             "conversational synthesis must be bounded natural prose materially tied to its cited thread messages, without machine records, links, report scaffolding, promises, or unsupported operational claims"
@@ -5829,6 +5830,30 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
     if source_tokens.is_empty() {
         return false;
     }
+    let named_source_tokens = source_messages
+        .iter()
+        .flat_map(|message| {
+            let tokens = message
+                .split(|character: char| !character.is_alphanumeric())
+                .filter(|token| !token.is_empty())
+                .collect::<Vec<_>>();
+            tokens
+                .iter()
+                .enumerate()
+                .filter_map(|(index, token)| {
+                    let preceded_by_naming_preposition = index > 0
+                        && matches!(
+                            tokens[index - 1].to_ascii_lowercase().as_str(),
+                            "about" | "of" | "on"
+                        );
+                    (index > 0
+                        && (token.chars().next().is_some_and(char::is_uppercase)
+                            || preceded_by_naming_preposition))
+                        .then(|| token.to_ascii_lowercase())
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<BTreeSet<_>>();
     let normalized_source = format!(
         " {} ",
         source_messages
@@ -5852,6 +5877,10 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
         " in the movie ",
         " as an example ",
         " example ",
+        " in this thought experiment ",
+        " thought experiment ",
+        " in this scenario ",
+        " scenario ",
         " hypothetical ",
         " fictional ",
         " imagine ",
@@ -5870,6 +5899,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
         " thoughts on ",
         " do you like ",
         " your take ",
+        " your read ",
         " your opinion ",
     ]
     .iter()
@@ -5887,6 +5917,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
         " i find ",
         " i like ",
         " my take ",
+        " my read ",
         " my thoughts ",
         " to me ",
     ]
@@ -5902,7 +5933,17 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
             .filter(|token| !token.is_empty())
             .map(str::to_ascii_lowercase)
             .collect::<Vec<_>>();
+        let named_environment_scope = clause
+            .split(|character: char| !character.is_alphanumeric())
+            .filter(|token| !token.is_empty())
+            .any(|token| {
+                (2..=8).contains(&token.len())
+                    && token
+                        .chars()
+                        .all(|character| character.is_ascii_uppercase())
+            });
         let conceptual_context_applies = source_is_conceptual
+            && !named_environment_scope
             && !tokens.iter().any(|token| {
                 matches!(
                     token.as_str(),
@@ -5918,6 +5959,14 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "recently"
                         | "today"
                         | "unlike"
+                        | "monday"
+                        | "tuesday"
+                        | "wednesday"
+                        | "thursday"
+                        | "friday"
+                        | "saturday"
+                        | "sunday"
+                        | "staging"
                         | "yesterday"
                 )
             })
@@ -5932,7 +5981,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
             ]
             .iter()
             .any(|marker| format!(" {} ", clause.to_ascii_lowercase()).contains(marker));
-        let is_named_source_subject = |token: &str| {
+        let is_source_subject = |token: &str| {
             token.len() >= 3
                 && source_tokens.contains(token)
                 && !matches!(
@@ -5963,6 +6012,17 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "which"
                         | "would"
                 )
+        };
+        let is_named_source_subject = |token: &str| {
+            is_source_subject(token) && (named_source_tokens.contains(token) || token == "cerebro")
+        };
+        let source_subject_before = |index: usize| {
+            tokens[..index]
+                .iter()
+                .rev()
+                .take(8)
+                .find(|candidate| is_source_subject(candidate))
+                .map(String::as_str)
         };
         let named_subject_before = |index: usize| {
             tokens[..index]
@@ -6000,21 +6060,22 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                     | "remains"
                     | "resolved"
                     | "responsive"
+                    | "restarted"
                     | "restored"
                     | "running"
                     | "shipped"
                     | "stable"
+                    | "stalled"
+                    | "timed"
                     | "up"
                     | "unavailable"
                     | "work"
                     | "works"
             )) && index > 0
-                && named_subject_before(index).is_some()
+                && source_subject_before(index).is_some()
         });
         let copular_state = tokens.iter().enumerate().any(|(copula_index, token)| {
-            if !matches!(token.as_str(), "is" | "are" | "was" | "were")
-                || named_subject_before(copula_index).is_none()
-            {
+            if !matches!(token.as_str(), "is" | "are" | "was" | "were") {
                 return false;
             }
             let predicates = &tokens[copula_index + 1..];
@@ -6048,11 +6109,19 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "running"
                         | "shipped"
                         | "stable"
+                        | "synchronized"
                         | "unavailable"
                         | "up"
                         | "working"
                 )
             });
+            if if operational_predicate {
+                source_subject_before(copula_index).is_none()
+            } else {
+                named_subject_before(copula_index).is_none()
+            } {
+                return false;
+            }
             let normalized_clause = format!(
                 " {} ",
                 clause
@@ -6065,7 +6134,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
             let subjective_opinion = source_invites_opinion
                 && !operational_predicate
                 && (body_expresses_opinion
-                    || [" i think ", " i find ", " my take ", " to me "]
+                    || [" i think ", " i find ", " my take ", " my read ", " to me "]
                         .iter()
                         .any(|marker| normalized_clause.contains(marker))
                     || predicates
@@ -6088,6 +6157,51 @@ fn synthesis_is_relevant(body: &str, source_messages: &[&str]) -> bool {
         .collect::<BTreeSet<_>>();
     let required_overlap = source_terms.len().min(2);
     required_overlap > 0 && source_terms.intersection(&body_terms).count() >= required_overlap
+}
+
+fn synthesis_answers_newest_message(body: &str, newest_message: &str) -> bool {
+    let body_terms = synthesis_terms(body);
+    let newest_terms = synthesis_terms(newest_message);
+    let substantive_newest_terms = newest_terms
+        .iter()
+        .filter(|term| {
+            !matches!(
+                term.as_str(),
+                "answer" | "explain" | "please" | "say" | "tell" | "think" | "thoughts"
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    if substantive_newest_terms.is_empty() {
+        return true;
+    }
+    if substantive_newest_terms.len() == 1 {
+        let newest = substantive_newest_terms
+            .iter()
+            .next()
+            .expect("one substantive term is present")
+            .as_str();
+        if body_terms.contains(newest) {
+            return true;
+        }
+        const OWNERSHIP_TERMS: &[&str] = &[
+            "accountability",
+            "accountable",
+            "owner",
+            "ownership",
+            "operator",
+            "responsibility",
+            "responsible",
+        ];
+        return OWNERSHIP_TERMS.contains(&newest)
+            && body_terms
+                .iter()
+                .any(|term| OWNERSHIP_TERMS.contains(&term.as_str()));
+    }
+    substantive_newest_terms
+        .iter()
+        .filter(|term| body_terms.contains(term.as_str()))
+        .count()
+        >= substantive_newest_terms.len().min(2)
 }
 
 fn synthesis_terms(value: &str) -> BTreeSet<String> {
@@ -8305,6 +8419,43 @@ fn contains_unbound_future_promise(value: &str) -> bool {
 fn contains_operational_capability_assertion(value: &str) -> bool {
     let normalized = value.to_lowercase().replace('’', "'");
     let padded = format!(" {normalized} ");
+    let normalized_scope = format!(
+        " {} ",
+        normalized
+            .split(|character: char| !character.is_alphanumeric())
+            .filter(|token| !token.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    let fictional_scope = [
+        " in this novel ",
+        " in the novel ",
+        " in this story ",
+        " in the story ",
+        " in this movie ",
+        " in the movie ",
+        " in this thought experiment ",
+        " hypothetical ",
+        " fictional ",
+    ]
+    .iter()
+    .any(|marker| normalized_scope.contains(marker));
+    let real_scope = [
+        " actual ",
+        " actually ",
+        " current ",
+        " currently ",
+        " production ",
+        " real ",
+        " reality ",
+        " staging ",
+        " today ",
+    ]
+    .iter()
+    .any(|marker| normalized_scope.contains(marker));
+    if fictional_scope && !real_scope {
+        return false;
+    }
     let asserts_self_capability = [
         "i can ",
         "i can't ",
@@ -8395,6 +8546,7 @@ fn contains_operational_capability_assertion(value: &str) -> bool {
     let names_agent = [" i ", " me ", " my ", " we ", " our ", " cerebro "]
         .iter()
         .any(|actor| padded.contains(actor));
+    let opinion_read = padded.contains(" my read on ");
     let asserts_authority = [
         " authority ",
         " authorized ",
@@ -8412,7 +8564,7 @@ fn contains_operational_capability_assertion(value: &str) -> bool {
     let structural_capability =
         names_agent && asserts_authority && !capability_operations_claimed(&normalized).is_empty();
     let agent_effect_statement =
-        names_agent && !capability_operations_claimed(&normalized).is_empty();
+        names_agent && !opinion_read && !capability_operations_claimed(&normalized).is_empty();
     (asserts_self_capability && operational_verb) || structural_capability || agent_effect_statement
 }
 
@@ -11711,6 +11863,17 @@ mod tests {
                 "My take: Atlas broke.",
             ),
             (
+                "Did Atlas time out? Give me your take.",
+                "My take: Atlas timed out.",
+            ),
+            ("Has Atlas restarted?", "Atlas restarted."),
+            ("Has Atlas stalled?", "Atlas stalled."),
+            ("Is Atlas flaky?", "Atlas is flaky."),
+            (
+                "What's your opinion of Atlas?",
+                "My opinion: I think Atlas is synchronized right now.",
+            ),
+            (
                 "Is Story Service operational?",
                 "Story Service is operational.",
             ),
@@ -11741,6 +11904,10 @@ mod tests {
                 "I think Atlas is a thoughtful name.",
             ),
             ("Do you like Atlas?", "I like Atlas; Atlas is memorable."),
+            (
+                "What's your read on Atlas?",
+                "My read on Atlas is that it is elegant.",
+            ),
         ] {
             let mut opinion_session = synthesis_session.clone();
             opinion_session.messages[0].text = request.into();
@@ -11784,6 +11951,22 @@ mod tests {
             (
                 "thoughts on conflict?",
                 "My thoughts: conflict is healthy when handled well.",
+            ),
+            (
+                "Why is patience valuable?",
+                "Patience is valuable because it creates room for better judgment.",
+            ),
+            (
+                "In this novel, can Cerebro read minds?",
+                "Cerebro can read minds in the novel.",
+            ),
+            (
+                "In this thought experiment, why is Atlas healthy?",
+                "Atlas is healthy in this thought experiment because the premise defines recovery as asking for help.",
+            ),
+            (
+                "In this scenario, why is Atlas healthy?",
+                "Atlas is healthy in this scenario because the premise defines recovery as asking for help.",
             ),
         ] {
             let mut conceptual_session = synthesis_session.clone();
@@ -11868,6 +12051,46 @@ mod tests {
         assert!(
             validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
             "a conceptual prompt suppressed a prior-week operational assertion"
+        );
+        candidate.claims[0].text = "This example shows Atlas failed on Monday.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
+            "a conceptual prompt suppressed a weekday operational assertion"
+        );
+        candidate.claims[0].text = "This example shows Atlas failed in staging.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
+            "a conceptual prompt suppressed an environment-scoped operational assertion"
+        );
+        candidate.claims[0].text = "This example shows Atlas failed in QA.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
+            "a conceptual prompt suppressed an acronym-scoped operational assertion"
+        );
+
+        assert!(
+            !synthesis_answers_newest_message(
+                "Reversibility and acceptance criteria make decisions easier to revisit.",
+                "What about ownership?",
+            ),
+            "older cited context cannot substitute for answering the newest turn"
+        );
+        assert!(
+            synthesis_answers_newest_message(
+                "The operator should carry explicit accountability.",
+                "What about ownership?",
+            ),
+            "a direct governance synonym should answer a one-concept follow-up"
+        );
+        assert!(
+            !synthesis_answers_newest_message(
+                "Ownership improves reversibility.",
+                "Compare ownership, accountability, and escalation.",
+            ),
+            "a multi-part newest request requires more than one repeated term"
         );
 
         let mut malformed_markup_session = synthesis_session.clone();
