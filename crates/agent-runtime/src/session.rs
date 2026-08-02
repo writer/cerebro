@@ -20,6 +20,7 @@ use crate::{
 
 pub const AGENT_SESSION_V2: &str = "agent-session/v2";
 pub const AGENT_SESSION_EVENT_V2: &str = "agent-session-event/v2";
+pub const AGENT_SEMANTIC_EVIDENCE_V1: &str = "agent-semantic-evidence/v1";
 pub const MAX_SESSION_MEMORIES: usize = 128;
 
 const MAX_PLAN_CLAIMS: usize = 16;
@@ -37,6 +38,11 @@ const MAX_TEXT_BYTES: usize = 4 * 1024;
 const MAX_SESSION_MESSAGES: usize = 400;
 const MAX_SESSION_MESSAGE_BYTES: usize = 1024 * 1024;
 const MAX_RECALLED_OBSERVATIONS: usize = 96;
+const MAX_SEMANTIC_ASSERTIONS: usize = 64;
+const MAX_SEMANTIC_CANDIDATES: usize = 16;
+const MAX_SEMANTIC_PRINCIPALS: usize = 16;
+const MAX_SEMANTIC_RESULT_COUNT: u32 = 1_000_000;
+const MAX_SEMANTIC_SEARCH_LIMIT: u32 = 10_000;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -170,6 +176,136 @@ pub enum CoverageState {
     Unknown,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthorityDuty {
+    Remediation,
+    Approval,
+    Execution,
+    Verification,
+    ProviderAdministration,
+    Evidence,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthorityPrincipalKind {
+    Person,
+    Team,
+    Service,
+    Role,
+    External,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuthorityPrincipal {
+    pub principal_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    pub kind: AuthorityPrincipalKind,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, tag = "state", rename_all = "snake_case")]
+pub enum AuthorityBindingState {
+    Bound { principal: AuthorityPrincipal },
+    PresentIdentityNotReturned,
+    NotObserved,
+    Conflicting { principals: Vec<AuthorityPrincipal> },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CausalCandidateState {
+    Established,
+    Supported,
+    ConsistentWith,
+    RuledOut,
+    Undistinguished,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CausalCandidate {
+    pub candidate_ref: String,
+    pub label: String,
+    pub state: CausalCandidateState,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, tag = "state", rename_all = "snake_case")]
+pub enum CausalRanking {
+    Unranked,
+    Ranked { ordered_candidate_refs: Vec<String> },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, tag = "scope", rename_all = "snake_case")]
+pub enum SearchScope {
+    ExactSubject {
+        subject_ref: String,
+    },
+    BoundedQuery {
+        input_digest: String,
+        limit: u32,
+        returned: u32,
+        truncated: bool,
+    },
+    CompleteSet {
+        scope_ref: String,
+        returned: u32,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, tag = "result", rename_all = "snake_case")]
+pub enum SearchCoverageResult {
+    Found { count: u32 },
+    NoMatch,
+    Partial,
+    Failed { error_kind: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, tag = "kind", rename_all = "snake_case")]
+pub enum SemanticEvidenceAssertion {
+    AuthorityBinding {
+        subject_ref: String,
+        duty: AuthorityDuty,
+        state: AuthorityBindingState,
+    },
+    CausalAssessment {
+        subject_ref: String,
+        outcome_ref: String,
+        candidates: Vec<CausalCandidate>,
+        ranking: CausalRanking,
+    },
+    SearchCoverage {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subject_ref: Option<String>,
+        scope: SearchScope,
+        result: SearchCoverageResult,
+    },
+}
+
+impl SemanticEvidenceAssertion {
+    fn subject_ref(&self) -> Option<&str> {
+        match self {
+            Self::AuthorityBinding { subject_ref, .. }
+            | Self::CausalAssessment { subject_ref, .. } => Some(subject_ref),
+            Self::SearchCoverage { subject_ref, .. } => subject_ref.as_deref(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SemanticEvidenceEnvelope {
+    pub schema_version: String,
+    pub assertions: Vec<SemanticEvidenceAssertion>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EvidenceAssertion {
@@ -188,6 +324,9 @@ pub enum EvidenceAssertion {
     ToolOutcome {
         state: ToolResultState,
         summary: String,
+    },
+    Semantic {
+        assertion: SemanticEvidenceAssertion,
     },
     LegacyStatement {
         statement: String,
@@ -671,6 +810,260 @@ pub struct EvidenceAtomization<'a> {
     pub observed_at: &'a str,
     pub fresh_until: Option<&'a str>,
     pub complete: bool,
+}
+
+pub struct SemanticEvidenceAtomization<'a> {
+    pub evidence_ref: &'a str,
+    pub envelope: SemanticEvidenceEnvelope,
+    pub observed_at: &'a str,
+    pub fresh_until: Option<&'a str>,
+    pub complete: bool,
+}
+
+pub fn semantic_evidence_atoms(
+    input: SemanticEvidenceAtomization<'_>,
+) -> Result<Vec<EvidenceAtom>, AgentRuntimeError> {
+    let SemanticEvidenceAtomization {
+        evidence_ref,
+        envelope,
+        observed_at,
+        fresh_until,
+        complete,
+    } = input;
+    validate_semantic_evidence_envelope(&envelope)?;
+    if !bounded(evidence_ref, MAX_TEXT_BYTES)
+        || OffsetDateTime::parse(observed_at, &Rfc3339).is_err()
+        || fresh_until.is_some_and(|value| OffsetDateTime::parse(value, &Rfc3339).is_err())
+    {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "semantic evidence requires a bounded evidence reference and valid receipt timestamps"
+                .into(),
+        ));
+    }
+    Ok(envelope
+        .assertions
+        .into_iter()
+        .enumerate()
+        .map(|(index, assertion)| EvidenceAtom {
+            atom_ref: format!("{evidence_ref}#semantic:{index}"),
+            subject_ref: assertion.subject_ref().map(str::to_owned),
+            assertion: EvidenceAssertion::Semantic { assertion },
+            observed_at: observed_at.to_owned(),
+            fresh_until: fresh_until.map(str::to_owned),
+            complete,
+        })
+        .collect())
+}
+
+fn validate_semantic_evidence_envelope(
+    envelope: &SemanticEvidenceEnvelope,
+) -> Result<(), AgentRuntimeError> {
+    if envelope.schema_version != AGENT_SEMANTIC_EVIDENCE_V1
+        || envelope.assertions.is_empty()
+        || envelope.assertions.len() > MAX_SEMANTIC_ASSERTIONS
+    {
+        return Err(invalid_semantic_evidence(
+            "the schema version or assertion count is invalid",
+        ));
+    }
+    let mut assertions = BTreeSet::new();
+    for assertion in &envelope.assertions {
+        validate_semantic_assertion(assertion)?;
+        let encoded = serde_json::to_vec(assertion)
+            .map_err(|error| invalid_semantic_evidence(&error.to_string()))?;
+        if !assertions.insert(encoded) {
+            return Err(invalid_semantic_evidence(
+                "duplicate semantic assertions are not allowed",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_semantic_assertion(
+    assertion: &SemanticEvidenceAssertion,
+) -> Result<(), AgentRuntimeError> {
+    match assertion {
+        SemanticEvidenceAssertion::AuthorityBinding {
+            subject_ref, state, ..
+        } => {
+            require_semantic_ref(subject_ref, "authority subject")?;
+            match state {
+                AuthorityBindingState::Bound { principal } => {
+                    validate_authority_principal(principal)?;
+                }
+                AuthorityBindingState::Conflicting { principals } => {
+                    if principals.len() < 2 || principals.len() > MAX_SEMANTIC_PRINCIPALS {
+                        return Err(invalid_semantic_evidence(
+                            "conflicting authority requires two to sixteen principals",
+                        ));
+                    }
+                    let mut refs = BTreeSet::new();
+                    for principal in principals {
+                        validate_authority_principal(principal)?;
+                        if !refs.insert(principal.principal_ref.as_str()) {
+                            return Err(invalid_semantic_evidence(
+                                "conflicting authority principals must be unique",
+                            ));
+                        }
+                    }
+                }
+                AuthorityBindingState::PresentIdentityNotReturned
+                | AuthorityBindingState::NotObserved => {}
+            }
+        }
+        SemanticEvidenceAssertion::CausalAssessment {
+            subject_ref,
+            outcome_ref,
+            candidates,
+            ranking,
+        } => {
+            require_semantic_ref(subject_ref, "causal subject")?;
+            require_semantic_ref(outcome_ref, "causal outcome")?;
+            if candidates.is_empty() || candidates.len() > MAX_SEMANTIC_CANDIDATES {
+                return Err(invalid_semantic_evidence(
+                    "causal assessments require one to sixteen candidates",
+                ));
+            }
+            let mut candidate_refs = BTreeSet::new();
+            for candidate in candidates {
+                require_semantic_ref(&candidate.candidate_ref, "causal candidate")?;
+                require_semantic_text(&candidate.label, "causal candidate label")?;
+                if !candidate_refs.insert(candidate.candidate_ref.as_str()) {
+                    return Err(invalid_semantic_evidence(
+                        "causal candidate references must be unique",
+                    ));
+                }
+            }
+            if let CausalRanking::Ranked {
+                ordered_candidate_refs,
+            } = ranking
+                && (ordered_candidate_refs.len() != candidate_refs.len()
+                    || ordered_candidate_refs.iter().collect::<BTreeSet<_>>().len()
+                        != candidate_refs.len()
+                    || ordered_candidate_refs
+                        .iter()
+                        .any(|candidate_ref| !candidate_refs.contains(candidate_ref.as_str())))
+            {
+                return Err(invalid_semantic_evidence(
+                    "a causal ranking must order every candidate exactly once",
+                ));
+            }
+        }
+        SemanticEvidenceAssertion::SearchCoverage {
+            subject_ref,
+            scope,
+            result,
+        } => {
+            if let Some(subject_ref) = subject_ref {
+                require_semantic_ref(subject_ref, "search subject")?;
+            }
+            let returned = match scope {
+                SearchScope::ExactSubject { subject_ref } => {
+                    require_semantic_ref(subject_ref, "exact search subject")?;
+                    None
+                }
+                SearchScope::BoundedQuery {
+                    input_digest,
+                    limit,
+                    returned,
+                    ..
+                } => {
+                    if !valid_sha256_digest(input_digest)
+                        || *limit == 0
+                        || *limit > MAX_SEMANTIC_SEARCH_LIMIT
+                        || returned > limit
+                    {
+                        return Err(invalid_semantic_evidence("bounded search scope is invalid"));
+                    }
+                    Some(*returned)
+                }
+                SearchScope::CompleteSet {
+                    scope_ref,
+                    returned,
+                } => {
+                    require_semantic_ref(scope_ref, "complete search scope")?;
+                    if *returned > MAX_SEMANTIC_RESULT_COUNT {
+                        return Err(invalid_semantic_evidence(
+                            "complete search result count exceeds the bounded limit",
+                        ));
+                    }
+                    Some(*returned)
+                }
+            };
+            match result {
+                SearchCoverageResult::Found { count }
+                    if *count == 0
+                        || *count > MAX_SEMANTIC_RESULT_COUNT
+                        || returned.is_some_and(|returned| *count > returned) =>
+                {
+                    return Err(invalid_semantic_evidence(
+                        "search match count is invalid for the declared scope",
+                    ));
+                }
+                SearchCoverageResult::Failed { error_kind } => {
+                    if !valid_semantic_code(error_kind) {
+                        return Err(invalid_semantic_evidence(
+                            "search failure kind must be a bounded machine code",
+                        ));
+                    }
+                }
+                SearchCoverageResult::Found { .. }
+                | SearchCoverageResult::NoMatch
+                | SearchCoverageResult::Partial => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_authority_principal(principal: &AuthorityPrincipal) -> Result<(), AgentRuntimeError> {
+    require_semantic_ref(&principal.principal_ref, "authority principal")?;
+    if principal
+        .display_name
+        .as_deref()
+        .is_some_and(|value| !bounded(value, MAX_TEXT_BYTES) || value.chars().any(char::is_control))
+    {
+        return Err(invalid_semantic_evidence(
+            "authority principal display name is invalid",
+        ));
+    }
+    Ok(())
+}
+
+fn require_semantic_ref(value: &str, name: &str) -> Result<(), AgentRuntimeError> {
+    if !bounded(value, MAX_TEXT_BYTES) || value.chars().any(char::is_control) {
+        return Err(invalid_semantic_evidence(&format!("{name} is invalid")));
+    }
+    Ok(())
+}
+
+fn require_semantic_text(value: &str, name: &str) -> Result<(), AgentRuntimeError> {
+    if !bounded(value, MAX_TEXT_BYTES) || value.chars().any(char::is_control) {
+        return Err(invalid_semantic_evidence(&format!("{name} is invalid")));
+    }
+    Ok(())
+}
+
+fn valid_sha256_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
+}
+
+fn valid_semantic_code(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+}
+
+fn invalid_semantic_evidence(reason: &str) -> AgentRuntimeError {
+    AgentRuntimeError::InvalidToolCall(format!("semantic evidence is invalid: {reason}"))
 }
 
 pub fn evidence_atoms_from_json(input: EvidenceAtomization<'_>) -> Vec<EvidenceAtom> {
@@ -4157,6 +4550,7 @@ fn evidence_atom_supports_health(atom: &EvidenceAtom) -> bool {
             .is_some_and(|value| value.eq_ignore_ascii_case("healthy")),
         EvidenceAssertion::Relation { .. }
         | EvidenceAssertion::ToolOutcome { .. }
+        | EvidenceAssertion::Semantic { .. }
         | EvidenceAssertion::LegacyStatement { .. }
         | EvidenceAssertion::FieldCoverage { .. } => false,
     }
@@ -4175,6 +4569,7 @@ fn evidence_atom_text(atom: &EvidenceAtom) -> Option<&str> {
     match &atom.assertion {
         EvidenceAssertion::ToolOutcome { summary, .. } => Some(summary),
         EvidenceAssertion::LegacyStatement { statement } => Some(statement),
+        EvidenceAssertion::Semantic { .. } => None,
         _ => None,
     }
 }
@@ -4421,6 +4816,190 @@ mod tests {
     use super::*;
     use crate::{ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult};
     use serde_json::json;
+
+    fn semantic_envelope() -> SemanticEvidenceEnvelope {
+        SemanticEvidenceEnvelope {
+            schema_version: AGENT_SEMANTIC_EVIDENCE_V1.into(),
+            assertions: vec![
+                SemanticEvidenceAssertion::AuthorityBinding {
+                    subject_ref: "finding:one".into(),
+                    duty: AuthorityDuty::Remediation,
+                    state: AuthorityBindingState::PresentIdentityNotReturned,
+                },
+                SemanticEvidenceAssertion::CausalAssessment {
+                    subject_ref: "runtime:one".into(),
+                    outcome_ref: "collection:failed".into(),
+                    candidates: vec![
+                        CausalCandidate {
+                            candidate_ref: "cause:cursor".into(),
+                            label: "Cursor mismatch".into(),
+                            state: CausalCandidateState::Supported,
+                        },
+                        CausalCandidate {
+                            candidate_ref: "cause:provider".into(),
+                            label: "Provider response".into(),
+                            state: CausalCandidateState::Undistinguished,
+                        },
+                    ],
+                    ranking: CausalRanking::Unranked,
+                },
+                SemanticEvidenceAssertion::SearchCoverage {
+                    subject_ref: Some("finding:one".into()),
+                    scope: SearchScope::BoundedQuery {
+                        input_digest: format!("sha256:{}", "a".repeat(64)),
+                        limit: 25,
+                        returned: 25,
+                        truncated: true,
+                    },
+                    result: SearchCoverageResult::NoMatch,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn semantic_evidence_envelope_produces_receipt_bound_atoms() {
+        let atoms = semantic_evidence_atoms(SemanticEvidenceAtomization {
+            evidence_ref: "evidence://semantic/one",
+            envelope: semantic_envelope(),
+            observed_at: "2026-08-01T00:00:00Z",
+            fresh_until: Some("2026-08-01T00:05:00Z"),
+            complete: true,
+        })
+        .unwrap();
+
+        assert_eq!(atoms.len(), 3);
+        assert_eq!(
+            atoms
+                .iter()
+                .map(|atom| atom.atom_ref.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "evidence://semantic/one#semantic:0",
+                "evidence://semantic/one#semantic:1",
+                "evidence://semantic/one#semantic:2",
+            ]
+        );
+        assert_eq!(atoms[0].subject_ref.as_deref(), Some("finding:one"));
+        assert_eq!(atoms[1].subject_ref.as_deref(), Some("runtime:one"));
+        assert_eq!(
+            atoms[2].fresh_until.as_deref(),
+            Some("2026-08-01T00:05:00Z")
+        );
+        let replayed: Vec<EvidenceAtom> =
+            serde_json::from_slice(&serde_json::to_vec(&atoms).unwrap()).unwrap();
+        assert_eq!(replayed, atoms);
+    }
+
+    #[test]
+    fn semantic_evidence_atoms_survive_session_event_replay() {
+        let atoms = semantic_evidence_atoms(SemanticEvidenceAtomization {
+            evidence_ref: "evidence://semantic/replay",
+            envelope: semantic_envelope(),
+            observed_at: "2026-08-01T00:00:00Z",
+            fresh_until: Some("2026-08-01T00:05:00Z"),
+            complete: true,
+        })
+        .unwrap();
+        let mut tool_observation = observation(true, Some("2026-08-01T00:05:00Z"));
+        tool_observation.result.evidence[0].atoms = atoms.clone();
+        let record = SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: "session:1".into(),
+            sequence: 1,
+            occurred_at: "2026-08-01T00:00:00Z".into(),
+            event: SessionEvent::ToolInvoked {
+                observation: tool_observation,
+            },
+        };
+        let replay_record: SessionEventRecord =
+            serde_json::from_slice(&serde_json::to_vec(&record).unwrap()).unwrap();
+
+        let replayed = apply_session_events(&session(), &[replay_record]).unwrap();
+
+        let SessionEvent::ToolInvoked { observation } = &replayed.events[0].event else {
+            panic!("the replayed event remains a tool observation");
+        };
+        assert_eq!(observation.result.evidence[0].atoms, atoms);
+    }
+
+    #[test]
+    fn semantic_evidence_rejects_unknown_versions_duplicates_and_invalid_rankings() {
+        let mut unknown = semantic_envelope();
+        unknown.schema_version = "agent-semantic-evidence/v2".into();
+        assert!(
+            semantic_evidence_atoms(SemanticEvidenceAtomization {
+                evidence_ref: "evidence://semantic/unknown",
+                envelope: unknown,
+                observed_at: "2026-08-01T00:00:00Z",
+                fresh_until: None,
+                complete: true,
+            })
+            .is_err()
+        );
+
+        let mut duplicate = semantic_envelope();
+        duplicate.assertions.push(duplicate.assertions[0].clone());
+        assert!(
+            semantic_evidence_atoms(SemanticEvidenceAtomization {
+                evidence_ref: "evidence://semantic/duplicate",
+                envelope: duplicate,
+                observed_at: "2026-08-01T00:00:00Z",
+                fresh_until: None,
+                complete: true,
+            })
+            .is_err()
+        );
+
+        let mut invalid_ranking = semantic_envelope();
+        let SemanticEvidenceAssertion::CausalAssessment { ranking, .. } =
+            &mut invalid_ranking.assertions[1]
+        else {
+            panic!("the fixture includes a causal assessment");
+        };
+        *ranking = CausalRanking::Ranked {
+            ordered_candidate_refs: vec!["cause:cursor".into()],
+        };
+        assert!(
+            semantic_evidence_atoms(SemanticEvidenceAtomization {
+                evidence_ref: "evidence://semantic/ranking",
+                envelope: invalid_ranking,
+                observed_at: "2026-08-01T00:00:00Z",
+                fresh_until: None,
+                complete: true,
+            })
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn pre_semantic_evidence_atoms_remain_replay_compatible() {
+        let legacy: EvidenceAtom = serde_json::from_value(json!({
+            "atom_ref": "evidence://legacy#value:/status",
+            "subject_ref": "connector:alpha",
+            "assertion": {
+                "kind": "value",
+                "predicate": "/status",
+                "value": "healthy"
+            },
+            "observed_at": "2026-07-31T00:00:00Z",
+            "fresh_until": "2026-07-31T00:05:00Z",
+            "complete": true
+        }))
+        .unwrap();
+
+        assert_eq!(
+            legacy.assertion,
+            EvidenceAssertion::Value {
+                predicate: "/status".into(),
+                value: json!("healthy"),
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&legacy).unwrap()["assertion"]["kind"],
+            "value"
+        );
+    }
 
     fn mission() -> MissionState {
         MissionState {
