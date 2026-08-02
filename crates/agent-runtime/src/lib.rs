@@ -1284,16 +1284,7 @@ pub(crate) fn request_is_artifact_transformation(message: &str) -> bool {
         " search ",
     ]
     .iter()
-    .any(|marker| normalized.contains(marker))
-        && [
-            " current ",
-            " currently ",
-            " today ",
-            " right now ",
-            " latest ",
-        ]
-        .iter()
-        .any(|marker| normalized.contains(marker));
+    .any(|marker| normalized.contains(marker));
     transformation && !requests_live_check
 }
 
@@ -1554,13 +1545,26 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
     let generic_live_capability = normalized.contains(" are we able to ")
         || normalized.contains(" can we ship ")
         || normalized.contains(" can you execute ");
+    let generic_live_read = [
+        " after you check ",
+        " and check ",
+        " then check ",
+        " can you check ",
+        " please check ",
+        " can you inspect ",
+        " please inspect ",
+        " look up ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
     let requires_current = (explicit_time_boundary && named_operational_state)
         || explicit_reconciliation
         || named_access_boundary
         || present_operational_question
         || generic_live_predicate
         || generic_live_ownership
-        || generic_live_capability;
+        || generic_live_capability
+        || generic_live_read;
     if request_is_artifact_transformation(clause) {
         return false;
     }
@@ -1570,6 +1574,7 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         && !generic_live_predicate
         && !generic_live_ownership
         && !generic_live_capability
+        && !generic_live_read
     {
         return false;
     }
@@ -3108,6 +3113,7 @@ mod grounding_tests {
             "Who handles remediation for Atlas?",
             "Are we able to ship this?",
             "Explain provider-neutral architecture, and is Atlas green?",
+            "Draft a status after you check Atlas.",
         ] {
             assert!(
                 request_explicitly_requires_current_evidence(current_evidence_request),

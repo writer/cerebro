@@ -1902,16 +1902,27 @@ pub async fn run_session_turn_recorded(
                 repair_feedback.clear();
             }
             SessionModelDecision::Finish { mut draft } => {
+                let newest_operator_requires_current_evidence =
+                    matches!(trigger, SessionTurnTrigger::Operator)
+                        && session
+                            .messages
+                            .iter()
+                            .rev()
+                            .find(|message| message.role == SessionMessageRole::User)
+                            .is_some_and(|message| {
+                                crate::request_explicitly_requires_current_evidence(&message.text)
+                            });
                 if matches!(trigger, SessionTurnTrigger::Operator)
                     && draft.state == FinalState::Answered
-                    && plan.as_ref().is_some_and(|plan| {
-                        !current_required_claims_have_same_turn_evidence(
-                            plan,
-                            &draft,
-                            &observations[current_turn_observation_start..],
-                            assessment_at,
-                        )
-                    })
+                    && ((newest_operator_requires_current_evidence && plan.is_none())
+                        || plan.as_ref().is_some_and(|plan| {
+                            !current_required_claims_have_same_turn_evidence(
+                                plan,
+                                &draft,
+                                &observations[current_turn_observation_start..],
+                                assessment_at,
+                            )
+                        }))
                 {
                     record_draft_repair(
                         &mut rejected_operating_drafts,
@@ -5547,7 +5558,10 @@ fn validate_conversational_synthesis(
         crate::request_is_artifact_transformation(&newest_operator_message.1.text);
     let body_is_operational = crate::request_explicitly_requires_current_evidence(body)
         || contains_operational_capability_assertion(body)
-        || contains_unbound_future_promise(body);
+        || contains_unbound_future_promise(body)
+        || contains_nominal_operational_assertion(body)
+        || contains_new_named_ownership_principal(body, &cited_context)
+        || contains_unverified_named_entity_assertion(body, &cited_context);
     if crate::request_explicitly_requires_current_evidence(&newest_operator_message.1.text)
         || (body_is_operational
             && (!transforms_supplied_text
@@ -5576,11 +5590,181 @@ fn validate_conversational_synthesis(
 }
 
 fn operational_transformation_is_source_bound(body: &str, source_messages: &[&str]) -> bool {
-    let source_terms = source_messages
+    let body_terms = synthesis_term_sequence(body);
+    let body_controls = transformation_control_tokens(body);
+    source_messages.iter().any(|source_message| {
+        let source_terms = synthesis_term_sequence(source_message);
+        body_terms
+            .iter()
+            .try_fold(0usize, |cursor, body_term| {
+                source_terms
+                    .get(cursor..)?
+                    .iter()
+                    .position(|source_term| source_term == body_term)
+                    .map(|offset| cursor.saturating_add(offset).saturating_add(1))
+            })
+            .is_some()
+            && body_controls == transformation_control_tokens(source_message)
+    })
+}
+
+fn transformation_control_tokens(value: &str) -> Vec<String> {
+    value
+        .split(|character: char| !character.is_alphanumeric() && character != '\'')
+        .map(str::to_ascii_lowercase)
+        .filter(|token| {
+            token.chars().any(|character| character.is_ascii_digit())
+                || matches!(
+                    token.as_str(),
+                    "not"
+                        | "no"
+                        | "never"
+                        | "without"
+                        | "cannot"
+                        | "can't"
+                        | "isn't"
+                        | "wasn't"
+                        | "hasn't"
+                        | "won't"
+                        | "may"
+                        | "might"
+                        | "must"
+                )
+        })
+        .collect()
+}
+
+fn contains_nominal_operational_assertion(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    [
+        " status:",
+        " state:",
+        " result:",
+        " owner:",
+        " owner is ",
+        " owned by ",
+        " remediation owner ",
+        " verification owner ",
+        " approval owner ",
+        " execution owner ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+}
+
+fn contains_new_named_ownership_principal(body: &str, source_messages: &[&str]) -> bool {
+    let normalized = body.to_ascii_lowercase();
+    if ![
+        " owns ",
+        " owner ",
+        " responsible for ",
+        " accountable for ",
+        " assigned to ",
+        " handled by ",
+    ]
+    .iter()
+    .any(|marker| format!(" {normalized} ").contains(marker))
+    {
+        return false;
+    }
+    let source_tokens = source_messages
         .iter()
-        .flat_map(|message| synthesis_terms(message))
+        .flat_map(|message| {
+            message
+                .split(|character: char| !character.is_alphanumeric())
+                .map(str::to_ascii_lowercase)
+        })
         .collect::<BTreeSet<_>>();
-    synthesis_terms(body).is_subset(&source_terms)
+    body.split(['.', ';', '!', '?', '\n']).any(|clause| {
+        clause
+            .split(|character: char| !character.is_alphanumeric())
+            .filter(|token| !token.is_empty())
+            .enumerate()
+            .any(|(index, token)| {
+                token.len() >= 3
+                    && token.chars().next().is_some_and(char::is_uppercase)
+                    && (index > 0
+                        || (!token.ends_with("ing") && !matches!(token, "The" | "This" | "That")))
+                    && !source_tokens.contains(&token.to_ascii_lowercase())
+            })
+    })
+}
+
+fn contains_unverified_named_entity_assertion(body: &str, source_messages: &[&str]) -> bool {
+    let named_entities = source_messages
+        .iter()
+        .flat_map(|message| {
+            message
+                .split(|character: char| !character.is_alphanumeric())
+                .filter(|token| {
+                    token.len() >= 3
+                        && token.chars().next().is_some_and(char::is_uppercase)
+                        && !matches!(
+                            *token,
+                            "Can"
+                                | "Could"
+                                | "Draft"
+                                | "Explain"
+                                | "Give"
+                                | "Help"
+                                | "How"
+                                | "Make"
+                                | "Please"
+                                | "Rewrite"
+                                | "Say"
+                                | "Summarize"
+                                | "The"
+                                | "Thoughts"
+                                | "Turn"
+                                | "What"
+                                | "Why"
+                        )
+                })
+                .map(str::to_ascii_lowercase)
+        })
+        .collect::<BTreeSet<_>>();
+    if named_entities.is_empty() {
+        return false;
+    }
+    body.split(['.', ';', '!', '?', '\n']).any(|clause| {
+        let normalized = format!(" {} ", clause.to_ascii_lowercase());
+        let names_entity = named_entities
+            .iter()
+            .any(|entity| normalized.contains(&format!(" {entity} ")));
+        let is_conditional_or_advice = [
+            " should ",
+            " could ",
+            " would ",
+            " might ",
+            " may ",
+            " recommend ",
+            " consider ",
+            " if ",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(marker));
+        let asserts_state = [
+            " is ",
+            " are ",
+            " was ",
+            " were ",
+            " has ",
+            " have ",
+            " did ",
+            " remains ",
+            " became ",
+            " owns ",
+            " owned ",
+            " handles ",
+            " live ",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(marker))
+            || normalized
+                .split_whitespace()
+                .any(|token| token.len() > 4 && token.ends_with("ed"));
+        names_entity && asserts_state && !is_conditional_or_advice
+    })
 }
 
 fn synthesis_is_relevant(body: &str, source_messages: &[&str]) -> bool {
@@ -5594,6 +5778,10 @@ fn synthesis_is_relevant(body: &str, source_messages: &[&str]) -> bool {
 }
 
 fn synthesis_terms(value: &str) -> BTreeSet<String> {
+    synthesis_term_sequence(value).into_iter().collect()
+}
+
+fn synthesis_term_sequence(value: &str) -> Vec<String> {
     const STOP_WORDS: &[&str] = &[
         "about", "after", "again", "also", "been", "being", "could", "from", "have", "into",
         "just", "more", "only", "should", "that", "their", "them", "then", "there", "these",
@@ -11005,6 +11193,17 @@ mod tests {
                 "What security reasoning are you good at?",
                 "I can inspect and verify security systems.",
             ),
+            ("What do you think about Atlas?", "I think Atlas recovered."),
+            ("What do you think about Atlas?", "I think Atlas is live."),
+            ("What do you think about Atlas?", "I think Atlas shipped."),
+            (
+                "Help me think about the Atlas remediation owner.",
+                "The remediation owner: Alice.",
+            ),
+            (
+                "Help me think about Atlas status colors.",
+                "Atlas status: green.",
+            ),
         ] {
             let mut unsupported_session = synthesis_session.clone();
             unsupported_session.messages[0].text = request.into();
@@ -11047,6 +11246,24 @@ mod tests {
         };
         assert!(validate_grounded_draft(&follow_up_session, &candidate, &[], assessment).is_err());
 
+        let mut negated_follow_up = synthesis_session.clone();
+        negated_follow_up.messages[0].text = "The Atlas remediation owner is not Alice.".into();
+        negated_follow_up.messages.push(SessionMessage {
+            role: SessionMessageRole::User,
+            message_ref: "operator:negated-follow-up".into(),
+            actor_ref: "user:1".into(),
+            text: "Why?".into(),
+            received_at: "2026-07-31T00:00:45Z".into(),
+        });
+        candidate = accepted.clone();
+        candidate.claims[0].text = "The remediation owner: Alice.".into();
+        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
+            source_message_sequences: vec![1, 2],
+            source_atom_refs: Vec::new(),
+        };
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(validate_grounded_draft(&negated_follow_up, &candidate, &[], assessment).is_err());
+
         let mut rewrite_session = synthesis_session.clone();
         rewrite_session.messages[0].text = "Rewrite ‘Atlas has landed’ more concisely.".into();
         candidate = accepted.clone();
@@ -11054,6 +11271,12 @@ mod tests {
         candidate.message = candidate.claims[0].text.clone();
         validate_grounded_draft(&rewrite_session, &candidate, &[], assessment).unwrap();
         candidate.claims[0].text = "Atlas landed yesterday.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(validate_grounded_draft(&rewrite_session, &candidate, &[], assessment).is_err());
+
+        rewrite_session.messages[0].text =
+            "Rewrite this: Atlas has not landed. The remediation is not owned by Alice.".into();
+        candidate.claims[0].text = "Atlas has landed. The remediation is owned by Alice.".into();
         candidate.message = candidate.claims[0].text.clone();
         assert!(validate_grounded_draft(&rewrite_session, &candidate, &[], assessment).is_err());
 
@@ -13314,9 +13537,10 @@ mod tests {
     #[tokio::test]
     async fn current_state_question_cannot_finish_without_a_plan_or_observation() {
         let mut current = session();
-        current.messages[0].text = "Is connector alpha enabled right now?".into();
+        current.messages[0].text = "Is Atlas green?".into();
         let mut unsupported = draft();
-        unsupported.message = "Connector alpha is enabled.".into();
+        unsupported.message =
+            render_stable_explanation(StableExplanationId::EvidenceFreshnessDefinition).into();
         unsupported.claims = vec![GroundedClaim {
             claim_ref: "claim:unsupported-current-state".into(),
             planned_claim_ref: None,
