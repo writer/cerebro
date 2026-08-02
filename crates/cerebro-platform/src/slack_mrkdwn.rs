@@ -252,7 +252,7 @@ fn render_inline_markup(
                     && value[cursor + run_bytes..]
                         .chars()
                         .next()
-                        .is_some_and(char::is_alphabetic)
+                        .is_some_and(char::is_alphanumeric)
                     && value[cursor + run_bytes..].contains(&delimiter);
                 let clear_intraword_asterisk_close = character == '*'
                     && previous_is_word
@@ -390,7 +390,14 @@ fn raw_url_emphasis_boundary(
         if allowed_runs.contains(&run_len)
             && previous_can_close
             && suffix_starts_outside_word
-            && !raw_url_suffix_continues_path(value, start + index, end, delimiter)
+            && !raw_url_suffix_continues_path(
+                value,
+                start,
+                start + run_start,
+                start + index,
+                end,
+                delimiter,
+            )
             && emphasis_suffix_is_well_formed(value, start + index, end, delimiter, allowed_runs)
         {
             return Some(start + run_start);
@@ -399,7 +406,14 @@ fn raw_url_emphasis_boundary(
     None
 }
 
-fn raw_url_suffix_continues_path(value: &str, start: usize, end: usize, delimiter: u8) -> bool {
+fn raw_url_suffix_continues_path(
+    value: &str,
+    url_start: usize,
+    delimiter_start: usize,
+    start: usize,
+    end: usize,
+    delimiter: u8,
+) -> bool {
     let suffix = &value[start..end];
     if suffix.as_bytes().contains(&delimiter) {
         return false;
@@ -408,10 +422,38 @@ fn raw_url_suffix_continues_path(value: &str, start: usize, end: usize, delimite
     let Some(first) = characters.next() else {
         return false;
     };
-    matches!(
+    let rfc_url_continuation = matches!(
         first,
-        '/' | '-' | ';' | '~' | '?' | '#' | '&' | '=' | '%' | '+' | '@'
-    ) && characters.any(char::is_alphanumeric)
+        '/' | '-'
+            | '.'
+            | '~'
+            | '!'
+            | '$'
+            | '&'
+            | '\''
+            | '('
+            | ')'
+            | '+'
+            | ','
+            | ';'
+            | '='
+            | '@'
+            | '%'
+            | '?'
+            | '#'
+            | ':'
+    );
+    if !rfc_url_continuation || !characters.any(char::is_alphanumeric) {
+        return false;
+    }
+    if first != ':' {
+        return true;
+    }
+    value[url_start..delimiter_start]
+        .split_once("://")
+        .is_some_and(|(_, after_scheme)| {
+            after_scheme.contains('/') || after_scheme.contains('?') || after_scheme.contains('#')
+        })
 }
 
 fn emphasis_suffix_is_well_formed(
@@ -794,6 +836,7 @@ mod tests {
             ),
             ("alpha**beta**gamma", "alpha*beta*gamma"),
             ("alpha**beta2**gamma", "alpha*beta2*gamma"),
+            ("alpha**2beta**gamma", "alpha*2beta*gamma"),
             ("**alpha**beta", "*alpha*beta"),
             (
                 "**See https://example.com/a**/b",
@@ -814,6 +857,38 @@ mod tests {
             (
                 "**See https://example.com/a**~b",
                 "*See https://example.com/a**~b*",
+            ),
+            (
+                "**See https://example.com/a**.b",
+                "*See https://example.com/a**.b*",
+            ),
+            (
+                "**See https://example.com/a**!b",
+                "*See https://example.com/a**!b*",
+            ),
+            (
+                "**See https://example.com/a**$b",
+                "*See https://example.com/a**$b*",
+            ),
+            (
+                "**See https://example.com/a**'b",
+                "*See https://example.com/a**'b*",
+            ),
+            (
+                "**See https://example.com/a**(b",
+                "*See https://example.com/a**(b*",
+            ),
+            (
+                "**See https://example.com/a**)b",
+                "*See https://example.com/a**)b*",
+            ),
+            (
+                "**See https://example.com/a**,b",
+                "*See https://example.com/a**,b*",
+            ),
+            (
+                "**See https://example.com/a**:b",
+                "*See https://example.com/a**:b*",
             ),
         ] {
             let rendered = render_slack_mrkdwn(input);
