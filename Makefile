@@ -4,9 +4,8 @@
 .PHONY: app-workspace-check web-docker-smoke
 .PHONY: sourcegen-grammar-check sourcegen-repro-check sourcegen-proof-check
 .PHONY: rust-event-admission-benchmark rust-organizational-platform-benchmark rust-organizational-store-benchmark sourceruntime-event-admission-generate sourceruntime-event-admission-check
-.PHONY: help build build-go serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test source-fixture-check openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate rust-proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-catalog-generate policy-catalog-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor review-invariants review-check deterministic-review droid-sast-context droid-ci-context droid-context post-merge-health droid-feedback land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity projection-parity-test
+.PHONY: help build build-go serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-build workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test source-fixture-check openapi-definition-gen-test agent-platform-eval agent-service-lifecycle-generate agent-service-lifecycle-check github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate rust-proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-catalog-generate policy-catalog-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor review-invariants review-check deterministic-review post-merge-health land-pr clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity projection-parity-test
 .PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence
-.PHONY: help build serve serve-dev test test-race cover test-coverage sdk-test sdk-go-test sdk-python-test sdk-python-build-check sdk-typescript-test sdk-typescript-check sdk-dependency-audit workspace-install workspace-check workspace-test script-test workflow-e2e-test workflow-replay-test finding-rule-test finding-rule-scaffold-test sourcegen-test openapi-definition-gen-test agent-platform-eval github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-tool-eval mcp-smoke mcp-sdk-compat lint lint-shard lint-api-cmd lint-internal lint-sources lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check content-pack-check control-index-generate control-index-check sourcegen-check connector-catalog-fidelity-generate connector-catalog-fidelity-check connector-catalog-review connector-api-discovery connector-catalog-maintenance connector-contract-check connector-import connector-import-promote graph-action-generate graph-action-check finding-dsl-migrate finding-dsl-test finding-dsl-lint finding-dsl-schema-generate finding-dsl-schema-check finding-dsl-check policy-rule-generate policy-rule-check policy-mapping-export policy-mapping-check detection-catalog-generate detection-catalog-check new-aws-collector openapi-ts-generate openapi-ts-check connector-onboard codegen-status codegen-check codegen-catalog-generate codegen-catalog-check projection-template-check definition-migrate docs-autogen docs-drift-check readme-check oss-audit govulncheck contracts-check changed-check secure-business-demo github-business-demo github-business-demo-env agent-onboard agent-onboard-test agent-onboard-e2e docker-smoke release-smoke load-smoke doctor review-invariants review-check deterministic-review droid-sast-context droid-ci-context droid-context post-merge-health droid-feedback land-pr clean hooks pre-commit verify check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 .PHONY: rust-workspace-policy rust-fmt-check rust-clippy rust-test rust-doc-check rust-deny rust-coverage rust-benchmark-smoke rust-wasm-check rust-wasm-manifest-generate rust-wasm-manifest-check rust-validator-properties rust-validator-fuzz-smoke rust-security-path-properties rust-security-path-fuzz-smoke graphagent-static-validator-generate graphagent-static-validator-check sourcecoverage-evaluator-generate sourcecoverage-evaluator-check panopticon-resource-extractor-generate panopticon-resource-extractor-check mitre-context-evaluator-generate mitre-context-evaluator-check sourceruntime-record-kernel-generate sourceruntime-record-kernel-check rust-source-kernel-evidence security-path-evaluator-generate security-path-evaluator-check
 
 GO_BIN ?= $(shell go env GOPATH)/bin
@@ -144,14 +143,6 @@ MCP_SDK_TEST_TOKEN ?= mcp-sdk-test-key
 REVIEW_BASE ?= origin/main
 REVIEW_HEAD ?= HEAD
 REVIEW_INVARIANTS_JSON_OUT ?= tmp/review-invariants.json
-DROID_PREFLIGHT_JSON_OUT ?= $(REVIEW_INVARIANTS_JSON_OUT)
-DROID_PR ?=
-DROID_FEEDBACK_OUT ?=
-DROID_FEEDBACK_JSON_OUT ?= tmp/droid-feedback.json
-DROID_SAST_OUT ?= tmp/droid-sast-context.md
-DROID_SAST_JSON_OUT ?= tmp/droid-sast-context.json
-DROID_CI_OUT ?= tmp/droid-ci-context.md
-DROID_CI_JSON_OUT ?= tmp/droid-ci-context.json
 CONNECTOR_CATALOG_REVIEW_MD ?= tmp/connector-catalog-review.md
 CONNECTOR_CATALOG_REVIEW_JSON ?= tmp/connector-catalog-review.json
 CONNECTOR_API_DISCOVERY_JSON ?= tmp/connector-api-discovery.json
@@ -159,11 +150,8 @@ CONNECTOR_API_DISCOVERY_APISGURU_JSON ?= tmp/apisguru-list.json
 CONNECTOR_CATALOG_REVIEW_MAX_ITEMS ?= 80
 CONNECTOR_CATALOG_FIDELITY_JSON ?= tmp/connector-catalog-fidelity.json
 CONNECTOR_CATALOG_RUNTIME_DEPTH_MAX_QUEUED ?= 779
-DROID_CONTEXT_OUT ?= tmp/droid-review-context.md
-DROID_CONTEXT_JSON_OUT ?= tmp/droid-review-context.json
 POST_MERGE_OUT ?= tmp/post-merge-health.md
 POST_MERGE_JSON_OUT ?= tmp/post-merge-health.json
-DROID_SAST_POST_COMMENT ?= false
 LAND_PR_REPO ?= writer/cerebro
 LAND_PR_ADMIN ?= false
 LAND_PR_KEEP_BRANCH ?= false
@@ -903,23 +891,8 @@ review-check: review-invariants changed-check check-structural check-structural-
 
 deterministic-review: review-check ## Run the complete deterministic PR review gate.
 
-# ==== Manual Droid Context ====
-##@ Manual Droid Context
-droid-sast-context: ## Build optional scanner context for an explicitly requested Droid task.
-	python3 scripts/droid_sast_context.py --base "$(REVIEW_BASE)" --head "$(REVIEW_HEAD)" --markdown-out "$(DROID_SAST_OUT)" --json-out "$(DROID_SAST_JSON_OUT)" $(if $(filter true,$(DROID_SAST_POST_COMMENT)),--post-comment,)
-
-droid-ci-context: ## Build optional CI context for an explicitly requested Droid task.
-	python3 scripts/droid_ci_context.py --head "$(REVIEW_HEAD)" --markdown-out "$(DROID_CI_OUT)" --json-out "$(DROID_CI_JSON_OUT)"
-
-droid-context: ## Combine optional context inputs for an explicitly requested Droid task.
-	python3 scripts/droid_review_context.py --base "$(REVIEW_BASE)" --head "$(REVIEW_HEAD)" --preflight-json "$(DROID_PREFLIGHT_JSON_OUT)" --sast-json "$(DROID_SAST_JSON_OUT)" --ci-json "$(DROID_CI_JSON_OUT)" --feedback-json "$(DROID_FEEDBACK_JSON_OUT)" --markdown-out "$(DROID_CONTEXT_OUT)" --json-out "$(DROID_CONTEXT_JSON_OUT)"
-
 post-merge-health: ## Build post-merge health summary.
 	python3 scripts/post_merge_health.py --markdown-out "$(POST_MERGE_OUT)" --json-out "$(POST_MERGE_JSON_OUT)" $(if $(filter true,$(POST_MERGE_STRICT)),--strict,)
-
-droid-feedback: ## Fetch and normalize Droid feedback for DROID_PR.
-	@if [ -z "$(DROID_PR)" ]; then echo "DROID_PR is required, e.g. make droid-feedback DROID_PR=719" >&2; exit 2; fi
-	python3 scripts/droid_feedback_harness.py "$(DROID_PR)" $(if $(DROID_FEEDBACK_OUT),--markdown-out "$(DROID_FEEDBACK_OUT)") --json-out "$(DROID_FEEDBACK_JSON_OUT)"
 
 land-pr: ## Wait for core/deterministic gates, merge PR, then delete the PR branch.
 	@if [ -z "$(PR)" ]; then echo "PR is required, e.g. make land-pr PR=719" >&2; exit 2; fi

@@ -1,6 +1,6 @@
 # Security Regression Harness
 
-This harness keeps recent Droid findings from becoming one-off fixes. Add new scanner findings here only after they are backed by a repeatable check.
+This harness keeps recent scanner findings from becoming one-off fixes. Add new findings here only after they are backed by a repeatable check.
 
 | Finding class | Regression check |
 | --- | --- |

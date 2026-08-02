@@ -30,7 +30,7 @@ type ValidateIssue struct {
 
 // Validate cross-checks a generated source's catalog.yaml, deploy.yaml,
 // and source.go for consistency. It catches the class of bugs that the
-// Droid review found (missing templateKeys, dangling evidence links,
+// prior review found (missing templateKeys, dangling evidence links,
 // undeclared secretKeys) at generation time rather than at CI time.
 func Validate(request ValidateRequest) (*ValidateResult, error) {
 	sourceID := strings.TrimSpace(request.SourceID)
