@@ -5854,7 +5854,7 @@ fn validate_exact_head_binding(
     built_tree_clean: &str,
 ) -> Result<(), Box<dyn Error>> {
     if built_tree_clean != "1" {
-        return Err("the evaluation binary was built from a dirty tracked source tree".into());
+        return Err("the evaluation binary was built from a dirty source tree".into());
     }
     if built_commit_sha != requested_commit_sha {
         return Err("the requested evaluation commit does not match the Git commit embedded by the build script".into());
