@@ -3854,9 +3854,16 @@ fn validate_explicit_follow_through(
         .find(|message| message.role == SessionMessageRole::User)
         .map(|message| message.text.as_str())
         .unwrap_or_default();
-    if explicitly_delegates_future_observation(request) && plan.follow_through.is_none() {
+    let delegates_future_observation = explicitly_delegates_future_observation(request);
+    if delegates_future_observation && plan.follow_through.is_none() {
         return Err(AgentRuntimeError::InvalidFinal(
             "the operator explicitly delegated future observation. Record one bounded follow_through with a stable commitment_ref, exact read tools, acceptance criteria, and a final scheduled commitment; do not finish this as one-turn advice"
+                .into(),
+        ));
+    }
+    if !delegates_future_observation && plan.follow_through.is_some() {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "the operator did not delegate future observation. Remove follow_through and finish the current bounded work; do not invent a timer, monitor, or later assistant update"
                 .into(),
         ));
     }
@@ -3871,7 +3878,6 @@ fn explicitly_delegates_future_observation(request: &str) -> bool {
         "keep monitoring",
         "keep watching",
         "check again",
-        "keep going",
         "keep owning",
         "own the recovery",
         "notify me when",
@@ -7502,6 +7508,22 @@ mod tests {
             .last_mut()
             .expect("the delegated request was added")
             .text = "Summarize the current source state.".into();
+        proposed.follow_through = None;
+        assert!(validate_explicit_follow_through(&delegated, &proposed).is_ok());
+
+        proposed.follow_through = Some(planned_follow_through());
+        assert!(
+            validate_explicit_follow_through(&delegated, &proposed)
+                .unwrap_err()
+                .to_string()
+                .contains("did not delegate future observation")
+        );
+
+        delegated
+            .messages
+            .last_mut()
+            .expect("the delegated request was added")
+            .text = "Keep going and finish the current handoff.".into();
         proposed.follow_through = None;
         assert!(validate_explicit_follow_through(&delegated, &proposed).is_ok());
     }
