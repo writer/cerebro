@@ -4918,10 +4918,18 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
                     .all(|character| character.is_ascii_alphanumeric() || character == '-')
         })
         && domain_labels.last().is_some_and(|suffix| {
-            (2..=24).contains(&suffix.len())
+            let alphabetic_tld = (2..=24).contains(&suffix.len())
                 && suffix
                     .chars()
-                    .all(|character| character.is_ascii_alphabetic())
+                    .all(|character| character.is_ascii_alphabetic());
+            let idna_tld = suffix.strip_prefix("xn--").is_some_and(|encoded| {
+                (2..=59).contains(&encoded.len())
+                    && encoded
+                        .chars()
+                        .all(|character| character.is_ascii_alphanumeric() || character == '-')
+                    && encoded.chars().any(|character| character.is_ascii_digit())
+            });
+            alphabetic_tld || idna_tld
         });
     let ipv4_like = endpoint.split('.').collect::<Vec<_>>();
     let ipv4_like = ipv4_like.len() == 4
@@ -7259,6 +7267,7 @@ mod tests {
             "The fictional connector is at slack.secret.xyz.",
             "The fictional connector references jira:1234.",
             "The fictional connector uses vol-0abc123def456.",
+            "The fictional connector is at secret.example.xn--p1ai.",
         ] {
             let bundle = json!({
                 "data_provenance": {

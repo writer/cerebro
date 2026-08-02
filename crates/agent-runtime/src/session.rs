@@ -5897,7 +5897,7 @@ fn parse_tool_effect_class(value: &str) -> Option<ToolEffectClass> {
 
 fn contains_ownership_assertion(text: &str) -> bool {
     let normalized = text.to_ascii_lowercase();
-    [
+    let explicit_relation = [
         "owner: me",
         "owner is me",
         "i own ",
@@ -5925,12 +5925,16 @@ fn contains_ownership_assertion(text: &str) -> bool {
         " belongs to ",
         " rests with ",
         " has responsibility for ",
+        " is tasked with ",
         " falls to ",
         "owner —",
         "owner -",
     ]
     .iter()
-    .any(|phrase| normalized.contains(phrase))
+    .any(|phrase| normalized.contains(phrase));
+    let hands_relation = (normalized.contains("'s hands") || normalized.contains("’s hands"))
+        && !claimed_authority_duties(text).is_empty();
+    explicit_relation || hands_relation
 }
 
 fn contains_gapped_ownership_assertion(text: &str) -> bool {
@@ -6172,6 +6176,12 @@ fn syntactically_binds_principal_to_duty(
                 format!(" {principal} has responsibility for {duty_phrase} for {subject} "),
                 format!(" {principal} has responsibility for {duty_phrase} on {subject} "),
                 format!(" {principal} has responsibility for {duty_phrase} of {subject} "),
+                format!(" {principal} is tasked with {duty_phrase} for {subject} "),
+                format!(" {principal} is tasked with {duty_phrase} on {subject} "),
+                format!(" {principal} is tasked with {duty_phrase} of {subject} "),
+                format!(" {duty_phrase} for {subject} is in {principal} s hands "),
+                format!(" {duty_phrase} on {subject} is in {principal} s hands "),
+                format!(" {duty_phrase} of {subject} is in {principal} s hands "),
             ]
             .iter()
             .any(|pattern| normalized.contains(pattern))
@@ -6639,8 +6649,29 @@ fn contains_unbound_future_promise(value: &str) -> bool {
     ]
     .iter()
     .any(|verb| normalized.contains(verb));
+    let subjectless_follow_through = [
+        "recheck",
+        "re-check",
+        "follow-up",
+        "follow up",
+        "report",
+        "update",
+    ]
+    .iter()
+    .any(|noun| normalized.contains(noun))
+        && [
+            "will follow",
+            "will happen",
+            "is scheduled",
+            "will be sent",
+            "will be posted",
+        ]
+        .iter()
+        .any(|future| normalized.contains(future));
     future_subject
         || (positive_self_capability && operational_work)
+        || (normalized.contains("expect me to ") && operational_work)
+        || subjectless_follow_through
         || ((normalized.contains("update from me")
             || normalized.contains("hear back from me")
             || normalized.contains("follow-up from me"))
@@ -6692,6 +6723,21 @@ fn contains_operational_capability_assertion(value: &str) -> bool {
         "i do not have ",
         "cerebro has access",
         "cerebro does not have access",
+        "i'm authorized to ",
+        "i am authorized to ",
+        "we're authorized to ",
+        "we are authorized to ",
+        "cerebro is authorized to ",
+        "i'm permitted to ",
+        "i am permitted to ",
+        "we're permitted to ",
+        "we are permitted to ",
+        "cerebro is permitted to ",
+        "i'm allowed to ",
+        "i am allowed to ",
+        "we're allowed to ",
+        "we are allowed to ",
+        "cerebro is allowed to ",
         "my authority",
         "our authority",
         "my line stops",
@@ -9501,6 +9547,10 @@ mod tests {
             "Remediation for connector beta belongs to Cerebro.",
             "Remediation for connector beta rests with Cerebro.",
             "Cerebro has responsibility for remediation for connector beta.",
+            "Cerebro is tasked with remediation for connector beta.",
+            "Remediation for connector beta is in Cerebro's hands.",
+            "I'm authorized to administer the provider.",
+            "Cerebro is permitted to change the provider configuration.",
         ] {
             let mut candidate = draft();
             candidate.claims[0].text = text.into();
@@ -10385,6 +10435,8 @@ mod tests {
             "Remediation for connector beta belongs to Synthetic Team Beta.",
             "Remediation for connector beta rests with Synthetic Team Beta.",
             "Synthetic Team Beta has responsibility for remediation for connector beta.",
+            "Synthetic Team Beta is tasked with remediation for connector beta.",
+            "Remediation for connector beta is in Synthetic Team Beta's hands.",
         ] {
             sourced_owner.claims[0].text = contradictory_owner.into();
             sourced_owner.message = sourced_owner.claims[0].text.clone();
@@ -10408,6 +10460,8 @@ mod tests {
             "Remediation for connector beta belongs to Cerebro.",
             "Remediation for connector beta rests with Cerebro.",
             "Cerebro has responsibility for remediation for connector beta.",
+            "Cerebro is tasked with remediation for connector beta.",
+            "Remediation for connector beta is in Cerebro's hands.",
         ] {
             sourced_owner.claims[0].text = exact_owner.into();
             sourced_owner.message = sourced_owner.claims[0].text.clone();
@@ -10434,6 +10488,8 @@ mod tests {
             "I can chase the connector side next.",
             "Expect an update from me tomorrow.",
             "An update from me will follow later.",
+            "A recheck will follow tomorrow.",
+            "You can expect me to inspect it again tomorrow.",
         ] {
             assert!(contains_unbound_future_promise(text), "{text}");
         }
