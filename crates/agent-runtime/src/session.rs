@@ -5412,7 +5412,7 @@ fn conversational_synthesis_is_entailed(text: &str) -> bool {
 }
 
 fn conversational_synthesis_clauses(text: &str) -> Vec<&str> {
-    text.split(['.', ';', '\n'])
+    text.split(['.', ';', ':', '\n'])
         .map(str::trim)
         .filter(|clause| !clause.is_empty())
         .collect()
@@ -5425,13 +5425,10 @@ fn timeless_reasoning_clause(clause: &str) -> bool {
         "assumption",
         "boundary",
         "bounded",
-        "cause",
         "clarify",
         "closure",
         "compare",
         "condition",
-        "confidence",
-        "conclusion",
         "constraint",
         "context",
         "criterion",
@@ -5440,7 +5437,6 @@ fn timeless_reasoning_clause(clause: &str) -> bool {
         "depend",
         "distinction",
         "distinguish",
-        "enough",
         "evidence",
         "explain",
         "fact",
@@ -5448,18 +5444,12 @@ fn timeless_reasoning_clause(clause: &str) -> bool {
         "frame",
         "framed",
         "gap",
-        "highest",
         "hypothesis",
         "impact",
-        "important",
         "inference",
         "information",
         "known",
-        "material",
-        "missing",
         "next",
-        "owner",
-        "plausible",
         "preserve",
         "prioritize",
         "proof",
@@ -5473,17 +5463,13 @@ fn timeless_reasoning_clause(clause: &str) -> bool {
         "separate",
         "signal",
         "source",
-        "stronger",
-        "sufficient",
         "test",
         "timeless",
         "trigger",
-        "uncertain",
         "uncertainty",
         "useful",
         "value",
         "verification",
-        "weakest",
         "what",
         "whether",
         "why",
