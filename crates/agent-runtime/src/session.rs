@@ -5444,12 +5444,21 @@ fn conversational_synthesis_is_entailed(
     let sources = current_sources
         .chain(historical_sources.iter().copied())
         .collect::<Vec<_>>();
-    atomic_assertion_clauses(text).into_iter().all(|clause| {
-        timeless_reasoning_clause(clause)
-            || sources
-                .iter()
-                .any(|(source, role)| conversation_source_entails_clause(source, role, clause))
-    })
+    conversational_synthesis_clauses(text)
+        .into_iter()
+        .all(|clause| {
+            timeless_reasoning_clause(clause)
+                || sources
+                    .iter()
+                    .any(|(source, role)| conversation_source_entails_clause(source, role, clause))
+        })
+}
+
+fn conversational_synthesis_clauses(text: &str) -> Vec<&str> {
+    text.split(['.', ';', '\n'])
+        .map(str::trim)
+        .filter(|clause| !clause.is_empty())
+        .collect()
 }
 
 fn timeless_reasoning_clause(clause: &str) -> bool {
@@ -5522,8 +5531,26 @@ fn timeless_reasoning_clause(clause: &str) -> bool {
         "whether",
         "why",
     ];
+    const TIMELESS_OPERATIONS: &[&str] = &[
+        "clarify",
+        "compare",
+        "distinction",
+        "distinguish",
+        "explain",
+        "frame",
+        "framed",
+        "prioritize",
+        "question",
+        "reasoning",
+        "separate",
+        "whether",
+        "why",
+    ];
     let tokens = semantic_content_tokens(clause);
     !tokens.is_empty()
+        && tokens
+            .iter()
+            .any(|token| TIMELESS_OPERATIONS.contains(&token.as_str()))
         && tokens
             .iter()
             .all(|token| TIMELESS_REASONING.contains(&token.as_str()))
@@ -5894,10 +5921,26 @@ fn relation_clause_preserves_direction(
         normalized.find(term.trim())
     };
     let predicate = normalized_semantic_text(&predicate.replace(['_', '-'], " "));
-    position(subject_ref)
-        .zip(normalized.find(predicate.trim()))
-        .zip(position(object_ref))
-        .is_some_and(|((subject, predicate), object)| subject < predicate && predicate < object)
+    let subject_term = normalized_semantic_text(
+        subject_ref
+            .rsplit([':', '/', '#'])
+            .find(|part| !part.is_empty())
+            .unwrap_or(subject_ref),
+    );
+    let object_term = normalized_semantic_text(
+        object_ref
+            .rsplit([':', '/', '#'])
+            .find(|part| !part.is_empty())
+            .unwrap_or(object_ref),
+    );
+    let unique_terms = [subject_term.trim(), predicate.trim(), object_term.trim()]
+        .into_iter()
+        .all(|term| normalized.match_indices(term).count() == 1);
+    unique_terms
+        && position(subject_ref)
+            .zip(normalized.find(predicate.trim()))
+            .zip(position(object_ref))
+            .is_some_and(|((subject, predicate), object)| subject < predicate && predicate < object)
 }
 
 fn factual_clause_uses_only_atom_terms(atom: &AtomContext<'_>, clause: &str) -> bool {
@@ -10649,6 +10692,7 @@ mod tests {
             "Connector alpha remains green.",
             "The deployment landed successfully.",
             "Earlier, Atlas approved the provider change.",
+            "The evidence is sufficient.",
         ] {
             candidate.claims[0].text = unsupported.into();
             candidate.message = candidate.claims[0].text.clone();
@@ -11225,6 +11269,18 @@ mod tests {
         };
         candidate.claims[0].text =
             "Service atlas controls provider beta as provider beta controls service atlas.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &candidate,
+                &[compound_relation.clone()],
+                assessment,
+            )
+            .is_err()
+        );
+        candidate.claims[0].text =
+            "Service atlas controls provider beta AS provider beta controls service atlas.".into();
         candidate.message = candidate.claims[0].text.clone();
         assert!(
             validate_grounded_draft(&session(), &candidate, &[compound_relation], assessment)
