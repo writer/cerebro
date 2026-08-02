@@ -5200,6 +5200,9 @@ fn validate_claim(
             if exact_excerpt.is_empty()
                 || exact_excerpt.len() > 1_000
                 || exact_excerpt.chars().any(char::is_control)
+                || event.is_none_or(|(thread_ref, actor_ref, role, occurred_at, _)| {
+                    !historical_attribution_is_safe(thread_ref, actor_ref, role, occurred_at)
+                })
                 || event.is_none_or(|(_, _, _, _, text)| !text.contains(exact_excerpt))
                 || rendering.as_deref().is_none_or(|rendering| {
                     !text_matches_registered_rendering(&claim.text, rendering)
@@ -5694,6 +5697,29 @@ fn render_historical_context(
     format!(
         "Earlier in Slack, {actor_ref} ({role}) wrote in {thread_ref} at {occurred_at}: \"{escaped_excerpt}\""
     )
+}
+
+fn historical_attribution_is_safe(
+    thread_ref: &str,
+    actor_ref: &str,
+    role: &str,
+    occurred_at: &str,
+) -> bool {
+    let safe_reference = |value: &str| {
+        !value.is_empty()
+            && value.len() <= 256
+            && value.chars().all(|character| {
+                character.is_ascii_alphanumeric()
+                    || matches!(character, '-' | '_' | ':' | '.' | '/' | '@')
+            })
+    };
+    safe_reference(thread_ref)
+        && safe_reference(actor_ref)
+        && matches!(
+            role,
+            "user" | "assistant" | "objective" | "desired_outcome" | "open_loop" | "commitment"
+        )
+        && OffsetDateTime::parse(occurred_at, &Rfc3339).is_ok()
 }
 
 fn render_recommendation_directive(directive: RecommendationDirective) -> &'static str {
