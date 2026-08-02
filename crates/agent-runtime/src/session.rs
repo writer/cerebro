@@ -4898,12 +4898,25 @@ pub fn validate_grounded_draft(
             _ => None,
         })
         .collect::<Vec<_>>();
-    if rhetorical_moves.len() == draft.claims.len()
+    let has_answer_bearing_claim = draft.claims.iter().any(|claim| {
+        claim.required_for_answer
+            && matches!(
+                claim.content,
+                ClaimContent::Observation { .. }
+                    | ClaimContent::Recommendation { .. }
+                    | ClaimContent::Hypothesis { .. }
+                    | ClaimContent::Commitment { .. }
+                    | ClaimContent::StableExplanation { .. }
+                    | ClaimContent::CoverageBoundary { .. }
+                    | ClaimContent::Question { .. }
+            )
+    });
+    if (!rhetorical_moves.is_empty() && !has_answer_bearing_claim)
         || rhetorical_moves.len() > 2
         || rhetorical_moves.iter().collect::<BTreeSet<_>>().len() != rhetorical_moves.len()
     {
         return Err(AgentRuntimeError::InvalidFinal(
-            "a response requires a substantive non-rhetorical claim and may use at most two distinct registered rhetorical moves"
+            "rhetorical moves require an answer-bearing typed claim and a response may use at most two distinct registered moves"
                 .into(),
         ));
     }
@@ -10553,6 +10566,21 @@ mod tests {
                 },
             },
         );
+        combined.message = combined
+            .claims
+            .iter()
+            .map(|claim| claim.text.as_str())
+            .collect();
+        assert!(validate_grounded_draft(&session(), &combined, &[], assessment).is_err());
+
+        combined.claims[0].text = format!(
+            "{}\n\n",
+            render_stable_explanation(StableExplanationId::EvidenceAuthorityBoundary)
+        );
+        combined.claims[0].required_for_answer = true;
+        combined.claims[0].content = ClaimContent::StableExplanation {
+            explanation_id: StableExplanationId::EvidenceAuthorityBoundary,
+        };
         combined.message = combined
             .claims
             .iter()

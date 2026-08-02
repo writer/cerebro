@@ -180,9 +180,18 @@ fn render_inline_markup(
             // inside an open strong span a terminal double delimiter belongs
             // to the surrounding Markdown. Leave it for the delimiter state
             // machine instead of swallowing it as part of the URL.
-            let url = &value[cursor..end];
-            let trailing_asterisks = url.bytes().rev().take_while(|byte| *byte == b'*').count();
-            let trailing_underscores = url.bytes().rev().take_while(|byte| *byte == b'_').count();
+            let markup_end = raw_url_markup_end(value, cursor, end);
+            let url_before_punctuation = &value[cursor..markup_end];
+            let trailing_asterisks = url_before_punctuation
+                .bytes()
+                .rev()
+                .take_while(|byte| *byte == b'*')
+                .count();
+            let trailing_underscores = url_before_punctuation
+                .bytes()
+                .rev()
+                .take_while(|byte| *byte == b'_')
+                .count();
             let strong_closer_len = if *strong_asterisk_open && matches!(trailing_asterisks, 2 | 3)
             {
                 trailing_asterisks
@@ -192,13 +201,13 @@ fn render_inline_markup(
                 0
             };
             let closes_open_single = (has_unclosed_single_emphasis(&value[..cursor], '*')
-                && value[cursor..end].ends_with('*'))
+                && url_before_punctuation.ends_with('*'))
                 || (has_unclosed_single_emphasis(&value[..cursor], '_')
-                    && value[cursor..end].ends_with('_'));
+                    && url_before_punctuation.ends_with('_'));
             if strong_closer_len > 0 {
-                end -= strong_closer_len;
+                end = markup_end - strong_closer_len;
             } else if closes_open_single {
-                end -= 1;
+                end = markup_end - 1;
             }
             if end == cursor {
                 continue;
@@ -281,8 +290,9 @@ fn has_unclosed_single_emphasis(value: &str, delimiter: char) -> bool {
             continue;
         }
         if let Some(mut end) = raw_url_end(value, cursor) {
-            if open && value[cursor..end].ends_with(delimiter) {
-                end -= delimiter.len_utf8();
+            let markup_end = raw_url_markup_end(value, cursor, end);
+            if open && value[cursor..markup_end].ends_with(delimiter) {
+                end = markup_end - delimiter.len_utf8();
             }
             if end > cursor {
                 cursor = end;
@@ -335,6 +345,21 @@ fn raw_url_end(value: &str, start: usize) -> Option<usize> {
             })
             .unwrap_or(value.len()),
     )
+}
+
+fn raw_url_markup_end(value: &str, start: usize, end: usize) -> usize {
+    let punctuation_bytes = value[start..end]
+        .char_indices()
+        .rev()
+        .take_while(|(_, character)| {
+            matches!(
+                character,
+                '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}'
+            )
+        })
+        .map(|(_, character)| character.len_utf8())
+        .sum::<usize>();
+    end - punctuation_bytes
 }
 
 fn markdown_link(value: &str, start: usize, image: bool) -> Option<(usize, &str, &str)> {
@@ -597,6 +622,10 @@ mod tests {
             "__See https://example.com__ now",
             "***See https://example.com***",
             "***See https://example.com*** now",
+            "**See https://example.com**.",
+            "**See https://example.com**, now",
+            "***See https://example.com***.",
+            "***See https://example.com***), now",
         ] {
             let rendered = render_slack_mrkdwn(input);
             assert_eq!(render_slack_mrkdwn(&rendered), rendered, "{input}");
