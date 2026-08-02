@@ -5079,9 +5079,9 @@ mod tests {
     #[test]
     fn semantic_contract_keeps_current_work_and_source_boundaries_on_evidence_lanes() {
         let route = route_instructions();
-        assert!(
-            route.contains("which capabilities are currently connected, enabled, or available")
-        );
+        assert!(route.contains(
+            "which capabilities are currently connected, enabled, available, or authorized"
+        ));
         assert!(
             route.contains(
                 "a named source's current records, collection health, or present evidence"
