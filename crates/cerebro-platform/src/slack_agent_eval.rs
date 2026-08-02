@@ -4884,6 +4884,26 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
         && raw_token
             .chars()
             .all(|character| character.is_ascii_uppercase() || character.is_ascii_digit());
+    let credential_identifier_like = [
+        "ghp_",
+        "github_pat_",
+        "glpat-",
+        "sk-",
+        "xapp-",
+        "xoxb-",
+        "xoxp-",
+        "xoxa-",
+        "xoxr-",
+    ]
+    .iter()
+    .any(|prefix| {
+        normalized.strip_prefix(prefix).is_some_and(|suffix| {
+            suffix.len() >= 16
+                && suffix.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, '-' | '_')
+                })
+        })
+    });
     let contains_reserved_segment = canonical
         .split(|character: char| !character.is_ascii_alphanumeric())
         .any(|segment| RESERVED_REAL_WORLD_TOKENS.contains(&segment));
@@ -5040,6 +5060,7 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
         .any(|identity| compact.contains(identity));
     contains_reserved_segment
         || aws_principal_or_access_key_like
+        || credential_identifier_like
         || identifier_prefix
         || domain_like
         || ipv4_like
@@ -7298,6 +7319,7 @@ mod tests {
             "The fictional connector uses vol-0abc123def456.",
             "The fictional connector is at secret.example.xn--p1ai.",
             "The fictional connector references AKIAIOSFODNN7EXAMPLE.",
+            "The fictional connector references ghp_0123456789abcdefghijklmnopqrstuvwxyz.",
         ] {
             let bundle = json!({
                 "data_provenance": {

@@ -2480,8 +2480,8 @@ If repair_feedback is present, correct every item before returning. Do not repea
 Claims are ordered visible message units. Concatenating every claim.text in order must reproduce message byte-for-byte, including Markdown and whitespace; this is how the runtime proves that no visible material bypassed review. Choose one typed content basis:
 - {"basis":"observation","atom_refs":[...]} for a current fact returned by a tool.
 - {"basis":"operator_context","message_sequence":N,"exact_excerpt":"..."} for something the operator explicitly supplied.
-- {"basis":"retained_plan","open_loop_ref":"..."} for continuity only, never current evidence.
-- {"basis":"commitment","commitment_ref":"..."} only for the exact bounded future follow-through recorded by an active Cerebro-owned commitment in this draft. It supports one next runtime wake for next_action at wake_at under the recorded acceptance criteria and verification condition. It does not support a recurring cadence, continuous monitoring, instantaneous detection, notification "the moment" state changes, an external effect, or a future result.
+- {"basis":"retained_plan","open_loop_ref":"..."} for continuity only, never current evidence. text must be exactly: The recorded open question remains in context.
+- {"basis":"commitment","commitment_ref":"..."} only for the exact bounded future follow-through recorded by an active Cerebro-owned commitment in this draft. text must be exactly “I’ll check again at WAKE_AT.” using that commitment's RFC 3339 wake_at. It supports one next runtime wake for next_action at wake_at under the recorded acceptance criteria and verification condition. It does not support a recurring cadence, continuous monitoring, instantaneous detection, notification "the moment" state changes, an external effect, or a future result.
 - {"basis":"recommendation","action":{"tool_id":null,"target_ref":"...","input":{}},"rationale_atom_refs":[...]} for advice, not an executed effect.
 - {"basis":"hypothesis","supporting_atom_refs":[...],"alternatives":[...]} for a clearly qualified hypothesis.
 - {"basis":"stable_explanation","explanation_id":"..."} only for one registered timeless explanation. text must exactly equal that explanation's runtime rendering; compose several registered claims when more than one concept is useful. The complete registry is:
@@ -2493,7 +2493,7 @@ Claims are ordered visible message units. Concatenating every claim.text in orde
   - capability_binding_boundary => An operational capability exists only when a current tool binding declares the required authority and effect.
   - source_declaration_provider_permission_boundary => A source declaration does not prove provider-side permission.
 - coverage_boundary is runtime-owned fallback output and is deliberately absent from the model schema; never author it in a model draft.
-- {"basis":"question"} for the one precise question that blocks progress.
+- {"basis":"question"} for the one precise question that blocks progress. It must begin with what, which, who, when, where, or how; do not use a tag question or place an unsupported premise before the question.
 
 Set planned_claim_ref on a message unit when it directly answers a planned claim. The plan guides bounded research; it does not force internal research questions into the user-visible response. Include only material grounded claims needed to answer the operator naturally.
 

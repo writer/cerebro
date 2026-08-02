@@ -4992,6 +4992,15 @@ fn text_matches_registered_rendering(text: &str, rendering: &str) -> bool {
     text.trim() == rendering
 }
 
+const RETAINED_PLAN_RENDERING: &str = "The recorded open question remains in context.";
+
+fn render_commitment_claim(commitment: &Commitment) -> Option<String> {
+    commitment
+        .wake_at
+        .as_deref()
+        .map(|wake_at| format!("I’ll check again at {wake_at}."))
+}
+
 fn validate_claim(
     claim: &GroundedClaim,
     context: &ClaimValidationContext<'_, '_>,
@@ -5055,9 +5064,12 @@ fn validate_claim(
             return Ok(());
         }
         ClaimContent::RetainedPlan { open_loop_ref } => {
-            if !context.open_loops.contains(open_loop_ref.as_str()) {
+            if !context.open_loops.contains(open_loop_ref.as_str())
+                || !text_matches_registered_rendering(&claim.text, RETAINED_PLAN_RENDERING)
+            {
                 return Err(AgentRuntimeError::InvalidFinal(
-                    "retained plan cites an unknown open loop".into(),
+                    "retained plan text must use the registered continuity rendering for an existing open loop"
+                        .into(),
                 ));
             }
             return Ok(());
@@ -5093,13 +5105,12 @@ fn validate_claim(
                     "commitment claims require an active executor-bound Cerebro commitment".into(),
                 ));
             }
-            let normalized = claim.text.to_ascii_lowercase();
-            if normalized.contains("immediately")
-                || normalized.contains("the moment")
-                || normalized.contains("as soon as it changes")
+            if render_commitment_claim(commitment)
+                .as_deref()
+                .is_none_or(|rendering| !text_matches_registered_rendering(&claim.text, rendering))
             {
                 return Err(AgentRuntimeError::InvalidFinal(
-                    "a scheduled check supports notification after that check, not immediate or continuous detection"
+                    "commitment claim text must exactly match the runtime rendering for its recorded wake"
                         .into(),
                 ));
             }
@@ -5137,9 +5148,17 @@ fn validate_claim(
             let one_interrogative = text.ends_with('?')
                 && text.matches('?').count() == 1
                 && !text[..text.len() - 1].contains(['.', '!', ';', '\n']);
+            let bounded_question = ["what ", "which ", "who ", "when ", "where ", "how "]
+                .iter()
+                .any(|opening| text.to_ascii_lowercase().starts_with(opening))
+                && !text.contains([',', ':'])
+                && !contains_ownership_assertion(text)
+                && !contains_operational_capability_assertion(text)
+                && !contains_unbound_future_promise(text);
             if context.final_state != FinalState::NeedsInput
                 || context.question.map(str::trim) != Some(text)
                 || !one_interrogative
+                || !bounded_question
             {
                 return Err(AgentRuntimeError::InvalidFinal(
                     "question claim text must be the draft's exact single interrogative".into(),
@@ -7924,7 +7943,7 @@ mod tests {
     #[test]
     fn commitment_claims_are_bound_to_the_exact_draft_scheduler_record() {
         let mut scheduled = draft();
-        scheduled.message = "I’ll re-check connector alpha at the recorded wake time.".into();
+        scheduled.message = "I’ll check again at 2026-07-31T00:00:30Z.".into();
         scheduled.claims = vec![GroundedClaim {
             claim_ref: "claim:scheduled-follow-through".into(),
             planned_claim_ref: None,
@@ -7959,6 +7978,48 @@ mod tests {
             )
             .is_err()
         );
+
+        let mut overbroad = scheduled;
+        overbroad.claims[0].content = ClaimContent::Commitment {
+            commitment_ref: "commitment:scheduled-check".into(),
+        };
+        overbroad.claims[0].text = "Cerebro will administer the provider tomorrow.".into();
+        overbroad.message = overbroad.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &overbroad,
+                &[],
+                OffsetDateTime::parse("2026-07-31T00:00:00Z", &Rfc3339).unwrap(),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn retained_plan_claims_use_only_the_registered_continuity_rendering() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut retained = draft();
+        retained.mission.open_loops.push(OpenLoop {
+            open_loop_ref: "open-loop:connector-choice".into(),
+            summary: "Choose a connector.".into(),
+            owner: WorkOwner::User,
+            next_action: None,
+            blocked_by: Some("A connector identifier is required.".into()),
+        });
+        retained.claims.truncate(1);
+        retained.claims[0].planned_claim_ref = None;
+        retained.claims[0].text = RETAINED_PLAN_RENDERING.into();
+        retained.claims[0].content = ClaimContent::RetainedPlan {
+            open_loop_ref: "open-loop:connector-choice".into(),
+        };
+        retained.message = retained.claims[0].text.clone();
+        assert!(validate_grounded_draft(&session(), &retained, &[], assessment).is_ok());
+
+        retained.claims[0].text =
+            "Cerebro bears responsibility for remediation of connector beta.".into();
+        retained.message = retained.claims[0].text.clone();
+        assert!(validate_grounded_draft(&session(), &retained, &[], assessment).is_err());
     }
 
     #[test]
@@ -9724,12 +9785,18 @@ mod tests {
         mismatched.question = Some("Which source should I inspect?".into());
         assert!(validate_grounded_draft(&session(), &mismatched, &[], assessment).is_err());
 
-        let mut compound = candidate;
+        let mut compound = candidate.clone();
         compound.claims[0].text =
             "Cerebro owns remediation. Which connector should I inspect?".into();
         compound.message = compound.claims[0].text.clone();
         compound.question = Some(compound.message.clone());
         assert!(validate_grounded_draft(&session(), &compound, &[], assessment).is_err());
+
+        let mut tag = candidate;
+        tag.claims[0].text = "Cerebro is empowered to administer the provider, correct?".into();
+        tag.message = tag.claims[0].text.clone();
+        tag.question = Some(tag.message.clone());
+        assert!(validate_grounded_draft(&session(), &tag, &[], assessment).is_err());
     }
 
     #[test]
