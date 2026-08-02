@@ -5848,8 +5848,12 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
         " as a story ",
         " in this novel ",
         " in the novel ",
+        " in this movie ",
+        " in the movie ",
         " as an example ",
         " hypothetical ",
+        " fictional ",
+        " imagine ",
         " metaphor ",
         " codename ",
         " as a name ",
@@ -5895,7 +5899,18 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "unlike"
                         | "yesterday"
                 )
-            });
+            })
+            || [
+                " last week ",
+                " last month ",
+                " this week ",
+                " this month ",
+                " earlier ",
+                " previously ",
+                " ago ",
+            ]
+            .iter()
+            .any(|marker| format!(" {} ", clause.to_ascii_lowercase()).contains(marker));
         let is_named_source_subject = |token: &str| {
             token.len() >= 3
                 && source_tokens.contains(token)
@@ -5930,6 +5945,8 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                 "approved"
                     | "became"
                     | "broken"
+                    | "break"
+                    | "broke"
                     | "crash"
                     | "crashed"
                     | "degraded"
@@ -5956,8 +5973,9 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                     | "stable"
                     | "up"
                     | "unavailable"
-            ) || token.ends_with("ed"))
-                && index > 0
+                    | "work"
+                    | "works"
+            )) && index > 0
                 && named_subject_before(index).is_some()
         });
         let copular_state = tokens.iter().enumerate().any(|(copula_index, token)| {
@@ -5967,25 +5985,49 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                 return false;
             }
             let predicates = &tokens[copula_index + 1..];
+            let operational_predicate = predicates.iter().any(|predicate| {
+                matches!(
+                    predicate.as_str(),
+                    "approved"
+                        | "available"
+                        | "broken"
+                        | "connected"
+                        | "current"
+                        | "degraded"
+                        | "deployed"
+                        | "disabled"
+                        | "down"
+                        | "enabled"
+                        | "failed"
+                        | "fixed"
+                        | "healthy"
+                        | "landed"
+                        | "offline"
+                        | "online"
+                        | "operational"
+                        | "passed"
+                        | "reachable"
+                        | "ready"
+                        | "resolved"
+                        | "responsive"
+                        | "restored"
+                        | "running"
+                        | "shipped"
+                        | "stable"
+                        | "unavailable"
+                        | "up"
+                        | "working"
+                )
+            });
+            let normalized_clause = format!(" {} ", clause.to_ascii_lowercase());
             let subjective_opinion = source_invites_opinion
-                && predicates.iter().all(|predicate| {
-                    matches!(
-                        predicate.as_str(),
-                        "a" | "an"
-                            | "bad"
-                            | "clear"
-                            | "compelling"
-                            | "confusing"
-                            | "good"
-                            | "interesting"
-                            | "memorable"
-                            | "name"
-                            | "the"
-                            | "thoughtful"
-                            | "title"
-                            | "useful"
-                    )
-                });
+                && !operational_predicate
+                && ([" i think ", " i find ", " my take ", " to me "]
+                    .iter()
+                    .any(|marker| normalized_clause.contains(marker))
+                    || predicates
+                        .iter()
+                        .any(|predicate| matches!(predicate.as_str(), "name" | "title")));
             predicates
                 .iter()
                 .any(|predicate| !matches!(predicate.as_str(), "a" | "an" | "the"))
@@ -11618,6 +11660,14 @@ mod tests {
                 "My take: Atlas crashed.",
             ),
             (
+                "Does Atlas work? Give me your take.",
+                "My take: Atlas works.",
+            ),
+            (
+                "Did Atlas break? Give me your take.",
+                "My take: Atlas broke.",
+            ),
+            (
                 "Is Story Service operational?",
                 "Story Service is operational.",
             ),
@@ -11638,6 +11688,11 @@ mod tests {
                 "What do you think about Atlas?",
                 "I think Atlas is interesting.",
             ),
+            (
+                "What do you think about Atlas?",
+                "I think Atlas is elegant.",
+            ),
+            ("Thoughts on Atlas?", "My thoughts: Atlas inspired me."),
             (
                 "What do you think about Atlas?",
                 "Atlas is a thoughtful name.",
@@ -11764,6 +11819,12 @@ mod tests {
         assert!(
             validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
             "a conceptual prompt suppressed a dated operational assertion"
+        );
+        candidate.claims[0].text = "This example shows Atlas failed last week.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
+            "a conceptual prompt suppressed a prior-week operational assertion"
         );
 
         let mut malformed_markup_session = synthesis_session.clone();
