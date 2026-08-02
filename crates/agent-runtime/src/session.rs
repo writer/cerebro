@@ -6058,6 +6058,7 @@ fn atom_binds_claimed_owner(
         text,
         principal_leaf,
         principal.display_name.as_deref(),
+        subject_ref,
         required_duty,
         principal_is_cerebro,
     )
@@ -6067,10 +6068,12 @@ fn text_names_exact_claimed_principal(
     text: &str,
     principal_leaf: &str,
     display_name: Option<&str>,
+    subject_ref: &str,
     duty: AuthorityDuty,
     principal_is_cerebro: bool,
 ) -> bool {
     let normalized = normalized_semantic_text(text);
+    let subject = normalized_semantic_text(subject_ref).trim().to_owned();
     [Some(principal_leaf), display_name]
         .into_iter()
         .flatten()
@@ -6079,12 +6082,13 @@ fn text_names_exact_claimed_principal(
         .map(normalized_semantic_text)
         .map(|term| term.trim().to_owned())
         .filter(|term| !term.is_empty())
-        .any(|term| syntactically_binds_principal_to_duty(&normalized, &term, duty))
+        .any(|term| syntactically_binds_principal_to_duty(&normalized, &term, &subject, duty))
 }
 
 fn syntactically_binds_principal_to_duty(
     normalized: &str,
     principal: &str,
+    subject: &str,
     duty: AuthorityDuty,
 ) -> bool {
     let duty_phrases: &[&str] = match duty {
@@ -6105,7 +6109,7 @@ fn syntactically_binds_principal_to_duty(
         AuthorityDuty::Evidence => &["evidence"],
     };
     duty_phrases.iter().any(|duty_phrase| {
-        [
+        let forward = [
             "owns",
             "own",
             "is responsible for",
@@ -6115,13 +6119,27 @@ fn syntactically_binds_principal_to_duty(
             "is the accountable party for",
         ]
         .iter()
-        .any(|predicate| normalized.contains(&format!(" {principal} {predicate} {duty_phrase} ")))
+        .flat_map(|predicate| {
+            [
+                format!(" {principal} {predicate} {duty_phrase} for {subject} "),
+                format!(" {principal} {predicate} {duty_phrase} on {subject} "),
+                format!(" {principal} {predicate} {duty_phrase} of {subject} "),
+                format!(" {principal} {predicate} {duty_phrase} {subject} "),
+            ]
+        })
+        .any(|pattern| normalized.contains(&pattern));
+        forward
             || [
-                format!(" {duty_phrase} owner {principal} "),
-                format!(" {duty_phrase} owner is {principal} "),
-                format!(" {duty_phrase} is assigned to {principal} "),
-                format!(" {duty_phrase} falls to {principal} "),
-                format!(" owner {principal} for {duty_phrase} "),
+                format!(" {duty_phrase} owner {principal} for {subject} "),
+                format!(" {duty_phrase} owner is {principal} for {subject} "),
+                format!(" {duty_phrase} for {subject} is assigned to {principal} "),
+                format!(" {duty_phrase} for {subject} falls to {principal} "),
+                format!(" {subject} {duty_phrase} owner {principal} "),
+                format!(" {subject} {duty_phrase} owner is {principal} "),
+                format!(" {subject} s {duty_phrase} owner {principal} "),
+                format!(" {subject} s {duty_phrase} owner is {principal} "),
+                format!(" owner {principal} for {duty_phrase} on {subject} "),
+                format!(" owner {principal} for {duty_phrase} of {subject} "),
             ]
             .iter()
             .any(|pattern| normalized.contains(pattern))
@@ -10306,10 +10324,32 @@ mod tests {
             validate_grounded_draft(
                 &session(),
                 &sourced_owner,
-                &[cerebro_beta_authority],
+                std::slice::from_ref(&cerebro_beta_authority),
                 assessment,
             )
             .is_err()
+        );
+        sourced_owner.claims[0].text = "Cerebro owns remediation notes that show Synthetic Team Beta owns remediation for connector beta.".into();
+        sourced_owner.message = sourced_owner.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &sourced_owner,
+                std::slice::from_ref(&cerebro_beta_authority),
+                assessment,
+            )
+            .is_err()
+        );
+        sourced_owner.claims[0].text = "Cerebro owns remediation for connector beta.".into();
+        sourced_owner.message = sourced_owner.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &sourced_owner,
+                &[cerebro_beta_authority],
+                assessment,
+            )
+            .is_ok()
         );
     }
 

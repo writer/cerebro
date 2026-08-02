@@ -116,17 +116,16 @@ fn inert_slack_control_syntax(value: &str) -> String {
 }
 
 fn render_inline_markup(value: &str) -> String {
-    let mut balanced = value.to_owned();
-    if !value.matches("**").count().is_multiple_of(2) {
-        balanced.push_str("**");
-    }
-    if !value.matches("__").count().is_multiple_of(2) {
-        balanced.push_str("__");
-    }
-    let value = balanced.as_str();
+    let close_asterisk = !strong_delimiter_count_outside_urls(value, "**").is_multiple_of(2);
+    let close_underscore = !strong_delimiter_count_outside_urls(value, "__").is_multiple_of(2);
     let mut output = String::with_capacity(value.len());
     let mut cursor = 0;
     while cursor < value.len() {
+        if let Some(end) = raw_url_end(value, cursor) {
+            output.push_str(&value[cursor..end]);
+            cursor = end;
+            continue;
+        }
         if value[cursor..].starts_with("**") || value[cursor..].starts_with("__") {
             output.push('*');
             cursor += 2;
@@ -159,7 +158,58 @@ fn render_inline_markup(value: &str) -> String {
         output.push(character);
         cursor += character.len_utf8();
     }
-    inert_slack_control_syntax(&output)
+    let mut output = inert_slack_control_syntax(&output);
+    if close_asterisk {
+        output.push('*');
+    }
+    if close_underscore {
+        output.push('*');
+    }
+    output
+}
+
+fn strong_delimiter_count_outside_urls(value: &str, delimiter: &str) -> usize {
+    let mut count = 0;
+    let mut cursor = 0;
+    while cursor < value.len() {
+        let image = value[cursor..].starts_with("![");
+        if (image || value[cursor..].starts_with('['))
+            && let Some((end, _, _)) = markdown_link(value, cursor, image)
+        {
+            cursor = end;
+            continue;
+        }
+        if let Some(end) = raw_url_end(value, cursor) {
+            cursor = end;
+            continue;
+        }
+        if value[cursor..].starts_with(delimiter) {
+            count += 1;
+            cursor += delimiter.len();
+            continue;
+        }
+        cursor += value[cursor..]
+            .chars()
+            .next()
+            .expect("delimiter cursor remains on a character boundary")
+            .len_utf8();
+    }
+    count
+}
+
+fn raw_url_end(value: &str, start: usize) -> Option<usize> {
+    if !value[start..].starts_with("https://") && !value[start..].starts_with("http://") {
+        return None;
+    }
+    Some(
+        value[start..]
+            .char_indices()
+            .find_map(|(offset, character)| {
+                (offset > 0 && (character.is_whitespace() || matches!(character, '<' | '>')))
+                    .then_some(start + offset)
+            })
+            .unwrap_or(value.len()),
+    )
 }
 
 fn markdown_link(value: &str, start: usize, image: bool) -> Option<(usize, &str, &str)> {
@@ -357,6 +407,32 @@ mod tests {
         assert_eq!(
             render_slack_mrkdwn("[open run](https://example.com/run_(latest))"),
             "<https://example.com/run_(latest)|open run>"
+        );
+    }
+
+    #[test]
+    fn preserves_emphasis_delimiters_inside_raw_and_markdown_urls() {
+        assert_eq!(
+            render_slack_mrkdwn("See https://example.com/run__alpha__latest for the receipt."),
+            "See https://example.com/run__alpha__latest for the receipt."
+        );
+        assert_eq!(
+            render_slack_mrkdwn("See https://example.com/run__alpha for the receipt."),
+            "See https://example.com/run__alpha for the receipt."
+        );
+        assert_eq!(
+            render_slack_mrkdwn("See [the latest run](https://example.com/run__alpha__(latest))."),
+            "See <https://example.com/run__alpha__(latest)|the latest run>."
+        );
+        assert_eq!(
+            render_slack_mrkdwn(
+                "The **current** receipt is https://example.com/run__alpha__latest."
+            ),
+            "The *current* receipt is https://example.com/run__alpha__latest."
+        );
+        assert_eq!(
+            render_slack_mrkdwn("**See https://example.com/run__alpha"),
+            "*See https://example.com/run__alpha*"
         );
     }
 }

@@ -527,6 +527,7 @@ struct ConversationLabReceipt {
     run_scope: &'static str,
     selected_scenario_count: usize,
     declared_scenario_count: usize,
+    promotion_holdout_loaded: bool,
     targeted_regression_passed: bool,
     latency_gate_passed: bool,
     advisory_semantic_gate_passed: bool,
@@ -3176,6 +3177,16 @@ fn autonomy_promotion_holdout_loaded(
         && declared_scenario_count >= 6
 }
 
+fn conversation_promotion_holdout_loaded(
+    source: &HoldoutSourceReceipt,
+    declared_scenario_count: usize,
+) -> bool {
+    source.source_kind == "external_pinned_holdout"
+        && source.digest_verified
+        && source.runtime_loaded_after_exact_head_binding
+        && declared_scenario_count >= 9
+}
+
 fn failed_autonomy_scenario_receipt(
     scenario: &ConversationLabScenario,
     candidate_label: String,
@@ -3412,6 +3423,7 @@ async fn run_autonomy_scenario(
     observation_offset = observations.len();
     all_observations.extend(turn_observations.iter().cloned());
     let initial_commitment = active_autonomy_commitment(&session)?;
+    let evaluated_commitment_ref = initial_commitment.commitment_ref.clone();
     let initial_schedule = evaluation_schedule_receipt(&session, &initial_commitment, None)?;
     let (turn, markdown) = completed_lab_turn_receipt(
         &measured,
@@ -3548,24 +3560,19 @@ async fn run_autonomy_scenario(
         }
     }
 
-    let commitment_closed = session.mission.commitments.iter().any(|commitment| {
-        commitment.owner == WorkOwner::Cerebro
-            && commitment.status == CommitmentStatus::Completed
-            && commitment.wake_at.is_none()
-    });
-    let commitment_active = session.mission.commitments.iter().any(|commitment| {
-        commitment.owner == WorkOwner::Cerebro
-            && matches!(
-                commitment.status,
-                CommitmentStatus::Planned
-                    | CommitmentStatus::InProgress
-                    | CommitmentStatus::Waiting
-            )
-            && commitment.wake_at.is_some()
-    });
+    let commitment_closed = autonomy_commitment_state_matches(
+        &session,
+        &evaluated_commitment_ref,
+        ExpectedCommitmentState::Closed,
+    );
+    let commitment_active = autonomy_commitment_state_matches(
+        &session,
+        &evaluated_commitment_ref,
+        ExpectedCommitmentState::Active,
+    );
     let commitment_state_matches = match expected_terminal_commitment {
         ExpectedCommitmentState::Closed => commitment_closed,
-        ExpectedCommitmentState::Active => commitment_active && !commitment_closed,
+        ExpectedCommitmentState::Active => commitment_active,
     };
     let operator_message_count = session
         .messages
@@ -3679,6 +3686,37 @@ async fn run_autonomy_scenario(
         semantic_excellence_gate_passed: internal_judge_advisory_excellent,
         scenario: scenario_receipt,
     })
+}
+
+fn autonomy_commitment_state_matches(
+    session: &AgentSession,
+    evaluated_commitment_ref: &str,
+    expected: ExpectedCommitmentState,
+) -> bool {
+    let Some(commitment) = session
+        .mission
+        .commitments
+        .iter()
+        .find(|candidate| candidate.commitment_ref == evaluated_commitment_ref)
+    else {
+        return false;
+    };
+    if commitment.owner != WorkOwner::Cerebro {
+        return false;
+    }
+    match expected {
+        ExpectedCommitmentState::Closed => {
+            commitment.status == CommitmentStatus::Completed && commitment.wake_at.is_none()
+        }
+        ExpectedCommitmentState::Active => {
+            matches!(
+                commitment.status,
+                CommitmentStatus::Planned
+                    | CommitmentStatus::InProgress
+                    | CommitmentStatus::Waiting
+            ) && commitment.wake_at.is_some()
+        }
+    }
 }
 
 async fn run_conversation_lab(
@@ -4048,8 +4086,10 @@ async fn run_conversation_lab(
     let advisory_semantic_gate_passed = receipts
         .iter()
         .all(|receipt| receipt.internal_judge_advisory_excellent);
+    let promotion_holdout_loaded =
+        conversation_promotion_holdout_loaded(&selection.source, declared_scenario_count);
     let suite_passed = conversation_suite_passed(
-        full_suite,
+        full_suite && promotion_holdout_loaded,
         targeted_regression_passed,
         latency_gate_passed,
         advisory_semantic_gate_passed,
@@ -4065,7 +4105,7 @@ async fn run_conversation_lab(
         fs::write(path, &blind_review_bytes)?;
     }
     let receipt = ConversationLabReceipt {
-        schema_version: "cerebro-rust-slack-agent-conversation-lab/v6",
+        schema_version: "cerebro-rust-slack-agent-conversation-lab/v7",
         commit_sha,
         evaluated_at,
         provider: "aws_bedrock",
@@ -4086,6 +4126,7 @@ async fn run_conversation_lab(
         run_scope: if full_suite { "full" } else { "targeted" },
         selected_scenario_count,
         declared_scenario_count,
+        promotion_holdout_loaded,
         targeted_regression_passed,
         latency_gate_passed,
         advisory_semantic_gate_passed,
@@ -4759,8 +4800,17 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
         "netflix",
         "openai",
         "jane",
+        "john",
+        "salesforce",
         "writer",
     ];
+    let canonical = normalized
+        .replace("[.]", ".")
+        .replace("(.)", ".")
+        .replace("{.}", ".");
+    let contains_reserved_segment = canonical
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .any(|segment| RESERVED_REAL_WORLD_TOKENS.contains(&segment));
     let identifier_prefix = [
         "case-",
         "case_",
@@ -4779,19 +4829,19 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
             !suffix.is_empty() && suffix.chars().any(|character| character.is_ascii_digit())
         })
     });
-    let endpoint = word
+    let endpoint = canonical
         .split(['/', '?', '#'])
         .next()
-        .unwrap_or(word)
+        .unwrap_or(&canonical)
         .split(':')
         .next()
-        .unwrap_or(word);
+        .unwrap_or(&canonical);
     let domain_like = endpoint.rsplit_once('.').is_some_and(|(host, suffix)| {
         !host.is_empty()
-            && (2..=12).contains(&suffix.len())
-            && suffix
-                .chars()
-                .all(|character| character.is_ascii_alphabetic())
+            && [
+                "ai", "app", "cloud", "co", "com", "corp", "dev", "internal", "io", "net", "org",
+            ]
+            .contains(&suffix)
     });
     let ipv4_like = endpoint.split('.').collect::<Vec<_>>();
     let ipv4_like = ipv4_like.len() == 4
@@ -4800,14 +4850,17 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
                 && part.chars().all(|character| character.is_ascii_digit())
                 && part.parse::<u8>().is_ok()
         });
-    let issue_key_like = normalized.rsplit_once('-').is_some_and(|(prefix, suffix)| {
-        (2..=16).contains(&prefix.len())
-            && prefix
-                .chars()
-                .all(|character| character.is_ascii_alphabetic())
-            && !suffix.is_empty()
-            && suffix.chars().all(|character| character.is_ascii_digit())
-    });
+    let issue_parts = canonical.split(['-', '_']).collect::<Vec<_>>();
+    let issue_key_like = issue_parts.len() >= 2
+        && issue_parts.first().is_some_and(|prefix| {
+            (2..=16).contains(&prefix.len())
+                && prefix
+                    .chars()
+                    .all(|character| character.is_ascii_alphabetic())
+        })
+        && issue_parts.iter().skip(1).any(|suffix| {
+            !suffix.is_empty() && suffix.chars().all(|character| character.is_ascii_digit())
+        });
     let opaque_workspace_like = normalized.strip_prefix("workspace-").is_some_and(|suffix| {
         suffix.len() >= 6
             && suffix
@@ -4815,12 +4868,25 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
                 .all(|character| character.is_ascii_alphanumeric())
             && suffix.chars().any(|character| character.is_ascii_digit())
     });
-    RESERVED_REAL_WORLD_TOKENS.contains(&normalized)
+    let ipv6_like = word.matches(':').count() >= 2
+        && word.trim_matches(['[', ']']).split(':').all(|group| {
+            group.is_empty() || group.chars().all(|character| character.is_ascii_hexdigit())
+        });
+    let compact = canonical
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect::<String>();
+    let concealed_model_identity = ["claudeopus", "opus4", "anthropicbedrock"]
+        .iter()
+        .any(|identity| compact.contains(identity));
+    contains_reserved_segment
         || identifier_prefix
         || domain_like
         || ipv4_like
+        || ipv6_like
         || issue_key_like
         || opaque_workspace_like
+        || concealed_model_identity
         || (word.contains('@') && !word.starts_with('@'))
 }
 
@@ -6762,6 +6828,52 @@ mod tests {
     }
 
     #[test]
+    fn autonomy_terminal_state_is_bound_to_the_evaluated_commitment() {
+        let scenario = autonomy_lab_scenario();
+        let mut session =
+            evaluation_session(0, &scenario, "2026-07-31T00:00:00Z", "tenant:synthetic");
+        let commitment = |commitment_ref: &str, status, wake_at: Option<&str>| Commitment {
+            commitment_ref: commitment_ref.into(),
+            summary: "Track the synthetic evidence threshold.".into(),
+            owner: WorkOwner::Cerebro,
+            status,
+            next_action: Some("Re-observe the synthetic threshold.".into()),
+            blocker: None,
+            acceptance_criteria: vec!["The synthetic threshold is complete.".into()],
+            artifact_refs: Vec::new(),
+            required_tool_ids: vec!["source_runtime.inspect".into()],
+            attention_policy: None,
+            wake_at: wake_at.map(str::to_owned),
+            verification: Some("The exact synthetic receipt closes.".into()),
+        };
+        session.mission.commitments = vec![
+            commitment(
+                "commitment:evaluated",
+                CommitmentStatus::Waiting,
+                Some("2026-07-31T00:05:00Z"),
+            ),
+            commitment("commitment:decoy", CommitmentStatus::Completed, None),
+        ];
+        assert!(!autonomy_commitment_state_matches(
+            &session,
+            "commitment:evaluated",
+            ExpectedCommitmentState::Closed,
+        ));
+        assert!(autonomy_commitment_state_matches(
+            &session,
+            "commitment:evaluated",
+            ExpectedCommitmentState::Active,
+        ));
+        session.mission.commitments[0].status = CommitmentStatus::Completed;
+        session.mission.commitments[0].wake_at = None;
+        assert!(autonomy_commitment_state_matches(
+            &session,
+            "commitment:evaluated",
+            ExpectedCommitmentState::Closed,
+        ));
+    }
+
+    #[test]
     fn autonomy_execution_coverage_requires_every_declared_scenario_to_finish() {
         assert_eq!(autonomy_execution_coverage(6, 6, 6), (true, true));
         assert_eq!(autonomy_execution_coverage(6, 1, 1), (false, false));
@@ -6775,6 +6887,25 @@ mod tests {
         assert!(!conversation_suite_passed(true, false, true, true));
         assert!(!conversation_suite_passed(true, true, false, true));
         assert!(!conversation_suite_passed(true, true, true, false));
+    }
+
+    #[test]
+    fn conversation_promotion_requires_an_external_exact_head_holdout() {
+        let mut source = HoldoutSourceReceipt {
+            source_kind: "external_pinned_holdout",
+            pack_ref: "synthetic://cerebro-holdouts/conversation".into(),
+            pack_sha256: CONVERSATION_PROMOTION_HOLDOUT_SHA256.into(),
+            digest_verified: true,
+            runtime_loaded_after_exact_head_binding: true,
+            provenance: embedded_synthetic_provenance(),
+        };
+        assert!(conversation_promotion_holdout_loaded(&source, 9));
+        assert!(!conversation_promotion_holdout_loaded(&source, 8));
+        source.runtime_loaded_after_exact_head_binding = false;
+        assert!(!conversation_promotion_holdout_loaded(&source, 9));
+        source.runtime_loaded_after_exact_head_binding = true;
+        source.source_kind = "embedded_development_regression";
+        assert!(!conversation_promotion_holdout_loaded(&source, 9));
     }
 
     #[test]
@@ -6985,6 +7116,12 @@ mod tests {
             "Netflix assigned jane's JIRA-1234 to the fictional connector.",
             "Jane's fictional connector is ready.",
             "JANE'S fictional connector is ready.",
+            "salesforce assigned john to the fictional connector.",
+            "netflix-inc assigned JIRA_1234 to the fictional connector.",
+            "The fictional connector references CVE-2026-1234.",
+            "The fictional connector is at [2001:db8::1].",
+            "The fictional connector is at secret[.]example[.]io.",
+            "The fictional connector was generated by claudeopus opus4.",
         ] {
             let bundle = json!({
                 "data_provenance": {

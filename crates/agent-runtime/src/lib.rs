@@ -1245,19 +1245,92 @@ fn validate_route(
 }
 
 fn request_explicitly_requires_current_evidence(message: &str) -> bool {
-    message
-        .split(['.', '?', '!', ';', ',', '\n'])
-        .any(|fragment| {
-            let normalized = normalized_phrase_text(fragment);
-            normalized
-                .trim()
-                .split(" and ")
-                .any(clause_explicitly_requires_current_evidence)
-        })
+    clause_explicitly_requires_current_evidence(message)
 }
 
 fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
     let normalized = normalized_phrase_text(clause);
+    let words = normalized.split_whitespace().collect::<Vec<_>>();
+    let named_operational_subject = words.iter().enumerate().any(|(index, word)| {
+        if !matches!(
+            *word,
+            "source"
+                | "sources"
+                | "connector"
+                | "connectors"
+                | "provider"
+                | "providers"
+                | "runtime"
+                | "runtimes"
+        ) {
+            return false;
+        }
+        let next = words.get(index + 1).copied();
+        !matches!(
+            next,
+            None | Some(
+                "neutral" | "architecture" | "design" | "model" | "pattern" | "concept" | "theory"
+            )
+        )
+    });
+    let explicit_named_operational_read = named_operational_subject
+        && [
+            "inspect",
+            "inspected",
+            "read",
+            "reads",
+            "search",
+            "searched",
+            "reconcile",
+            "reconciled",
+            "reconciling",
+            "recheck",
+            "rechecked",
+            "verify",
+            "verification",
+            "working",
+            "missing",
+            "enabled",
+            "healthy",
+            "connected",
+            "available",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} ")));
+    let explicit_named_current_state = named_operational_subject
+        && [
+            "current",
+            "currently",
+            "right now",
+            "today",
+            "actually have",
+            "actually available",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} ")))
+        && [
+            "status",
+            "statuses",
+            "state",
+            "states",
+            "evidence",
+            "receipt",
+            "receipts",
+            "access",
+            "visibility",
+            "field",
+            "fields",
+            "source",
+            "sources",
+            "connector",
+            "connectors",
+            "provider",
+            "providers",
+            "runtime",
+            "runtimes",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} ")));
     let conceptual_explanation = normalized.contains(" state of the art ")
         || (normalized.contains(" provider neutral ")
             && ["architecture", "design", "model", "pattern", "concept"]
@@ -1265,7 +1338,7 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                 .any(|marker| normalized.contains(&format!(" {marker} "))))
         || normalized.contains(" what does current evidence state mean ")
         || normalized.contains(" what does evidence state mean ");
-    if conceptual_explanation {
+    if conceptual_explanation && !explicit_named_operational_read && !explicit_named_current_state {
         return false;
     }
     let explicit_time_boundary = [
@@ -1481,6 +1554,17 @@ fn presentation_markup_is_balanced(value: &str) -> bool {
         let mut strong_underscores = 0;
         while cursor < line.len() {
             let remaining = &line[cursor..];
+            let image = remaining.starts_with("![");
+            if (image || remaining.starts_with('['))
+                && let Some(end) = presentation_markdown_link_end(line, cursor, image)
+            {
+                cursor = end;
+                continue;
+            }
+            if let Some(end) = presentation_raw_url_end(line, cursor) {
+                cursor = end;
+                continue;
+            }
             if remaining.starts_with('`') {
                 let delimiter_len = remaining.bytes().take_while(|byte| *byte == b'`').count();
                 let delimiter = &remaining[..delimiter_len];
@@ -1512,6 +1596,38 @@ fn presentation_markup_is_balanced(value: &str) -> bool {
         }
     }
     !in_fence
+}
+
+fn presentation_raw_url_end(value: &str, start: usize) -> Option<usize> {
+    if !value[start..].starts_with("https://") && !value[start..].starts_with("http://") {
+        return None;
+    }
+    Some(
+        value[start..]
+            .char_indices()
+            .find_map(|(offset, character)| {
+                (offset > 0 && (character.is_whitespace() || matches!(character, '<' | '>')))
+                    .then_some(start + offset)
+            })
+            .unwrap_or(value.len()),
+    )
+}
+
+fn presentation_markdown_link_end(value: &str, start: usize, image: bool) -> Option<usize> {
+    let open = start + usize::from(image);
+    let label_start = open + 1;
+    let close = label_start + value[label_start..].find("](")?;
+    let url_start = close + 2;
+    let mut depth = 0;
+    for (offset, character) in value[url_start..].char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' if depth == 0 => return Some(url_start + offset + 1),
+            ')' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn validate_critique_decision(
@@ -2846,6 +2962,7 @@ mod grounding_tests {
             "Explain the current provider-neutral capability model.",
             "What does current evidence state mean in a provider-neutral system?",
             "What is the current state of the art for evidence theory?",
+            "What is the current state of provider-neutral source architecture?",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),
@@ -2859,6 +2976,9 @@ mod grounding_tests {
             "What does the current Source A state mean for today's decision?",
             "Using the provider-neutral architecture, inspect Source A's current receipt.",
             "What is the state of the art, and is Provider B currently healthy?",
+            "Within the provider-neutral architecture inspect Source A's current receipt.",
+            "Explain provider-neutral architecture but inspect Source A's current receipt.",
+            "In the state of the art model, what is Source A's current receipt?",
         ] {
             assert!(
                 request_explicitly_requires_current_evidence(current_evidence_request),
@@ -2902,6 +3022,19 @@ mod grounding_tests {
             })
             .is_ok()
         );
+        for message in [
+            "See https://example.com/run__alpha__latest for the receipt.",
+            "See https://example.com/run__alpha for the receipt.",
+            "See [the run](https://example.com/run__alpha__(latest)) for the receipt.",
+        ] {
+            assert!(
+                validate_presentation(&PresentationDecision {
+                    messages: vec![message.into()],
+                })
+                .is_ok(),
+                "URL text was misclassified as emphasis: {message}"
+            );
+        }
     }
 
     #[test]
