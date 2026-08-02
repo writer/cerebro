@@ -884,7 +884,7 @@ fn merge_recalled_memories(
     }
 }
 
-fn new_session(request: &AgentTurnRequest) -> Result<AgentSession, AgentRuntimeError> {
+pub(super) fn new_session(request: &AgentTurnRequest) -> Result<AgentSession, AgentRuntimeError> {
     validate_agent_turn_request(request)?;
     let identity = format!("{}:{}", request.tenant_id, request.thread_ref);
     let digest = Sha256::digest(identity.as_bytes())

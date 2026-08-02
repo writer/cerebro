@@ -17,12 +17,12 @@ use cerebro_agent_runtime::{
     ToolEffectClass, ToolResult, ToolResultState, WorkingOutcome, WorkingState,
     resolve_request_lane, run_turn,
     session::{
-        AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2, AgentSession, ClaimReviewTurn, Commitment,
-        CommitmentStatus, DeliveryDisposition, EvidenceAtomization, MessageReview, MissionState,
-        SessionAgentModel, SessionEvent, SessionEventRecord, SessionMessage, SessionMessageRole,
-        SessionModelDecision, SessionModelTurn, SessionStatus, SessionTools, SessionTurnInput,
-        SessionTurnOutcome, SessionTurnTrigger, WorkOwner, apply_session_events,
-        evidence_atoms_from_json, message_digest, run_session_turn, session_turn_request_text,
+        AGENT_SESSION_EVENT_V2, AgentSession, ClaimReviewTurn, Commitment, CommitmentStatus,
+        DeliveryDisposition, EvidenceAtomization, MessageReview, SessionAgentModel, SessionEvent,
+        SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
+        SessionModelTurn, SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
+        WorkOwner, apply_session_events, evidence_atoms_from_json, message_digest,
+        run_session_turn, session_turn_request_text,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -33,7 +33,7 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 use super::slack_agent::{
     CAPABILITY_EXECUTE_PROPOSAL, CAPABILITY_EXECUTE_READ, ConfiguredModel,
     accepted_route_for_request, capability_describe_result, capability_descriptor_binding_digest,
-    capability_search_result, durable_operator_message, model_capability_catalog,
+    capability_search_result, durable_operator_message, model_capability_catalog, new_session,
     parse_slack_history_search_input, parse_slack_thread_read_input, replay_completed_session_turn,
     replay_pending_session_turn, route_request_from_session, validate_context_scope_ref,
 };
@@ -2489,57 +2489,50 @@ fn evaluation_session(
     scenario: &ConversationLabScenario,
     assessment_at: &str,
     tenant_id: &str,
+    reference_secret: &str,
 ) -> AgentSession {
-    let session_ref =
-        evaluation_opaque_ref("agent-session:", scenario_index, &scenario.scenario_ref);
-    AgentSession {
-        schema_version: AGENT_SESSION_V2.into(),
-        session_ref: session_ref.clone(),
+    new_session(&evaluation_initial_request(
+        scenario_index,
+        scenario,
+        assessment_at,
+        tenant_id,
+        reference_secret,
+    ))
+    .expect("the generated evaluation request satisfies the production session contract")
+}
+
+fn evaluation_initial_request(
+    scenario_index: usize,
+    scenario: &ConversationLabScenario,
+    assessment_at: &str,
+    tenant_id: &str,
+    reference_secret: &str,
+) -> AgentTurnRequest {
+    let scenario_material = format!(
+        "{reference_secret}\0{}\0{scenario_index}",
+        scenario.scenario_ref
+    );
+    AgentTurnRequest {
+        schema_version: AGENT_TURN_REQUEST_V1.into(),
         tenant_id: tenant_id.into(),
+        request_id: evaluation_opaque_ref(
+            "slack-request-",
+            scenario_index,
+            &format!("{scenario_material}\0operator:0"),
+        ),
         thread_ref: evaluation_opaque_ref(
             "slack-thread://sha256/",
             scenario_index,
-            &scenario.scenario_ref,
+            &scenario_material,
         ),
         context_scope_ref: Some(evaluation_context_scope_ref()),
-        mission: MissionState {
-            mission_ref: evaluation_opaque_ref("mission:", scenario_index, &scenario.scenario_ref),
-            objective: scenario.initial_message.clone(),
-            desired_outcome:
-                "Handle the operator's visible request and subsequent thread messages.".into(),
-            resolved_scope: Vec::new(),
-            scope_assumptions: Vec::new(),
-            acceptance_criteria: Vec::new(),
-            commitments: Vec::new(),
-            open_loops: Vec::new(),
-            status: SessionStatus::Active,
-        },
-        messages: scenario
-            .seed_history
-            .iter()
-            .enumerate()
-            .map(|(index, message)| SessionMessage {
-                role: match message.role {
-                    ConversationRole::Assistant => SessionMessageRole::Assistant,
-                    ConversationRole::User => SessionMessageRole::User,
-                },
-                message_ref: evaluation_opaque_ref(
-                    "slack-message://sha256/",
-                    scenario_index,
-                    &format!("{}:seed:{}", scenario.scenario_ref, index + 1),
-                ),
-                actor_ref: match message.role {
-                    ConversationRole::Assistant => "cerebro".into(),
-                    ConversationRole::User => evaluation_actor_ref(),
-                },
-                text: message.content.clone(),
-                received_at: assessment_at.into(),
-            })
-            .collect(),
-        events: Vec::new(),
+        actor_ref: evaluation_actor_ref(),
+        assessment_at: assessment_at.into(),
+        message: scenario.initial_message.clone(),
+        history: scenario.seed_history.clone(),
+        history_metadata: Vec::new(),
+        working_state: None,
         effect_authorizations: Vec::new(),
-        pending_delivery: None,
-        memories: Vec::new(),
     }
 }
 
@@ -3576,11 +3569,16 @@ async fn run_autonomy_scenario(
         &context.holdout_source.pack_sha256,
         &scenario.scenario_ref,
     );
+    let reference_secret = format!(
+        "{}\0{}",
+        context.blinding_salt, context.holdout_source.pack_sha256
+    );
     let mut session = evaluation_session(
         scenario_index,
         &scenario,
         context.evaluated_at,
         &evaluation_tenant_id(),
+        &reference_secret,
     );
     let tools = EvalTools::for_autonomy(
         scenario.fixture_profile.fixture_ref(),
@@ -3593,24 +3591,13 @@ async fn run_autonomy_scenario(
     let mut all_observations = Vec::new();
     let mut observation_offset = 0;
 
-    let initial_request = AgentTurnRequest {
-        schema_version: AGENT_TURN_REQUEST_V1.into(),
-        tenant_id: session.tenant_id.clone(),
-        request_id: evaluation_opaque_ref(
-            "slack-request-",
-            scenario_index,
-            &format!("{}:operator:0", scenario.scenario_ref),
-        ),
-        thread_ref: session.thread_ref.clone(),
-        context_scope_ref: session.context_scope_ref.clone(),
-        actor_ref: evaluation_actor_ref(),
-        assessment_at: context.evaluated_at.to_owned(),
-        message: scenario.initial_message.clone(),
-        history: Vec::new(),
-        history_metadata: Vec::new(),
-        working_state: None,
-        effect_authorizations: Vec::new(),
-    };
+    let initial_request = evaluation_initial_request(
+        scenario_index,
+        &scenario,
+        context.evaluated_at,
+        &session.tenant_id,
+        &reference_secret,
+    );
     transcript.push(ConversationMessage {
         role: ConversationRole::User,
         content: initial_request.message.clone(),
@@ -3972,6 +3959,7 @@ async fn run_conversation_lab(
     let declared_scenario_count = selection.declared_scenario_count;
     let selected_scenario_count = selection.scenarios.len();
     let full_suite = selected_scenario_count == declared_scenario_count;
+    let reference_secret = format!("{blinding_salt}\0{}", selection.source.pack_sha256);
     let mut receipts = Vec::new();
     for (scenario_index, scenario) in selection.scenarios.into_iter().enumerate() {
         let candidate_label = blind_candidate_label(
@@ -3996,6 +3984,7 @@ async fn run_conversation_lab(
                 &scenario,
                 &scenario_anchor_at,
                 &evaluation_tenant_id(),
+                &reference_secret,
             )
         });
         let tools = EvalTools::for_conversation(
@@ -4008,14 +3997,17 @@ async fn run_conversation_lab(
             let request_id = evaluation_opaque_ref(
                 "slack-request-",
                 scenario_index,
-                &format!("{}:operator:{turn_index}", scenario.scenario_ref),
+                &format!(
+                    "{reference_secret}\0{}:operator:{turn_index}",
+                    scenario.scenario_ref
+                ),
             );
             let thread_ref = durable_session.as_ref().map_or_else(
                 || {
                     evaluation_opaque_ref(
                         "slack-thread://sha256/",
                         scenario_index,
-                        &scenario.scenario_ref,
+                        &format!("{reference_secret}\0{}", scenario.scenario_ref),
                     )
                 },
                 |session| session.thread_ref.clone(),
@@ -4055,7 +4047,9 @@ async fn run_conversation_lab(
                 tenant_id: evaluation_tenant_id(),
                 request_id,
                 thread_ref,
-                context_scope_ref: None,
+                context_scope_ref: durable_session
+                    .as_ref()
+                    .and_then(|session| session.context_scope_ref.clone()),
                 actor_ref,
                 assessment_at,
                 message: current_message.clone(),
@@ -5585,48 +5579,59 @@ fn blind_review_bundle<'a>(
     holdout_source: &HoldoutSourceReceipt,
     receipts: impl IntoIterator<Item = &'a ConversationLabScenarioReceipt>,
 ) -> serde_json::Value {
-    let candidates = receipts
-        .into_iter()
-        .map(|receipt| {
-            let turns = receipt
-                .turns
-                .iter()
-                .map(|turn| {
-                    let observations = turn
-                        .tool_observations
-                        .iter()
-                        .map(|observation| {
-                            json!({
-                                "summary": observation.summary,
-                                "facts": observation.data,
-                                "state": observation.state,
-                                "complete": observation.complete,
-                                "blocker": observation.blocker,
-                            })
+    let mut candidate_scenarios = BTreeMap::<String, Vec<Value>>::new();
+    for receipt in receipts {
+        let turns = receipt
+            .turns
+            .iter()
+            .map(|turn| {
+                let observations = turn
+                    .tool_observations
+                    .iter()
+                    .map(|observation| {
+                        json!({
+                            "summary": observation.summary,
+                            "facts": observation.data,
+                            "state": observation.state,
+                            "complete": observation.complete,
+                            "blocker": observation.blocker,
                         })
-                        .collect::<Vec<_>>();
-                    json!({
-                        "turn_index": turn.turn_index,
-                        "trigger": turn.trigger,
-                        "trigger_input": turn.trigger_input,
-                        "assistant_message": turn.response_markdown,
-                        "authoritative_observations": observations,
-                        "answered": turn.response_markdown.is_some(),
                     })
+                    .collect::<Vec<_>>();
+                json!({
+                    "turn_index": turn.turn_index,
+                    "trigger": turn.trigger,
+                    "trigger_input": turn.trigger_input,
+                    "assistant_message": turn.response_markdown,
+                    "authoritative_observations": observations,
+                    "answered": turn.response_markdown.is_some(),
                 })
-                .collect::<Vec<_>>();
+            })
+            .collect::<Vec<_>>();
+        let scenarios = candidate_scenarios
+            .entry(receipt.candidate_label.clone())
+            .or_default();
+        let scenario_index = scenarios.len() + 1;
+        scenarios.push(json!({
+            "scenario_index": scenario_index,
+            "mission": receipt.mission,
+            "conversation": receipt.transcript,
+            "turns": turns,
+            "delivered_exchange_count": receipt.delivered_exchange_count,
+            "unanswered_user_turn_count": receipt.unanswered_user_turn_count,
+        }));
+    }
+    let candidates = candidate_scenarios
+        .into_iter()
+        .map(|(candidate_label, scenarios)| {
             json!({
-                "candidate_label": receipt.candidate_label,
-                "mission": receipt.mission,
-                "conversation": receipt.transcript,
-                "turns": turns,
-                "delivered_exchange_count": receipt.delivered_exchange_count,
-                "unanswered_user_turn_count": receipt.unanswered_user_turn_count,
+                "candidate_label": candidate_label,
+                "scenarios": scenarios,
             })
         })
         .collect::<Vec<_>>();
     json!({
-        "schema_version": "cerebro-slack-agent-blind-review/v4",
+        "schema_version": "cerebro-slack-agent-blind-review/v5",
         "identity_disclosure": "model_provider_implementation_and_commit_withheld",
         "data_provenance": &holdout_source.provenance,
         "rubric": {
@@ -5645,7 +5650,7 @@ fn autonomy_failure_blind_bundle(
     candidate_label: &str,
 ) -> Value {
     json!({
-        "schema_version": "cerebro-slack-agent-blind-review/v4",
+        "schema_version": "cerebro-slack-agent-blind-review/v5",
         "identity_disclosure": "model_provider_implementation_and_commit_withheld",
         "data_provenance": embedded_synthetic_provenance(),
         "rubric": {
@@ -5655,22 +5660,25 @@ fn autonomy_failure_blind_bundle(
         },
         "candidates": [{
             "candidate_label": candidate_label,
-            "mission": scenario.mission,
-            "conversation": [{
-                "role": "user",
-                "content": scenario.initial_message,
+            "scenarios": [{
+                "scenario_index": 1,
+                "mission": scenario.mission,
+                "conversation": [{
+                    "role": "user",
+                    "content": scenario.initial_message,
+                }],
+                "turns": [{
+                    "turn_index": 0,
+                    "trigger": "operator",
+                    "trigger_input": scenario.initial_message,
+                    "assistant_message": null,
+                    "authoritative_observations": [],
+                    "answered": false,
+                }],
+                "delivered_exchange_count": 0,
+                "unanswered_user_turn_count": 1,
+                "hard_defects": ["unanswered_request"],
             }],
-            "turns": [{
-                "turn_index": 0,
-                "trigger": "operator",
-                "trigger_input": scenario.initial_message,
-                "assistant_message": null,
-                "authoritative_observations": [],
-                "answered": false,
-            }],
-            "delivered_exchange_count": 0,
-            "unanswered_user_turn_count": 1,
-            "hard_defects": ["unanswered_request"],
         }],
     })
 }
@@ -5856,6 +5864,40 @@ fn validate_conversation_scenarios(
             "conversation holdout scenarios require unique content, three distinct scripted interaction kinds, and an allowed behavior-to-fixture contract"
                 .into(),
         );
+    }
+    for scenario in scenarios {
+        validate_external_scenario_candidate_surface(scenario)?;
+    }
+    Ok(())
+}
+
+fn validate_external_scenario_candidate_surface(
+    scenario: &ConversationLabScenario,
+) -> Result<(), Box<dyn Error>> {
+    let candidate_surface = json!({
+        "initial_message": &scenario.initial_message,
+        "seed_history": &scenario.seed_history,
+        "operator_messages": scenario
+            .operator_turns
+            .iter()
+            .map(|turn| turn.message.as_str())
+            .collect::<Vec<_>>(),
+    });
+    validate_candidate_payload(&candidate_surface)?;
+    let encoded = canonicalize_synthetic_text(&serde_json::to_string(&candidate_surface)?)?
+        .to_ascii_lowercase();
+    for hidden in [
+        scenario.scenario_ref.as_str(),
+        scenario.mission.as_str(),
+        scenario.operator_brief.as_str(),
+    ] {
+        let hidden = canonicalize_synthetic_text(hidden)?.to_ascii_lowercase();
+        if !hidden.is_empty() && encoded.contains(&hidden) {
+            return Err(
+                "external conversation holdout exposes evaluator-only scenario material to the candidate"
+                    .into(),
+            );
+        }
     }
     Ok(())
 }
@@ -7141,8 +7183,13 @@ mod tests {
             seed_history: Vec::new(),
             operator_turns: Vec::new(),
         };
-        let mut session =
-            evaluation_session(0, &scenario, "2026-07-31T00:00:00Z", "tenant:synthetic");
+        let mut session = evaluation_session(
+            0,
+            &scenario,
+            "2026-07-31T00:00:00Z",
+            "tenant:synthetic",
+            "test-reference-secret",
+        );
         session.messages = vec![
             SessionMessage {
                 role: SessionMessageRole::Assistant,
@@ -7447,8 +7494,13 @@ mod tests {
     #[test]
     fn autonomy_terminal_state_is_bound_to_the_evaluated_commitment() {
         let scenario = autonomy_lab_scenario();
-        let mut session =
-            evaluation_session(0, &scenario, "2026-07-31T00:00:00Z", "tenant:synthetic");
+        let mut session = evaluation_session(
+            0,
+            &scenario,
+            "2026-07-31T00:00:00Z",
+            "tenant:synthetic",
+            "test-reference-secret",
+        );
         let commitment = |commitment_ref: &str, status, wake_at: Option<&str>| Commitment {
             commitment_ref: commitment_ref.into(),
             summary: "Track the synthetic evidence threshold.".into(),
@@ -7622,6 +7674,92 @@ mod tests {
                 "scenario-two",
             )
         );
+        assert_ne!(
+            first,
+            blind_candidate_label(
+                "a different secret salt",
+                &"a".repeat(40),
+                &"b".repeat(64),
+                "scenario-one",
+            )
+        );
+        assert_ne!(
+            first,
+            blind_candidate_label(
+                "a sufficiently long secret salt",
+                &"c".repeat(40),
+                &"b".repeat(64),
+                "scenario-one",
+            )
+        );
+        assert_ne!(
+            first,
+            blind_candidate_label(
+                "a sufficiently long secret salt",
+                &"a".repeat(40),
+                &"d".repeat(64),
+                "scenario-one",
+            )
+        );
+    }
+
+    #[test]
+    fn blind_review_groups_scenarios_under_stable_candidate_labels() {
+        let receipt = |candidate_label: &str, mission: &str| ConversationLabScenarioReceipt {
+            scenario_ref: "sealed-scenario".into(),
+            candidate_label: candidate_label.into(),
+            mission: mission.into(),
+            attempted_turn_count: 0,
+            delivered_exchange_count: 0,
+            unanswered_user_turn_count: 1,
+            maximum_turn_latency_ms: 0,
+            total_turn_latency_ms: 0,
+            transcript: Vec::new(),
+            final_judgment: None,
+            final_judgment_error: None,
+            review_ready: false,
+            latency_slo_passed: true,
+            internal_judge_advisory_excellent: false,
+            turns: Vec::new(),
+        };
+        let receipts = vec![
+            receipt("candidate-alpha", "First mission."),
+            receipt("candidate-alpha", "Second mission."),
+            receipt("candidate-beta", "Comparison mission."),
+        ];
+        let bundle = blind_review_bundle(
+            &HoldoutSourceReceipt {
+                source_kind: "external_pinned_holdout".into(),
+                pack_ref: "hidden".into(),
+                pack_sha256: "c".repeat(64),
+                digest_verified: true,
+                runtime_loaded_after_exact_head_binding: true,
+                provenance: embedded_synthetic_provenance(),
+            },
+            &receipts,
+        );
+        assert_eq!(bundle["candidates"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            bundle["candidates"][0]["candidate_label"],
+            "candidate-alpha"
+        );
+        assert_eq!(
+            bundle["candidates"][0]["scenarios"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(bundle["candidates"][0]["scenarios"][0]["scenario_index"], 1);
+        assert_eq!(bundle["candidates"][0]["scenarios"][1]["scenario_index"], 2);
+        assert_eq!(bundle["candidates"][1]["candidate_label"], "candidate-beta");
+        assert_eq!(
+            bundle["candidates"][1]["scenarios"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -7702,11 +7840,11 @@ mod tests {
         let bytes = serde_json::to_vec(&bundle).unwrap();
         validate_blind_review_bytes(&bytes, &[&"a".repeat(40)]).unwrap();
         assert_eq!(
-            bundle.pointer("/candidates/0/hard_defects/0"),
+            bundle.pointer("/candidates/0/scenarios/0/hard_defects/0"),
             Some(&json!("unanswered_request"))
         );
         assert_eq!(
-            bundle.pointer("/candidates/0/unanswered_user_turn_count"),
+            bundle.pointer("/candidates/0/scenarios/0/unanswered_user_turn_count"),
             Some(&json!(1))
         );
     }
@@ -7899,9 +8037,9 @@ mod tests {
     }
 
     #[test]
-    fn evaluation_session_contains_only_candidate_visible_context() {
+    fn external_holdout_candidate_surface_uses_production_session_without_hidden_material() {
         let scenario = ConversationLabScenario {
-            scenario_ref: "sealed".into(),
+            scenario_ref: "HIDDEN_SCENARIO_REF_SENTINEL".into(),
             fixture_profile: ConversationFixtureProfile::SourceVisibility,
             behavior: ConversationBehavior::CorrectionRecovery,
             mission: "HIDDEN_MISSION_SENTINEL".into(),
@@ -7913,12 +8051,82 @@ mod tests {
             }],
             operator_turns: Vec::new(),
         };
-        let session = evaluation_session(1, &scenario, "2026-07-31T00:00:00Z", "tenant");
-        let encoded = serde_json::to_string(&session).unwrap();
+        validate_external_scenario_candidate_surface(&scenario).unwrap();
+        let request = evaluation_initial_request(
+            1,
+            &scenario,
+            "2026-07-31T00:00:00Z",
+            "tenant",
+            "a private run reference secret",
+        );
+        let session = evaluation_session(
+            1,
+            &scenario,
+            "2026-07-31T00:00:00Z",
+            "tenant",
+            "a private run reference secret",
+        );
+        assert_eq!(session, new_session(&request).unwrap());
+        assert_eq!(
+            session.session_ref.strip_prefix("agent-session:"),
+            session.mission.mission_ref.strip_prefix("mission:")
+        );
+        assert_eq!(
+            session.mission.desired_outcome,
+            "Handle this operator request: Please investigate the visible problem."
+        );
+        let candidate_surface = json!({
+            "route": {
+                "history": &request.history,
+                "message": &request.message,
+                "working_state": &request.working_state,
+            },
+            "session": {
+                "effect_authorizations": &session.effect_authorizations,
+                "messages": &session.messages,
+                "mission": &session.mission,
+                "memories": &session.memories,
+                "session_ref": &session.session_ref,
+                "thread_ref": &session.thread_ref,
+            },
+        });
+        validate_candidate_payload(&candidate_surface).unwrap();
+        let encoded = serde_json::to_string(&candidate_surface).unwrap();
         assert!(encoded.contains("Please investigate the visible problem."));
         assert!(encoded.contains("Visible earlier context."));
-        assert!(!encoded.contains("HIDDEN_MISSION_SENTINEL"));
-        assert!(!encoded.contains("HIDDEN_OPERATOR_BRIEF_SENTINEL"));
+        for hidden in [
+            "HIDDEN_MISSION_SENTINEL",
+            "HIDDEN_OPERATOR_BRIEF_SENTINEL",
+            "HIDDEN_SCENARIO_REF_SENTINEL",
+            CONVERSATION_PROMOTION_HOLDOUT_SHA256,
+            "amazon-bedrock",
+            "anthropic.claude-opus",
+            "commit_sha",
+            "judge_model_id",
+        ] {
+            assert!(
+                !encoded.contains(hidden),
+                "candidate surface leaked {hidden}"
+            );
+        }
+        let differently_salted = evaluation_session(
+            1,
+            &scenario,
+            "2026-07-31T00:00:00Z",
+            "tenant",
+            "a different private reference secret",
+        );
+        assert_ne!(session.thread_ref, differently_salted.thread_ref);
+        assert_ne!(session.session_ref, differently_salted.session_ref);
+        assert!(
+            validate_candidate_payload(&json!({
+                "message": "rust-conversation-lab"
+            }))
+            .is_err()
+        );
+        let mut leaked = scenario;
+        leaked.initial_message = leaked.mission.clone();
+        assert!(validate_external_scenario_candidate_surface(&leaked).is_err());
     }
 
     #[test]
@@ -7997,7 +8205,8 @@ mod tests {
             &receipts,
         );
 
-        let observation = &bundle["candidates"][0]["turns"][0]["authoritative_observations"][0];
+        let observation =
+            &bundle["candidates"][0]["scenarios"][0]["turns"][0]["authoritative_observations"][0];
         assert_eq!(observation["summary"], "One source is current.");
         assert_eq!(observation["facts"]["current"], true);
         assert_eq!(observation["facts"]["source_count"], 1);
@@ -8062,7 +8271,7 @@ mod tests {
             &receipts,
         );
 
-        let turn = &bundle["candidates"][0]["turns"][0];
+        let turn = &bundle["candidates"][0]["scenarios"][0]["turns"][0];
         assert_eq!(turn["trigger"], "scheduled_wake");
         assert!(turn.get("user_message").is_none());
         assert_eq!(turn["trigger_input"], "Resume the exact commitment.");
@@ -8071,8 +8280,13 @@ mod tests {
     #[test]
     fn schedule_receipt_proves_candidate_authorship_persistence_and_exact_trigger() {
         let scenario = autonomy_lab_scenario();
-        let mut session =
-            evaluation_session(0, &scenario, "2026-07-31T00:00:00Z", "tenant:provenance");
+        let mut session = evaluation_session(
+            0,
+            &scenario,
+            "2026-07-31T00:00:00Z",
+            "tenant:provenance",
+            "test-reference-secret",
+        );
         let commitment = Commitment {
             commitment_ref: "commitment:provenance".into(),
             summary: "Re-observe the recovery threshold.".into(),

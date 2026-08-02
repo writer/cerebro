@@ -2635,7 +2635,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires CEREBRO_TEST_POSTGRES_DSN"]
-    async fn postgres_wake_claim_is_fenced_until_exact_delivery() {
+    async fn postgres_wake_delivery_survives_store_restart_and_reconciles_retry_once() {
         let Ok(dsn) = std::env::var("CEREBRO_TEST_POSTGRES_DSN") else {
             return;
         };
@@ -2769,6 +2769,8 @@ mod tests {
             .prepare_wake_delivery(&claim, &payload_digest)
             .await
             .unwrap();
+        drop(store);
+        let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
         let pending_delivery = store
             .claim_pending_wake_delivery("delivery-worker:postgres-wake", 60)
             .await
@@ -2802,6 +2804,8 @@ mod tests {
             )
             .await
             .unwrap();
+        drop(store);
+        let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
         let recovered_delivery = store
             .claim_pending_wake_delivery("delivery-worker:competing", 60)
             .await
@@ -2865,6 +2869,8 @@ mod tests {
             .append_wake_delivery_fenced(&recovered_delivery.lease, 2, &delivery_events)
             .await
             .unwrap();
+        drop(store);
+        let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
         let row = store
             .client
             .lock()
@@ -2880,6 +2886,58 @@ mod tests {
         assert_eq!(
             u64::try_from(row.get::<_, i64>(2)).unwrap(),
             recovered_delivery.lease.fence
+        );
+        let completed = store
+            .load(session_ref)
+            .await
+            .unwrap()
+            .expect("the completed wake session survives a fresh store connection");
+        assert!(completed.pending_delivery.is_none());
+        assert_eq!(
+            completed
+                .events
+                .iter()
+                .filter(|event| matches!(event.event, SessionEvent::WakeTriggered { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            completed
+                .events
+                .iter()
+                .filter(|event| matches!(event.event, SessionEvent::DraftProduced { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            completed
+                .events
+                .iter()
+                .filter(|event| matches!(event.event, SessionEvent::DeliveryRecorded { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            completed
+                .events
+                .iter()
+                .filter(|event| matches!(event.event, SessionEvent::TurnCompleted { .. }))
+                .count(),
+            1
+        );
+        assert!(
+            store
+                .claim_pending_wake_delivery("delivery-worker:after-completion", 60)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .claim_due_wake("worker:after-completion", 60)
+                .await
+                .unwrap()
+                .is_none()
         );
         store
             .client
