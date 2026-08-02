@@ -138,6 +138,8 @@ pub struct PlannedClaim {
     pub claim_ref: String,
     pub question: String,
     pub required: bool,
+    #[serde(default)]
+    pub subject_refs: Vec<String>,
     pub source_candidates: Vec<String>,
 }
 
@@ -2455,6 +2457,7 @@ fn wake_research_plan(
             .or_else(|| commitment.acceptance_criteria.first().cloned())
             .unwrap_or_else(|| "Determine the current commitment state.".into()),
         required: true,
+        subject_refs: vec![commitment_ref.clone()],
         source_candidates: commitment.required_tool_ids.clone(),
     }];
     let mut stop_conditions = commitment.acceptance_criteria.clone();
@@ -3294,8 +3297,12 @@ fn planned_claim_subject_matches(
     let Some(subject_ref) = atom.subject_ref.as_deref() else {
         return false;
     };
-    observation_text_names_subject(&planned.question, subject_ref)
-        || (plan.resolved_entities.len() == 1
+    planned
+        .subject_refs
+        .iter()
+        .any(|expected| observation_text_names_subject(expected, subject_ref))
+        || (planned.subject_refs.is_empty()
+            && plan.resolved_entities.len() == 1
             && observation_text_names_subject(&plan.resolved_entities[0], subject_ref))
 }
 
@@ -4253,10 +4260,21 @@ pub fn validate_plan(
     for claim in &plan.claims {
         if !bounded(&claim.claim_ref, MAX_TEXT_BYTES)
             || !bounded(&claim.question, MAX_TEXT_BYTES)
+            || claim.subject_refs.len() > MAX_SCOPE_ITEMS
+            || claim
+                .subject_refs
+                .iter()
+                .any(|subject| !bounded(subject, MAX_TEXT_BYTES))
+            || claim.subject_refs.iter().collect::<BTreeSet<_>>().len() != claim.subject_refs.len()
+            || claim
+                .subject_refs
+                .iter()
+                .any(|subject| !plan.resolved_entities.contains(subject))
+            || (claim.required && plan.resolved_entities.len() > 1 && claim.subject_refs.is_empty())
             || !claim_refs.insert(&claim.claim_ref)
         {
             return Err(AgentRuntimeError::InvalidFinal(
-                "research plan claims require unique bounded references and questions".into(),
+                "research plan claims require unique bounded references, questions, and exact resolved subject refs".into(),
             ));
         }
     }
@@ -5001,8 +5019,11 @@ fn validate_claim(
                 .into(),
         ));
     }
+    let claim_is_capability = contains_operational_capability_assertion(&claim.text);
     for clause in atomic_assertion_clauses(&claim.text) {
-        if contains_operational_capability_assertion(clause)
+        if (contains_operational_capability_assertion(clause)
+            || (claim_is_capability
+                && !capability_operations_claimed(&clause.to_ascii_lowercase()).is_empty()))
             && !atom_refs.iter().any(|atom_ref| {
                 context.atoms.get(atom_ref).is_some_and(|atom| {
                     atom_capability_overview_supports_text(atom, clause, context.assessment_at)
@@ -5222,7 +5243,7 @@ fn validate_observation_wording(
             "provider_administration",
         ),
     ];
-    for clause in normalized.split(['.', ';', ',', '\n']) {
+    for clause in atomic_assertion_clauses(&normalized) {
         let general_negative = [
             "i can't ",
             "i cannot ",
@@ -5661,6 +5682,8 @@ fn atom_capability_overview_supports_text(
     }
     let normalized = text.to_ascii_lowercase();
     let negative = [
+        "cannot ",
+        "can't ",
         "i can't ",
         "i cannot ",
         "i don't have ",
@@ -5780,6 +5803,9 @@ fn capability_operations_claimed(text: &str) -> Vec<CapabilityOperation> {
 fn atomic_assertion_clauses(text: &str) -> Vec<&str> {
     text.split(['.', ';', ',', '\n'])
         .flat_map(|clause| clause.split(" but "))
+        .flat_map(|clause| clause.split(" and "))
+        .flat_map(|clause| clause.split(" while "))
+        .flat_map(|clause| clause.split(" whereas "))
         .map(str::trim)
         .filter(|clause| !clause.is_empty())
         .collect()
@@ -5908,6 +5934,7 @@ fn recommendation_clause_is_prospective_role_handoff(claim: &GroundedClaim, clau
         ]
         .iter()
         .any(|marker| normalized.contains(marker))
+        && !normalized.contains("current")
         && ![" owns ", " is responsible for ", " is accountable for "]
             .iter()
             .any(|marker| normalized.contains(marker))
@@ -5915,20 +5942,6 @@ fn recommendation_clause_is_prospective_role_handoff(claim: &GroundedClaim, clau
 
 fn atomic_ownership_clauses(text: &str) -> Vec<&str> {
     atomic_assertion_clauses(text)
-        .into_iter()
-        .flat_map(|clause| {
-            let parts = clause.split(" and ").map(str::trim).collect::<Vec<_>>();
-            if parts
-                .iter()
-                .skip(1)
-                .any(|part| contains_ownership_assertion(part))
-            {
-                parts
-            } else {
-                vec![clause]
-            }
-        })
-        .collect()
 }
 
 fn claimed_authority_duties(text: &str) -> Vec<AuthorityDuty> {
@@ -6896,6 +6909,7 @@ mod tests {
                 claim_ref: "claim:state".into(),
                 question: "What is the current state?".into(),
                 required: true,
+                subject_refs: vec!["connector:alpha".into()],
                 source_candidates: vec!["connector.read".into()],
             }],
             selected_tools: vec!["connector.read".into()],
@@ -7081,6 +7095,7 @@ mod tests {
                     claim_ref: "claim:mcp-message-state".into(),
                     question: "Does the channel contain the approved message?".into(),
                     required: true,
+                    subject_refs: vec!["channel-one".into()],
                     source_candidates: vec!["mcp.slack.message.read".into()],
                 }],
                 selected_tools: vec![
@@ -8013,6 +8028,7 @@ mod tests {
             claim_ref: "claim:owner".into(),
             question: "Who owns the unresolved gap?".into(),
             required: true,
+            subject_refs: vec!["connector:alpha".into()],
             source_candidates: vec!["connector.read".into()],
         });
         let answer = draft();
@@ -9482,9 +9498,20 @@ mod tests {
         };
         candidate.message = candidate.claims[0].text.clone();
 
-        let error = validate_grounded_draft(&session(), &candidate, &[overview], assessment)
-            .expect_err("the false second capability cannot be hidden behind the true first one");
+        let error = validate_grounded_draft(
+            &session(),
+            &candidate,
+            std::slice::from_ref(&overview),
+            assessment,
+        )
+        .expect_err("the false second capability cannot be hidden behind the true first one");
         assert!(error.to_string().contains("provider_administration"));
+
+        let mut valid = candidate;
+        valid.claims[0].text =
+            "Provider administration is not bound but collected-content read is bound.".into();
+        valid.message = valid.claims[0].text.clone();
+        assert!(validate_grounded_draft(&session(), &valid, &[overview], assessment).is_ok());
     }
 
     #[test]
@@ -9543,7 +9570,39 @@ mod tests {
         candidate.claims.truncate(1);
         candidate.claims[0].text = "My authority permits read access to synthetic records but does not permit delete access to synthetic records.".into();
         candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&session(), &candidate, &[overview], assessment).is_ok());
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &candidate,
+                std::slice::from_ref(&overview),
+                assessment,
+            )
+            .is_ok()
+        );
+
+        candidate.claims[0].text =
+            "Cerebro can read synthetic records and cannot delete synthetic records.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &candidate,
+                std::slice::from_ref(&overview),
+                assessment,
+            )
+            .is_ok()
+        );
+
+        overview.result.data["built_in"] = json!([{
+            "tool_id": "synthetic.records.delete",
+            "authority_class": "actuate",
+            "effect_class": "external_effect",
+            "title": "Delete synthetic records"
+        }]);
+        candidate.claims[0].text =
+            "Cerebro can delete synthetic records and revoke synthetic credentials.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(validate_grounded_draft(&session(), &candidate, &[overview], assessment).is_err());
     }
 
     #[test]
@@ -9637,7 +9696,37 @@ mod tests {
         candidate.claims[0].text =
             "Recommended owner: provider administrator. Synthetic Team Delta owns the gap.".into();
         candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&session(), &candidate, &[current], assessment).is_err());
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &candidate,
+                std::slice::from_ref(&current),
+                assessment,
+            )
+            .is_err()
+        );
+
+        candidate.claims[0].text =
+            "Current approval owner: Synthetic Team A should perform the next check for connector alpha."
+                .into();
+        candidate.claims[0].content = ClaimContent::Recommendation {
+            action: ActionSpec {
+                tool_id: None,
+                target_ref: Some("Synthetic Team A".into()),
+                input: json!({"subject_ref": "connector:alpha"}),
+            },
+            rationale_atom_refs: vec!["atom:status".into()],
+        };
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &candidate,
+                std::slice::from_ref(&current),
+                assessment,
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -9728,7 +9817,7 @@ mod tests {
                 complete: false,
             }],
         });
-        let mut stale_draft = expected_draft;
+        let mut stale_draft = expected_draft.clone();
         stale_draft.claims[0].content = ClaimContent::Observation {
             atom_refs: vec!["atom:stale".into()],
         };
@@ -9746,6 +9835,7 @@ mod tests {
             claim_ref: "claim:beta".into(),
             question: "What is connector beta's current state?".into(),
             required: true,
+            subject_refs: vec!["connector:beta".into()],
             source_candidates: vec!["connector.read".into()],
         });
         let mut multi_draft = draft();
@@ -9758,6 +9848,17 @@ mod tests {
             &multi_plan,
             &multi_draft,
             &[observation(true, Some("2026-08-01T00:00:00Z"))],
+            assessment,
+        ));
+
+        let mut self_attested = expected_plan;
+        self_attested.claims[0].question = "What is connector beta's current state?".into();
+        let mut beta_only = observation(true, Some("2026-08-01T00:00:00Z"));
+        beta_only.result.evidence[0].atoms[0].subject_ref = Some("connector:beta".into());
+        assert!(!current_required_claims_have_same_turn_evidence(
+            &self_attested,
+            &expected_draft,
+            &[beta_only],
             assessment,
         ));
     }
@@ -9817,6 +9918,18 @@ mod tests {
 
         let mut compound = candidate;
         compound.claims[0].text = "Cerebro owns remediation for connector alpha and Synthetic Team Beta owns remediation for connector beta.".into();
+        compound.message = compound.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &compound,
+                std::slice::from_ref(&authority),
+                assessment,
+            )
+            .is_err()
+        );
+
+        compound.claims[0].text = "Synthetic Team Alpha owns remediation for connector alpha while Synthetic Team Beta owns remediation for connector beta.".into();
         compound.message = compound.claims[0].text.clone();
         assert!(validate_grounded_draft(&session(), &compound, &[authority], assessment).is_err());
     }

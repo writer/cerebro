@@ -1952,9 +1952,10 @@ fn session_decision_schema() -> Value {
             "claim_ref": {"type": "string", "minLength": 1},
             "question": {"type": "string", "minLength": 1},
             "required": {"type": "boolean"},
+            "subject_refs": string_array(),
             "source_candidates": string_array(),
         },
-        "required": ["claim_ref", "question", "required", "source_candidates"]
+        "required": ["claim_ref", "question", "required", "subject_refs", "source_candidates"]
     });
     let observation_condition = json!({
         "type": "object",
@@ -3214,6 +3215,124 @@ fn capability_descriptor_json(descriptor: &ToolDescriptor, score: usize) -> Valu
     })
 }
 
+pub(super) fn capability_search_result<F>(
+    catalog: &[ToolDescriptor],
+    input: &Value,
+    mut selection: F,
+) -> Result<ToolResult, AgentRuntimeError>
+where
+    F: FnMut(&ToolDescriptor, &str) -> Result<Option<(String, String)>, AgentRuntimeError>,
+{
+    let input: CapabilitySearchInput = serde_json::from_value(input.clone())
+        .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+    let query = input.query.trim();
+    if query.is_empty()
+        || query.len() > MAX_CAPABILITY_QUERY_BYTES
+        || input.limit == 0
+        || input.limit > MAX_CAPABILITY_SEARCH_LIMIT
+        || input.offset > MAX_CAPABILITY_CATALOG_OFFSET
+        || input.namespaces.len() > MAX_CAPABILITY_DESCRIBE_IDS
+        || input.namespaces.iter().any(|namespace| {
+            namespace.trim().is_empty() || namespace.len() > MAX_CAPABILITY_TOOL_ID_BYTES
+        })
+    {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "capability search bounds are invalid".into(),
+        ));
+    }
+    let matches = search_capability_catalog(catalog, &input);
+    let total_matches = matches.len();
+    let query_digest = sha256_digest(query);
+    let page = matches
+        .into_iter()
+        .skip(input.offset)
+        .take(input.limit)
+        .enumerate()
+        .map(|(index, (score, descriptor))| {
+            let mut value = capability_descriptor_json(descriptor, score);
+            value["rank"] = json!(input.offset + index + 1);
+            if let Some((execution_tool_id, selection_ref)) = selection(descriptor, &query_digest)?
+            {
+                value["execution_tool_id"] = Value::String(execution_tool_id);
+                value["selection_ref"] = Value::String(selection_ref);
+            }
+            Ok(value)
+        })
+        .collect::<Result<Vec<_>, AgentRuntimeError>>()?;
+    let next_offset =
+        (input.offset + page.len() < total_matches).then_some(input.offset + page.len());
+    Ok(ToolResult {
+        state: ToolResultState::Succeeded,
+        summary: format!(
+            "Found {} bound tools matching the requested intent.",
+            page.len()
+        ),
+        data: json!({
+            "matches": page,
+            "next_offset": next_offset,
+            "offset": input.offset,
+            "query": query,
+            "query_digest": query_digest,
+            "schema_version": "capability-search-result/v1",
+            "total_matches": total_matches,
+        }),
+        evidence: vec![],
+        blocker: None,
+    })
+}
+
+pub(super) fn capability_describe_result(
+    catalog: &[ToolDescriptor],
+    input: &Value,
+) -> Result<ToolResult, AgentRuntimeError> {
+    let input: CapabilityDescribeInput = serde_json::from_value(input.clone())
+        .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+    if input.tool_ids.is_empty() || input.tool_ids.len() > MAX_CAPABILITY_DESCRIBE_IDS {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "capability describe requires between 1 and 12 tool ids".into(),
+        ));
+    }
+    let requested = input.tool_ids.into_iter().collect::<BTreeSet<_>>();
+    if requested.len() > MAX_CAPABILITY_DESCRIBE_IDS
+        || requested.iter().any(|tool_id| {
+            tool_id.trim().is_empty() || tool_id.len() > MAX_CAPABILITY_TOOL_ID_BYTES
+        })
+    {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "capability describe tool ids are invalid".into(),
+        ));
+    }
+    let by_id = catalog
+        .iter()
+        .map(|descriptor| (descriptor.tool_id.as_str(), descriptor))
+        .collect::<BTreeMap<_, _>>();
+    let mut described = Vec::new();
+    let mut unavailable = Vec::new();
+    for tool_id in &requested {
+        if let Some(descriptor) = by_id.get(tool_id.as_str()) {
+            described.push(capability_descriptor_json(descriptor, 0));
+        } else {
+            unavailable.push(tool_id);
+        }
+    }
+    let complete = unavailable.is_empty();
+    Ok(ToolResult {
+        state: if complete {
+            ToolResultState::Succeeded
+        } else {
+            ToolResultState::Partial
+        },
+        summary: "Read exact bound tool descriptors and authority policy.".into(),
+        data: json!({
+            "schema_version": "capability-describe-result/v1",
+            "tools": described,
+            "unavailable_tool_ids": unavailable,
+        }),
+        evidence: vec![],
+        blocker: (!complete).then(|| "One or more requested tools are not bound.".into()),
+    })
+}
+
 fn sha256_digest(value: &str) -> String {
     let digest = Sha256::digest(value.as_bytes())
         .iter()
@@ -3544,66 +3663,17 @@ impl PlatformAgentTools {
         request: &AgentTurnRequest,
         call: &cerebro_agent_runtime::ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
-        let input: CapabilitySearchInput = serde_json::from_value(call.input.clone())
-            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
-        let query = input.query.trim();
-        if query.is_empty()
-            || query.len() > MAX_CAPABILITY_QUERY_BYTES
-            || input.limit == 0
-            || input.limit > MAX_CAPABILITY_SEARCH_LIMIT
-            || input.offset > MAX_CAPABILITY_CATALOG_OFFSET
-            || input.namespaces.len() > MAX_CAPABILITY_DESCRIBE_IDS
-            || input.namespaces.iter().any(|namespace| {
-                namespace.trim().is_empty() || namespace.len() > MAX_CAPABILITY_TOOL_ID_BYTES
-            })
-        {
-            return Err(AgentRuntimeError::InvalidToolCall(
-                "capability search bounds are invalid".into(),
-            ));
-        }
         let catalog = self.complete_capability_catalog();
-        let matches = search_capability_catalog(&catalog, &input);
-        let total_matches = matches.len();
-        let query_digest = sha256_digest(query);
-        let page = matches
-            .into_iter()
-            .skip(input.offset)
-            .take(input.limit)
-            .enumerate()
-            .map(|(index, (score, descriptor))| {
-                let mut value = capability_descriptor_json(descriptor, score);
-                value["rank"] = json!(input.offset + index + 1);
-                if let (Some(mcp), Some(executor_tool_id)) =
-                    (&self.mcp, capability_executor_tool(descriptor))
-                {
-                    let selection_ref = mcp
-                        .issue_selection_ref(request, descriptor, &query_digest)
-                        .map_err(AgentRuntimeError::InvalidToolCall)?;
-                    value["execution_tool_id"] = Value::String(executor_tool_id.into());
-                    value["selection_ref"] = Value::String(selection_ref);
-                }
-                Ok(value)
-            })
-            .collect::<Result<Vec<_>, AgentRuntimeError>>()?;
-        let next_offset =
-            (input.offset + page.len() < total_matches).then_some(input.offset + page.len());
-        Ok(ToolResult {
-            state: ToolResultState::Succeeded,
-            summary: format!(
-                "Found {} bound tools matching the requested intent.",
-                page.len()
-            ),
-            data: json!({
-                "matches": page,
-                "next_offset": next_offset,
-                "offset": input.offset,
-                "query": query,
-                "query_digest": query_digest,
-                "schema_version": "capability-search-result/v1",
-                "total_matches": total_matches,
-            }),
-            evidence: vec![],
-            blocker: None,
+        capability_search_result(&catalog, &call.input, |descriptor, query_digest| {
+            let (Some(mcp), Some(executor_tool_id)) =
+                (&self.mcp, capability_executor_tool(descriptor))
+            else {
+                return Ok(None);
+            };
+            let selection_ref = mcp
+                .issue_selection_ref(request, descriptor, query_digest)
+                .map_err(AgentRuntimeError::InvalidToolCall)?;
+            Ok(Some((executor_tool_id.into(), selection_ref)))
         })
     }
 
@@ -3612,53 +3682,8 @@ impl PlatformAgentTools {
         _request: &AgentTurnRequest,
         call: &cerebro_agent_runtime::ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
-        let input: CapabilityDescribeInput = serde_json::from_value(call.input.clone())
-            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
-        if input.tool_ids.is_empty() || input.tool_ids.len() > MAX_CAPABILITY_DESCRIBE_IDS {
-            return Err(AgentRuntimeError::InvalidToolCall(
-                "capability describe requires between 1 and 12 tool ids".into(),
-            ));
-        }
-        let requested = input.tool_ids.into_iter().collect::<BTreeSet<_>>();
-        if requested.len() > MAX_CAPABILITY_DESCRIBE_IDS
-            || requested.iter().any(|tool_id| {
-                tool_id.trim().is_empty() || tool_id.len() > MAX_CAPABILITY_TOOL_ID_BYTES
-            })
-        {
-            return Err(AgentRuntimeError::InvalidToolCall(
-                "capability describe tool ids are invalid".into(),
-            ));
-        }
         let catalog = self.complete_capability_catalog();
-        let by_id = catalog
-            .iter()
-            .map(|descriptor| (descriptor.tool_id.as_str(), descriptor))
-            .collect::<BTreeMap<_, _>>();
-        let mut described = Vec::new();
-        let mut unavailable = Vec::new();
-        for tool_id in &requested {
-            if let Some(descriptor) = by_id.get(tool_id.as_str()) {
-                described.push(capability_descriptor_json(descriptor, 0));
-            } else {
-                unavailable.push(tool_id);
-            }
-        }
-        let complete = unavailable.is_empty();
-        Ok(ToolResult {
-            state: if complete {
-                ToolResultState::Succeeded
-            } else {
-                ToolResultState::Partial
-            },
-            summary: "Read exact bound tool descriptors and authority policy.".into(),
-            data: json!({
-                "schema_version": "capability-describe-result/v1",
-                "tools": described,
-                "unavailable_tool_ids": unavailable,
-            }),
-            evidence: vec![],
-            blocker: (!complete).then(|| "One or more requested tools are not bound.".into()),
-        })
+        capability_describe_result(&catalog, &call.input)
     }
 
     async fn execute_selected_capability(

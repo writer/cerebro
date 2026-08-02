@@ -30,7 +30,8 @@ use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::slack_agent::{
-    CAPABILITY_EXECUTE_PROPOSAL, CAPABILITY_EXECUTE_READ, ConfiguredModel, model_capability_catalog,
+    CAPABILITY_EXECUTE_PROPOSAL, CAPABILITY_EXECUTE_READ, ConfiguredModel,
+    capability_describe_result, capability_search_result, model_capability_catalog,
 };
 
 const SCHEMA_VERSION: &str = "cerebro-rust-slack-agent-conversation-harness/v2";
@@ -655,29 +656,9 @@ struct EvalCapabilitySelection {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct EvalCapabilitySearchInput {
-    query: String,
-    #[serde(default)]
-    namespaces: Vec<String>,
-    #[serde(default)]
-    authority_classes: Vec<ToolAuthorityClass>,
-    #[serde(default)]
-    effect_classes: Vec<ToolEffectClass>,
-    #[serde(default = "default_eval_capability_limit")]
-    limit: usize,
-    #[serde(default)]
-    offset: usize,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct EvalCapabilityExecuteInput {
     selection_ref: String,
     input: Value,
-}
-
-const fn default_eval_capability_limit() -> usize {
-    8
 }
 
 impl EvalTools {
@@ -809,132 +790,46 @@ impl EvalTools {
         request: &AgentTurnRequest,
         call: &ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
-        let input: EvalCapabilitySearchInput = serde_json::from_value(call.input.clone())
-            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
-        let query = input.query.trim().to_ascii_lowercase();
-        if query.is_empty() || input.limit == 0 || input.limit > 20 || input.offset > 512 {
-            return Err(AgentRuntimeError::InvalidToolCall(
-                "evaluation capability search bounds are invalid".into(),
-            ));
-        }
-        let query_terms = query
-            .split(|character: char| !character.is_ascii_alphanumeric())
-            .filter(|term| term.len() >= 2)
-            .collect::<BTreeSet<_>>();
-        let mut matches = self
-            .complete_capability_catalog()
-            .into_iter()
-            .filter(|descriptor| {
-                input.namespaces.is_empty()
-                    || input.namespaces.iter().any(|namespace| {
-                        descriptor
-                            .tool_id
-                            .trim_start_matches("mcp.")
-                            .starts_with(namespace.trim_start_matches("mcp."))
-                    })
-            })
-            .filter(|descriptor| {
-                if input.authority_classes.is_empty() {
-                    descriptor.authority_class == ToolAuthorityClass::Observe
-                } else {
-                    input
-                        .authority_classes
-                        .contains(&descriptor.authority_class)
-                }
-            })
-            .filter(|descriptor| {
-                if input.effect_classes.is_empty() {
-                    descriptor.effect_class == ToolEffectClass::Read
-                } else {
-                    input.effect_classes.contains(&descriptor.effect_class)
-                }
-            })
-            .filter(|descriptor| {
-                let searchable = format!(
-                    "{} {} {}",
-                    descriptor.tool_id, descriptor.title, descriptor.summary
+        let catalog = self.complete_capability_catalog();
+        capability_search_result(&catalog, &call.input, |descriptor, _query_digest| {
+            if !descriptor.tool_id.starts_with("mcp.")
+                || !matches!(
+                    (descriptor.authority_class, descriptor.effect_class),
+                    (ToolAuthorityClass::Observe, ToolEffectClass::Read)
+                        | (ToolAuthorityClass::Propose, ToolEffectClass::Read)
                 )
-                .to_ascii_lowercase();
-                query_terms.iter().any(|term| searchable.contains(term))
-            })
-            .collect::<Vec<_>>();
-        matches.sort_by(|left, right| left.tool_id.cmp(&right.tool_id));
-        let total_matches = matches.len();
-        let page = matches
-            .into_iter()
-            .skip(input.offset)
-            .take(input.limit)
-            .enumerate()
-            .map(|(index, descriptor)| {
-                let namespace = descriptor
-                    .tool_id
-                    .split_once('.')
-                    .map_or(descriptor.tool_id.as_str(), |(namespace, _)| namespace)
-                    .to_owned();
-                let mut value = json!({
-                    "descriptor": &descriptor,
-                    "namespace": namespace,
-                    "rank": input.offset + index + 1,
-                });
-                if descriptor.tool_id.starts_with("mcp.")
-                    && matches!(
-                        (descriptor.authority_class, descriptor.effect_class),
-                        (ToolAuthorityClass::Observe, ToolEffectClass::Read)
-                            | (ToolAuthorityClass::Propose, ToolEffectClass::Read)
+            {
+                return Ok(None);
+            }
+            let selection_ref = format!(
+                "selection://synthetic/{}",
+                sha256_hex(
+                    format!(
+                        "{}\0{}\0{}",
+                        self.case_ref, request.request_id, descriptor.tool_id
                     )
-                {
-                    let selection_ref = format!(
-                        "selection://synthetic/{}",
-                        sha256_hex(
-                            format!(
-                                "{}\0{}\0{}",
-                                self.case_ref, request.request_id, descriptor.tool_id
-                            )
-                            .as_bytes()
-                        )
-                    );
-                    self.capability_selections
-                        .lock()
-                        .expect("evaluation capability selection poisoned")
-                        .insert(
-                            selection_ref.clone(),
-                            EvalCapabilitySelection {
-                                tool_id: descriptor.tool_id.clone(),
-                                tenant_id: request.tenant_id.clone(),
-                                actor_ref: request.actor_ref.clone(),
-                                thread_ref: request.thread_ref.clone(),
-                                context_scope_ref: request.context_scope_ref.clone(),
-                            },
-                        );
-                    value["execution_tool_id"] = Value::String(
-                        if descriptor.authority_class == ToolAuthorityClass::Propose {
-                            CAPABILITY_EXECUTE_PROPOSAL
-                        } else {
-                            CAPABILITY_EXECUTE_READ
-                        }
-                        .into(),
-                    );
-                    value["selection_ref"] = Value::String(selection_ref);
-                }
-                value
-            })
-            .collect::<Vec<_>>();
-        Ok(ToolResult {
-            state: ToolResultState::Succeeded,
-            summary: format!(
-                "Found {} bound tools matching the requested intent.",
-                page.len()
-            ),
-            data: json!({
-                "matches": page,
-                "next_offset": (input.offset + page.len() < total_matches).then_some(input.offset + page.len()),
-                "offset": input.offset,
-                "query": query,
-                "schema_version": "capability-search-result/v1",
-                "total_matches": total_matches,
-            }),
-            evidence: Vec::new(),
-            blocker: None,
+                    .as_bytes()
+                )
+            );
+            self.capability_selections
+                .lock()
+                .expect("evaluation capability selection poisoned")
+                .insert(
+                    selection_ref.clone(),
+                    EvalCapabilitySelection {
+                        tool_id: descriptor.tool_id.clone(),
+                        tenant_id: request.tenant_id.clone(),
+                        actor_ref: request.actor_ref.clone(),
+                        thread_ref: request.thread_ref.clone(),
+                        context_scope_ref: request.context_scope_ref.clone(),
+                    },
+                );
+            let executor = if descriptor.authority_class == ToolAuthorityClass::Propose {
+                CAPABILITY_EXECUTE_PROPOSAL
+            } else {
+                CAPABILITY_EXECUTE_READ
+            };
+            Ok(Some((executor.into(), selection_ref)))
         })
     }
 
@@ -1009,6 +904,9 @@ impl AgentTools for EvalTools {
         if call.tool_id == "capability.search" {
             return self.search_capabilities(request, call);
         }
+        if call.tool_id == "capability.describe" {
+            return capability_describe_result(&self.complete_capability_catalog(), &call.input);
+        }
         let selected_call;
         let call = if matches!(
             call.tool_id.as_str(),
@@ -1075,6 +973,78 @@ impl AgentTools for EvalTools {
                         "gateway_state": "connected",
                         "tools": provider,
                     }
+                }),
+            }
+        } else if call.tool_id == "slack.thread.read" {
+            let limit = call
+                .input
+                .get("limit")
+                .and_then(Value::as_u64)
+                .unwrap_or(12)
+                .clamp(1, 20) as usize;
+            let messages = request
+                .history
+                .iter()
+                .rev()
+                .take(limit)
+                .rev()
+                .map(|message| {
+                    json!({
+                        "role": message.role,
+                        "content": message.content,
+                    })
+                })
+                .collect::<Vec<_>>();
+            EvaluationFixture {
+                summary: format!(
+                    "Read {} synthetic messages from the current owned conversation.",
+                    messages.len()
+                ),
+                data: json!({
+                    "messages": messages,
+                    "next_cursor": null,
+                    "scope": "current_owned_thread",
+                }),
+            }
+        } else if call.tool_id == "slack.history.search" {
+            let query = call
+                .input
+                .get("query")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase();
+            let limit = call
+                .input
+                .get("limit")
+                .and_then(Value::as_u64)
+                .unwrap_or(4)
+                .clamp(1, 8) as usize;
+            let matches = request
+                .history
+                .iter()
+                .enumerate()
+                .filter(|(_, message)| {
+                    query.is_empty() || message.content.to_ascii_lowercase().contains(&query)
+                })
+                .take(limit)
+                .map(|(index, message)| {
+                    json!({
+                        "thread_ref": format!("thread:synthetic-prior-{index}"),
+                        "role": message.role,
+                        "excerpt": message.content,
+                    })
+                })
+                .collect::<Vec<_>>();
+            EvaluationFixture {
+                summary: format!(
+                    "Read {} bounded synthetic prior-thread contexts for this sealed operator scope.",
+                    matches.len()
+                ),
+                data: json!({
+                    "matches": matches,
+                    "next_cursor": null,
+                    "scope": "sealed_synthetic_operator_history",
                 }),
             }
         } else if call.tool_id == "runtime_config_update" {
@@ -5131,9 +5101,30 @@ mod tests {
             .iter()
             .find(|candidate| candidate["descriptor"]["tool_id"] == "mcp.cerebro.sources.health")
             .expect("the hidden provider read is discoverable through the host catalog");
+        assert!(search.data["query_digest"].as_str().is_some());
+        assert!(selected["descriptor_digest"].as_str().is_some());
+        assert!(selected["score"].as_u64().is_some());
         let selection_ref = selected["selection_ref"].as_str().unwrap();
         assert!(!selection_ref.contains("cerebro"));
         assert!(!selection_ref.contains("source"));
+
+        let described = AgentTools::invoke(
+            &tools,
+            &request,
+            &ToolCall {
+                call_id: "call:describe".into(),
+                tool_id: "capability.describe".into(),
+                purpose: "Read the exact synthetic authority descriptor.".into(),
+                input: json!({"tool_ids": ["mcp.cerebro.sources.health"]}),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(described.state, ToolResultState::Succeeded);
+        assert_eq!(
+            described.data["tools"][0]["descriptor"]["tool_id"],
+            "mcp.cerebro.sources.health"
+        );
 
         let execute = ToolCall {
             call_id: "call:execute".into(),
@@ -5173,6 +5164,47 @@ mod tests {
                 .to_string()
                 .contains("does not match the executor")
         );
+
+        let mut context_request = request.clone();
+        context_request.history = vec![
+            ConversationMessage {
+                role: ConversationRole::User,
+                content: "Synthetic connector alpha was discussed.".into(),
+            },
+            ConversationMessage {
+                role: ConversationRole::Assistant,
+                content: "The synthetic check remained bounded.".into(),
+            },
+        ];
+        let thread = AgentTools::invoke(
+            &tools,
+            &context_request,
+            &ToolCall {
+                call_id: "call:thread".into(),
+                tool_id: "slack.thread.read".into(),
+                purpose: "Read the owned synthetic conversation.".into(),
+                input: json!({"limit": 1}),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(thread.data["messages"].as_array().unwrap().len(), 1);
+        assert_eq!(thread.data["scope"], "current_owned_thread");
+
+        let history = AgentTools::invoke(
+            &tools,
+            &context_request,
+            &ToolCall {
+                call_id: "call:history".into(),
+                tool_id: "slack.history.search".into(),
+                purpose: "Search sealed synthetic prior context.".into(),
+                input: json!({"query": "connector alpha", "limit": 4}),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(history.data["matches"].as_array().unwrap().len(), 1);
+        assert_eq!(history.data["scope"], "sealed_synthetic_operator_history");
     }
 
     #[test]
