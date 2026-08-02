@@ -1565,6 +1565,7 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                     | "where"
                     | "which"
                     | "who"
+                    | "how"
                     | "why"
             )
         });
@@ -1613,17 +1614,17 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
             ]
             .iter()
             .any(|time| words.contains(time));
-            let why_explains_generic_subject = words[..predicate_index]
+            let question_explains_generic_subject = words[..predicate_index]
                 .iter()
-                .position(|word| *word == "why")
-                .is_some_and(|why_index| {
+                .position(|word| matches!(*word, "how" | "why"))
+                .is_some_and(|question_index| {
                     !has_time_boundary
                         && (predicate_index + 1 < words.len()
-                            || words[why_index + 1..predicate_index]
+                            || words[question_index + 1..predicate_index]
                                 .iter()
                                 .any(|word| matches!(*word, "a" | "an")))
                 });
-            (has_subject_bound_verb && !why_explains_generic_subject) || has_time_boundary
+            (has_subject_bound_verb && !question_explains_generic_subject) || has_time_boundary
         });
     let generic_live_ownership = normalized.contains(" who handles ")
         || normalized.contains(" who owns ")
@@ -3187,6 +3188,7 @@ mod grounding_tests {
             "Why is a healthy debate useful?",
             "Why is the color green calming?",
             "Explain why a debate is healthy.",
+            "Explain how a debate is healthy.",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),

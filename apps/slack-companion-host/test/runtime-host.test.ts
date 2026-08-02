@@ -2304,10 +2304,11 @@ test("question service gives a bounded recovery action after a source timeout", 
   }
 });
 
-test("failed claimed mentions persist a blocked outcome before retries are suppressed", async () => {
+test("an ambiguous Slack post is recovered by deterministic client message ID", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
     let progressClientMessageId = "";
+    let updates = 0;
     const store = new FileOutcomeStore(root, { log: () => undefined });
     const host = createAssistantTurnHost(store);
     const questions = new AssistantQuestionService(
@@ -2321,6 +2322,7 @@ test("failed claimed mentions persist a blocked outcome before retries are suppr
       }),
     );
     const event = {
+      botUserId: "U-BOT",
       channel: "C-ONE",
       eventTs: "1710000000.000001",
       hasThreadContext: false,
@@ -2333,7 +2335,68 @@ test("failed claimed mentions persist a blocked outcome before retries are suppr
       chat: {
         postMessage: async (input: { client_msg_id?: string }) => {
           progressClientMessageId = input.client_msg_id ?? "";
-          throw new Error("Slack unavailable");
+          throw new Error("Slack accepted the message but its response was lost");
+        },
+        update: async (input: { ts: string }) => {
+          assert.equal(input.ts, "1710000000.000002");
+          updates += 1;
+        },
+      },
+      conversations: {
+        replies: async () => ({
+          messages: [{
+            client_msg_id: progressClientMessageId,
+            text: "Working the request…",
+            ts: "1710000000.000002",
+            user: "U-BOT",
+          }],
+        }),
+      },
+    };
+    const config = loadSlackRuntimeConfig({
+      CEREBRO_BASE_URL: "https://cerebro.example.com",
+      CEREBRO_READ_API_KEY: "bound-at-runtime",
+      CEREBRO_SLACK_APP_NAME: "Cerebro Development",
+      CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
+      CEREBRO_SLACK_PRODUCTION: "false",
+      CEREBRO_TENANT_ID: "writer",
+      SLACK_ALLOWED_TEAM_IDS: "T-ONE",
+      SLACK_APP_TOKEN: "bound-at-runtime",
+      SLACK_BOT_TOKEN: "bound-at-runtime",
+    });
+
+    assert.equal(
+      await handleSlackMention({ client, config, event, host, outcomes: store, questions }),
+      true,
+    );
+    assert.equal(updates, 1);
+    const pendingFiles = await readdir(join(root, "pending"));
+    assert.equal(pendingFiles.length, 1);
+    const pending = JSON.parse(await readFile(join(root, "pending", pendingFiles[0]!), "utf8"));
+    assert.equal(pending.outcome_state, "blocked");
+    assert.equal(pending.verified, false);
+    assert.match(
+      progressClientMessageId,
+      /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-a[a-f0-9]{3}-[a-f0-9]{12}$/u,
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a failed event retries across Slack hosts with one deterministic message ID", async () => {
+  const roots = await Promise.all([
+    mkdtemp(join(tmpdir(), "cerebro-slack-runtime-a-")),
+    mkdtemp(join(tmpdir(), "cerebro-slack-runtime-b-")),
+  ]);
+  try {
+    const clientMessageIds: string[] = [];
+    const client = {
+      chat: {
+        postMessage: async (input: { client_msg_id?: string }) => {
+          clientMessageIds.push(input.client_msg_id ?? "");
+          if (clientMessageIds.length === 1) throw new Error("Slack unavailable");
+          return { ts: "1710000000.000002" };
         },
         update: async () => undefined,
       },
@@ -2352,26 +2415,44 @@ test("failed claimed mentions persist a blocked outcome before retries are suppr
       SLACK_APP_TOKEN: "bound-at-runtime",
       SLACK_BOT_TOKEN: "bound-at-runtime",
     });
-
-    await assert.rejects(
-      handleSlackMention({ client, config, event, host, outcomes: store, questions }),
-      /Slack unavailable/,
-    );
-    assert.equal(
-      await handleSlackMention({ client, config, event, host, outcomes: store, questions }),
-      false,
-    );
-    const pendingFiles = await readdir(join(root, "pending"));
-    assert.equal(pendingFiles.length, 1);
-    const pending = JSON.parse(await readFile(join(root, "pending", pendingFiles[0]!), "utf8"));
-    assert.equal(pending.outcome_state, "blocked");
-    assert.equal(pending.verified, false);
+    const event = {
+      botUserId: "U-BOT",
+      channel: "C-ONE",
+      eventTs: "1710000000.000001",
+      hasThreadContext: false,
+      teamId: "T-ONE",
+      text: "<@BOT> What changed?",
+      threadTs: "1710000000.000001",
+      userId: "U-ONE",
+    };
+    for (const [index, root] of roots.entries()) {
+      const store = new FileOutcomeStore(root, { log: () => undefined });
+      const host = createAssistantTurnHost(store);
+      const questions = new AssistantQuestionService(
+        host,
+        new CerebroAskClient({
+          answerAuthority: testAnswerAuthority,
+          apiKey: "bound-at-runtime",
+          baseUrl: "https://cerebro.example.com",
+          fetchImpl: async () => sseResponse([]),
+          tenantId: "writer",
+        }),
+      );
+      const mention = handleSlackMention({ client, config, event, host, outcomes: store, questions });
+      if (index === 0) {
+        await assert.rejects(mention, /Slack unavailable/u);
+      } else {
+        assert.equal(await mention, true);
+      }
+    }
+    assert.equal(clientMessageIds.length, 2);
+    assert.equal(clientMessageIds[0], clientMessageIds[1]);
     assert.match(
-      progressClientMessageId,
+      clientMessageIds[0]!,
       /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-a[a-f0-9]{3}-[a-f0-9]{12}$/u,
     );
   } finally {
-    await rm(root, { force: true, recursive: true });
+    await Promise.all(roots.map((root) => rm(root, { force: true, recursive: true })));
   }
 });
 
@@ -2384,8 +2465,6 @@ test("outcome store applies negative feedback before the durable 24-hour assessm
       log: (event) => telemetry.push(event),
     });
     await store.initialize();
-    assert.equal(await store.claimRequest("slack-event-one"), true);
-    assert.equal(await store.claimRequest("slack-event-one"), false);
     await store.recordPending({
       delivered_message_ts: "1710000000.000001",
       execution_lane: "lookup",
@@ -2415,7 +2494,7 @@ test("outcome store applies negative feedback before the durable 24-hour assessm
   }
 });
 
-test("outcome maintenance removes expired admission and telemetry receipts", async () => {
+test("outcome maintenance removes expired telemetry receipts", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
     const now = new Date("2026-07-19T10:00:00.000Z");
@@ -2424,15 +2503,12 @@ test("outcome maintenance removes expired admission and telemetry receipts", asy
       log: () => undefined,
     });
     await store.initialize();
-    const admission = join(root, "admissions", "expired.json");
     const telemetry = join(root, "telemetry", "expired.json");
-    await writeFile(admission, "claimed\n");
     await writeFile(telemetry, "{}\n");
     const old = new Date("2026-07-01T00:00:00.000Z");
-    await Promise.all([utimes(admission, old, old), utimes(telemetry, old, old)]);
+    await utimes(telemetry, old, old);
 
     assert.equal(await store.assessDue(createAssistantTurnHost(store)), 0);
-    assert.deepEqual(await readdir(join(root, "admissions")), []);
     assert.deepEqual(await readdir(join(root, "telemetry")), []);
   } finally {
     await rm(root, { force: true, recursive: true });

@@ -77,6 +77,7 @@ const MAX_THREAD_SCAN_PAGES = 20;
 
 interface SlackThreadMessage {
   bot_id?: string;
+  client_msg_id?: string;
   files?: ReadonlyArray<{ name?: string; title?: string }>;
   text?: string;
   ts?: string;
@@ -1119,12 +1120,11 @@ export async function handleSlackMention(input: {
     planned_tool_call_count: 1,
     selected_capability_count: 1,
   });
-  if (!await input.outcomes.claimRequest(requestKey)) return false;
-
   const openedAt = new Date();
   const requestDigest = digest(requestKey);
   const requestId = `slack-request-${requestDigest}`;
   const runId = `slack-run-${requestDigest}`;
+  const progressClientMessageId = slackClientMessageId(requestId);
   let deliveredMessageTs = "";
   let pendingOutcomeRecorded = false;
   const recordBlockedPending = async (): Promise<void> => {
@@ -1176,15 +1176,14 @@ export async function handleSlackMention(input: {
         },
       );
       const deliveredText = formatEnvironmentMessage(input.config, commandText);
-      const delivered = await input.client.chat.postMessage({
+      const delivered = await postOrRecoverSlackMessage(input.client, {
+        botUserId: input.event.botUserId,
         channel: input.event.channel,
+        clientMessageId: progressClientMessageId,
         text: deliveredText,
-        thread_ts: input.event.threadTs,
+        threadTs: input.event.threadTs,
       });
-      deliveredMessageTs = delivered.ts ?? "";
-      if (!deliveredMessageTs) {
-        throw new Error("Slack did not accept the scratchpad response.");
-      }
+      deliveredMessageTs = delivered.ts;
       const deliveredAt = new Date().toISOString();
       const references = slackDeliveryReferences(
         input.event.teamId,
@@ -1241,15 +1240,17 @@ export async function handleSlackMention(input: {
           input.event.botUserId,
         );
       } catch (error) {
-        const blocked = await input.client.chat.postMessage({
+        const blocked = await postOrRecoverSlackMessage(input.client, {
+          botUserId: input.event.botUserId,
           channel: input.event.channel,
+          clientMessageId: progressClientMessageId,
           text: formatEnvironmentMessage(
             input.config,
             `I couldn't read this thread, so I didn't send your message as a standalone graph query. Retry after ${input.config.appName} has channel history access.`,
           ),
-          thread_ts: input.event.threadTs,
+          threadTs: input.event.threadTs,
         });
-        deliveredMessageTs = blocked.ts ?? "";
+        deliveredMessageTs = blocked.ts;
         await recordBlockedPending();
         process.stderr.write(`${JSON.stringify({
           component: "slack-runtime",
@@ -1275,9 +1276,10 @@ export async function handleSlackMention(input: {
       sequence: 1,
       status: "Reading this thread and working the request",
     });
-    const progress = await input.client.chat.postMessage({
+    const progress = await postOrRecoverSlackMessage(input.client, {
+      botUserId: input.event.botUserId,
       channel: input.event.channel,
-      client_msg_id: slackClientMessageId(requestId),
+      clientMessageId: progressClientMessageId,
       text: formatEnvironmentMessage(
         input.config,
         threadContext
@@ -1285,9 +1287,8 @@ export async function handleSlackMention(input: {
           ? "Reading this thread and working the request…"
           : "Working the request…",
       ),
-      thread_ts: input.event.threadTs,
+      threadTs: input.event.threadTs,
     });
-    if (!progress.ts) throw new Error("Slack did not accept the progress message.");
     deliveredMessageTs = progress.ts;
     const result = await input.questions.answer({
       actorRef: slackScratchpadAuthorRef(input.event.teamId, input.event.userId),
@@ -1451,6 +1452,72 @@ export async function handleSlackMention(input: {
 function slackClientMessageId(identity: string): string {
   const hex = digest(`slack-client-message:${identity}`).slice(0, 32);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+async function postOrRecoverSlackMessage(
+  client: SlackMentionClient,
+  input: {
+    botUserId?: string;
+    channel: string;
+    clientMessageId: string;
+    text: string;
+    threadTs: string;
+  },
+): Promise<{ ts: string }> {
+  let postError: unknown;
+  try {
+    const posted = await client.chat.postMessage({
+      channel: input.channel,
+      client_msg_id: input.clientMessageId,
+      text: input.text,
+      thread_ts: input.threadTs,
+    });
+    if (posted.ts) return { ts: posted.ts };
+    postError = new Error("Slack did not return a timestamp for the message.");
+  } catch (error) {
+    postError = error;
+  }
+
+  const recovered = await findSlackMessageByClientId(client, input);
+  if (recovered) return { ts: recovered };
+  throw postError;
+}
+
+async function findSlackMessageByClientId(
+  client: SlackThreadRepliesClient,
+  input: {
+    botUserId?: string;
+    channel: string;
+    clientMessageId: string;
+    threadTs: string;
+  },
+): Promise<string | undefined> {
+  let cursor: string | undefined;
+  let matchedTs: string | undefined;
+  for (let page = 0; page < MAX_THREAD_SCAN_PAGES; page += 1) {
+    const response = await client.conversations.replies({
+      channel: input.channel,
+      cursor,
+      inclusive: true,
+      limit: MAX_THREAD_PAGE_MESSAGES,
+      ts: input.threadTs,
+    });
+    for (const message of response.messages ?? []) {
+      if (
+        message.client_msg_id !== input.clientMessageId
+        || !message.ts
+        || (input.botUserId && message.user && message.user !== input.botUserId)
+      ) continue;
+      if (matchedTs && matchedTs !== message.ts) {
+        throw new Error("Slack returned multiple messages for one deterministic client message ID.");
+      }
+      matchedTs = message.ts;
+    }
+    const nextCursor = response.response_metadata?.next_cursor?.trim();
+    if (!nextCursor) return matchedTs;
+    cursor = nextCursor;
+  }
+  throw new Error("Slack thread exceeds the bounded delivery reconciliation scan.");
 }
 
 export function formatEnvironmentMessage(

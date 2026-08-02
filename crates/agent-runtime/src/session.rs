@@ -5862,6 +5862,19 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                 | "system"
         )
     });
+    let source_is_conceptual = source_tokens.iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "analogy"
+                | "codename"
+                | "concept"
+                | "example"
+                | "fiction"
+                | "hypothetical"
+                | "metaphor"
+                | "story"
+        )
+    });
     body.split(['.', ';', '!', '?', '\n']).any(|clause| {
         let is_conditional = clause.trim_start().to_ascii_lowercase().starts_with("if ");
         if is_conditional {
@@ -5892,29 +5905,12 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "would"
                 )
         };
-        let subject_before = |index: usize| {
+        let named_subject_before = |index: usize| {
             tokens[..index]
                 .iter()
                 .rev()
-                .find(|candidate| {
-                    !candidate.ends_with("ly")
-                        && !matches!(
-                            candidate.as_str(),
-                            "already"
-                                | "appears"
-                                | "became"
-                                | "currently"
-                                | "earlier"
-                                | "had"
-                                | "has"
-                                | "have"
-                                | "looks"
-                                | "now"
-                                | "reportedly"
-                                | "seems"
-                                | "the"
-                        )
-                })
+                .take(8)
+                .find(|candidate| is_named_source_subject(candidate))
                 .map(String::as_str)
         };
         let finite_state = tokens.iter().enumerate().any(|(index, token)| {
@@ -5935,7 +5931,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                     | "remains"
                     | "shipped"
             ) && index > 0
-                && subject_before(index).is_some_and(is_named_source_subject)
+                && named_subject_before(index).is_some()
         });
         let copular_state = tokens.iter().enumerate().any(|(state_index, token)| {
             let ambiguous_state = matches!(token.as_str(), "green" | "healthy");
@@ -5959,12 +5955,12 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
             else {
                 return false;
             };
-            let subject = subject_before(copula_index);
+            let subject = named_subject_before(copula_index);
             let names_operational_subject = subject.is_some_and(|subject| {
                 is_named_source_subject(subject)
                     && (!ambiguous_state
                         || source_is_operational
-                        || named_source_tokens.contains(subject))
+                        || (named_source_tokens.contains(subject) && !source_is_conceptual))
             });
             tokens[copula_index + 1..state_index].iter().all(|word| {
                 matches!(
@@ -11572,6 +11568,14 @@ mod tests {
             ("do you like atlas?", "i like atlas; atlas recovered."),
             ("do you like atlas?", "i like atlas; atlas has recovered."),
             ("do you like atlas?", "i like atlas; atlas fully recovered."),
+            (
+                "do you like atlas?",
+                "i like atlas; atlas seems to have recovered.",
+            ),
+            (
+                "do you like atlas?",
+                "i like atlas; atlas appears to have recovered.",
+            ),
         ] {
             let mut unsupported_session = synthesis_session.clone();
             unsupported_session.messages[0].text = request.into();
@@ -11592,6 +11596,10 @@ mod tests {
             (
                 "Why is Atlas Green a good codename?",
                 "The codename works because Atlas suggests a map and Green supplies a memorable visual cue.",
+            ),
+            (
+                "Why is Atlas healthy in this story?",
+                "Atlas is healthy in this story because the character learned to ask for help before the burden became isolating.",
             ),
             (
                 "thoughts on conflict?",
