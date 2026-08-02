@@ -5875,14 +5875,16 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                 | "concept"
                 | "example"
                 | "fiction"
+                | "game"
                 | "hypothetical"
                 | "metaphor"
+                | "movie"
+                | "novel"
+                | "parable"
+                | "poem"
                 | "story"
         )
     });
-    if source_is_conceptual && !source_is_operational {
-        return false;
-    }
     body.split(['.', ';', '!', '?', '\n']).any(|clause| {
         let is_conditional = clause.trim_start().to_ascii_lowercase().starts_with("if ");
         if is_conditional {
@@ -5893,6 +5895,22 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
             .filter(|token| !token.is_empty())
             .map(str::to_ascii_lowercase)
             .collect::<Vec<_>>();
+        let conceptual_context_applies = source_is_conceptual
+            && !source_is_operational
+            && !tokens.iter().any(|token| {
+                matches!(
+                    token.as_str(),
+                    "currently"
+                        | "latest"
+                        | "now"
+                        | "outside"
+                        | "production"
+                        | "recently"
+                        | "runtime"
+                        | "service"
+                        | "today"
+                )
+            });
         let is_named_source_subject = |token: &str| {
             token.len() >= 3
                 && source_tokens.contains(token)
@@ -5926,18 +5944,23 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                 token.as_str(),
                 "approved"
                     | "became"
+                    | "broken"
+                    | "degraded"
                     | "deployed"
                     | "disabled"
+                    | "down"
                     | "enabled"
                     | "failed"
                     | "handles"
                     | "landed"
                     | "owned"
                     | "owns"
+                    | "offline"
                     | "passed"
                     | "recovered"
                     | "remains"
                     | "shipped"
+                    | "up"
             ) && index > 0
                 && named_subject_before(index).is_some()
         });
@@ -5947,15 +5970,20 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                 token.as_str(),
                 "approved"
                     | "available"
+                    | "broken"
+                    | "degraded"
                     | "deployed"
                     | "disabled"
+                    | "down"
                     | "enabled"
                     | "green"
                     | "healthy"
                     | "live"
+                    | "offline"
                     | "online"
                     | "operational"
                     | "ready"
+                    | "up"
             ) {
                 return false;
             }
@@ -5979,7 +6007,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                 )
             }) && names_operational_subject
         });
-        finite_state || copular_state
+        (finite_state || copular_state) && !conceptual_context_applies
     })
 }
 
@@ -11588,6 +11616,11 @@ mod tests {
             ),
             ("do you like atlas?", "i like atlas; atlas is online."),
             ("do you like atlas?", "i like atlas; atlas is operational."),
+            ("do you like atlas?", "i like atlas; atlas is down."),
+            ("do you like atlas?", "i like atlas; atlas is offline."),
+            ("do you like atlas?", "i like atlas; atlas is degraded."),
+            ("do you like atlas?", "i like atlas; atlas is broken."),
+            ("do you like atlas?", "i like atlas; atlas is up."),
         ] {
             let mut unsupported_session = synthesis_session.clone();
             unsupported_session.messages[0].text = request.into();
@@ -11616,6 +11649,10 @@ mod tests {
             (
                 "Why did Atlas fail in this story?",
                 "Atlas failed in this story because he refused help.",
+            ),
+            (
+                "Why is Atlas operational in the novel?",
+                "Atlas is operational in the novel because the author needs the machine.",
             ),
             (
                 "thoughts on conflict?",
@@ -11681,6 +11718,17 @@ mod tests {
                 });
         }
 
+        let mut escaped_story_session = synthesis_session.clone();
+        escaped_story_session.messages[0].text =
+            "What do you think about Atlas in this story?".into();
+        candidate = accepted.clone();
+        candidate.claims[0].text = "Atlas is operational right now outside the story.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
+            "a fictional prompt disabled a current operational assertion check"
+        );
+
         let mut malformed_markup_session = synthesis_session.clone();
         malformed_markup_session.messages[0].text = "Thoughts on conflict?".into();
         candidate = accepted.clone();
@@ -11691,6 +11739,14 @@ mod tests {
             validate_grounded_draft(&malformed_markup_session, &candidate, &[], assessment,)
                 .is_err(),
             "session delivery accepted unbalanced Slack emphasis"
+        );
+        candidate.claims[0].text =
+            "My thoughts: conflict* is useful because disagreement surfaces assumptions.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&malformed_markup_session, &candidate, &[], assessment,)
+                .is_err(),
+            "session delivery accepted a stray Slack emphasis closer"
         );
 
         let mut follow_up_session = synthesis_session.clone();

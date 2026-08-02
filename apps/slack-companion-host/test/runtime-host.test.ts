@@ -91,7 +91,7 @@ test("Socket Mode does not acknowledge an event when durable admission fails", a
           body: slackEnvelopeFixture(),
         },
       ),
-      /ENOTDIR|not a directory/u,
+      /ENOTDIR|not a directory|open|directory/u,
     );
     assert.equal(dispatched, false);
     assert.equal(acknowledged, false);
@@ -116,6 +116,36 @@ test("Slack ingress leases recover after a crash without duplicating admission",
     assert.equal(recovered.recordRef, crashed.recordRef);
     await ingress.complete(recovered);
     assert.equal(await ingress.claimNext("worker:complete"), undefined);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("concurrent stale-lease recovery elects one SQLite-fenced worker", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-race-"));
+  let now = new Date("2026-08-02T20:00:00.000Z");
+  try {
+    const first = new FileSlackIngressQueue(root, () => now);
+    const second = new FileSlackIngressQueue(root, () => now);
+    await first.admitEnvelope(slackEnvelopeFixture());
+    assert.ok(await first.claimNext("worker:crashed"));
+    now = new Date("2026-08-02T20:21:00.000Z");
+    const claims = await Promise.all([
+      first.claimNext("worker:first-contender"),
+      second.claimNext("worker:second-contender"),
+    ]);
+    assert.equal(claims.filter(Boolean).length, 1);
+    const winner = claims.find((claim) => claim !== undefined);
+    assert.ok(winner);
+    await assert.rejects(
+      first.complete({
+        ...winner,
+        leaseToken: "stale-or-losing-token",
+      }),
+      /exact live lease/u,
+    );
+    await second.complete(winner);
+    assert.equal(await first.claimNext("worker:after-completion"), undefined);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -2716,7 +2746,7 @@ function slackEnvelopeFixture(): Record<string, unknown> {
       user: "U-ONE",
     },
     team_id: "T-ONE",
-    type: "events_api",
+    type: "event_callback",
   };
 }
 

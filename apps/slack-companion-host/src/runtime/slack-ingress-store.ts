@@ -1,15 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import {
-  link,
-  mkdir,
-  open,
-  readFile,
-  readdir,
-  rename,
-  stat,
-  unlink,
-} from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 const INGRESS_LEASE_MS = 20 * 60 * 1_000;
 const MESSAGE_BINDING_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
@@ -36,12 +28,6 @@ interface SlackIngressRecord {
   schemaVersion: "cerebro-slack-ingress/v1";
 }
 
-interface SlackIngressLease {
-  expiresAt: string;
-  leaseToken: string;
-  workerRef: string;
-}
-
 interface SlackMessageBinding {
   boundAt: string;
   clientMessageId: string;
@@ -59,38 +45,34 @@ export interface SlackIngressClaim {
 }
 
 export class FileSlackIngressQueue {
+  private databaseInstance?: DatabaseSync;
+  private initializeTask?: Promise<void>;
+
   constructor(
     private readonly root: string,
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
   async initialize(): Promise<void> {
-    await Promise.all([
-      mkdir(this.eventsDirectory(), { recursive: true }),
-      mkdir(this.leasesDirectory(), { recursive: true }),
-      mkdir(this.bindingsDirectory(), { recursive: true }),
-    ]);
+    this.initializeTask ??= this.initializeOnce();
+    await this.initializeTask;
   }
 
   async maintain(): Promise<void> {
     await this.initialize();
-    const bindings = await Promise.all(
-      (await readdir(this.bindingsDirectory()))
-        .filter((file) => file.endsWith(".json"))
-        .map(async (file) => {
-          const path = join(this.bindingsDirectory(), file);
-          return { path, modifiedAt: (await stat(path)).mtimeMs };
-        }),
-    );
-    bindings.sort((left, right) => right.modifiedAt - left.modifiedAt);
     const cutoff = this.clock().getTime() - MESSAGE_BINDING_RETENTION_MS;
-    const expired = bindings.filter((binding) => binding.modifiedAt < cutoff);
-    const retained = bindings.filter((binding) => binding.modifiedAt >= cutoff);
-    const overLimit = retained.slice(MAX_MESSAGE_BINDINGS);
-    await Promise.all([...expired, ...overLimit].map(({ path }) => unlink(path)));
-    if (expired.length > 0 || overLimit.length > 0) {
-      await syncDirectory(this.bindingsDirectory());
-    }
+    this.transaction((database) => {
+      database.prepare("DELETE FROM slack_message_bindings WHERE bound_at_ms < ?").run(cutoff);
+      database.prepare(`
+        DELETE FROM slack_message_bindings
+        WHERE request_key IN (
+          SELECT request_key
+          FROM slack_message_bindings
+          ORDER BY bound_at_ms DESC, request_key DESC
+          LIMIT -1 OFFSET ?
+        )
+      `).run(MAX_MESSAGE_BINDINGS);
+    });
   }
 
   async readMessageBinding(
@@ -98,16 +80,15 @@ export class FileSlackIngressQueue {
     clientMessageId: string,
   ): Promise<string | undefined> {
     await this.initialize();
-    try {
-      const binding = JSON.parse(
-        await readFile(this.bindingPath(requestKey), "utf8"),
-      ) as SlackMessageBinding;
-      validateMessageBinding(binding, requestKey, clientMessageId);
-      return binding.messageTs;
-    } catch (error) {
-      if (errorCode(error) === "ENOENT") return undefined;
-      throw error;
-    }
+    const row = this.database().prepare(`
+      SELECT binding_json
+      FROM slack_message_bindings
+      WHERE request_key = ?
+    `).get(requestKey) as { binding_json: string } | undefined;
+    if (!row) return undefined;
+    const binding = JSON.parse(row.binding_json) as SlackMessageBinding;
+    validateMessageBinding(binding, requestKey, clientMessageId);
+    return binding.messageTs;
   }
 
   async bindMessage(
@@ -130,33 +111,36 @@ export class FileSlackIngressQueue {
       requestKey,
       schemaVersion: "cerebro-slack-message-binding/v1",
     };
-    const finalPath = this.bindingPath(requestKey);
-    const temporaryPath = join(
-      this.bindingsDirectory(),
-      `.${digest(requestKey)}.${randomUUID()}.tmp`,
-    );
-    const handle = await open(temporaryPath, "wx", 0o600);
-    try {
-      await handle.writeFile(`${JSON.stringify(binding)}\n`, "utf8");
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    try {
-      await link(temporaryPath, finalPath);
-      await syncDirectory(this.bindingsDirectory());
-    } catch (error) {
-      if (errorCode(error) !== "EEXIST") throw error;
-      const existing = JSON.parse(await readFile(finalPath, "utf8")) as SlackMessageBinding;
-      validateMessageBinding(existing, requestKey, clientMessageId);
-      if (existing.messageTs !== messageTs) {
-        throw new Error("Slack message binding changed for an exact request.");
+    this.transaction((database) => {
+      const row = database.prepare(`
+        SELECT binding_json
+        FROM slack_message_bindings
+        WHERE request_key = ?
+      `).get(requestKey) as { binding_json: string } | undefined;
+      if (row) {
+        const existing = JSON.parse(row.binding_json) as SlackMessageBinding;
+        validateMessageBinding(existing, requestKey, clientMessageId);
+        if (existing.messageTs !== messageTs) {
+          throw new Error("Slack message binding changed for an exact request.");
+        }
+        return;
       }
-    } finally {
-      await unlink(temporaryPath).catch((error: unknown) => {
-        if (errorCode(error) !== "ENOENT") throw error;
-      });
-    }
+      database.prepare(`
+        INSERT INTO slack_message_bindings (
+          request_key,
+          client_message_id,
+          message_ts,
+          bound_at_ms,
+          binding_json
+        ) VALUES (?, ?, ?, ?, ?)
+      `).run(
+        requestKey,
+        clientMessageId,
+        messageTs,
+        this.clock().getTime(),
+        JSON.stringify(binding),
+      );
+    });
   }
 
   async admitEnvelope(body: unknown): Promise<boolean> {
@@ -178,42 +162,55 @@ export class FileSlackIngressQueue {
       requestKey,
       schemaVersion: "cerebro-slack-ingress/v1",
     };
-    const finalPath = this.eventPath(recordRef);
-    const temporaryPath = join(this.eventsDirectory(), `.${recordRef}.${randomUUID()}.tmp`);
-    const handle = await open(temporaryPath, "wx", 0o600);
-    try {
-      await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8");
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    try {
-      await link(temporaryPath, finalPath);
-      await syncDirectory(this.eventsDirectory());
-    } catch (error) {
-      if (errorCode(error) !== "EEXIST") throw error;
-      const existing = await this.readRecord(finalPath);
+    this.transaction((database) => {
+      database.prepare(`
+        INSERT OR IGNORE INTO slack_ingress_events (
+          record_ref,
+          request_key,
+          admitted_at_ms,
+          record_json
+        ) VALUES (?, ?, ?, ?)
+      `).run(recordRef, requestKey, this.clock().getTime(), JSON.stringify(record));
+      const row = database.prepare(`
+        SELECT record_json
+        FROM slack_ingress_events
+        WHERE record_ref = ?
+      `).get(recordRef) as { record_json: string } | undefined;
+      if (!row) throw new Error("Slack ingress durable admission did not commit.");
+      const existing = this.parseRecord(row.record_json);
       if (JSON.stringify(existing.event) !== JSON.stringify(event)) {
         throw new Error("Slack ingress request identity changed after durable admission.");
       }
-    } finally {
-      await unlink(temporaryPath).catch((error: unknown) => {
-        if (errorCode(error) !== "ENOENT") throw error;
-      });
-    }
+    });
     return recordRef;
   }
 
   async claimNext(workerRef: string): Promise<SlackIngressClaim | undefined> {
     if (!workerRef.trim()) throw new Error("Slack ingress worker reference is required.");
     await this.initialize();
-    const files = (await readdir(this.eventsDirectory()))
-      .filter((file) => file.endsWith(".json"))
-      .sort();
-    for (const file of files) {
-      const record = await this.readRecord(join(this.eventsDirectory(), file));
-      const leaseToken = await this.acquireLease(record.recordRef, workerRef);
-      if (!leaseToken) continue;
+    return this.transaction((database) => {
+      const now = this.clock().getTime();
+      database.prepare("DELETE FROM slack_ingress_leases WHERE expires_at_ms <= ?").run(now);
+      const row = database.prepare(`
+        SELECT event.record_json
+        FROM slack_ingress_events AS event
+        LEFT JOIN slack_ingress_leases AS lease
+          ON lease.record_ref = event.record_ref
+        WHERE lease.record_ref IS NULL
+        ORDER BY event.admitted_at_ms ASC, event.record_ref ASC
+        LIMIT 1
+      `).get() as { record_json: string } | undefined;
+      if (!row) return undefined;
+      const record = this.parseRecord(row.record_json);
+      const leaseToken = randomUUID();
+      database.prepare(`
+        INSERT INTO slack_ingress_leases (
+          record_ref,
+          worker_ref,
+          lease_token,
+          expires_at_ms
+        ) VALUES (?, ?, ?, ?)
+      `).run(record.recordRef, workerRef, leaseToken, now + INGRESS_LEASE_MS);
       return {
         event: record.event,
         leaseToken,
@@ -221,90 +218,40 @@ export class FileSlackIngressQueue {
         requestKey: record.requestKey,
         workerRef,
       };
-    }
-    return undefined;
+    });
   }
 
   async complete(claim: SlackIngressClaim): Promise<void> {
-    await this.verifyLease(claim);
-    await unlink(this.eventPath(claim.recordRef)).catch((error: unknown) => {
-      if (errorCode(error) !== "ENOENT") throw error;
+    await this.initialize();
+    this.transaction((database) => {
+      this.verifyLease(database, claim);
+      const result = database.prepare(`
+        DELETE FROM slack_ingress_events
+        WHERE record_ref = ?
+      `).run(claim.recordRef);
+      if (result.changes !== 1) {
+        throw new Error("Slack ingress completion requires one admitted event.");
+      }
     });
-    await syncDirectory(this.eventsDirectory());
-    await this.release(claim);
   }
 
   async release(claim: SlackIngressClaim): Promise<void> {
-    const path = this.leasePath(claim.recordRef);
-    let lease: SlackIngressLease;
-    try {
-      lease = JSON.parse(await readFile(path, "utf8")) as SlackIngressLease;
-    } catch (error) {
-      if (errorCode(error) === "ENOENT") return;
-      throw error;
-    }
-    if (lease.leaseToken !== claim.leaseToken || lease.workerRef !== claim.workerRef) {
-      throw new Error("Slack ingress lease changed before release.");
-    }
-    await unlink(path);
-    await syncDirectory(this.leasesDirectory());
+    await this.initialize();
+    this.transaction((database) => {
+      const row = this.lease(database, claim.recordRef);
+      if (!row) return;
+      if (row.lease_token !== claim.leaseToken || row.worker_ref !== claim.workerRef) {
+        throw new Error("Slack ingress lease changed before release.");
+      }
+      database.prepare(`
+        DELETE FROM slack_ingress_leases
+        WHERE record_ref = ? AND worker_ref = ? AND lease_token = ?
+      `).run(claim.recordRef, claim.workerRef, claim.leaseToken);
+    });
   }
 
-  private async acquireLease(recordRef: string, workerRef: string): Promise<string | undefined> {
-    const path = this.leasePath(recordRef);
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const leaseToken = randomUUID();
-      const lease: SlackIngressLease = {
-        expiresAt: new Date(this.clock().getTime() + INGRESS_LEASE_MS).toISOString(),
-        leaseToken,
-        workerRef,
-      };
-      try {
-        const handle = await open(path, "wx", 0o600);
-        try {
-          await handle.writeFile(`${JSON.stringify(lease)}\n`, "utf8");
-          await handle.sync();
-        } finally {
-          await handle.close();
-        }
-        await syncDirectory(this.leasesDirectory());
-        return leaseToken;
-      } catch (error) {
-        if (errorCode(error) !== "EEXIST") throw error;
-      }
-      let existing: SlackIngressLease | undefined;
-      try {
-        existing = JSON.parse(await readFile(path, "utf8")) as SlackIngressLease;
-      } catch (error) {
-        if (errorCode(error) === "ENOENT") continue;
-      }
-      if (existing && Date.parse(existing.expiresAt) > this.clock().getTime()) return undefined;
-      const stalePath = `${path}.stale.${randomUUID()}`;
-      try {
-        await rename(path, stalePath);
-        await unlink(stalePath);
-      } catch (error) {
-        if (errorCode(error) !== "ENOENT") throw error;
-      }
-    }
-    return undefined;
-  }
-
-  private async verifyLease(claim: SlackIngressClaim): Promise<void> {
-    const lease = JSON.parse(
-      await readFile(this.leasePath(claim.recordRef), "utf8"),
-    ) as SlackIngressLease;
-    if (
-      lease.leaseToken !== claim.leaseToken
-      || lease.workerRef !== claim.workerRef
-      || Date.parse(lease.expiresAt) <= this.clock().getTime()
-    ) {
-      throw new Error("Slack ingress completion requires the exact live lease.");
-    }
-  }
-
-  private async readRecord(path: string): Promise<SlackIngressRecord> {
-    const record = JSON.parse(await readFile(path, "utf8")) as SlackIngressRecord;
+  private parseRecord(serialized: string): SlackIngressRecord {
+    const record = JSON.parse(serialized) as SlackIngressRecord;
     if (
       record.schemaVersion !== "cerebro-slack-ingress/v1"
       || !record.recordRef
@@ -318,28 +265,84 @@ export class FileSlackIngressQueue {
     return record;
   }
 
-  private eventsDirectory(): string {
-    return join(this.root, "slack-ingress", "events");
+  private async initializeOnce(): Promise<void> {
+    await mkdir(this.root, { recursive: true, mode: 0o700 });
+    const database = this.database();
+    database.exec(`
+      PRAGMA busy_timeout = 5000;
+      PRAGMA foreign_keys = ON;
+      PRAGMA journal_mode = DELETE;
+      PRAGMA synchronous = FULL;
+      CREATE TABLE IF NOT EXISTS slack_ingress_events (
+        record_ref TEXT PRIMARY KEY,
+        request_key TEXT NOT NULL UNIQUE,
+        admitted_at_ms INTEGER NOT NULL,
+        record_json TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS slack_ingress_leases (
+        record_ref TEXT PRIMARY KEY REFERENCES slack_ingress_events(record_ref) ON DELETE CASCADE,
+        worker_ref TEXT NOT NULL,
+        lease_token TEXT NOT NULL,
+        expires_at_ms INTEGER NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS slack_message_bindings (
+        request_key TEXT PRIMARY KEY,
+        client_message_id TEXT NOT NULL,
+        message_ts TEXT NOT NULL,
+        bound_at_ms INTEGER NOT NULL,
+        binding_json TEXT NOT NULL
+      ) STRICT;
+    `);
+    await chmod(this.databasePath(), 0o600);
   }
 
-  private bindingsDirectory(): string {
-    return join(this.root, "slack-ingress", "bindings");
+  private database(): DatabaseSync {
+    this.databaseInstance ??= new DatabaseSync(this.databasePath());
+    return this.databaseInstance;
   }
 
-  private bindingPath(requestKey: string): string {
-    return join(this.bindingsDirectory(), `${digest(requestKey)}.json`);
+  private databasePath(): string {
+    return join(this.root, "slack-ingress.sqlite3");
   }
 
-  private leasesDirectory(): string {
-    return join(this.root, "slack-ingress", "leases");
+  private lease(
+    database: DatabaseSync,
+    recordRef: string,
+  ): { lease_token: string; worker_ref: string; expires_at_ms: number } | undefined {
+    return database.prepare(`
+      SELECT lease_token, worker_ref, expires_at_ms
+      FROM slack_ingress_leases
+      WHERE record_ref = ?
+    `).get(recordRef) as {
+      lease_token: string;
+      worker_ref: string;
+      expires_at_ms: number;
+    } | undefined;
   }
 
-  private eventPath(recordRef: string): string {
-    return join(this.eventsDirectory(), `${recordRef}.json`);
+  private transaction<T>(operation: (database: DatabaseSync) => T): T {
+    const database = this.database();
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const result = operation(database);
+      database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
-  private leasePath(recordRef: string): string {
-    return join(this.leasesDirectory(), `${recordRef}.json`);
+  private verifyLease(database: DatabaseSync, claim: SlackIngressClaim): void {
+    const lease = this.lease(database, claim.recordRef);
+    if (
+      !lease
+      || lease.lease_token !== claim.leaseToken
+      || lease.worker_ref !== claim.workerRef
+      || lease.expires_at_ms <= this.clock().getTime()
+    ) {
+      throw new Error("Slack ingress completion requires the exact live lease.");
+    }
   }
 }
 
@@ -348,7 +351,9 @@ export function slackIngressRequestKey(event: SlackIngressEvent): string {
 }
 
 function slackIngressEvent(body: unknown): SlackIngressEvent | undefined {
-  if (!isRecord(body) || body.type !== "events_api" || !isRecord(body.event)) return undefined;
+  if (!isRecord(body) || body.type !== "event_callback" || !isRecord(body.event)) {
+    return undefined;
+  }
   const event = body.event;
   if (event.type !== "app_mention" && event.type !== "message") return undefined;
   const authorization = Array.isArray(body.authorizations)
@@ -439,17 +444,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function errorCode(error: unknown): string | undefined {
-  return isRecord(error) && typeof error.code === "string" ? error.code : undefined;
-}
-
-async function syncDirectory(path: string): Promise<void> {
-  const handle = await open(path, "r");
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
 }

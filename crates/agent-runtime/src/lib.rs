@@ -1574,11 +1574,16 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         && words.iter().enumerate().any(|(predicate_index, word)| {
             if !matches!(
                 *word,
-                "green"
+                "broken"
+                    | "degraded"
+                    | "down"
+                    | "green"
                     | "healthy"
+                    | "offline"
                     | "online"
                     | "operational"
                     | "ready"
+                    | "up"
                     | "working"
                     | "available"
                     | "landed"
@@ -1628,6 +1633,32 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                 });
             (has_subject_bound_verb && !question_explains_generic_subject) || has_time_boundary
         });
+    let named_current_follow_up = generic_state_request
+        && ["now", "today", "currently", "recently", "already", "latest"]
+            .iter()
+            .any(|time| words.contains(time))
+        && clause
+            .split(|character: char| !character.is_alphanumeric())
+            .filter(|token| token.len() >= 3)
+            .any(|token| {
+                token.chars().next().is_some_and(char::is_uppercase)
+                    && !matches!(
+                        token,
+                        "Can"
+                            | "Could"
+                            | "How"
+                            | "Now"
+                            | "Please"
+                            | "Tell"
+                            | "Today"
+                            | "What"
+                            | "When"
+                            | "Where"
+                            | "Which"
+                            | "Who"
+                            | "Why"
+                    )
+            });
     let generic_live_ownership = normalized.contains(" who handles ")
         || normalized.contains(" who owns ")
         || normalized.contains(" owns remediation ")
@@ -1653,6 +1684,7 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         || named_access_boundary
         || present_operational_question
         || generic_live_predicate
+        || named_current_follow_up
         || generic_live_ownership
         || generic_live_capability
         || generic_live_read;
@@ -1803,6 +1835,11 @@ fn presentation_markup_is_balanced(value: &str) -> bool {
                     .is_some_and(char::is_alphanumeric);
                 let clear_intraword_asterisk_close =
                     delimiter == '*' && previous_is_word && next_is_word;
+                let next = remaining[delimiter.len_utf8()..].chars().next();
+                let numeric_infix = delimiter == '*'
+                    && previous.is_some_and(|value| value.is_ascii_digit())
+                    && next.is_some_and(|value| value.is_ascii_digit());
+                let underscore_infix = delimiter == '_' && previous_is_word && next_is_word;
                 if !*open && !previous_is_word && next_is_word {
                     *open = true;
                 } else if *open
@@ -1810,6 +1847,8 @@ fn presentation_markup_is_balanced(value: &str) -> bool {
                     && (!next_is_word || clear_intraword_asterisk_close)
                 {
                     *open = false;
+                } else if !*open && !numeric_infix && !underscore_infix {
+                    return false;
                 }
                 cursor += delimiter.len_utf8();
                 continue;
@@ -3229,6 +3268,9 @@ mod grounding_tests {
             "Explain how a debate is healthy.",
             "Tell me when a debate is healthy.",
             "Why did Atlas fail in this story?",
+            "Why is Atlas operational in the novel?",
+            "Break down this idea for me.",
+            "Why is feeling down hard?",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),
@@ -3248,6 +3290,12 @@ mod grounding_tests {
             "Is Atlas green?",
             "Is Atlas online?",
             "Is Atlas operational?",
+            "Is Atlas down?",
+            "Is Atlas offline?",
+            "Is Atlas degraded?",
+            "Is Atlas broken?",
+            "Is Atlas up?",
+            "What about Atlas now?",
             "Has the rollout landed?",
             "Who handles remediation for Atlas?",
             "Are we able to ship this?",
@@ -3310,6 +3358,8 @@ mod grounding_tests {
             "The source is __healthy.",
             "The source is *healthy.",
             "The source is _healthy.",
+            "The source is healthy*.",
+            "The source is healthy_.",
             "The source is `healthy.",
         ] {
             assert!(
@@ -3318,6 +3368,15 @@ mod grounding_tests {
                 })
                 .is_err(),
                 "unbalanced Slack markup was accepted: {message}"
+            );
+        }
+        for message in ["snake_case remains readable.", "The ratio is 2*3."] {
+            assert!(
+                validate_presentation(&PresentationDecision {
+                    messages: vec![message.into()],
+                })
+                .is_ok(),
+                "literal infix punctuation was misclassified: {message}"
             );
         }
         assert!(
