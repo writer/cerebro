@@ -503,9 +503,7 @@ fn emphasis_suffix_is_well_formed(
         }
         let run_len = index - run_start;
         if !allowed_runs.contains(&run_len) {
-            if allowed_runs == [1]
-                && matches!(run_len, 2 | 3)
-                && index == bytes.len()
+            if index == bytes.len()
                 && clear_prose_suffix_before_stray_closer(value, start, run_start)
             {
                 continue;
@@ -984,6 +982,10 @@ mod tests {
             (
                 "**See https://example.com**—oops**",
                 "*See https://example.com*—oops**",
+            ),
+            (
+                "**See https://example.com**—oops****",
+                "*See https://example.com*—oops****",
             ),
             (
                 "**See https://example.com/a**b%done",
