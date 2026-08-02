@@ -1171,6 +1171,17 @@ fn validate_route(
             "low-confidence routing cannot authorize a lane".into(),
         ));
     }
+    if request_explicitly_requires_investigation(&request.message)
+        && !matches!(
+            decision.lane,
+            ExecutionLane::Investigate | ExecutionLane::Act
+        )
+    {
+        return Err(AgentRuntimeError::InvalidRoute(
+            "the newest request requires current multi-claim synthesis and cannot use a conversation or single-record lookup lane"
+                .into(),
+        ));
+    }
     match decision.lane {
         ExecutionLane::Ignore => Err(AgentRuntimeError::InvalidRoute(
             "transport events are ignored before semantic routing".into(),
@@ -1275,7 +1286,23 @@ fn request_explicitly_requires_current_evidence(message: &str) -> bool {
         ]
         .iter()
         .any(|marker| normalized.contains(marker));
-    (explicit_time_boundary && named_operational_state) || explicit_reconciliation
+    let named_access_boundary = (normalized.contains("visibility")
+        || normalized.contains("access"))
+        && ["source", "connector", "provider", "runtime"]
+            .iter()
+            .any(|marker| normalized.contains(marker));
+    (explicit_time_boundary && named_operational_state)
+        || explicit_reconciliation
+        || named_access_boundary
+}
+
+fn request_explicitly_requires_investigation(message: &str) -> bool {
+    let normalized = message.to_ascii_lowercase();
+    let asks_reconciliation = normalized.contains("reconcile");
+    let asks_ownership = normalized.contains("owner") || normalized.contains("who owns");
+    let asks_trigger = normalized.contains("trigger") || normalized.contains("next check");
+    let asks_closure = normalized.contains("closure") || normalized.contains("closes it");
+    asks_reconciliation && asks_ownership && asks_trigger && asks_closure
 }
 
 fn validate_critique_issues(issues: &[String]) -> Result<(), AgentRuntimeError> {
@@ -2636,6 +2663,17 @@ mod grounding_tests {
         assert!(!request_explicitly_requires_current_evidence(
             "What does evidence freshness mean in a control program?"
         ));
+
+        let synthesis = route_request(
+            "Reconcile Source A's current receipt, identify who owns the gap, state the next check trigger, and tell me what closes it.",
+        );
+        let lookup = RouteDecision {
+            lane: ExecutionLane::Lookup,
+            confidence: RouteConfidence::High,
+            reason: "One current source record should answer this.".into(),
+            requires_current_evidence: true,
+        };
+        assert!(validate_route(&synthesis, &lookup).is_err());
     }
 
     #[test]

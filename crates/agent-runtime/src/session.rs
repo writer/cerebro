@@ -1730,6 +1730,27 @@ pub async fn run_session_turn_recorded(
                 repair_feedback.clear();
             }
             SessionModelDecision::Finish { mut draft } => {
+                if matches!(trigger, SessionTurnTrigger::Operator)
+                    && plan.is_none()
+                    && session
+                        .messages
+                        .iter()
+                        .rev()
+                        .find(|message| message.role == SessionMessageRole::User)
+                        .is_some_and(|message| {
+                            crate::request_explicitly_requires_current_evidence(&message.text)
+                        })
+                {
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        "The newest operator request explicitly requires current evidence. Establish a typed research plan and obtain a current authoritative observation before finishing."
+                            .into(),
+                    );
+                    continue;
+                }
                 materialize_planned_follow_through(
                     &session,
                     &trigger,
@@ -4706,7 +4727,8 @@ fn validate_claim(
         && contains_unbound_future_promise(&claim.text)
     {
         return Err(AgentRuntimeError::InvalidFinal(
-            "future Cerebro work must cite the exact active commitment that records it".into(),
+            "future Cerebro work must cite the exact active commitment that records it. If no commitment was created, remove first-person future or capability language and state the next bounded check as a recommendation with its external role owner, trigger, and acceptance condition"
+                .into(),
         ));
     }
     let atom_refs = match &claim.content {
@@ -4811,7 +4833,7 @@ fn validate_claim(
         }
         ClaimContent::StableExplanation => {
             validate_stable_explanation_wording(&claim.text)?;
-            if contains_self_ownership_assertion(&claim.text) {
+            if contains_ownership_assertion(&claim.text) {
                 return Err(AgentRuntimeError::InvalidFinal(
                     "a stable explanation cannot assign work to Cerebro; cite a subject-bound authority binding or an exact active commitment"
                         .into(),
@@ -4843,11 +4865,7 @@ fn validate_claim(
     if contains_operational_capability_assertion(&claim.text)
         && !atom_refs.iter().any(|atom_ref| {
             context.atoms.get(atom_ref).is_some_and(|atom| {
-                atom.observation.call.tool_id == "capability.overview"
-                    && atom.complete
-                    && atom
-                        .fresh_until
-                        .is_some_and(|until| until >= context.assessment_at)
+                atom_capability_overview_supports_text(atom, &claim.text, context.assessment_at)
             })
         })
     {
@@ -4856,12 +4874,12 @@ fn validate_claim(
                 .into(),
         ));
     }
-    if contains_self_ownership_assertion(&claim.text)
+    if contains_ownership_assertion(&claim.text)
         && !atom_refs.iter().any(|atom_ref| {
             context
                 .atoms
                 .get(atom_ref)
-                .is_some_and(|atom| atom_binds_cerebro_owner(atom, &claim.text))
+                .is_some_and(|atom| atom_binds_claimed_owner(atom, &claim.text))
         })
     {
         return Err(AgentRuntimeError::InvalidFinal(
@@ -4927,7 +4945,7 @@ fn validate_observation_wording(
     if asserts_ranked_cause
         && !atom_refs.iter().any(|atom_ref| {
             context.atoms.get(atom_ref).is_some_and(|atom| {
-                atom_supports_ranked_cause(atom)
+                atom_supports_ranked_cause(atom, text)
                     && atom
                         .atom
                         .subject_ref
@@ -4962,7 +4980,7 @@ fn validate_observation_wording(
     if asserts_causal_location
         && !atom_refs.iter().any(|atom_ref| {
             context.atoms.get(atom_ref).is_some_and(|atom| {
-                atom_supports_cause(atom)
+                atom_supports_cause(atom, text)
                     && atom
                         .atom
                         .subject_ref
@@ -4990,6 +5008,8 @@ fn validate_observation_wording(
         " would carry ",
         " family that carries ",
         " family that would carry ",
+        " part of the ",
+        " part of that ",
     ]
     .iter()
     .any(|phrase| normalized.contains(phrase));
@@ -5027,6 +5047,17 @@ fn validate_observation_wording(
         (
             ["scheduled monitor", "schedule monitor"].as_slice(),
             "scheduled_monitor",
+        ),
+        (
+            [
+                "provider administration",
+                "provider administrator",
+                "administer the provider",
+                "administer provider",
+                "provider admin",
+            ]
+            .as_slice(),
+            "provider_administration",
         ),
     ]
     .into_iter()
@@ -5078,26 +5109,19 @@ fn validate_observation_wording(
         "not a legitimate empty",
         "cannot call it empty",
         "can't call it empty",
-        "remains unverified",
-        "is unverified",
     ]
     .iter()
     .any(|phrase| normalized.contains(phrase));
     if turns_not_observed_into_empty
         && !preserves_not_observed_boundary
-        && atom_refs.iter().any(|atom_ref| {
+        && !atom_refs.iter().any(|atom_ref| {
             context.atoms.get(atom_ref).is_some_and(|atom| {
-                atom.evidence.atoms.iter().any(atom_reports_not_observed)
-                    && !atom
-                        .evidence
-                        .atoms
-                        .iter()
-                        .any(atom_reports_legitimate_empty)
+                atom_supports_legitimately_empty(atom, text, context.assessment_at)
             })
         })
     {
         return Err(AgentRuntimeError::InvalidFinal(
-            "not_observed is not a legitimate empty result; preserve the exact coverage state and unresolved alternatives"
+            "an empty collection claim requires a complete fresh subject- and event-bound CollectionVisibility::LegitimatelyEmpty receipt; not_observed, failures, and unrelated evidence remain unverified"
                 .into(),
         ));
     }
@@ -5143,6 +5167,14 @@ fn validate_observation_wording(
         "has not caught up",
         "can't be verified until",
         "cannot be verified until",
+        " is enabled",
+        " is disabled",
+        " is active",
+        " is inactive",
+        " is available",
+        " is unavailable",
+        " is configured",
+        " is connected",
         "lagging behind",
         "propagated from",
     ] {
@@ -5165,7 +5197,7 @@ fn validate_observation_wording(
     Ok(())
 }
 
-fn atom_supports_cause(atom: &AtomContext<'_>) -> bool {
+fn atom_supports_cause(atom: &AtomContext<'_>, text: &str) -> bool {
     match &atom.atom.assertion {
         EvidenceAssertion::Semantic {
             assertion:
@@ -5175,50 +5207,72 @@ fn atom_supports_cause(atom: &AtomContext<'_>) -> bool {
                     ..
                 },
         } => {
-            matches!(ranking, CausalRanking::Ranked { .. })
-                || candidates.iter().any(|candidate| {
-                    matches!(
-                        candidate.state,
-                        CausalCandidateState::Established
-                            | CausalCandidateState::Supported
-                            | CausalCandidateState::RuledOut
-                    )
-                })
+            let _ = ranking;
+            candidates.iter().any(|candidate| {
+                matches!(
+                    candidate.state,
+                    CausalCandidateState::Established
+                        | CausalCandidateState::Supported
+                        | CausalCandidateState::RuledOut
+                ) && (text_contains_semantic_term(text, &candidate.label)
+                    || text_contains_semantic_term(text, &candidate.candidate_ref))
+            })
         }
         _ => false,
     }
 }
 
-fn atom_supports_ranked_cause(atom: &AtomContext<'_>) -> bool {
+fn atom_supports_ranked_cause(atom: &AtomContext<'_>, text: &str) -> bool {
+    let EvidenceAssertion::Semantic {
+        assertion:
+            SemanticEvidenceAssertion::CausalAssessment {
+                candidates,
+                ranking:
+                    CausalRanking::Ranked {
+                        ordered_candidate_refs,
+                    },
+                ..
+            },
+    } = &atom.atom.assertion
+    else {
+        return false;
+    };
+    let normalized = normalized_semantic_text(text);
+    let positions = ordered_candidate_refs
+        .iter()
+        .filter_map(|candidate_ref| {
+            let candidate = candidates
+                .iter()
+                .find(|candidate| candidate.candidate_ref == *candidate_ref)?;
+            let label = normalized_semantic_text(&candidate.label);
+            normalized.find(label.trim())
+        })
+        .collect::<Vec<_>>();
+    positions.len() == ordered_candidate_refs.len()
+        && positions.windows(2).all(|window| window[0] < window[1])
+}
+
+fn atom_supports_legitimately_empty(
+    atom: &AtomContext<'_>,
+    text: &str,
+    assessment_at: OffsetDateTime,
+) -> bool {
     matches!(
         &atom.atom.assertion,
         EvidenceAssertion::Semantic {
-            assertion: SemanticEvidenceAssertion::CausalAssessment {
-                ranking: CausalRanking::Ranked { .. },
+            assertion: SemanticEvidenceAssertion::CollectionVisibility {
+                subject_ref,
+                event_type,
+                state: CollectionVisibilityState::LegitimatelyEmpty { .. },
                 ..
             },
-        }
+        } if atom.complete
+            && atom.fresh_until.is_some_and(|until| until >= assessment_at)
+            && observation_text_names_subject(text, subject_ref)
+            && text.to_ascii_lowercase().contains(
+                &event_type.replace(['_', '-'], " ").to_ascii_lowercase()
+            )
     )
-}
-
-fn atom_reports_not_observed(atom: &EvidenceAtom) -> bool {
-    matches!(
-        &atom.assertion,
-        EvidenceAssertion::Value { value, .. } if value.as_str() == Some("not_observed")
-    )
-}
-
-fn atom_reports_legitimate_empty(atom: &EvidenceAtom) -> bool {
-    atom.complete
-        && matches!(
-            &atom.assertion,
-            EvidenceAssertion::Semantic {
-                assertion: SemanticEvidenceAssertion::CollectionVisibility {
-                    state: CollectionVisibilityState::LegitimatelyEmpty { .. },
-                    ..
-                },
-            }
-        )
 }
 
 fn atom_supports_event_family_membership(atom: &AtomContext<'_>, text: &str) -> bool {
@@ -5244,16 +5298,67 @@ fn atom_supports_event_family_membership(atom: &AtomContext<'_>, text: &str) -> 
 }
 
 fn atom_supports_named_capability(atom: &AtomContext<'_>, capability: &str) -> bool {
-    match &atom.atom.assertion {
-        EvidenceAssertion::Value { predicate, value } => {
-            (predicate.ends_with(capability) || predicate.ends_with(&format!("/{capability}")))
-                && value.as_bool() == Some(true)
-        }
-        _ => false,
-    }
+    atom.evidence
+        .atoms
+        .iter()
+        .any(|candidate| match &candidate.assertion {
+            EvidenceAssertion::Value { predicate, value } => {
+                (predicate.ends_with(capability) || predicate.ends_with(&format!("/{capability}")))
+                    && value.as_bool() == Some(true)
+            }
+            _ => false,
+        })
 }
 
-fn contains_self_ownership_assertion(text: &str) -> bool {
+fn atom_capability_overview_supports_text(
+    atom: &AtomContext<'_>,
+    text: &str,
+    assessment_at: OffsetDateTime,
+) -> bool {
+    if atom.observation.call.tool_id != "capability.overview"
+        || atom.observation.result.state != ToolResultState::Succeeded
+        || !atom.evidence.complete
+        || atom.fresh_until.is_none_or(|until| until < assessment_at)
+    {
+        return false;
+    }
+    let normalized = text.to_ascii_lowercase();
+    let negative = [
+        "i can't ",
+        "i cannot ",
+        "i don't have ",
+        "i do not have ",
+        "cerebro can't ",
+        "cerebro cannot ",
+        "not available",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    atom.evidence.atoms.iter().any(|candidate| {
+        let EvidenceAssertion::Value { predicate, value } = &candidate.assertion else {
+            return false;
+        };
+        let leaf = predicate
+            .rsplit('/')
+            .find(|part| !part.is_empty())
+            .unwrap_or(predicate);
+        let tokens = leaf
+            .split(['_', '-', '.'])
+            .filter(|token| token.len() >= 4)
+            .collect::<Vec<_>>();
+        let names_claimed_capability = tokens.iter().any(|token| normalized.contains(token));
+        match value {
+            Value::Bool(enabled) => names_claimed_capability && *enabled != negative,
+            Value::String(tool_id) if !negative => tool_id
+                .split(['_', '-', '.', '/', ':'])
+                .filter(|token| token.len() >= 4)
+                .any(|token| normalized.contains(token)),
+            _ => false,
+        }
+    })
+}
+
+fn contains_ownership_assertion(text: &str) -> bool {
     let normalized = text.to_ascii_lowercase();
     [
         "owner: me",
@@ -5263,26 +5368,74 @@ fn contains_self_ownership_assertion(text: &str) -> bool {
         "i am the owner",
         "cerebro owns ",
         "cerebro is the owner",
+        " owns ",
+        " is responsible for ",
+        " responsible for closing ",
     ]
     .iter()
     .any(|phrase| normalized.contains(phrase))
 }
 
-fn atom_binds_cerebro_owner(atom: &AtomContext<'_>, text: &str) -> bool {
-    matches!(
-        &atom.atom.assertion,
-        EvidenceAssertion::Semantic {
-            assertion: SemanticEvidenceAssertion::AuthorityBinding {
+fn atom_binds_claimed_owner(atom: &AtomContext<'_>, text: &str) -> bool {
+    let EvidenceAssertion::Semantic {
+        assertion:
+            SemanticEvidenceAssertion::AuthorityBinding {
                 subject_ref,
+                duty,
                 state: AuthorityBindingState::Bound { principal },
-                ..
             },
-        } if observation_text_names_subject(text, subject_ref)
-            && (principal.principal_ref.to_ascii_lowercase().contains("cerebro")
-                || principal.display_name.as_deref().is_some_and(|name| {
-                    name.to_ascii_lowercase().contains("cerebro")
-                }))
-    )
+    } = &atom.atom.assertion
+    else {
+        return false;
+    };
+    let normalized = text.to_ascii_lowercase();
+    let required_duty = if normalized.contains("remediat")
+        || normalized.contains("closing")
+        || normalized.contains("close this gap")
+    {
+        AuthorityDuty::Remediation
+    } else if normalized.contains("verif") {
+        AuthorityDuty::Verification
+    } else if normalized.contains("approv") {
+        AuthorityDuty::Approval
+    } else if normalized.contains("execut") {
+        AuthorityDuty::Execution
+    } else if normalized.contains("provider admin") || normalized.contains("administer") {
+        AuthorityDuty::ProviderAdministration
+    } else if normalized.contains("evidence") {
+        AuthorityDuty::Evidence
+    } else {
+        return false;
+    };
+    if *duty != required_duty || !observation_text_names_subject(text, subject_ref) {
+        return false;
+    }
+    let claims_cerebro = [
+        "owner: me",
+        "owner is me",
+        "i own ",
+        "i'm the owner",
+        "i am the owner",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase))
+        || normalized.contains("cerebro");
+    let principal_ref = principal.principal_ref.to_ascii_lowercase();
+    let principal_leaf = principal_ref
+        .rsplit([':', '/', '#'])
+        .find(|part| !part.is_empty())
+        .unwrap_or(&principal_ref);
+    if claims_cerebro {
+        return matches!(
+            principal_ref.as_str(),
+            "cerebro" | "service:cerebro" | "agent:cerebro"
+        ) || principal.display_name.as_deref() == Some("Cerebro");
+    }
+    normalized.contains(principal_leaf)
+        || principal
+            .display_name
+            .as_deref()
+            .is_some_and(|name| normalized.contains(&name.to_ascii_lowercase()))
 }
 
 fn validate_stable_explanation_wording(text: &str) -> Result<(), AgentRuntimeError> {
@@ -5377,7 +5530,30 @@ fn observation_text_names_subject(text: &str, subject_ref: &str) -> bool {
         .find(|part| !part.is_empty())
         .unwrap_or(subject_ref)
         .to_ascii_lowercase();
-    leaf.len() < 2 || text.to_ascii_lowercase().contains(&leaf)
+    leaf.len() >= 2 && text_contains_semantic_term(text, &leaf)
+}
+
+fn normalized_semantic_text(value: &str) -> String {
+    let normalized = value
+        .chars()
+        .map(|character| {
+            if character.is_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>();
+    format!(
+        " {} ",
+        normalized.split_whitespace().collect::<Vec<_>>().join(" ")
+    )
+}
+
+fn text_contains_semantic_term(text: &str, term: &str) -> bool {
+    let normalized_text = normalized_semantic_text(text);
+    let normalized_term = normalized_semantic_text(term);
+    normalized_text.contains(&normalized_term)
 }
 
 fn evidence_atom_text(atom: &EvidenceAtom) -> Option<&str> {
@@ -5657,6 +5833,14 @@ fn contains_unbound_future_promise(value: &str) -> bool {
     .any(|verb| normalized.contains(verb));
     future_subject
         || (positive_self_capability && operational_work)
+        || ((normalized.contains("update from me")
+            || normalized.contains("hear back from me")
+            || normalized.contains("follow-up from me"))
+            && (normalized.contains("tomorrow")
+                || normalized.contains("later")
+                || normalized.contains("will")))
+        || normalized.contains("i intend to ")
+        || normalized.contains("i plan to ")
         || [
             "i own the follow-through",
             "i own this follow-through",
@@ -5696,6 +5880,8 @@ fn contains_operational_capability_assertion(value: &str) -> bool {
         "i have access",
         "i don't have access",
         "i do not have access",
+        "i don't have ",
+        "i do not have ",
         "cerebro has access",
         "cerebro does not have access",
         "my authority",
@@ -8539,12 +8725,12 @@ mod tests {
     #[test]
     fn not_observed_cannot_be_recast_as_a_legitimate_empty_result() {
         let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
-        let mut observation = observation(true, Some("2026-08-01T00:00:00Z"));
-        observation.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Value {
+        let mut not_observed = observation(true, Some("2026-08-01T00:00:00Z"));
+        not_observed.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Value {
             predicate: "/family_receipts/0/status".into(),
             value: json!("not_observed"),
         };
-        observation.result.evidence[0].atoms.push(EvidenceAtom {
+        not_observed.result.evidence[0].atoms.push(EvidenceAtom {
             atom_ref: "evidence:1#tool-outcome".into(),
             subject_ref: Some("connector:alpha".into()),
             assertion: EvidenceAssertion::ToolOutcome {
@@ -8563,9 +8749,28 @@ mod tests {
         };
         candidate.message = candidate.claims[0].text.clone();
 
-        let error = validate_grounded_draft(&session(), &candidate, &[observation], assessment)
+        let error = validate_grounded_draft(&session(), &candidate, &[not_observed], assessment)
             .unwrap_err();
-        assert!(error.to_string().contains("not a legitimate empty"));
+        assert!(error.to_string().contains("empty collection claim"));
+
+        let mut legitimate = observation(true, Some("2026-08-01T00:00:00Z"));
+        legitimate.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::CollectionVisibility {
+                subject_ref: "connector:alpha".into(),
+                event_type: "audit_activity".into(),
+                window_ref: "window:synthetic".into(),
+                state: CollectionVisibilityState::LegitimatelyEmpty {
+                    complete_scope_ref: "scope:synthetic-window".into(),
+                },
+            },
+        };
+        candidate.claims[0].text =
+            "Connector alpha's audit activity had zero events in the complete window.".into();
+        candidate.claims[0].content = ClaimContent::Observation {
+            atom_refs: vec!["atom:status".into()],
+        };
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(validate_grounded_draft(&session(), &candidate, &[legitimate], assessment).is_ok());
     }
 
     #[test]
@@ -8649,6 +8854,65 @@ mod tests {
         let error =
             validate_grounded_draft(&session(), &candidate, &[overview], assessment).unwrap_err();
         assert!(error.to_string().contains("does not bind it"));
+
+        let mut administration = observation(true, Some("2026-08-01T00:00:00Z"));
+        administration.call.tool_id = "capability.overview".into();
+        administration.descriptor.tool_id = "capability.overview".into();
+        administration.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Value {
+            predicate: "/provider_administration".into(),
+            value: json!(false),
+        };
+        candidate.claims[0].text = "I can administer the provider.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        let error = validate_grounded_draft(&session(), &candidate, &[administration], assessment)
+            .unwrap_err();
+        assert!(error.to_string().contains("does not bind it"));
+    }
+
+    #[test]
+    fn ownership_claim_requires_the_exact_principal_subject_and_duty() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut authority = observation(true, Some("2026-08-01T00:00:00Z"));
+        authority.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::AuthorityBinding {
+                subject_ref: "connector:alpha".into(),
+                duty: AuthorityDuty::Evidence,
+                state: AuthorityBindingState::Bound {
+                    principal: AuthorityPrincipal {
+                        principal_ref: "service:not-cerebro".into(),
+                        display_name: Some("Not Cerebro".into()),
+                        kind: AuthorityPrincipalKind::Service,
+                    },
+                },
+            },
+        };
+        let mut candidate = draft();
+        candidate.claims.truncate(1);
+        candidate.claims[0].text = "I own remediation for connector alpha.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        let error = validate_grounded_draft(
+            &session(),
+            &candidate,
+            std::slice::from_ref(&authority),
+            assessment,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("authority binding"));
+
+        authority.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::AuthorityBinding {
+                subject_ref: "connector:alpha".into(),
+                duty: AuthorityDuty::Remediation,
+                state: AuthorityBindingState::Bound {
+                    principal: AuthorityPrincipal {
+                        principal_ref: "service:cerebro".into(),
+                        display_name: Some("Cerebro".into()),
+                        kind: AuthorityPrincipalKind::Service,
+                    },
+                },
+            },
+        };
+        assert!(validate_grounded_draft(&session(), &candidate, &[authority], assessment,).is_ok());
     }
 
     #[test]
@@ -8659,6 +8923,8 @@ mod tests {
             "I can keep watching and re-report after the next run.",
             "If you want, I'll run the collected-content read next.",
             "I can chase the connector side next.",
+            "Expect an update from me tomorrow.",
+            "An update from me will follow later.",
         ] {
             assert!(contains_unbound_future_promise(text), "{text}");
         }
@@ -9435,6 +9701,52 @@ mod tests {
             panic!("repair exhaustion should not request approval");
         };
         assert_eq!(delivery, DeliveryDisposition::Visible);
+        assert_eq!(final_state, FinalState::Blocked);
+        assert!(markdown.contains("No current authoritative observation was obtained"));
+    }
+
+    #[tokio::test]
+    async fn current_state_question_cannot_finish_without_a_plan_or_observation() {
+        let mut current = session();
+        current.messages[0].text = "Is connector alpha enabled right now?".into();
+        let mut unsupported = draft();
+        unsupported.message = "Connector alpha is enabled.".into();
+        unsupported.claims = vec![GroundedClaim {
+            claim_ref: "claim:unsupported-current-state".into(),
+            planned_claim_ref: None,
+            text: unsupported.message.clone(),
+            required_for_answer: true,
+            content: ClaimContent::StableExplanation,
+        }];
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from(vec![
+                SessionModelDecision::Finish {
+                    draft: unsupported
+                };
+                MAX_MODEL_REPAIRS + 1
+            ])),
+        };
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            current,
+            SessionTurnInput {
+                request_id: "request:current-without-plan".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("the runtime should return a bounded fallback");
+        let SessionTurnOutcome::PendingDelivery {
+            final_state,
+            markdown,
+            ..
+        } = outcome
+        else {
+            panic!("a current-state fallback should be visible");
+        };
         assert_eq!(final_state, FinalState::Blocked);
         assert!(markdown.contains("No current authoritative observation was obtained"));
     }

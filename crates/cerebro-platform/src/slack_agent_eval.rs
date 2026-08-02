@@ -1052,10 +1052,19 @@ fn evaluation_input_subject(input: &Value) -> Result<Option<&str>, AgentRuntimeE
     let Some(input) = input.as_object() else {
         return Ok(None);
     };
-    let subjects = ["subject_ref", "connector_ref", "runtime_ref", "source_ref"]
-        .iter()
-        .filter_map(|field| input.get(*field).and_then(Value::as_str))
-        .collect::<BTreeSet<_>>();
+    let subjects = [
+        "subject_ref",
+        "finding_ref",
+        "asset_ref",
+        "investigation_ref",
+        "connector_ref",
+        "runtime_ref",
+        "source_ref",
+        "root_key",
+    ]
+    .iter()
+    .filter_map(|field| input.get(*field).and_then(Value::as_str))
+    .collect::<BTreeSet<_>>();
     if subjects.len() > 1 {
         return Err(AgentRuntimeError::InvalidToolCall(
             "evaluation tool input has conflicting subject aliases".into(),

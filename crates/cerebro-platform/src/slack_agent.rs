@@ -2788,6 +2788,7 @@ Operate, do not merely describe a query:
 - Scope authority fields to the subject and capability that emitted them. A source field denying provider administration means Cerebro has no provider-administration authority through that source; it does not prove the operator lacks access, diagnose the provider, or assign the gap to a provider owner.
 - Ask for input only when one precise decision materially changes the action, cannot be inferred from context or tools, and has no safe default. Otherwise proceed with best judgment and name the bounded assumption.
 - Do not promise future work unless you complete it now, leave an exact durable continuation in the structured state, or name the specific blocker and owner. Do not end with generic offers such as “let me know,” “want me to,” or “say the word.”
+- When the evidence leaves an external next check, state it directly as a recommendation: name the external role owner, exact read or decision, trigger, and acceptance condition. Do not phrase that handoff as “I’ll,” “I can,” “want me to,” or another Cerebro promise. A useful bounded handoff is a completed answer, not a passive offer.
 - “Go ahead,” “keep going,” and equivalent approval to perform safe reads means invoke the relevant bound read now. Do not ask for another go-ahead, make the operator trigger work twice, or claim you can run a collected-content, connector-fault, provider, or scheduling read unless the exact bound capability was observed in capability.overview and selected in the active plan.
 - Do not repeat an identical failed optional read merely because the operator says “go ahead” or continues the investigation. Use a different bound read that can answer the active claim, or preserve the failure as a bounded gap. Retry the exact failed input only when the operator explicitly requests that retry or a new observation establishes a material source-state change.
 - Working state in this runtime does not by itself record a new commitment. Never say “I’ll re-check,” “I’ll follow up,” or equivalent future ownership unless this turn actually completes the check. State the trigger, responsible role, and acceptance condition as an open step without pretending it has been scheduled.
@@ -3259,7 +3260,7 @@ impl AgentTools for PlatformAgentTools {
                 _ => Err(AgentRuntimeError::ToolUnavailable(call.tool_id.clone())),
             },
         }?;
-        Ok(atomize_tool_result(call, result))
+        atomize_tool_result(call, result)
     }
 }
 
@@ -3390,23 +3391,8 @@ fn model_capability_catalog(remote: &[ToolDescriptor]) -> Vec<ToolDescriptor> {
 fn atomize_tool_result(
     call: &cerebro_agent_runtime::ToolCall,
     mut result: ToolResult,
-) -> ToolResult {
-    let subject_ref = call
-        .input
-        .as_object()
-        .and_then(|input| {
-            [
-                "subject_ref",
-                "connector_ref",
-                "root_key",
-                "runtime_ref",
-                "source_ref",
-                "query",
-            ]
-            .iter()
-            .find_map(|field| input.get(*field).and_then(Value::as_str))
-        })
-        .map(str::to_owned);
+) -> Result<ToolResult, AgentRuntimeError> {
+    let subject_ref = production_input_subject(&call.input)?.map(str::to_owned);
     for evidence in &mut result.evidence {
         let semantic_assertions = evidence
             .atoms
@@ -3444,7 +3430,32 @@ fn atomize_tool_result(
                 complete: evidence.complete,
             }));
     }
-    result
+    Ok(result)
+}
+
+fn production_input_subject(input: &Value) -> Result<Option<&str>, AgentRuntimeError> {
+    let Some(input) = input.as_object() else {
+        return Ok(None);
+    };
+    let subjects = [
+        "subject_ref",
+        "finding_ref",
+        "asset_ref",
+        "investigation_ref",
+        "connector_ref",
+        "runtime_ref",
+        "source_ref",
+        "root_key",
+    ]
+    .iter()
+    .filter_map(|field| input.get(*field).and_then(Value::as_str))
+    .collect::<BTreeSet<_>>();
+    if subjects.len() > 1 {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "tool input has conflicting subject aliases".into(),
+        ));
+    }
+    Ok(subjects.into_iter().next())
 }
 
 #[async_trait]
@@ -3656,7 +3667,7 @@ impl PlatformAgentTools {
             input: input.input,
         };
         let result = mcp.invoke(request, &provider_call).await?;
-        Ok(atomize_tool_result(&provider_call, result))
+        atomize_tool_result(&provider_call, result)
     }
 
     fn inspect_capability_overview(
@@ -4911,7 +4922,8 @@ mod tests {
                 }],
                 blocker: None,
             },
-        );
+        )
+        .unwrap();
 
         let atoms = &result.evidence[0].atoms;
         assert_eq!(&atoms[..semantic_atoms.len()], semantic_atoms.as_slice());
