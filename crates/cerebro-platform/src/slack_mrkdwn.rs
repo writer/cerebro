@@ -418,18 +418,15 @@ fn raw_url_suffix_continues_path(
     if suffix.as_bytes().contains(&delimiter) {
         return false;
     }
+    if !valid_percent_encoding(suffix) {
+        return false;
+    }
     let mut characters = suffix.chars();
     let Some(first) = characters.next() else {
         return false;
     };
     if first == '%' {
-        let mut encoded = characters.take(2);
-        return encoded
-            .next()
-            .is_some_and(|character| character.is_ascii_hexdigit())
-            && encoded
-                .next()
-                .is_some_and(|character| character.is_ascii_hexdigit());
+        return true;
     }
     let rfc_url_continuation = matches!(
         first,
@@ -443,6 +440,7 @@ fn raw_url_suffix_continues_path(
             | '\''
             | '('
             | ')'
+            | '*'
             | '+'
             | ','
             | ';'
@@ -452,17 +450,37 @@ fn raw_url_suffix_continues_path(
             | '#'
             | ':'
     );
-    if !rfc_url_continuation || !characters.any(char::is_alphanumeric) {
+    if !rfc_url_continuation {
         return false;
     }
-    if first != ':' {
-        return true;
-    }
-    value[url_start..delimiter_start]
+    let has_path_context = value[url_start..delimiter_start]
         .split_once("://")
         .is_some_and(|(_, after_scheme)| {
             after_scheme.contains('/') || after_scheme.contains('?') || after_scheme.contains('#')
-        })
+        });
+    if characters.any(char::is_alphanumeric) && (first != ':' || has_path_context) {
+        return true;
+    }
+    has_path_context
+}
+
+fn valid_percent_encoding(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            index += 1;
+            continue;
+        }
+        if index + 2 >= bytes.len()
+            || !bytes[index + 1].is_ascii_hexdigit()
+            || !bytes[index + 2].is_ascii_hexdigit()
+        {
+            return false;
+        }
+        index += 3;
+    }
+    true
 }
 
 fn emphasis_suffix_is_well_formed(
@@ -910,6 +928,30 @@ mod tests {
             (
                 "**See https://example.com**%done",
                 "*See https://example.com*%done",
+            ),
+            (
+                "**See https://example.com/a**%2F%done",
+                "*See https://example.com/a*%2F%done",
+            ),
+            (
+                "**See https://example.com/a**/b%done",
+                "*See https://example.com/a*/b%done",
+            ),
+            (
+                "__See https://example.com/a__*b",
+                "*See https://example.com/a__*b*",
+            ),
+            (
+                "**See https://example.com/a**/",
+                "*See https://example.com/a**/*",
+            ),
+            (
+                "**See https://example.com/a**;",
+                "*See https://example.com/a**;*",
+            ),
+            (
+                "**See https://example.com/a**?",
+                "*See https://example.com/a**?*",
             ),
         ] {
             let rendered = render_slack_mrkdwn(input);
