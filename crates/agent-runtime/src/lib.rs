@@ -1246,6 +1246,16 @@ fn validate_route(
 
 fn request_explicitly_requires_current_evidence(message: &str) -> bool {
     let normalized = normalized_phrase_text(message);
+    let conceptual_explanation = normalized.contains(" state of the art ")
+        || (normalized.contains(" provider neutral ")
+            && ["architecture", "design", "model", "pattern", "concept"]
+                .iter()
+                .any(|marker| normalized.contains(&format!(" {marker} "))))
+        || normalized.contains(" what does current evidence state mean ")
+        || normalized.contains(" what does evidence state mean ");
+    if conceptual_explanation {
+        return false;
+    }
     let explicit_time_boundary = [
         "current",
         "currently",
@@ -2767,10 +2777,25 @@ mod grounding_tests {
             "That's incorrect, the provider is fine.",
             "What tools have we already covered in this thread?",
             "Please read the statement correctly before replying.",
+            "What is the current state of provider-neutral architecture?",
+            "Explain the current provider-neutral capability model.",
+            "What does current evidence state mean in a provider-neutral system?",
+            "What is the current state of the art for evidence theory?",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),
                 "ordinary conversation was misclassified: {conversational_message}"
+            );
+        }
+        for current_evidence_request in [
+            "What is the current state of Source A?",
+            "Which provider receipts are currently missing?",
+            "Can you inspect the current provider runtime?",
+            "What does the current Source A state mean for today's decision?",
+        ] {
+            assert!(
+                request_explicitly_requires_current_evidence(current_evidence_request),
+                "current evidence request was misclassified: {current_evidence_request}"
             );
         }
 

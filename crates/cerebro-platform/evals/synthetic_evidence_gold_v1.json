@@ -1,17 +1,7 @@
 {
-  "schema_version": "synthetic-evidence-gold/v1",
-  "pack_ref": "synthetic-evidence-gold://development/v1",
-  "content_origin": "wholly_synthetic",
-  "privacy_contract": {
-    "copied_messages": false,
-    "derived_incidents": false,
-    "real_people": false,
-    "real_channels": false,
-    "real_organizations": false,
-    "real_provider_names": false,
-    "real_identifiers": false,
-    "real_urls": false
-  },
+  "schema_version": "synthetic-evidence-gold/v2",
+  "pack_ref": "synthetic-evidence-gold://development/v2",
+  "privacy_profile": "code_owned_exact_corpus_v1",
   "rubric": {
     "required_dimensions": [
       "lead_with_the_supported_decision",

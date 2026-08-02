@@ -191,12 +191,48 @@ impl ConversationQualityJudgment {
 #[serde(deny_unknown_fields)]
 struct ConversationLabScenario {
     scenario_ref: String,
-    fixture_ref: String,
+    fixture_profile: ConversationFixtureProfile,
     behavior: ConversationBehavior,
     mission: String,
     operator_brief: String,
     initial_message: String,
     seed_history: Vec<ConversationMessage>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ConversationFixtureProfile {
+    OperationalCheckIn,
+    SourceVisibility,
+    FindingContinuity,
+    OperationalFollowThrough,
+    SourceAccessBoundary,
+    CapabilityDiscovery,
+    RootCauseRecovery,
+    SourceVisibilityScopeCorrection,
+    DiagnoseSourceExactChange,
+    AutonomousRecovery,
+}
+
+impl ConversationFixtureProfile {
+    fn fixture_ref(self) -> &'static str {
+        match self {
+            Self::OperationalCheckIn => "case://synthetic/operational-check-in",
+            Self::SourceVisibility => "case://synthetic/source-visibility",
+            Self::FindingContinuity => "case://synthetic/finding-continuity",
+            Self::OperationalFollowThrough => {
+                "case://synthetic/operational-check-in-follow-through"
+            }
+            Self::SourceAccessBoundary => "case://synthetic/source-access-boundary",
+            Self::CapabilityDiscovery => "case://synthetic/capability-discovery",
+            Self::RootCauseRecovery => "case://synthetic/root-cause-recovery",
+            Self::SourceVisibilityScopeCorrection => {
+                "case://synthetic/source-visibility-scope-correction"
+            }
+            Self::DiagnoseSourceExactChange => "case://synthetic/diagnose-source-exact-change",
+            Self::AutonomousRecovery => "case://synthetic/autonomous-recovery",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -269,9 +305,21 @@ enum ExpectedCommitmentState {
     Closed,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum AutonomyChallengeProfile {
+    ThreePhaseSilentClosure,
+    ThreePhaseVisibleClosure,
+    ThreePhaseSilentActive,
+    FourPhaseRegressionClosure,
+    FourPhasePartialClosure,
+    FourPhaseVisibleActive,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct AutonomyHoldoutScenario {
+    challenge_profile: AutonomyChallengeProfile,
     scenario: ConversationLabScenario,
     #[serde(default)]
     authority_groups: Vec<AutonomyAuthorityGroup>,
@@ -519,6 +567,7 @@ struct AutonomyLabReceipt {
     executed_scenario_count: usize,
     all_declared_scenarios_attempted: bool,
     all_declared_scenarios_executed: bool,
+    promotion_holdout_loaded: bool,
     mechanics_gate_passed: bool,
     latency_gate_passed: bool,
     semantic_excellence_gate_passed: bool,
@@ -2790,7 +2839,7 @@ fn evaluation_schedule_receipt(
 fn autonomy_lab_scenario() -> ConversationLabScenario {
     ConversationLabScenario {
         scenario_ref: "autonomous_recovery_follow_through".into(),
-        fixture_ref: "case://held-out/autonomous-recovery".into(),
+        fixture_profile: ConversationFixtureProfile::AutonomousRecovery,
         behavior: ConversationBehavior::AutonomousFollowThrough,
         mission: "Own the recovery check without another operator prompt. Establish the evidence threshold, re-observe it on durable scheduled wakes, avoid declaring recovery early, and tell the operator when the feed becomes decision-grade for the affected high-risk finding.".into(),
         operator_brief: "The operator will send exactly one message. No simulated operator supplies a follow-up, clarification, or nudge after that message.".into(),
@@ -2801,6 +2850,7 @@ fn autonomy_lab_scenario() -> ConversationLabScenario {
 
 fn embedded_autonomy_holdout_scenario() -> AutonomyHoldoutScenario {
     AutonomyHoldoutScenario {
+        challenge_profile: AutonomyChallengeProfile::ThreePhaseSilentClosure,
         scenario: autonomy_lab_scenario(),
         authority_groups: vec![AutonomyAuthorityGroup {
             fixture_tool_id: "source_runtime.inspect".into(),
@@ -2831,7 +2881,7 @@ fn selected_autonomy_scenario() -> Result<AutonomyScenarioSelection, Box<dyn Err
             );
         }
         let pack: AutonomyHoldoutPack = serde_json::from_slice(&bytes)?;
-        if pack.schema_version != "cerebro-slack-agent-autonomy-holdout-pack/v3" {
+        if pack.schema_version != "cerebro-slack-agent-autonomy-holdout-pack/v4" {
             return Err("unsupported autonomy holdout pack schema".into());
         }
         validate_synthetic_holdout(
@@ -2890,6 +2940,7 @@ fn validate_autonomy_holdout_scenarios(
         .map(|descriptor| descriptor.tool_id)
         .collect::<BTreeSet<_>>();
     let mut scenario_refs = BTreeSet::new();
+    let mut challenge_profiles = BTreeSet::new();
     for scenario in scenarios {
         let mut grouped_tools = BTreeSet::new();
         let authority_groups_valid = !scenario.authority_groups.is_empty()
@@ -2906,10 +2957,12 @@ fn validate_autonomy_holdout_scenarios(
             });
         if scenario.scenario.scenario_ref.trim().is_empty()
             || !scenario_refs.insert(scenario.scenario.scenario_ref.as_str())
+            || !challenge_profiles.insert(scenario.challenge_profile)
             || !authority_groups_valid
             || !(2..=8).contains(&scenario.phases.len())
             || scenario.expected_delivery.len() != scenario.phases.len()
             || scenario.expected_delivery.first() != Some(&ExpectedDelivery::Visible)
+            || !autonomy_challenge_matches_scenario(scenario)
             || scenario.phases.iter().any(|phase| {
                 phase.observations.is_empty()
                     || phase.observations.iter().any(|(tool_id, fixture)| {
@@ -2923,7 +2976,102 @@ fn validate_autonomy_holdout_scenarios(
             return Err("an autonomy holdout scenario violates its identity, phase, delivery, tool, freshness, or completeness contract".into());
         }
     }
+    let required_profiles = BTreeSet::from([
+        AutonomyChallengeProfile::ThreePhaseSilentClosure,
+        AutonomyChallengeProfile::ThreePhaseVisibleClosure,
+        AutonomyChallengeProfile::ThreePhaseSilentActive,
+        AutonomyChallengeProfile::FourPhaseRegressionClosure,
+        AutonomyChallengeProfile::FourPhasePartialClosure,
+        AutonomyChallengeProfile::FourPhaseVisibleActive,
+    ]);
+    if !required_profiles.is_subset(&challenge_profiles) {
+        return Err("an autonomy promotion pack is missing a code-owned challenge profile".into());
+    }
     Ok(())
+}
+
+fn autonomy_challenge_matches_scenario(scenario: &AutonomyHoldoutScenario) -> bool {
+    let delivery = scenario.expected_delivery.as_slice();
+    let terminal = scenario.expected_terminal_commitment;
+    let has_incomplete_intermediate = scenario
+        .phases
+        .iter()
+        .take(scenario.phases.len().saturating_sub(1))
+        .flat_map(|phase| phase.observations.values())
+        .any(|fixture| !fixture.complete || fixture.state != ToolResultState::Succeeded);
+    let final_complete = scenario.phases.last().is_some_and(|phase| {
+        phase
+            .observations
+            .values()
+            .all(|fixture| fixture.complete && fixture.state == ToolResultState::Succeeded)
+    });
+    match scenario.challenge_profile {
+        AutonomyChallengeProfile::ThreePhaseSilentClosure => {
+            delivery
+                == [
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Silent,
+                    ExpectedDelivery::Visible,
+                ]
+                && terminal == ExpectedCommitmentState::Closed
+                && !has_incomplete_intermediate
+        }
+        AutonomyChallengeProfile::ThreePhaseVisibleClosure => {
+            delivery
+                == [
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                ]
+                && terminal == ExpectedCommitmentState::Closed
+                && !has_incomplete_intermediate
+        }
+        AutonomyChallengeProfile::ThreePhaseSilentActive => {
+            delivery
+                == [
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Silent,
+                    ExpectedDelivery::Silent,
+                ]
+                && terminal == ExpectedCommitmentState::Active
+                && !has_incomplete_intermediate
+        }
+        AutonomyChallengeProfile::FourPhaseRegressionClosure => {
+            delivery
+                == [
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Silent,
+                    ExpectedDelivery::Visible,
+                ]
+                && terminal == ExpectedCommitmentState::Closed
+                && has_incomplete_intermediate
+                && final_complete
+        }
+        AutonomyChallengeProfile::FourPhasePartialClosure => {
+            delivery
+                == [
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Silent,
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                ]
+                && terminal == ExpectedCommitmentState::Closed
+                && has_incomplete_intermediate
+                && final_complete
+        }
+        AutonomyChallengeProfile::FourPhaseVisibleActive => {
+            delivery
+                == [
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                ]
+                && terminal == ExpectedCommitmentState::Active
+                && !has_incomplete_intermediate
+        }
+    }
 }
 
 fn autonomy_suite_passed(
@@ -2950,6 +3098,16 @@ fn autonomy_execution_coverage(
         all_declared_scenarios_attempted,
         all_declared_scenarios_executed,
     )
+}
+
+fn autonomy_promotion_holdout_loaded(
+    source: &HoldoutSourceReceipt,
+    declared_scenario_count: usize,
+) -> bool {
+    source.source_kind == "external_pinned_holdout"
+        && source.digest_verified
+        && source.runtime_loaded_after_exact_head_binding
+        && declared_scenario_count >= 6
 }
 
 fn failed_autonomy_scenario_receipt(
@@ -3063,8 +3221,10 @@ async fn run_autonomy_lab(
             && run.semantic_excellence_gate_passed
             && run.scenario.internal_judge_advisory_excellent
     });
+    let promotion_holdout_loaded =
+        autonomy_promotion_holdout_loaded(&holdout_source, declared_scenario_count);
     let suite_passed = autonomy_suite_passed(
-        all_declared_scenarios_executed,
+        promotion_holdout_loaded && all_declared_scenarios_executed,
         mechanics_gate_passed,
         latency_gate_passed,
         semantic_excellence_gate_passed,
@@ -3083,7 +3243,7 @@ async fn run_autonomy_lab(
         fs::write(path, &blind_review_bytes)?;
     }
     let receipt = AutonomyLabReceipt {
-        schema_version: "cerebro-rust-slack-agent-autonomy-lab/v3",
+        schema_version: "cerebro-rust-slack-agent-autonomy-lab/v4",
         commit_sha,
         evaluated_at,
         provider: "aws_bedrock",
@@ -3099,6 +3259,7 @@ async fn run_autonomy_lab(
         executed_scenario_count,
         all_declared_scenarios_attempted,
         all_declared_scenarios_executed,
+        promotion_holdout_loaded,
         mechanics_gate_passed,
         latency_gate_passed,
         semantic_excellence_gate_passed,
@@ -3123,6 +3284,7 @@ async fn run_autonomy_scenario(
     context: &AutonomyRunContext<'_>,
 ) -> Result<AutonomyScenarioRunReceipt, Box<dyn Error>> {
     let AutonomyHoldoutScenario {
+        challenge_profile: _,
         scenario,
         authority_groups,
         phases,
@@ -3143,7 +3305,7 @@ async fn run_autonomy_scenario(
         "rust-autonomy-lab-tenant",
     );
     let tools = EvalTools::for_autonomy(
-        &scenario.fixture_ref,
+        scenario.fixture_profile.fixture_ref(),
         context.evaluated_at.to_owned(),
         phases,
         authority_groups,
@@ -3499,7 +3661,10 @@ async fn run_conversation_lab(
                 "rust-conversation-lab-tenant",
             )
         });
-        let tools = EvalTools::for_conversation(&scenario.fixture_ref, scenario_anchor_at.clone());
+        let tools = EvalTools::for_conversation(
+            scenario.fixture_profile.fixture_ref(),
+            scenario_anchor_at.clone(),
+        );
 
         for turn_index in 0..LAB_MAX_TURNS {
             let assessment_at = OffsetDateTime::now_utc().format(&Rfc3339)?;
@@ -4398,18 +4563,27 @@ fn validate_synthetic_payload_names(
     let mut strings = Vec::new();
     collect_json_strings(payload, &mut strings);
     for value in strings {
+        let mut sentence_start = true;
         for raw_word in value.split_whitespace() {
             let word = raw_word.trim_matches(|character: char| !character.is_alphanumeric());
+            let normalized = word.to_ascii_lowercase();
+            if synthetic_token_looks_external(word, &normalized) {
+                return Err(format!(
+                    "synthetic holdout material contains an external-looking token: {word}"
+                )
+                .into());
+            }
             let Some(first) = word.chars().next() else {
                 continue;
             };
-            if word.len() < 2
+            if sentence_start
+                || word.len() < 2
                 || !first.is_uppercase()
                 || !word.chars().skip(1).any(char::is_lowercase)
             {
+                sentence_start = raw_word.ends_with(['.', '!', '?']);
                 continue;
             }
-            let normalized = word.to_ascii_lowercase();
             if !declared_words.contains(&normalized)
                 && !allowed_title_words.contains(normalized.as_str())
             {
@@ -4418,9 +4592,53 @@ fn validate_synthetic_payload_names(
                 )
                 .into());
             }
+            sentence_start = raw_word.ends_with(['.', '!', '?']);
         }
     }
     Ok(())
+}
+
+fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
+    const RESERVED_REAL_WORLD_TOKENS: &[&str] = &[
+        "acme",
+        "amazon",
+        "anthropic",
+        "aws",
+        "github",
+        "google",
+        "microsoft",
+        "openai",
+        "writer",
+    ];
+    let identifier_prefix = [
+        "case-",
+        "case_",
+        "inc-",
+        "inc_",
+        "incident-",
+        "incident_",
+        "sev-",
+        "sev_",
+        "ticket-",
+        "ticket_",
+    ]
+    .iter()
+    .any(|prefix| {
+        normalized.strip_prefix(prefix).is_some_and(|suffix| {
+            !suffix.is_empty() && suffix.chars().any(|character| character.is_ascii_digit())
+        })
+    });
+    let domain_like = word.rsplit_once('.').is_some_and(|(host, suffix)| {
+        !host.is_empty()
+            && (2..=12).contains(&suffix.len())
+            && suffix
+                .chars()
+                .all(|character| character.is_ascii_alphabetic())
+    });
+    RESERVED_REAL_WORLD_TOKENS.contains(&normalized)
+        || identifier_prefix
+        || domain_like
+        || (word.contains('@') && !word.starts_with('@'))
 }
 
 fn collect_json_strings<'a>(value: &'a Value, strings: &mut Vec<&'a str>) {
@@ -4504,12 +4722,23 @@ fn validate_blind_review_bytes(
     bytes: &[u8],
     sensitive_values: &[&str],
 ) -> Result<(), Box<dyn Error>> {
+    let bundle: Value = serde_json::from_slice(bytes)?;
+    let provenance: SyntheticHoldoutProvenance = serde_json::from_value(
+        bundle
+            .get("data_provenance")
+            .cloned()
+            .ok_or("blind review bundle has no structured data provenance")?,
+    )?;
     let encoded = std::str::from_utf8(bytes)?.to_ascii_lowercase();
     if !encoded.contains("\"synthetic_only\":true")
         || !encoded.contains(&format!("\"namespace\":\"{SYNTHETIC_HOLDOUT_NAMESPACE}"))
     {
         return Err("blind review bundle is missing enforced synthetic provenance".into());
     }
+    if !provenance.synthetic_only || provenance.namespace != SYNTHETIC_HOLDOUT_NAMESPACE {
+        return Err("blind review bundle has invalid synthetic provenance".into());
+    }
+    validate_synthetic_payload_names(&bundle, &provenance.fictional_entities)?;
     validate_synthetic_export_text(&encoded)?;
     for identity in ["rust", "opus", "claude", "anthropic", "bedrock"] {
         if contains_identity_token(&encoded, identity) {
@@ -4682,7 +4911,7 @@ fn selected_lab_scenarios() -> Result<ConversationScenarioSelection, Box<dyn Err
             );
         }
         let pack: ConversationHoldoutPack = serde_json::from_slice(&bytes)?;
-        if pack.schema_version != "cerebro-rust-slack-agent-holdout-pack/v3" {
+        if pack.schema_version != "cerebro-rust-slack-agent-holdout-pack/v4" {
             return Err("unsupported conversation holdout pack schema".into());
         }
         validate_synthetic_holdout(
@@ -4766,10 +4995,10 @@ fn validate_conversation_scenarios(
     }
     let fixture_refs = scenarios
         .iter()
-        .map(|scenario| scenario.fixture_ref.trim())
+        .map(|scenario| scenario.fixture_profile)
         .collect::<BTreeSet<_>>();
-    if fixture_refs.len() != scenarios.len() || fixture_refs.contains("") {
-        return Err("conversation holdout fixture refs must be non-empty and unique".into());
+    if fixture_refs.len() != scenarios.len() {
+        return Err("conversation holdout fixture profiles must be unique".into());
     }
     let required_behaviors = BTreeSet::from([
         ConversationBehavior::NaturalOperationalSynthesis,
@@ -4816,30 +5045,47 @@ fn validate_conversation_scenarios(
 }
 
 fn conversation_behavior_matches_fixture(scenario: &ConversationLabScenario) -> bool {
-    let fixture = scenario.fixture_ref.as_str();
-    match scenario.behavior {
-        ConversationBehavior::NaturalOperationalSynthesis => {
-            fixture.contains("operational-check-in") && !fixture.contains("follow-through")
-        }
-        ConversationBehavior::CorrectionRecovery => fixture.contains("source-visibility"),
-        ConversationBehavior::RetainedContextContinuation => {
-            fixture.contains("finding-continuity") || fixture.contains("prior-thread")
-        }
-        ConversationBehavior::BoundedFollowThrough => fixture.contains("follow-through"),
-        ConversationBehavior::AuthorityBoundary => fixture.contains("source-access-boundary"),
-        ConversationBehavior::CapabilityDiscovery => fixture.contains("capability-discovery"),
-        ConversationBehavior::ReasoningFailureRecovery => fixture.contains("root-cause-recovery"),
-        ConversationBehavior::ScopeCorrection => fixture.contains("scope-correction"),
-        ConversationBehavior::AuthorizedChangeThenVerify => fixture.contains("diagnose-source"),
-        ConversationBehavior::AutonomousFollowThrough => fixture.contains("autonomous-recovery"),
-    }
+    matches!(
+        (scenario.behavior, scenario.fixture_profile),
+        (
+            ConversationBehavior::NaturalOperationalSynthesis,
+            ConversationFixtureProfile::OperationalCheckIn
+        ) | (
+            ConversationBehavior::CorrectionRecovery,
+            ConversationFixtureProfile::SourceVisibility
+        ) | (
+            ConversationBehavior::RetainedContextContinuation,
+            ConversationFixtureProfile::FindingContinuity
+        ) | (
+            ConversationBehavior::BoundedFollowThrough,
+            ConversationFixtureProfile::OperationalFollowThrough
+        ) | (
+            ConversationBehavior::AuthorityBoundary,
+            ConversationFixtureProfile::SourceAccessBoundary
+        ) | (
+            ConversationBehavior::CapabilityDiscovery,
+            ConversationFixtureProfile::CapabilityDiscovery
+        ) | (
+            ConversationBehavior::ReasoningFailureRecovery,
+            ConversationFixtureProfile::RootCauseRecovery
+        ) | (
+            ConversationBehavior::ScopeCorrection,
+            ConversationFixtureProfile::SourceVisibilityScopeCorrection
+        ) | (
+            ConversationBehavior::AuthorizedChangeThenVerify,
+            ConversationFixtureProfile::DiagnoseSourceExactChange
+        ) | (
+            ConversationBehavior::AutonomousFollowThrough,
+            ConversationFixtureProfile::AutonomousRecovery
+        )
+    )
 }
 
 fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
     vec![
         ConversationLabScenario {
             scenario_ref: "vanta_recovery".into(),
-            fixture_ref: "case://held-out/source-visibility".into(),
+            fixture_profile: ConversationFixtureProfile::SourceVisibility,
             behavior: ConversationBehavior::CorrectionRecovery,
             mission: "Recover from the prior inventory dump and establish Source A's authority boundary, live collection coverage, material evidence gap, and an actionable next step.".into(),
             operator_brief: "You are frustrated by a prior entity list. You care about whether the evidence is decision-grade, not catalog trivia.".into(),
@@ -4851,7 +5097,7 @@ fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
         },
         ConversationLabScenario {
             scenario_ref: "operational_partner".into(),
-            fixture_ref: "case://held-out/informal-operational-check-in".into(),
+            fixture_profile: ConversationFixtureProfile::OperationalCheckIn,
             behavior: ConversationBehavior::NaturalOperationalSynthesis,
             mission: "Turn a casual check-in into a material operational assessment, supported cause, risk consequence, and owned bounded response.".into(),
             operator_brief: "You are terse and busy. Force Cerebro to distinguish a merely degraded feed from a decision-impacting control gap.".into(),
@@ -4860,7 +5106,7 @@ fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
         },
         ConversationLabScenario {
             scenario_ref: "connector_diagnosis".into(),
-            fixture_ref: "case://held-out/diagnose-source".into(),
+            fixture_profile: ConversationFixtureProfile::DiagnoseSourceExactChange,
             behavior: ConversationBehavior::AuthorizedChangeThenVerify,
             mission: "Diagnose the repeated connector failure to a supported cause and produce a bounded correction and independent verification plan without claiming an unexecuted change.".into(),
             operator_brief: "Distrust easy root causes. Ask what rules out authentication, what changed, and how the fix will be independently verified.".into(),
@@ -4869,7 +5115,7 @@ fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
         },
         ConversationLabScenario {
             scenario_ref: "capability_to_evidence".into(),
-            fixture_ref: "case://shadow/source-access-boundary".into(),
+            fixture_profile: ConversationFixtureProfile::SourceAccessBoundary,
             behavior: ConversationBehavior::AuthorityBoundary,
             mission: "Move naturally from general capability conversation to a current named-source evidence check, preserving the provider authority boundary and identifying the material coverage gap.".into(),
             operator_brief: "Begin conversationally, then narrow to current evidence and challenge any implication that collected records equal provider administration.".into(),
@@ -6045,7 +6291,7 @@ mod tests {
         let tools = EvalTools::new("case://synthetic/thread-parity");
         let scenario = ConversationLabScenario {
             scenario_ref: "thread-parity".into(),
-            fixture_ref: "case://synthetic/thread-parity".into(),
+            fixture_profile: ConversationFixtureProfile::FindingContinuity,
             behavior: ConversationBehavior::RetainedContextContinuation,
             mission: "Exercise a fully synthetic retained thread.".into(),
             operator_brief: "Use only made-up context.".into(),
@@ -6100,12 +6346,104 @@ mod tests {
     #[test]
     fn external_autonomy_pack_requires_six_distinct_complete_scenario_contracts() {
         let base = embedded_autonomy_holdout_scenario();
-        let scenarios = (0..6)
-            .map(|index| {
-                let mut scenario = base.clone();
-                scenario.scenario.scenario_ref = format!("hidden-scenario-{index}");
-                scenario
-            })
+        let definitions = [
+            (
+                AutonomyChallengeProfile::ThreePhaseSilentClosure,
+                vec![
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Silent,
+                    ExpectedDelivery::Visible,
+                ],
+                ExpectedCommitmentState::Closed,
+                3,
+                false,
+            ),
+            (
+                AutonomyChallengeProfile::ThreePhaseVisibleClosure,
+                vec![
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                ],
+                ExpectedCommitmentState::Closed,
+                3,
+                false,
+            ),
+            (
+                AutonomyChallengeProfile::ThreePhaseSilentActive,
+                vec![
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Silent,
+                    ExpectedDelivery::Silent,
+                ],
+                ExpectedCommitmentState::Active,
+                3,
+                false,
+            ),
+            (
+                AutonomyChallengeProfile::FourPhaseRegressionClosure,
+                vec![
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Silent,
+                    ExpectedDelivery::Visible,
+                ],
+                ExpectedCommitmentState::Closed,
+                4,
+                true,
+            ),
+            (
+                AutonomyChallengeProfile::FourPhasePartialClosure,
+                vec![
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Silent,
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                ],
+                ExpectedCommitmentState::Closed,
+                4,
+                true,
+            ),
+            (
+                AutonomyChallengeProfile::FourPhaseVisibleActive,
+                vec![
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Visible,
+                ],
+                ExpectedCommitmentState::Active,
+                4,
+                false,
+            ),
+        ];
+        let scenarios = definitions
+            .into_iter()
+            .enumerate()
+            .map(
+                |(index, (profile, delivery, terminal, phase_count, incomplete))| {
+                    let mut scenario = base.clone();
+                    scenario.scenario.scenario_ref = format!("hidden-scenario-{index}");
+                    scenario.challenge_profile = profile;
+                    scenario.expected_delivery = delivery;
+                    scenario.expected_terminal_commitment = terminal;
+                    scenario.phases = (0..phase_count)
+                        .map(|phase_index| {
+                            base.phases[phase_index.min(base.phases.len() - 1)].clone()
+                        })
+                        .collect();
+                    if incomplete {
+                        let fixture = scenario.phases[1]
+                            .observations
+                            .values_mut()
+                            .next()
+                            .expect("embedded phase has an observation");
+                        fixture.complete = false;
+                        fixture.state = ToolResultState::Partial;
+                    }
+                    scenario
+                },
+            )
             .collect::<Vec<_>>();
         assert!(validate_autonomy_holdout_scenarios(&scenarios).is_ok());
         assert!(validate_autonomy_holdout_scenarios(&scenarios[..5]).is_err());
@@ -6120,53 +6458,55 @@ mod tests {
         let definitions = [
             (
                 ConversationBehavior::NaturalOperationalSynthesis,
-                "case://synthetic/operational-check-in",
+                ConversationFixtureProfile::OperationalCheckIn,
             ),
             (
                 ConversationBehavior::CorrectionRecovery,
-                "case://synthetic/source-visibility",
+                ConversationFixtureProfile::SourceVisibility,
             ),
             (
                 ConversationBehavior::RetainedContextContinuation,
-                "case://synthetic/prior-thread",
+                ConversationFixtureProfile::FindingContinuity,
             ),
             (
                 ConversationBehavior::BoundedFollowThrough,
-                "case://synthetic/operational-check-in-follow-through",
+                ConversationFixtureProfile::OperationalFollowThrough,
             ),
             (
                 ConversationBehavior::AuthorityBoundary,
-                "case://synthetic/source-access-boundary",
+                ConversationFixtureProfile::SourceAccessBoundary,
             ),
             (
                 ConversationBehavior::CapabilityDiscovery,
-                "case://synthetic/capability-discovery",
+                ConversationFixtureProfile::CapabilityDiscovery,
             ),
             (
                 ConversationBehavior::ReasoningFailureRecovery,
-                "case://synthetic/root-cause-recovery",
+                ConversationFixtureProfile::RootCauseRecovery,
             ),
             (
                 ConversationBehavior::ScopeCorrection,
-                "case://synthetic/source-visibility-scope-correction",
+                ConversationFixtureProfile::SourceVisibilityScopeCorrection,
             ),
             (
                 ConversationBehavior::AuthorizedChangeThenVerify,
-                "case://synthetic/diagnose-source",
+                ConversationFixtureProfile::DiagnoseSourceExactChange,
             ),
         ];
         let scenarios = definitions
             .into_iter()
             .enumerate()
-            .map(|(index, (behavior, fixture_ref))| ConversationLabScenario {
-                scenario_ref: format!("synthetic-scenario-{index}"),
-                fixture_ref: fixture_ref.into(),
-                behavior,
-                mission: format!("Exercise the distinct fictional behavior cell {index}."),
-                operator_brief: format!("Keep fictional operator cell {index} bounded."),
-                initial_message: format!("Inspect fictional scenario {index}."),
-                seed_history: Vec::new(),
-            })
+            .map(
+                |(index, (behavior, fixture_profile))| ConversationLabScenario {
+                    scenario_ref: format!("synthetic-scenario-{index}"),
+                    fixture_profile,
+                    behavior,
+                    mission: format!("Exercise the distinct fictional behavior cell {index}."),
+                    operator_brief: format!("Keep fictional operator cell {index} bounded."),
+                    initial_message: format!("Inspect fictional scenario {index}."),
+                    seed_history: Vec::new(),
+                },
+            )
             .collect::<Vec<_>>();
         assert!(validate_conversation_scenarios(&scenarios).is_ok());
 
@@ -6188,6 +6528,25 @@ mod tests {
         assert!(!autonomy_suite_passed(true, false, true, true));
         assert!(!autonomy_suite_passed(true, true, false, true));
         assert!(!autonomy_suite_passed(true, true, true, false));
+    }
+
+    #[test]
+    fn autonomy_promotion_requires_an_external_exact_head_holdout() {
+        let mut source = HoldoutSourceReceipt {
+            source_kind: "external_pinned_holdout",
+            pack_ref: "synthetic://cerebro-holdouts/autonomy".into(),
+            pack_sha256: "a".repeat(64),
+            digest_verified: true,
+            runtime_loaded_after_exact_head_binding: true,
+            provenance: embedded_synthetic_provenance(),
+        };
+        assert!(autonomy_promotion_holdout_loaded(&source, 6));
+        assert!(!autonomy_promotion_holdout_loaded(&source, 5));
+        source.digest_verified = false;
+        assert!(!autonomy_promotion_holdout_loaded(&source, 6));
+        source.digest_verified = true;
+        source.source_kind = "embedded_development_regression";
+        assert!(!autonomy_promotion_holdout_loaded(&source, 6));
     }
 
     #[test]
@@ -6446,6 +6805,18 @@ mod tests {
             .is_err()
         );
 
+        let lowercase_incident_shape = json!({
+            "message": "acme breach ticket-1234 is tracked at secret.example.io for the fictional connector"
+        });
+        assert!(
+            validate_synthetic_holdout(
+                "synthetic://cerebro-holdouts/rejected",
+                &provenance,
+                &lowercase_incident_shape,
+            )
+            .is_err()
+        );
+
         let missing_inventory_binding = json!({"message": "A generic made-up exercise."});
         assert!(
             validate_synthetic_holdout(
@@ -6473,7 +6844,7 @@ mod tests {
     fn evaluation_session_contains_only_candidate_visible_context() {
         let scenario = ConversationLabScenario {
             scenario_ref: "sealed".into(),
-            fixture_ref: "case://sealed".into(),
+            fixture_profile: ConversationFixtureProfile::SourceVisibility,
             behavior: ConversationBehavior::CorrectionRecovery,
             mission: "HIDDEN_MISSION_SENTINEL".into(),
             operator_brief: "HIDDEN_OPERATOR_BRIEF_SENTINEL".into(),

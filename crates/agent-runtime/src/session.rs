@@ -6043,7 +6043,7 @@ fn atom_binds_claimed_owner(
     if *duty != required_duty || !text_names_exact_semantic_identity(text, subject_ref) {
         return false;
     }
-    let claims_cerebro = [
+    let claims_first_person_cerebro = [
         "owner: me",
         "owner is me",
         "i own ",
@@ -6051,14 +6051,13 @@ fn atom_binds_claimed_owner(
         "i am the owner",
     ]
     .iter()
-    .any(|phrase| normalized.contains(phrase))
-        || normalized.contains("cerebro");
+    .any(|phrase| normalized.contains(phrase));
     let principal_ref = principal.principal_ref.to_ascii_lowercase();
     let principal_leaf = principal_ref
         .rsplit([':', '/', '#'])
         .find(|part| !part.is_empty())
         .unwrap_or(&principal_ref);
-    if claims_cerebro {
+    if claims_first_person_cerebro {
         return matches!(
             principal_ref.as_str(),
             "cerebro" | "service:cerebro" | "agent:cerebro"
@@ -10241,6 +10240,36 @@ mod tests {
         assert!(
             validate_grounded_draft(&session(), &gapped, &[crosswired_authority], assessment)
                 .is_err()
+        );
+
+        let mut cerebro_beta_authority = observation(true, Some("2026-08-01T00:00:00Z"));
+        cerebro_beta_authority.result.evidence[0].atoms[0].assertion =
+            EvidenceAssertion::Semantic {
+                assertion: SemanticEvidenceAssertion::AuthorityBinding {
+                    subject_ref: "connector:beta".into(),
+                    duty: AuthorityDuty::Remediation,
+                    state: AuthorityBindingState::Bound {
+                        principal: AuthorityPrincipal {
+                            principal_ref: "service:cerebro".into(),
+                            display_name: Some("Cerebro".into()),
+                            kind: AuthorityPrincipalKind::Service,
+                        },
+                    },
+                },
+            };
+        let mut sourced_owner = draft();
+        sourced_owner.claims.truncate(1);
+        sourced_owner.claims[0].text =
+            "Synthetic Team Beta owns remediation for connector beta according to Cerebro.".into();
+        sourced_owner.message = sourced_owner.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &sourced_owner,
+                &[cerebro_beta_authority],
+                assessment,
+            )
+            .is_err()
         );
     }
 
