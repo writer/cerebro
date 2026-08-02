@@ -362,16 +362,66 @@ fn raw_url_emphasis_boundary(
             .chars()
             .next()
             .is_none_or(|character| !character.is_alphanumeric());
-        let suffix_continues_url = value[start + index..end]
-            .chars()
-            .next()
-            .is_some_and(|character| matches!(character, '/' | '?' | '&' | '=' | '#' | '%'));
+        let remaining = &token[index..];
+        let later_run = first_allowed_delimiter_run(remaining, delimiter, allowed_runs);
+        let url_continuation =
+            later_run.map(|later_run| &value[start + index..start + index + later_run]);
+        let suffix_continues_url = url_continuation.is_some_and(|continuation| {
+            continuation.chars().next().is_some_and(|character| {
+                character.is_ascii_alphanumeric()
+                    || matches!(
+                        character,
+                        '-' | '.'
+                            | '_'
+                            | '~'
+                            | '!'
+                            | '$'
+                            | '&'
+                            | '\''
+                            | '('
+                            | ')'
+                            | '*'
+                            | '+'
+                            | ','
+                            | ';'
+                            | '='
+                            | ':'
+                            | '@'
+                            | '/'
+                            | '?'
+                            | '#'
+                            | '%'
+                    )
+            }) && continuation.chars().any(char::is_alphanumeric)
+        });
         if allowed_runs.contains(&run_len)
             && previous_can_close
             && suffix_starts_outside_word
             && !suffix_continues_url
         {
             return Some(start + run_start);
+        }
+    }
+    None
+}
+
+fn first_allowed_delimiter_run(
+    value: &[u8],
+    delimiter: u8,
+    allowed_runs: &[usize],
+) -> Option<usize> {
+    let mut index = 0;
+    while index < value.len() {
+        if value[index] != delimiter {
+            index += 1;
+            continue;
+        }
+        let run_start = index;
+        while index < value.len() && value[index] == delimiter {
+            index += 1;
+        }
+        if allowed_runs.contains(&(index - run_start)) {
+            return Some(run_start);
         }
     }
     None
@@ -668,6 +718,18 @@ mod tests {
             (
                 "**See https://example.com/a**/b**",
                 "*See https://example.com/a**/b*",
+            ),
+            (
+                "**See https://example.com/a**-b**",
+                "*See https://example.com/a**-b*",
+            ),
+            (
+                "**See https://example.com/a**;b**",
+                "*See https://example.com/a**;b*",
+            ),
+            (
+                "**See https://example.com/a**~b**",
+                "*See https://example.com/a**~b*",
             ),
         ] {
             let rendered = render_slack_mrkdwn(input);
