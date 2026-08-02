@@ -392,6 +392,54 @@ pub struct ActionSpec {
     pub input: Value,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StableExplanationId {
+    EvidenceFreshnessDefinition,
+    EvidenceAuthorityBoundary,
+    RecommendationExecutionBoundary,
+    HypothesisAlternativesBoundary,
+    CurrentStateFreshObservationBoundary,
+    CapabilityBindingBoundary,
+    SourceDeclarationProviderPermissionBoundary,
+}
+
+pub const ALL_STABLE_EXPLANATIONS: &[StableExplanationId] = &[
+    StableExplanationId::EvidenceFreshnessDefinition,
+    StableExplanationId::EvidenceAuthorityBoundary,
+    StableExplanationId::RecommendationExecutionBoundary,
+    StableExplanationId::HypothesisAlternativesBoundary,
+    StableExplanationId::CurrentStateFreshObservationBoundary,
+    StableExplanationId::CapabilityBindingBoundary,
+    StableExplanationId::SourceDeclarationProviderPermissionBoundary,
+];
+
+pub const ALL_STABLE_EXPLANATION_IDS: &[&str] = &[
+    "evidence_freshness_definition",
+    "evidence_authority_boundary",
+    "recommendation_execution_boundary",
+    "hypothesis_alternatives_boundary",
+    "current_state_fresh_observation_boundary",
+    "capability_binding_boundary",
+    "source_declaration_provider_permission_boundary",
+];
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CoverageBoundaryKind {
+    ExternalActionOutcomeUnknown,
+    ExternalActionFailed,
+    SourceReadFailedAcceptanceUnverified,
+    PartialReadAcceptanceUnverified,
+    MissingObservationAcceptanceUnverified,
+    BoundedReadsIncomplete,
+    BoundedSourceReadsFailed,
+    AvailableEvidenceIncomplete,
+    NoCurrentAuthoritativeObservation,
+    PartialConclusionUnsupported,
+    BlockedMissingAuthoritativeEvidence,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "basis", rename_all = "snake_case")]
 pub enum ClaimContent {
@@ -421,7 +469,12 @@ pub enum ClaimContent {
         supporting_atom_refs: Vec<String>,
         alternatives: Vec<String>,
     },
-    StableExplanation,
+    StableExplanation {
+        explanation_id: StableExplanationId,
+    },
+    CoverageBoundary {
+        boundary: CoverageBoundaryKind,
+    },
     Question,
 }
 
@@ -2171,28 +2224,28 @@ async fn repair_fallback_outcome(
         }
         SessionTurnTrigger::Operator => None,
     };
-    let coverage_notice = if uncertain_effect.is_some() {
+    let coverage_boundary = if uncertain_effect.is_some() {
         mission.status = SessionStatus::Blocked;
-        "Coverage gap: The external action outcome is unknown. Reconcile the provider state with a fresh observation before another effect. I did not retry the action or record a new follow-up."
+        CoverageBoundaryKind::ExternalActionOutcomeUnknown
     } else if failed_effect.is_some() {
         mission.status = SessionStatus::Blocked;
-        "Coverage gap: The external action failed. No successful effect was recorded, and I did not retry it or record a new follow-up."
+        CoverageBoundaryKind::ExternalActionFailed
     } else if rescheduled_wake.is_some() && !failed_reads.is_empty() {
-        "Coverage gap: The source read failed, so the acceptance condition remains unverified."
+        CoverageBoundaryKind::SourceReadFailedAcceptanceUnverified
     } else if rescheduled_wake.is_some() && !supported.is_empty() {
-        "Coverage gap: The available read is partial, so the acceptance condition remains unverified."
+        CoverageBoundaryKind::PartialReadAcceptanceUnverified
     } else if rescheduled_wake.is_some() {
-        "Coverage gap: No authoritative observation was obtained, so the acceptance condition remains unverified."
+        CoverageBoundaryKind::MissingObservationAcceptanceUnverified
     } else if !failed_reads.is_empty() && !supported.is_empty() {
-        "Coverage gap: One or more bounded reads failed. Every successful observation remains usable, but each failed read stays an explicit gap and the full requested conclusion is unverified."
+        CoverageBoundaryKind::BoundedReadsIncomplete
     } else if !failed_reads.is_empty() {
-        "Coverage gap: The bounded source reads failed. I did not evaluate the requested condition, execute an action, or record a new follow-up."
+        CoverageBoundaryKind::BoundedSourceReadsFailed
     } else if !supported.is_empty() {
-        "Coverage gap: The available evidence does not support the full requested conclusion. No action or future follow-up was recorded."
+        CoverageBoundaryKind::AvailableEvidenceIncomplete
     } else {
-        "Coverage gap: No current authoritative observation was obtained. I did not evaluate the requested condition, execute an action, or record a new follow-up."
-    }
-    .to_owned();
+        CoverageBoundaryKind::NoCurrentAuthoritativeObservation
+    };
+    let coverage_notice = render_coverage_boundary(coverage_boundary).to_owned();
     let (state, mut message, mut claims) = if let Some((summary, atom_ref)) = uncertain_effect {
         let notice = format!("\n\n{coverage_notice}");
         (
@@ -2345,7 +2398,9 @@ async fn repair_fallback_outcome(
                 planned_claim_ref: None,
                 text: coverage_notice.clone(),
                 required_for_answer: true,
-                content: ClaimContent::StableExplanation,
+                content: ClaimContent::CoverageBoundary {
+                    boundary: coverage_boundary,
+                },
             }],
         )
     };
@@ -3094,16 +3149,12 @@ fn normalize_coverage_notice(draft: &mut GroundedDraft, _observations: &[ToolObs
         draft.coverage_notice = Some(visible_boundary);
         return;
     }
-    let notice: String = match draft.state {
-        FinalState::Partial => {
-            "Coverage gap: The requested conclusion remains only partially supported.".into()
-        }
-        FinalState::Blocked => {
-            "Coverage gap: The requested conclusion is blocked by missing authoritative evidence."
-                .into()
-        }
+    let boundary = match draft.state {
+        FinalState::Partial => CoverageBoundaryKind::PartialConclusionUnsupported,
+        FinalState::Blocked => CoverageBoundaryKind::BlockedMissingAuthoritativeEvidence,
         _ => unreachable!("coverage normalization is restricted to partial and blocked drafts"),
     };
+    let notice = render_coverage_boundary(boundary).to_owned();
     draft.coverage_notice = Some(notice.clone());
     if !draft.message.contains(&notice) {
         let visible_notice = format!("\n\n{notice}");
@@ -3113,7 +3164,7 @@ fn normalize_coverage_notice(draft: &mut GroundedDraft, _observations: &[ToolObs
             planned_claim_ref: None,
             text: visible_notice,
             required_for_answer: true,
-            content: ClaimContent::StableExplanation,
+            content: ClaimContent::CoverageBoundary { boundary },
         });
     }
 }
@@ -3315,7 +3366,8 @@ fn claim_evidence_atom_refs(content: &ClaimContent) -> &[String] {
         ClaimContent::OperatorContext { .. }
         | ClaimContent::RetainedPlan { .. }
         | ClaimContent::Commitment { .. }
-        | ClaimContent::StableExplanation
+        | ClaimContent::StableExplanation { .. }
+        | ClaimContent::CoverageBoundary { .. }
         | ClaimContent::Question => &[],
     }
 }
@@ -4725,6 +4777,8 @@ pub fn validate_grounded_draft(
         open_loops: &open_loops,
         commitments: &commitments,
         messages: &message_sequence,
+        question: draft.question.as_deref(),
+        coverage_notice: draft.coverage_notice.as_deref(),
         assessment_at,
         final_state: draft.state,
     };
@@ -4864,8 +4918,78 @@ struct ClaimValidationContext<'a, 'b> {
     open_loops: &'a BTreeSet<&'a str>,
     commitments: &'a BTreeMap<&'a str, &'a Commitment>,
     messages: &'a BTreeMap<u64, &'a SessionMessage>,
+    question: Option<&'a str>,
+    coverage_notice: Option<&'a str>,
     assessment_at: OffsetDateTime,
     final_state: FinalState,
+}
+
+pub fn render_stable_explanation(explanation_id: StableExplanationId) -> &'static str {
+    match explanation_id {
+        StableExplanationId::EvidenceFreshnessDefinition => {
+            "Evidence freshness is the observation reuse window."
+        }
+        StableExplanationId::EvidenceAuthorityBoundary => {
+            "Evidence of provider execution does not grant remediation or approval authority."
+        }
+        StableExplanationId::RecommendationExecutionBoundary => {
+            "A recommendation proposes an action; it does not prove the action ran."
+        }
+        StableExplanationId::HypothesisAlternativesBoundary => {
+            "A hypothesis preserves plausible alternatives until evidence distinguishes them."
+        }
+        StableExplanationId::CurrentStateFreshObservationBoundary => {
+            "A current-state conclusion requires a fresh authoritative observation."
+        }
+        StableExplanationId::CapabilityBindingBoundary => {
+            "An operational capability exists only when a current tool binding declares the required authority and effect."
+        }
+        StableExplanationId::SourceDeclarationProviderPermissionBoundary => {
+            "A source declaration does not prove provider-side permission."
+        }
+    }
+}
+
+fn render_coverage_boundary(boundary: CoverageBoundaryKind) -> &'static str {
+    match boundary {
+        CoverageBoundaryKind::ExternalActionOutcomeUnknown => {
+            "Coverage gap: The external action outcome is unknown. Reconcile the provider state with a fresh observation before another effect. I did not retry the action or record a new follow-up."
+        }
+        CoverageBoundaryKind::ExternalActionFailed => {
+            "Coverage gap: The external action failed. No successful effect was recorded, and I did not retry it or record a new follow-up."
+        }
+        CoverageBoundaryKind::SourceReadFailedAcceptanceUnverified => {
+            "Coverage gap: The source read failed, so the acceptance condition remains unverified."
+        }
+        CoverageBoundaryKind::PartialReadAcceptanceUnverified => {
+            "Coverage gap: The available read is partial, so the acceptance condition remains unverified."
+        }
+        CoverageBoundaryKind::MissingObservationAcceptanceUnverified => {
+            "Coverage gap: No authoritative observation was obtained, so the acceptance condition remains unverified."
+        }
+        CoverageBoundaryKind::BoundedReadsIncomplete => {
+            "Coverage gap: One or more bounded reads failed. Every successful observation remains usable, but each failed read stays an explicit gap and the full requested conclusion is unverified."
+        }
+        CoverageBoundaryKind::BoundedSourceReadsFailed => {
+            "Coverage gap: The bounded source reads failed. I did not evaluate the requested condition, execute an action, or record a new follow-up."
+        }
+        CoverageBoundaryKind::AvailableEvidenceIncomplete => {
+            "Coverage gap: The available evidence does not support the full requested conclusion. No action or future follow-up was recorded."
+        }
+        CoverageBoundaryKind::NoCurrentAuthoritativeObservation => {
+            "Coverage gap: No current authoritative observation was obtained. I did not evaluate the requested condition, execute an action, or record a new follow-up."
+        }
+        CoverageBoundaryKind::PartialConclusionUnsupported => {
+            "Coverage gap: The requested conclusion remains only partially supported."
+        }
+        CoverageBoundaryKind::BlockedMissingAuthoritativeEvidence => {
+            "Coverage gap: The requested conclusion is blocked by missing authoritative evidence."
+        }
+    }
+}
+
+fn text_matches_registered_rendering(text: &str, rendering: &str) -> bool {
+    text.trim() == rendering
 }
 
 fn validate_claim(
@@ -4981,29 +5105,48 @@ fn validate_claim(
             }
             return Ok(());
         }
-        ClaimContent::StableExplanation => {
-            validate_stable_explanation_wording(&claim.text)?;
-            if contains_ownership_assertion(&claim.text) {
+        ClaimContent::StableExplanation { explanation_id } => {
+            if !text_matches_registered_rendering(
+                &claim.text,
+                render_stable_explanation(*explanation_id),
+            ) {
                 return Err(AgentRuntimeError::InvalidFinal(
-                    "a stable explanation cannot assign work to Cerebro; cite a subject-bound authority binding or an exact active commitment"
-                        .into(),
-                ));
-            }
-            if contains_operational_capability_assertion(&claim.text) {
-                return Err(AgentRuntimeError::InvalidFinal(
-                    "a stable explanation cannot assert a specific operational capability or authority; use current capability evidence and name only the bound tools and declared authority it establishes"
-                        .into(),
-                ));
-            }
-            if contains_provider_behavior_assertion(&claim.text) {
-                return Err(AgentRuntimeError::InvalidFinal(
-                    "a stable explanation cannot assert provider behavior, ownership, downstream dependency, cause, or predicted outcome; use an observation or a qualified hypothesis with evidence atoms"
+                    "stable explanation text must exactly match its registered runtime rendering"
                         .into(),
                 ));
             }
             return Ok(());
         }
-        ClaimContent::Question => return Ok(()),
+        ClaimContent::CoverageBoundary { boundary } => {
+            let rendering = render_coverage_boundary(*boundary);
+            if !matches!(
+                context.final_state,
+                FinalState::Partial | FinalState::Blocked
+            ) || context.coverage_notice.map(str::trim) != Some(rendering)
+                || !text_matches_registered_rendering(&claim.text, rendering)
+            {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "coverage boundary must exactly match the registered notice for a partial or blocked draft"
+                        .into(),
+                ));
+            }
+            return Ok(());
+        }
+        ClaimContent::Question => {
+            let text = claim.text.trim();
+            let one_interrogative = text.ends_with('?')
+                && text.matches('?').count() == 1
+                && !text[..text.len() - 1].contains(['.', '!', ';', '\n']);
+            if context.final_state != FinalState::NeedsInput
+                || context.question.map(str::trim) != Some(text)
+                || !one_interrogative
+            {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "question claim text must be the draft's exact single interrogative".into(),
+                ));
+            }
+            return Ok(());
+        }
     };
 
     if atom_refs.is_empty() {
@@ -5925,6 +6068,7 @@ fn contains_ownership_assertion(text: &str) -> bool {
         " belongs to ",
         " rests with ",
         " has responsibility for ",
+        " bears responsibility for ",
         " is tasked with ",
         " falls to ",
         "owner —",
@@ -6176,6 +6320,9 @@ fn syntactically_binds_principal_to_duty(
                 format!(" {principal} has responsibility for {duty_phrase} for {subject} "),
                 format!(" {principal} has responsibility for {duty_phrase} on {subject} "),
                 format!(" {principal} has responsibility for {duty_phrase} of {subject} "),
+                format!(" {principal} bears responsibility for {duty_phrase} for {subject} "),
+                format!(" {principal} bears responsibility for {duty_phrase} on {subject} "),
+                format!(" {principal} bears responsibility for {duty_phrase} of {subject} "),
                 format!(" {principal} is tasked with {duty_phrase} for {subject} "),
                 format!(" {principal} is tasked with {duty_phrase} on {subject} "),
                 format!(" {principal} is tasked with {duty_phrase} of {subject} "),
@@ -6254,37 +6401,6 @@ fn text_names_exact_semantic_identity(text: &str, identity_ref: &str) -> bool {
                             )
                         })
             })
-}
-
-fn validate_stable_explanation_wording(text: &str) -> Result<(), AgentRuntimeError> {
-    let normalized = text.to_ascii_lowercase();
-    let presents_dynamic_state = [
-        "this check",
-        "currently",
-        "changed from",
-        "arrived stale",
-        "came in stale",
-        "hasn't caught up",
-        "has not caught up",
-        "can't be verified until",
-        "cannot be verified until",
-    ]
-    .iter()
-    .any(|phrase| normalized.contains(phrase))
-        || ((normalized.contains(" is healthy") || normalized.contains(" are healthy"))
-            && !normalized.contains(" means "));
-    if presents_dynamic_state
-        || (contains_raw_machine_field_syntax(text)
-            && ["confirms", "reports", "shows", "changed", "remains"]
-                .iter()
-                .any(|verb| normalized.contains(verb)))
-    {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "a stable explanation cannot carry a current observation, transition, or causal dependency; use an evidence-bound claim"
-                .into(),
-        ));
-    }
-    Ok(())
 }
 
 fn contains_raw_machine_field_syntax(text: &str) -> bool {
@@ -6650,6 +6766,8 @@ fn contains_unbound_future_promise(value: &str) -> bool {
     .iter()
     .any(|verb| normalized.contains(verb));
     let subjectless_follow_through = [
+        "check",
+        "inspection",
         "recheck",
         "re-check",
         "follow-up",
@@ -6663,6 +6781,7 @@ fn contains_unbound_future_promise(value: &str) -> bool {
             "will follow",
             "will happen",
             "is scheduled",
+            "is due",
             "will be sent",
             "will be posted",
         ]
@@ -6738,6 +6857,11 @@ fn contains_operational_capability_assertion(value: &str) -> bool {
         "we're allowed to ",
         "we are allowed to ",
         "cerebro is allowed to ",
+        "i'm empowered to ",
+        "i am empowered to ",
+        "we're empowered to ",
+        "we are empowered to ",
+        "cerebro is empowered to ",
         "my authority",
         "our authority",
         "my line stops",
@@ -6787,43 +6911,6 @@ fn contains_operational_capability_assertion(value: &str) -> bool {
     .iter()
     .any(|verb| normalized.contains(verb));
     asserts_self_capability && operational_verb
-}
-
-fn contains_provider_behavior_assertion(value: &str) -> bool {
-    let normalized = value.to_ascii_lowercase();
-    let names_operational_domain = [
-        "provider",
-        "source",
-        "connector",
-        "audit activity",
-        "finding",
-        "asset",
-        "evidence packet",
-        "runtime",
-    ]
-    .iter()
-    .any(|subject| normalized.contains(subject));
-    let asserts_behavior_or_dependency = [
-        "bursty",
-        "should report",
-        "will report",
-        "argues for",
-        "points to",
-        "depends on",
-        "downstream",
-        " owner",
-        "inside ",
-        "fixing",
-        "repairing",
-        "caused",
-        "likely",
-        "probably",
-        "usually",
-        "inherently",
-    ]
-    .iter()
-    .any(|assertion| normalized.contains(assertion));
-    names_operational_domain && asserts_behavior_or_dependency
 }
 
 #[cfg(test)]
@@ -7685,7 +7772,9 @@ mod tests {
             planned_claim_ref: None,
             text: promise.message.clone(),
             required_for_answer: true,
-            content: ClaimContent::StableExplanation,
+            content: ClaimContent::StableExplanation {
+                explanation_id: StableExplanationId::EvidenceFreshnessDefinition,
+            },
         }];
 
         let error = validate_grounded_draft(
@@ -9370,7 +9459,9 @@ mod tests {
             planned_claim_ref: None,
             text: partial.message.clone(),
             required_for_answer: true,
-            content: ClaimContent::StableExplanation,
+            content: ClaimContent::StableExplanation {
+                explanation_id: StableExplanationId::EvidenceFreshnessDefinition,
+            },
         }];
 
         normalize_coverage_notice(
@@ -9395,7 +9486,7 @@ mod tests {
             planned_claim_ref: None,
             text: handback.into(),
             required_for_answer: false,
-            content: ClaimContent::StableExplanation,
+            content: ClaimContent::Question,
         });
 
         normalize_passive_wake_handback(
@@ -9472,7 +9563,9 @@ mod tests {
             .to_string()
             .contains("natural language")
         );
-        raw_field.claims[0].content = ClaimContent::StableExplanation;
+        raw_field.claims[0].content = ClaimContent::StableExplanation {
+            explanation_id: StableExplanationId::EvidenceFreshnessDefinition,
+        };
         assert!(
             validate_grounded_draft(
                 &session(),
@@ -9535,9 +9628,9 @@ mod tests {
     }
 
     #[test]
-    fn stable_explanations_reject_specific_capability_and_provider_behavior_claims() {
+    fn stable_explanations_accept_only_the_selected_registered_rendering() {
         let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
-        for text in [
+        let unregistered = [
             "I can inspect Slack and pull evidence packets.",
             "I cannot access the provider admin console.",
             "Cerebro can schedule a recheck.",
@@ -9551,23 +9644,116 @@ mod tests {
             "Remediation for connector beta is in Cerebro's hands.",
             "I'm authorized to administer the provider.",
             "Cerebro is permitted to change the provider configuration.",
-        ] {
-            let mut candidate = draft();
-            candidate.claims[0].text = text.into();
-            candidate.claims[0].content = ClaimContent::StableExplanation;
-            candidate.message = text.into();
-            assert!(
-                validate_grounded_draft(&session(), &candidate, &[], assessment).is_err(),
-                "stable explanation unexpectedly accepted: {text}"
+            "Cerebro bears responsibility for remediation of connector beta.",
+            "Cerebro is empowered to administer the provider.",
+            "The next inspection is due tomorrow.",
+        ];
+
+        for (&explanation_id, &serialized_id) in ALL_STABLE_EXPLANATIONS
+            .iter()
+            .zip(ALL_STABLE_EXPLANATION_IDS)
+        {
+            assert_eq!(
+                serde_json::to_value(explanation_id).unwrap(),
+                json!(serialized_id)
             );
+
+            let rendering = render_stable_explanation(explanation_id);
+            let mut exact = draft();
+            exact.claims.truncate(1);
+            exact.claims[0].planned_claim_ref = None;
+            exact.claims[0].text = rendering.into();
+            exact.claims[0].content = ClaimContent::StableExplanation { explanation_id };
+            exact.message = rendering.into();
+            assert!(
+                validate_grounded_draft(&session(), &exact, &[], assessment).is_ok(),
+                "registered explanation unexpectedly rejected: {serialized_id}"
+            );
+
+            let mut mutation = exact.clone();
+            mutation.claims[0].text.push('!');
+            mutation.message = mutation.claims[0].text.clone();
+            assert!(
+                validate_grounded_draft(&session(), &mutation, &[], assessment)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("registered runtime rendering")
+            );
+
+            for text in unregistered {
+                assert!(
+                    !text_matches_registered_rendering(text, rendering),
+                    "unregistered prose matched {serialized_id}: {text}"
+                );
+            }
         }
 
         assert!(!contains_operational_capability_assertion(
             "I can explain the difference between evidence and authority."
         ));
-        assert!(!contains_provider_behavior_assertion(
-            "A source declaration does not prove provider-side permission."
-        ));
+        let mut generic = draft();
+        generic.claims.truncate(1);
+        generic.claims[0].planned_claim_ref = None;
+        generic.claims[0].text =
+            "A source declaration does not prove provider-side permission.".into();
+        generic.claims[0].content = ClaimContent::StableExplanation {
+            explanation_id: StableExplanationId::SourceDeclarationProviderPermissionBoundary,
+        };
+        generic.message = generic.claims[0].text.clone();
+        assert!(validate_grounded_draft(&session(), &generic, &[], assessment).is_ok());
+    }
+
+    #[test]
+    fn question_claims_bind_to_the_exact_single_draft_question() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut candidate = draft();
+        candidate.state = FinalState::NeedsInput;
+        candidate.claims.truncate(1);
+        candidate.claims[0].planned_claim_ref = None;
+        candidate.claims[0].text = "Which connector should I inspect?".into();
+        candidate.claims[0].content = ClaimContent::Question;
+        candidate.message = candidate.claims[0].text.clone();
+        candidate.question = Some(candidate.message.clone());
+        assert!(validate_grounded_draft(&session(), &candidate, &[], assessment).is_ok());
+
+        let mut answered = candidate.clone();
+        answered.state = FinalState::Answered;
+        assert!(validate_grounded_draft(&session(), &answered, &[], assessment).is_err());
+
+        let mut mismatched = candidate.clone();
+        mismatched.question = Some("Which source should I inspect?".into());
+        assert!(validate_grounded_draft(&session(), &mismatched, &[], assessment).is_err());
+
+        let mut compound = candidate;
+        compound.claims[0].text =
+            "Cerebro owns remediation. Which connector should I inspect?".into();
+        compound.message = compound.claims[0].text.clone();
+        compound.question = Some(compound.message.clone());
+        assert!(validate_grounded_draft(&session(), &compound, &[], assessment).is_err());
+    }
+
+    #[test]
+    fn coverage_boundaries_bind_to_partial_or_blocked_state_and_exact_notice() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let boundary = CoverageBoundaryKind::PartialConclusionUnsupported;
+        let rendering = render_coverage_boundary(boundary);
+        let mut candidate = draft();
+        candidate.state = FinalState::Partial;
+        candidate.claims.truncate(1);
+        candidate.claims[0].planned_claim_ref = None;
+        candidate.claims[0].text = rendering.into();
+        candidate.claims[0].content = ClaimContent::CoverageBoundary { boundary };
+        candidate.message = rendering.into();
+        candidate.coverage_notice = Some(rendering.into());
+        assert!(validate_grounded_draft(&session(), &candidate, &[], assessment).is_ok());
+
+        let mut answered = candidate.clone();
+        answered.state = FinalState::Answered;
+        assert!(validate_grounded_draft(&session(), &answered, &[], assessment).is_err());
+
+        let mut mismatched = candidate;
+        mismatched.coverage_notice = Some("Coverage gap: another notice.".into());
+        assert!(validate_grounded_draft(&session(), &mismatched, &[], assessment).is_err());
     }
 
     #[test]
@@ -10437,6 +10623,7 @@ mod tests {
             "Synthetic Team Beta has responsibility for remediation for connector beta.",
             "Synthetic Team Beta is tasked with remediation for connector beta.",
             "Remediation for connector beta is in Synthetic Team Beta's hands.",
+            "Synthetic Team Beta bears responsibility for remediation of connector beta.",
         ] {
             sourced_owner.claims[0].text = contradictory_owner.into();
             sourced_owner.message = sourced_owner.claims[0].text.clone();
@@ -10462,6 +10649,7 @@ mod tests {
             "Cerebro has responsibility for remediation for connector beta.",
             "Cerebro is tasked with remediation for connector beta.",
             "Remediation for connector beta is in Cerebro's hands.",
+            "Cerebro bears responsibility for remediation of connector beta.",
         ] {
             sourced_owner.claims[0].text = exact_owner.into();
             sourced_owner.message = sourced_owner.claims[0].text.clone();
@@ -10490,6 +10678,7 @@ mod tests {
             "An update from me will follow later.",
             "A recheck will follow tomorrow.",
             "You can expect me to inspect it again tomorrow.",
+            "The next inspection is due tomorrow.",
         ] {
             assert!(contains_unbound_future_promise(text), "{text}");
         }
@@ -11281,7 +11470,9 @@ mod tests {
             planned_claim_ref: None,
             text: unsupported.message.clone(),
             required_for_answer: true,
-            content: ClaimContent::StableExplanation,
+            content: ClaimContent::StableExplanation {
+                explanation_id: StableExplanationId::EvidenceFreshnessDefinition,
+            },
         }];
         let model = ScriptedSessionModel {
             decisions: Mutex::new(VecDeque::from(vec![

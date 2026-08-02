@@ -27,14 +27,14 @@ use cerebro_agent_runtime::{
     ROUTER_MAX_TOKENS, RouteDecision, RouteTurn, ToolAuthorityClass, ToolDescriptor,
     ToolEffectClass, ToolResult, ToolResultState, run_turn,
     session::{
-        AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2, AgentSession,
-        ClaimReviewTurn, DeliveryDisposition, EvidenceAssertion, EvidenceAtomization,
-        MAX_SESSION_MEMORIES, MessageReview, MissionState, SemanticEvidenceAtomization,
-        SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent, SessionEventRecord,
-        SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelTurn, SessionStatus,
-        SessionStore, SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
-        apply_session_events, evidence_atoms_from_json, message_digest, run_session_turn_recorded,
-        semantic_evidence_atoms,
+        AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
+        ALL_STABLE_EXPLANATION_IDS, AgentSession, ClaimReviewTurn, DeliveryDisposition,
+        EvidenceAssertion, EvidenceAtomization, MAX_SESSION_MEMORIES, MessageReview, MissionState,
+        SemanticEvidenceAtomization, SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent,
+        SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
+        SessionModelTurn, SessionStatus, SessionStore, SessionTools, SessionTurnInput,
+        SessionTurnOutcome, SessionTurnTrigger, apply_session_events, evidence_atoms_from_json,
+        message_digest, run_session_turn_recorded, semantic_evidence_atoms,
     },
 };
 use cerebro_organizational_model::TenantId;
@@ -2080,7 +2080,7 @@ fn session_decision_schema() -> Value {
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["commitment"]}, "commitment_ref": {"type": "string", "minLength": 1}}, "required": ["basis", "commitment_ref"]},
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["recommendation"]}, "action": action, "rationale_atom_refs": string_array()}, "required": ["basis", "action", "rationale_atom_refs"]},
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["hypothesis"]}, "supporting_atom_refs": string_array(), "alternatives": string_array()}, "required": ["basis", "supporting_atom_refs", "alternatives"]},
-            {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["stable_explanation"]}}, "required": ["basis"]},
+            {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["stable_explanation"]}, "explanation_id": {"type": "string", "enum": ALL_STABLE_EXPLANATION_IDS}}, "required": ["basis", "explanation_id"]},
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["question"]}}, "required": ["basis"]}
         ]
     });
@@ -2484,7 +2484,15 @@ Claims are ordered visible message units. Concatenating every claim.text in orde
 - {"basis":"commitment","commitment_ref":"..."} only for the exact bounded future follow-through recorded by an active Cerebro-owned commitment in this draft. It supports one next runtime wake for next_action at wake_at under the recorded acceptance criteria and verification condition. It does not support a recurring cadence, continuous monitoring, instantaneous detection, notification "the moment" state changes, an external effect, or a future result.
 - {"basis":"recommendation","action":{"tool_id":null,"target_ref":"...","input":{}},"rationale_atom_refs":[...]} for advice, not an executed effect.
 - {"basis":"hypothesis","supporting_atom_refs":[...],"alternatives":[...]} for a clearly qualified hypothesis.
-- {"basis":"stable_explanation"} for timeless explanatory content.
+- {"basis":"stable_explanation","explanation_id":"..."} only for one registered timeless explanation. text must exactly equal that explanation's runtime rendering; compose several registered claims when more than one concept is useful. The complete registry is:
+  - evidence_freshness_definition => Evidence freshness is the observation reuse window.
+  - evidence_authority_boundary => Evidence of provider execution does not grant remediation or approval authority.
+  - recommendation_execution_boundary => A recommendation proposes an action; it does not prove the action ran.
+  - hypothesis_alternatives_boundary => A hypothesis preserves plausible alternatives until evidence distinguishes them.
+  - current_state_fresh_observation_boundary => A current-state conclusion requires a fresh authoritative observation.
+  - capability_binding_boundary => An operational capability exists only when a current tool binding declares the required authority and effect.
+  - source_declaration_provider_permission_boundary => A source declaration does not prove provider-side permission.
+- coverage_boundary is runtime-owned fallback output and is deliberately absent from the model schema; never author it in a model draft.
 - {"basis":"question"} for the one precise question that blocks progress.
 
 Set planned_claim_ref on a message unit when it directly answers a planned claim. The plan guides bounded research; it does not force internal research questions into the user-visible response. Include only material grounded claims needed to answer the operator naturally.
@@ -2695,7 +2703,7 @@ Before approving, review every grounding_units item independently. IDs beginning
 - tool_outcome: the whole unit describes one failed, partial, or outcome-unknown tool attempt by its exact observation sequence, without treating it as domain evidence;
 - hypothesis: a clearly qualified possibility grounded in current evidence that preserves unresolved alternatives;
 - recommendation: advice or a proposed next action, not a claim that an unobserved workflow, role, capability, or outcome exists;
-- stable_explanation: a timeless non-operational explanation in the converse lane, with no current state, identity, timestamp, cause, action result, or other dynamic claim;
+- stable_explanation: one exact runtime-registered timeless explanation in the converse lane; unregistered or modified explanatory prose must be revised to a typed evidence-bound claim, recommendation, hypothesis, commitment, or question;
 - placeholder: a visibly unresolved field or role placeholder;
 - non_factual: a question or connective language containing no factual assertion.
 
@@ -5144,6 +5152,19 @@ mod tests {
         assert!(session_instructions().contains(
             "prior_commitment_checkpoint is the durable record from the most recent delivered and completed turn"
         ));
+        for explanation in cerebro_agent_runtime::session::ALL_STABLE_EXPLANATIONS {
+            assert!(
+                session_instructions().contains(
+                    cerebro_agent_runtime::session::render_stable_explanation(*explanation)
+                ),
+                "the model prompt omitted a registered stable explanation"
+            );
+        }
+        let decision_schema = session_decision_schema().to_string();
+        for explanation_id in ALL_STABLE_EXPLANATION_IDS {
+            assert!(decision_schema.contains(explanation_id));
+        }
+        assert!(!decision_schema.contains("coverage_boundary"));
         assert!(
             claim_review_instructions()
                 .contains("compare it with current observations when reviewing attention")
