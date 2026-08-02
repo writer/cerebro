@@ -1580,6 +1580,8 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
             if !matches!(
                 *word,
                 "broken"
+                    | "crash"
+                    | "crashed"
                     | "degraded"
                     | "down"
                     | "fixed"
@@ -1648,33 +1650,21 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         });
     let named_current_follow_up = !conceptual_naming
         && generic_state_request
+        && (normalized.starts_with(" what about ") || normalized.starts_with(" how about "))
         && ["now", "today", "currently", "recently", "already", "latest"]
             .iter()
             .any(|time| words.contains(time))
-        && words.iter().enumerate().any(|(index, word)| {
-            index > 0
-                && !matches!(
-                    *word,
-                    "about"
-                        | "already"
-                        | "currently"
-                        | "how"
-                        | "latest"
-                        | "now"
-                        | "please"
-                        | "recently"
-                        | "tell"
-                        | "that"
-                        | "this"
-                        | "today"
-                        | "what"
-                        | "when"
-                        | "where"
-                        | "which"
-                        | "who"
-                        | "why"
-                )
-        });
+        && words
+            .iter()
+            .position(|word| *word == "about")
+            .is_some_and(|about_index| {
+                words[about_index + 1..].iter().any(|word| {
+                    !matches!(
+                        *word,
+                        "already" | "currently" | "latest" | "now" | "recently" | "today"
+                    )
+                })
+            });
     let generic_live_ownership = normalized.contains(" who handles ")
         || normalized.contains(" who owns ")
         || normalized.contains(" owns remediation ")
@@ -1809,6 +1799,9 @@ fn presentation_markup_is_balanced(value: &str) -> bool {
                 continue;
             }
             if (image || remaining.starts_with('[')) && remaining.contains("](") {
+                return false;
+            }
+            if remaining.starts_with('[') || remaining.starts_with(']') {
                 return false;
             }
             if let Some(end) = presentation_raw_url_end(line, cursor) {
@@ -3311,6 +3304,7 @@ mod grounding_tests {
             "Why is “Atlas Now” a good title?",
             "Break down this idea for me.",
             "Why is feeling down hard?",
+            "What should I think about now?",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),
@@ -3345,6 +3339,8 @@ mod grounding_tests {
             "Is Atlas responsive?",
             "Is Atlas stable?",
             "Is Atlas unavailable?",
+            "Did Atlas crash? Give me your take.",
+            "Is Story Service operational?",
             "Has the rollout landed?",
             "Who handles remediation for Atlas?",
             "Are we able to ship this?",
@@ -3411,6 +3407,7 @@ mod grounding_tests {
             "The source is healthy_.",
             "Read [the source](unfinished before answering.",
             "Ask <@U123 for the source.",
+            "The source] is healthy.",
             "The source is `healthy.",
         ] {
             assert!(

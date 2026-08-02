@@ -151,6 +151,41 @@ test("concurrent stale-lease recovery elects one SQLite-fenced worker", async ()
   }
 });
 
+test("Slack ingress preserves mention-before-reply order across queue processes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-order-"));
+  const now = new Date("2026-08-02T20:00:00.000Z");
+  try {
+    const first = new FileSlackIngressQueue(root, () => now);
+    const second = new FileSlackIngressQueue(root, () => now);
+    await first.admitEnvelope(slackEnvelopeFixture());
+    await second.admitEnvelope({
+      ...slackEnvelopeFixture(),
+      event: {
+        channel: "C-ONE",
+        text: "Keep going from the prior answer.",
+        thread_ts: "1710000000.000001",
+        ts: "1710000001.000002",
+        type: "message",
+        user: "U-ONE",
+      },
+    });
+
+    const mention = await second.claimNext("worker:mention");
+    assert.ok(mention);
+    assert.equal(mention.event.kind, "app_mention");
+    assert.equal(await first.claimNext("worker:reply-too-early"), undefined);
+
+    await second.complete(mention);
+    const reply = await first.claimNext("worker:reply");
+    assert.ok(reply);
+    assert.equal(reply.event.kind, "message");
+    assert.equal(reply.event.threadTs, mention.event.threadTs);
+    await first.complete(reply);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("Slack ingress keeps one durable client message binding across restarts", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-"));
   try {
@@ -2714,6 +2749,22 @@ test("an expired ingress worker cannot post after another worker takes its lease
       SLACK_BOT_TOKEN: "bound-at-runtime",
     });
     const store = new FileOutcomeStore(root, { log: () => undefined });
+    const requestId = `slack-request-${createHash("sha256")
+      .update(staleClaim.requestKey, "utf8")
+      .digest("hex")}`;
+    await store.recordPending({
+      delivered_message_ts: "1710000000.000008",
+      execution_lane: "lookup",
+      latency_budget_ms: 30_000,
+      negative_feedback_count: 0,
+      opened_at: "2026-08-02T19:59:00.000Z",
+      outcome_state: "completed",
+      request_id: requestId,
+      schema_version: "assistant-turn-pending-outcome/v1",
+      user_correction_count: 0,
+      useful_answer_at: "2026-08-02T19:59:10.000Z",
+      verified: true,
+    });
     const host = createAssistantTurnHost(store);
     const questions = new AssistantQuestionService(
       host,
@@ -2741,6 +2792,13 @@ test("an expired ingress worker cannot post after another worker takes its lease
     );
     assert.equal(replacementClaimed, true);
     assert.equal(postCount, 0);
+    const pendingFiles = await readdir(join(root, "pending"));
+    assert.equal(pendingFiles.length, 1);
+    const pending = JSON.parse(
+      await readFile(join(root, "pending", pendingFiles[0]!), "utf8"),
+    ) as { outcome_state: string; verified: boolean };
+    assert.equal(pending.outcome_state, "completed");
+    assert.equal(pending.verified, true);
   } finally {
     await rm(root, { force: true, recursive: true });
   }

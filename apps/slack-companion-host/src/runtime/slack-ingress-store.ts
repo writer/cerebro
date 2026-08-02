@@ -44,6 +44,13 @@ export interface SlackIngressClaim {
   workerRef: string;
 }
 
+export class SlackIngressLeaseLostError extends Error {
+  constructor(message = "Slack ingress completion requires the exact live lease.") {
+    super(message);
+    this.name = "SlackIngressLeaseLostError";
+  }
+}
+
 export class FileSlackIngressQueue {
   private databaseInstance?: DatabaseSync;
   private initializeTask?: Promise<void>;
@@ -171,6 +178,10 @@ export class FileSlackIngressQueue {
           record_json
         ) VALUES (?, ?, ?, ?)
       `).run(recordRef, requestKey, this.clock().getTime(), JSON.stringify(record));
+      database.prepare(`
+        INSERT OR IGNORE INTO slack_ingress_order (record_ref)
+        VALUES (?)
+      `).run(recordRef);
       const row = database.prepare(`
         SELECT record_json
         FROM slack_ingress_events
@@ -192,15 +203,19 @@ export class FileSlackIngressQueue {
       const now = this.clock().getTime();
       database.prepare("DELETE FROM slack_ingress_leases WHERE expires_at_ms <= ?").run(now);
       const row = database.prepare(`
-        SELECT event.record_json
+        SELECT event.record_json, lease.record_ref AS leased_record_ref
         FROM slack_ingress_events AS event
+        INNER JOIN slack_ingress_order AS admitted
+          ON admitted.record_ref = event.record_ref
         LEFT JOIN slack_ingress_leases AS lease
           ON lease.record_ref = event.record_ref
-        WHERE lease.record_ref IS NULL
-        ORDER BY event.admitted_at_ms ASC, event.record_ref ASC
+        ORDER BY admitted.admission_sequence ASC
         LIMIT 1
-      `).get() as { record_json: string } | undefined;
-      if (!row) return undefined;
+      `).get() as {
+        leased_record_ref: string | null;
+        record_json: string;
+      } | undefined;
+      if (!row || row.leased_record_ref) return undefined;
       const record = this.parseRecord(row.record_json);
       const leaseToken = randomUUID();
       database.prepare(`
@@ -305,6 +320,10 @@ export class FileSlackIngressQueue {
         lease_token TEXT NOT NULL,
         expires_at_ms INTEGER NOT NULL
       ) STRICT;
+      CREATE TABLE IF NOT EXISTS slack_ingress_order (
+        admission_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        record_ref TEXT NOT NULL UNIQUE REFERENCES slack_ingress_events(record_ref) ON DELETE CASCADE
+      ) STRICT;
       CREATE TABLE IF NOT EXISTS slack_message_bindings (
         request_key TEXT PRIMARY KEY,
         client_message_id TEXT NOT NULL,
@@ -312,6 +331,10 @@ export class FileSlackIngressQueue {
         bound_at_ms INTEGER NOT NULL,
         binding_json TEXT NOT NULL
       ) STRICT;
+      INSERT OR IGNORE INTO slack_ingress_order (record_ref)
+      SELECT record_ref
+      FROM slack_ingress_events
+      ORDER BY admitted_at_ms ASC, record_ref ASC;
     `);
     await chmod(this.databasePath(), 0o600);
   }
@@ -361,7 +384,7 @@ export class FileSlackIngressQueue {
       || lease.worker_ref !== claim.workerRef
       || lease.expires_at_ms <= this.clock().getTime()
     ) {
-      throw new Error("Slack ingress completion requires the exact live lease.");
+      throw new SlackIngressLeaseLostError();
     }
   }
 }

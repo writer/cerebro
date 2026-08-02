@@ -1254,7 +1254,9 @@ export async function handleSlackMention(input: {
   const progressClientMessageId = slackClientMessageId(requestId);
   let deliveredMessageTs = "";
   let pendingOutcomeRecorded = false;
+  const fenceMutation = async (): Promise<void> => input.leaseGuard?.();
   const recordBlockedPending = async (): Promise<void> => {
+    await fenceMutation();
     await input.outcomes.recordPending({
       delivered_message_ts: deliveredMessageTs,
       execution_lane: "lookup",
@@ -1280,6 +1282,7 @@ export async function handleSlackMention(input: {
       input.event.teamId,
       input.event.channel,
     );
+    await fenceMutation();
     await input.threadRoutes?.bind({
       appRef: `slack-app:${input.config.environmentLabel}:${input.config.appName}`,
       botUserId: input.event.botUserId ?? "",
@@ -1290,6 +1293,7 @@ export async function handleSlackMention(input: {
     });
     const scratchpadCommand = parseRuntimeScratchpadCommand(input.event.text);
     if (scratchpadCommand && input.scratchpads) {
+      await fenceMutation();
       const commandText = await executeScratchpadCommand(
         scratchpadCommand,
         input.scratchpads,
@@ -1322,6 +1326,7 @@ export async function handleSlackMention(input: {
         deliveredMessageTs,
         deliveredText,
       );
+      await fenceMutation();
       await input.host.recordDelivery({
         created_at: openedAt.toISOString(),
         delivery_id: `slack-delivery-${requestDigest}`,
@@ -1341,6 +1346,7 @@ export async function handleSlackMention(input: {
         state: "completed",
         updated_at: deliveredAt,
       });
+      await fenceMutation();
       await input.outcomes.recordPending({
         delivered_message_ts: deliveredMessageTs,
         execution_lane: "lookup",
@@ -1402,6 +1408,7 @@ export async function handleSlackMention(input: {
     const scratchpadContext = scratchpad
       ? formatSlackThreadScratchpadContext(scratchpad)
       : undefined;
+    await fenceMutation();
     await input.host.recordProgress(runId, {
       execution_lane: "lookup",
       occurred_at: openedAt.toISOString(),
@@ -1458,18 +1465,20 @@ export async function handleSlackMention(input: {
       deliveredMessageTs,
       deliveredText,
     );
-    const outboxRecord = result.agentDelivery && input.agentDeliveries
-      ? await input.agentDeliveries.prepare({
-          channel: input.event.channel,
-          deliveredAt,
-          deliveryRef: references.destinationReceipt,
-          messageTs: deliveredMessageTs,
-          payloadDigest: deliveredPayloadDigest,
-          requestId: result.agentDelivery.requestId,
-          text: deliveredText,
-          threadRef: result.agentDelivery.threadRef,
-        })
-      : undefined;
+    let outboxRecord: AgentDeliveryOutboxRecord | undefined;
+    if (result.agentDelivery && input.agentDeliveries) {
+      await fenceMutation();
+      outboxRecord = await input.agentDeliveries.prepare({
+        channel: input.event.channel,
+        deliveredAt,
+        deliveryRef: references.destinationReceipt,
+        messageTs: deliveredMessageTs,
+        payloadDigest: deliveredPayloadDigest,
+        requestId: result.agentDelivery.requestId,
+        text: deliveredText,
+        threadRef: result.agentDelivery.threadRef,
+      });
+    }
     await input.leaseGuard?.();
     await input.client.chat.update({
       channel: input.event.channel,
@@ -1477,6 +1486,7 @@ export async function handleSlackMention(input: {
       ts: deliveredMessageTs,
     });
     if (outboxRecord) {
+      await fenceMutation();
       await input.agentDeliveries?.markSlackDelivered(outboxRecord.recordRef);
     }
     if (result.agentDelivery) {
@@ -1490,6 +1500,7 @@ export async function handleSlackMention(input: {
           threadRef: result.agentDelivery.threadRef,
         });
         if (outboxRecord) {
+          await fenceMutation();
           await input.agentDeliveries?.complete(outboxRecord.recordRef);
         }
       } catch (error) {
@@ -1497,6 +1508,7 @@ export async function handleSlackMention(input: {
         logAgentDeliveryFailure("acknowledge", error);
       }
     }
+    await fenceMutation();
     await input.host.recordDelivery({
       created_at: result.pending.opened_at,
       delivery_id: `slack-delivery-${requestDigest}`,
@@ -1518,6 +1530,7 @@ export async function handleSlackMention(input: {
     });
     if (input.scratchpads && result.workingTurn) {
       try {
+        await fenceMutation();
         await input.scratchpads.recordWorkingTurn({
           ...(result.workingTurn.activeLane === undefined
             ? {}
@@ -1549,6 +1562,7 @@ export async function handleSlackMention(input: {
     }
     if (input.scratchpads && result.verifiedTurn) {
       try {
+        await fenceMutation();
         await input.scratchpads.add({
           author_ref: "cerebro-agent://slack-companion",
           content: verifiedTurnScratchpadContent(
@@ -1569,11 +1583,13 @@ export async function handleSlackMention(input: {
         })}\n`);
       }
     }
+    await fenceMutation();
     await input.outcomes.recordPending({
       ...result.pending,
       delivered_message_ts: deliveredMessageTs,
     });
     pendingOutcomeRecorded = true;
+    await fenceMutation();
     await input.host.recordProgress(runId, {
       execution_lane: "lookup",
       occurred_at: deliveredAt,
@@ -1616,6 +1632,7 @@ async function postOrRecoverSlackMessage(
   await input.leaseGuard?.();
   const existing = await findSlackMessageByClientId(client, input);
   if (existing) {
+    await input.leaseGuard?.();
     await input.bindings?.bindMessage(input.requestKey, input.clientMessageId, existing);
     return { ts: existing };
   }
@@ -1637,6 +1654,7 @@ async function postOrRecoverSlackMessage(
       thread_ts: input.threadTs,
     });
     if (posted.ts) {
+      await input.leaseGuard?.();
       await input.bindings?.bindMessage(input.requestKey, input.clientMessageId, posted.ts);
       return { ts: posted.ts };
     }
@@ -1647,6 +1665,7 @@ async function postOrRecoverSlackMessage(
 
   const recovered = await findSlackMessageByClientId(client, input);
   if (recovered) {
+    await input.leaseGuard?.();
     await input.bindings?.bindMessage(input.requestKey, input.clientMessageId, recovered);
     return { ts: recovered };
   }

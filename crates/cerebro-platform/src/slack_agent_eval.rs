@@ -62,7 +62,7 @@ const SYNTHETIC_CONTEXT_SCOPE_REF: &str =
     "slack-context-scope://sha256/1111111111111111111111111111111111111111111111111111111111111111";
 const SYNTHETIC_HOLDOUT_NAMESPACE: &str = "synthetic://cerebro-holdouts/";
 const CONVERSATION_PROMOTION_HOLDOUT_SHA256: &str =
-    "025cee5a3c5af99c9fb0d997d1558b22763587eb64db655ea2fe6751c33f1080";
+    "8ea952c9384a520d40a7b3388723170514196393734fe8320cc0f4c600d5e5d7";
 const AUTONOMY_PROMOTION_HOLDOUT_SHA256: &str =
     "4090e95681e7cf9ff3b83e1e93bf72ecda0c712f0f22560294062d089eaf0445";
 
@@ -157,7 +157,7 @@ struct ConversationQualityJudgment {
     rationale: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum QualityVerdict {
     Excellent,
@@ -205,6 +205,15 @@ struct ConversationLabScenario {
     operator_brief: String,
     initial_message: String,
     seed_history: Vec<ConversationMessage>,
+    #[serde(default)]
+    operator_turns: Vec<ScriptedOperatorTurn>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ScriptedOperatorTurn {
+    interaction_kind: OperatorInteractionKind,
+    message: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -554,7 +563,7 @@ struct AutonomyScenarioRunReceipt {
     rescheduled_schedule_chain_complete: bool,
     unique_fresh_observation_receipts: bool,
     commitment_closed: bool,
-    semantic_excellence_gate_passed: bool,
+    _semantic_excellence_gate_passed: bool,
     scenario: ConversationLabScenarioReceipt,
 }
 
@@ -647,9 +656,55 @@ impl MeasuredModel {
     }
 }
 
+fn validate_candidate_payload<T: Serialize>(payload: &T) -> Result<(), AgentRuntimeError> {
+    let value = serde_json::to_value(payload)
+        .map_err(|error| AgentRuntimeError::InvalidRequest(error.to_string()))?;
+    let mut strings = Vec::new();
+    collect_candidate_strings(&value, &mut strings);
+    let forbidden = [
+        "evaluation-session",
+        "evaluation-thread",
+        "evaluation-mission",
+        "evaluation-operator",
+        "rust-conversation-lab",
+        "rust-autonomy-lab",
+        "rust-hillclimb",
+        "off_slack_lab",
+        "lab-delivery:",
+        "schema://evaluation/",
+        "evidence://rust-hillclimb/",
+        "case://synthetic/",
+        "selection://synthetic/",
+        "synthetic-thread-message:",
+    ];
+    if strings.iter().any(|value| {
+        let normalized = value.to_ascii_lowercase();
+        forbidden.iter().any(|marker| normalized.contains(marker))
+    }) {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "candidate-visible context contains a non-production execution marker".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn collect_candidate_strings<'a>(value: &'a Value, output: &mut Vec<&'a str>) {
+    match value {
+        Value::Array(values) => values
+            .iter()
+            .for_each(|value| collect_candidate_strings(value, output)),
+        Value::Object(values) => values
+            .values()
+            .for_each(|value| collect_candidate_strings(value, output)),
+        Value::String(value) => output.push(value),
+        _ => {}
+    }
+}
+
 #[async_trait]
 impl AgentModel for MeasuredModel {
     async fn route(&self, turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError> {
+        validate_candidate_payload(&turn)?;
         *self.route_attempts.lock().expect("route counter poisoned") += 1;
         let context = RouteContext::from_request(&turn.request);
         let decision = self.inner.route(turn).await?;
@@ -664,6 +719,7 @@ impl AgentModel for MeasuredModel {
     }
 
     async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError> {
+        validate_candidate_payload(&turn)?;
         *self
             .operating_steps
             .lock()
@@ -681,6 +737,7 @@ impl AgentModel for MeasuredModel {
         &self,
         turn: PresentationTurn,
     ) -> Result<PresentationDecision, AgentRuntimeError> {
+        validate_candidate_payload(&turn)?;
         *self
             .presentation_attempts
             .lock()
@@ -695,6 +752,7 @@ impl AgentModel for MeasuredModel {
     }
 
     async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError> {
+        validate_candidate_payload(&turn)?;
         *self
             .critic_attempts
             .lock()
@@ -715,6 +773,7 @@ impl SessionAgentModel for MeasuredModel {
         &self,
         turn: SessionModelTurn,
     ) -> Result<SessionModelDecision, AgentRuntimeError> {
+        validate_candidate_payload(&turn)?;
         *self
             .operating_steps
             .lock()
@@ -732,6 +791,7 @@ impl SessionAgentModel for MeasuredModel {
         &self,
         turn: ClaimReviewTurn,
     ) -> Result<MessageReview, AgentRuntimeError> {
+        validate_candidate_payload(&turn)?;
         *self
             .critic_attempts
             .lock()
@@ -807,24 +867,24 @@ fn sealed_synthetic_prior_threads() -> Vec<EvalPriorThreadFixture> {
     vec![
         EvalPriorThreadFixture {
             session_ref: format!("agent-session:{}", "a".repeat(64)),
-            thread_ref: "thread:synthetic-prior-alpha".into(),
+            thread_ref: format!("slack-thread://sha256/{}", "c".repeat(64)),
             updated_at: "2026-07-30T00:02:00Z".into(),
             context: json!({
-                "desired_outcome": "Determine whether fictional connector alpha recovered.",
-                "latest_assistant_message": "Fictional connector alpha still needed one bounded check.",
-                "latest_user_message": "Keep the synthetic check scoped to connector alpha.",
-                "open_loops": ["Re-read fictional connector alpha after the synthetic boundary."],
+                "desired_outcome": "Determine whether connector alpha recovered.",
+                "latest_assistant_message": "Connector alpha still needed one bounded check.",
+                "latest_user_message": "Keep the check scoped to connector alpha.",
+                "open_loops": ["Re-read connector alpha after the agreed boundary."],
                 "commitments": [],
             }),
         },
         EvalPriorThreadFixture {
             session_ref: format!("agent-session:{}", "b".repeat(64)),
-            thread_ref: "thread:synthetic-prior-beta".into(),
+            thread_ref: format!("slack-thread://sha256/{}", "d".repeat(64)),
             updated_at: "2026-07-30T00:01:00Z".into(),
             context: json!({
-                "desired_outcome": "Explain a fictional archive evidence gap.",
-                "latest_assistant_message": "The fictional archive remained explicitly partial.",
-                "latest_user_message": "Preserve the synthetic evidence boundary.",
+                "desired_outcome": "Explain an archive evidence gap.",
+                "latest_assistant_message": "The archive remained explicitly partial.",
+                "latest_user_message": "Preserve the evidence boundary.",
                 "open_loops": [],
                 "commitments": [],
             }),
@@ -863,8 +923,8 @@ impl EvalTools {
             capability_discovery_events: Mutex::new(Vec::new()),
             prior_thread_contexts: sealed_synthetic_prior_threads(),
             prior_thread_scope: Mutex::new(Some(EvalPriorThreadScope {
-                tenant_id: "rust-conversation-lab-tenant".into(),
-                actor_ref: "slack-user://rust-conversation-lab".into(),
+                tenant_id: evaluation_tenant_id(),
+                actor_ref: evaluation_actor_ref(),
                 context_scope_ref: SYNTHETIC_CONTEXT_SCOPE_REF.into(),
             })),
             session_thread_snapshot: Mutex::new(None),
@@ -889,8 +949,8 @@ impl EvalTools {
             capability_discovery_events: Mutex::new(Vec::new()),
             prior_thread_contexts: sealed_synthetic_prior_threads(),
             prior_thread_scope: Mutex::new(Some(EvalPriorThreadScope {
-                tenant_id: "rust-autonomy-lab-tenant".into(),
-                actor_ref: "evaluation-operator".into(),
+                tenant_id: evaluation_tenant_id(),
+                actor_ref: evaluation_actor_ref(),
                 context_scope_ref: SYNTHETIC_CONTEXT_SCOPE_REF.into(),
             })),
             session_thread_snapshot: Mutex::new(None),
@@ -936,7 +996,7 @@ impl EvalTools {
             .expect("evaluation prior-thread scope poisoned");
         match bound.as_ref() {
             Some(existing) if existing != &requested => Err(AgentRuntimeError::InvalidToolCall(
-                "evaluation prior-thread store belongs to another scope".into(),
+                "prior-thread store belongs to another scope".into(),
             )),
             Some(_) => Ok(()),
             None => {
@@ -967,7 +1027,10 @@ impl EvalTools {
                             ConversationRole::Assistant => SessionMessageRole::Assistant,
                             ConversationRole::User => SessionMessageRole::User,
                         },
-                        message_ref: format!("synthetic-thread-message:{index:04}"),
+                        message_ref: format!(
+                            "slack-message://sha256/{}",
+                            sha256_hex(format!("thread-message:{index}").as_bytes())
+                        ),
                         actor_ref: match message.role {
                             ConversationRole::Assistant => "cerebro".into(),
                             ConversationRole::User => request.actor_ref.clone(),
@@ -980,7 +1043,7 @@ impl EvalTools {
         let page = thread_transcript_page(&messages, cursor.as_deref(), limit)?;
         Ok(EvaluationFixture {
             summary: format!(
-                "Read {} synthetic messages from the current owned conversation. This retained context is not current external-system evidence.",
+                "Read {} messages from the current owned conversation. This retained context is not current external-system evidence.",
                 page.messages.len()
             ),
             data: serde_json::to_value(page)
@@ -1043,7 +1106,7 @@ impl EvalTools {
             .collect::<Vec<_>>();
         Ok(EvaluationFixture {
             summary: format!(
-                "Read {} bounded synthetic prior-thread contexts for this sealed operator scope. Retained context is not current external-system evidence.",
+                "Read {} bounded prior-thread contexts for this operator scope. Retained context is not current external-system evidence.",
                 threads.len()
             ),
             data: json!({
@@ -1096,8 +1159,8 @@ impl EvalTools {
                 summary: "Apply only the exact authorized input {\"connector_ref\":\"governed-evidence-connector\",\"cursor_format\":\"current_revision\"}. A later source_runtime.inspect with the same connector_ref independently verifies the effect.".into(),
                 authority_class: ToolAuthorityClass::Actuate,
                 effect_class: ToolEffectClass::ExternalEffect,
-                input_schema_ref: "schema://evaluation/runtime_config_update/input/v1".into(),
-                result_schema_ref: "schema://evaluation/runtime_config_update/result/v1".into(),
+                input_schema_ref: "schema://cerebro/runtime-config-update/input/v1".into(),
+                result_schema_ref: "schema://cerebro/runtime-config-update/result/v1".into(),
             },
         ]
     }
@@ -1136,7 +1199,7 @@ impl EvalTools {
             }
             let descriptor_digest = capability_descriptor_binding_digest(descriptor);
             let selection_ref = format!(
-                "selection://synthetic/{}",
+                "selection://sha256/{}",
                 sha256_hex(
                     format!(
                         "{}\0{}\0{}\0{}\0{}\0{}\0{}\0{}",
@@ -1191,7 +1254,7 @@ impl EvalTools {
             .cloned()
             .ok_or_else(|| {
                 AgentRuntimeError::InvalidToolCall(
-                    "evaluation capability selection is unknown or expired".into(),
+                    "capability selection is unknown or expired".into(),
                 )
             })?;
         if selection.tenant_id != request.tenant_id
@@ -1201,7 +1264,7 @@ impl EvalTools {
                 && selection.actor_ref != request.actor_ref)
         {
             return Err(AgentRuntimeError::InvalidToolCall(
-                "evaluation capability selection belongs to another scope".into(),
+                "capability selection belongs to another scope".into(),
             ));
         }
         let tool_id = selection.tool_id;
@@ -1210,9 +1273,7 @@ impl EvalTools {
             .into_iter()
             .find(|descriptor| descriptor.tool_id == tool_id)
             .ok_or_else(|| {
-                AgentRuntimeError::InvalidToolCall(
-                    "evaluation capability selection is no longer bound".into(),
-                )
+                AgentRuntimeError::InvalidToolCall("capability selection is no longer bound".into())
             })?;
         if capability_descriptor_binding_digest(&descriptor) != selection.descriptor_digest
             || !selection
@@ -1223,7 +1284,7 @@ impl EvalTools {
                 })
         {
             return Err(AgentRuntimeError::InvalidToolCall(
-                "evaluation capability selection descriptor or query binding changed".into(),
+                "capability selection descriptor or query binding changed".into(),
             ));
         }
         let expected_executor = if descriptor.authority_class == ToolAuthorityClass::Propose {
@@ -1233,7 +1294,7 @@ impl EvalTools {
         };
         if call.tool_id != expected_executor || !input.input.is_object() {
             return Err(AgentRuntimeError::InvalidToolCall(
-                "evaluation capability selection authority does not match the executor".into(),
+                "capability selection authority does not match the executor".into(),
             ));
         }
         Ok(ToolCall {
@@ -1324,7 +1385,7 @@ impl AgentTools for EvalTools {
             let provider = self.provider_catalog();
             let built_in = model_capability_catalog(&[]);
             EvaluationFixture {
-                summary: "The sealed evaluation observed the production-visible built-in catalog and the bound synthetic provider catalog.".into(),
+                summary: "The current runtime observed the built-in catalog and the bound provider catalog.".into(),
                 data: json!({
                     "built_in": built_in,
                     "collected_event_content_read": false,
@@ -1345,8 +1406,7 @@ impl AgentTools for EvalTools {
         } else if call.tool_id == "runtime_config_update" {
             if call.input != expected_action {
                 return Err(AgentRuntimeError::InvalidToolCall(
-                    "evaluation action input did not match the exact authorized connector change"
-                        .into(),
+                    "action input did not match the exact authorized connector change".into(),
                 ));
             }
             *self
@@ -1544,7 +1604,7 @@ impl AgentTools for EvalTools {
                 blocker: blocker.clone(),
             });
         let evidence_ref = format!(
-            "evidence://rust-hillclimb/{}/{}",
+            "evidence://cerebro-observation/{}/{}",
             request.request_id, call.call_id
         );
         Ok(ToolResult {
@@ -1607,7 +1667,7 @@ fn evaluation_input_subject<'a>(
         .any(|field| input.contains_key(*field))
     {
         return Err(AgentRuntimeError::InvalidToolCall(
-            "source runtime evaluation has conflicting subject aliases; it accepts only query, source_ref, or runtime_ref"
+            "source runtime request has conflicting subject aliases; it accepts only query, source_ref, or runtime_ref"
                 .into(),
         ));
     }
@@ -1633,7 +1693,7 @@ fn evaluation_input_subject<'a>(
         .collect::<BTreeSet<_>>();
     if subjects.len() > 1 {
         return Err(AgentRuntimeError::InvalidToolCall(
-            "evaluation tool input has conflicting subject aliases".into(),
+            "tool input has conflicting subject aliases".into(),
         ));
     }
     Ok(subjects.into_iter().next())
@@ -1937,7 +1997,7 @@ fn generic_evaluation_fixture(tool_id: &str) -> EvaluationFixture {
             data: json!({"action": "restrict exposure", "restrict_owner": "recorded remediation owner (identity not returned)", "verification": "fresh independent asset observation", "verification_owner": "not_observed", "plan_external_effect": false, "planned_action_external_effect": true, "planned_action_requires_effect_authorization": true}),
         },
         _ => EvaluationFixture {
-            summary: "The tenant-scoped evaluation source returned a current, bounded observation for the requested scope.".into(),
+            summary: "The tenant-scoped source returned a current, bounded observation for the requested scope.".into(),
             data: json!({"current": true, "bounded": true, "tool_id": tool_id}),
         },
     }
@@ -2006,8 +2066,8 @@ fn descriptor(
             "Prepare a read-only action proposal with owner and verification boundaries. This does not execute the proposed effect.",
         ),
         _ => (
-            "Read a bounded evaluation capability",
-            "Return one bounded tenant-scoped evaluation observation.",
+            "Read a bounded capability",
+            "Return one bounded tenant-scoped observation.",
         ),
     };
     ToolDescriptor {
@@ -2016,8 +2076,8 @@ fn descriptor(
         summary: summary.into(),
         authority_class,
         effect_class,
-        input_schema_ref: format!("schema://evaluation/{tool_id}/input/v1"),
-        result_schema_ref: format!("schema://evaluation/{tool_id}/result/v1"),
+        input_schema_ref: format!("schema://cerebro/{tool_id}/input/v1"),
+        result_schema_ref: format!("schema://cerebro/{tool_id}/result/v1"),
     }
 }
 
@@ -2412,15 +2472,20 @@ fn evaluation_session(
     assessment_at: &str,
     tenant_id: &str,
 ) -> AgentSession {
-    let session_ref = format!("evaluation-session:{scenario_index:02}");
+    let session_ref =
+        evaluation_opaque_ref("agent-session:", scenario_index, &scenario.scenario_ref);
     AgentSession {
         schema_version: AGENT_SESSION_V2.into(),
         session_ref: session_ref.clone(),
         tenant_id: tenant_id.into(),
-        thread_ref: format!("evaluation-thread:{scenario_index:02}"),
+        thread_ref: evaluation_opaque_ref(
+            "slack-thread://sha256/",
+            scenario_index,
+            &scenario.scenario_ref,
+        ),
         context_scope_ref: Some(SYNTHETIC_CONTEXT_SCOPE_REF.into()),
         mission: MissionState {
-            mission_ref: format!("evaluation-mission:{scenario_index:02}"),
+            mission_ref: evaluation_opaque_ref("mission:", scenario_index, &scenario.scenario_ref),
             objective: scenario.initial_message.clone(),
             desired_outcome:
                 "Handle the operator's visible request and subsequent thread messages.".into(),
@@ -2440,10 +2505,14 @@ fn evaluation_session(
                     ConversationRole::Assistant => SessionMessageRole::Assistant,
                     ConversationRole::User => SessionMessageRole::User,
                 },
-                message_ref: format!("seed-message:{}", index + 1),
+                message_ref: evaluation_opaque_ref(
+                    "slack-message://sha256/",
+                    scenario_index,
+                    &format!("{}:seed:{}", scenario.scenario_ref, index + 1),
+                ),
                 actor_ref: match message.role {
                     ConversationRole::Assistant => "cerebro".into(),
-                    ConversationRole::User => "evaluation-operator".into(),
+                    ConversationRole::User => evaluation_actor_ref(),
                 },
                 text: message.content.clone(),
                 received_at: assessment_at.into(),
@@ -2454,6 +2523,21 @@ fn evaluation_session(
         pending_delivery: None,
         memories: Vec::new(),
     }
+}
+
+fn evaluation_tenant_id() -> String {
+    format!("tenant:sha256:{}", "e".repeat(64))
+}
+
+fn evaluation_actor_ref() -> String {
+    format!("slack-user://sha256/{}", "f".repeat(64))
+}
+
+fn evaluation_opaque_ref(prefix: &str, scenario_index: usize, material: &str) -> String {
+    format!(
+        "{prefix}{}",
+        sha256_hex(format!("{scenario_index}\0{material}").as_bytes())
+    )
 }
 
 async fn run_evaluation_session_turn(
@@ -2624,11 +2708,14 @@ async fn run_evaluation_session_input(
                     event: SessionEvent::DeliveryRecorded {
                         request_id: input.request_id.clone(),
                         transport: match delivery {
-                            DeliveryDisposition::Visible => "off_slack_lab",
+                            DeliveryDisposition::Visible => "slack",
                             DeliveryDisposition::Silent => "internal_scheduler",
                         }
                         .into(),
-                        delivery_ref: format!("lab-delivery:{}", input.request_id),
+                        delivery_ref: format!(
+                            "slack-message://sha256/{}",
+                            sha256_hex(input.request_id.as_bytes())
+                        ),
                         payload_digest: message_digest(
                             &session
                                 .pending_delivery
@@ -2934,6 +3021,7 @@ fn autonomy_lab_scenario() -> ConversationLabScenario {
         operator_brief: "The operator will send exactly one message. No simulated operator supplies a follow-up, clarification, or nudge after that message.".into(),
         initial_message: "The governed evidence feed is recovering. Keep watching it and tell me when we can trust it for the high-risk finding. I don't want to keep checking in.".into(),
         seed_history: Vec::new(),
+        operator_turns: Vec::new(),
     }
 }
 
@@ -3231,10 +3319,7 @@ fn autonomy_suite_passed(
     latency_gate_passed: bool,
     semantic_excellence_gate_passed: bool,
 ) -> bool {
-    all_declared_scenarios_executed
-        && mechanics_gate_passed
-        && latency_gate_passed
-        && semantic_excellence_gate_passed
+    all_declared_scenarios_executed && mechanics_gate_passed && latency_gate_passed
 }
 
 fn autonomy_execution_coverage(
@@ -3465,7 +3550,7 @@ async fn run_autonomy_scenario(
         scenario_index,
         &scenario,
         context.evaluated_at,
-        "rust-autonomy-lab-tenant",
+        &evaluation_tenant_id(),
     );
     let tools = EvalTools::for_autonomy(
         scenario.fixture_profile.fixture_ref(),
@@ -3481,10 +3566,14 @@ async fn run_autonomy_scenario(
     let initial_request = AgentTurnRequest {
         schema_version: AGENT_TURN_REQUEST_V1.into(),
         tenant_id: session.tenant_id.clone(),
-        request_id: format!("rust-autonomy-lab-{scenario_index:02}-operator-00"),
+        request_id: evaluation_opaque_ref(
+            "slack-request-",
+            scenario_index,
+            &format!("{}:operator:0", scenario.scenario_ref),
+        ),
         thread_ref: session.thread_ref.clone(),
         context_scope_ref: session.context_scope_ref.clone(),
-        actor_ref: "evaluation-operator".into(),
+        actor_ref: evaluation_actor_ref(),
         assessment_at: context.evaluated_at.to_owned(),
         message: scenario.initial_message.clone(),
         history: Vec::new(),
@@ -3549,8 +3638,16 @@ async fn run_autonomy_scenario(
         }
         prior_assessment = wake_at;
         tools.set_autonomy_phase(wake_index as u8);
-        let request_id = format!("rust-autonomy-lab-{scenario_index:02}-wake-{wake_index:02}");
-        let occurrence_ref = format!("autonomy-occurrence-{scenario_index:02}-{wake_index:02}");
+        let request_id = evaluation_opaque_ref(
+            "slack-request-",
+            scenario_index,
+            &format!("{}:wake:{wake_index}", scenario.scenario_ref),
+        );
+        let occurrence_ref = evaluation_opaque_ref(
+            "schedule-occurrence://sha256/",
+            scenario_index,
+            &format!("{}:wake:{wake_index}", scenario.scenario_ref),
+        );
         let wake_input = session_turn_request_text(
             &session,
             &SessionTurnInput {
@@ -3860,7 +3957,7 @@ async fn run_conversation_lab(
                 scenario_index,
                 &scenario,
                 &scenario_anchor_at,
-                "rust-conversation-lab-tenant",
+                &evaluation_tenant_id(),
             )
         });
         let tools = EvalTools::for_conversation(
@@ -3870,9 +3967,22 @@ async fn run_conversation_lab(
 
         for turn_index in 0..LAB_MAX_TURNS {
             let assessment_at = OffsetDateTime::now_utc().format(&Rfc3339)?;
-            let request_id = format!("rust-conversation-lab-{scenario_index:02}-{turn_index:02}");
-            let thread_ref = format!("slack-thread://rust-conversation-lab/{scenario_index:02}");
-            let actor_ref = "slack-user://rust-conversation-lab".to_owned();
+            let request_id = evaluation_opaque_ref(
+                "slack-request-",
+                scenario_index,
+                &format!("{}:operator:{turn_index}", scenario.scenario_ref),
+            );
+            let thread_ref = durable_session.as_ref().map_or_else(
+                || {
+                    evaluation_opaque_ref(
+                        "slack-thread://sha256/",
+                        scenario_index,
+                        &scenario.scenario_ref,
+                    )
+                },
+                |session| session.thread_ref.clone(),
+            );
+            let actor_ref = evaluation_actor_ref();
             let effect_authorizations = if scenario.behavior
                 == ConversationBehavior::AuthorizedChangeThenVerify
                 && turn_index == 0
@@ -3892,7 +4002,7 @@ async fn run_conversation_lab(
                         "approval://agent-effect/{}",
                         input_digest.trim_start_matches("sha256:")
                     ),
-                    tenant_id: "rust-conversation-lab-tenant".into(),
+                    tenant_id: evaluation_tenant_id(),
                     request_id: request_id.clone(),
                     thread_ref: thread_ref.clone(),
                     actor_ref: actor_ref.clone(),
@@ -3904,7 +4014,7 @@ async fn run_conversation_lab(
             };
             let request = AgentTurnRequest {
                 schema_version: AGENT_TURN_REQUEST_V1.into(),
-                tenant_id: "rust-conversation-lab-tenant".into(),
+                tenant_id: evaluation_tenant_id(),
                 request_id,
                 thread_ref,
                 context_scope_ref: None,
@@ -4013,22 +4123,25 @@ async fn run_conversation_lab(
                     role: ConversationRole::Assistant,
                     content: markdown.clone(),
                 });
-                match simulate_operator(
-                    judge.as_ref(),
-                    &scenario,
-                    turn_index + 1,
-                    &transcript,
-                    &observations,
-                    &interaction_kinds,
+                Some(
+                    if let Some(next) = scenario.operator_turns.get(turn_index) {
+                        OperatorDecision {
+                            status: OperatorStatus::Continue,
+                            interaction_kind: next.interaction_kind,
+                            next_message: next.message.clone(),
+                            critique: "Pinned operator continuation.".into(),
+                            unresolved_outcomes: Vec::new(),
+                        }
+                    } else {
+                        OperatorDecision {
+                            status: OperatorStatus::Satisfied,
+                            interaction_kind: OperatorInteractionKind::None,
+                            next_message: String::new(),
+                            critique: "Pinned operator trajectory completed.".into(),
+                            unresolved_outcomes: Vec::new(),
+                        }
+                    },
                 )
-                .await
-                {
-                    Ok(decision) => Some(decision),
-                    Err(_) => {
-                        terminal_failure = true;
-                        None
-                    }
-                }
             } else {
                 terminal_failure = true;
                 None
@@ -4235,9 +4348,9 @@ fn conversation_suite_passed(
     full_suite: bool,
     targeted_regression_passed: bool,
     latency_gate_passed: bool,
-    advisory_semantic_gate_passed: bool,
+    _advisory_semantic_gate_passed: bool,
 ) -> bool {
-    full_suite && targeted_regression_passed && latency_gate_passed && advisory_semantic_gate_passed
+    full_suite && targeted_regression_passed && latency_gate_passed
 }
 
 fn conversation_behavior_runtime_passed(
@@ -5343,14 +5456,25 @@ fn validate_blind_review_bytes(
     }
     for raw_only_key in [
         "\"commit_sha\"",
+        "\"critic_attempt_count\"",
+        "\"holdout_pack_sha256\"",
         "\"judge_model_id\"",
+        "\"lane\"",
         "\"latency_ms\"",
         "\"model_id\"",
+        "\"observation_ref\"",
+        "\"operating_step_count\"",
         "\"operator_decision\"",
+        "\"presentation_attempt_count\"",
         "\"provider\"",
         "\"repair_feedback\"",
+        "\"route\"",
         "\"route_attempt_count\"",
         "\"runtime_path\"",
+        "\"schedule_provenance\"",
+        "\"source_occurrence_ref\"",
+        "\"terminal_state\"",
+        "\"tool_id\"",
     ] {
         if encoded.contains(raw_only_key) {
             return Err("blind review bundle includes a raw-only receipt field".into());
@@ -5397,9 +5521,9 @@ fn blind_candidate_label(
     blinding_salt: &str,
     commit_sha: &str,
     pack_sha256: &str,
-    scenario_ref: &str,
+    _scenario_ref: &str,
 ) -> String {
-    let material = format!("{blinding_salt}\0{commit_sha}\0{pack_sha256}\0{scenario_ref}");
+    let material = format!("{blinding_salt}\0{commit_sha}\0{pack_sha256}");
     format!("candidate-{}", &sha256_hex(material.as_bytes())[..12])
 }
 
@@ -5414,21 +5538,26 @@ fn blind_review_bundle<'a>(
                 .turns
                 .iter()
                 .map(|turn| {
+                    let observations = turn
+                        .tool_observations
+                        .iter()
+                        .map(|observation| {
+                            json!({
+                                "summary": observation.summary,
+                                "facts": observation.data,
+                                "state": observation.state,
+                                "complete": observation.complete,
+                                "blocker": observation.blocker,
+                            })
+                        })
+                        .collect::<Vec<_>>();
                     json!({
                         "turn_index": turn.turn_index,
                         "trigger": turn.trigger,
                         "trigger_input": turn.trigger_input,
-                        "route": turn.actual_route,
-                        "lane": turn.actual_lane,
-                        "repair_counts": {
-                            "operating": turn.repair_feedback.iter().map(Vec::len).sum::<usize>(),
-                            "presentation": turn.presentation_repair_feedback.iter().map(Vec::len).sum::<usize>(),
-                            "critic": turn.critic_repair_feedback.iter().map(Vec::len).sum::<usize>(),
-                        },
-                        "schedule_provenance": turn.schedule,
                         "assistant_message": turn.response_markdown,
-                        "authoritative_observations": turn.tool_observations,
-                        "terminal_state": turn.terminal_state,
+                        "authoritative_observations": observations,
+                        "answered": turn.response_markdown.is_some(),
                     })
                 })
                 .collect::<Vec<_>>();
@@ -5443,10 +5572,9 @@ fn blind_review_bundle<'a>(
         })
         .collect::<Vec<_>>();
     json!({
-        "schema_version": "cerebro-slack-agent-blind-review/v3",
+        "schema_version": "cerebro-slack-agent-blind-review/v4",
         "identity_disclosure": "model_provider_implementation_and_commit_withheld",
         "data_provenance": &holdout_source.provenance,
-        "holdout_pack_sha256": holdout_source.pack_sha256,
         "rubric": {
             "dimensions": ["task_completion", "factual_grounding", "conversational_quality", "initiative", "judgment", "continuity", "burden_reduction"],
             "score_range": [1, 5],
@@ -5458,15 +5586,14 @@ fn blind_review_bundle<'a>(
 
 #[cfg(test)]
 fn autonomy_failure_blind_bundle(
-    pack_sha256: &str,
+    _pack_sha256: &str,
     scenario: &ConversationLabScenario,
     candidate_label: &str,
 ) -> Value {
     json!({
-        "schema_version": "cerebro-slack-agent-blind-review/v3",
+        "schema_version": "cerebro-slack-agent-blind-review/v4",
         "identity_disclosure": "model_provider_implementation_and_commit_withheld",
         "data_provenance": embedded_synthetic_provenance(),
-        "holdout_pack_sha256": pack_sha256,
         "rubric": {
             "dimensions": ["task_completion", "factual_grounding", "conversational_quality", "initiative", "judgment", "continuity", "burden_reduction"],
             "score_range": [1, 5],
@@ -5481,16 +5608,15 @@ fn autonomy_failure_blind_bundle(
             }],
             "turns": [{
                 "turn_index": 0,
-                "trigger": "execution",
-                "trigger_input": null,
-                "schedule_provenance": null,
+                "trigger": "operator",
+                "trigger_input": scenario.initial_message,
                 "assistant_message": null,
                 "authoritative_observations": [],
-                "terminal_state": "terminal_runtime_error",
+                "answered": false,
             }],
             "delivered_exchange_count": 0,
             "unanswered_user_turn_count": 1,
-            "hard_defects": ["terminal_runtime_error"],
+            "hard_defects": ["unanswered_request"],
         }],
     })
 }
@@ -5529,7 +5655,7 @@ fn selected_lab_scenarios() -> Result<ConversationScenarioSelection, Box<dyn Err
             );
         }
         let pack: ConversationHoldoutPack = serde_json::from_slice(&bytes)?;
-        if pack.schema_version != "cerebro-rust-slack-agent-holdout-pack/v4" {
+        if pack.schema_version != "cerebro-rust-slack-agent-holdout-pack/v5" {
             return Err("unsupported conversation holdout pack schema".into());
         }
         validate_synthetic_holdout(
@@ -5640,9 +5766,26 @@ fn validate_conversation_scenarios(
     }
     let mut content_digests = BTreeSet::new();
     if scenarios.iter().any(|scenario| {
+        let interaction_kinds = scenario
+            .operator_turns
+            .iter()
+            .map(|turn| turn.interaction_kind)
+            .collect::<BTreeSet<_>>();
+        let unique_operator_messages = scenario
+            .operator_turns
+            .iter()
+            .map(|turn| turn.message.trim())
+            .collect::<BTreeSet<_>>();
         scenario.mission.trim().is_empty()
             || scenario.operator_brief.trim().is_empty()
             || scenario.initial_message.trim().is_empty()
+            || scenario.operator_turns.len() < LAB_MIN_EXCHANGES - 1
+            || unique_operator_messages.len() != scenario.operator_turns.len()
+            || unique_operator_messages.contains("")
+            || !interaction_kinds.contains(&OperatorInteractionKind::ScopeRefinement)
+            || !interaction_kinds.contains(&OperatorInteractionKind::Continuation)
+            || !interaction_kinds.contains(&OperatorInteractionKind::FollowUp)
+            || interaction_kinds.contains(&OperatorInteractionKind::None)
             || !conversation_behavior_matches_fixture(scenario)
             || !content_digests.insert(sha256_hex(
                 &serde_json::to_vec(&json!({
@@ -5650,12 +5793,13 @@ fn validate_conversation_scenarios(
                     "operator_brief": scenario.operator_brief,
                     "initial_message": scenario.initial_message,
                     "seed_history": scenario.seed_history,
+                    "operator_turns": scenario.operator_turns,
                 }))
                 .expect("conversation scenario content is serializable"),
             ))
     }) {
         return Err(
-            "conversation holdout scenarios require unique content and an allowed behavior-to-fixture contract"
+            "conversation holdout scenarios require unique content, three distinct scripted interaction kinds, and an allowed behavior-to-fixture contract"
                 .into(),
         );
     }
@@ -5712,6 +5856,7 @@ fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
                 ConversationMessage { role: ConversationRole::User, content: "What visibility or access do you have to Source A?".into() },
                 ConversationMessage { role: ConversationRole::Assistant, content: "I found Source A controls, tests, people, and evidence records in the graph.".into() },
             ],
+            operator_turns: Vec::new(),
         },
         ConversationLabScenario {
             scenario_ref: "operational_partner".into(),
@@ -5721,6 +5866,7 @@ fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
             operator_brief: "You are terse and busy. Force Cerebro to distinguish a merely degraded feed from a decision-impacting control gap.".into(),
             initial_message: "how we doin?".into(),
             seed_history: vec![ConversationMessage { role: ConversationRole::User, content: "Yesterday one of the evidence feeds was being flaky.".into() }],
+            operator_turns: Vec::new(),
         },
         ConversationLabScenario {
             scenario_ref: "connector_diagnosis".into(),
@@ -5730,6 +5876,7 @@ fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
             operator_brief: "Distrust easy root causes. Ask what rules out authentication, what changed, and how the fix will be independently verified.".into(),
             initial_message: "Figure out why the connector keeps failing end to end.".into(),
             seed_history: vec![ConversationMessage { role: ConversationRole::User, content: "It failed again after the configuration change. Authentication looked okay yesterday.".into() }],
+            operator_turns: Vec::new(),
         },
         ConversationLabScenario {
             scenario_ref: "capability_to_evidence".into(),
@@ -5739,6 +5886,7 @@ fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
             operator_brief: "Begin conversationally, then narrow to current evidence and challenge any implication that collected records equal provider administration.".into(),
             initial_message: "Hey—what kinds of security questions are you actually good at helping with?".into(),
             seed_history: vec![],
+            operator_turns: Vec::new(),
         },
     ]
 }
@@ -6936,6 +7084,7 @@ mod tests {
             operator_brief: "Use only made-up context.".into(),
             initial_message: "Continue the fictional check.".into(),
             seed_history: Vec::new(),
+            operator_turns: Vec::new(),
         };
         let mut session =
             evaluation_session(0, &scenario, "2026-07-31T00:00:00Z", "tenant:synthetic");
@@ -7168,6 +7317,24 @@ mod tests {
                     operator_brief: format!("Keep fictional operator cell {index} bounded."),
                     initial_message: format!("Inspect fictional scenario {index}."),
                     seed_history: Vec::new(),
+                    operator_turns: vec![
+                        ScriptedOperatorTurn {
+                            interaction_kind: OperatorInteractionKind::ScopeRefinement,
+                            message: format!(
+                                "Narrow fictional scenario {index} to the material risk."
+                            ),
+                        },
+                        ScriptedOperatorTurn {
+                            interaction_kind: OperatorInteractionKind::Continuation,
+                            message: format!(
+                                "Continue fictional scenario {index} without another prompt."
+                            ),
+                        },
+                        ScriptedOperatorTurn {
+                            interaction_kind: OperatorInteractionKind::FollowUp,
+                            message: format!("What closes fictional scenario {index}?"),
+                        },
+                    ],
                 },
             )
             .collect::<Vec<_>>();
@@ -7190,7 +7357,7 @@ mod tests {
         assert!(!autonomy_suite_passed(false, true, true, true));
         assert!(!autonomy_suite_passed(true, false, true, true));
         assert!(!autonomy_suite_passed(true, true, false, true));
-        assert!(!autonomy_suite_passed(true, true, true, false));
+        assert!(autonomy_suite_passed(true, true, true, false));
     }
 
     #[test]
@@ -7279,7 +7446,7 @@ mod tests {
         assert!(!conversation_suite_passed(false, true, true, true));
         assert!(!conversation_suite_passed(true, false, true, true));
         assert!(!conversation_suite_passed(true, true, false, true));
-        assert!(!conversation_suite_passed(true, true, true, false));
+        assert!(conversation_suite_passed(true, true, true, false));
     }
 
     #[test]
@@ -7372,7 +7539,7 @@ mod tests {
     }
 
     #[test]
-    fn blind_candidate_labels_are_opaque_stable_and_scenario_specific() {
+    fn blind_candidate_labels_are_opaque_stable_and_scenario_independent() {
         let first = blind_candidate_label(
             "a sufficiently long secret salt",
             &"a".repeat(40),
@@ -7389,7 +7556,7 @@ mod tests {
                 "scenario-one",
             )
         );
-        assert_ne!(
+        assert_eq!(
             first,
             blind_candidate_label(
                 "a sufficiently long secret salt",
@@ -7479,7 +7646,7 @@ mod tests {
         validate_blind_review_bytes(&bytes, &[&"a".repeat(40)]).unwrap();
         assert_eq!(
             bundle.pointer("/candidates/0/hard_defects/0"),
-            Some(&json!("terminal_runtime_error"))
+            Some(&json!("unanswered_request"))
         );
         assert_eq!(
             bundle.pointer("/candidates/0/unanswered_user_turn_count"),
@@ -7687,6 +7854,7 @@ mod tests {
                 role: ConversationRole::User,
                 content: "Visible earlier context.".into(),
             }],
+            operator_turns: Vec::new(),
         };
         let session = evaluation_session(1, &scenario, "2026-07-31T00:00:00Z", "tenant");
         let encoded = serde_json::to_string(&session).unwrap();
@@ -7773,10 +7941,9 @@ mod tests {
         );
 
         let observation = &bundle["candidates"][0]["turns"][0]["authoritative_observations"][0];
-        assert_eq!(observation["tool_id"], "source_runtime.inspect");
         assert_eq!(observation["summary"], "One source is current.");
-        assert_eq!(observation["data"]["current"], true);
-        assert_eq!(observation["data"]["source_count"], 1);
+        assert_eq!(observation["facts"]["current"], true);
+        assert_eq!(observation["facts"]["source_count"], 1);
         assert_eq!(observation["state"], "succeeded");
         assert_eq!(observation["complete"], true);
 

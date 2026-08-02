@@ -5829,24 +5829,44 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
     if source_tokens.is_empty() {
         return false;
     }
-    let source_is_conceptual = source_tokens.iter().any(|token| {
-        matches!(
-            token.as_str(),
-            "analogy"
-                | "codename"
-                | "concept"
-                | "example"
-                | "fiction"
-                | "game"
-                | "hypothetical"
-                | "metaphor"
-                | "movie"
-                | "novel"
-                | "parable"
-                | "poem"
-                | "story"
-        )
-    });
+    let normalized_source = format!(
+        " {} ",
+        source_messages
+            .iter()
+            .flat_map(|message| message.split(|character: char| !character.is_alphanumeric()))
+            .filter(|token| !token.is_empty())
+            .map(str::to_ascii_lowercase)
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    let source_is_conceptual = [
+        " in this analogy ",
+        " in the analogy ",
+        " as an analogy ",
+        " in this story ",
+        " in the story ",
+        " as a story ",
+        " in this novel ",
+        " in the novel ",
+        " as an example ",
+        " hypothetical ",
+        " metaphor ",
+        " codename ",
+        " as a name ",
+        " name choice ",
+        " title ",
+    ]
+    .iter()
+    .any(|marker| normalized_source.contains(marker));
+    let source_invites_opinion = [
+        " what do you think ",
+        " thoughts on ",
+        " do you like ",
+        " your take ",
+        " your opinion ",
+    ]
+    .iter()
+    .any(|marker| normalized_source.contains(marker));
     body.split(['.', ';', '!', '?', '\n']).any(|clause| {
         let is_conditional = clause.trim_start().to_ascii_lowercase().starts_with("if ");
         if is_conditional {
@@ -5873,6 +5893,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "recently"
                         | "today"
                         | "unlike"
+                        | "yesterday"
                 )
             });
         let is_named_source_subject = |token: &str| {
@@ -5904,11 +5925,13 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                 .map(String::as_str)
         };
         let finite_state = tokens.iter().enumerate().any(|(index, token)| {
-            matches!(
+            (matches!(
                 token.as_str(),
                 "approved"
                     | "became"
                     | "broken"
+                    | "crash"
+                    | "crashed"
                     | "degraded"
                     | "deployed"
                     | "disabled"
@@ -5933,15 +5956,40 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                     | "stable"
                     | "up"
                     | "unavailable"
-            ) && index > 0
+            ) || token.ends_with("ed"))
+                && index > 0
                 && named_subject_before(index).is_some()
         });
         let copular_state = tokens.iter().enumerate().any(|(copula_index, token)| {
-            matches!(token.as_str(), "is" | "are" | "was" | "were")
-                && named_subject_before(copula_index).is_some()
-                && tokens[copula_index + 1..]
-                    .iter()
-                    .any(|predicate| !matches!(predicate.as_str(), "a" | "an" | "the"))
+            if !matches!(token.as_str(), "is" | "are" | "was" | "were")
+                || named_subject_before(copula_index).is_none()
+            {
+                return false;
+            }
+            let predicates = &tokens[copula_index + 1..];
+            let subjective_opinion = source_invites_opinion
+                && predicates.iter().all(|predicate| {
+                    matches!(
+                        predicate.as_str(),
+                        "a" | "an"
+                            | "bad"
+                            | "clear"
+                            | "compelling"
+                            | "confusing"
+                            | "good"
+                            | "interesting"
+                            | "memorable"
+                            | "name"
+                            | "the"
+                            | "thoughtful"
+                            | "title"
+                            | "useful"
+                    )
+                });
+            predicates
+                .iter()
+                .any(|predicate| !matches!(predicate.as_str(), "a" | "an" | "the"))
+                && !subjective_opinion
         });
         (finite_state || copular_state) && !conceptual_context_applies
     })
@@ -11565,6 +11613,14 @@ mod tests {
             ("do you like atlas?", "i like atlas; atlas is responsive."),
             ("do you like atlas?", "i like atlas; atlas is stable."),
             ("do you like atlas?", "i like atlas; atlas is unavailable."),
+            (
+                "Did Atlas crash? Give me your take.",
+                "My take: Atlas crashed.",
+            ),
+            (
+                "Is Story Service operational?",
+                "Story Service is operational.",
+            ),
         ] {
             let mut unsupported_session = synthesis_session.clone();
             unsupported_session.messages[0].text = request.into();
@@ -11574,6 +11630,27 @@ mod tests {
             assert!(
                 validate_grounded_draft(&unsupported_session, &candidate, &[], assessment).is_err(),
                 "conversational synthesis accepted unsupported operational prose: {unsupported}"
+            );
+        }
+
+        for (request, opinion) in [
+            (
+                "What do you think about Atlas?",
+                "I think Atlas is interesting.",
+            ),
+            (
+                "What do you think about Atlas?",
+                "Atlas is a thoughtful name.",
+            ),
+            ("Do you like Atlas?", "Atlas is memorable."),
+        ] {
+            let mut opinion_session = synthesis_session.clone();
+            opinion_session.messages[0].text = request.into();
+            candidate = accepted.clone();
+            candidate.claims[0].text = opinion.into();
+            candidate.message = candidate.claims[0].text.clone();
+            validate_grounded_draft(&opinion_session, &candidate, &[], assessment).unwrap_or_else(
+                |error| panic!("ordinary opinion was rejected: {opinion}: {error}"),
             );
         }
 
@@ -11681,6 +11758,12 @@ mod tests {
         assert!(
             validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
             "a fictional prompt suppressed an assertion that escaped into reality"
+        );
+        candidate.claims[0].text = "This example shows Atlas failed yesterday.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
+            "a conceptual prompt suppressed a dated operational assertion"
         );
 
         let mut malformed_markup_session = synthesis_session.clone();
