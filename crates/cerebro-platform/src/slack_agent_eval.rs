@@ -63,6 +63,28 @@ const CONVERSATION_PROMOTION_HOLDOUT_SHA256: &str =
     "8ea952c9384a520d40a7b3388723170514196393734fe8320cc0f4c600d5e5d7";
 const AUTONOMY_PROMOTION_HOLDOUT_SHA256: &str =
     "4090e95681e7cf9ff3b83e1e93bf72ecda0c712f0f22560294062d089eaf0445";
+const CODE_OWNED_DOTTED_IDENTIFIERS: &[&str] = &[
+    "calibration.observation",
+    "capability.describe",
+    "capability.execute",
+    "capability.overview",
+    "capability.search",
+    "graph.expand",
+    "graph.reason",
+    "graph.search",
+    "mcp.cerebro.action.plan",
+    "mcp.cerebro.assets.search",
+    "mcp.cerebro.evidence.packet",
+    "mcp.cerebro.findings.search",
+    "mcp.cerebro.investigation.context",
+    "mcp.cerebro.risk.explain",
+    "mcp.cerebro.sources.health",
+    "slack.history.search",
+    "slack.thread.read",
+    "source_catalog.inspect",
+    "source_runtime.inspect",
+    "source_runtime.overview",
+];
 
 #[derive(Clone, Copy)]
 struct EvalCase {
@@ -5026,12 +5048,24 @@ fn validate_synthetic_payload_names(
             if starts.len() > 65 || ends.len() > 65 {
                 return Err("synthetic holdout material contains too many token delimiters".into());
             }
-            for candidate in starts.iter().flat_map(|start| {
+            let code_owned_ranges = code_owned_identifier_ranges(raw_word);
+            for (start, end) in starts.iter().flat_map(|start| {
                 ends.iter()
                     .filter(move |end| *end > start)
-                    .map(move |end| &raw_word[*start..*end])
+                    .map(move |end| (*start, *end))
             }) {
+                let candidate = &raw_word[start..end];
                 let word = candidate.trim_matches(|character: char| !character.is_alphanumeric());
+                let word_start = start + candidate.find(word).unwrap_or(0);
+                let word_end = word_start + word.len();
+                if code_owned_ranges
+                    .iter()
+                    .any(|(allowed_start, allowed_end)| {
+                        word_start >= *allowed_start && word_end <= *allowed_end
+                    })
+                {
+                    continue;
+                }
                 let name_word = word
                     .strip_suffix("'s")
                     .or_else(|| word.strip_suffix("'S"))
@@ -5155,6 +5189,33 @@ fn validate_synthetic_assignment_subjects(
     Ok(())
 }
 
+fn code_owned_identifier_ranges(raw_word: &str) -> Vec<(usize, usize)> {
+    fn identifier_byte(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.')
+    }
+
+    let canonical = raw_word.to_ascii_lowercase();
+    let bytes = canonical.as_bytes();
+    let mut ranges = Vec::new();
+    for identifier in CODE_OWNED_DOTTED_IDENTIFIERS {
+        for (start, _) in canonical.match_indices(identifier) {
+            let end = start + identifier.len();
+            let left_bounded = start == 0 || !identifier_byte(bytes[start - 1]);
+            let right_bounded = if end == bytes.len() {
+                true
+            } else if bytes[end] == b'.' {
+                end + 1 == bytes.len() || !identifier_byte(bytes[end + 1])
+            } else {
+                !identifier_byte(bytes[end])
+            };
+            if left_bounded && right_bounded {
+                ranges.push((start, end));
+            }
+        }
+    }
+    ranges
+}
+
 fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
     const RESERVED_REAL_WORLD_TOKENS: &[&str] = &[
         "acme",
@@ -5238,29 +5299,7 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
         .next()
         .unwrap_or(&canonical);
     let domain_labels = endpoint.split('.').collect::<Vec<_>>();
-    let code_owned_dotted_identifier = [
-        "calibration.observation",
-        "capability.describe",
-        "capability.execute",
-        "capability.overview",
-        "capability.search",
-        "graph.expand",
-        "graph.reason",
-        "graph.search",
-        "mcp.cerebro.action.plan",
-        "mcp.cerebro.assets.search",
-        "mcp.cerebro.evidence.packet",
-        "mcp.cerebro.findings.search",
-        "mcp.cerebro.investigation.context",
-        "mcp.cerebro.risk.explain",
-        "mcp.cerebro.sources.health",
-        "slack.history.search",
-        "slack.thread.read",
-        "source_catalog.inspect",
-        "source_runtime.inspect",
-        "source_runtime.overview",
-    ]
-    .contains(&canonical.as_str());
+    let code_owned_dotted_identifier = CODE_OWNED_DOTTED_IDENTIFIERS.contains(&canonical.as_str());
     let domain_like = !code_owned_dotted_identifier
         && domain_labels.len() >= 2
         && !endpoint.contains('_')
@@ -7368,6 +7407,17 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires the externally pinned autonomy promotion corpus"]
+    fn configured_external_autonomy_pack_passes_the_runtime_loader() {
+        let selection = selected_autonomy_scenario().unwrap();
+        assert_eq!(selection.declared_scenario_count, selection.scenarios.len());
+        assert!(selection.declared_scenario_count >= 6);
+        assert_eq!(selection.source.source_kind, "external_pinned_holdout");
+        assert!(selection.source.digest_verified);
+        assert!(selection.source.runtime_loaded_after_exact_head_binding);
+    }
+
+    #[test]
     fn external_conversation_pack_requires_code_owned_behavioral_diversity() {
         let definitions = [
             (
@@ -7781,6 +7831,27 @@ mod tests {
                 }),
             )
             .is_ok()
+        );
+        let code_owned_tools = validate_synthetic_holdout(
+            "synthetic://cerebro-holdouts/test-pack",
+            &provenance,
+            &json!({
+                "message": "The synthetic operator and synthetic team use source_runtime.inspect, source_runtime.overview, and mcp.cerebro.sources.health for the fictional connector."
+            }),
+        );
+        assert!(
+            code_owned_tools.is_ok(),
+            "code-owned synthetic tools must pass validation: {code_owned_tools:?}"
+        );
+        assert!(
+            validate_synthetic_holdout(
+                "synthetic://cerebro-holdouts/test-pack",
+                &provenance,
+                &json!({
+                    "message": "The synthetic operator and synthetic team use source_runtime.inspect.example.com for the fictional connector."
+                }),
+            )
+            .is_err()
         );
         provenance.synthetic_only = false;
         assert!(
