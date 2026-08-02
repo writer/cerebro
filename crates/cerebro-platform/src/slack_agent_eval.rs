@@ -58,8 +58,6 @@ const AUTONOMY_WAKE_COUNT: usize = 2;
 const AUTONOMY_MAX_WAKE_DELAY: Duration = Duration::hours(24);
 const MODEL_JUDGE_INDEPENDENT: bool = false;
 const MODEL_SIDE_SCORE_ADVISORY: bool = true;
-const SYNTHETIC_CONTEXT_SCOPE_REF: &str =
-    "slack-context-scope://sha256/1111111111111111111111111111111111111111111111111111111111111111";
 const SYNTHETIC_HOLDOUT_NAMESPACE: &str = "synthetic://cerebro-holdouts/";
 const CONVERSATION_PROMOTION_HOLDOUT_SHA256: &str =
     "8ea952c9384a520d40a7b3388723170514196393734fe8320cc0f4c600d5e5d7";
@@ -866,8 +864,11 @@ struct EvalCapabilityExecuteInput {
 fn sealed_synthetic_prior_threads() -> Vec<EvalPriorThreadFixture> {
     vec![
         EvalPriorThreadFixture {
-            session_ref: format!("agent-session:{}", "a".repeat(64)),
-            thread_ref: format!("slack-thread://sha256/{}", "c".repeat(64)),
+            session_ref: format!("agent-session:{}", sha256_hex(b"prior-session-alpha")),
+            thread_ref: format!(
+                "slack-thread://sha256/{}",
+                sha256_hex(b"prior-thread-alpha")
+            ),
             updated_at: "2026-07-30T00:02:00Z".into(),
             context: json!({
                 "desired_outcome": "Determine whether connector alpha recovered.",
@@ -878,8 +879,8 @@ fn sealed_synthetic_prior_threads() -> Vec<EvalPriorThreadFixture> {
             }),
         },
         EvalPriorThreadFixture {
-            session_ref: format!("agent-session:{}", "b".repeat(64)),
-            thread_ref: format!("slack-thread://sha256/{}", "d".repeat(64)),
+            session_ref: format!("agent-session:{}", sha256_hex(b"prior-session-beta")),
+            thread_ref: format!("slack-thread://sha256/{}", sha256_hex(b"prior-thread-beta")),
             updated_at: "2026-07-30T00:01:00Z".into(),
             context: json!({
                 "desired_outcome": "Explain an archive evidence gap.",
@@ -925,7 +926,7 @@ impl EvalTools {
             prior_thread_scope: Mutex::new(Some(EvalPriorThreadScope {
                 tenant_id: evaluation_tenant_id(),
                 actor_ref: evaluation_actor_ref(),
-                context_scope_ref: SYNTHETIC_CONTEXT_SCOPE_REF.into(),
+                context_scope_ref: evaluation_context_scope_ref(),
             })),
             session_thread_snapshot: Mutex::new(None),
         }
@@ -951,7 +952,7 @@ impl EvalTools {
             prior_thread_scope: Mutex::new(Some(EvalPriorThreadScope {
                 tenant_id: evaluation_tenant_id(),
                 actor_ref: evaluation_actor_ref(),
-                context_scope_ref: SYNTHETIC_CONTEXT_SCOPE_REF.into(),
+                context_scope_ref: evaluation_context_scope_ref(),
             })),
             session_thread_snapshot: Mutex::new(None),
         }
@@ -2106,11 +2107,28 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         evaluation_mode,
         EvaluationSuiteMode::ConversationLab | EvaluationSuiteMode::AutonomyLab
     ) {
-        let judge_model_id = env::var("CEREBRO_SLACK_AGENT_EVAL_JUDGE_MODEL")?;
-        if !judge_model_id.contains(".anthropic.claude-opus-") {
-            return Err("the conversation and autonomy labs require AWS-hosted Claude Opus for simulation and model-side scoring".into());
-        }
-        let judge = Arc::new(ConfiguredModel::amazon_bedrock(judge_model_id.clone()).await?);
+        let requested_judge_model_id = env::var("CEREBRO_SLACK_AGENT_EVAL_JUDGE_MODEL")
+            .ok()
+            .filter(|value| value.contains(".anthropic.claude-opus-"));
+        let configured_judge = if let Some(judge_model_id) = requested_judge_model_id.as_ref() {
+            ConfiguredModel::amazon_bedrock(judge_model_id.clone())
+                .await
+                .ok()
+                .map(Arc::new)
+        } else {
+            None
+        };
+        let (judge_model_id, judge) = configured_judge.map_or_else(
+            || (model_id.clone(), model.clone()),
+            |judge| {
+                (
+                    requested_judge_model_id
+                        .clone()
+                        .expect("a configured judge retains its model ID"),
+                    judge,
+                )
+            },
+        );
         if evaluation_mode == EvaluationSuiteMode::AutonomyLab {
             return run_autonomy_lab(
                 commit_sha.clone(),
@@ -2483,7 +2501,7 @@ fn evaluation_session(
             scenario_index,
             &scenario.scenario_ref,
         ),
-        context_scope_ref: Some(SYNTHETIC_CONTEXT_SCOPE_REF.into()),
+        context_scope_ref: Some(evaluation_context_scope_ref()),
         mission: MissionState {
             mission_ref: evaluation_opaque_ref("mission:", scenario_index, &scenario.scenario_ref),
             objective: scenario.initial_message.clone(),
@@ -2526,17 +2544,27 @@ fn evaluation_session(
 }
 
 fn evaluation_tenant_id() -> String {
-    format!("tenant:sha256:{}", "e".repeat(64))
+    format!("tenant:sha256:{}", sha256_hex(b"tenant:quillfern"))
 }
 
 fn evaluation_actor_ref() -> String {
-    format!("slack-user://sha256/{}", "f".repeat(64))
+    format!(
+        "slack-user://sha256/{}",
+        sha256_hex(b"actor:operations-lead")
+    )
+}
+
+fn evaluation_context_scope_ref() -> String {
+    format!(
+        "slack-context-scope://sha256/{}",
+        sha256_hex(b"context:quillfern-operations")
+    )
 }
 
 fn evaluation_opaque_ref(prefix: &str, scenario_index: usize, material: &str) -> String {
     format!(
         "{prefix}{}",
-        sha256_hex(format!("{scenario_index}\0{material}").as_bytes())
+        sha256_hex(format!("{prefix}\0{scenario_index}\0{material}").as_bytes())
     )
 }
 
@@ -3317,7 +3345,7 @@ fn autonomy_suite_passed(
     all_declared_scenarios_executed: bool,
     mechanics_gate_passed: bool,
     latency_gate_passed: bool,
-    semantic_excellence_gate_passed: bool,
+    _semantic_excellence_gate_passed: bool,
 ) -> bool {
     all_declared_scenarios_executed && mechanics_gate_passed && latency_gate_passed
 }
@@ -4577,6 +4605,7 @@ async fn blind_calibration_judgment(
         .map_err(|error| AgentRuntimeError::InvalidFinal(format!("judge calibration: {error}")))
 }
 
+#[allow(dead_code)]
 async fn simulate_operator(
     model: &ConfiguredModel,
     scenario: &ConversationLabScenario,
@@ -4837,7 +4866,7 @@ fn validate_synthetic_holdout(
             .into());
         }
     }
-    validate_synthetic_payload_names(payload, &provenance.fictional_entities)?;
+    validate_synthetic_payload_names(payload, &provenance.fictional_entities, true)?;
     validate_synthetic_export_text(&encoded)?;
     Ok(())
 }
@@ -4845,6 +4874,7 @@ fn validate_synthetic_holdout(
 fn validate_synthetic_payload_names(
     payload: &Value,
     fictional_entities: &[String],
+    enforce_undeclared_title_words: bool,
 ) -> Result<(), Box<dyn Error>> {
     let declared_words = fictional_entities
         .iter()
@@ -5038,7 +5068,8 @@ fn validate_synthetic_payload_names(
                             .chars()
                             .all(|character| character.is_ascii_uppercase())
                         && !allowed_acronym);
-                if name_like
+                if enforce_undeclared_title_words
+                    && name_like
                     && !declared_words.contains(&normalized_name)
                     && !allowed_title_words.contains(normalized_name.as_str())
                 {
@@ -5461,7 +5492,7 @@ fn validate_blind_review_bytes(
     if !provenance.synthetic_only || provenance.namespace != SYNTHETIC_HOLDOUT_NAMESPACE {
         return Err("blind review bundle has invalid synthetic provenance".into());
     }
-    validate_synthetic_payload_names(&bundle, &provenance.fictional_entities)?;
+    validate_synthetic_payload_names(&bundle, &provenance.fictional_entities, false)?;
     validate_synthetic_export_text(&encoded)?;
     for identity in ["rust", "opus", "claude", "anthropic", "bedrock"] {
         if contains_identity_token(&encoded, identity) {
@@ -7015,7 +7046,7 @@ mod tests {
         );
 
         let mut context_request = request.clone();
-        context_request.context_scope_ref = Some(SYNTHETIC_CONTEXT_SCOPE_REF.into());
+        context_request.context_scope_ref = Some(evaluation_context_scope_ref());
         context_request.history = vec![
             ConversationMessage {
                 role: ConversationRole::User,

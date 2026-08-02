@@ -11697,7 +11697,7 @@ mod tests {
             ("Thoughts on Atlas?", "My thoughts: Atlas inspired me."),
             (
                 "What do you think about Atlas?",
-                "Atlas is a thoughtful name.",
+                "I think Atlas is a thoughtful name.",
             ),
             ("Do you like Atlas?", "Atlas is memorable."),
         ] {

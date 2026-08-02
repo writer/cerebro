@@ -1635,7 +1635,7 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                     .iter()
                     .enumerate()
                     .any(|(verb_index, verb)| {
-                        if !matches!(*verb, "is" | "are" | "has" | "have" | "did") {
+                        if !matches!(*verb, "is" | "are" | "has" | "have" | "did" | "does") {
                             return false;
                         }
                         let verb_has_subject_before = verb_index > 0
