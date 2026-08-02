@@ -1590,7 +1590,10 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
             ]
             .iter()
             .any(|time| words.contains(time));
-            has_subject_bound_verb || has_time_boundary
+            let nonterminal_why_explanation = words.first() == Some(&"why")
+                && predicate_index + 1 < words.len()
+                && !has_time_boundary;
+            (has_subject_bound_verb && !nonterminal_why_explanation) || has_time_boundary
         });
     let generic_live_ownership = normalized.contains(" who handles ")
         || normalized.contains(" who owns ")
@@ -3151,6 +3154,8 @@ mod grounding_tests {
             "Why is Atlas Green a good codename?",
             "Why is green a calming color?",
             "Why is healthy conflict a useful concept?",
+            "Why is a healthy debate useful?",
+            "Why is the color green calming?",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),

@@ -607,16 +607,24 @@ impl SlackAgentService {
         .await
         .map_err(|_| AgentRuntimeError::ModelUnavailable("session turn deadline exceeded".into()))
         .and_then(|result| result);
-        let release = store
-            .release_turn(&session.session_ref, &request.request_id, &lease_owner)
-            .await;
-        match (outcome, release) {
-            (Ok(outcome), Ok(())) => Ok(session_outcome_to_turn(outcome)),
-            (Err(error), Ok(())) => Err(error),
-            (Err(error), Err(release_error)) => {
-                Err(combine_turn_release_error(error, release_error))
+        match outcome {
+            Ok(outcome @ SessionTurnOutcome::PendingDelivery { .. }) => {
+                Ok(session_outcome_to_turn(outcome))
             }
-            (Ok(_), Err(error)) => Err(error),
+            Ok(outcome @ SessionTurnOutcome::ApprovalRequired { .. }) => {
+                store
+                    .release_turn(&session.session_ref, &request.request_id, &lease_owner)
+                    .await?;
+                Ok(session_outcome_to_turn(outcome))
+            }
+            Err(error) => Err(release_turn_after_failure(
+                store,
+                &session.session_ref,
+                &request.request_id,
+                &lease_owner,
+                error,
+            )
+            .await),
         }
     }
 
@@ -678,7 +686,12 @@ impl SlackAgentService {
             },
         ];
         match store
-            .append(&session.session_ref, expected_sequence, &events)
+            .append_delivery_completion(
+                &session.session_ref,
+                &receipt_for_replay.request_id,
+                expected_sequence,
+                &events,
+            )
             .await
         {
             Ok(()) => Ok(()),
@@ -1289,14 +1302,53 @@ pub(crate) fn route_request_from_session(
         Some(start) => &session.events[start..=delivered_end],
         _ => &session.events[0..0],
     };
-    let active_lane = delivered_events
-        .iter()
-        .rev()
-        .find_map(|event| match &event.event {
-            SessionEvent::PlanEstablished { plan } => Some(plan.lane),
-            SessionEvent::RouteAccepted { lane, .. } => Some(*lane),
-            _ => None,
+    let latest_delivered_lane =
+        delivered_events
+            .iter()
+            .rev()
+            .find_map(|event| match &event.event {
+                SessionEvent::PlanEstablished { plan } => Some(plan.lane),
+                SessionEvent::RouteAccepted { lane, .. } => Some(*lane),
+                _ => None,
+            });
+    let mission_is_unresolved = !session.mission.open_loops.is_empty()
+        || session.mission.commitments.iter().any(|commitment| {
+            !matches!(
+                commitment.status,
+                cerebro_agent_runtime::session::CommitmentStatus::Completed
+                    | cerebro_agent_runtime::session::CommitmentStatus::Cancelled
+            )
         });
+    let active_lane =
+        if mission_is_unresolved && latest_delivered_lane == Some(ExecutionLane::Converse) {
+            session
+                .events
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(route_index, event)| match &event.event {
+                    SessionEvent::RouteAccepted { request_id, lane }
+                        if matches!(
+                            lane,
+                            ExecutionLane::Lookup | ExecutionLane::Investigate | ExecutionLane::Act
+                        ) && session.events[route_index + 1..].iter().any(|later| {
+                            matches!(
+                                &later.event,
+                                SessionEvent::DeliveryRecorded {
+                                    request_id: delivered_request_id,
+                                    ..
+                                } if delivered_request_id == request_id
+                            )
+                        }) =>
+                    {
+                        Some(*lane)
+                    }
+                    _ => None,
+                })
+                .or(latest_delivered_lane)
+        } else {
+            latest_delivered_lane
+        };
     let last_outcome = delivered_events
         .iter()
         .rev()
@@ -5726,6 +5778,144 @@ mod tests {
         assert_eq!(working.active_lane, Some(ExecutionLane::Investigate));
         assert_eq!(working.requires_current_evidence, Some(true));
         assert!(!working.open_loops.iter().any(|item| item == "caller loop"));
+    }
+
+    #[test]
+    fn side_conversation_does_not_replace_an_unresolved_operating_lane() {
+        let prior = replay_request();
+        let mut base = new_session(&prior).unwrap();
+        base.mission
+            .open_loops
+            .push(cerebro_agent_runtime::session::OpenLoop {
+                open_loop_ref: "open-loop:investigation".into(),
+                summary: "Finish the durable investigation.".into(),
+                owner: cerebro_agent_runtime::session::WorkOwner::Cerebro,
+                next_action: Some("Inspect the remaining evidence.".into()),
+                blocked_by: None,
+            });
+        let mut session =
+            apply_session_events(&base, &replay_events(&base, &prior, false)).unwrap();
+        let first_draft = replay_draft(&session);
+        session = apply_session_events(
+            &session,
+            &[
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: 5,
+                    occurred_at: prior.assessment_at.clone(),
+                    event: SessionEvent::DeliveryRecorded {
+                        request_id: prior.request_id.clone(),
+                        transport: "slack".into(),
+                        delivery_ref: "slack-message:prior".into(),
+                        payload_digest: message_digest(&first_draft.message),
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: 6,
+                    occurred_at: prior.assessment_at.clone(),
+                    event: SessionEvent::TurnCompleted {
+                        request_id: prior.request_id.clone(),
+                        state: FinalState::Answered,
+                    },
+                },
+            ],
+        )
+        .unwrap();
+
+        let side_request_id = "request:side-conversation";
+        let side_message = "Do you have a favorite map?";
+        let side_draft = cerebro_agent_runtime::session::GroundedDraft {
+            message: "I like maps that make the next decision clearer.".into(),
+            mission: session.mission.clone(),
+            ..replay_draft(&session)
+        };
+        session = apply_session_events(
+            &session,
+            &[
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: 7,
+                    occurred_at: prior.assessment_at.clone(),
+                    event: SessionEvent::UserMessageQueued {
+                        message: SessionMessage {
+                            role: SessionMessageRole::User,
+                            message_ref: format!("operator:{side_request_id}"),
+                            actor_ref: prior.actor_ref.clone(),
+                            text: side_message.into(),
+                            received_at: prior.assessment_at.clone(),
+                        },
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: 8,
+                    occurred_at: prior.assessment_at.clone(),
+                    event: SessionEvent::RouteAccepted {
+                        request_id: side_request_id.into(),
+                        lane: ExecutionLane::Converse,
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: 9,
+                    occurred_at: prior.assessment_at.clone(),
+                    event: SessionEvent::TurnStarted {
+                        request_id: side_request_id.into(),
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: 10,
+                    occurred_at: prior.assessment_at.clone(),
+                    event: SessionEvent::DraftProduced {
+                        request_id: side_request_id.into(),
+                        draft: side_draft.clone(),
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: 11,
+                    occurred_at: prior.assessment_at.clone(),
+                    event: SessionEvent::DeliveryRecorded {
+                        request_id: side_request_id.into(),
+                        transport: "slack".into(),
+                        delivery_ref: "slack-message:side".into(),
+                        payload_digest: message_digest(&side_draft.message),
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: 12,
+                    occurred_at: prior.assessment_at.clone(),
+                    event: SessionEvent::TurnCompleted {
+                        request_id: side_request_id.into(),
+                        state: FinalState::Answered,
+                    },
+                },
+            ],
+        )
+        .unwrap();
+
+        let mut continuation = prior;
+        continuation.request_id = "request:continue-after-side-conversation".into();
+        continuation.message = "Keep going.".into();
+        let routed = route_request_from_session(&session, &continuation);
+        assert_eq!(
+            routed
+                .working_state
+                .expect("delivered turns should create continuation state")
+                .active_lane,
+            Some(ExecutionLane::Investigate)
+        );
     }
 
     #[test]

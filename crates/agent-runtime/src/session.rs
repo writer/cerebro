@@ -897,6 +897,13 @@ pub trait SessionStore: Send + Sync {
 #[async_trait]
 pub trait SessionJournal: Send + Sync {
     async fn record(&self, event: &SessionEventRecord) -> Result<(), AgentRuntimeError>;
+
+    async fn finalize(&self, events: &[SessionEventRecord]) -> Result<(), AgentRuntimeError> {
+        for event in events {
+            self.record(event).await?;
+        }
+        Ok(())
+    }
 }
 
 struct NoopSessionJournal;
@@ -2165,29 +2172,26 @@ pub async fn run_session_turn_recorded(
                     repair_feedback = issues;
                     continue;
                 }
-                emit_event(
+                let mut final_events = Vec::with_capacity(draft.memory_updates.len() + 1);
+                final_events.push(SessionEvent::DraftProduced {
+                    request_id: input.request_id.clone(),
+                    draft: draft.clone(),
+                });
+                final_events.extend(
+                    draft
+                        .memory_updates
+                        .iter()
+                        .cloned()
+                        .map(|update| SessionEvent::MemoryRecorded { update }),
+                );
+                emit_final_events(
                     &session,
                     &input.assessment_at,
                     &mut events,
-                    SessionEvent::DraftProduced {
-                        request_id: input.request_id.clone(),
-                        draft: draft.clone(),
-                    },
+                    final_events,
                     journal,
                 )
                 .await?;
-                for update in &draft.memory_updates {
-                    emit_event(
-                        &session,
-                        &input.assessment_at,
-                        &mut events,
-                        SessionEvent::MemoryRecorded {
-                            update: update.clone(),
-                        },
-                        journal,
-                    )
-                    .await?;
-                }
                 return Ok(SessionTurnOutcome::PendingDelivery {
                     lane: turn_outcome_lane(&input, plan.as_ref()),
                     delivery: draft.delivery,
@@ -2604,14 +2608,14 @@ async fn repair_fallback_outcome(
         return Err(AgentRuntimeError::PresentationRepairLimit);
     }
     let validated = validate_grounded_draft(session, &draft, observations, assessment_at)?;
-    emit_event(
+    emit_final_events(
         session,
         &input.assessment_at,
         &mut events,
-        SessionEvent::DraftProduced {
+        [SessionEvent::DraftProduced {
             request_id: input.request_id.clone(),
             draft: draft.clone(),
-        },
+        }],
         journal,
     )
     .await?;
@@ -3851,6 +3855,25 @@ async fn emit_event(
     journal
         .record(events.last().expect("an emitted event was appended"))
         .await
+}
+
+async fn emit_final_events(
+    session: &AgentSession,
+    occurred_at: &str,
+    events: &mut Vec<SessionEventRecord>,
+    final_events: impl IntoIterator<Item = SessionEvent>,
+    journal: &dyn SessionJournal,
+) -> Result<(), AgentRuntimeError> {
+    let first = events.len();
+    for event in final_events {
+        push_event(session, occurred_at, events, event);
+    }
+    if first == events.len() {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "turn finalization requires at least one event".into(),
+        ));
+    }
+    journal.finalize(&events[first..]).await
 }
 
 fn validate_calls(
@@ -5791,93 +5814,109 @@ fn contains_new_named_ownership_principal(body: &str, source_messages: &[&str]) 
 }
 
 fn contains_unverified_named_operational_assertion(body: &str, source_messages: &[&str]) -> bool {
-    let mut named_entities = source_messages
+    let source_tokens = source_messages
         .iter()
         .flat_map(|message| {
             message
                 .split(|character: char| !character.is_alphanumeric())
-                .filter(|token| {
-                    token.len() >= 3
-                        && token.chars().next().is_some_and(char::is_uppercase)
-                        && !matches!(
-                            *token,
-                            "Can"
-                                | "Could"
-                                | "Draft"
-                                | "Explain"
-                                | "Give"
-                                | "Help"
-                                | "How"
-                                | "Make"
-                                | "Please"
-                                | "Rewrite"
-                                | "Say"
-                                | "Summarize"
-                                | "The"
-                                | "Thoughts"
-                                | "Turn"
-                                | "What"
-                                | "Why"
-                        )
-                })
+                .filter(|token| token.len() >= 3)
                 .map(str::to_ascii_lowercase)
         })
         .collect::<BTreeSet<_>>();
-    for source_message in source_messages {
-        let tokens = source_message
+    if source_tokens.is_empty() {
+        return false;
+    }
+    body.split(['.', ';', '!', '?', '\n']).any(|clause| {
+        let is_conditional = clause.trim_start().to_ascii_lowercase().starts_with("if ");
+        if is_conditional {
+            return false;
+        }
+        let tokens = clause
             .split(|character: char| !character.is_alphanumeric())
             .filter(|token| !token.is_empty())
             .map(str::to_ascii_lowercase)
             .collect::<Vec<_>>();
-        for pair in tokens.windows(2) {
-            if matches!(
-                pair[0].as_str(),
-                "about" | "concerning" | "for" | "of" | "on" | "regarding" | "re"
-            ) && pair[1].len() >= 3
-            {
-                named_entities.insert(pair[1].clone());
-            }
-        }
-    }
-    if named_entities.is_empty() {
-        return false;
-    }
-    body.split(['.', ';', '!', '?', '\n']).any(|clause| {
-        let normalized = format!(
-            " {} ",
-            clause
-                .split(|character: char| !character.is_alphanumeric())
-                .filter(|token| !token.is_empty())
-                .map(str::to_ascii_lowercase)
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
-        let operational_states = [
-            "remains",
-            "became",
-            "owns",
-            "owned",
-            "handles",
-            "live",
-            "recovered",
-            "shipped",
-            "healthy",
-            "failed",
-            "deployed",
-            "landed",
-            "approved",
-            "enabled",
-            "disabled",
-        ];
-        let names_entity = named_entities.iter().any(|entity| {
-            !operational_states.contains(&entity.as_str())
-                && normalized.contains(&format!(" {entity} "))
+        let is_named_source_subject = |token: &str| {
+            token.len() >= 3
+                && source_tokens.contains(token)
+                && !matches!(
+                    token,
+                    "about"
+                        | "could"
+                        | "explain"
+                        | "help"
+                        | "like"
+                        | "please"
+                        | "think"
+                        | "thoughts"
+                        | "what"
+                        | "when"
+                        | "where"
+                        | "which"
+                        | "would"
+                )
+        };
+        let finite_state = tokens.iter().enumerate().any(|(index, token)| {
+            matches!(
+                token.as_str(),
+                "approved"
+                    | "became"
+                    | "deployed"
+                    | "disabled"
+                    | "enabled"
+                    | "failed"
+                    | "handles"
+                    | "landed"
+                    | "owned"
+                    | "owns"
+                    | "recovered"
+                    | "remains"
+                    | "shipped"
+            ) && index > 0
+                && tokens[..index]
+                    .iter()
+                    .rev()
+                    .find(|candidate| {
+                        !matches!(
+                            candidate.as_str(),
+                            "currently" | "earlier" | "now" | "reportedly" | "the"
+                        )
+                    })
+                    .is_some_and(|subject| is_named_source_subject(subject))
         });
-        let is_conditional = clause.trim_start().to_ascii_lowercase().starts_with("if ");
-        let asserts_operational_state = operational_states
-            .iter()
-            .any(|state| normalized.contains(&format!(" {state} ")));
-        names_entity && asserts_operational_state && !is_conditional
+        let copular_state = tokens.iter().enumerate().any(|(state_index, token)| {
+            if !matches!(
+                token.as_str(),
+                "approved"
+                    | "available"
+                    | "deployed"
+                    | "disabled"
+                    | "enabled"
+                    | "green"
+                    | "healthy"
+                    | "live"
+                    | "ready"
+            ) {
+                return false;
+            }
+            let Some(copula_index) = tokens[..state_index]
+                .iter()
+                .rposition(|candidate| matches!(candidate.as_str(), "is" | "are" | "was" | "were"))
+            else {
+                return false;
+            };
+            tokens[copula_index + 1..state_index].iter().all(|word| {
+                matches!(
+                    word.as_str(),
+                    "already" | "currently" | "now" | "reportedly"
+                )
+            }) && tokens[..copula_index]
+                .iter()
+                .rev()
+                .find(|candidate| !matches!(candidate.as_str(), "given" | "the"))
+                .is_some_and(|subject| is_named_source_subject(subject))
+        });
+        finite_state || copular_state
     })
 }
 
@@ -8231,6 +8270,25 @@ mod tests {
     use crate::{ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult};
     use serde_json::json;
 
+    #[derive(Default)]
+    struct BatchOnlyJournal {
+        individual_records: AtomicUsize,
+        final_batches: Mutex<Vec<Vec<SessionEventRecord>>>,
+    }
+
+    #[async_trait]
+    impl SessionJournal for BatchOnlyJournal {
+        async fn record(&self, _event: &SessionEventRecord) -> Result<(), AgentRuntimeError> {
+            self.individual_records.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn finalize(&self, events: &[SessionEventRecord]) -> Result<(), AgentRuntimeError> {
+            self.final_batches.lock().unwrap().push(events.to_vec());
+            Ok(())
+        }
+    }
+
     fn semantic_envelope() -> SemanticEvidenceEnvelope {
         SemanticEvidenceEnvelope {
             schema_version: AGENT_SEMANTIC_EVIDENCE_V1.into(),
@@ -8517,6 +8575,43 @@ mod tests {
         )
         .expect("the first semantic route should be durable");
         assert!(validate_turn_input(&current, &input).is_err());
+    }
+
+    #[tokio::test]
+    async fn final_draft_and_memory_are_exposed_as_one_journal_batch() {
+        let current = session();
+        let mut events = Vec::new();
+        let journal = BatchOnlyJournal::default();
+        let memory = MemoryUpdate {
+            memory_ref: "memory:final-batch".into(),
+            kind: MemoryKind::Decision,
+            statement: "Keep the durable boundary atomic.".into(),
+            evidence_atom_refs: vec!["atom:status".into()],
+            promotion_requested: false,
+        };
+
+        emit_final_events(
+            &current,
+            "2026-07-31T00:01:00Z",
+            &mut events,
+            [
+                SessionEvent::DraftProduced {
+                    request_id: "request:1".into(),
+                    draft: draft(),
+                },
+                SessionEvent::MemoryRecorded { update: memory },
+            ],
+            &journal,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(journal.individual_records.load(Ordering::SeqCst), 0);
+        let batches = journal.final_batches.lock().unwrap();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].len(), 2);
+        assert_eq!(batches[0][0].sequence, 1);
+        assert_eq!(batches[0][1].sequence, 2);
     }
 
     #[test]
@@ -11417,6 +11512,7 @@ mod tests {
             ),
             ("what do you think about atlas?", "i think atlas recovered."),
             ("thoughts on atlas?", "atlas recovered."),
+            ("do you like atlas?", "i like atlas; atlas recovered."),
         ] {
             let mut unsupported_session = synthesis_session.clone();
             unsupported_session.messages[0].text = request.into();
@@ -11437,6 +11533,10 @@ mod tests {
             (
                 "Why is Atlas Green a good codename?",
                 "The codename works because Atlas suggests a map and Green supplies a memorable visual cue.",
+            ),
+            (
+                "thoughts on conflict?",
+                "My thoughts: healthy conflict is useful because disagreement surfaces assumptions.",
             ),
         ] {
             let mut conceptual_session = synthesis_session.clone();

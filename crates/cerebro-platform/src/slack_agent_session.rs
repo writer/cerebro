@@ -212,6 +212,8 @@ struct OperatorTurnFence<'a> {
 #[derive(Clone, Copy, Default)]
 enum SessionAppendFence<'a> {
     Operator(OperatorTurnFence<'a>),
+    OperatorFinal(OperatorTurnFence<'a>),
+    DeliveryCompletion(&'a str),
     WakeClaim(&'a AgentWakeClaim),
     WakeDelivery(&'a AgentWakeDeliveryLease),
     #[default]
@@ -1002,6 +1004,60 @@ impl PostgresAgentSessionStore {
         .await
     }
 
+    pub async fn append_operator_finalized(
+        &self,
+        session_ref: &str,
+        request_id: &str,
+        lease_owner: &str,
+        lease_seconds: i64,
+        expected_sequence: u64,
+        events: &[SessionEventRecord],
+    ) -> Result<(), AgentRuntimeError> {
+        if request_id.trim().is_empty()
+            || lease_owner.trim().is_empty()
+            || lease_seconds <= 0
+            || lease_seconds > 3_600
+        {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "operator turn fence identity or duration is invalid".into(),
+            ));
+        }
+        self.append_checked(
+            session_ref,
+            expected_sequence,
+            events,
+            SessionAppendFence::OperatorFinal(OperatorTurnFence {
+                request_id,
+                lease_owner,
+                lease_seconds,
+            }),
+            false,
+        )
+        .await
+    }
+
+    pub async fn append_delivery_completion(
+        &self,
+        session_ref: &str,
+        request_id: &str,
+        expected_sequence: u64,
+        events: &[SessionEventRecord],
+    ) -> Result<(), AgentRuntimeError> {
+        if request_id.trim().is_empty() {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "delivery completion request identity is invalid".into(),
+            ));
+        }
+        self.append_checked(
+            session_ref,
+            expected_sequence,
+            events,
+            SessionAppendFence::DeliveryCompletion(request_id),
+            false,
+        )
+        .await
+    }
+
     pub async fn append_wake_fenced(
         &self,
         claim: &AgentWakeClaim,
@@ -1046,7 +1102,14 @@ impl PostgresAgentSessionStore {
             return Ok(());
         }
         let operator_fence = match fence {
-            SessionAppendFence::Operator(fence) => Some(fence),
+            SessionAppendFence::Operator(fence) | SessionAppendFence::OperatorFinal(fence) => {
+                Some(fence)
+            }
+            _ => None,
+        };
+        let finalize_operator = matches!(fence, SessionAppendFence::OperatorFinal(_));
+        let delivery_completion = match fence {
+            SessionAppendFence::DeliveryCompletion(request_id) => Some(request_id),
             _ => None,
         };
         let wake_claim = match fence {
@@ -1102,8 +1165,8 @@ impl PostgresAgentSessionStore {
                 ));
             }
         }
-        let row = match operator_fence {
-            Some(fence) => transaction
+        let row = match (operator_fence, delivery_completion) {
+            (Some(fence), _) => transaction
                 .query_opt(
                     "SELECT snapshot_json, last_sequence FROM cerebro_agent_sessions WHERE session_ref = $1 AND active_request_id = $2 AND lease_owner = $3 AND lease_expires_at > NOW() FOR UPDATE",
                     &[&session_ref, &fence.request_id, &fence.lease_owner],
@@ -1115,7 +1178,19 @@ impl PostgresAgentSessionStore {
                         "operator turn lease is no longer current".into(),
                     )
                 })?,
-            None => transaction
+            (None, Some(request_id)) => transaction
+                .query_opt(
+                    "SELECT snapshot_json, last_sequence FROM cerebro_agent_sessions WHERE session_ref = $1 AND (active_request_id IS NULL OR active_request_id = $2) FOR UPDATE",
+                    &[&session_ref, &request_id],
+                )
+                .await
+                .map_err(store_unavailable)?
+                .ok_or_else(|| {
+                    AgentRuntimeError::InvalidRequest(
+                        "delivery completion conflicts with another active request".into(),
+                    )
+                })?,
+            (None, None) => transaction
                 .query_opt(
                     "SELECT snapshot_json, last_sequence FROM cerebro_agent_sessions WHERE session_ref = $1 FOR UPDATE",
                     &[&session_ref],
@@ -1170,15 +1245,29 @@ impl PostgresAgentSessionStore {
         let last_sequence = i64::try_from(last_sequence).map_err(|_| {
             AgentRuntimeError::InvalidRequest("session sequence exceeds storage range".into())
         })?;
-        let session_changes = match operator_fence {
-            Some(fence) => transaction
+        let session_changes = match (operator_fence, finalize_operator, delivery_completion) {
+            (Some(fence), true, _) => transaction
+                .execute(
+                    "UPDATE cerebro_agent_sessions SET snapshot_json = $4, last_sequence = $5, active_request_id = NULL, lease_owner = NULL, lease_expires_at = NULL, updated_at = NOW() WHERE session_ref = $1 AND active_request_id = $2 AND lease_owner = $3 AND lease_expires_at > NOW()",
+                    &[&session_ref, &fence.request_id, &fence.lease_owner, &snapshot, &last_sequence],
+                )
+                .await
+                .map_err(store_unavailable)?,
+            (Some(fence), false, _) => transaction
                 .execute(
                     "UPDATE cerebro_agent_sessions SET snapshot_json = $4, last_sequence = $5, lease_expires_at = NOW() + make_interval(secs => $6::bigint), updated_at = NOW() WHERE session_ref = $1 AND active_request_id = $2 AND lease_owner = $3 AND lease_expires_at > NOW()",
                     &[&session_ref, &fence.request_id, &fence.lease_owner, &snapshot, &last_sequence, &fence.lease_seconds],
                 )
                 .await
                 .map_err(store_unavailable)?,
-            None => transaction
+            (None, _, Some(request_id)) => transaction
+                .execute(
+                    "UPDATE cerebro_agent_sessions SET snapshot_json = $3, last_sequence = $4, active_request_id = NULL, lease_owner = NULL, lease_expires_at = NULL, updated_at = NOW() WHERE session_ref = $1 AND (active_request_id IS NULL OR active_request_id = $2)",
+                    &[&session_ref, &request_id, &snapshot, &last_sequence],
+                )
+                .await
+                .map_err(store_unavailable)?,
+            (None, _, None) => transaction
                 .execute(
                     "UPDATE cerebro_agent_sessions SET snapshot_json = $2, last_sequence = $3, updated_at = NOW() WHERE session_ref = $1",
                     &[&session_ref, &snapshot, &last_sequence],
@@ -1296,6 +1385,49 @@ impl SessionJournal for PostgresTurnJournal {
             ));
         }
         *sequence = event.sequence;
+        Ok(())
+    }
+
+    async fn finalize(&self, events: &[SessionEventRecord]) -> Result<(), AgentRuntimeError> {
+        let mut sequence = self.sequence.lock().await;
+        if events.is_empty()
+            || events.iter().enumerate().any(|(index, event)| {
+                event.session_ref != self.session_ref
+                    || event.sequence != sequence.saturating_add(index as u64 + 1)
+            })
+        {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "turn journal received a non-contiguous final event batch".into(),
+            ));
+        }
+        if let Some(claim) = &self.wake_claim {
+            self.store
+                .append_wake_fenced(claim, *sequence, events)
+                .await?;
+        } else if let (Some(request_id), Some(lease_owner), Some(lease_seconds)) = (
+            self.operator_request_id.as_deref(),
+            self.operator_lease_owner.as_deref(),
+            self.operator_lease_seconds,
+        ) {
+            self.store
+                .append_operator_finalized(
+                    &self.session_ref,
+                    request_id,
+                    lease_owner,
+                    lease_seconds,
+                    *sequence,
+                    events,
+                )
+                .await?;
+        } else {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "turn journal has no durable lease fence".into(),
+            ));
+        }
+        *sequence = events
+            .last()
+            .expect("a non-empty final batch has a last event")
+            .sequence;
         Ok(())
     }
 }
