@@ -10,6 +10,7 @@ mod slack_agent_eval;
 mod slack_agent_mcp;
 mod slack_agent_session;
 mod slack_authority;
+mod slack_mrkdwn;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
