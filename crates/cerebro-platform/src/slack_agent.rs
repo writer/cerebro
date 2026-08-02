@@ -2999,8 +2999,8 @@ const MAX_CAPABILITY_DESCRIBE_IDS: usize = 12;
 const MAX_CAPABILITY_CATALOG_OFFSET: usize = 512;
 const MAX_CAPABILITY_QUERY_BYTES: usize = 512;
 const MAX_CAPABILITY_TOOL_ID_BYTES: usize = 256;
-const CAPABILITY_EXECUTE_READ: &str = "capability.execute_read";
-const CAPABILITY_EXECUTE_PROPOSAL: &str = "capability.execute_proposal";
+pub(super) const CAPABILITY_EXECUTE_READ: &str = "capability.execute_read";
+pub(super) const CAPABILITY_EXECUTE_PROPOSAL: &str = "capability.execute_proposal";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -3382,7 +3382,7 @@ fn built_in_capability_catalog() -> Vec<ToolDescriptor> {
     ]
 }
 
-fn model_capability_catalog(remote: &[ToolDescriptor]) -> Vec<ToolDescriptor> {
+pub(super) fn model_capability_catalog(remote: &[ToolDescriptor]) -> Vec<ToolDescriptor> {
     let mut catalog = built_in_capability_catalog();
     catalog.extend(
         remote

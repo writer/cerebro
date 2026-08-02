@@ -29,7 +29,9 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
-use super::slack_agent::ConfiguredModel;
+use super::slack_agent::{
+    CAPABILITY_EXECUTE_PROPOSAL, CAPABILITY_EXECUTE_READ, ConfiguredModel, model_capability_catalog,
+};
 
 const SCHEMA_VERSION: &str = "cerebro-rust-slack-agent-conversation-harness/v2";
 const EXPECTED_CASES_PER_PARTITION: usize = 16;
@@ -639,6 +641,43 @@ struct EvalTools {
     autonomy_authority_groups: Vec<AutonomyAuthorityGroup>,
     observations: Mutex<Vec<EvaluationObservationReceipt>>,
     runtime_cursor_format: Mutex<String>,
+    capability_selections: Mutex<BTreeMap<String, EvalCapabilitySelection>>,
+}
+
+#[derive(Clone)]
+struct EvalCapabilitySelection {
+    tool_id: String,
+    tenant_id: String,
+    actor_ref: String,
+    thread_ref: String,
+    context_scope_ref: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EvalCapabilitySearchInput {
+    query: String,
+    #[serde(default)]
+    namespaces: Vec<String>,
+    #[serde(default)]
+    authority_classes: Vec<ToolAuthorityClass>,
+    #[serde(default)]
+    effect_classes: Vec<ToolEffectClass>,
+    #[serde(default = "default_eval_capability_limit")]
+    limit: usize,
+    #[serde(default)]
+    offset: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EvalCapabilityExecuteInput {
+    selection_ref: String,
+    input: Value,
+}
+
+const fn default_eval_capability_limit() -> usize {
+    8
 }
 
 impl EvalTools {
@@ -651,6 +690,7 @@ impl EvalTools {
             autonomy_authority_groups: Vec::new(),
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
+            capability_selections: Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -663,6 +703,7 @@ impl EvalTools {
             autonomy_authority_groups: Vec::new(),
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
+            capability_selections: Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -680,6 +721,7 @@ impl EvalTools {
             autonomy_authority_groups: authority_groups,
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
+            capability_selections: Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -696,47 +738,9 @@ impl EvalTools {
             .lock()
             .expect("evaluation autonomy phase poisoned") = phase;
     }
-}
 
-#[async_trait]
-impl AgentTools for EvalTools {
-    fn catalog(&self) -> Vec<ToolDescriptor> {
+    fn provider_catalog(&self) -> Vec<ToolDescriptor> {
         vec![
-            descriptor(
-                "capability.overview",
-                ToolAuthorityClass::Observe,
-                ToolEffectClass::Read,
-            ),
-            descriptor(
-                "source_runtime.inspect",
-                ToolAuthorityClass::Observe,
-                ToolEffectClass::Read,
-            ),
-            descriptor(
-                "source_runtime.overview",
-                ToolAuthorityClass::Observe,
-                ToolEffectClass::Read,
-            ),
-            descriptor(
-                "source_catalog.inspect",
-                ToolAuthorityClass::Observe,
-                ToolEffectClass::Read,
-            ),
-            descriptor(
-                "graph.search",
-                ToolAuthorityClass::Observe,
-                ToolEffectClass::Read,
-            ),
-            descriptor(
-                "graph.expand",
-                ToolAuthorityClass::Observe,
-                ToolEffectClass::Read,
-            ),
-            descriptor(
-                "graph.reason",
-                ToolAuthorityClass::Observe,
-                ToolEffectClass::Read,
-            ),
             descriptor(
                 "mcp.cerebro.findings.search",
                 ToolAuthorityClass::Observe,
@@ -784,11 +788,237 @@ impl AgentTools for EvalTools {
         ]
     }
 
+    fn complete_capability_catalog(&self) -> Vec<ToolDescriptor> {
+        let provider = self.provider_catalog();
+        let mut catalog = model_capability_catalog(&provider);
+        let visible = catalog
+            .iter()
+            .map(|descriptor| descriptor.tool_id.clone())
+            .collect::<BTreeSet<_>>();
+        catalog.extend(
+            provider
+                .iter()
+                .filter(|descriptor| !visible.contains(&descriptor.tool_id))
+                .cloned(),
+        );
+        catalog
+    }
+
+    fn search_capabilities(
+        &self,
+        request: &AgentTurnRequest,
+        call: &ToolCall,
+    ) -> Result<ToolResult, AgentRuntimeError> {
+        let input: EvalCapabilitySearchInput = serde_json::from_value(call.input.clone())
+            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+        let query = input.query.trim().to_ascii_lowercase();
+        if query.is_empty() || input.limit == 0 || input.limit > 20 || input.offset > 512 {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "evaluation capability search bounds are invalid".into(),
+            ));
+        }
+        let query_terms = query
+            .split(|character: char| !character.is_ascii_alphanumeric())
+            .filter(|term| term.len() >= 2)
+            .collect::<BTreeSet<_>>();
+        let mut matches = self
+            .complete_capability_catalog()
+            .into_iter()
+            .filter(|descriptor| {
+                input.namespaces.is_empty()
+                    || input.namespaces.iter().any(|namespace| {
+                        descriptor
+                            .tool_id
+                            .trim_start_matches("mcp.")
+                            .starts_with(namespace.trim_start_matches("mcp."))
+                    })
+            })
+            .filter(|descriptor| {
+                if input.authority_classes.is_empty() {
+                    descriptor.authority_class == ToolAuthorityClass::Observe
+                } else {
+                    input
+                        .authority_classes
+                        .contains(&descriptor.authority_class)
+                }
+            })
+            .filter(|descriptor| {
+                if input.effect_classes.is_empty() {
+                    descriptor.effect_class == ToolEffectClass::Read
+                } else {
+                    input.effect_classes.contains(&descriptor.effect_class)
+                }
+            })
+            .filter(|descriptor| {
+                let searchable = format!(
+                    "{} {} {}",
+                    descriptor.tool_id, descriptor.title, descriptor.summary
+                )
+                .to_ascii_lowercase();
+                query_terms.iter().any(|term| searchable.contains(term))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_by(|left, right| left.tool_id.cmp(&right.tool_id));
+        let total_matches = matches.len();
+        let page = matches
+            .into_iter()
+            .skip(input.offset)
+            .take(input.limit)
+            .enumerate()
+            .map(|(index, descriptor)| {
+                let namespace = descriptor
+                    .tool_id
+                    .split_once('.')
+                    .map_or(descriptor.tool_id.as_str(), |(namespace, _)| namespace)
+                    .to_owned();
+                let mut value = json!({
+                    "descriptor": &descriptor,
+                    "namespace": namespace,
+                    "rank": input.offset + index + 1,
+                });
+                if descriptor.tool_id.starts_with("mcp.")
+                    && matches!(
+                        (descriptor.authority_class, descriptor.effect_class),
+                        (ToolAuthorityClass::Observe, ToolEffectClass::Read)
+                            | (ToolAuthorityClass::Propose, ToolEffectClass::Read)
+                    )
+                {
+                    let selection_ref = format!(
+                        "selection://synthetic/{}",
+                        sha256_hex(
+                            format!(
+                                "{}\0{}\0{}",
+                                self.case_ref, request.request_id, descriptor.tool_id
+                            )
+                            .as_bytes()
+                        )
+                    );
+                    self.capability_selections
+                        .lock()
+                        .expect("evaluation capability selection poisoned")
+                        .insert(
+                            selection_ref.clone(),
+                            EvalCapabilitySelection {
+                                tool_id: descriptor.tool_id.clone(),
+                                tenant_id: request.tenant_id.clone(),
+                                actor_ref: request.actor_ref.clone(),
+                                thread_ref: request.thread_ref.clone(),
+                                context_scope_ref: request.context_scope_ref.clone(),
+                            },
+                        );
+                    value["execution_tool_id"] = Value::String(
+                        if descriptor.authority_class == ToolAuthorityClass::Propose {
+                            CAPABILITY_EXECUTE_PROPOSAL
+                        } else {
+                            CAPABILITY_EXECUTE_READ
+                        }
+                        .into(),
+                    );
+                    value["selection_ref"] = Value::String(selection_ref);
+                }
+                value
+            })
+            .collect::<Vec<_>>();
+        Ok(ToolResult {
+            state: ToolResultState::Succeeded,
+            summary: format!(
+                "Found {} bound tools matching the requested intent.",
+                page.len()
+            ),
+            data: json!({
+                "matches": page,
+                "next_offset": (input.offset + page.len() < total_matches).then_some(input.offset + page.len()),
+                "offset": input.offset,
+                "query": query,
+                "schema_version": "capability-search-result/v1",
+                "total_matches": total_matches,
+            }),
+            evidence: Vec::new(),
+            blocker: None,
+        })
+    }
+
+    fn resolve_selected_capability(
+        &self,
+        request: &AgentTurnRequest,
+        call: &ToolCall,
+    ) -> Result<ToolCall, AgentRuntimeError> {
+        let input: EvalCapabilityExecuteInput = serde_json::from_value(call.input.clone())
+            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+        let selection = self
+            .capability_selections
+            .lock()
+            .expect("evaluation capability selection poisoned")
+            .get(&input.selection_ref)
+            .cloned()
+            .ok_or_else(|| {
+                AgentRuntimeError::InvalidToolCall(
+                    "evaluation capability selection is unknown or expired".into(),
+                )
+            })?;
+        if selection.tenant_id != request.tenant_id
+            || selection.thread_ref != request.thread_ref
+            || selection.context_scope_ref != request.context_scope_ref
+            || (request.actor_ref != "cerebro-scheduler"
+                && selection.actor_ref != request.actor_ref)
+        {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "evaluation capability selection belongs to another scope".into(),
+            ));
+        }
+        let tool_id = selection.tool_id;
+        let descriptor = self
+            .provider_catalog()
+            .into_iter()
+            .find(|descriptor| descriptor.tool_id == tool_id)
+            .ok_or_else(|| {
+                AgentRuntimeError::InvalidToolCall(
+                    "evaluation capability selection is no longer bound".into(),
+                )
+            })?;
+        let expected_executor = if descriptor.authority_class == ToolAuthorityClass::Propose {
+            CAPABILITY_EXECUTE_PROPOSAL
+        } else {
+            CAPABILITY_EXECUTE_READ
+        };
+        if call.tool_id != expected_executor || !input.input.is_object() {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "evaluation capability selection authority does not match the executor".into(),
+            ));
+        }
+        Ok(ToolCall {
+            call_id: call.call_id.clone(),
+            tool_id,
+            purpose: call.purpose.clone(),
+            input: input.input,
+        })
+    }
+}
+
+#[async_trait]
+impl AgentTools for EvalTools {
+    fn catalog(&self) -> Vec<ToolDescriptor> {
+        model_capability_catalog(&self.provider_catalog())
+    }
+
     async fn invoke(
         &self,
         request: &AgentTurnRequest,
         call: &cerebro_agent_runtime::ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
+        if call.tool_id == "capability.search" {
+            return self.search_capabilities(request, call);
+        }
+        let selected_call;
+        let call = if matches!(
+            call.tool_id.as_str(),
+            CAPABILITY_EXECUTE_READ | CAPABILITY_EXECUTE_PROPOSAL
+        ) {
+            selected_call = self.resolve_selected_capability(request, call)?;
+            &selected_call
+        } else {
+            call
+        };
         let observed_at = OffsetDateTime::parse(&request.assessment_at, &Rfc3339)
             .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
         let default_fresh_until = observed_at
@@ -829,7 +1059,25 @@ impl AgentTools for EvalTools {
             "connector_ref": "governed-evidence-connector",
             "cursor_format": "current_revision",
         });
-        let fixture = if call.tool_id == "runtime_config_update" {
+        let fixture = if call.tool_id == "capability.overview" {
+            let provider = self.provider_catalog();
+            let built_in = model_capability_catalog(&[]);
+            EvaluationFixture {
+                summary: "The sealed evaluation observed the production-visible built-in catalog and the bound synthetic provider catalog.".into(),
+                data: json!({
+                    "built_in": built_in,
+                    "collected_event_content_read": false,
+                    "provider_configuration_read": false,
+                    "provider_fault_diagnostic": false,
+                    "provider_administration": false,
+                    "scheduled_monitor": false,
+                    "mcp": {
+                        "gateway_state": "connected",
+                        "tools": provider,
+                    }
+                }),
+            }
+        } else if call.tool_id == "runtime_config_update" {
             if call.input != expected_action {
                 return Err(AgentRuntimeError::InvalidToolCall(
                     "evaluation action input did not match the exact authorized connector change"
@@ -922,6 +1170,8 @@ impl AgentTools for EvalTools {
                 || {
                     if call.tool_id == "graph.reason" {
                         ToolResultState::Failed
+                    } else if data.get("coverage").and_then(Value::as_str) == Some("partial") {
+                        ToolResultState::Partial
                     } else {
                         ToolResultState::Succeeded
                     }
@@ -929,11 +1179,10 @@ impl AgentTools for EvalTools {
                 |fixture| fixture.state,
             )
         };
-        let complete = autonomy_fixture
-            .as_ref()
-            .map_or(state == ToolResultState::Succeeded, |fixture| {
-                fixture.complete
-            });
+        let complete = autonomy_fixture.as_ref().map_or(
+            matches!(state, ToolResultState::Succeeded | ToolResultState::Partial),
+            |fixture| fixture.complete,
+        );
         let blocker = if unavailable_autonomy_tool || unavailable_conversation_tool {
             Some(
                 "No subject-bound observation is available from this capability in the current sealed scenario."
@@ -2396,7 +2645,8 @@ fn validate_autonomy_holdout_scenarios(
         return Err("an external autonomy promotion pack requires at least six scenarios".into());
     }
     let validation_tools = EvalTools::new("holdout-validation");
-    let allowed_tools = AgentTools::catalog(&validation_tools)
+    let allowed_tools = validation_tools
+        .complete_capability_catalog()
         .into_iter()
         .map(|descriptor| descriptor.tool_id)
         .collect::<BTreeSet<_>>();
@@ -4822,6 +5072,107 @@ mod tests {
         .await
         .unwrap_err();
         assert!(conflict.to_string().contains("conflicting subject aliases"));
+    }
+
+    #[tokio::test]
+    async fn evaluation_uses_production_visible_discovery_and_selected_execution() {
+        let tools = EvalTools::new("case://synthetic/discovery");
+        let visible = AgentTools::catalog(&tools);
+        assert!(
+            visible
+                .iter()
+                .any(|tool| tool.tool_id == "capability.search")
+        );
+        assert!(
+            visible
+                .iter()
+                .any(|tool| tool.tool_id == CAPABILITY_EXECUTE_READ)
+        );
+        assert!(visible.iter().any(|tool| {
+            tool.tool_id == "runtime_config_update"
+                && tool.authority_class == ToolAuthorityClass::Actuate
+        }));
+        assert!(!visible.iter().any(|tool| {
+            tool.tool_id.starts_with("mcp.")
+                && matches!(
+                    tool.authority_class,
+                    ToolAuthorityClass::Observe | ToolAuthorityClass::Propose
+                )
+        }));
+
+        let request = AgentTurnRequest {
+            schema_version: AGENT_TURN_REQUEST_V1.into(),
+            tenant_id: "tenant:synthetic".into(),
+            request_id: "request:discovery".into(),
+            thread_ref: "thread:synthetic".into(),
+            context_scope_ref: Some("scope:synthetic".into()),
+            actor_ref: "operator:synthetic".into(),
+            assessment_at: "2026-07-31T00:00:00Z".into(),
+            message: "Inspect synthetic source health.".into(),
+            history: Vec::new(),
+            working_state: None,
+            effect_authorizations: Vec::new(),
+        };
+        let search = AgentTools::invoke(
+            &tools,
+            &request,
+            &ToolCall {
+                call_id: "call:search".into(),
+                tool_id: "capability.search".into(),
+                purpose: "Find the exact synthetic source-health read.".into(),
+                input: json!({"query": "source health", "limit": 20}),
+            },
+        )
+        .await
+        .unwrap();
+        let selected = search.data["matches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|candidate| candidate["descriptor"]["tool_id"] == "mcp.cerebro.sources.health")
+            .expect("the hidden provider read is discoverable through the host catalog");
+        let selection_ref = selected["selection_ref"].as_str().unwrap();
+        assert!(!selection_ref.contains("cerebro"));
+        assert!(!selection_ref.contains("source"));
+
+        let execute = ToolCall {
+            call_id: "call:execute".into(),
+            tool_id: CAPABILITY_EXECUTE_READ.into(),
+            purpose: "Inspect the exact synthetic source.".into(),
+            input: json!({
+                "selection_ref": selection_ref,
+                "input": {"source_ref": "source:synthetic-alpha"}
+            }),
+        };
+        let result = AgentTools::invoke(&tools, &request, &execute)
+            .await
+            .unwrap();
+        assert!(
+            result.evidence[0]
+                .atoms
+                .iter()
+                .all(|atom| { atom.subject_ref.as_deref() == Some("source:synthetic-alpha") })
+        );
+
+        let mut wrong_scope = request.clone();
+        wrong_scope.thread_ref = "thread:other-synthetic".into();
+        assert!(
+            AgentTools::invoke(&tools, &wrong_scope, &execute)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("another scope")
+        );
+
+        let mut wrong_executor = execute;
+        wrong_executor.tool_id = CAPABILITY_EXECUTE_PROPOSAL.into();
+        assert!(
+            AgentTools::invoke(&tools, &request, &wrong_executor)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("does not match the executor")
+        );
     }
 
     #[test]

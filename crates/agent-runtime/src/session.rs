@@ -9611,7 +9611,13 @@ mod tests {
         };
         candidate.message = candidate.claims[0].text.clone();
         assert!(
-            validate_grounded_draft(&session(), &candidate, &[current.clone()], assessment).is_ok()
+            validate_grounded_draft(
+                &session(),
+                &candidate,
+                std::slice::from_ref(&current),
+                assessment,
+            )
+            .is_ok()
         );
 
         candidate.claims[0].text =
@@ -9800,8 +9806,13 @@ mod tests {
             },
         };
         assert!(
-            validate_grounded_draft(&session(), &candidate, &[authority.clone()], assessment,)
-                .is_ok()
+            validate_grounded_draft(
+                &session(),
+                &candidate,
+                std::slice::from_ref(&authority),
+                assessment,
+            )
+            .is_ok()
         );
 
         let mut compound = candidate;
