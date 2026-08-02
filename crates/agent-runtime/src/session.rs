@@ -5860,6 +5860,8 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
         " as a name ",
         " name choice ",
         " title ",
+        " reversibility ",
+        " reversible decision ",
     ]
     .iter()
     .any(|marker| normalized_source.contains(marker));
