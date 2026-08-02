@@ -36,6 +36,7 @@ use cerebro_agent_runtime::{
         SessionTurnOutcome, SessionTurnTrigger, apply_session_events, evidence_atoms_from_json,
         message_digest, run_session_turn_recorded, semantic_evidence_atoms,
     },
+    validate_agent_turn_request,
 };
 use cerebro_organizational_model::TenantId;
 use cerebro_organizational_store::{Neo4jProjector, PostgresLedger, SourceRuntimeObservation};
@@ -196,6 +197,7 @@ impl SlackAgentService {
         &self,
         request: AgentTurnRequest,
     ) -> Result<AgentTurnOutcome, AgentRuntimeError> {
+        validate_agent_turn_request(&request)?;
         if request.tenant_id != self.tenant_id {
             return Err(AgentRuntimeError::InvalidRequest(
                 "tenant does not match the Slack runtime".into(),
@@ -802,21 +804,42 @@ fn new_session(request: &AgentTurnRequest) -> Result<AgentSession, AgentRuntimeE
         .history
         .iter()
         .enumerate()
-        .map(|(index, message)| SessionMessage {
-            role: match message.role {
-                cerebro_agent_runtime::ConversationRole::Assistant => SessionMessageRole::Assistant,
-                cerebro_agent_runtime::ConversationRole::User => SessionMessageRole::User,
-            },
-            message_ref: format!("imported-history:{}", index + 1),
-            actor_ref: match message.role {
-                cerebro_agent_runtime::ConversationRole::Assistant => "cerebro".into(),
-                cerebro_agent_runtime::ConversationRole::User => request.actor_ref.clone(),
-            },
-            text: message.content.clone(),
-            received_at: request.assessment_at.clone(),
+        .map(|(index, message)| {
+            let metadata = request.history_metadata.get(index);
+            SessionMessage {
+                role: match message.role {
+                    cerebro_agent_runtime::ConversationRole::Assistant => {
+                        SessionMessageRole::Assistant
+                    }
+                    cerebro_agent_runtime::ConversationRole::User => SessionMessageRole::User,
+                },
+                message_ref: metadata
+                    .and_then(|value| value.message_ref.clone())
+                    .unwrap_or_else(|| format!("imported-history:{}", index + 1)),
+                actor_ref: metadata
+                    .and_then(|value| value.actor_ref.clone())
+                    .unwrap_or_else(|| {
+                        if metadata.is_some() {
+                            "context:unattributed".into()
+                        } else {
+                            match message.role {
+                                cerebro_agent_runtime::ConversationRole::Assistant => {
+                                    "cerebro".into()
+                                }
+                                cerebro_agent_runtime::ConversationRole::User => {
+                                    request.actor_ref.clone()
+                                }
+                            }
+                        }
+                    }),
+                text: message.content.clone(),
+                received_at: metadata
+                    .and_then(|value| value.received_at.clone())
+                    .unwrap_or_else(|| request.assessment_at.clone()),
+            }
         })
         .collect();
-    Ok(AgentSession {
+    let session = AgentSession {
         schema_version: AGENT_SESSION_V2.into(),
         session_ref: format!("agent-session:{digest}"),
         tenant_id: request.tenant_id.clone(),
@@ -838,7 +861,9 @@ fn new_session(request: &AgentTurnRequest) -> Result<AgentSession, AgentRuntimeE
         effect_authorizations: request.effect_authorizations.clone(),
         pending_delivery: None,
         memories: Vec::new(),
-    })
+    };
+    cerebro_agent_runtime::session::validate_session(&session)?;
+    Ok(session)
 }
 
 pub(super) fn session_outcome_to_turn(outcome: SessionTurnOutcome) -> AgentTurnOutcome {
@@ -3666,6 +3691,7 @@ impl SessionTools for PlatformAgentTools {
             assessment_at: input.assessment_at.clone(),
             message: request_text,
             history,
+            history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: session.effect_authorizations.clone(),
         };
@@ -5153,6 +5179,47 @@ mod tests {
     }
 
     #[test]
+    fn new_session_preserves_attributed_history_and_rejects_oversized_imports() {
+        let request = AgentTurnRequest {
+            schema_version: "agent-turn-request/v1".into(),
+            tenant_id: "tenant:history-import".into(),
+            request_id: "request:history-import".into(),
+            thread_ref: "thread:history-import".into(),
+            context_scope_ref: None,
+            actor_ref: "actor:current".into(),
+            assessment_at: "2026-08-02T18:00:00Z".into(),
+            message: "Continue from the earlier distinction.".into(),
+            history: vec![cerebro_agent_runtime::ConversationMessage {
+                role: cerebro_agent_runtime::ConversationRole::User,
+                content: "The earlier distinction matters.".into(),
+            }],
+            history_metadata: vec![cerebro_agent_runtime::ConversationMessageMetadata {
+                actor_ref: Some("slack-actor://sha256/actor".into()),
+                message_ref: Some("slack-message://sha256/message".into()),
+                received_at: Some("2026-08-02T17:59:00Z".into()),
+            }],
+            working_state: None,
+            effect_authorizations: Vec::new(),
+        };
+
+        let session = new_session(&request).unwrap();
+        assert_eq!(session.messages.len(), 1);
+        assert_eq!(session.messages[0].actor_ref, "slack-actor://sha256/actor");
+        assert_eq!(
+            session.messages[0].message_ref,
+            "slack-message://sha256/message"
+        );
+        assert_eq!(session.messages[0].received_at, "2026-08-02T17:59:00Z");
+
+        let mut oversized = request;
+        oversized.history[0].content = "x".repeat(16 * 1024 + 1);
+        assert!(matches!(
+            new_session(&oversized),
+            Err(AgentRuntimeError::InvalidRequest(_))
+        ));
+    }
+
+    #[test]
     fn exact_delivery_receipt_replays_but_a_changed_receipt_conflicts() {
         let request = AgentTurnRequest {
             schema_version: "agent-turn-request/v1".into(),
@@ -5164,6 +5231,7 @@ mod tests {
             assessment_at: "2026-07-31T20:00:00Z".into(),
             message: "Test delivery replay.".into(),
             history: Vec::new(),
+            history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
         };
@@ -5805,6 +5873,7 @@ mod tests {
             assessment_at: OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
             message: "What access do you have to Vanta?".into(),
             history: Vec::new(),
+            history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
         };
@@ -5896,6 +5965,7 @@ mod tests {
             assessment_at: "2026-08-01T23:30:00Z".into(),
             message: "Show the current state.".into(),
             history: Vec::new(),
+            history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
         };
@@ -5942,6 +6012,7 @@ mod tests {
             assessment_at: "2026-07-31T20:00:00Z".into(),
             message: "Keep the prior context bounded.".into(),
             history: Vec::new(),
+            history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
         };

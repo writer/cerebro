@@ -56,7 +56,10 @@ export interface AgentApprovalRequest {
 }
 
 export interface CerebroAskHistoryMessage {
+  actorRef?: string;
   content: string;
+  messageRef?: string;
+  receivedAt?: string;
   role: "assistant" | "user";
 }
 
@@ -120,6 +123,12 @@ export class CerebroAskClient {
     if (!this.options.agentRuntimeUrl) {
       throw new CerebroAskError("not_configured", "The Rust agent runtime is not configured.");
     }
+    const history = input.history ?? [];
+    const attributedHistory = history.some((message) =>
+      message.actorRef !== undefined
+      || message.messageRef !== undefined
+      || message.receivedAt !== undefined
+    );
     const response = await this.fetchImpl(`${this.options.agentRuntimeUrl}/v1/turns/run`, {
       method: "POST",
       headers: {
@@ -141,7 +150,22 @@ export class CerebroAskClient {
           thread_ref: input.threadRef,
           tool_id: authorization.toolId,
         })),
-        history: input.history ?? [],
+        history: history.map(({ content, role }) => ({ content, role })),
+        ...(attributedHistory
+          ? {
+              history_metadata: history.map((message) => ({
+                ...(message.actorRef === undefined
+                  ? {}
+                  : { actor_ref: message.actorRef }),
+                ...(message.messageRef === undefined
+                  ? {}
+                  : { message_ref: message.messageRef }),
+                ...(message.receivedAt === undefined
+                  ? {}
+                  : { received_at: message.receivedAt }),
+              })),
+            }
+          : {}),
         message: input.question,
         request_id: input.requestId,
         schema_version: "agent-turn-request/v1",
@@ -405,7 +429,11 @@ export class CerebroAskClient {
         "X-Cerebro-Tenant": this.options.tenantId,
       },
       body: JSON.stringify({
-        ...(history.length === 0 ? {} : { history }),
+        ...(history.length === 0
+          ? {}
+          : {
+              history: history.map(({ content, role }) => ({ content, role })),
+            }),
         question,
         tenant_id: this.options.tenantId,
       }),
@@ -489,7 +517,7 @@ export class CerebroAskClient {
   ): Promise<SlackQuestionDecision> {
     try {
       return await this.options.answerAuthority.authorizeQuestion({
-        history: history.map((message) => ({ ...message })),
+        history: history.map(({ content, role }) => ({ content, role })),
         question,
         request_id: requestId,
         schema_version: "slack-question-candidate/v1",

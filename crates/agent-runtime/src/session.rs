@@ -1489,8 +1489,39 @@ pub fn apply_session_events(
         next.events.push(record.clone());
         expected += 1;
     }
+    compact_session_messages(&mut next.messages);
     validate_session(&next)?;
     Ok(next)
+}
+
+pub fn compact_session_messages(messages: &mut Vec<SessionMessage>) {
+    let mut retained_bytes = messages
+        .iter()
+        .map(|message| message.text.len())
+        .sum::<usize>();
+    let mut remove_count = 0;
+    while messages.len().saturating_sub(remove_count) > 1
+        && (messages.len().saturating_sub(remove_count) > MAX_SESSION_MESSAGES
+            || retained_bytes > MAX_SESSION_MESSAGE_BYTES)
+    {
+        let Some(message) = messages.get(remove_count) else {
+            break;
+        };
+        retained_bytes = retained_bytes.saturating_sub(message.text.len());
+        remove_count += 1;
+    }
+    while messages.len().saturating_sub(remove_count) > 1
+        && messages
+            .get(remove_count)
+            .is_some_and(|message| message.role == SessionMessageRole::Assistant)
+    {
+        let message = &messages[remove_count];
+        retained_bytes = retained_bytes.saturating_sub(message.text.len());
+        remove_count += 1;
+    }
+    if remove_count > 0 {
+        messages.drain(..remove_count);
+    }
 }
 
 pub async fn run_session_turn(
@@ -4854,11 +4885,18 @@ pub fn validate_grounded_draft(
         .enumerate()
         .map(|(index, message)| ((index + 1) as u64, message))
         .collect::<BTreeMap<_, _>>();
+    let operator_actor_ref = session
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == SessionMessageRole::User)
+        .map(|message| message.actor_ref.as_str());
     let claim_context = ClaimValidationContext {
         atoms: &atoms,
         open_loops: &open_loops,
         commitments: &commitments,
         messages: &message_sequence,
+        operator_actor_ref,
         question: draft.question.as_deref(),
         coverage_notice: draft.coverage_notice.as_deref(),
         assessment_at,
@@ -5030,6 +5068,7 @@ struct ClaimValidationContext<'a, 'b> {
     open_loops: &'a BTreeSet<&'a str>,
     commitments: &'a BTreeMap<&'a str, &'a Commitment>,
     messages: &'a BTreeMap<u64, &'a SessionMessage>,
+    operator_actor_ref: Option<&'a str>,
     question: Option<&'a str>,
     coverage_notice: Option<&'a str>,
     assessment_at: OffsetDateTime,
@@ -5174,6 +5213,7 @@ fn validate_claim(
             })?;
             let attributed_quote = format!("You said: {exact_excerpt}");
             if message.role != SessionMessageRole::User
+                || Some(message.actor_ref.as_str()) != context.operator_actor_ref
                 || exact_excerpt.is_empty()
                 || exact_excerpt.chars().any(unsafe_context_excerpt_character)
                 || message.text.trim() != exact_excerpt.trim()
@@ -7354,7 +7394,7 @@ fn evidence_atoms(
     Ok(atoms)
 }
 
-fn validate_session(session: &AgentSession) -> Result<(), AgentRuntimeError> {
+pub fn validate_session(session: &AgentSession) -> Result<(), AgentRuntimeError> {
     if session.schema_version != AGENT_SESSION_V2
         || !bounded(&session.session_ref, MAX_TEXT_BYTES)
         || !bounded(&session.tenant_id, MAX_TEXT_BYTES)
@@ -7971,6 +8011,131 @@ mod tests {
             pending_delivery: None,
             memories: Vec::new(),
         }
+    }
+
+    fn retained_message(index: usize, bytes: usize) -> SessionMessage {
+        SessionMessage {
+            role: if index % 2 == 0 {
+                SessionMessageRole::User
+            } else {
+                SessionMessageRole::Assistant
+            },
+            message_ref: format!("message:{index}"),
+            actor_ref: if index % 2 == 0 {
+                "user:1".into()
+            } else {
+                "cerebro".into()
+            },
+            text: "x".repeat(bytes),
+            received_at: "2026-07-31T00:00:00Z".into(),
+        }
+    }
+
+    #[test]
+    fn session_message_compaction_retains_a_complete_newest_suffix() {
+        let mut current = session();
+        current.messages = (0..MAX_SESSION_MESSAGES)
+            .map(|index| retained_message(index, 32))
+            .collect();
+        let newest = SessionMessage {
+            role: SessionMessageRole::User,
+            message_ref: "message:newest".into(),
+            actor_ref: "user:2".into(),
+            text: "Keep this exact newest turn.".into(),
+            received_at: "2026-07-31T00:01:00Z".into(),
+        };
+        let event = SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: current.session_ref.clone(),
+            sequence: 1,
+            occurred_at: newest.received_at.clone(),
+            event: SessionEvent::UserMessageQueued {
+                message: newest.clone(),
+            },
+        };
+
+        let compacted = apply_session_events(&current, &[event]).unwrap();
+        assert!(compacted.messages.len() <= MAX_SESSION_MESSAGES);
+        assert_eq!(
+            compacted.messages.first().unwrap().role,
+            SessionMessageRole::User
+        );
+        assert_eq!(compacted.messages.last(), Some(&newest));
+        assert_eq!(compacted.mission, current.mission);
+        assert_eq!(compacted.memories, current.memories);
+        assert_eq!(compacted.events.len(), 1);
+    }
+
+    #[test]
+    fn session_message_compaction_enforces_bytes_and_fails_closed_on_one_bad_message() {
+        let mut messages = (0..64)
+            .map(|index| retained_message(index, MAX_MESSAGE_BYTES))
+            .collect::<Vec<_>>();
+        messages.push(retained_message(64, 8));
+        compact_session_messages(&mut messages);
+        assert!(
+            messages
+                .iter()
+                .map(|message| message.text.len())
+                .sum::<usize>()
+                <= MAX_SESSION_MESSAGE_BYTES
+        );
+        assert_eq!(messages.first().unwrap().role, SessionMessageRole::User);
+        let once = messages.clone();
+        compact_session_messages(&mut messages);
+        assert_eq!(messages, once);
+
+        let oversized = retained_message(999, MAX_MESSAGE_BYTES + 1);
+        let mut invalid = vec![retained_message(998, 8), oversized.clone()];
+        compact_session_messages(&mut invalid);
+        assert_eq!(invalid.last(), Some(&oversized));
+        let mut invalid_session = session();
+        invalid_session.messages = invalid;
+        assert!(validate_session(&invalid_session).is_err());
+    }
+
+    #[test]
+    fn session_message_compaction_survives_five_hundred_queued_turns() {
+        let mut current = session();
+        let original_mission = current.mission.clone();
+        let original_memories = current.memories.clone();
+        for index in 0..500usize {
+            let event = SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: current.session_ref.clone(),
+                sequence: current.events.last().map_or(1, |event| event.sequence + 1),
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::UserMessageQueued {
+                    message: SessionMessage {
+                        role: SessionMessageRole::User,
+                        message_ref: format!("message:soak:{index}"),
+                        actor_ref: "user:soak".into(),
+                        text: format!("soak turn {index}"),
+                        received_at: "2026-07-31T00:01:00Z".into(),
+                    },
+                },
+            };
+            current = apply_session_events(&current, &[event]).unwrap();
+        }
+
+        assert!(current.messages.len() <= MAX_SESSION_MESSAGES);
+        assert_eq!(current.mission, original_mission);
+        assert_eq!(current.memories, original_memories);
+        assert_eq!(
+            current
+                .messages
+                .iter()
+                .rev()
+                .take(4)
+                .map(|message| message.message_ref.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "message:soak:499",
+                "message:soak:498",
+                "message:soak:497",
+                "message:soak:496",
+            ]
+        );
     }
 
     fn observation(complete: bool, fresh_until: Option<&str>) -> ToolObservation {
@@ -8722,6 +8887,25 @@ mod tests {
                 OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
             )
             .is_ok()
+        );
+        let mut multi_party = session();
+        multi_party.messages.push(SessionMessage {
+            role: SessionMessageRole::User,
+            message_ref: "message:current-operator".into(),
+            actor_ref: "user:2".into(),
+            text: "What follows from that?".into(),
+            received_at: "2026-07-31T00:00:30Z".into(),
+        });
+        assert!(
+            validate_grounded_draft(
+                &multi_party,
+                &attributed,
+                &[],
+                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+            )
+            .expect_err("another participant's message cannot be attributed to the operator")
+            .to_string()
+            .contains("exact excerpt from a user message")
         );
         if let ClaimContent::OperatorContext {
             message_sequence, ..

@@ -25,7 +25,7 @@ pub const AGENT_TURN_REQUEST_V1: &str = "agent-turn-request/v1";
 pub const AGENT_TURN_RESULT_V1: &str = "agent-turn-result/v1";
 pub const AGENT_DELIVERY_RECEIPT_V1: &str = "agent-delivery-receipt/v1";
 pub const MAX_HISTORY_ITEMS: usize = 200;
-pub const MAX_HISTORY_ITEM_BYTES: usize = 1024 * 1024;
+pub const MAX_HISTORY_ITEM_BYTES: usize = 16 * 1024;
 pub const MAX_HISTORY_TOTAL_BYTES: usize = 1024 * 1024;
 pub const MAX_MODEL_STEPS: usize = 24;
 pub const MAX_ROUTER_ATTEMPTS: usize = 4;
@@ -119,6 +119,17 @@ pub struct ConversationMessage {
     pub content: String,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationMessageMetadata {
+    #[serde(default)]
+    pub actor_ref: Option<String>,
+    #[serde(default)]
+    pub message_ref: Option<String>,
+    #[serde(default)]
+    pub received_at: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationRole {
@@ -164,6 +175,8 @@ pub struct AgentTurnRequest {
     pub assessment_at: String,
     pub message: String,
     pub history: Vec<ConversationMessage>,
+    #[serde(default)]
+    pub history_metadata: Vec<ConversationMessageMetadata>,
     pub working_state: Option<WorkingState>,
     pub effect_authorizations: Vec<EffectAuthorization>,
 }
@@ -654,7 +667,7 @@ pub async fn run_turn(
     tools: &dyn AgentTools,
     request: AgentTurnRequest,
 ) -> Result<AgentTurnOutcome, AgentRuntimeError> {
-    validate_request(&request)?;
+    validate_agent_turn_request(&request)?;
     let routed_lane = route_with_repair(model, request.clone()).await?;
     let resumed_mission = routed_lane == ExecutionLane::Continue;
     let lane = if resumed_mission {
@@ -2287,7 +2300,7 @@ fn grounding_scalar(value: &Value) -> Option<String> {
     }
 }
 
-fn validate_request(request: &AgentTurnRequest) -> Result<(), AgentRuntimeError> {
+pub fn validate_agent_turn_request(request: &AgentTurnRequest) -> Result<(), AgentRuntimeError> {
     if request.schema_version != AGENT_TURN_REQUEST_V1 {
         return Err(AgentRuntimeError::InvalidRequest(
             "schema version is unsupported".into(),
@@ -2322,6 +2335,25 @@ fn validate_request(request: &AgentTurnRequest) -> Result<(), AgentRuntimeError>
                 || message.content.chars().any(|character| {
                     character.is_control() && !matches!(character, '\n' | '\r' | '\t')
                 })
+        })
+    {
+        return Err(AgentRuntimeError::HistoryInvalid);
+    }
+    if (!request.history_metadata.is_empty()
+        && request.history_metadata.len() != request.history.len())
+        || request.history_metadata.iter().any(|metadata| {
+            metadata
+                .actor_ref
+                .as_ref()
+                .is_some_and(|value| !bounded_text(value))
+                || metadata
+                    .message_ref
+                    .as_ref()
+                    .is_some_and(|value| !bounded_text(value))
+                || metadata
+                    .received_at
+                    .as_ref()
+                    .is_some_and(|value| !bounded_text(value) || parse_timestamp(value).is_err())
         })
     {
         return Err(AgentRuntimeError::HistoryInvalid);
@@ -2924,6 +2956,7 @@ mod grounding_tests {
             assessment_at: "2026-07-31T00:00:00Z".into(),
             message: message.into(),
             history: Vec::new(),
+            history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
         }
@@ -3197,6 +3230,7 @@ mod grounding_tests {
                 assessment_at: "2026-07-31T12:00:00Z".into(),
                 message: "Who owns it?".into(),
                 history: vec![],
+                history_metadata: vec![],
                 working_state: None,
                 effect_authorizations: vec![],
             },

@@ -597,6 +597,7 @@ fn request(message: &str) -> AgentTurnRequest {
             role: ConversationRole::User,
             content: "Check the current runtime before changing it.".into(),
         }],
+        history_metadata: vec![],
         working_state: None,
         effect_authorizations: vec![],
     }

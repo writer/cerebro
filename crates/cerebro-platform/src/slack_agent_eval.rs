@@ -54,6 +54,8 @@ const LAB_MAX_OPERATOR_TURN_LATENCY_MS: u128 = 300_000;
 const LAB_MAX_SCHEDULED_WAKE_LATENCY_MS: u128 = 300_000;
 const AUTONOMY_WAKE_COUNT: usize = 2;
 const AUTONOMY_MAX_WAKE_DELAY: Duration = Duration::hours(24);
+const MODEL_JUDGE_INDEPENDENT: bool = false;
+const MODEL_SIDE_SCORE_ADVISORY: bool = true;
 const SYNTHETIC_CONTEXT_SCOPE_REF: &str =
     "slack-context-scope://sha256/1111111111111111111111111111111111111111111111111111111111111111";
 const SYNTHETIC_HOLDOUT_NAMESPACE: &str = "synthetic://cerebro-holdouts/";
@@ -564,6 +566,7 @@ struct AutonomyLabReceipt {
     judge_model_id: String,
     runtime_path: &'static str,
     candidate_identity_concealed_from_model_judge: bool,
+    model_judge_independent: bool,
     model_side_score_advisory: bool,
     holdout_source: HoldoutSourceReceipt,
     blind_review_bundle_sha256: String,
@@ -579,6 +582,7 @@ struct AutonomyLabReceipt {
     operator_turn_latency_slo_ms: u128,
     scheduled_wake_latency_slo_ms: u128,
     independent_review_required: bool,
+    promotion_gate: &'static str,
     promotion_ready: bool,
     suite_passed: bool,
     scenarios: Vec<AutonomyScenarioRunReceipt>,
@@ -1783,6 +1787,7 @@ impl SessionTools for EvalTools {
                     }
                 })
                 .collect(),
+            history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: session.effect_authorizations.clone(),
         };
@@ -3348,7 +3353,8 @@ async fn run_autonomy_lab(
         judge_model_id,
         runtime_path: "session_v2_typed_wake",
         candidate_identity_concealed_from_model_judge: true,
-        model_side_score_advisory: false,
+        model_judge_independent: MODEL_JUDGE_INDEPENDENT,
+        model_side_score_advisory: MODEL_SIDE_SCORE_ADVISORY,
         holdout_source,
         blind_review_bundle_sha256,
         declared_scenario_count,
@@ -3363,6 +3369,7 @@ async fn run_autonomy_lab(
         operator_turn_latency_slo_ms: LAB_MAX_OPERATOR_TURN_LATENCY_MS,
         scheduled_wake_latency_slo_ms: LAB_MAX_SCHEDULED_WAKE_LATENCY_MS,
         independent_review_required: true,
+        promotion_gate: "fresh_blind_curmudgeon_consensus_required",
         promotion_ready: false,
         suite_passed,
         scenarios: scenario_runs,
@@ -3422,6 +3429,7 @@ async fn run_autonomy_scenario(
         assessment_at: context.evaluated_at.to_owned(),
         message: scenario.initial_message.clone(),
         history: Vec::new(),
+        history_metadata: Vec::new(),
         working_state: None,
         effect_authorizations: Vec::new(),
     };
@@ -3844,6 +3852,7 @@ async fn run_conversation_lab(
                 assessment_at,
                 message: current_message.clone(),
                 history: transcript.clone(),
+                history_metadata: Vec::new(),
                 working_state: working_state.clone(),
                 effect_authorizations,
             };
@@ -4133,8 +4142,8 @@ async fn run_conversation_lab(
         judge_model_id,
         runtime_path: runtime.as_str(),
         candidate_identity_concealed_from_model_judge: true,
-        model_judge_independent: false,
-        model_side_score_advisory: true,
+        model_judge_independent: MODEL_JUDGE_INDEPENDENT,
+        model_side_score_advisory: MODEL_SIDE_SCORE_ADVISORY,
         holdout_source: selection.source,
         blind_review_bundle_sha256,
         minimum_exchanges: LAB_MIN_EXCHANGES,
@@ -5820,6 +5829,7 @@ fn eval_request(index: usize, eval_case: EvalCase, assessment_at: &str) -> Agent
             role: ConversationRole::User,
             content: eval_case.history.into(),
         }],
+        history_metadata: Vec::new(),
         working_state: eval_case
             .working_request
             .map(|current_request| WorkingState {
@@ -6477,6 +6487,7 @@ mod tests {
             assessment_at: "2026-07-31T00:00:00Z".into(),
             message: "Check the hidden receipt.".into(),
             history: Vec::new(),
+            history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
         };
@@ -6586,6 +6597,7 @@ mod tests {
             assessment_at: "2026-07-31T00:00:00Z".into(),
             message: "Inspect Source A.".into(),
             history: Vec::new(),
+            history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
         };
@@ -6664,6 +6676,7 @@ mod tests {
             assessment_at: "2026-07-31T00:00:00Z".into(),
             message: "Inspect synthetic source health.".into(),
             history: Vec::new(),
+            history_metadata: Vec::new(),
             working_state: None,
             effect_authorizations: Vec::new(),
         };
@@ -7117,6 +7130,12 @@ mod tests {
         assert!(!autonomy_suite_passed(true, false, true, true));
         assert!(!autonomy_suite_passed(true, true, false, true));
         assert!(!autonomy_suite_passed(true, true, true, false));
+    }
+
+    #[test]
+    fn same_model_quality_judging_is_advisory_only() {
+        assert!(!MODEL_JUDGE_INDEPENDENT);
+        assert!(MODEL_SIDE_SCORE_ADVISORY);
     }
 
     #[test]
