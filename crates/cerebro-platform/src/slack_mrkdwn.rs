@@ -71,10 +71,8 @@ fn render_inline_slack_mrkdwn(value: &str) -> String {
         !strong_delimiter_count_outside_urls(&markup_source, "**").is_multiple_of(2);
     let close_strong_underscore =
         !strong_delimiter_count_outside_urls(&markup_source, "__").is_multiple_of(2);
-    let close_single_asterisk =
-        !single_delimiter_count_outside_urls(&markup_source, '*').is_multiple_of(2);
-    let close_single_underscore =
-        !single_delimiter_count_outside_urls(&markup_source, '_').is_multiple_of(2);
+    let close_single_asterisk = has_unclosed_single_emphasis(&markup_source, '*');
+    let close_single_underscore = has_unclosed_single_emphasis(&markup_source, '_');
     let mut cursor = 0;
     while let Some(offset) = value[cursor..].find('`') {
         let open = cursor + offset;
@@ -203,8 +201,8 @@ fn render_inline_markup(value: &str) -> String {
     inert_slack_control_syntax(&output)
 }
 
-fn single_delimiter_count_outside_urls(value: &str, delimiter: char) -> usize {
-    let mut count = 0;
+fn has_unclosed_single_emphasis(value: &str, delimiter: char) -> bool {
+    let mut open = false;
     let mut cursor = 0;
     while cursor < value.len() {
         let image = value[cursor..].starts_with("![");
@@ -225,7 +223,19 @@ fn single_delimiter_count_outside_urls(value: &str, delimiter: char) -> usize {
                 .take_while(|character| *character == delimiter)
                 .count();
             if run == 1 {
-                count += 1;
+                let previous_is_word = value[..cursor]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_alphanumeric);
+                let next_is_word = remainder[delimiter.len_utf8()..]
+                    .chars()
+                    .next()
+                    .is_some_and(char::is_alphanumeric);
+                if !open && !previous_is_word && next_is_word {
+                    open = true;
+                } else if open && previous_is_word && !next_is_word {
+                    open = false;
+                }
             }
             cursor += run;
             continue;
@@ -236,7 +246,7 @@ fn single_delimiter_count_outside_urls(value: &str, delimiter: char) -> usize {
             .expect("single delimiter cursor remains on a character boundary")
             .len_utf8();
     }
-    count
+    open
 }
 
 fn strong_delimiter_count_outside_urls(value: &str, delimiter: &str) -> usize {
@@ -492,6 +502,9 @@ mod tests {
             render_slack_mrkdwn("**Source `provider-x` is down**"),
             "*Source `provider-x` is down*"
         );
+        assert_eq!(render_slack_mrkdwn("source_runtime"), "source_runtime");
+        assert_eq!(render_slack_mrkdwn("2*3"), "2*3");
+        assert_eq!(render_slack_mrkdwn("source_"), "source_");
     }
 
     #[test]

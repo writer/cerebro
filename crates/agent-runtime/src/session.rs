@@ -489,6 +489,8 @@ pub enum ClaimContent {
     },
     ConversationalSynthesis {
         source_message_sequences: Vec<u64>,
+        #[serde(default)]
+        source_atom_refs: Vec<String>,
     },
     HistoricalContext {
         atom_ref: String,
@@ -3425,8 +3427,10 @@ fn claim_evidence_atom_refs(content: &ClaimContent) -> &[String] {
             ..
         } => supporting_atom_refs,
         ClaimContent::HistoricalContext { atom_ref, .. } => std::slice::from_ref(atom_ref),
+        ClaimContent::ConversationalSynthesis {
+            source_atom_refs, ..
+        } => source_atom_refs,
         ClaimContent::OperatorContext { .. }
-        | ClaimContent::ConversationalSynthesis { .. }
         | ClaimContent::RetainedPlan { .. }
         | ClaimContent::Commitment { .. }
         | ClaimContent::StableExplanation { .. }
@@ -5138,20 +5142,38 @@ fn validate_claim(
         }
         ClaimContent::ConversationalSynthesis {
             source_message_sequences,
+            source_atom_refs,
         } => {
             let sources = source_message_sequences.iter().collect::<BTreeSet<_>>();
+            let historical_sources = source_atom_refs.iter().collect::<BTreeSet<_>>();
             if source_message_sequences.len() > 16
                 || sources.len() != source_message_sequences.len()
+                || source_atom_refs.len() > 16
+                || historical_sources.len() != source_atom_refs.len()
                 || source_message_sequences
                     .iter()
                     .any(|sequence| !context.messages.contains_key(sequence))
-                || conversational_synthesis_requires_evidence(&claim.text)
+                || source_atom_refs.iter().any(|atom_ref| {
+                    !context.atoms.get(atom_ref).is_some_and(|atom| {
+                        matches!(
+                            atom.atom.assertion,
+                            EvidenceAssertion::ConversationEvent { .. }
+                        )
+                    })
+                })
+                || !conversational_synthesis_is_entailed(
+                    &claim.text,
+                    source_message_sequences,
+                    source_atom_refs,
+                    context,
+                )
             {
                 return Err(AgentRuntimeError::InvalidFinal(
-                    "conversational synthesis may transform bounded conversation context and offer timeless reasoning, but it cannot assert current state, operational capability, ownership, execution, or verification"
+                    "conversational synthesis must be positively entailed by one bounded conversation source or use only the registered timeless reasoning vocabulary"
                         .into(),
                 ));
             }
+            cited_atoms.extend(source_atom_refs.iter().cloned());
             return Ok(());
         }
         ClaimContent::HistoricalContext {
@@ -5159,20 +5181,32 @@ fn validate_claim(
             exact_excerpt,
         } => {
             let event = context.atoms.get(atom_ref).and_then(|atom| {
-                if let EvidenceAssertion::ConversationEvent { text, .. } = &atom.atom.assertion {
-                    Some(text)
+                if let EvidenceAssertion::ConversationEvent {
+                    thread_ref,
+                    actor_ref,
+                    role,
+                    occurred_at,
+                    text,
+                } = &atom.atom.assertion
+                {
+                    Some((thread_ref, actor_ref, role, occurred_at, text))
                 } else {
                     None
                 }
             });
-            let rendering = format!("Earlier in Slack: \"{exact_excerpt}\"");
+            let rendering = event.map(|(thread_ref, actor_ref, role, occurred_at, _)| {
+                render_historical_context(thread_ref, actor_ref, role, occurred_at, exact_excerpt)
+            });
             if exact_excerpt.is_empty()
                 || exact_excerpt.len() > 1_000
-                || event.is_none_or(|text| !text.contains(exact_excerpt))
-                || !text_matches_registered_rendering(&claim.text, &rendering)
+                || exact_excerpt.chars().any(char::is_control)
+                || event.is_none_or(|(_, _, _, _, text)| !text.contains(exact_excerpt))
+                || rendering.as_deref().is_none_or(|rendering| {
+                    !text_matches_registered_rendering(&claim.text, rendering)
+                })
             {
                 return Err(AgentRuntimeError::InvalidFinal(
-                    "historical Slack context must quote one exact excerpt from a typed immutable conversation event"
+                    "historical Slack context must safely quote and attribute one exact excerpt from a typed immutable conversation event"
                         .into(),
                 ));
             }
@@ -5366,48 +5400,273 @@ fn validate_claim(
     Ok(())
 }
 
-fn conversational_synthesis_requires_evidence(text: &str) -> bool {
-    if contains_raw_machine_field_syntax(text)
-        || contains_operational_capability_assertion(text)
-        || contains_ownership_assertion(text)
-        || contains_gapped_ownership_assertion(text)
-    {
-        return true;
+fn conversational_synthesis_is_entailed(
+    text: &str,
+    source_message_sequences: &[u64],
+    source_atom_refs: &[String],
+    context: &ClaimValidationContext<'_, '_>,
+) -> bool {
+    if text.trim().is_empty() || text.len() > 4_000 || contains_raw_machine_field_syntax(text) {
+        return false;
     }
-    let normalized = normalized_semantic_text(text);
-    [
-        " currently ",
-        " right now ",
-        " today ",
-        " this week ",
-        " is healthy ",
-        " is unhealthy ",
-        " is failing ",
-        " is degraded ",
-        " is enabled ",
-        " is disabled ",
-        " is connected ",
-        " is disconnected ",
-        " was deployed ",
-        " was merged ",
-        " was remediated ",
-        " has deployed ",
-        " has merged ",
-        " has remediated ",
-        " evidence shows ",
-        " evidence proves ",
-        " i observed ",
-        " i verified ",
-        " i checked ",
-        " i changed ",
-        " i sent ",
-        " i created ",
-        " we observed ",
-        " we verified ",
-        " we checked ",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
+    let historical_sources = source_atom_refs
+        .iter()
+        .filter_map(|atom_ref| context.atoms.get(atom_ref))
+        .filter_map(|atom| match &atom.atom.assertion {
+            EvidenceAssertion::ConversationEvent { role, text, .. } => {
+                Some((text.as_str(), role.as_str()))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if !historical_sources.is_empty() {
+        let normalized = normalized_semantic_text(text);
+        if ![" earlier ", " prior ", " previously ", " historical "]
+            .iter()
+            .any(|marker| normalized.contains(marker))
+            || [" currently ", " right now ", " today ", " now "]
+                .iter()
+                .any(|marker| normalized.contains(marker))
+        {
+            return false;
+        }
+    }
+    let current_sources = source_message_sequences
+        .iter()
+        .filter_map(|sequence| context.messages.get(sequence))
+        .map(|message| {
+            let role = match message.role {
+                SessionMessageRole::User => "user",
+                SessionMessageRole::Assistant => "assistant",
+            };
+            (message.text.as_str(), role)
+        });
+    let sources = current_sources
+        .chain(historical_sources.iter().copied())
+        .collect::<Vec<_>>();
+    atomic_assertion_clauses(text).into_iter().all(|clause| {
+        timeless_reasoning_clause(clause)
+            || sources
+                .iter()
+                .any(|(source, role)| conversation_source_entails_clause(source, role, clause))
+    })
+}
+
+fn timeless_reasoning_clause(clause: &str) -> bool {
+    const TIMELESS_REASONING: &[&str] = &[
+        "acceptance",
+        "alternative",
+        "assumption",
+        "boundary",
+        "bounded",
+        "cause",
+        "clarify",
+        "closure",
+        "compare",
+        "condition",
+        "confidence",
+        "conclusion",
+        "constraint",
+        "context",
+        "criterion",
+        "criteria",
+        "decision",
+        "depend",
+        "distinction",
+        "distinguish",
+        "enough",
+        "evidence",
+        "explain",
+        "fact",
+        "first",
+        "frame",
+        "framed",
+        "gap",
+        "highest",
+        "hypothesis",
+        "impact",
+        "important",
+        "inference",
+        "information",
+        "known",
+        "material",
+        "missing",
+        "next",
+        "owner",
+        "plausible",
+        "preserve",
+        "prioritize",
+        "proof",
+        "question",
+        "reason",
+        "reasoning",
+        "reversible",
+        "reversibility",
+        "risk",
+        "scope",
+        "separate",
+        "signal",
+        "source",
+        "stronger",
+        "sufficient",
+        "test",
+        "timeless",
+        "trigger",
+        "uncertain",
+        "uncertainty",
+        "useful",
+        "value",
+        "verification",
+        "weakest",
+        "what",
+        "whether",
+        "why",
+    ];
+    let tokens = semantic_content_tokens(clause);
+    !tokens.is_empty()
+        && tokens
+            .iter()
+            .all(|token| TIMELESS_REASONING.contains(&token.as_str()))
+}
+
+fn conversation_source_entails_clause(source: &str, role: &str, clause: &str) -> bool {
+    const TRANSFORMATION_WORDS: &[&str] = &[
+        "according",
+        "also",
+        "asked",
+        "assistant",
+        "cerebro",
+        "commitment",
+        "context",
+        "earlier",
+        "goal",
+        "historical",
+        "message",
+        "noted",
+        "objective",
+        "open",
+        "operator",
+        "outcome",
+        "preference",
+        "preferred",
+        "previously",
+        "prior",
+        "question",
+        "recorded",
+        "remaining",
+        "request",
+        "said",
+        "stated",
+        "summary",
+        "thread",
+        "unresolved",
+        "want",
+        "wanted",
+        "you",
+        "your",
+    ];
+    let normalized_clause = normalized_semantic_text(clause);
+    let role_is_attributed = match role {
+        "user" => [
+            " you said ",
+            " you asked ",
+            " you want ",
+            " you wanted ",
+            " your request ",
+            " your stated preference ",
+            " operator said ",
+            " operator asked ",
+        ]
+        .iter()
+        .any(|marker| normalized_clause.contains(marker)),
+        "assistant" => [" assistant said ", " cerebro said "]
+            .iter()
+            .any(|marker| normalized_clause.contains(marker)),
+        "objective" => normalized_clause.contains(" objective "),
+        "desired_outcome" => normalized_clause.contains(" outcome "),
+        "open_loop" => {
+            normalized_clause.contains(" open question ")
+                || normalized_clause.contains(" unresolved ")
+        }
+        "commitment" => normalized_clause.contains(" commitment "),
+        _ => false,
+    };
+    if !role_is_attributed {
+        return false;
+    }
+    let source_tokens = semantic_content_tokens(source);
+    let source_is_negated = source_tokens
+        .iter()
+        .any(|token| matches!(token.as_str(), "not" | "no" | "never"));
+    let claim_tokens = semantic_content_tokens(clause);
+    let claim_is_negated = claim_tokens
+        .iter()
+        .any(|token| matches!(token.as_str(), "not" | "no" | "never"));
+    if source_is_negated != claim_is_negated {
+        return false;
+    }
+    let source_is_qualified = source_tokens.iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "may"
+                | "might"
+                | "could"
+                | "possibly"
+                | "possibility"
+                | "hypothesis"
+                | "likely"
+                | "plausible"
+                | "uncertain"
+        )
+    });
+    let claim_is_qualified = claim_tokens.iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "may"
+                | "might"
+                | "could"
+                | "possibly"
+                | "possibility"
+                | "hypothesis"
+                | "likely"
+                | "plausible"
+                | "uncertain"
+        )
+    });
+    if source_is_qualified && !claim_is_qualified {
+        return false;
+    }
+    let sourced_claim_tokens = claim_tokens
+        .into_iter()
+        .filter(|token| !TRANSFORMATION_WORDS.contains(&token.as_str()))
+        .collect::<Vec<_>>();
+    if sourced_claim_tokens.is_empty() {
+        return false;
+    }
+    let mut source_cursor = 0;
+    sourced_claim_tokens.into_iter().all(|claim_token| {
+        let Some(offset) = source_tokens[source_cursor..]
+            .iter()
+            .position(|source_token| source_token == &claim_token)
+        else {
+            return false;
+        };
+        source_cursor += offset + 1;
+        true
+    })
+}
+
+fn render_historical_context(
+    thread_ref: &str,
+    actor_ref: &str,
+    role: &str,
+    occurred_at: &str,
+    exact_excerpt: &str,
+) -> String {
+    let escaped_excerpt = exact_excerpt.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        "Earlier in Slack, {actor_ref} ({role}) wrote in {thread_ref} at {occurred_at}: \"{escaped_excerpt}\""
+    )
 }
 
 fn render_recommendation_directive(directive: RecommendationDirective) -> &'static str {
@@ -5546,7 +5805,7 @@ fn atom_subject_and_scalar_match(
         .unwrap_or(predicate)
         .replace(['_', '-'], " ");
     let predicate_match = text_contains_semantic_term(clause, &predicate_leaf);
-    let normalized_predicate = normalized_semantic_text(&predicate_leaf);
+    let normalized_predicate = normalized_semantic_text(&predicate.replace(['_', '-'], " "));
     let normalized_clause = normalized_semantic_text(clause);
     let predicate_tokens = normalized_predicate
         .split_whitespace()
@@ -5600,16 +5859,23 @@ fn atom_subject_and_scalar_match(
 }
 
 fn scalar_predicate_is_implicit_state(predicate: &str, value: &Value) -> bool {
-    let predicate_leaf = predicate
-        .rsplit(['/', '.', ':'])
-        .find(|part| !part.is_empty())
-        .unwrap_or(predicate)
-        .replace(['_', '-'], " ");
-    let normalized = normalized_semantic_text(&predicate_leaf);
-    matches!(
-        normalized.split_whitespace().next_back(),
-        Some("status" | "state" | "health")
-    ) && matches!(value, Value::String(_) | Value::Bool(_))
+    let semantic_segments = predicate
+        .split(['/', '.', ':'])
+        .filter(|segment| !segment.is_empty())
+        .filter(|segment| !segment.chars().all(|character| character.is_ascii_digit()))
+        .filter(|segment| {
+            !matches!(
+                *segment,
+                "runtime" | "runtimes" | "connector" | "connectors"
+            )
+        })
+        .collect::<Vec<_>>();
+    semantic_segments.len() == 1
+        && matches!(
+            semantic_segments.first().copied(),
+            Some("status" | "state" | "health" | "enabled" | "enabled_state")
+        )
+        && matches!(value, Value::String(_) | Value::Bool(_))
 }
 
 fn relation_clause_preserves_direction(
@@ -6562,6 +6828,7 @@ fn atomic_assertion_clauses(text: &str) -> Vec<&str> {
         .flat_map(|clause| clause.split(" and "))
         .flat_map(|clause| clause.split(" while "))
         .flat_map(|clause| clause.split(" whereas "))
+        .flat_map(|clause| clause.split(" as "))
         .flat_map(|clause| clause.split(" plus "))
         .flat_map(|clause| clause.split(" as well as "))
         .flat_map(|clause| clause.split(" along with "))
@@ -10364,7 +10631,8 @@ mod tests {
         candidate.claims[0].text =
             "A useful distinction separates known facts, inferences, and decision criteria.".into();
         candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
-            source_message_sequences: vec![1],
+            source_message_sequences: Vec::new(),
+            source_atom_refs: Vec::new(),
         };
         candidate.message = candidate.claims[0].text.clone();
         validate_grounded_draft(&session(), &candidate, &[], assessment).unwrap();
@@ -10374,6 +10642,13 @@ mod tests {
             "Cerebro can read provider records.",
             "Cerebro owns remediation for connector alpha.",
             "I verified the deployment.",
+            "Lantern stopped collecting records yesterday.",
+            "The provider returned 403 errors.",
+            "Alice approved the rollout.",
+            "The deployment failed.",
+            "Connector alpha remains green.",
+            "The deployment landed successfully.",
+            "Earlier, Atlas approved the provider change.",
         ] {
             candidate.claims[0].text = unsupported.into();
             candidate.message = candidate.claims[0].text.clone();
@@ -10386,9 +10661,30 @@ mod tests {
             "The decision can be framed around reversibility and information gain.".into();
         candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
             source_message_sequences: vec![99],
+            source_atom_refs: Vec::new(),
         };
         candidate.message = candidate.claims[0].text.clone();
         assert!(validate_grounded_draft(&session(), &candidate, &[], assessment).is_err());
+
+        let mut reported_session = session();
+        reported_session.messages[0].text = "Keep connector alpha reversible.".into();
+        candidate.claims[0].text = "You said: Keep connector alpha reversible.".into();
+        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
+            source_message_sequences: vec![1],
+            source_atom_refs: Vec::new(),
+        };
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(validate_grounded_draft(&reported_session, &candidate, &[], assessment).is_ok());
+
+        reported_session.messages[0].text = "Connector alpha is not verified.".into();
+        candidate.claims[0].text = "You said connector alpha is verified.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(validate_grounded_draft(&reported_session, &candidate, &[], assessment).is_err());
+
+        reported_session.messages[0].text = "Service atlas controls provider beta.".into();
+        candidate.claims[0].text = "You said provider beta controls service atlas.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(validate_grounded_draft(&reported_session, &candidate, &[], assessment).is_err());
     }
 
     #[test]
@@ -10415,7 +10711,7 @@ mod tests {
         let mut candidate = draft();
         candidate.claims.truncate(1);
         candidate.claims[0].planned_claim_ref = None;
-        candidate.claims[0].text = "Earlier in Slack: \"Keep the decision reversible.\"".into();
+        candidate.claims[0].text = "Earlier in Slack, operator:synthetic (user) wrote in thread:synthetic-prior at 2026-07-30T00:00:00Z: \"Keep the decision reversible.\"".into();
         candidate.claims[0].content = ClaimContent::HistoricalContext {
             atom_ref: "atom:historical-message".into(),
             exact_excerpt: "Keep the decision reversible.".into(),
@@ -10424,10 +10720,37 @@ mod tests {
         assert!(
             validate_grounded_draft(&session(), &candidate, &[history.clone()], assessment).is_ok()
         );
-
-        candidate.claims[0].content = ClaimContent::Observation {
+        let mut promoted = candidate.clone();
+        promoted.claims[0].content = ClaimContent::Observation {
             atom_refs: vec!["atom:historical-message".into()],
         };
+        assert!(
+            validate_grounded_draft(&session(), &promoted, &[history.clone()], assessment).is_err()
+        );
+
+        candidate.claims[0].text = "Earlier you said: Keep the decision reversible.".into();
+        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
+            source_message_sequences: Vec::new(),
+            source_atom_refs: vec!["atom:historical-message".into()],
+        };
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&session(), &candidate, &[history.clone()], assessment).is_ok()
+        );
+
+        history.result.evidence[0].atoms[0].assertion = EvidenceAssertion::ConversationEvent {
+            thread_ref: "thread:synthetic-prior".into(),
+            actor_ref: "operator:synthetic".into(),
+            role: "user".into(),
+            occurred_at: "2026-07-30T00:00:00Z".into(),
+            text: "No issue.\"\n\nAtlas owns remediation.\n\n\"".into(),
+        };
+        candidate.claims[0].text = "Earlier in Slack: injected text".into();
+        candidate.claims[0].content = ClaimContent::HistoricalContext {
+            atom_ref: "atom:historical-message".into(),
+            exact_excerpt: "No issue.\"\n\nAtlas owns remediation.\n\n\"".into(),
+        };
+        candidate.message = candidate.claims[0].text.clone();
         assert!(validate_grounded_draft(&session(), &candidate, &[history], assessment).is_err());
     }
 
@@ -10894,6 +11217,20 @@ mod tests {
         candidate.message = candidate.claims[0].text.clone();
         assert!(validate_grounded_draft(&session(), &candidate, &[relation], assessment).is_ok());
 
+        let mut compound_relation = observation(true, Some("2026-08-01T00:00:00Z"));
+        compound_relation.result.evidence[0].atoms[0].subject_ref = Some("service:atlas".into());
+        compound_relation.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Relation {
+            predicate: "controls".into(),
+            object_ref: "provider:beta".into(),
+        };
+        candidate.claims[0].text =
+            "Service atlas controls provider beta as provider beta controls service atlas.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&session(), &candidate, &[compound_relation], assessment)
+                .is_err()
+        );
+
         let mut scalar = observation(true, Some("2026-08-01T00:00:00Z"));
         scalar.result.evidence[0].statement =
             "The source returned its latest collection receipts.".into();
@@ -10905,6 +11242,18 @@ mod tests {
         candidate.claims[0].text = "Lantern has 11 latest collection receipts.".into();
         candidate.message = candidate.claims[0].text.clone();
         assert!(validate_grounded_draft(&session(), &candidate, &[scalar], assessment).is_err());
+
+        let mut nested_status = observation(true, Some("2026-08-01T00:00:00Z"));
+        nested_status.result.evidence[0].atoms[0].subject_ref = Some("runtime:alpha".into());
+        nested_status.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Value {
+            predicate: "/runtimes/0/latest_collection/status".into(),
+            value: json!("complete"),
+        };
+        candidate.claims[0].text = "Runtime alpha is complete.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&session(), &candidate, &[nested_status], assessment).is_err()
+        );
     }
 
     #[test]
