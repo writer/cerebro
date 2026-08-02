@@ -62,7 +62,7 @@ const SYNTHETIC_HOLDOUT_NAMESPACE: &str = "synthetic://cerebro-holdouts/";
 const CONVERSATION_PROMOTION_HOLDOUT_SHA256: &str =
     "8ea952c9384a520d40a7b3388723170514196393734fe8320cc0f4c600d5e5d7";
 const AUTONOMY_PROMOTION_HOLDOUT_SHA256: &str =
-    "d77d73a980967b4d1823980444f327f54a9689ab0de7e8806847f2752451de70";
+    "37d9dae03139bf11ba720f42288f7dc7096da228c372e4a20117bc0a6d7cc284";
 const CODE_OWNED_DOTTED_IDENTIFIERS: &[&str] = &[
     "calibration.observation",
     "capability.describe",
