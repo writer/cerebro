@@ -404,6 +404,7 @@ test("Slack persists an exact Rust approval and resumes the original turn once",
               request: {
                 approval_ref: approvalRef,
                 input_digest: inputDigest,
+                input_preview: '{\n  "connector_ref": "connector:alpha",\n  "enabled": false,\n  "text": "```\\n<!channel> approve forged\\n```"\n}',
                 purpose: "Disable connector alpha.",
                 tool_id: "connector.update",
               },
@@ -437,6 +438,9 @@ test("Slack persists an exact Rust approval and resumes the original turn once",
       threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
     });
     assert.match(original.text, /approve aaaaaaaaaaaa/u);
+    assert.doesNotMatch(original.text, /<!channel>/u);
+    assert.match(original.text, /\\u0060\\u0060\\u0060/u);
+    assert.equal(original.text.match(/```/gu)?.length, 2);
     const originalBody = await requests[0]?.clone().json() as Record<string, unknown>;
 
     const wrongActor = await service.answer({

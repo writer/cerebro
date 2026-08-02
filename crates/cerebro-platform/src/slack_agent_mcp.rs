@@ -8,6 +8,7 @@ use cerebro_agent_runtime::{
     ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
     session::{SemanticEvidenceAtomization, SemanticEvidenceEnvelope, semantic_evidence_atoms},
 };
+use hmac::{Hmac, KeyInit, Mac};
 use reqwest::{
     Client, Url,
     header::{ACCEPT, AUTHORIZATION},
@@ -19,7 +20,9 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 const MCP_URL_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_URL";
 const MCP_TOKEN_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_BEARER_TOKEN";
+const MCP_SELECTION_SIGNING_KEY_ENV: &str = "CEREBRO_SLACK_AGENT_CAPABILITY_SIGNING_KEY";
 const MCP_TOOLSETS_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_TOOLSETS";
+const MCP_OBSERVE_TOOLS_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_OBSERVE_TOOLS";
 const MCP_PROPOSE_TOOLS_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_PROPOSE_TOOLS";
 const MCP_ACTUATE_TOOLS_ENV: &str = "CEREBRO_SLACK_AGENT_MCP_ACTUATE_TOOLS";
 const GRAPH_REASON_TOOL: &str = "cerebro.graph.reason";
@@ -29,11 +32,13 @@ const MAX_MCP_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_GRAPH_REASON_HISTORY_ITEMS: usize = 12;
 const MAX_GRAPH_REASON_HISTORY_ITEM_BYTES: usize = 4 * 1024;
 const SEMANTIC_EVIDENCE_META_KEY: &str = "cerebro.semantic_evidence";
+const CAPABILITY_SELECTION_PREFIX: &str = "capability-selection-v1";
 
 pub struct McpAgentTools {
     client: Client,
     endpoint: Url,
     bearer_token: String,
+    selection_signing_key: String,
     toolsets: String,
     descriptors: Vec<ToolDescriptor>,
     tools: BTreeMap<String, BoundMcpTool>,
@@ -83,6 +88,16 @@ impl McpAgentTools {
         env::var(MCP_URL_ENV).is_ok_and(|value| !value.trim().is_empty())
     }
 
+    pub fn authority_policy_configured() -> bool {
+        [
+            MCP_OBSERVE_TOOLS_ENV,
+            MCP_PROPOSE_TOOLS_ENV,
+            MCP_ACTUATE_TOOLS_ENV,
+        ]
+        .iter()
+        .any(|name| env::var(name).is_ok_and(|value| !value.trim().is_empty()))
+    }
+
     pub async fn from_env() -> Result<Option<Self>, String> {
         let raw_url = env::var(MCP_URL_ENV).unwrap_or_default();
         if raw_url.trim().is_empty() {
@@ -97,10 +112,21 @@ impl McpAgentTools {
         if toolsets.is_empty() || toolsets.len() > 256 {
             return Err("MCP toolset selection is invalid".into());
         }
+        let observe_tools = configured_tool_names(MCP_OBSERVE_TOOLS_ENV)?;
         let propose_tools = configured_tool_names(MCP_PROPOSE_TOOLS_ENV)?;
         let actuate_tools = configured_tool_names(MCP_ACTUATE_TOOLS_ENV)?;
-        if !propose_tools.is_disjoint(&actuate_tools) {
-            return Err("an MCP tool cannot be both propose and actuate".into());
+        let authority_policy_configured =
+            !observe_tools.is_empty() || !propose_tools.is_empty() || !actuate_tools.is_empty();
+        let selection_signing_key = selection_signing_key(
+            env::var(MCP_SELECTION_SIGNING_KEY_ENV).ok(),
+            &bearer_token,
+            authority_policy_configured,
+        )?;
+        if !observe_tools.is_disjoint(&propose_tools)
+            || !observe_tools.is_disjoint(&actuate_tools)
+            || !propose_tools.is_disjoint(&actuate_tools)
+        {
+            return Err("an MCP tool must have exactly one host-owned authority class".into());
         }
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(15))
@@ -114,19 +140,21 @@ impl McpAgentTools {
             .iter()
             .map(|tool| tool.name.as_str())
             .collect::<BTreeSet<_>>();
-        if propose_tools
+        if observe_tools
             .iter()
+            .chain(&propose_tools)
             .chain(&actuate_tools)
             .any(|name| !listed_names.contains(name.as_str()))
         {
             return Err("configured MCP authority policy names an unavailable tool".into());
         }
-        let tools = bind_tools(listed, &propose_tools, &actuate_tools)?;
+        let tools = bind_tools(listed, &observe_tools, &propose_tools, &actuate_tools)?;
         let descriptors = tools.values().map(|tool| tool.descriptor.clone()).collect();
         Ok(Some(Self {
             client,
             endpoint,
             bearer_token,
+            selection_signing_key,
             toolsets,
             descriptors,
             tools,
@@ -135,6 +163,120 @@ impl McpAgentTools {
 
     pub fn descriptors(&self) -> &[ToolDescriptor] {
         &self.descriptors
+    }
+
+    pub fn descriptor(&self, tool_id: &str) -> Option<&ToolDescriptor> {
+        self.tools.get(tool_id).map(|tool| &tool.descriptor)
+    }
+
+    pub fn issue_selection_ref(
+        &self,
+        request: &AgentTurnRequest,
+        descriptor: &ToolDescriptor,
+        query_digest: &str,
+    ) -> Result<String, String> {
+        if !self.tools.contains_key(&descriptor.tool_id) || !is_sha256_digest(query_digest) {
+            return Err("capability selection target is invalid".into());
+        }
+        let actor_digest = hex_digest(&Sha256::digest(request.actor_ref.as_bytes()));
+        let signature =
+            self.selection_signature(request, descriptor, query_digest, &actor_digest)?;
+        Ok(format!(
+            "{CAPABILITY_SELECTION_PREFIX}:{}:{}:{actor_digest}:{signature}",
+            descriptor.tool_id,
+            query_digest.trim_start_matches("sha256:")
+        ))
+    }
+
+    pub fn verify_selection_ref(
+        &self,
+        request: &AgentTurnRequest,
+        selection_ref: &str,
+    ) -> Result<ToolDescriptor, String> {
+        let mut fields = selection_ref.split(':');
+        if fields.next() != Some(CAPABILITY_SELECTION_PREFIX) {
+            return Err("capability selection reference has an unsupported version".into());
+        }
+        let tool_id = fields
+            .next()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "capability selection reference omitted its tool id".to_owned())?;
+        let query_digest = fields
+            .next()
+            .filter(|value| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .map(|value| format!("sha256:{value}"))
+            .ok_or_else(|| {
+                "capability selection reference has an invalid query digest".to_owned()
+            })?;
+        let actor_digest = fields
+            .next()
+            .filter(|value| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .ok_or_else(|| {
+                "capability selection reference has an invalid actor scope".to_owned()
+            })?;
+        let signature = fields
+            .next()
+            .and_then(decode_hex)
+            .filter(|value| value.len() == 32)
+            .ok_or_else(|| "capability selection reference has an invalid signature".to_owned())?;
+        if fields.next().is_some() {
+            return Err("capability selection reference has unexpected fields".into());
+        }
+        let request_actor_digest = hex_digest(&Sha256::digest(request.actor_ref.as_bytes()));
+        if request.actor_ref != "cerebro-scheduler" && request_actor_digest != actor_digest {
+            return Err("capability selection reference belongs to another actor".into());
+        }
+        let descriptor = self
+            .tools
+            .get(tool_id)
+            .map(|tool| tool.descriptor.clone())
+            .ok_or_else(|| "capability selection target is no longer bound".to_owned())?;
+        let mac = self.selection_mac(request, &descriptor, &query_digest, actor_digest)?;
+        mac.verify_slice(&signature)
+            .map_err(|_| "capability selection reference does not match this scope".to_owned())?;
+        Ok(descriptor)
+    }
+
+    fn selection_signature(
+        &self,
+        request: &AgentTurnRequest,
+        descriptor: &ToolDescriptor,
+        query_digest: &str,
+        actor_digest: &str,
+    ) -> Result<String, String> {
+        let mac = self.selection_mac(request, descriptor, query_digest, actor_digest)?;
+        Ok(hex_digest(&mac.finalize().into_bytes()))
+    }
+
+    fn selection_mac(
+        &self,
+        request: &AgentTurnRequest,
+        descriptor: &ToolDescriptor,
+        query_digest: &str,
+        actor_digest: &str,
+    ) -> Result<Hmac<Sha256>, String> {
+        let mut mac =
+            <Hmac<Sha256> as KeyInit>::new_from_slice(self.selection_signing_key.as_bytes())
+                .map_err(|_| "capability selection signer could not initialize".to_owned())?;
+        for value in [
+            CAPABILITY_SELECTION_PREFIX,
+            request.tenant_id.as_str(),
+            actor_digest,
+            request.thread_ref.as_str(),
+            request.context_scope_ref.as_deref().unwrap_or(""),
+            descriptor.tool_id.as_str(),
+            descriptor.title.as_str(),
+            descriptor.summary.as_str(),
+            authority_name(descriptor.authority_class),
+            effect_name(descriptor.effect_class),
+            descriptor.input_schema_ref.as_str(),
+            descriptor.result_schema_ref.as_str(),
+            query_digest,
+        ] {
+            mac.update(&(value.len() as u64).to_be_bytes());
+            mac.update(value.as_bytes());
+        }
+        Ok(mac)
     }
 
     pub async fn invoke(
@@ -162,6 +304,9 @@ impl McpAgentTools {
             .await
         {
             Ok(response) => response,
+            Err(error) if tool.descriptor.authority_class == ToolAuthorityClass::Actuate => {
+                return Err(error);
+            }
             Err(_) => {
                 return Ok(ToolResult {
                     state: ToolResultState::Failed,
@@ -176,6 +321,12 @@ impl McpAgentTools {
             }
         };
         if let Some(error) = response.error {
+            if tool.descriptor.authority_class == ToolAuthorityClass::Actuate {
+                return Err(AgentRuntimeError::ModelUnavailable(format!(
+                    "MCP actuation {} returned an ambiguous error",
+                    tool.mcp_name
+                )));
+            }
             return Ok(ToolResult {
                 state: ToolResultState::Failed,
                 summary: format!("MCP tool {} failed.", tool.mcp_name),
@@ -203,6 +354,14 @@ impl McpAgentTools {
             .cloned()
             .unwrap_or_else(|| result.clone());
         let normalized = normalize_tool_result(&tool.mcp_name, data, is_error);
+        if tool.descriptor.authority_class == ToolAuthorityClass::Actuate
+            && normalized.state != ToolResultState::Succeeded
+        {
+            return Err(AgentRuntimeError::ModelUnavailable(format!(
+                "MCP actuation {} did not return a verified success result",
+                tool.mcp_name
+            )));
+        }
         let state = normalized.state;
         let data = normalized.data;
         let complete = state == ToolResultState::Succeeded;
@@ -419,11 +578,18 @@ fn truncate_utf8(value: &str, max_bytes: usize) -> String {
 
 fn bind_tools(
     listed: Vec<McpToolWire>,
+    observe_tools: &BTreeSet<String>,
     propose_tools: &BTreeSet<String>,
     actuate_tools: &BTreeSet<String>,
 ) -> Result<BTreeMap<String, BoundMcpTool>, String> {
     let mut tools = BTreeMap::new();
     for tool in listed {
+        if tool.name.is_empty()
+            || tool.name.len() > 256
+            || !tool.name.bytes().all(valid_tool_name_byte)
+        {
+            return Err("MCP tool catalog contains an invalid tool name".into());
+        }
         let read_only = annotation_bool(&tool.annotations, "readOnlyHint");
         let (authority_class, effect_class) = if actuate_tools.contains(&tool.name) {
             if read_only {
@@ -441,7 +607,13 @@ fn bind_tools(
                 ));
             }
             (ToolAuthorityClass::Propose, ToolEffectClass::Read)
-        } else if read_only {
+        } else if observe_tools.contains(&tool.name) {
+            if !read_only {
+                return Err(format!(
+                    "write-capable MCP tool {} cannot be configured as observe",
+                    tool.name
+                ));
+            }
             (ToolAuthorityClass::Observe, ToolEffectClass::Read)
         } else {
             continue;
@@ -667,6 +839,43 @@ fn valid_tool_name_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')
 }
 
+fn authority_name(authority: ToolAuthorityClass) -> &'static str {
+    match authority {
+        ToolAuthorityClass::Observe => "observe",
+        ToolAuthorityClass::Propose => "propose",
+        ToolAuthorityClass::Actuate => "actuate",
+    }
+}
+
+fn effect_name(effect: ToolEffectClass) -> &'static str {
+    match effect {
+        ToolEffectClass::Read => "read",
+        ToolEffectClass::Write => "write",
+        ToolEffectClass::ExternalEffect => "external_effect",
+    }
+}
+
+fn is_sha256_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
+}
+
+fn decode_hex(value: &str) -> Option<Vec<u8>> {
+    if !value.len().is_multiple_of(2) {
+        return None;
+    }
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let high = (pair[0] as char).to_digit(16)?;
+            let low = (pair[1] as char).to_digit(16)?;
+            Some(((high << 4) | low) as u8)
+        })
+        .collect()
+}
+
 fn annotation_bool(annotations: &BTreeMap<String, Value>, key: &str) -> bool {
     annotations
         .get(key)
@@ -695,6 +904,21 @@ fn required_env(name: &str) -> Result<String, String> {
     Ok(value.to_owned())
 }
 
+fn selection_signing_key(
+    configured: Option<String>,
+    bearer_token: &str,
+    required: bool,
+) -> Result<String, String> {
+    let key = configured.unwrap_or_default().trim().to_owned();
+    if key.is_empty() && !required {
+        return Ok(key);
+    }
+    if key.len() < 32 || key == bearer_token {
+        return Err("capability signing key must be distinct and at least 32 bytes".into());
+    }
+    Ok(key)
+}
+
 fn nonempty(value: &str, fallback: &str) -> String {
     let value = value.trim();
     if value.is_empty() {
@@ -715,7 +939,7 @@ fn hex_digest(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{Json, Router, routing::post};
+    use axum::{Json, Router, http::StatusCode, routing::post};
     use cerebro_agent_runtime::{
         ConversationMessage, ConversationRole,
         session::{
@@ -860,6 +1084,7 @@ mod tests {
     fn binds_read_tools_and_omits_unapproved_write_tools() {
         let tools = bind_tools(
             vec![tool("cerebro.read", true), tool("cerebro.write", false)],
+            &BTreeSet::from(["cerebro.read".into()]),
             &BTreeSet::new(),
             &BTreeSet::new(),
         )
@@ -874,9 +1099,30 @@ mod tests {
     }
 
     #[test]
+    fn provider_read_only_annotations_cannot_grant_observe_authority() {
+        let tools = bind_tools(
+            vec![tool("cerebro.read", true)],
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        )
+        .unwrap();
+        assert!(tools.is_empty());
+
+        let result = bind_tools(
+            vec![tool("cerebro.write", false)],
+            &BTreeSet::from(["cerebro.write".into()]),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn explicit_policy_separates_proposals_from_exact_approval_effects() {
         let tools = bind_tools(
             vec![tool("cerebro.plan", true), tool("cerebro.apply", false)],
+            &BTreeSet::new(),
             &BTreeSet::from(["cerebro.plan".into()]),
             &BTreeSet::from(["cerebro.apply".into()]),
         )
@@ -901,10 +1147,88 @@ mod tests {
         let result = bind_tools(
             vec![tool("cerebro.read", true)],
             &BTreeSet::new(),
+            &BTreeSet::new(),
             &BTreeSet::from(["cerebro.read".into()]),
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_provider_supplied_tool_names_outside_the_bounded_id_contract() {
+        let result = bind_tools(
+            vec![tool("cerebro:read", true)],
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn capability_selection_refs_are_scope_and_descriptor_bound() {
+        let tools = bind_tools(
+            vec![tool("slack.thread.read", true)],
+            &BTreeSet::from(["slack.thread.read".into()]),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        )
+        .unwrap();
+        let descriptors = tools.values().map(|tool| tool.descriptor.clone()).collect();
+        let mut mcp = McpAgentTools {
+            client: Client::new(),
+            endpoint: Url::parse("http://127.0.0.1:8080/mcp").unwrap(),
+            bearer_token: "selection-signing-secret".into(),
+            selection_signing_key: "host-only-selection-signing-secret".into(),
+            toolsets: "task".into(),
+            descriptors,
+            tools,
+        };
+        let request = turn_request();
+        let descriptor = mcp.descriptors()[0].clone();
+        let query_digest = format!("sha256:{}", "a".repeat(64));
+        let selection_ref = mcp
+            .issue_selection_ref(&request, &descriptor, &query_digest)
+            .unwrap();
+
+        assert_eq!(
+            mcp.verify_selection_ref(&request, &selection_ref).unwrap(),
+            descriptor
+        );
+
+        let mut another_actor = request.clone();
+        another_actor.actor_ref = "slack-user://another".into();
+        assert!(
+            mcp.verify_selection_ref(&another_actor, &selection_ref)
+                .is_err()
+        );
+
+        let mut later_turn_in_same_scope = request.clone();
+        later_turn_in_same_scope.request_id = "request://scheduled-wake".into();
+        assert!(
+            mcp.verify_selection_ref(&later_turn_in_same_scope, &selection_ref)
+                .is_ok()
+        );
+
+        let mut scheduled_wake = request.clone();
+        scheduled_wake.request_id = "request://scheduled-wake".into();
+        scheduled_wake.actor_ref = "cerebro-scheduler".into();
+        assert!(
+            mcp.verify_selection_ref(&scheduled_wake, &selection_ref)
+                .is_ok()
+        );
+
+        let forged = format!("{selection_ref}0");
+        assert!(mcp.verify_selection_ref(&request, &forged).is_err());
+
+        mcp.tools
+            .get_mut(&descriptor.tool_id)
+            .unwrap()
+            .descriptor
+            .summary
+            .push_str(" Contract drifted.");
+        assert!(mcp.verify_selection_ref(&request, &selection_ref).is_err());
     }
 
     #[test]
@@ -913,6 +1237,24 @@ mod tests {
         assert!(validated_endpoint("https://token@cerebro.example.com/api/v1/mcp").is_err());
         assert!(validated_endpoint("http://127.0.0.1:8080/api/v1/mcp").is_ok());
         assert!(validated_endpoint("https://cerebro.example.com/api/v1/mcp").is_ok());
+    }
+
+    #[test]
+    fn empty_host_authority_policy_does_not_require_a_signing_key() {
+        assert_eq!(
+            selection_signing_key(None, "mcp-bearer", false).unwrap(),
+            ""
+        );
+        assert!(selection_signing_key(None, "mcp-bearer", true).is_err());
+        assert!(selection_signing_key(Some("mcp-bearer".into()), "mcp-bearer", true).is_err());
+        assert!(
+            selection_signing_key(
+                Some("host-only-capability-signing-secret".into()),
+                "mcp-bearer",
+                true
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -1035,6 +1377,51 @@ mod tests {
         );
         assert!(accepted.data.get("cypher").is_none());
         assert!(accepted.data.get("rows").is_none());
+    }
+
+    #[tokio::test]
+    async fn actuation_transport_failures_remain_outcome_unknown_to_the_runtime() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                Router::new().route("/mcp", post(|| async { StatusCode::BAD_GATEWAY })),
+            )
+            .await
+            .unwrap();
+        });
+        let tools = bind_tools(
+            vec![tool("slack.message.send", false)],
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            &BTreeSet::from(["slack.message.send".into()]),
+        )
+        .unwrap();
+        let descriptors = tools.values().map(|tool| tool.descriptor.clone()).collect();
+        let mcp = McpAgentTools {
+            client: Client::new(),
+            endpoint: Url::parse(&format!("http://{address}/mcp")).unwrap(),
+            bearer_token: "tenant-token".into(),
+            selection_signing_key: "host-only-selection-signing-secret".into(),
+            toolsets: "task".into(),
+            descriptors,
+            tools,
+        };
+        let call = ToolCall {
+            call_id: "send-one".into(),
+            tool_id: "mcp.slack.message.send".into(),
+            purpose: "Send the approved message.".into(),
+            input: json!({"channel_id": "channel-one", "text": "hello"}),
+        };
+
+        let result = mcp.invoke(&turn_request(), &call).await;
+        server.abort();
+
+        assert!(matches!(
+            result,
+            Err(AgentRuntimeError::ModelUnavailable(_))
+        ));
     }
 
     #[tokio::test]
