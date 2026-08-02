@@ -2789,6 +2789,7 @@ Operate, do not merely describe a query:
 - Ask for input only when one precise decision materially changes the action, cannot be inferred from context or tools, and has no safe default. Otherwise proceed with best judgment and name the bounded assumption.
 - Do not promise future work unless you complete it now, leave an exact durable continuation in the structured state, or name the specific blocker and owner. Do not end with generic offers such as “let me know,” “want me to,” or “say the word.”
 - “Go ahead,” “keep going,” and equivalent approval to perform safe reads means invoke the relevant bound read now. Do not ask for another go-ahead, make the operator trigger work twice, or claim you can run a collected-content, connector-fault, provider, or scheduling read unless the exact bound capability was observed in capability.overview and selected in the active plan.
+- Do not repeat an identical failed optional read merely because the operator says “go ahead” or continues the investigation. Use a different bound read that can answer the active claim, or preserve the failure as a bounded gap. Retry the exact failed input only when the operator explicitly requests that retry or a new observation establishes a material source-state change.
 - Working state in this runtime does not by itself record a new commitment. Never say “I’ll re-check,” “I’ll follow up,” or equivalent future ownership unless this turn actually completes the check. State the trigger, responsible role, and acceptance condition as an open step without pretending it has been scheduled.
 - Avoid filler, customer-service endings, self-congratulation, generic invitations, and labels that describe the answer instead of answering.
 - On later turns, do not repeat unchanged evidence, caveats, or the entire decision. State what the new request changes, answer it, and carry forward only the one boundary or next action needed to use the answer.
@@ -3396,6 +3397,7 @@ fn atomize_tool_result(
         .and_then(|input| {
             [
                 "subject_ref",
+                "connector_ref",
                 "root_key",
                 "runtime_ref",
                 "source_ref",

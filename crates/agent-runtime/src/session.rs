@@ -13,9 +13,9 @@ use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
-    AgentRuntimeError, ApprovalRequest, EffectAuthorization, ExecutionLane, FinalState,
-    ToolAuthorityClass, ToolCall, ToolDescriptor, ToolEffectClass, ToolObservation, ToolResult,
-    ToolResultState,
+    AgentRuntimeError, ApprovalRequest, EffectAuthorization, EvidenceRecord, ExecutionLane,
+    FinalState, ToolAuthorityClass, ToolCall, ToolDescriptor, ToolEffectClass, ToolObservation,
+    ToolResult, ToolResultState,
 };
 
 pub const AGENT_SESSION_V2: &str = "agent-session/v2";
@@ -267,6 +267,22 @@ pub enum SearchCoverageResult {
     Failed { error_kind: String },
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventFamilyMembershipState {
+    Mapped,
+    NotMapped,
+    Unverified,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, tag = "state", rename_all = "snake_case")]
+pub enum CollectionVisibilityState {
+    Observed { count: u32 },
+    LegitimatelyEmpty { complete_scope_ref: String },
+    Unverified,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, tag = "kind", rename_all = "snake_case")]
 pub enum SemanticEvidenceAssertion {
@@ -287,13 +303,27 @@ pub enum SemanticEvidenceAssertion {
         scope: SearchScope,
         result: SearchCoverageResult,
     },
+    EventFamilyMembership {
+        subject_ref: String,
+        event_type: String,
+        family: String,
+        state: EventFamilyMembershipState,
+    },
+    CollectionVisibility {
+        subject_ref: String,
+        event_type: String,
+        window_ref: String,
+        state: CollectionVisibilityState,
+    },
 }
 
 impl SemanticEvidenceAssertion {
     fn subject_ref(&self) -> Option<&str> {
         match self {
             Self::AuthorityBinding { subject_ref, .. }
-            | Self::CausalAssessment { subject_ref, .. } => Some(subject_ref),
+            | Self::CausalAssessment { subject_ref, .. }
+            | Self::EventFamilyMembership { subject_ref, .. }
+            | Self::CollectionVisibility { subject_ref, .. } => Some(subject_ref),
             Self::SearchCoverage { subject_ref, .. } => subject_ref.as_deref(),
         }
     }
@@ -1013,6 +1043,45 @@ fn validate_semantic_assertion(
                 | SearchCoverageResult::Partial => {}
             }
         }
+        SemanticEvidenceAssertion::EventFamilyMembership {
+            subject_ref,
+            event_type,
+            family,
+            ..
+        } => {
+            require_semantic_ref(subject_ref, "event-family subject")?;
+            if !valid_semantic_code(event_type) || !valid_semantic_code(family) {
+                return Err(invalid_semantic_evidence(
+                    "event-family membership requires bounded event and family codes",
+                ));
+            }
+        }
+        SemanticEvidenceAssertion::CollectionVisibility {
+            subject_ref,
+            event_type,
+            window_ref,
+            state,
+        } => {
+            require_semantic_ref(subject_ref, "collection-visibility subject")?;
+            require_semantic_ref(window_ref, "collection-visibility window")?;
+            if !valid_semantic_code(event_type) {
+                return Err(invalid_semantic_evidence(
+                    "collection visibility requires a bounded event code",
+                ));
+            }
+            match state {
+                CollectionVisibilityState::Observed { count } if *count == 0 => {
+                    return Err(invalid_semantic_evidence(
+                        "observed collection visibility requires a positive count",
+                    ));
+                }
+                CollectionVisibilityState::LegitimatelyEmpty { complete_scope_ref } => {
+                    require_semantic_ref(complete_scope_ref, "complete empty scope")?;
+                }
+                CollectionVisibilityState::Observed { .. }
+                | CollectionVisibilityState::Unverified => {}
+            }
+        }
     }
     Ok(())
 }
@@ -1368,19 +1437,6 @@ pub async fn run_session_turn_recorded(
             )
         })
         .collect::<BTreeSet<_>>();
-    if !operator_explicitly_requests_retry(&session) {
-        call_fingerprints.extend(
-            observations
-                .iter()
-                .filter(|observation| observation.result.state == ToolResultState::Failed)
-                .map(|observation| {
-                    (
-                        observation.call.tool_id.clone(),
-                        observation.call.input_digest(),
-                    )
-                }),
-        );
-    }
     let mut consumed_approvals = BTreeSet::new();
     let mut repair_feedback = Vec::new();
     let mut repairs = 0;
@@ -1954,41 +2010,36 @@ async fn repair_fallback_outcome(
                 .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))?
                 .atom_ref
                 .clone();
-            Some((
-                observation.result.summary.trim().to_owned(),
-                atom_ref,
-                fallback_observation_subjects(observation),
-            ))
+            Some((observation.result.summary.trim().to_owned(), atom_ref))
         })
         .collect::<Vec<_>>();
-    let failed_read = observations.iter().rev().find_map(|observation| {
-        if observation.result.state != ToolResultState::Failed
-            || observation.descriptor.authority_class != ToolAuthorityClass::Observe
-            || observation.descriptor.effect_class != ToolEffectClass::Read
-            || observation.result.summary.len() > 1_500
-            || observation.result.summary.trim().is_empty()
-            || observation
+    let failed_reads = observations
+        .iter()
+        .filter_map(|observation| {
+            if observation.result.state != ToolResultState::Failed
+                || observation.descriptor.authority_class != ToolAuthorityClass::Observe
+                || observation.descriptor.effect_class != ToolEffectClass::Read
+                || observation.result.summary.len() > 1_500
+                || observation.result.summary.trim().is_empty()
+                || observation
+                    .result
+                    .summary
+                    .chars()
+                    .any(|character| character.is_control() && character != '\n')
+            {
+                return None;
+            }
+            let atom_ref = observation
                 .result
-                .summary
-                .chars()
-                .any(|character| character.is_control() && character != '\n')
-        {
-            return None;
-        }
-        let atom_ref = observation
-            .result
-            .evidence
-            .iter()
-            .flat_map(|evidence| &evidence.atoms)
-            .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))?
-            .atom_ref
-            .clone();
-        Some((
-            observation.result.summary.trim().to_owned(),
-            atom_ref,
-            fallback_observation_subjects(observation),
-        ))
-    });
+                .evidence
+                .iter()
+                .flat_map(|evidence| &evidence.atoms)
+                .find(|atom| atom.atom_ref.ends_with("#tool-outcome"))?
+                .atom_ref
+                .clone();
+            Some((observation.result.summary.trim().to_owned(), atom_ref))
+        })
+        .collect::<Vec<_>>();
     let failed_effect = observations.iter().rev().find_map(|observation| {
         if observation.result.state != ToolResultState::Failed
             || (observation.descriptor.authority_class != ToolAuthorityClass::Actuate
@@ -2012,12 +2063,6 @@ async fn repair_fallback_outcome(
             .atom_ref
             .clone();
         Some((observation.result.summary.trim().to_owned(), atom_ref))
-    });
-    let failed_read_shares_subject = failed_read.as_ref().is_some_and(|(_, _, subjects)| {
-        !subjects.is_empty()
-            && supported
-                .iter()
-                .any(|(_, _, supported_subjects)| !subjects.is_disjoint(supported_subjects))
     });
     let rescheduled_wake = match trigger {
         SessionTurnTrigger::Wake { commitment_ref, .. }
@@ -2098,16 +2143,16 @@ async fn repair_fallback_outcome(
     } else if failed_effect.is_some() {
         mission.status = SessionStatus::Blocked;
         "Coverage gap: The external action failed. No successful effect was recorded, and I did not retry it or record a new follow-up."
-    } else if rescheduled_wake.is_some() && failed_read.is_some() {
+    } else if rescheduled_wake.is_some() && !failed_reads.is_empty() {
         "Coverage gap: The source read failed, so the acceptance condition remains unverified."
     } else if rescheduled_wake.is_some() && !supported.is_empty() {
         "Coverage gap: The available read is partial, so the acceptance condition remains unverified."
     } else if rescheduled_wake.is_some() {
         "Coverage gap: No authoritative observation was obtained, so the acceptance condition remains unverified."
-    } else if failed_read.is_some() && failed_read_shares_subject && !supported.is_empty() {
-        "Coverage gap: One bounded read failed. The successful same-subject observations remain usable, but the full requested conclusion is still unverified."
-    } else if failed_read.is_some() {
-        "Coverage gap: The source read failed. I did not evaluate the requested condition, execute an action, or record a new follow-up."
+    } else if !failed_reads.is_empty() && !supported.is_empty() {
+        "Coverage gap: One or more bounded reads failed. Every successful observation remains usable, but each failed read stays an explicit gap and the full requested conclusion is unverified."
+    } else if !failed_reads.is_empty() {
+        "Coverage gap: The bounded source reads failed. I did not evaluate the requested condition, execute an action, or record a new follow-up."
     } else if !supported.is_empty() {
         "Coverage gap: The available evidence does not support the full requested conclusion. No action or future follow-up was recorded."
     } else {
@@ -2166,92 +2211,11 @@ async fn repair_fallback_outcome(
                 },
             ],
         )
-    } else if failed_read_shares_subject && !supported.is_empty() {
-        let mut message = String::new();
-        let mut claims = Vec::new();
-        let mut summaries = BTreeSet::new();
-        for (index, (summary, atom_ref, _)) in supported.iter().enumerate() {
-            if !summaries.insert(summary.as_str()) {
-                continue;
-            }
-            let text = if message.is_empty() {
-                summary.clone()
-            } else {
-                format!("\n\n{summary}")
-            };
-            message.push_str(&text);
-            claims.push(GroundedClaim {
-                claim_ref: format!("fallback-observation:{}:{index}", input.request_id),
-                planned_claim_ref: None,
-                text,
-                required_for_answer: true,
-                content: ClaimContent::Observation {
-                    atom_refs: vec![atom_ref.clone()],
-                },
-            });
-        }
-        if let Some((summary, atom_ref, _)) = failed_read.as_ref() {
-            let text = format!("\n\n{summary}");
-            message.push_str(&text);
-            claims.push(GroundedClaim {
-                claim_ref: format!("fallback-failed-read:{}", input.request_id),
-                planned_claim_ref: None,
-                text,
-                required_for_answer: true,
-                content: ClaimContent::Observation {
-                    atom_refs: vec![atom_ref.clone()],
-                },
-            });
-        }
-        let notice = format!("\n\n{coverage_notice}");
-        message.push_str(&notice);
-        claims.push(GroundedClaim {
-            claim_ref: format!("fallback-boundary:{}", input.request_id),
-            planned_claim_ref: None,
-            text: notice,
-            required_for_answer: true,
-            content: ClaimContent::Observation {
-                atom_refs: vec![
-                    failed_read
-                        .as_ref()
-                        .expect("the same-subject failure branch requires a failed read")
-                        .1
-                        .clone(),
-                ],
-            },
-        });
-        (FinalState::Partial, message, claims)
-    } else if let Some((summary, atom_ref, _)) = failed_read {
-        let notice = format!("\n\n{coverage_notice}");
-        (
-            FinalState::Blocked,
-            format!("{summary}{notice}"),
-            vec![
-                GroundedClaim {
-                    claim_ref: format!("fallback-observation:{}", input.request_id),
-                    planned_claim_ref: None,
-                    text: summary,
-                    required_for_answer: true,
-                    content: ClaimContent::Observation {
-                        atom_refs: vec![atom_ref.clone()],
-                    },
-                },
-                GroundedClaim {
-                    claim_ref: format!("fallback-boundary:{}", input.request_id),
-                    planned_claim_ref: None,
-                    text: notice,
-                    required_for_answer: true,
-                    content: ClaimContent::Observation {
-                        atom_refs: vec![atom_ref],
-                    },
-                },
-            ],
-        )
     } else if !supported.is_empty() {
         let mut message = String::new();
         let mut claims = Vec::new();
         let mut summaries = BTreeSet::new();
-        for (index, (summary, atom_ref, _)) in supported.iter().enumerate() {
+        for (index, (summary, atom_ref)) in supported.iter().enumerate() {
             if !summaries.insert(summary.as_str()) {
                 continue;
             }
@@ -2271,6 +2235,61 @@ async fn repair_fallback_outcome(
                 },
             });
         }
+        for (index, (summary, atom_ref)) in failed_reads.iter().enumerate() {
+            if !summaries.insert(summary.as_str()) {
+                continue;
+            }
+            let text = format!("\n\n{summary}");
+            message.push_str(&text);
+            claims.push(GroundedClaim {
+                claim_ref: format!("fallback-failed-read:{}:{index}", input.request_id),
+                planned_claim_ref: None,
+                text,
+                required_for_answer: true,
+                content: ClaimContent::Observation {
+                    atom_refs: vec![atom_ref.clone()],
+                },
+            });
+        }
+        let notice = format!("\n\n{coverage_notice}");
+        message.push_str(&notice);
+        let boundary_atom_ref = failed_reads
+            .first()
+            .map_or_else(|| supported[0].1.clone(), |(_, atom_ref)| atom_ref.clone());
+        claims.push(GroundedClaim {
+            claim_ref: format!("fallback-boundary:{}", input.request_id),
+            planned_claim_ref: None,
+            text: notice,
+            required_for_answer: true,
+            content: ClaimContent::Observation {
+                atom_refs: vec![boundary_atom_ref],
+            },
+        });
+        (FinalState::Partial, message, claims)
+    } else if !failed_reads.is_empty() {
+        let mut message = String::new();
+        let mut claims = Vec::new();
+        let mut summaries = BTreeSet::new();
+        for (index, (summary, atom_ref)) in failed_reads.iter().enumerate() {
+            if !summaries.insert(summary.as_str()) {
+                continue;
+            }
+            let text = if message.is_empty() {
+                summary.clone()
+            } else {
+                format!("\n\n{summary}")
+            };
+            message.push_str(&text);
+            claims.push(GroundedClaim {
+                claim_ref: format!("fallback-failed-read:{}:{index}", input.request_id),
+                planned_claim_ref: None,
+                text,
+                required_for_answer: true,
+                content: ClaimContent::Observation {
+                    atom_refs: vec![atom_ref.clone()],
+                },
+            });
+        }
         let notice = format!("\n\n{coverage_notice}");
         message.push_str(&notice);
         claims.push(GroundedClaim {
@@ -2279,10 +2298,10 @@ async fn repair_fallback_outcome(
             text: notice,
             required_for_answer: true,
             content: ClaimContent::Observation {
-                atom_refs: vec![supported[0].1.clone()],
+                atom_refs: vec![failed_reads[0].1.clone()],
             },
         });
-        (FinalState::Partial, message, claims)
+        (FinalState::Blocked, message, claims)
     } else {
         (
             FinalState::Blocked,
@@ -2342,16 +2361,6 @@ async fn repair_fallback_outcome(
         mission: draft.mission,
         events,
     })
-}
-
-fn fallback_observation_subjects(observation: &ToolObservation) -> BTreeSet<String> {
-    observation
-        .result
-        .evidence
-        .iter()
-        .flat_map(|evidence| &evidence.atoms)
-        .filter_map(|atom| atom.subject_ref.clone())
-        .collect()
 }
 
 fn expand_plan_for_read_calls(
@@ -4696,14 +4705,6 @@ fn validate_claim(
     if !matches!(claim.content, ClaimContent::Commitment { .. })
         && contains_unbound_future_promise(&claim.text)
     {
-        let is_exact_operator_quote = matches!(
-            &claim.content,
-            ClaimContent::OperatorContext { exact_excerpt, .. }
-                if claim.text.trim() == exact_excerpt.trim()
-        );
-        if is_exact_operator_quote {
-            return Ok(());
-        }
         return Err(AgentRuntimeError::InvalidFinal(
             "future Cerebro work must cite the exact active commitment that records it".into(),
         ));
@@ -4744,9 +4745,15 @@ fn validate_claim(
             let message = context.messages.get(message_sequence).ok_or_else(|| {
                 AgentRuntimeError::InvalidFinal("operator context cites an unknown message".into())
             })?;
-            if exact_excerpt.is_empty() || !message.text.contains(exact_excerpt) {
+            let attributed_quote = format!("You said: {exact_excerpt}");
+            if message.role != SessionMessageRole::User
+                || exact_excerpt.is_empty()
+                || !message.text.contains(exact_excerpt)
+                || claim.text.trim() != attributed_quote
+            {
                 return Err(AgentRuntimeError::InvalidFinal(
-                    "operator context must quote an exact supplied excerpt".into(),
+                    "operator context must visibly attribute an exact excerpt from a user message"
+                        .into(),
                 ));
             }
             return Ok(());
@@ -4827,6 +4834,35 @@ fn validate_claim(
                 .into(),
         ));
     }
+    if contains_operational_capability_assertion(&claim.text)
+        && !atom_refs.iter().any(|atom_ref| {
+            context.atoms.get(atom_ref).is_some_and(|atom| {
+                atom.observation.call.tool_id == "capability.overview"
+                    && atom.complete
+                    && atom
+                        .fresh_until
+                        .is_some_and(|until| until >= context.assessment_at)
+            })
+        })
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "current operational capability claims require a complete fresh capability.overview observation"
+                .into(),
+        ));
+    }
+    if contains_self_ownership_assertion(&claim.text)
+        && !atom_refs.iter().any(|atom_ref| {
+            context
+                .atoms
+                .get(atom_ref)
+                .is_some_and(|atom| atom_binds_cerebro_owner(atom, &claim.text))
+        })
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "Cerebro ownership requires a subject-bound authority binding or an exact active commitment"
+                .into(),
+        ));
+    }
     for atom_ref in atom_refs {
         let atom = context
             .atoms
@@ -4863,14 +4899,45 @@ fn validate_observation_wording(
         ));
     }
     let normalized = text.to_ascii_lowercase();
-    let asserts_causal_location = [
-        "points past",
-        "points to a provider",
+    let asserts_ranked_cause = [
         "points toward",
         "pushes the likely",
         "less likely",
         "more likely",
+        "less plausible",
+        "more plausible",
+        "lower odds",
+        "higher odds",
+        "deprioritize",
+        "weaker explanation",
+        "stronger explanation",
+        "most consistent with",
+        "best fit",
+        "leans toward",
         "likely explanation",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase));
+    if asserts_ranked_cause
+        && !atom_refs.iter().any(|atom_ref| {
+            context.atoms.get(atom_ref).is_some_and(|atom| {
+                atom_supports_ranked_cause(atom)
+                    && atom
+                        .atom
+                        .subject_ref
+                        .as_deref()
+                        .is_none_or(|subject_ref| observation_text_names_subject(text, subject_ref))
+            })
+        })
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "ranking one possible cause above another requires a subject-bound causal assessment with an explicit typed ranking"
+                .into(),
+        ));
+    }
+    let asserts_causal_location = [
+        "points past",
+        "points to a provider",
         "provider-side cause",
         "provider-side scope",
         "provider-side fix",
@@ -4879,15 +4946,24 @@ fn validate_observation_wording(
         "caused by",
         "cause is",
         "rules out",
+        "eliminates",
+        "suggests the cause",
         "not a connector",
         "fix on my side",
     ]
     .iter()
     .any(|phrase| normalized.contains(phrase));
     if asserts_causal_location
-        && !atom_refs
-            .iter()
-            .any(|atom_ref| context.atoms.get(atom_ref).is_some_and(atom_supports_cause))
+        && !atom_refs.iter().any(|atom_ref| {
+            context.atoms.get(atom_ref).is_some_and(|atom| {
+                atom_supports_cause(atom)
+                    && atom
+                        .atom
+                        .subject_ref
+                        .as_deref()
+                        .is_none_or(|subject_ref| observation_text_names_subject(text, subject_ref))
+            })
+        })
     {
         return Err(AgentRuntimeError::InvalidFinal(
             "provider authority, collection coverage, and an unbound action plan do not establish which side caused or owns a gap; causal location requires a subject-bound causal assessment"
@@ -4904,6 +4980,10 @@ fn validate_observation_wording(
         " maps to the ",
         " covered by the ",
         " captured by the ",
+        " would live in ",
+        " would carry ",
+        " family that carries ",
+        " family that would carry ",
     ]
     .iter()
     .any(|phrase| normalized.contains(phrase));
@@ -4912,7 +4992,7 @@ fn validate_observation_wording(
             context
                 .atoms
                 .get(atom_ref)
-                .is_some_and(atom_supports_event_family_membership)
+                .is_some_and(|atom| atom_supports_event_family_membership(atom, text))
         })
     {
         return Err(AgentRuntimeError::InvalidFinal(
@@ -4920,27 +5000,94 @@ fn validate_observation_wording(
                 .into(),
         ));
     }
-    let turns_not_observed_into_empty = [
-        "came back empty",
-        "returned nothing",
-        "returned it as empty",
-        "empty return",
-        "family returned nothing",
+    let asserted_named_capability = [
+        (
+            [
+                "collected-content",
+                "collected content",
+                "collected-event-content",
+            ]
+            .as_slice(),
+            "collected_event_content_read",
+        ),
+        (
+            ["provider configuration", "provider-config"].as_slice(),
+            "provider_configuration_read",
+        ),
+        (
+            ["provider fault", "provider-fault"].as_slice(),
+            "provider_fault_diagnostic",
+        ),
+        (
+            ["scheduled monitor", "schedule monitor"].as_slice(),
+            "scheduled_monitor",
+        ),
     ]
-    .iter()
-    .any(|phrase| normalized.contains(phrase));
-    if turns_not_observed_into_empty
-        && atom_refs.iter().any(|atom_ref| {
-            context
-                .atoms
-                .get(atom_ref)
-                .is_some_and(atom_reports_not_observed)
-        })
+    .into_iter()
+    .find_map(|(phrases, capability)| {
+        let asserts_availability = [
+            "i can ",
+            "i have ",
+            "cerebro can ",
+            "available to me",
+            "is available",
+            "is bound",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(marker));
+        (asserts_availability && phrases.iter().any(|phrase| normalized.contains(phrase)))
+            .then_some(capability)
+    });
+    if let Some(capability) = asserted_named_capability
         && !atom_refs.iter().any(|atom_ref| {
             context
                 .atoms
                 .get(atom_ref)
-                .is_some_and(atom_reports_legitimate_empty)
+                .is_some_and(|atom| atom_supports_named_capability(atom, capability))
+        })
+    {
+        return Err(AgentRuntimeError::InvalidFinal(format!(
+            "the response claims the {capability} capability is available, but the cited capability observation does not bind it"
+        )));
+    }
+    let turns_not_observed_into_empty = [
+        "empty",
+        "zero events",
+        "zero records",
+        "no events",
+        "no records",
+        "nothing",
+        "none were",
+        "didn't return",
+        "did not return",
+        "wasn't collected",
+        "was not collected",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase));
+    let preserves_not_observed_boundary = [
+        "does not mean empty",
+        "doesn't mean empty",
+        "not evidence of an empty",
+        "not a legitimate empty",
+        "cannot call it empty",
+        "can't call it empty",
+        "remains unverified",
+        "is unverified",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase));
+    if turns_not_observed_into_empty
+        && !preserves_not_observed_boundary
+        && atom_refs.iter().any(|atom_ref| {
+            context.atoms.get(atom_ref).is_some_and(|atom| {
+                atom.evidence.atoms.iter().any(atom_reports_not_observed)
+                    && !atom
+                        .evidence
+                        .atoms
+                        .iter()
+                        .any(atom_reports_legitimate_empty)
+            })
         })
     {
         return Err(AgentRuntimeError::InvalidFinal(
@@ -4948,15 +5095,33 @@ fn validate_observation_wording(
                 .into(),
         ));
     }
+    let asserts_visibility_absence = [
+        "proves no visibility",
+        "visibility is absent",
+        "no collection visibility",
+        "establishes no visibility",
+        "means no visibility",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase));
+    if asserts_visibility_absence {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "an observed event, a legitimately empty bounded window, and an unavailable collection are distinct states; none by itself proves comprehensive visibility is absent"
+                .into(),
+        ));
+    }
     if normalized.contains("healthy")
         && !atom_refs.iter().any(|atom_ref| {
             context.atoms.get(atom_ref).is_some_and(|atom| {
-                evidence_atom_supports_health(atom.atom)
-                    && atom
-                        .atom
-                        .subject_ref
-                        .as_deref()
-                        .is_none_or(|subject_ref| observation_text_names_subject(text, subject_ref))
+                atom.evidence.atoms.iter().any(|evidence_atom| {
+                    evidence_atom_supports_health(evidence_atom)
+                        && evidence_atom
+                            .subject_ref
+                            .as_deref()
+                            .is_none_or(|subject_ref| {
+                                observation_text_names_subject(text, subject_ref)
+                            })
+                })
             })
         })
     {
@@ -5008,68 +5173,110 @@ fn atom_supports_cause(atom: &AtomContext<'_>) -> bool {
                 || candidates.iter().any(|candidate| {
                     matches!(
                         candidate.state,
-                        CausalCandidateState::Established | CausalCandidateState::Supported
+                        CausalCandidateState::Established
+                            | CausalCandidateState::Supported
+                            | CausalCandidateState::RuledOut
                     )
                 })
         }
+        _ => false,
+    }
+}
+
+fn atom_supports_ranked_cause(atom: &AtomContext<'_>) -> bool {
+    matches!(
+        &atom.atom.assertion,
+        EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::CausalAssessment {
+                ranking: CausalRanking::Ranked { .. },
+                ..
+            },
+        }
+    )
+}
+
+fn atom_reports_not_observed(atom: &EvidenceAtom) -> bool {
+    matches!(
+        &atom.assertion,
+        EvidenceAssertion::Value { value, .. } if value.as_str() == Some("not_observed")
+    )
+}
+
+fn atom_reports_legitimate_empty(atom: &EvidenceAtom) -> bool {
+    atom.complete
+        && matches!(
+            &atom.assertion,
+            EvidenceAssertion::Semantic {
+                assertion: SemanticEvidenceAssertion::CollectionVisibility {
+                    state: CollectionVisibilityState::LegitimatelyEmpty { .. },
+                    ..
+                },
+            }
+        )
+}
+
+fn atom_supports_event_family_membership(atom: &AtomContext<'_>, text: &str) -> bool {
+    match &atom.atom.assertion {
+        EvidenceAssertion::Semantic {
+            assertion:
+                SemanticEvidenceAssertion::EventFamilyMembership {
+                    subject_ref,
+                    event_type,
+                    family,
+                    state: EventFamilyMembershipState::Mapped,
+                },
+        } => {
+            let normalized = text.to_ascii_lowercase();
+            let event_type = event_type.replace(['_', '-'], " ").to_ascii_lowercase();
+            let family = family.replace(['_', '-'], " ").to_ascii_lowercase();
+            normalized.contains(&event_type)
+                && normalized.contains(&family)
+                && observation_text_names_subject(text, subject_ref)
+        }
+        _ => false,
+    }
+}
+
+fn atom_supports_named_capability(atom: &AtomContext<'_>, capability: &str) -> bool {
+    match &atom.atom.assertion {
         EvidenceAssertion::Value { predicate, value } => {
-            (predicate.ends_with("/cause_ranking_supported")
-                || predicate == "cause_ranking_supported")
+            (predicate.ends_with(capability) || predicate.ends_with(&format!("/{capability}")))
                 && value.as_bool() == Some(true)
         }
         _ => false,
     }
 }
 
-fn atom_reports_not_observed(atom: &AtomContext<'_>) -> bool {
-    matches!(
-        &atom.atom.assertion,
-        EvidenceAssertion::Value { value, .. } if value.as_str() == Some("not_observed")
-    )
-}
-
-fn atom_reports_legitimate_empty(atom: &AtomContext<'_>) -> bool {
-    match &atom.atom.assertion {
-        EvidenceAssertion::Value { predicate, value } => {
-            (predicate.contains("legitimate_empty") || predicate.contains("empty_result"))
-                && (value.as_bool() == Some(true) || value.as_str() == Some("empty"))
-        }
-        _ => false,
-    }
-}
-
-fn atom_supports_event_family_membership(atom: &AtomContext<'_>) -> bool {
-    match &atom.atom.assertion {
-        EvidenceAssertion::Value { predicate, value } => {
-            (predicate.contains("event_family_mapping")
-                || predicate.contains("event_type_family")
-                || predicate.contains("family_membership"))
-                && !value.is_null()
-        }
-        _ => false,
-    }
-}
-
-fn operator_explicitly_requests_retry(session: &AgentSession) -> bool {
-    let Some(message) = session
-        .messages
-        .iter()
-        .rev()
-        .find(|message| message.role == SessionMessageRole::User)
-    else {
-        return false;
-    };
-    let normalized = message.text.to_ascii_lowercase();
+fn contains_self_ownership_assertion(text: &str) -> bool {
+    let normalized = text.to_ascii_lowercase();
     [
-        "retry",
-        "try that again",
-        "try it again",
-        "rerun",
-        "run that again",
-        "re-run",
+        "owner: me",
+        "owner is me",
+        "i own ",
+        "i'm the owner",
+        "i am the owner",
+        "cerebro owns ",
+        "cerebro is the owner",
     ]
     .iter()
     .any(|phrase| normalized.contains(phrase))
+}
+
+fn atom_binds_cerebro_owner(atom: &AtomContext<'_>, text: &str) -> bool {
+    matches!(
+        &atom.atom.assertion,
+        EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::AuthorityBinding {
+                subject_ref,
+                state: AuthorityBindingState::Bound { principal },
+                ..
+            },
+        } if observation_text_names_subject(text, subject_ref)
+            && (principal.principal_ref.to_ascii_lowercase().contains("cerebro")
+                || principal.display_name.as_deref().is_some_and(|name| {
+                    name.to_ascii_lowercase().contains("cerebro")
+                }))
+    )
 }
 
 fn validate_stable_explanation_wording(text: &str) -> Result<(), AgentRuntimeError> {
@@ -5179,6 +5386,8 @@ fn evidence_atom_text(atom: &EvidenceAtom) -> Option<&str> {
 #[derive(Clone, Copy)]
 struct AtomContext<'a> {
     atom: &'a EvidenceAtom,
+    evidence: &'a EvidenceRecord,
+    observation: &'a ToolObservation,
     complete: bool,
     fresh_until: Option<OffsetDateTime>,
 }
@@ -5207,6 +5416,8 @@ fn evidence_atoms(
                             atom.atom_ref.clone(),
                             AtomContext {
                                 atom,
+                                evidence,
+                                observation,
                                 complete: atom.complete,
                                 fresh_until,
                             },
@@ -5388,52 +5599,76 @@ fn bounded(value: &str, max_bytes: usize) -> bool {
 
 fn contains_unbound_future_promise(value: &str) -> bool {
     let normalized = value.to_lowercase().replace('’', "'");
-    [
-        "i'll check",
-        "i will check",
-        "i'll re-check",
-        "i will re-check",
-        "i'll recheck",
-        "i will recheck",
-        "i'll re-inspect",
-        "i will re-inspect",
-        "i'll monitor",
-        "i will monitor",
-        "i'll report",
-        "i will report",
-        "i'll follow up",
-        "i will follow up",
-        "i'll update you",
-        "i will update you",
-        "i'll run",
-        "i will run",
-        "i can run",
-        "i can chase",
-        "i can pull",
-        "i can drive",
-        "i can still do",
-        "i can do that",
-        "if you want, i'll",
-        "i can keep an eye",
-        "i can keep watching",
-        "i can check back",
-        "i can schedule",
-        "i can set up",
-        "want me to set",
-        "want me to schedule",
-        "keep an eye on",
-        "keep watching",
-        "scheduled recheck",
-        "scheduled re-check",
-        "set that recheck",
-        "set that re-check",
-        "re-report after",
-        "check back at",
-        "check scheduled",
-        "recheck is still on",
+    let future_subject = [
+        "i'll ",
+        "i will ",
+        "i'm going to ",
+        "i am going to ",
+        "we'll ",
+        "we will ",
+        "cerebro will ",
+        "cerebro is going to ",
     ]
     .iter()
-    .any(|promise| normalized.contains(promise))
+    .any(|marker| normalized.contains(marker));
+    let positive_self_capability = [
+        "i can ",
+        "i am able to ",
+        "i'm able to ",
+        "we can ",
+        "cerebro can ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let operational_work = [
+        "check",
+        "inspect",
+        "review",
+        "investigate",
+        "monitor",
+        "report",
+        "update",
+        "follow",
+        "handle",
+        "own",
+        "run",
+        "chase",
+        "pull",
+        "drive",
+        "schedule",
+        "set up",
+        "watch",
+        "notify",
+        "send",
+        "change",
+        "fix",
+        "prepare",
+        "reconcile",
+        "verify",
+        "collect",
+    ]
+    .iter()
+    .any(|verb| normalized.contains(verb));
+    future_subject
+        || (positive_self_capability && operational_work)
+        || [
+            "i own the follow-through",
+            "i own this follow-through",
+            "cerebro owns the follow-through",
+            "want me to ",
+            "keep an eye on",
+            "keep watching",
+            "scheduled recheck",
+            "scheduled re-check",
+            "set that recheck",
+            "set that re-check",
+            "re-report after",
+            "check back at",
+            "check scheduled",
+            "recheck is still on",
+        ]
+        .iter()
+        .any(|promise| normalized.contains(promise))
         || ((normalized.contains("i've set") || normalized.contains("i have set"))
             && (normalized.contains("recheck") || normalized.contains("re-check")))
 }
@@ -6445,7 +6680,7 @@ mod tests {
     }
 
     #[test]
-    fn operator_context_may_quote_future_language_without_creating_a_commitment() {
+    fn operator_context_cannot_present_a_user_future_statement_as_cerebro_work() {
         let mut quoted = draft();
         quoted.message = "I'll re-inspect the receipt.".into();
         let mut quoted_session = session();
@@ -6467,7 +6702,9 @@ mod tests {
                 &[],
                 OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
             )
-            .is_ok()
+            .expect_err("first-person future work always requires an exact commitment")
+            .to_string()
+            .contains("exact active commitment")
         );
 
         quoted.message = "You asked: I'll re-inspect the receipt, and I can chase it next.".into();
@@ -6484,6 +6721,43 @@ mod tests {
             )
             .to_string()
             .contains("exact active commitment")
+        );
+
+        let mut attributed = draft();
+        attributed.message = "You said: Check connector alpha.".into();
+        attributed.claims = vec![GroundedClaim {
+            claim_ref: "claim:attributed-user-context".into(),
+            planned_claim_ref: None,
+            text: attributed.message.clone(),
+            required_for_answer: false,
+            content: ClaimContent::OperatorContext {
+                message_sequence: 1,
+                exact_excerpt: "Check connector alpha.".into(),
+            },
+        }];
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &attributed,
+                &[],
+                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+            )
+            .is_ok()
+        );
+        if let ClaimContent::OperatorContext {
+            message_sequence, ..
+        } = &mut attributed.claims[0].content
+        {
+            *message_sequence = 999;
+        }
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &attributed,
+                &[],
+                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+            )
+            .is_err()
         );
     }
 
@@ -8251,7 +8525,7 @@ mod tests {
                 assessment,
             )
             .unwrap_err();
-            assert!(error.to_string().contains("causal location"));
+            assert!(error.to_string().contains("causal"));
         }
     }
 
@@ -8263,9 +8537,23 @@ mod tests {
             predicate: "/family_receipts/0/status".into(),
             value: json!("not_observed"),
         };
+        observation.result.evidence[0].atoms.push(EvidenceAtom {
+            atom_ref: "evidence:1#tool-outcome".into(),
+            subject_ref: Some("connector:alpha".into()),
+            assertion: EvidenceAssertion::ToolOutcome {
+                state: ToolResultState::Succeeded,
+                summary: "The bounded family read completed.".into(),
+            },
+            observed_at: "2026-07-31T00:00:00Z".into(),
+            fresh_until: Some("2026-08-01T00:00:00Z".into()),
+            complete: true,
+        });
         let mut candidate = draft();
         candidate.claims.truncate(1);
-        candidate.claims[0].text = "The audit family came back empty.".into();
+        candidate.claims[0].text = "The audit family had zero events.".into();
+        candidate.claims[0].content = ClaimContent::Observation {
+            atom_refs: vec!["evidence:1#tool-outcome".into()],
+        };
         candidate.message = candidate.claims[0].text.clone();
 
         let error = validate_grounded_draft(&session(), &candidate, &[observation], assessment)
@@ -8280,7 +8568,8 @@ mod tests {
         let mut candidate = draft();
         candidate.claims.truncate(1);
         candidate.claims[0].text =
-            "The administrative configuration events live in the audit family.".into();
+            "Connector alpha's administrative configuration events live in the audit family."
+                .into();
         candidate.message = candidate.claims[0].text.clone();
 
         let error =
@@ -8288,24 +8577,71 @@ mod tests {
         assert!(error.to_string().contains("event-family membership"));
 
         let mut mapped = observation(true, Some("2026-08-01T00:00:00Z"));
-        mapped.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Value {
-            predicate: "/event_type_family_mapping/administrative_configuration".into(),
-            value: json!("audit"),
+        mapped.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::EventFamilyMembership {
+                subject_ref: "connector:alpha".into(),
+                event_type: "administrative_configuration".into(),
+                family: "audit".into(),
+                state: EventFamilyMembershipState::Mapped,
+            },
         };
         assert!(validate_grounded_draft(&session(), &candidate, &[mapped], assessment).is_ok());
     }
 
     #[test]
-    fn only_an_explicit_retry_request_lifts_the_failed_call_cooldown() {
-        let mut ordinary = session();
-        ordinary.messages[0].text = "Keep going with the evidence check.".into();
-        assert!(!operator_explicitly_requests_retry(&ordinary));
-
-        for text in ["Retry that exact read.", "Please run that again."] {
-            let mut retry = session();
-            retry.messages[0].text = text.into();
-            assert!(operator_explicitly_requests_retry(&retry), "{text}");
+    fn bounded_collection_states_cannot_be_recast_as_comprehensive_visibility_absence() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let observed = observation(true, Some("2026-08-01T00:00:00Z"));
+        for text in [
+            "This proves no visibility into administrative events.",
+            "Collection visibility is absent for the source.",
+        ] {
+            let mut candidate = draft();
+            candidate.claims.truncate(1);
+            candidate.claims[0].text = text.into();
+            candidate.message = candidate.claims[0].text.clone();
+            let error = validate_grounded_draft(
+                &session(),
+                &candidate,
+                std::slice::from_ref(&observed),
+                assessment,
+            )
+            .unwrap_err();
+            assert!(error.to_string().contains("distinct states"));
         }
+    }
+
+    #[test]
+    fn unavailable_named_capability_cannot_be_claimed_from_its_overview() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut overview = observation(true, Some("2026-08-01T00:00:00Z"));
+        overview.call.tool_id = "capability.overview".into();
+        overview.descriptor.tool_id = "capability.overview".into();
+        overview.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Value {
+            predicate: "/collected_event_content_read".into(),
+            value: json!(false),
+        };
+        let mut candidate = draft();
+        candidate.claims.truncate(1);
+        candidate.claims[0].text = "I can run the collected-content read now.".into();
+        candidate.message = candidate.claims[0].text.clone();
+
+        let error =
+            validate_grounded_draft(&session(), &candidate, &[overview], assessment).unwrap_err();
+        assert!(error.to_string().contains("exact active commitment"));
+
+        candidate.claims[0].text = "The collected-content read is available to me.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        let mut overview = observation(true, Some("2026-08-01T00:00:00Z"));
+        overview.call.tool_id = "capability.overview".into();
+        overview.descriptor.tool_id = "capability.overview".into();
+        overview.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Value {
+            predicate: "/collected_event_content_read".into(),
+            value: json!(false),
+        };
+        let error =
+            validate_grounded_draft(&session(), &candidate, &[overview], assessment).unwrap_err();
+        assert!(error.to_string().contains("does not bind it"));
     }
 
     #[test]
@@ -9150,6 +9486,7 @@ mod tests {
         let mut supported = observation(true, Some("2026-08-01T00:00:00Z"));
         supported.result.evidence[0].evidence_ref = "evidence:other".into();
         supported.result.evidence[0].atoms[0].atom_ref = "atom:other-status".into();
+        supported.result.summary = "Connector other is healthy.".into();
         for atom in &mut supported.result.evidence[0].atoms {
             atom.subject_ref = Some("connector:other".into());
         }
@@ -9174,13 +9511,20 @@ mod tests {
             &NoopSessionJournal,
         )
         .await
-        .expect("a failed required read must outrank an unrelated successful read");
-        let SessionTurnOutcome::PendingDelivery { markdown, .. } = mixed else {
+        .expect("mixed read fallback must preserve successes and failures");
+        let SessionTurnOutcome::PendingDelivery {
+            final_state,
+            markdown,
+            ..
+        } = mixed
+        else {
             panic!("a mixed read fallback should not request approval");
         };
+        assert_eq!(final_state, FinalState::Partial);
+        assert!(markdown.contains("Connector other is healthy"));
         assert!(markdown.contains("upstream request timed out"));
 
-        let mut same_subject = supported;
+        let mut same_subject = supported.clone();
         same_subject.result.summary = "The source catalog still declares five families.".into();
         for atom in &mut same_subject.result.evidence[0].atoms {
             atom.subject_ref = Some("connector:alpha".into());
@@ -9210,7 +9554,55 @@ mod tests {
         assert_eq!(final_state, FinalState::Partial);
         assert!(markdown.contains("still declares five families"));
         assert!(markdown.contains("upstream request timed out"));
-        assert!(markdown.contains("successful same-subject observations remain usable"));
+        assert!(markdown.contains("Every successful observation remains usable"));
+
+        let mut failed_other = failed.clone();
+        failed_other.call.call_id = "call:failed-other".into();
+        failed_other.call.input = json!({"connector_ref": "connector:other"});
+        failed_other.result.summary = "The optional health read was unavailable.".into();
+        failed_other.result.evidence[0].evidence_ref = "evidence:failed-other".into();
+        for (index, atom) in failed_other.result.evidence[0].atoms.iter_mut().enumerate() {
+            atom.atom_ref = if matches!(atom.assertion, EvidenceAssertion::ToolOutcome { .. }) {
+                "evidence:failed-other#tool-outcome".into()
+            } else {
+                format!("evidence:failed-other#atom:{index}")
+            };
+            atom.subject_ref = Some("connector:other".into());
+            if let EvidenceAssertion::ToolOutcome { summary, .. } = &mut atom.assertion {
+                *summary = failed_other.result.summary.clone();
+            }
+        }
+        for ordered in [
+            vec![failed.clone(), failed_other.clone()],
+            vec![failed_other, failed.clone()],
+        ] {
+            let observations = std::iter::once(supported.clone())
+                .chain(ordered)
+                .collect::<Vec<_>>();
+            let outcome = repair_fallback_outcome(
+                &session(),
+                &input,
+                &input.trigger,
+                None,
+                &observations,
+                Vec::new(),
+                &NoopSessionJournal,
+            )
+            .await
+            .expect("fallback must be independent of failed-read order");
+            let SessionTurnOutcome::PendingDelivery {
+                final_state,
+                markdown,
+                ..
+            } = outcome
+            else {
+                panic!("ordered mixed fallback should remain visible");
+            };
+            assert_eq!(final_state, FinalState::Partial);
+            assert!(markdown.contains("Connector other is healthy"));
+            assert!(markdown.contains("upstream request timed out"));
+            assert!(markdown.contains("optional health read was unavailable"));
+        }
 
         let mut failed_effect = failed;
         failed_effect.descriptor.authority_class = ToolAuthorityClass::Actuate;

@@ -32,7 +32,7 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 use super::slack_agent::ConfiguredModel;
 
 const SCHEMA_VERSION: &str = "cerebro-rust-slack-agent-conversation-harness/v2";
-const EXPECTED_CASES_PER_PARTITION: usize = 14;
+const EXPECTED_CASES_PER_PARTITION: usize = 16;
 const MAX_P95_CASE_LATENCY_MS: u128 = 60_000;
 const QUALITY_JUDGE_MAX_TOKENS: i32 = 2_048;
 const QUALITY_JUDGMENT_TOOL: &str = "submit_conversation_quality_judgment";
@@ -993,6 +993,7 @@ impl AgentTools for EvalTools {
         } else {
             observation_ref.clone()
         };
+        let subject_ref = evaluation_input_subject(&call.input)?.map(str::to_owned);
         self.observations
             .lock()
             .expect("evaluation observation receipt poisoned")
@@ -1001,15 +1002,7 @@ impl AgentTools for EvalTools {
                 source_occurrence_ref,
                 observed_at: request.assessment_at.clone(),
                 tool_id: call.tool_id.clone(),
-                subject_ref: call
-                    .input
-                    .as_object()
-                    .and_then(|input| {
-                        ["subject_ref", "connector_ref", "runtime_ref", "source_ref"]
-                            .iter()
-                            .find_map(|field| input.get(*field).and_then(Value::as_str))
-                    })
-                    .map(str::to_owned),
+                subject_ref: subject_ref.clone(),
                 input_digest: call.input_digest(),
                 summary: summary.clone(),
                 data: data.clone(),
@@ -1021,12 +1014,6 @@ impl AgentTools for EvalTools {
             "evidence://rust-hillclimb/{}/{}",
             request.request_id, call.call_id
         );
-        let subject_ref = call.input.as_object().and_then(|input| {
-            ["subject_ref", "connector_ref", "runtime_ref", "source_ref"]
-                .iter()
-                .find_map(|field| input.get(*field).and_then(Value::as_str))
-                .map(str::to_owned)
-        });
         Ok(ToolResult {
             state,
             summary: summary.clone(),
@@ -1059,6 +1046,22 @@ impl AgentTools for EvalTools {
             blocker,
         })
     }
+}
+
+fn evaluation_input_subject(input: &Value) -> Result<Option<&str>, AgentRuntimeError> {
+    let Some(input) = input.as_object() else {
+        return Ok(None);
+    };
+    let subjects = ["subject_ref", "connector_ref", "runtime_ref", "source_ref"]
+        .iter()
+        .filter_map(|field| input.get(*field).and_then(Value::as_str))
+        .collect::<BTreeSet<_>>();
+    if subjects.len() > 1 {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "evaluation tool input has conflicting subject aliases".into(),
+        ));
+    }
+    Ok(subjects.into_iter().next())
 }
 
 fn autonomy_fixture_subject(data: &Value) -> Option<&str> {
@@ -3816,12 +3819,12 @@ fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
         ConversationLabScenario {
             scenario_ref: "vanta_recovery".into(),
             fixture_ref: "case://held-out/source-visibility".into(),
-            mission: "Recover from the prior inventory dump and establish the real Vanta authority boundary, live collection coverage, material evidence gap, and an actionable next step.".into(),
+            mission: "Recover from the prior inventory dump and establish Source A's authority boundary, live collection coverage, material evidence gap, and an actionable next step.".into(),
             operator_brief: "You are frustrated by a prior entity list. You care about whether the evidence is decision-grade, not catalog trivia.".into(),
-            initial_message: "No. That's the same useless list. I asked what Vanta access we actually have and whether collection works.".into(),
+            initial_message: "No. That's the same useless list. I asked what Source A access we actually have and whether collection works.".into(),
             seed_history: vec![
-                ConversationMessage { role: ConversationRole::User, content: "What visibility or access do you have to Vanta?".into() },
-                ConversationMessage { role: ConversationRole::Assistant, content: "I found Vanta controls, tests, people, and evidence records in the graph.".into() },
+                ConversationMessage { role: ConversationRole::User, content: "What visibility or access do you have to Source A?".into() },
+                ConversationMessage { role: ConversationRole::Assistant, content: "I found Source A controls, tests, people, and evidence records in the graph.".into() },
             ],
         },
         ConversationLabScenario {
@@ -4065,8 +4068,8 @@ fn eval_cases() -> Vec<EvalCase> {
         EvalCase {
             case_ref: "case://held-out/source-visibility",
             partition: "held_out",
-            message: "No. That's the same useless list. I asked what Vanta access we actually have and whether collection works.",
-            history: "User: What visibility or access do you have to Vanta?\nAssistant: I found Vanta controls, tests, people, and evidence records in the graph.",
+            message: "No. That's the same useless list. I asked what Source A access we actually have and whether collection works.",
+            history: "User: What visibility or access do you have to Source A?\nAssistant: I found Source A controls, tests, people, and evidence records in the graph.",
             working_request: None,
             expected_route: ExecutionLane::Lookup,
             expected_lane: ExecutionLane::Lookup,
@@ -4077,6 +4080,16 @@ fn eval_cases() -> Vec<EvalCase> {
             partition: "held_out",
             message: "What can you actually do in this Slack environment right now?",
             history: "User: I'm trying to understand what work you can take off my plate here.",
+            working_request: None,
+            expected_route: ExecutionLane::Lookup,
+            expected_lane: ExecutionLane::Lookup,
+            false_converse: true,
+        },
+        EvalCase {
+            case_ref: "case://held-out/current-source-authority-reconciliation",
+            partition: "held_out",
+            message: "Earlier you said Source A's provider administration field was false. Reconcile that field with a current Source A receipt and tell me exactly whose authority it describes.",
+            history: "An earlier source catalog read returned a false provider-administration field for Source A. The user now wants the current subject and meaning of that field, not a generic explanation.",
             working_request: None,
             expected_route: ExecutionLane::Lookup,
             expected_lane: ExecutionLane::Lookup,
@@ -4158,9 +4171,19 @@ fn eval_cases() -> Vec<EvalCase> {
             message: "What visibility or access do you have to Source A?",
             history: "Source A may contribute governed evidence, but collected evidence and direct administrative access are different authority boundaries.",
             working_request: None,
-            expected_route: ExecutionLane::Converse,
-            expected_lane: ExecutionLane::Converse,
-            false_converse: false,
+            expected_route: ExecutionLane::Lookup,
+            expected_lane: ExecutionLane::Lookup,
+            false_converse: true,
+        },
+        EvalCase {
+            case_ref: "case://held-out/current-source-gap-reconciliation",
+            partition: "held_out",
+            message: "Reconcile Source A's current provider-administration field, then tell me who owns the remaining collection gap, what triggers the next check, and what closes it.",
+            history: "Earlier bounded reads returned a source authority field and a partial collection receipt. Current ownership, trigger, and closure claims require fresh evidence and synthesis.",
+            working_request: None,
+            expected_route: ExecutionLane::Investigate,
+            expected_lane: ExecutionLane::Investigate,
+            false_converse: true,
         },
         EvalCase {
             case_ref: "case://held-out/pure-conversation",
@@ -4203,9 +4226,29 @@ fn eval_cases() -> Vec<EvalCase> {
             false_converse: true,
         },
         EvalCase {
+            case_ref: "case://shadow/current-source-authority-reconciliation",
+            partition: "shadow",
+            message: "Correct Source B's current authority field from a fresh receipt and explain which principal it governs.",
+            history: "A prior bounded source read returned an authority scalar for Source B. Its current subject and meaning require a new same-source observation.",
+            working_request: None,
+            expected_route: ExecutionLane::Lookup,
+            expected_lane: ExecutionLane::Lookup,
+            false_converse: true,
+        },
+        EvalCase {
+            case_ref: "case://shadow/current-source-gap-reconciliation",
+            partition: "shadow",
+            message: "Reconcile Source B's current collection receipt, identify the evidenced owner for each open gap, and state the trigger and closure condition.",
+            history: "Earlier bounded reads returned a partial collection receipt. Current ownership and closure synthesis require fresh evidence.",
+            working_request: None,
+            expected_route: ExecutionLane::Investigate,
+            expected_lane: ExecutionLane::Investigate,
+            false_converse: true,
+        },
+        EvalCase {
             case_ref: "case://shadow/source-access-boundary",
             partition: "shadow",
-            message: "Tell me exactly what the Okta connector can read and what evidence is actually available now.",
+            message: "Tell me exactly what the Source B connector can read and what evidence is actually available now.",
             history: "Catalog support, live connector state, and collected graph evidence are separate authority boundaries.",
             working_request: None,
             expected_route: ExecutionLane::Lookup,
@@ -4688,6 +4731,61 @@ mod tests {
         assert_eq!(unavailable.state, ToolResultState::Failed);
         assert!(!unavailable.evidence[0].complete);
         assert_eq!(unavailable.data["available"], false);
+    }
+
+    #[tokio::test]
+    async fn evaluation_receipt_and_atoms_share_one_subject_resolution() {
+        let tools = EvalTools::new("case://held-out/source-visibility");
+        let request = AgentTurnRequest {
+            schema_version: AGENT_TURN_REQUEST_V1.into(),
+            tenant_id: "tenant:synthetic".into(),
+            request_id: "request:subject-resolution".into(),
+            thread_ref: "thread:synthetic".into(),
+            context_scope_ref: None,
+            actor_ref: "operator:synthetic".into(),
+            assessment_at: "2026-07-31T00:00:00Z".into(),
+            message: "Inspect Source A.".into(),
+            history: Vec::new(),
+            working_state: None,
+            effect_authorizations: Vec::new(),
+        };
+        let result = AgentTools::invoke(
+            &tools,
+            &request,
+            &ToolCall {
+                call_id: "call:subject-resolution".into(),
+                tool_id: "source_runtime.inspect".into(),
+                purpose: "Read one synthetic source runtime.".into(),
+                input: json!({"source_ref": "source:alpha"}),
+            },
+        )
+        .await
+        .unwrap();
+        let receipts = tools.observations();
+        assert_eq!(receipts[0].subject_ref.as_deref(), Some("source:alpha"));
+        assert!(
+            result.evidence[0]
+                .atoms
+                .iter()
+                .all(|atom| { atom.subject_ref.as_deref() == Some("source:alpha") })
+        );
+
+        let conflict = AgentTools::invoke(
+            &tools,
+            &request,
+            &ToolCall {
+                call_id: "call:subject-conflict".into(),
+                tool_id: "source_runtime.inspect".into(),
+                purpose: "Reject conflicting aliases.".into(),
+                input: json!({
+                    "source_ref": "source:alpha",
+                    "connector_ref": "connector:beta"
+                }),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(conflict.to_string().contains("conflicting subject aliases"));
     }
 
     #[test]

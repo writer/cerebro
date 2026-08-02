@@ -1175,9 +1175,15 @@ fn validate_route(
         ExecutionLane::Ignore => Err(AgentRuntimeError::InvalidRoute(
             "transport events are ignored before semantic routing".into(),
         )),
-        ExecutionLane::Converse if decision.requires_current_evidence => Err(
-            AgentRuntimeError::InvalidRoute("conversation cannot require current evidence".into()),
-        ),
+        ExecutionLane::Converse
+            if decision.requires_current_evidence
+                || request_explicitly_requires_current_evidence(&request.message) =>
+        {
+            Err(AgentRuntimeError::InvalidRoute(
+                "the newest request explicitly requires current evidence and cannot use conversation"
+                    .into(),
+            ))
+        }
         ExecutionLane::Converse => Ok(()),
         ExecutionLane::Continue
             if request
@@ -1225,6 +1231,51 @@ fn validate_route(
         }
         ExecutionLane::Lookup | ExecutionLane::Investigate | ExecutionLane::Act => Ok(()),
     }
+}
+
+fn request_explicitly_requires_current_evidence(message: &str) -> bool {
+    let normalized = message.to_ascii_lowercase();
+    let explicit_time_boundary = [
+        "current ",
+        "currently ",
+        "right now",
+        "today",
+        "actually have",
+        "actually available",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let named_operational_state = [
+        "status",
+        "state",
+        "evidence",
+        "receipt",
+        "access",
+        "visibility",
+        "field",
+        "source",
+        "connector",
+        "provider",
+        "runtime",
+        "tool",
+        "capabilit",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let explicit_reconciliation = ["reconcile", "correct", "re-read", "recheck", "verify"]
+        .iter()
+        .any(|marker| normalized.contains(marker))
+        && [
+            "field",
+            "receipt",
+            "source",
+            "connector",
+            "provider",
+            "runtime",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(marker));
+    (explicit_time_boundary && named_operational_state) || explicit_reconciliation
 }
 
 fn validate_critique_issues(issues: &[String]) -> Result<(), AgentRuntimeError> {
@@ -2550,6 +2601,42 @@ fn looks_like_user_handback(value: &str) -> bool {
 mod grounding_tests {
     use super::*;
     use serde_json::json;
+
+    fn route_request(message: &str) -> AgentTurnRequest {
+        AgentTurnRequest {
+            schema_version: "agent-turn/v1".into(),
+            tenant_id: "tenant:synthetic".into(),
+            request_id: "request:route".into(),
+            thread_ref: "thread:synthetic".into(),
+            context_scope_ref: None,
+            actor_ref: "operator:synthetic".into(),
+            assessment_at: "2026-07-31T00:00:00Z".into(),
+            message: message.into(),
+            history: Vec::new(),
+            working_state: None,
+            effect_authorizations: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn explicit_current_field_reconciliation_cannot_route_to_conversation() {
+        for message in [
+            "Reconcile that provider field with a current Source A receipt.",
+            "What visibility or access do we actually have for Source A?",
+        ] {
+            let decision = RouteDecision {
+                lane: ExecutionLane::Converse,
+                confidence: RouteConfidence::High,
+                reason: "This is only explanatory.".into(),
+                requires_current_evidence: false,
+            };
+            assert!(validate_route(&route_request(message), &decision).is_err());
+        }
+
+        assert!(!request_explicitly_requires_current_evidence(
+            "What does evidence freshness mean in a control program?"
+        ));
+    }
 
     #[test]
     fn approval_preview_shows_targets_and_redacts_credentials() {
