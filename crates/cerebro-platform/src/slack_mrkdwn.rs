@@ -354,7 +354,21 @@ fn raw_url_markup_end(value: &str, start: usize, end: usize) -> usize {
         .take_while(|(_, character)| {
             matches!(
                 character,
-                '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}'
+                '.' | ','
+                    | ';'
+                    | ':'
+                    | '!'
+                    | '?'
+                    | ')'
+                    | ']'
+                    | '}'
+                    | '"'
+                    | '\''
+                    | '”'
+                    | '’'
+                    | '»'
+                    | '›'
+                    | '…'
             )
         })
         .map(|(_, character)| character.len_utf8())
@@ -626,6 +640,9 @@ mod tests {
             "**See https://example.com**, now",
             "***See https://example.com***.",
             "***See https://example.com***), now",
+            "**See https://example.com**\"",
+            "***See https://example.com***’",
+            "***See https://example.com***…",
         ] {
             let rendered = render_slack_mrkdwn(input);
             assert_eq!(render_slack_mrkdwn(&rendered), rendered, "{input}");
