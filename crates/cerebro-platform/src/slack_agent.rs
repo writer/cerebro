@@ -2956,7 +2956,12 @@ struct GraphExpandInput {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SourceRuntimeInspectInput {
-    query: String,
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    source_ref: Option<String>,
+    #[serde(default)]
+    runtime_ref: Option<String>,
     #[serde(default = "default_runtime_limit")]
     limit: usize,
 }
@@ -3332,7 +3337,7 @@ fn built_in_capability_catalog() -> Vec<ToolDescriptor> {
             ToolDescriptor {
                 tool_id: "source_runtime.inspect".into(),
                 title: "Inspect source runtime health".into(),
-                summary: "Read tenant-scoped runtime status, cursor state, latest sync, latest collection receipt, and evidence gaps without exposing connector configuration. Input fields: query string matching a runtime or source identifier, optional limit from 1 to 25.".into(),
+                summary: "Read tenant-scoped runtime status, cursor state, latest sync, latest collection receipt, and evidence gaps without exposing connector configuration. Input must contain exactly one of query, source_ref, or runtime_ref, plus an optional limit from 1 to 25.".into(),
                 authority_class: ToolAuthorityClass::Observe,
                 effect_class: ToolEffectClass::Read,
                 input_schema_ref: "schema://cerebro/source-runtime-inspect-input/v1".into(),
@@ -3388,11 +3393,20 @@ fn model_capability_catalog(remote: &[ToolDescriptor]) -> Vec<ToolDescriptor> {
     catalog
 }
 
+fn capability_overview_descriptor_json(descriptor: &ToolDescriptor) -> Value {
+    json!({
+        "authority_class": descriptor.authority_class,
+        "effect_class": descriptor.effect_class,
+        "title": &descriptor.title,
+        "tool_id": &descriptor.tool_id,
+    })
+}
+
 fn atomize_tool_result(
     call: &cerebro_agent_runtime::ToolCall,
     mut result: ToolResult,
 ) -> Result<ToolResult, AgentRuntimeError> {
-    let subject_ref = production_input_subject(&call.input)?.map(str::to_owned);
+    let subject_ref = production_input_subject(&call.tool_id, &call.input)?.map(str::to_owned);
     for evidence in &mut result.evidence {
         let semantic_assertions = evidence
             .atoms
@@ -3433,7 +3447,10 @@ fn atomize_tool_result(
     Ok(result)
 }
 
-fn production_input_subject(input: &Value) -> Result<Option<&str>, AgentRuntimeError> {
+fn production_input_subject<'a>(
+    tool_id: &str,
+    input: &'a Value,
+) -> Result<Option<&'a str>, AgentRuntimeError> {
     let Some(input) = input.as_object() else {
         return Ok(None);
     };
@@ -3450,6 +3467,13 @@ fn production_input_subject(input: &Value) -> Result<Option<&str>, AgentRuntimeE
     .iter()
     .filter_map(|field| input.get(*field).and_then(Value::as_str))
     .collect::<BTreeSet<_>>();
+    let query_subject = matches!(tool_id, "source_runtime.inspect" | "source_catalog.inspect")
+        .then(|| input.get("query").and_then(Value::as_str))
+        .flatten();
+    let subjects = query_subject
+        .into_iter()
+        .chain(subjects)
+        .collect::<BTreeSet<_>>();
     if subjects.len() > 1 {
         return Err(AgentRuntimeError::InvalidToolCall(
             "tool input has conflicting subject aliases".into(),
@@ -3688,6 +3712,7 @@ impl PlatformAgentTools {
             .as_ref()
             .map(|mcp| mcp.descriptors())
             .unwrap_or_default();
+        let built_in = built_in_capability_catalog();
         let observed = remote
             .iter()
             .filter(|tool| tool.authority_class == ToolAuthorityClass::Observe)
@@ -3713,7 +3738,8 @@ impl PlatformAgentTools {
             call,
             complete,
             format!(
-                "The Slack agent capability registry observed twelve built-in tools and {} bound MCP tools; MCP gateway state={gateway_state}.",
+                "The Slack agent capability registry observed {} built-in tools and {} bound MCP tools; MCP gateway state={gateway_state}.",
+                built_in.len(),
                 remote.len()
             ),
         )?;
@@ -3725,32 +3751,14 @@ impl PlatformAgentTools {
             },
             summary: "Read the current Slack agent capability registry.".into(),
             data: json!({
-                "built_in": [
-                    "capability.search",
-                    "capability.describe",
-                    CAPABILITY_EXECUTE_READ,
-                    CAPABILITY_EXECUTE_PROPOSAL,
-                    "capability.overview",
-                    "graph.search",
-                    "graph.expand",
-                    "source_catalog.inspect",
-                    "source_runtime.inspect",
-                    "source_runtime.overview",
-                    "slack.history.search",
-                    "slack.thread.read",
-                ],
+                "built_in": built_in.iter().map(capability_overview_descriptor_json).collect::<Vec<_>>(),
                 "mcp": {
                     "actuate_tools": actuated,
                     "gateway_state": gateway_state,
                     "observe_tools": observed,
                     "propose_tools": proposed,
                     "tool_count": remote.len(),
-                    "tools": remote.iter().map(|tool| json!({
-                        "authority_class": tool.authority_class,
-                        "effect_class": tool.effect_class,
-                        "title": &tool.title,
-                        "tool_id": &tool.tool_id,
-                    })).collect::<Vec<_>>(),
+                    "tools": remote.iter().map(capability_overview_descriptor_json).collect::<Vec<_>>(),
                 },
             }),
             evidence: vec![evidence],
@@ -4043,7 +4051,22 @@ impl PlatformAgentTools {
     ) -> Result<ToolResult, AgentRuntimeError> {
         let input: SourceRuntimeInspectInput = serde_json::from_value(call.input.clone())
             .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
-        let query = input.query.trim();
+        production_input_subject(&call.tool_id, &call.input)?;
+        let query = [
+            input.query.as_deref(),
+            input.source_ref.as_deref(),
+            input.runtime_ref.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .next()
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidToolCall(
+                "source runtime inspection requires one exact query, source_ref, or runtime_ref"
+                    .into(),
+            )
+        })?
+        .trim();
         if query.is_empty() || input.limit == 0 || input.limit > MAX_RUNTIME_LIMIT {
             return Err(AgentRuntimeError::InvalidToolCall(
                 "source runtime query or limit is invalid".into(),
@@ -4660,6 +4683,51 @@ mod tests {
             catalog
                 .iter()
                 .any(|tool| tool.tool_id == "slack.history.search")
+        );
+    }
+
+    #[test]
+    fn capability_overview_descriptor_shape_preserves_authority_and_effect() {
+        for descriptor in built_in_capability_catalog() {
+            let encoded = capability_overview_descriptor_json(&descriptor);
+            assert_eq!(encoded["tool_id"], descriptor.tool_id);
+            assert_eq!(
+                encoded["authority_class"],
+                serde_json::to_value(descriptor.authority_class).unwrap()
+            );
+            assert_eq!(
+                encoded["effect_class"],
+                serde_json::to_value(descriptor.effect_class).unwrap()
+            );
+        }
+        let proposal = built_in_capability_catalog()
+            .into_iter()
+            .find(|descriptor| descriptor.tool_id == CAPABILITY_EXECUTE_PROPOSAL)
+            .expect("the proposal executor is built in");
+        assert_eq!(proposal.authority_class, ToolAuthorityClass::Propose);
+        assert_eq!(proposal.effect_class, ToolEffectClass::Read);
+    }
+
+    #[test]
+    fn production_subject_resolution_rejects_conflicts_and_unscoped_search_prose() {
+        assert!(
+            production_input_subject(
+                "source_runtime.inspect",
+                &json!({"query": "source:alpha", "source_ref": "source:beta"})
+            )
+            .is_err()
+        );
+        assert_eq!(
+            production_input_subject(
+                "source_runtime.inspect",
+                &json!({"source_ref": "source:alpha"})
+            )
+            .unwrap(),
+            Some("source:alpha")
+        );
+        assert_eq!(
+            production_input_subject("graph.search", &json!({"query": "open findings"})).unwrap(),
+            None
         );
     }
 

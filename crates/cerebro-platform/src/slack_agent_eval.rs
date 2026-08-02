@@ -993,7 +993,7 @@ impl AgentTools for EvalTools {
         } else {
             observation_ref.clone()
         };
-        let subject_ref = evaluation_input_subject(&call.input)?.map(str::to_owned);
+        let subject_ref = evaluation_input_subject(&call.tool_id, &call.input)?.map(str::to_owned);
         self.observations
             .lock()
             .expect("evaluation observation receipt poisoned")
@@ -1048,10 +1048,30 @@ impl AgentTools for EvalTools {
     }
 }
 
-fn evaluation_input_subject(input: &Value) -> Result<Option<&str>, AgentRuntimeError> {
+fn evaluation_input_subject<'a>(
+    tool_id: &str,
+    input: &'a Value,
+) -> Result<Option<&'a str>, AgentRuntimeError> {
     let Some(input) = input.as_object() else {
         return Ok(None);
     };
+    if tool_id == "source_runtime.inspect"
+        && [
+            "subject_ref",
+            "finding_ref",
+            "asset_ref",
+            "investigation_ref",
+            "connector_ref",
+            "root_key",
+        ]
+        .iter()
+        .any(|field| input.contains_key(*field))
+    {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "source runtime evaluation has conflicting subject aliases; it accepts only query, source_ref, or runtime_ref"
+                .into(),
+        ));
+    }
     let subjects = [
         "subject_ref",
         "finding_ref",
@@ -1065,6 +1085,13 @@ fn evaluation_input_subject(input: &Value) -> Result<Option<&str>, AgentRuntimeE
     .iter()
     .filter_map(|field| input.get(*field).and_then(Value::as_str))
     .collect::<BTreeSet<_>>();
+    let query_subject = matches!(tool_id, "source_runtime.inspect" | "source_catalog.inspect")
+        .then(|| input.get("query").and_then(Value::as_str))
+        .flatten();
+    let subjects = query_subject
+        .into_iter()
+        .chain(subjects)
+        .collect::<BTreeSet<_>>();
     if subjects.len() > 1 {
         return Err(AgentRuntimeError::InvalidToolCall(
             "evaluation tool input has conflicting subject aliases".into(),
@@ -1379,7 +1406,7 @@ fn descriptor(
         ),
         "source_runtime.inspect" => (
             "Inspect one source runtime",
-            "Read runtime health, cursor state, latest sync, collection receipts, and evidence gaps for one named governed source, feed, or finding. Input must include the exact identifier from the operator request, for example {\"finding_ref\":\"F-1234\"} or {\"source_ref\":\"source-name\"}.",
+            "Read runtime health, cursor state, latest sync, collection receipts, and evidence gaps for one named governed source or runtime. Input must include the exact identifier from the operator request as query, source_ref, or runtime_ref.",
         ),
         "source_runtime.overview" => (
             "Read source runtime overview",

@@ -1291,9 +1291,46 @@ fn request_explicitly_requires_current_evidence(message: &str) -> bool {
         && ["source", "connector", "provider", "runtime"]
             .iter()
             .any(|marker| normalized.contains(marker));
+    let present_operational_question = ((normalized.contains("what ")
+        || normalized.contains("which ")
+        || normalized.contains("whether ")
+        || normalized.contains("can you ")
+        || normalized.contains("do we have "))
+        && [
+            "evidence",
+            "collection",
+            "receipt",
+            "access",
+            "visibility",
+            "runtime",
+            "connector",
+            "source",
+            "tool",
+            "capabilit",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(marker))
+        && [
+            "inspect",
+            "read",
+            "search",
+            "working",
+            "missing",
+            "enabled",
+            "healthy",
+            "connected",
+            "available",
+            "have access",
+            "can access",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(marker)))
+        || (normalized.contains("collection")
+            && (normalized.contains("is working") || normalized.contains("whether collection")));
     (explicit_time_boundary && named_operational_state)
         || explicit_reconciliation
         || named_access_boundary
+        || present_operational_question
 }
 
 fn request_explicitly_requires_investigation(message: &str) -> bool {
@@ -2662,6 +2699,12 @@ mod grounding_tests {
 
         assert!(!request_explicitly_requires_current_evidence(
             "What does evidence freshness mean in a control program?"
+        ));
+        assert!(!request_explicitly_requires_current_evidence(
+            "What is a provider?"
+        ));
+        assert!(request_explicitly_requires_current_evidence(
+            "What Lantern Vale evidence can you actually inspect, whether collection is working, and what is missing?"
         ));
 
         let synthesis = route_request(
