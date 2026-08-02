@@ -3053,6 +3053,7 @@ async fn run_conversation_lab(
                 ) && observation.data.get("collection_receipt") == Some(&json!("complete"))
             }));
         let review_ready = !terminal_failure
+            && operator_satisfied
             && delivered_exchange_count >= LAB_MIN_EXCHANGES
             && unanswered_user_turn_count == 0
             && required_failure_path_exercised
@@ -3334,6 +3335,8 @@ async fn simulate_operator(
                             .contains(&OperatorInteractionKind::ScopeRefinement)
                             && interaction_kinds
                                 .contains(&OperatorInteractionKind::Continuation)))
+                    && (decision.status != OperatorStatus::Satisfied
+                        || decision.unresolved_outcomes.is_empty())
                     && (decision.status != OperatorStatus::Continue
                         || !decision.next_message.trim().is_empty())
                     && (decision.status == OperatorStatus::Continue

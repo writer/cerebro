@@ -4291,6 +4291,15 @@ fn validate_claim(
     context: &ClaimValidationContext<'_, '_>,
     cited_atoms: &mut BTreeSet<String>,
 ) -> Result<(), AgentRuntimeError> {
+    if !matches!(
+        claim.content,
+        ClaimContent::Commitment { .. } | ClaimContent::OperatorContext { .. }
+    ) && contains_unbound_future_promise(&claim.text)
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "future Cerebro work must cite the exact active commitment that records it".into(),
+        ));
+    }
     let atom_refs = match &claim.content {
         ClaimContent::Observation { atom_refs } => {
             validate_observation_wording(&claim.text, atom_refs, context)?;
@@ -4387,9 +4396,15 @@ fn validate_claim(
         }
         ClaimContent::StableExplanation => {
             validate_stable_explanation_wording(&claim.text)?;
-            if contains_unbound_future_promise(&claim.text) {
+            if contains_operational_capability_assertion(&claim.text) {
                 return Err(AgentRuntimeError::InvalidFinal(
-                    "future Cerebro work must cite the exact active commitment that records it"
+                    "a stable explanation cannot assert a specific operational capability or authority; use current capability evidence and name only the bound tools and declared authority it establishes"
+                        .into(),
+                ));
+            }
+            if contains_provider_behavior_assertion(&claim.text) {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "a stable explanation cannot assert provider behavior, ownership, downstream dependency, cause, or predicted outcome; use an observation or a qualified hypothesis with evidence atoms"
                         .into(),
                 ));
             }
@@ -4813,10 +4828,120 @@ fn contains_unbound_future_promise(value: &str) -> bool {
         "i will follow up",
         "i'll update you",
         "i will update you",
+        "i can keep an eye",
+        "i can keep watching",
+        "i can check back",
+        "i can schedule",
+        "i can set up",
+        "want me to set",
+        "want me to schedule",
+        "keep an eye on",
+        "keep watching",
+        "scheduled recheck",
+        "scheduled re-check",
+        "set that recheck",
+        "set that re-check",
+        "re-report after",
+        "check back at",
         "check scheduled",
     ]
     .iter()
     .any(|promise| normalized.contains(promise))
+}
+
+fn contains_operational_capability_assertion(value: &str) -> bool {
+    let normalized = value.to_lowercase().replace('’', "'");
+    let asserts_self_capability = [
+        "i can ",
+        "i can't ",
+        "i cannot ",
+        "i am able to ",
+        "i'm able to ",
+        "we can ",
+        "we can't ",
+        "we cannot ",
+        "cerebro can ",
+        "cerebro can't ",
+        "cerebro cannot ",
+        "i have access",
+        "i don't have access",
+        "i do not have access",
+        "cerebro has access",
+        "cerebro does not have access",
+        "my authority",
+        "our authority",
+        "my line stops",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase));
+    let operational_verb = [
+        "read",
+        "search",
+        "query",
+        "inspect",
+        "access",
+        "administer",
+        "change",
+        "create",
+        "update",
+        "delete",
+        "trigger",
+        "route",
+        "schedule",
+        "execute",
+        "monitor",
+        "notify",
+        "follow up",
+        "follow-up",
+        "watch",
+        "pull",
+        "re-read",
+        "recheck",
+        "re-check",
+        "prepare",
+        "propose",
+        "set up",
+    ]
+    .iter()
+    .any(|verb| normalized.contains(verb));
+    asserts_self_capability && operational_verb
+}
+
+fn contains_provider_behavior_assertion(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    let names_operational_domain = [
+        "provider",
+        "source",
+        "connector",
+        "audit activity",
+        "finding",
+        "asset",
+        "evidence packet",
+        "runtime",
+    ]
+    .iter()
+    .any(|subject| normalized.contains(subject));
+    let asserts_behavior_or_dependency = [
+        "bursty",
+        "should report",
+        "will report",
+        "argues for",
+        "points to",
+        "depends on",
+        "downstream",
+        " owner",
+        "inside ",
+        "fixing",
+        "repairing",
+        "caused",
+        "likely",
+        "probably",
+        "usually",
+        "inherently",
+    ]
+    .iter()
+    .any(|assertion| normalized.contains(assertion));
+    names_operational_domain && asserts_behavior_or_dependency
 }
 
 #[cfg(test)]
@@ -7243,6 +7368,45 @@ mod tests {
                 .to_string()
                 .contains("without a cited health observation")
         );
+    }
+
+    #[test]
+    fn stable_explanations_reject_specific_capability_and_provider_behavior_claims() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        for text in [
+            "I can inspect Slack and pull evidence packets.",
+            "I cannot access the provider admin console.",
+            "Cerebro can schedule a recheck.",
+            "Audit activity is inherently bursty and should report later.",
+            "A persistent connector gap argues for a provider-side fix by the source owner.",
+        ] {
+            let mut candidate = draft();
+            candidate.claims[0].text = text.into();
+            candidate.claims[0].content = ClaimContent::StableExplanation;
+            candidate.message = text.into();
+            assert!(
+                validate_grounded_draft(&session(), &candidate, &[], assessment).is_err(),
+                "stable explanation unexpectedly accepted: {text}"
+            );
+        }
+
+        assert!(!contains_operational_capability_assertion(
+            "I can explain the difference between evidence and authority."
+        ));
+        assert!(!contains_provider_behavior_assertion(
+            "A source declaration does not prove provider-side permission."
+        ));
+    }
+
+    #[test]
+    fn unbound_scheduling_phrases_are_detected() {
+        for text in [
+            "I can keep an eye on it.",
+            "Want me to set that recheck up?",
+            "I can keep watching and re-report after the next run.",
+        ] {
+            assert!(contains_unbound_future_promise(text), "{text}");
+        }
     }
 
     #[test]
