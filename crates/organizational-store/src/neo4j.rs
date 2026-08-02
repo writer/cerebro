@@ -136,10 +136,7 @@ WHERE state.ready = true
 SET state.graph_revision = $graph_revision
 "#;
 
-// A fresh ECS task can spend several seconds establishing the first routed Bolt
-// connection. Keep readiness bounded, but do not kill an otherwise healthy
-// authority during that one-time connection warm-up.
-const HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
+const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
 const PROJECTION_BATCH_SIZE: usize = 1_000;
 
 const LIFECYCLE_FILTER: &str = r#"
@@ -1184,7 +1181,7 @@ impl AgentGraph for Neo4jProjector {
             .await
             .map_err(|_| {
                 ContextError::BackendUnavailable(
-                    "Neo4j readiness query exceeded 10 seconds".to_owned(),
+                    "Neo4j readiness query exceeded 2 seconds".to_owned(),
                 )
             })?
             .map_err(context_backend)
@@ -1964,11 +1961,6 @@ mod tests {
     use cerebro_agent_context::{FactQuery, QueryAbsentEdge, QueryDirection, QueryEdge, QueryNode};
 
     use super::*;
-
-    #[test]
-    fn readiness_allows_one_bounded_connection_warmup() {
-        assert_eq!(HEALTH_TIMEOUT, Duration::from_secs(10));
-    }
 
     #[test]
     fn projection_is_tenant_scoped_batched_and_uses_generic_relation_edges() {
