@@ -57,6 +57,9 @@ pub(super) fn render_slack_mrkdwn(markdown: &str) -> String {
         rendered.push(normalized);
         index += 1;
     }
+    if in_code_block {
+        rendered.push("```".into());
+    }
 
     rendered.join("\n")
 }
@@ -113,6 +116,14 @@ fn inert_slack_control_syntax(value: &str) -> String {
 }
 
 fn render_inline_markup(value: &str) -> String {
+    let mut balanced = value.to_owned();
+    if !value.matches("**").count().is_multiple_of(2) {
+        balanced.push_str("**");
+    }
+    if !value.matches("__").count().is_multiple_of(2) {
+        balanced.push_str("__");
+    }
+    let value = balanced.as_str();
     let mut output = String::with_capacity(value.len());
     let mut cursor = 0;
     while cursor < value.len() {
@@ -156,8 +167,19 @@ fn markdown_link(value: &str, start: usize, image: bool) -> Option<(usize, &str,
     let label_start = open + 1;
     let close = label_start + value[label_start..].find("](")?;
     let url_start = close + 2;
-    let end = url_start + value[url_start..].find(')')?;
-    Some((end + 1, &value[label_start..close], &value[url_start..end]))
+    let mut depth = 0;
+    for (offset, character) in value[url_start..].char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' if depth == 0 => {
+                let end = url_start + offset;
+                return Some((end + 1, &value[label_start..close], &value[url_start..end]));
+            }
+            ')' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn markdown_heading(value: &str) -> Option<&str> {
@@ -312,5 +334,29 @@ mod tests {
         let rendered = render_slack_mrkdwn("# State\n---\n- **Ready**");
         assert_eq!(rendered, "*State*\n────────────────────────\n• *Ready*");
         assert_eq!(render_slack_mrkdwn(&rendered), rendered);
+    }
+
+    #[test]
+    fn closes_unbalanced_fences_and_strong_emphasis() {
+        assert_eq!(
+            render_slack_mrkdwn("The result is:\n```text\nhealthy"),
+            "The result is:\n```text\nhealthy\n```"
+        );
+        assert_eq!(
+            render_slack_mrkdwn("The source is **healthy."),
+            "The source is *healthy.*"
+        );
+        assert_eq!(
+            render_slack_mrkdwn("The source is __healthy."),
+            "The source is *healthy.*"
+        );
+    }
+
+    #[test]
+    fn preserves_balanced_parentheses_in_markdown_link_urls() {
+        assert_eq!(
+            render_slack_mrkdwn("[open run](https://example.com/run_(latest))"),
+            "<https://example.com/run_(latest)|open run>"
+        );
     }
 }

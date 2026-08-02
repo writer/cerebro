@@ -1245,7 +1245,19 @@ fn validate_route(
 }
 
 fn request_explicitly_requires_current_evidence(message: &str) -> bool {
-    let normalized = normalized_phrase_text(message);
+    message
+        .split(['.', '?', '!', ';', ',', '\n'])
+        .any(|fragment| {
+            let normalized = normalized_phrase_text(fragment);
+            normalized
+                .trim()
+                .split(" and ")
+                .any(clause_explicitly_requires_current_evidence)
+        })
+}
+
+fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
+    let normalized = normalized_phrase_text(clause);
     let conceptual_explanation = normalized.contains(" state of the art ")
         || (normalized.contains(" provider neutral ")
             && ["architecture", "design", "model", "pattern", "concept"]
@@ -1440,6 +1452,11 @@ fn validate_presentation(presentation: &PresentationDecision) -> Result<String, 
             "Slack presentation exceeds the visible reply limit".into(),
         ));
     }
+    if !presentation_markup_is_balanced(&summary) {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "Slack presentation contains an unclosed code fence or emphasis span".into(),
+        ));
+    }
     if looks_like_report_copy(&summary) || looks_like_user_handback(&summary) {
         return Err(AgentRuntimeError::InvalidFinal(
             "Slack presentation reads like an internal report or hands assistant-owned work back to the user"
@@ -1447,6 +1464,54 @@ fn validate_presentation(presentation: &PresentationDecision) -> Result<String, 
         ));
     }
     Ok(summary)
+}
+
+fn presentation_markup_is_balanced(value: &str) -> bool {
+    let mut in_fence = false;
+    for line in value.lines() {
+        if line.trim().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        let mut cursor = 0;
+        let mut strong_asterisks = 0;
+        let mut strong_underscores = 0;
+        while cursor < line.len() {
+            let remaining = &line[cursor..];
+            if remaining.starts_with('`') {
+                let delimiter_len = remaining.bytes().take_while(|byte| *byte == b'`').count();
+                let delimiter = &remaining[..delimiter_len];
+                let content_start = cursor + delimiter_len;
+                let Some(close_offset) = line[content_start..].find(delimiter) else {
+                    return false;
+                };
+                cursor = content_start + close_offset + delimiter_len;
+                continue;
+            }
+            if remaining.starts_with("**") {
+                strong_asterisks += 1;
+                cursor += 2;
+                continue;
+            }
+            if remaining.starts_with("__") {
+                strong_underscores += 1;
+                cursor += 2;
+                continue;
+            }
+            cursor += remaining
+                .chars()
+                .next()
+                .expect("markup cursor remains on a character boundary")
+                .len_utf8();
+        }
+        if strong_asterisks % 2 != 0 || strong_underscores % 2 != 0 {
+            return false;
+        }
+    }
+    !in_fence
 }
 
 fn validate_critique_decision(
@@ -2792,6 +2857,8 @@ mod grounding_tests {
             "Which provider receipts are currently missing?",
             "Can you inspect the current provider runtime?",
             "What does the current Source A state mean for today's decision?",
+            "Using the provider-neutral architecture, inspect Source A's current receipt.",
+            "What is the state of the art, and is Provider B currently healthy?",
         ] {
             assert!(
                 request_explicitly_requires_current_evidence(current_evidence_request),
@@ -2809,6 +2876,32 @@ mod grounding_tests {
             requires_current_evidence: true,
         };
         assert!(validate_route(&synthesis, &lookup).is_err());
+    }
+
+    #[test]
+    fn slack_presentation_rejects_unbalanced_fences_and_emphasis() {
+        for message in [
+            "The result is:\n```\nhealthy",
+            "The source is **healthy.",
+            "The source is __healthy.",
+            "The source is `healthy.",
+        ] {
+            assert!(
+                validate_presentation(&PresentationDecision {
+                    messages: vec![message.into()],
+                })
+                .is_err(),
+                "unbalanced Slack markup was accepted: {message}"
+            );
+        }
+        assert!(
+            validate_presentation(&PresentationDecision {
+                messages: vec![
+                    "The source is **healthy**.\n\n```text\nreceipt complete\n```".into(),
+                ],
+            })
+            .is_ok()
+        );
     }
 
     #[test]

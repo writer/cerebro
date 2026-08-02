@@ -57,6 +57,10 @@ const AUTONOMY_MAX_WAKE_DELAY: Duration = Duration::hours(24);
 const SYNTHETIC_CONTEXT_SCOPE_REF: &str =
     "slack-context-scope://sha256/1111111111111111111111111111111111111111111111111111111111111111";
 const SYNTHETIC_HOLDOUT_NAMESPACE: &str = "synthetic://cerebro-holdouts/";
+const CONVERSATION_PROMOTION_HOLDOUT_SHA256: &str =
+    "025cee5a3c5af99c9fb0d997d1558b22763587eb64db655ea2fe6751c33f1080";
+const AUTONOMY_PROMOTION_HOLDOUT_SHA256: &str =
+    "4090e95681e7cf9ff3b83e1e93bf72ecda0c712f0f22560294062d089eaf0445";
 
 #[derive(Clone, Copy)]
 struct EvalCase {
@@ -2880,6 +2884,11 @@ fn selected_autonomy_scenario() -> Result<AutonomyScenarioSelection, Box<dyn Err
                 "the external autonomy holdout pack does not match its pinned SHA-256".into(),
             );
         }
+        if digest != AUTONOMY_PROMOTION_HOLDOUT_SHA256 {
+            return Err(
+                "the external autonomy holdout pack is not the code-owned promotion corpus".into(),
+            );
+        }
         let pack: AutonomyHoldoutPack = serde_json::from_slice(&bytes)?;
         if pack.schema_version != "cerebro-slack-agent-autonomy-holdout-pack/v4" {
             return Err("unsupported autonomy holdout pack schema".into());
@@ -2941,6 +2950,8 @@ fn validate_autonomy_holdout_scenarios(
         .collect::<BTreeSet<_>>();
     let mut scenario_refs = BTreeSet::new();
     let mut challenge_profiles = BTreeSet::new();
+    let mut scenario_content_digests = BTreeSet::new();
+    let mut observation_trajectory_digests = BTreeSet::new();
     for scenario in scenarios {
         let mut grouped_tools = BTreeSet::new();
         let authority_groups_valid = !scenario.authority_groups.is_empty()
@@ -2958,6 +2969,9 @@ fn validate_autonomy_holdout_scenarios(
         if scenario.scenario.scenario_ref.trim().is_empty()
             || !scenario_refs.insert(scenario.scenario.scenario_ref.as_str())
             || !challenge_profiles.insert(scenario.challenge_profile)
+            || !scenario_content_digests.insert(autonomy_scenario_content_digest(scenario))
+            || !observation_trajectory_digests
+                .insert(autonomy_observation_trajectory_digest(scenario))
             || !authority_groups_valid
             || !(2..=8).contains(&scenario.phases.len())
             || scenario.expected_delivery.len() != scenario.phases.len()
@@ -2990,6 +3004,35 @@ fn validate_autonomy_holdout_scenarios(
     Ok(())
 }
 
+fn autonomy_scenario_content_digest(scenario: &AutonomyHoldoutScenario) -> String {
+    let normalize = |value: &str| {
+        value
+            .split_whitespace()
+            .map(str::to_ascii_lowercase)
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    sha256_hex(
+        &serde_json::to_vec(&json!({
+            "mission": normalize(&scenario.scenario.mission),
+            "operator_brief": normalize(&scenario.scenario.operator_brief),
+            "initial_message": normalize(&scenario.scenario.initial_message),
+            "seed_history": scenario.scenario.seed_history.iter().map(|message| json!({
+                "role": message.role,
+                "content": normalize(&message.content),
+            })).collect::<Vec<_>>(),
+        }))
+        .expect("autonomy scenario content is serializable"),
+    )
+}
+
+fn autonomy_observation_trajectory_digest(scenario: &AutonomyHoldoutScenario) -> String {
+    sha256_hex(
+        &serde_json::to_vec(&scenario.phases)
+            .expect("autonomy observation trajectory is serializable"),
+    )
+}
+
 fn autonomy_challenge_matches_scenario(scenario: &AutonomyHoldoutScenario) -> bool {
     let delivery = scenario.expected_delivery.as_slice();
     let terminal = scenario.expected_terminal_commitment;
@@ -3005,6 +3048,21 @@ fn autonomy_challenge_matches_scenario(scenario: &AutonomyHoldoutScenario) -> bo
             .values()
             .all(|fixture| fixture.complete && fixture.state == ToolResultState::Succeeded)
     });
+    let initial_complete = scenario.phases.first().is_some_and(|phase| {
+        phase
+            .observations
+            .values()
+            .all(|fixture| fixture.complete && fixture.state == ToolResultState::Succeeded)
+    });
+    let intermediate_has_state = |state| {
+        scenario
+            .phases
+            .iter()
+            .skip(1)
+            .take(scenario.phases.len().saturating_sub(2))
+            .flat_map(|phase| phase.observations.values())
+            .any(|fixture| fixture.state == state)
+    };
     match scenario.challenge_profile {
         AutonomyChallengeProfile::ThreePhaseSilentClosure => {
             delivery
@@ -3015,6 +3073,7 @@ fn autonomy_challenge_matches_scenario(scenario: &AutonomyHoldoutScenario) -> bo
                 ]
                 && terminal == ExpectedCommitmentState::Closed
                 && !has_incomplete_intermediate
+                && final_complete
         }
         AutonomyChallengeProfile::ThreePhaseVisibleClosure => {
             delivery
@@ -3025,6 +3084,7 @@ fn autonomy_challenge_matches_scenario(scenario: &AutonomyHoldoutScenario) -> bo
                 ]
                 && terminal == ExpectedCommitmentState::Closed
                 && !has_incomplete_intermediate
+                && final_complete
         }
         AutonomyChallengeProfile::ThreePhaseSilentActive => {
             delivery
@@ -3035,6 +3095,7 @@ fn autonomy_challenge_matches_scenario(scenario: &AutonomyHoldoutScenario) -> bo
                 ]
                 && terminal == ExpectedCommitmentState::Active
                 && !has_incomplete_intermediate
+                && final_complete
         }
         AutonomyChallengeProfile::FourPhaseRegressionClosure => {
             delivery
@@ -3046,7 +3107,9 @@ fn autonomy_challenge_matches_scenario(scenario: &AutonomyHoldoutScenario) -> bo
                 ]
                 && terminal == ExpectedCommitmentState::Closed
                 && has_incomplete_intermediate
+                && initial_complete
                 && final_complete
+                && intermediate_has_state(ToolResultState::Failed)
         }
         AutonomyChallengeProfile::FourPhasePartialClosure => {
             delivery
@@ -3058,7 +3121,9 @@ fn autonomy_challenge_matches_scenario(scenario: &AutonomyHoldoutScenario) -> bo
                 ]
                 && terminal == ExpectedCommitmentState::Closed
                 && has_incomplete_intermediate
+                && initial_complete
                 && final_complete
+                && intermediate_has_state(ToolResultState::Partial)
         }
         AutonomyChallengeProfile::FourPhaseVisibleActive => {
             delivery
@@ -3070,6 +3135,7 @@ fn autonomy_challenge_matches_scenario(scenario: &AutonomyHoldoutScenario) -> bo
                 ]
                 && terminal == ExpectedCommitmentState::Active
                 && !has_incomplete_intermediate
+                && final_complete
         }
     }
 }
@@ -3487,9 +3553,19 @@ async fn run_autonomy_scenario(
             && commitment.status == CommitmentStatus::Completed
             && commitment.wake_at.is_none()
     });
+    let commitment_active = session.mission.commitments.iter().any(|commitment| {
+        commitment.owner == WorkOwner::Cerebro
+            && matches!(
+                commitment.status,
+                CommitmentStatus::Planned
+                    | CommitmentStatus::InProgress
+                    | CommitmentStatus::Waiting
+            )
+            && commitment.wake_at.is_some()
+    });
     let commitment_state_matches = match expected_terminal_commitment {
         ExpectedCommitmentState::Closed => commitment_closed,
-        ExpectedCommitmentState::Active => !commitment_closed,
+        ExpectedCommitmentState::Active => commitment_active && !commitment_closed,
     };
     let operator_message_count = session
         .messages
@@ -4522,29 +4598,48 @@ fn validate_synthetic_payload_names(
         "a",
         "act",
         "actually",
+        "after",
         "apply",
         "assistant",
+        "based",
+        "because",
+        "before",
         "cerebro",
         "clearly",
+        "collection",
         "continue",
+        "coverage",
+        "current",
         "do",
         "end",
         "establish",
+        "evidence",
         "every",
         "explain",
         "figure",
+        "finding",
+        "first",
         "good",
         "handle",
         "honor",
+        "however",
         "i",
+        "if",
         "ignore",
         "inspect",
         "keep",
+        "next",
         "no",
+        "not",
+        "now",
         "operator",
+        "own",
         "provider",
         "recover",
+        "recovery",
         "respond",
+        "right",
+        "risk",
         "slack",
         "someone",
         "source",
@@ -4552,44 +4647,61 @@ fn validate_synthetic_payload_names(
         "stop",
         "synthetic",
         "team",
+        "that",
         "the",
+        "this",
+        "today",
         "treat",
+        "trust",
         "understood",
         "use",
         "what",
         "when",
+        "while",
+        "yes",
         "you",
     ]);
+    for word in &declared_words {
+        if synthetic_token_looks_external(word, word) {
+            return Err(format!(
+                "synthetic holdout inventory contains an external-looking entity word: {word}"
+            )
+            .into());
+        }
+    }
     let mut strings = Vec::new();
     collect_json_strings(payload, &mut strings);
     for value in strings {
-        let mut sentence_start = true;
         for raw_word in value.split_whitespace() {
             let word = raw_word.trim_matches(|character: char| !character.is_alphanumeric());
-            let normalized = word.to_ascii_lowercase();
-            if synthetic_token_looks_external(word, &normalized) {
+            let name_word = word
+                .strip_suffix("'s")
+                .or_else(|| word.strip_suffix("'S"))
+                .or_else(|| word.strip_suffix("’s"))
+                .or_else(|| word.strip_suffix("’S"))
+                .unwrap_or(word);
+            let normalized_name = name_word.to_ascii_lowercase();
+            if synthetic_token_looks_external(word, &normalized_name) {
                 return Err(format!(
                     "synthetic holdout material contains an external-looking token: {word}"
                 )
                 .into());
             }
-            let name_word = word
-                .strip_suffix("'s")
-                .or_else(|| word.strip_suffix("’s"))
-                .unwrap_or(word);
-            let normalized_name = name_word.to_ascii_lowercase();
             let Some(first) = name_word.chars().next() else {
                 continue;
             };
-            if sentence_start
-                || name_word.len() < 2
-                || !first.is_uppercase()
-                || !name_word.chars().skip(1).any(char::is_lowercase)
-            {
-                sentence_start = raw_word.ends_with(['.', '!', '?']);
+            if name_word.len() < 2 || !first.is_uppercase() {
                 continue;
             }
-            if !declared_words.contains(&normalized_name)
+            let allowed_acronym = ["api", "mcp", "slo", "ui"].contains(&normalized_name.as_str());
+            let name_like = name_word.chars().skip(1).any(char::is_lowercase)
+                || (name_word.len() >= 3
+                    && name_word
+                        .chars()
+                        .all(|character| character.is_ascii_uppercase())
+                    && !allowed_acronym);
+            if name_like
+                && !declared_words.contains(&normalized_name)
                 && !allowed_title_words.contains(normalized_name.as_str())
             {
                 return Err(format!(
@@ -4597,7 +4709,6 @@ fn validate_synthetic_payload_names(
                 )
                 .into());
             }
-            sentence_start = raw_word.ends_with(['.', '!', '?']);
         }
     }
     Ok(())
@@ -4612,7 +4723,9 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
         "github",
         "google",
         "microsoft",
+        "netflix",
         "openai",
+        "jane",
         "writer",
     ];
     let identifier_prefix = [
@@ -4633,16 +4746,48 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
             !suffix.is_empty() && suffix.chars().any(|character| character.is_ascii_digit())
         })
     });
-    let domain_like = word.rsplit_once('.').is_some_and(|(host, suffix)| {
+    let endpoint = word
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(word)
+        .split(':')
+        .next()
+        .unwrap_or(word);
+    let domain_like = endpoint.rsplit_once('.').is_some_and(|(host, suffix)| {
         !host.is_empty()
             && (2..=12).contains(&suffix.len())
             && suffix
                 .chars()
                 .all(|character| character.is_ascii_alphabetic())
     });
+    let ipv4_like = endpoint.split('.').collect::<Vec<_>>();
+    let ipv4_like = ipv4_like.len() == 4
+        && ipv4_like.iter().all(|part| {
+            !part.is_empty()
+                && part.chars().all(|character| character.is_ascii_digit())
+                && part.parse::<u8>().is_ok()
+        });
+    let issue_key_like = normalized.rsplit_once('-').is_some_and(|(prefix, suffix)| {
+        (2..=16).contains(&prefix.len())
+            && prefix
+                .chars()
+                .all(|character| character.is_ascii_alphabetic())
+            && !suffix.is_empty()
+            && suffix.chars().all(|character| character.is_ascii_digit())
+    });
+    let opaque_workspace_like = normalized.strip_prefix("workspace-").is_some_and(|suffix| {
+        suffix.len() >= 6
+            && suffix
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric())
+            && suffix.chars().any(|character| character.is_ascii_digit())
+    });
     RESERVED_REAL_WORLD_TOKENS.contains(&normalized)
         || identifier_prefix
         || domain_like
+        || ipv4_like
+        || issue_key_like
+        || opaque_workspace_like
         || (word.contains('@') && !word.starts_with('@'))
 }
 
@@ -4913,6 +5058,12 @@ fn selected_lab_scenarios() -> Result<ConversationScenarioSelection, Box<dyn Err
         if digest != expected_digest.trim().to_ascii_lowercase() {
             return Err(
                 "the external conversation holdout pack does not match its pinned SHA-256".into(),
+            );
+        }
+        if digest != CONVERSATION_PROMOTION_HOLDOUT_SHA256 {
+            return Err(
+                "the external conversation holdout pack is not the code-owned promotion corpus"
+                    .into(),
             );
         }
         let pack: ConversationHoldoutPack = serde_json::from_slice(&bytes)?;
@@ -6361,7 +6512,7 @@ mod tests {
                 ],
                 ExpectedCommitmentState::Closed,
                 3,
-                false,
+                None,
             ),
             (
                 AutonomyChallengeProfile::ThreePhaseVisibleClosure,
@@ -6372,7 +6523,7 @@ mod tests {
                 ],
                 ExpectedCommitmentState::Closed,
                 3,
-                false,
+                None,
             ),
             (
                 AutonomyChallengeProfile::ThreePhaseSilentActive,
@@ -6383,7 +6534,7 @@ mod tests {
                 ],
                 ExpectedCommitmentState::Active,
                 3,
-                false,
+                None,
             ),
             (
                 AutonomyChallengeProfile::FourPhaseRegressionClosure,
@@ -6395,7 +6546,7 @@ mod tests {
                 ],
                 ExpectedCommitmentState::Closed,
                 4,
-                true,
+                Some(ToolResultState::Failed),
             ),
             (
                 AutonomyChallengeProfile::FourPhasePartialClosure,
@@ -6407,7 +6558,7 @@ mod tests {
                 ],
                 ExpectedCommitmentState::Closed,
                 4,
-                true,
+                Some(ToolResultState::Partial),
             ),
             (
                 AutonomyChallengeProfile::FourPhaseVisibleActive,
@@ -6419,16 +6570,19 @@ mod tests {
                 ],
                 ExpectedCommitmentState::Active,
                 4,
-                false,
+                None,
             ),
         ];
         let scenarios = definitions
-            .into_iter()
+            .iter()
+            .cloned()
             .enumerate()
             .map(
-                |(index, (profile, delivery, terminal, phase_count, incomplete))| {
+                |(index, (profile, delivery, terminal, phase_count, interruption_state))| {
                     let mut scenario = base.clone();
                     scenario.scenario.scenario_ref = format!("hidden-scenario-{index}");
+                    scenario.scenario.mission =
+                        format!("Exercise distinct synthetic autonomy challenge {index}.");
                     scenario.challenge_profile = profile;
                     scenario.expected_delivery = delivery;
                     scenario.expected_terminal_commitment = terminal;
@@ -6437,14 +6591,22 @@ mod tests {
                             base.phases[phase_index.min(base.phases.len() - 1)].clone()
                         })
                         .collect();
-                    if incomplete {
+                    for (phase_index, phase) in scenario.phases.iter_mut().enumerate() {
+                        for fixture in phase.observations.values_mut() {
+                            fixture.summary =
+                                format!("Synthetic challenge {index} phase {phase_index}.");
+                            fixture.data["synthetic_challenge_cell"] = json!(index);
+                            fixture.data["synthetic_phase_cell"] = json!(phase_index);
+                        }
+                    }
+                    if let Some(interruption_state) = interruption_state {
                         let fixture = scenario.phases[1]
                             .observations
                             .values_mut()
                             .next()
                             .expect("embedded phase has an observation");
                         fixture.complete = false;
-                        fixture.state = ToolResultState::Partial;
+                        fixture.state = interruption_state;
                     }
                     scenario
                 },
@@ -6452,6 +6614,18 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(validate_autonomy_holdout_scenarios(&scenarios).is_ok());
         assert!(validate_autonomy_holdout_scenarios(&scenarios[..5]).is_err());
+
+        let renamed_clones = (0..6)
+            .map(|index| {
+                let mut scenario = base.clone();
+                scenario.scenario.scenario_ref = format!("renamed-clone-{index}");
+                scenario.challenge_profile = definitions[index].0;
+                scenario.expected_delivery = definitions[index].1.clone();
+                scenario.expected_terminal_commitment = definitions[index].2;
+                scenario
+            })
+            .collect::<Vec<_>>();
+        assert!(validate_autonomy_holdout_scenarios(&renamed_clones).is_err());
 
         let mut invalid = scenarios;
         invalid[0].expected_delivery.pop();
@@ -6769,6 +6943,41 @@ mod tests {
             validate_blind_review_bytes(
                 br#"{"data_provenance":{"synthetic_only":true,"namespace":"synthetic://cerebro-holdouts/","fictional_entities":["fictional connector"]},"conversation":["This was generated by Claude."]}"#,
                 &[]
+            )
+            .is_err()
+        );
+        for leaked in [
+            "The fictional connector is at secret.example.io/path under workspace-w9x8y7z6.",
+            "The fictional connector uses secret.example.io:443 at 10.20.30.40.",
+            "Netflix assigned jane's JIRA-1234 to the fictional connector.",
+            "Jane's fictional connector is ready.",
+            "JANE'S fictional connector is ready.",
+        ] {
+            let bundle = json!({
+                "data_provenance": {
+                    "synthetic_only": true,
+                    "namespace": SYNTHETIC_HOLDOUT_NAMESPACE,
+                    "fictional_entities": ["fictional:fictional connector"]
+                },
+                "conversation": [leaked]
+            });
+            assert!(
+                validate_blind_review_bytes(&serde_json::to_vec(&bundle).unwrap(), &[]).is_err(),
+                "blind export accepted leaked external shape: {leaked}"
+            );
+        }
+        let asserted_real_inventory = json!({
+            "data_provenance": {
+                "synthetic_only": true,
+                "namespace": SYNTHETIC_HOLDOUT_NAMESPACE,
+                "fictional_entities": ["fictional:Netflix"]
+            },
+            "conversation": ["Netflix is fictional."]
+        });
+        assert!(
+            validate_blind_review_bytes(
+                &serde_json::to_vec(&asserted_real_inventory).unwrap(),
+                &[],
             )
             .is_err()
         );

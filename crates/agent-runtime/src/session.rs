@@ -6039,66 +6039,93 @@ fn atom_binds_claimed_owner(
     else {
         return false;
     };
-    let normalized = text.to_ascii_lowercase();
     if *duty != required_duty || !text_names_exact_semantic_identity(text, subject_ref) {
         return false;
     }
-    let claims_first_person_cerebro = [
-        "owner: me",
-        "owner is me",
-        "i own ",
-        "i'm the owner",
-        "i am the owner",
-    ]
-    .iter()
-    .any(|phrase| normalized.contains(phrase));
     let principal_ref = principal.principal_ref.to_ascii_lowercase();
     let principal_leaf = principal_ref
         .rsplit([':', '/', '#'])
         .find(|part| !part.is_empty())
         .unwrap_or(&principal_ref);
-    if claims_first_person_cerebro {
-        return matches!(
-            principal_ref.as_str(),
-            "cerebro" | "service:cerebro" | "agent:cerebro"
-        ) || principal.display_name.as_deref() == Some("Cerebro");
-    }
-    text_names_exact_claimed_principal(text, principal_leaf, principal.display_name.as_deref())
+    let principal_is_cerebro = matches!(
+        principal_ref.as_str(),
+        "cerebro" | "service:cerebro" | "agent:cerebro"
+    ) || principal
+        .display_name
+        .as_deref()
+        .is_some_and(|name| name.eq_ignore_ascii_case("Cerebro"));
+    text_names_exact_claimed_principal(
+        text,
+        principal_leaf,
+        principal.display_name.as_deref(),
+        required_duty,
+        principal_is_cerebro,
+    )
 }
 
 fn text_names_exact_claimed_principal(
     text: &str,
     principal_leaf: &str,
     display_name: Option<&str>,
+    duty: AuthorityDuty,
+    principal_is_cerebro: bool,
 ) -> bool {
     let normalized = normalized_semantic_text(text);
     [Some(principal_leaf), display_name]
         .into_iter()
         .flatten()
+        .chain(principal_is_cerebro.then_some("i"))
+        .chain(principal_is_cerebro.then_some("me"))
         .map(normalized_semantic_text)
         .map(|term| term.trim().to_owned())
         .filter(|term| !term.is_empty())
-        .any(|term| {
-            [
-                "owns",
-                "is responsible for",
-                "is accountable for",
-                "has accountability for",
-                "is assigned to",
-                "is the accountable party",
-                "remediation",
-                "verification",
-                "approval",
-                "execution",
-                "provider administration",
-                "evidence",
+        .any(|term| syntactically_binds_principal_to_duty(&normalized, &term, duty))
+}
+
+fn syntactically_binds_principal_to_duty(
+    normalized: &str,
+    principal: &str,
+    duty: AuthorityDuty,
+) -> bool {
+    let duty_phrases: &[&str] = match duty {
+        AuthorityDuty::Remediation => &[
+            "remediation",
+            "closing",
+            "close this gap",
+            "the gap",
+            "this gap",
+            "remaining gap",
+        ],
+        AuthorityDuty::Verification => &["verification", "verify", "verifying"],
+        AuthorityDuty::Approval => &["approval", "approving"],
+        AuthorityDuty::Execution => &["execution", "executing"],
+        AuthorityDuty::ProviderAdministration => {
+            &["provider administration", "administering", "administration"]
+        }
+        AuthorityDuty::Evidence => &["evidence"],
+    };
+    duty_phrases.iter().any(|duty_phrase| {
+        [
+            "owns",
+            "own",
+            "is responsible for",
+            "is accountable for",
+            "has accountability for",
+            "is assigned to",
+            "is the accountable party for",
+        ]
+        .iter()
+        .any(|predicate| normalized.contains(&format!(" {principal} {predicate} {duty_phrase} ")))
+            || [
+                format!(" {duty_phrase} owner {principal} "),
+                format!(" {duty_phrase} owner is {principal} "),
+                format!(" {duty_phrase} is assigned to {principal} "),
+                format!(" {duty_phrase} falls to {principal} "),
+                format!(" owner {principal} for {duty_phrase} "),
             ]
             .iter()
-            .any(|marker| normalized.contains(&format!(" {term} {marker} ")))
-                || ["owner", "remediation owner", "falls to"]
-                    .iter()
-                    .any(|marker| normalized.contains(&format!(" {marker} {term} ")))
-        })
+            .any(|pattern| normalized.contains(pattern))
+    })
 }
 
 fn text_names_exact_semantic_identity(text: &str, identity_ref: &str) -> bool {
@@ -10261,6 +10288,19 @@ mod tests {
         sourced_owner.claims.truncate(1);
         sourced_owner.claims[0].text =
             "Synthetic Team Beta owns remediation for connector beta according to Cerebro.".into();
+        sourced_owner.message = sourced_owner.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &sourced_owner,
+                std::slice::from_ref(&cerebro_beta_authority),
+                assessment,
+            )
+            .is_err()
+        );
+        sourced_owner.claims[0].text =
+            "Cerebro remediation records show Synthetic Team Beta owns remediation for connector beta."
+                .into();
         sourced_owner.message = sourced_owner.claims[0].text.clone();
         assert!(
             validate_grounded_draft(
