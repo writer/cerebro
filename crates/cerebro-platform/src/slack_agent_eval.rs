@@ -15,7 +15,7 @@ use cerebro_agent_runtime::{
     ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS, PresentationDecision, PresentationTurn,
     ROUTER_MAX_TOKENS, RouteDecision, RouteTurn, ToolAuthorityClass, ToolCall, ToolDescriptor,
     ToolEffectClass, ToolResult, ToolResultState, WorkingOutcome, WorkingState,
-    resolve_request_lane, run_turn,
+    resolve_request_lane, resolve_request_route, run_turn,
     session::{
         AGENT_SESSION_EVENT_V2, AgentSession, ClaimReviewTurn, Commitment, CommitmentStatus,
         DeliveryDisposition, EvidenceAtomization, MessageReview, SessionAgentModel, SessionEvent,
@@ -62,7 +62,7 @@ const SYNTHETIC_HOLDOUT_NAMESPACE: &str = "synthetic://cerebro-holdouts/";
 const CONVERSATION_PROMOTION_HOLDOUT_SHA256: &str =
     "8ea952c9384a520d40a7b3388723170514196393734fe8320cc0f4c600d5e5d7";
 const AUTONOMY_PROMOTION_HOLDOUT_SHA256: &str =
-    "4090e95681e7cf9ff3b83e1e93bf72ecda0c712f0f22560294062d089eaf0445";
+    "d77d73a980967b4d1823980444f327f54a9689ab0de7e8806847f2752451de70";
 const CODE_OWNED_DOTTED_IDENTIFIERS: &[&str] = &[
     "calibration.observation",
     "capability.describe",
@@ -350,7 +350,7 @@ enum AutonomyChallengeProfile {
     ThreePhaseSilentActive,
     FourPhaseRegressionClosure,
     FourPhasePartialClosure,
-    FourPhaseVisibleActive,
+    FourPhaseChangeActive,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -615,7 +615,7 @@ struct AutonomyLabReceipt {
     independent_review_required: bool,
     promotion_gate: &'static str,
     promotion_ready: bool,
-    suite_passed: bool,
+    execution_suite_passed: bool,
     scenarios: Vec<AutonomyScenarioRunReceipt>,
 }
 
@@ -2624,10 +2624,11 @@ async fn run_evaluation_session_turn(
             "retried request is not the latest queued operator message".into(),
         ));
     }
-    let accepted_route = accepted_route_for_request(session, &request.request_id);
-    let requested_lane = match accepted_route {
-        Some(lane) => lane,
-        None => resolve_request_lane(model, route_request_from_session(session, &request)).await?,
+    let accepted_route =
+        super::slack_agent::accepted_route_receipt_for_request(session, &request.request_id);
+    let requested_route = match accepted_route.clone() {
+        Some(route) => route,
+        None => resolve_request_route(model, route_request_from_session(session, &request)).await?,
     };
     if !durable_message_exists || accepted_route.is_none() {
         let mut sequence = session.events.last().map_or(1, |event| event.sequence + 1);
@@ -2657,7 +2658,9 @@ async fn run_evaluation_session_turn(
             occurred_at: request.assessment_at.clone(),
             event: SessionEvent::RouteAccepted {
                 request_id: request.request_id.clone(),
-                lane: requested_lane,
+                lane: requested_route.lane,
+                future_observation: requested_route.future_observation,
+                future_observation_excerpt: requested_route.future_observation_excerpt.clone(),
             },
         });
         *session = apply_session_events(session, &events)?;
@@ -2670,7 +2673,7 @@ async fn run_evaluation_session_turn(
             request_id: request.request_id,
             actor_ref: request.actor_ref,
             assessment_at: request.assessment_at,
-            requested_lane: Some(requested_lane),
+            requested_lane: Some(requested_route.lane),
             trigger: SessionTurnTrigger::Operator,
         },
     )
@@ -3074,11 +3077,7 @@ fn embedded_autonomy_holdout_scenario() -> AutonomyHoldoutScenario {
         scenario: autonomy_lab_scenario(),
         authority_groups: vec![AutonomyAuthorityGroup {
             fixture_tool_id: "source_runtime.inspect".into(),
-            accepted_tool_ids: vec![
-                "source_runtime.inspect".into(),
-                "source_runtime.overview".into(),
-                "mcp.cerebro.sources.health".into(),
-            ],
+            accepted_tool_ids: vec!["source_runtime.inspect".into()],
         }],
         phases: embedded_autonomy_phase_fixtures(),
         expected_delivery: vec![
@@ -3193,6 +3192,7 @@ fn validate_autonomy_holdout_scenarios(
             || scenario.expected_delivery.len() != scenario.phases.len()
             || scenario.expected_delivery.first() != Some(&ExpectedDelivery::Visible)
             || !autonomy_challenge_matches_scenario(scenario)
+            || !autonomy_attention_contract_realizable(scenario)
             || scenario.phases.iter().any(|phase| {
                 phase.observations.is_empty()
                     || phase.observations.iter().any(|(tool_id, fixture)| {
@@ -3212,7 +3212,7 @@ fn validate_autonomy_holdout_scenarios(
         AutonomyChallengeProfile::ThreePhaseSilentActive,
         AutonomyChallengeProfile::FourPhaseRegressionClosure,
         AutonomyChallengeProfile::FourPhasePartialClosure,
-        AutonomyChallengeProfile::FourPhaseVisibleActive,
+        AutonomyChallengeProfile::FourPhaseChangeActive,
     ]);
     if !required_profiles.is_subset(&challenge_profiles) {
         return Err("an autonomy promotion pack is missing a code-owned challenge profile".into());
@@ -3331,7 +3331,7 @@ fn autonomy_challenge_matches_scenario(scenario: &AutonomyHoldoutScenario) -> bo
             delivery
                 == [
                     ExpectedDelivery::Visible,
-                    ExpectedDelivery::Silent,
+                    ExpectedDelivery::Visible,
                     ExpectedDelivery::Visible,
                     ExpectedDelivery::Visible,
                 ]
@@ -3341,13 +3341,13 @@ fn autonomy_challenge_matches_scenario(scenario: &AutonomyHoldoutScenario) -> bo
                 && final_complete
                 && intermediate_has_state(ToolResultState::Partial)
         }
-        AutonomyChallengeProfile::FourPhaseVisibleActive => {
+        AutonomyChallengeProfile::FourPhaseChangeActive => {
             delivery
                 == [
                     ExpectedDelivery::Visible,
                     ExpectedDelivery::Visible,
                     ExpectedDelivery::Visible,
-                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Silent,
                 ]
                 && terminal == ExpectedCommitmentState::Active
                 && !has_incomplete_intermediate
@@ -3356,7 +3356,61 @@ fn autonomy_challenge_matches_scenario(scenario: &AutonomyHoldoutScenario) -> bo
     }
 }
 
-fn autonomy_suite_passed(
+fn autonomy_attention_contract_realizable(scenario: &AutonomyHoldoutScenario) -> bool {
+    fn collect_scalars(value: &Value, prefix: &str, output: &mut BTreeMap<String, Value>) {
+        match value {
+            Value::Object(entries) => entries.iter().for_each(|(key, value)| {
+                collect_scalars(value, &format!("{prefix}/{key}"), output)
+            }),
+            Value::Array(_) => {}
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+                output.insert(prefix.to_owned(), value.clone());
+            }
+        }
+    }
+
+    scenario
+        .phases
+        .iter()
+        .enumerate()
+        .all(|(phase_index, phase)| {
+            let expected = scenario.expected_delivery[phase_index];
+            let healthy = phase
+                .observations
+                .values()
+                .all(|fixture| fixture.complete && fixture.state == ToolResultState::Succeeded);
+            if phase_index == 0 {
+                return expected == ExpectedDelivery::Visible;
+            }
+            if !healthy {
+                return expected == ExpectedDelivery::Visible;
+            }
+            let final_closed = phase_index + 1 == scenario.phases.len()
+                && scenario.expected_terminal_commitment == ExpectedCommitmentState::Closed;
+            if final_closed {
+                return expected == ExpectedDelivery::Visible;
+            }
+            if expected == ExpectedDelivery::Silent {
+                return true;
+            }
+            let prior = &scenario.phases[phase_index - 1];
+            phase.observations.iter().any(|(tool_id, current)| {
+                prior.observations.get(tool_id).is_some_and(|previous| {
+                    let mut previous_scalars = BTreeMap::new();
+                    collect_scalars(&previous.data, "", &mut previous_scalars);
+                    let mut current_scalars = BTreeMap::new();
+                    collect_scalars(&current.data, "", &mut current_scalars);
+                    current_scalars.iter().any(|(pointer, value)| {
+                        previous_scalars
+                            .get(pointer)
+                            .is_some_and(|previous| previous != value)
+                    })
+                })
+            })
+        })
+}
+
+fn autonomy_execution_suite_passed(
     all_declared_scenarios_executed: bool,
     mechanics_gate_passed: bool,
     latency_gate_passed: bool,
@@ -3442,6 +3496,75 @@ fn failed_autonomy_scenario_receipt(
     }
 }
 
+fn partial_autonomy_scenario_receipt(
+    scenario: &ConversationLabScenario,
+    candidate_label: String,
+    session: &AgentSession,
+    transcript: Vec<ConversationMessage>,
+    turns: Vec<ConversationLabTurnReceipt>,
+    error: impl Into<String>,
+) -> AutonomyScenarioRunReceipt {
+    let operator_message_count = session
+        .messages
+        .iter()
+        .filter(|message| message.role == SessionMessageRole::User)
+        .count();
+    let scheduled_wake_count = turns
+        .iter()
+        .filter(|turn| turn.trigger == LabTurnTrigger::ScheduledWake)
+        .count();
+    let unsolicited_follow_up_count = turns
+        .iter()
+        .filter(|turn| {
+            turn.trigger == LabTurnTrigger::ScheduledWake && turn.response_markdown.is_some()
+        })
+        .count();
+    let latency_slo_passed = !turns.is_empty()
+        && turns
+            .iter()
+            .all(|turn| lab_turn_latency_slo_passed(turn.trigger, turn.latency_ms));
+    let attempted_turn_count = turns.len();
+    let delivered_exchange_count = turns
+        .iter()
+        .filter(|turn| turn.response_markdown.is_some())
+        .count();
+    let maximum_turn_latency_ms = turns.iter().map(|turn| turn.latency_ms).max().unwrap_or(0);
+    let total_turn_latency_ms = turns.iter().map(|turn| turn.latency_ms).sum();
+    AutonomyScenarioRunReceipt {
+        execution_completed: false,
+        execution_failure: Some(error.into()),
+        operator_message_count,
+        scheduled_wake_count,
+        unsolicited_follow_up_count,
+        synthetic_operator_turn_count: 0,
+        fresh_observation_every_wake: false,
+        candidate_authored_schedule_every_wake: false,
+        rescheduled_schedule_chain_complete: false,
+        unique_fresh_observation_receipts: false,
+        commitment_closed: false,
+        semantic_excellence_gate_passed: false,
+        scenario: ConversationLabScenarioReceipt {
+            scenario_ref: scenario.scenario_ref.clone(),
+            candidate_label,
+            mission: scenario.mission.clone(),
+            attempted_turn_count,
+            delivered_exchange_count,
+            unanswered_user_turn_count: usize::from(attempted_turn_count == 0),
+            maximum_turn_latency_ms,
+            total_turn_latency_ms,
+            transcript,
+            final_judgment: None,
+            final_judgment_error: Some(
+                "scenario execution stopped before a valid semantic judgment".into(),
+            ),
+            review_ready: false,
+            latency_slo_passed,
+            internal_judge_advisory_excellent: false,
+            turns,
+        },
+    }
+}
+
 async fn run_autonomy_lab(
     commit_sha: String,
     evaluated_at: String,
@@ -3514,7 +3637,7 @@ async fn run_autonomy_lab(
     });
     let promotion_holdout_loaded =
         autonomy_promotion_holdout_loaded(&holdout_source, declared_scenario_count);
-    let suite_passed = autonomy_suite_passed(
+    let execution_suite_passed = autonomy_execution_suite_passed(
         promotion_holdout_loaded && all_declared_scenarios_executed,
         mechanics_gate_passed,
         latency_gate_passed,
@@ -3560,14 +3683,17 @@ async fn run_autonomy_lab(
         independent_review_required: true,
         promotion_gate: "fresh_blind_curmudgeon_consensus_required",
         promotion_ready: false,
-        suite_passed,
+        execution_suite_passed,
         scenarios: scenario_runs,
     };
     println!("{}", serde_json::to_string_pretty(&receipt)?);
-    if suite_passed {
+    if execution_suite_passed {
         Ok(())
     } else {
-        Err("the exact-head off-Slack autonomy trajectories were not all excellent".into())
+        Err(
+            "the exact-head off-Slack autonomy trajectories did not all pass execution gates"
+                .into(),
+        )
     }
 }
 
@@ -3637,7 +3763,41 @@ async fn run_autonomy_scenario(
     let turn_observations = observations[observation_offset..].to_vec();
     observation_offset = observations.len();
     all_observations.extend(turn_observations.iter().cloned());
-    let initial_commitment = active_autonomy_commitment(&session)?;
+    if matches!(&outcome.0, AgentTurnOutcome::ApprovalRequired { .. }) {
+        return Err("the off-Slack autonomy lab requested effect approval".into());
+    }
+    let initial_commitment = match active_autonomy_commitment(&session) {
+        Ok(commitment) => commitment,
+        Err(error) => {
+            let (turn, markdown) = completed_lab_turn_receipt(
+                &measured,
+                1,
+                LabTurnTrigger::Operator,
+                initial_request.message,
+                started.elapsed().as_millis(),
+                EvaluationTurnEvidence {
+                    schedule: None,
+                    tool_observations: turn_observations,
+                },
+                outcome,
+            )?;
+            if let Some(markdown) = markdown {
+                transcript.push(ConversationMessage {
+                    role: ConversationRole::Assistant,
+                    content: markdown,
+                });
+            }
+            turns.push(turn);
+            return Ok(partial_autonomy_scenario_receipt(
+                &scenario,
+                candidate_label,
+                &session,
+                transcript,
+                turns,
+                error.to_string(),
+            ));
+        }
+    };
     let evaluated_commitment_ref = initial_commitment.commitment_ref.clone();
     let initial_schedule = evaluation_schedule_receipt(&session, &initial_commitment, None)?;
     let (turn, markdown) = completed_lab_turn_receipt(
@@ -3752,12 +3912,6 @@ async fn run_autonomy_scenario(
         let delivered = markdown.is_some();
         let expected_visible =
             expected_delivery.get(wake_index) == Some(&ExpectedDelivery::Visible);
-        if delivered != expected_visible {
-            return Err(format!(
-                "scheduled wake {wake_index} violated its hidden attention expectation"
-            )
-            .into());
-        }
         if let Some(markdown) = markdown {
             transcript.push(ConversationMessage {
                 role: ConversationRole::Assistant,
@@ -3765,6 +3919,16 @@ async fn run_autonomy_scenario(
             });
         }
         turns.push(turn);
+        if delivered != expected_visible {
+            return Ok(partial_autonomy_scenario_receipt(
+                &scenario,
+                candidate_label,
+                &session,
+                transcript,
+                turns,
+                format!("scheduled wake {wake_index} violated its hidden attention expectation"),
+            ));
+        }
 
         let persisted = session
             .mission
@@ -7326,7 +7490,7 @@ mod tests {
                 AutonomyChallengeProfile::FourPhasePartialClosure,
                 vec![
                     ExpectedDelivery::Visible,
-                    ExpectedDelivery::Silent,
+                    ExpectedDelivery::Visible,
                     ExpectedDelivery::Visible,
                     ExpectedDelivery::Visible,
                 ],
@@ -7335,12 +7499,12 @@ mod tests {
                 Some(ToolResultState::Partial),
             ),
             (
-                AutonomyChallengeProfile::FourPhaseVisibleActive,
+                AutonomyChallengeProfile::FourPhaseChangeActive,
                 vec![
                     ExpectedDelivery::Visible,
                     ExpectedDelivery::Visible,
                     ExpectedDelivery::Visible,
-                    ExpectedDelivery::Visible,
+                    ExpectedDelivery::Silent,
                 ],
                 ExpectedCommitmentState::Active,
                 4,
@@ -7507,11 +7671,11 @@ mod tests {
 
     #[test]
     fn autonomy_suite_requires_full_execution_mechanics_latency_and_semantic_excellence() {
-        assert!(autonomy_suite_passed(true, true, true, true));
-        assert!(!autonomy_suite_passed(false, true, true, true));
-        assert!(!autonomy_suite_passed(true, false, true, true));
-        assert!(!autonomy_suite_passed(true, true, false, true));
-        assert!(autonomy_suite_passed(true, true, true, false));
+        assert!(autonomy_execution_suite_passed(true, true, true, true));
+        assert!(!autonomy_execution_suite_passed(false, true, true, true));
+        assert!(!autonomy_execution_suite_passed(true, false, true, true));
+        assert!(!autonomy_execution_suite_passed(true, true, false, true));
+        assert!(autonomy_execution_suite_passed(true, true, true, false));
     }
 
     #[test]

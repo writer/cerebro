@@ -22,10 +22,11 @@ use cerebro_agent_context::{AgentGraph, ContextError};
 use cerebro_agent_runtime::{
     AGENT_DELIVERY_RECEIPT_V1, AgentDeliveryReceipt, AgentModel, AgentRuntimeError, AgentTools,
     AgentTurnOutcome, AgentTurnRequest, CRITIC_MAX_TOKENS, CritiqueDecision, CritiqueTurn,
-    DECISION_MAX_TOKENS, EvidenceRecord, ExecutionLane, FinalState, HARD_MAX_GENERATION_TOKENS,
-    ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS, PresentationDecision, PresentationTurn,
-    ROUTER_MAX_TOKENS, RouteDecision, RouteTurn, ToolAuthorityClass, ToolDescriptor,
-    ToolEffectClass, ToolResult, ToolResultState, resolve_request_lane, run_turn,
+    DECISION_MAX_TOKENS, EvidenceRecord, ExecutionLane, FinalState, FutureObservationDisposition,
+    HARD_MAX_GENERATION_TOKENS, ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS,
+    PresentationDecision, PresentationTurn, ROUTER_MAX_TOKENS, ResolvedRequestRoute, RouteDecision,
+    RouteTurn, ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
+    resolve_request_lane, resolve_request_route, run_turn,
     session::{
         AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
         ALL_STABLE_EXPLANATION_IDS, AgentSession, ClaimReviewTurn, DeliveryDisposition,
@@ -466,7 +467,7 @@ impl SlackAgentService {
                 "retried request is not the latest queued operator message".into(),
             ));
         }
-        let accepted_route = accepted_route_for_request(&session, &request.request_id);
+        let accepted_route = accepted_route_receipt_for_request(&session, &request.request_id);
         let lease_owner = format!(
             "rust-slack-agent:{}:{}",
             request.request_id,
@@ -485,13 +486,13 @@ impl SlackAgentService {
                 "another turn currently owns this Slack session".into(),
             ));
         }
-        let requested_lane = match accepted_route {
-            Some(lane) => lane,
+        let requested_route = match accepted_route.clone() {
+            Some(route) => route,
             None => {
                 let route_request = route_request_from_session(&session, &request);
                 let route = tokio::time::timeout(
                     OPERATOR_ROUTE_TIMEOUT,
-                    resolve_request_lane(self.model.as_ref(), route_request),
+                    resolve_request_route(self.model.as_ref(), route_request),
                 )
                 .await
                 .map_err(|_| {
@@ -501,7 +502,7 @@ impl SlackAgentService {
                 })
                 .and_then(|result| result);
                 match route {
-                    Ok(lane) => lane,
+                    Ok(route) => route,
                     Err(error) => {
                         return Err(release_turn_after_failure(
                             store,
@@ -542,7 +543,9 @@ impl SlackAgentService {
                 occurred_at: request.assessment_at.clone(),
                 event: SessionEvent::RouteAccepted {
                     request_id: request.request_id.clone(),
-                    lane: requested_lane,
+                    lane: requested_route.lane,
+                    future_observation: requested_route.future_observation,
+                    future_observation_excerpt: requested_route.future_observation_excerpt.clone(),
                 },
             });
             if let Err(error) = store
@@ -599,7 +602,7 @@ impl SlackAgentService {
                     request_id: request.request_id.clone(),
                     actor_ref: request.actor_ref.clone(),
                     assessment_at: request.assessment_at.clone(),
-                    requested_lane: Some(requested_lane),
+                    requested_lane: Some(requested_route.lane),
                     trigger: cerebro_agent_runtime::session::SessionTurnTrigger::Operator,
                 },
             ),
@@ -1208,7 +1211,31 @@ pub(crate) fn accepted_route_for_request(
             SessionEvent::RouteAccepted {
                 request_id: accepted_request_id,
                 lane,
+                ..
             } if accepted_request_id == request_id => Some(*lane),
+            _ => None,
+        })
+}
+
+pub(crate) fn accepted_route_receipt_for_request(
+    session: &AgentSession,
+    request_id: &str,
+) -> Option<ResolvedRequestRoute> {
+    session
+        .events
+        .iter()
+        .rev()
+        .find_map(|event| match &event.event {
+            SessionEvent::RouteAccepted {
+                request_id: accepted_request_id,
+                lane,
+                future_observation,
+                future_observation_excerpt,
+            } if accepted_request_id == request_id => Some(ResolvedRequestRoute {
+                lane: *lane,
+                future_observation: *future_observation,
+                future_observation_excerpt: future_observation_excerpt.clone(),
+            }),
             _ => None,
         })
 }
@@ -1390,7 +1417,9 @@ fn delivered_mission_revision_lane(session: &AgentSession) -> Option<ExecutionLa
     let mut revision_lane = None;
     for event in &session.events {
         match &event.event {
-            SessionEvent::RouteAccepted { request_id, lane } => {
+            SessionEvent::RouteAccepted {
+                request_id, lane, ..
+            } => {
                 routes.insert(request_id.as_str(), *lane);
             }
             SessionEvent::DraftProduced { request_id, draft }
@@ -2086,9 +2115,11 @@ fn route_decision_schema() -> Value {
             "lane": {"type": "string", "enum": ["converse", "continue", "lookup", "investigate", "act"]},
             "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
             "reason": {"type": "string", "minLength": 1},
-            "requires_current_evidence": {"type": "boolean"}
+            "requires_current_evidence": {"type": "boolean"},
+            "future_observation": {"type": "string", "enum": ["delegated", "refused", "none"]},
+            "future_observation_excerpt": {"type": ["string", "null"]}
         },
-        "required": ["lane", "confidence", "reason", "requires_current_evidence"]
+        "required": ["lane", "confidence", "reason", "requires_current_evidence", "future_observation", "future_observation_excerpt"]
     })
 }
 
@@ -2323,9 +2354,10 @@ fn session_decision_schema() -> Value {
         "additionalProperties": false,
         "properties": {
             "acceptance_all": {"type": "array", "minItems": 1, "maxItems": 16, "items": observation_condition.clone()},
-            "alert_any": {"type": "array", "maxItems": 16, "items": alert_condition}
+            "alert_any": {"type": "array", "maxItems": 16, "items": alert_condition},
+            "notify_on_change": {"type": "array", "maxItems": 16, "items": observation_condition}
         },
-        "required": ["acceptance_all", "alert_any"]
+        "required": ["acceptance_all", "alert_any", "notify_on_change"]
     });
     let planned_follow_through = json!({
         "type": "object",
@@ -2801,7 +2833,7 @@ Return one flat JSON object with decision, plan, calls, and draft every time. Se
 
 - For a conversational answer that needs no current evidence, finish directly.
 - When the operator asks generally what security questions Cerebro is good at, answer with reasoning strengths rather than an operational inventory: separating fact from inference, connecting evidence to risk and decisions, finding the exact missing proof, and defining a bounded owner, trigger, and closure condition. Keep it natural and concise. Do not claim named tools, provider access, live data, scheduling, or execution without a current capability observation. This is a real answer, not a coverage-gap fallback.
-- Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. Select at least one available read tool, and give every required claim at least one source_candidate drawn from selected_tools. An Answered operating plan always requires successful, complete, fresh same-turn evidence for every required claim; when that proof is unavailable, use Partial or Blocked. When the operator explicitly delegates a future re-observation, follow_through must define the complete executor contract before any tool runs: a stable commitment_ref, exact required read tools, acceptance criteria, next action, typed attention policy, bounded check delay, and verification. acceptance_all contains the desired completion values. alert_any contains only explicit boolean authority signals for a gap, regression, conflict, staleness, or mismatch; never put an ordinary numeric or string progress value in alert_any. Otherwise set follow_through to null. Rust materializes this plan into the durable scheduled commitment; final prose does not author or rewrite scheduling authority. Select only tools in available_tools.
+- Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. Select at least one available read tool, and give every required claim at least one source_candidate drawn from selected_tools. An Answered operating plan always requires successful, complete, fresh same-turn evidence for every required claim; when that proof is unavailable, use Partial or Blocked. When the accepted semantic route records delegated future observation, follow_through must define the complete executor contract before any tool runs: a stable commitment_ref, exact required read tools, acceptance criteria, next action, typed attention policy, bounded check delay, and verification. acceptance_all contains the desired completion values. alert_any contains only explicit boolean authority signals for a gap, regression, conflict, staleness, or mismatch. notify_on_change contains exact scalar or string values whose transition materially changes the operator's next safe action and which the operator asked to hear about; it is not routine progress reporting. Otherwise set follow_through to null. Rust materializes this plan into the durable scheduled commitment; final prose does not author or rewrite scheduling authority. Select only tools in available_tools.
 - “Set up,” “schedule,” or “arrange” a re-inspection, recheck, or follow-up check is explicit future delegation even when the same sentence also says “keep going” or “take it as far as you can.” Perform the useful baseline read now and persist the bounded follow_through; an immediate read alone does not answer that request.
 - When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, select capability.search first with the user's intent. Search defaults to observe/read capabilities; request another authority or effect class only when the operator's request requires it. Use capability.describe only when the matching descriptor does not make its input contract clear. For a read or proposal MCP match, revise the plan to the returned execution_tool_id and call it with the exact returned selection_ref plus provider input matching the selected descriptor. A host-admitted external effect remains visible as its exact MCP tool id and may run only in an Act plan through the ordinary exact-input approval boundary. Never substitute graph.search for a missing or undiscovered provider capability.
 - capability.search, capability.describe, and capability.overview describe the bound catalog and its authority policy. Catalog metadata never establishes a fact about Slack, GitHub, a deployment, a web page, or any other external system. Invoke the discovered provider tool before making a current claim. If no matching tool is bound, state that exact capability gap instead of querying an unrelated source.
@@ -2858,7 +2890,7 @@ A polling observation proves state at observed_at, not the unobserved moment whe
 
 Keep operational updates natural and subject-exact. If the observation is about a feed's receipts for a finding, keep the feed as the subject; do not say the finding itself has receipts. A newly reported stale receipt does not prove that an earlier fresh receipt regressed unless the observations identify the same receipt and show that change. Say a receipt streak reset only when the current observation explicitly reports a true reset signal; when a stale receipt merely fails to advance an unchanged count, say the count remains at its current value. Describe the exact current count and exclusion instead. Do not expose raw JSON field syntax when plain language states the same fact. Reuse one natural sentence already in the message as coverage_notice instead of adding a labeled or abstract coverage paragraph. When acceptance is met, state the accepted result; do not narrate internal lifecycle bookkeeping such as “closing this monitor.”
 
-Update mission with the real objective, desired outcome, scope, acceptance criteria, and open loops. assessment_at is the authoritative current turn time. On an operator turn, do not invent scheduling fields in the final mission: Rust materializes the active commitment from plan.follow_through and removes unplanned new Cerebro commitments. After baseline reads, if any required tool or exact JSON pointer differs from the initial plan, return one materially revised establish_plan before finishing. acceptance_all contains every condition required for closure. alert_any contains only explicit boolean regression, conflict, stale, gap, or mismatch signals; ordinary receipt counts and other progress values never belong there. Classify each material false boolean signal from required-tool baseline data as a desired true acceptance value or a true alert value. The host evaluates these conditions and owns visible versus silent delivery; prose cannot override them. A new or materially changed plan cannot be accepted for delivery until every required tool has a successful, complete, fresh same-turn baseline. A wake cannot finish until it invokes every required tool in that wake. On a scheduled wake, copy required_tool_ids, attention_policy, acceptance_criteria, and verification byte-for-byte from the durable commitment even when closing it; closure changes status, wake_at, and next_action, not the historical executor contract. If a required wake observation is failed, partial, incomplete, or stale, send a visible partial or blocked update with a coverage_notice, preserve that same executor contract, and set a later wake_at; do not silently reschedule or invent a fresh baseline by changing tools. When acceptance is met, say what is true at this check. Do not say "just" or infer a downstream finding's status unless the current observations establish that exact transition or status. That accepted commitment is executor-bound follow-through; the runtime rejects unbound promises. A scheduled wake never authorizes an external effect. Ask exactly one question only when one decision or identifier blocks all useful progress. Memory updates are optional: use an empty array unless durable continuity materially helps. Every memory evidence_atom_ref must exactly match an atom in the current observations; memory is continuity, never proof of current state.
+Update mission with the real objective, desired outcome, scope, acceptance criteria, and open loops. assessment_at is the authoritative current turn time. On an operator turn, do not invent scheduling fields in the final mission: Rust materializes the active commitment from plan.follow_through and removes unplanned new Cerebro commitments. After baseline reads, if any required tool or exact JSON pointer differs from the initial plan, return one materially revised establish_plan before finishing. acceptance_all contains every condition required for closure. alert_any contains only explicit boolean regression, conflict, stale, gap, or mismatch signals. notify_on_change contains only operator-requested, decision-relevant scalar or string transitions; routine counts and incidental wording changes stay quiet. Classify each material false boolean signal from required-tool baseline data as a desired true acceptance value or a true alert value. The host evaluates these conditions and owns visible versus silent delivery; prose cannot override them. A new or materially changed plan cannot be accepted for delivery until every required tool has a successful, complete, fresh same-turn baseline. A wake cannot finish until it invokes every required tool in that wake. On a scheduled wake, copy required_tool_ids, attention_policy, acceptance_criteria, and verification byte-for-byte from the durable commitment even when closing it; closure changes status, wake_at, and next_action, not the historical executor contract. If a required wake observation is failed, partial, incomplete, or stale, send a visible partial or blocked update with a coverage_notice, preserve that same executor contract, and set a later wake_at; do not silently reschedule or invent a fresh baseline by changing tools. When acceptance is met, say what is true at this check. Do not say "just" or infer a downstream finding's status unless the current observations establish that exact transition or status. That accepted commitment is executor-bound follow-through; the runtime rejects unbound promises. A scheduled wake never authorizes an external effect. Ask exactly one question only when one decision or identifier blocks all useful progress. Memory updates are optional: use an empty array unless durable continuity materially helps. Every memory evidence_atom_ref must exactly match an atom in the current observations; memory is continuity, never proof of current state.
 
 Describe scheduled follow-through with the same precision as its record. Promise to check again at the one recorded wake and update the operator after that observation. Never say recurring, every N minutes, continuously, immediately, the moment, as soon as, or equivalent unless a separate exact runtime record proves that stronger guarantee. A later reschedule is a new bounded commitment state, not evidence that a recurring monitor already exists.
 
@@ -2887,7 +2919,7 @@ delivery=silent means this scheduled-wake draft is a durable internal audit summ
 
 The initiating operator turn must be visible even when the operator asks not to receive progress pings. A concise acknowledgement with the current bounded state and persisted next check answers that initiating request; it is not a later progress ping. Apply the quiet-progress preference only to scheduled nonterminal wakes after that acknowledgement.
 
-Set answers_newest_request only when the response addresses the newest request rather than merely narrating process. Set conversational only when a person can read it naturally in Slack. Conversational synthesis is valid only as one source-message-bound explanation, transformation, or piece of advice. Reject it unless the body materially answers the newest operator message and remains within the cited thread context. Prefer a direct answer over a disclaimer. Reject any synthesis that introduces current or recent state, operational capability, ownership, work performed, execution, or verification as known; a requested draft or rewrite may transform those words only when the operator supplied them. Set owns_follow_through when Cerebro completed all safe bounded work available in this turn and asks the operator only for an actual decision or missing identifier. Future Cerebro work counts only when backed by a real executor-bound commitment; do not require a future commitment when the current bounded check is honestly complete. Set right_sized only when the answer is neither a terse non-answer nor an unnecessary report. Set evidence_boundary_correct only when facts, hypotheses, recommendations, actions, verification, and unknowns are distinguished honestly.
+Set answers_newest_request only when the response addresses the newest request rather than merely narrating process. Set conversational only when a person can read it naturally in Slack. Conversational synthesis is valid only as one source-message-bound explanation, transformation, or piece of advice. Reject it unless the body materially answers the newest operator message and remains within the cited thread context. Prefer a direct answer over a disclaimer. Reject any synthesis that introduces current or recent state, operational capability, ownership, work performed, execution, or verification as known; a requested draft or rewrite may transform those words only when the operator supplied them. Set owns_follow_through when Cerebro completed all safe bounded work available in this turn and asks the operator only for an actual decision or missing identifier. Future Cerebro work counts only when backed by a real executor-bound commitment, and a new scheduled commitment is valid only when the newest operator request semantically delegates a later re-observation; reject an invented timer or monitor even when its tools are read-only. Evaluate that delegation from the request's meaning, not a keyword or phrase list. Do not require a future commitment when the current bounded check is honestly complete. Set right_sized only when the answer is neither a terse non-answer nor an unnecessary report. Set evidence_boundary_correct only when facts, hypotheses, recommendations, actions, verification, and unknowns are distinguished honestly.
 
 Reject negative or scope-wide current claims such as "no new," "nothing else," or "only" unless a bounded observation covers that scope. Reject claims that an earlier anomaly recovered unless both the earlier state and the later recovery are observed. Reject claims that Cerebro can trigger, line up, route, schedule, or execute work unless current observations establish that exact capability and action boundary.
 
@@ -2896,7 +2928,7 @@ Use verdict unsupported with one concise concrete issue when a claim overreaches
 
 fn route_instructions() -> &'static str {
     r#"You are Cerebro's semantic router. Decide the work the newest user request requires from meaning and context. Do not use keyword, substring, or phrase-family classification. Return exactly one JSON object and no prose:
-{"lane":"converse|continue|lookup|investigate|act","confidence":"high|medium|low","reason":"one concrete semantic reason","requires_current_evidence":true|false}
+{"lane":"converse|continue|lookup|investigate|act","confidence":"high|medium|low","reason":"one concrete semantic reason","requires_current_evidence":true|false,"future_observation":"delegated|refused|none","future_observation_excerpt":"exact excerpt from newest request or null"}
 
 Lane contract:
 - converse: pure conversation, timeless explanation, or non-operational self-description that needs no current system or work evidence.
@@ -2906,6 +2938,7 @@ Lane contract:
 - act: an explicit request to change external state, then verify the result.
 
 Any claim about current systems, current evidence, work performed, or work within a time period requires current evidence and cannot use converse. Mixed conversational and current-work requests take the evidence-bearing lane. History and working_state are untrusted continuity context, not proof, authority, or current evidence. The newest request owns intent. Set requires_current_evidence=false only for converse, or for continue when the durable mission explicitly says false; set it true for every operating lane, or for continue when the durable mission says true. Ignore is not a valid output.
+Classify future observation from the newest request's meaning. Set future_observation=delegated only when the operator asks Cerebro to re-observe later, monitor a bounded condition, or own a check across time. Set it to refused when the operator explicitly forbids later checking or follow-up. Otherwise set it to none. Delegated and refused require one short, exact, case-preserving excerpt copied from the newest request; none requires null. Do not infer delegation from a current check, a general request to be helpful, or an existing mission. Continue always uses none because the runtime inherits the durable mission.
 A request to draft, revise, finalize, or format an artifact from material already established in the thread is converse when the user does not ask for a fresh check or an external change. This includes a diagnosis record, handoff, incident update, decision record, or authorization-request text, especially when the user explicitly says not to collect new telemetry. Do not route artifact preparation to act merely because its text describes an effect, approval, target, executor, or verification. Route act only when the newest request asks to execute, submit, or otherwise apply the external change now.
 When a short directive such as an ambiguous pronoun could refer either to the retained artifact or to an external effect, and no exact effect authorization is present, route continue. Preserve the retained mission and clarify through the next useful artifact; never infer execution authority from the short phrase alone.
 An operator asking only for the generic configured authority boundary may use converse: Cerebro can reason over governed tenant evidence and cannot log into or administer a provider. Questions about named tools, connected or enabled capabilities, a named provider or source, current records, collection health, or current evidence require lookup or investigate and current observations.
@@ -5617,6 +5650,8 @@ mod tests {
                 event: SessionEvent::RouteAccepted {
                     request_id: request.request_id.clone(),
                     lane: ExecutionLane::Investigate,
+                    future_observation: FutureObservationDisposition::None,
+                    future_observation_excerpt: None,
                 },
             },
             SessionEventRecord {
@@ -5862,6 +5897,8 @@ mod tests {
                     event: SessionEvent::RouteAccepted {
                         request_id: side_request_id.into(),
                         lane: ExecutionLane::Converse,
+                        future_observation: FutureObservationDisposition::None,
+                        future_observation_excerpt: None,
                     },
                 },
                 SessionEventRecord {
@@ -5961,6 +5998,8 @@ mod tests {
                 SessionEvent::RouteAccepted {
                     request_id: "request:old-act".into(),
                     lane: ExecutionLane::Act,
+                    future_observation: FutureObservationDisposition::None,
+                    future_observation_excerpt: None,
                 },
             ),
             record(
@@ -5991,6 +6030,8 @@ mod tests {
                 SessionEvent::RouteAccepted {
                     request_id: "request:new-conversation".into(),
                     lane: ExecutionLane::Converse,
+                    future_observation: FutureObservationDisposition::None,
+                    future_observation_excerpt: None,
                 },
             ),
             record(
@@ -6400,7 +6441,7 @@ mod tests {
     #[test]
     fn parses_route_and_critic_contracts_and_rejects_malformed_routes() {
         let route = parse_route_content(
-            r#"{"lane":"investigate","confidence":"high","reason":"Current work claims require evidence.","requires_current_evidence":true}"#,
+            r#"{"lane":"investigate","confidence":"high","reason":"Current work claims require evidence.","requires_current_evidence":true,"future_observation":"none","future_observation_excerpt":null}"#,
         )
         .unwrap();
         assert_eq!(
@@ -6464,7 +6505,9 @@ mod tests {
             "lane": "investigate",
             "confidence": "high",
             "reason": "Current work claims require evidence.",
-            "requires_current_evidence": true
+            "requires_current_evidence": true,
+            "future_observation": "none",
+            "future_observation_excerpt": null
         });
         let tool_use = aws_sdk_bedrockruntime::types::ToolUseBlock::builder()
             .tool_use_id("tool-use-1")
@@ -6499,7 +6542,9 @@ mod tests {
             "lane": "lookup",
             "confidence": "high",
             "reason": "A bounded current fact needs one read.",
-            "requires_current_evidence": true
+            "requires_current_evidence": true,
+            "future_observation": "none",
+            "future_observation_excerpt": null
         });
         let disagreeing = aws_sdk_bedrockruntime::types::ToolUseBlock::builder()
             .tool_use_id("tool-use-2")

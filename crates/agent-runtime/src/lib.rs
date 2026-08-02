@@ -67,6 +67,16 @@ pub enum RouteConfidence {
     Low,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FutureObservationDisposition {
+    Delegated,
+    Refused,
+    #[default]
+    None,
+    Inherited,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RouteDecision {
@@ -74,6 +84,15 @@ pub struct RouteDecision {
     pub confidence: RouteConfidence,
     pub reason: String,
     pub requires_current_evidence: bool,
+    pub future_observation: FutureObservationDisposition,
+    pub future_observation_excerpt: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedRequestRoute {
+    pub lane: ExecutionLane,
+    pub future_observation: FutureObservationDisposition,
+    pub future_observation_excerpt: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1140,10 +1159,10 @@ async fn critique_with_repair(
     Err(AgentRuntimeError::CriticRepairLimit)
 }
 
-pub async fn route_request(
+async fn route_request_decision(
     model: &dyn AgentModel,
     request: AgentTurnRequest,
-) -> Result<ExecutionLane, AgentRuntimeError> {
+) -> Result<RouteDecision, AgentRuntimeError> {
     let mut repair_feedback = Vec::new();
     for _ in 0..MAX_ROUTER_ATTEMPTS {
         let decision = match model
@@ -1161,7 +1180,7 @@ pub async fn route_request(
             Err(error) => return Err(error),
         };
         match validate_route(&request, &decision) {
-            Ok(()) => return Ok(decision.lane),
+            Ok(()) => return Ok(decision),
             Err(error) => repair_feedback = vec![error.to_string()],
         }
     }
@@ -1170,14 +1189,25 @@ pub async fn route_request(
     ))
 }
 
-pub async fn resolve_request_lane(
+pub async fn route_request(
     model: &dyn AgentModel,
     request: AgentTurnRequest,
 ) -> Result<ExecutionLane, AgentRuntimeError> {
+    Ok(route_request_decision(model, request).await?.lane)
+}
+
+pub async fn resolve_request_route(
+    model: &dyn AgentModel,
+    request: AgentTurnRequest,
+) -> Result<ResolvedRequestRoute, AgentRuntimeError> {
     validate_agent_turn_request(&request)?;
-    let routed_lane = route_request(model, request.clone()).await?;
-    if routed_lane != ExecutionLane::Continue {
-        return Ok(routed_lane);
+    let routed = route_request_decision(model, request.clone()).await?;
+    if routed.lane != ExecutionLane::Continue {
+        return Ok(ResolvedRequestRoute {
+            lane: routed.lane,
+            future_observation: routed.future_observation,
+            future_observation_excerpt: routed.future_observation_excerpt,
+        });
     }
     let state = request.working_state.as_ref().ok_or_else(|| {
         AgentRuntimeError::InvalidRequest("continuation requires working state".into())
@@ -1187,24 +1217,37 @@ pub async fn resolve_request_lane(
             "continuation requires a durable mission".into(),
         ));
     }
-    if let Some(active_lane) = state.active_lane {
+    let lane = if let Some(active_lane) = state.active_lane {
         if matches!(active_lane, ExecutionLane::Ignore | ExecutionLane::Continue) {
             return Err(AgentRuntimeError::InvalidRequest(
                 "durable mission contains an invalid active lane".into(),
             ));
         }
-        return Ok(active_lane);
-    }
-    let current_request = state.current_request.clone();
-    let mut resumed = request;
-    resumed.message = current_request;
-    resumed.working_state = None;
-    Ok(match route_request(model, resumed).await? {
-        ExecutionLane::Ignore | ExecutionLane::Converse | ExecutionLane::Continue => {
-            ExecutionLane::Investigate
+        active_lane
+    } else {
+        let current_request = state.current_request.clone();
+        let mut resumed = request;
+        resumed.message = current_request;
+        resumed.working_state = None;
+        match route_request_decision(model, resumed).await?.lane {
+            ExecutionLane::Ignore | ExecutionLane::Converse | ExecutionLane::Continue => {
+                ExecutionLane::Investigate
+            }
+            lane => lane,
         }
-        lane => lane,
+    };
+    Ok(ResolvedRequestRoute {
+        lane,
+        future_observation: FutureObservationDisposition::Inherited,
+        future_observation_excerpt: None,
     })
+}
+
+pub async fn resolve_request_lane(
+    model: &dyn AgentModel,
+    request: AgentTurnRequest,
+) -> Result<ExecutionLane, AgentRuntimeError> {
+    Ok(resolve_request_route(model, request).await?.lane)
 }
 
 fn validate_route(
@@ -1219,6 +1262,41 @@ fn validate_route(
     if decision.confidence == RouteConfidence::Low {
         return Err(AgentRuntimeError::InvalidRoute(
             "low-confidence routing cannot authorize a lane".into(),
+        ));
+    }
+    match (
+        decision.future_observation,
+        decision.future_observation_excerpt.as_deref(),
+    ) {
+        (
+            FutureObservationDisposition::Delegated | FutureObservationDisposition::Refused,
+            Some(excerpt),
+        ) if bounded_text(excerpt) && request.message.contains(excerpt) => {}
+        (FutureObservationDisposition::None, None) => {}
+        (FutureObservationDisposition::Inherited, _) => {
+            return Err(AgentRuntimeError::InvalidRoute(
+                "inherited future-observation intent is reserved for the runtime".into(),
+            ));
+        }
+        _ => {
+            return Err(AgentRuntimeError::InvalidRoute(
+                "future-observation intent requires an exact bounded excerpt from the newest request, or null when no delegation was made".into(),
+            ));
+        }
+    }
+    if decision.lane == ExecutionLane::Continue
+        && decision.future_observation != FutureObservationDisposition::None
+    {
+        return Err(AgentRuntimeError::InvalidRoute(
+            "continuation inherits its durable mission and cannot create a new future-observation delegation"
+                .into(),
+        ));
+    }
+    if decision.future_observation == FutureObservationDisposition::Delegated
+        && (!decision.requires_current_evidence || decision.lane == ExecutionLane::Converse)
+    {
+        return Err(AgentRuntimeError::InvalidRoute(
+            "delegated future observation requires a current-evidence operating lane".into(),
         ));
     }
     if request_explicitly_requires_investigation(&request.message)
@@ -3373,6 +3451,8 @@ mod grounding_tests {
                 confidence: RouteConfidence::High,
                 reason: "This is only explanatory.".into(),
                 requires_current_evidence: false,
+                future_observation: FutureObservationDisposition::None,
+                future_observation_excerpt: None,
             };
             assert!(validate_route(&route_request(message), &decision).is_err());
         }
@@ -3491,6 +3571,8 @@ mod grounding_tests {
             confidence: RouteConfidence::High,
             reason: "One current source record should answer this.".into(),
             requires_current_evidence: true,
+            future_observation: FutureObservationDisposition::None,
+            future_observation_excerpt: None,
         };
         assert!(validate_route(&synthesis, &lookup).is_err());
 
@@ -3509,6 +3591,8 @@ mod grounding_tests {
             confidence: RouteConfidence::High,
             reason: "Resume the exact durable investigation.".into(),
             requires_current_evidence: true,
+            future_observation: FutureObservationDisposition::None,
+            future_observation_excerpt: None,
         };
         assert!(validate_route(&continuation, &continue_route).is_ok());
 
@@ -3517,6 +3601,8 @@ mod grounding_tests {
             confidence: RouteConfidence::High,
             reason: "Ignore transport metadata.".into(),
             requires_current_evidence: false,
+            future_observation: FutureObservationDisposition::None,
+            future_observation_excerpt: None,
         };
         assert!(matches!(
             validate_route(&synthesis, &ignored),

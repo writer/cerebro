@@ -14,8 +14,8 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
     AgentRuntimeError, ApprovalRequest, EffectAuthorization, EvidenceRecord, ExecutionLane,
-    FinalState, ToolAuthorityClass, ToolCall, ToolDescriptor, ToolEffectClass, ToolObservation,
-    ToolResult, ToolResultState,
+    FinalState, FutureObservationDisposition, ToolAuthorityClass, ToolCall, ToolDescriptor,
+    ToolEffectClass, ToolObservation, ToolResult, ToolResultState,
 };
 
 pub const AGENT_SESSION_V2: &str = "agent-session/v2";
@@ -114,6 +114,8 @@ pub struct Commitment {
 pub struct CommitmentAttentionPolicy {
     pub acceptance_all: Vec<ObservationCondition>,
     pub alert_any: Vec<ObservationCondition>,
+    #[serde(default)]
+    pub notify_on_change: Vec<ObservationCondition>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -628,6 +630,10 @@ pub enum SessionEvent {
     RouteAccepted {
         request_id: String,
         lane: ExecutionLane,
+        #[serde(default)]
+        future_observation: FutureObservationDisposition,
+        #[serde(default)]
+        future_observation_excerpt: Option<String>,
     },
     WakeTriggered {
         request_id: String,
@@ -1418,9 +1424,37 @@ pub fn apply_session_events(
                 }
                 next.messages.push(message.clone());
             }
-            SessionEvent::RouteAccepted { request_id, lane } => {
+            SessionEvent::RouteAccepted {
+                request_id,
+                lane,
+                future_observation,
+                future_observation_excerpt,
+            } => {
+                let source_message = next.messages.iter().rev().find(|message| {
+                    message.message_ref == format!("operator:{request_id}")
+                        && message.role == SessionMessageRole::User
+                });
+                let future_observation_valid =
+                    match (future_observation, future_observation_excerpt.as_deref()) {
+                        (
+                            FutureObservationDisposition::Delegated
+                            | FutureObservationDisposition::Refused,
+                            Some(excerpt),
+                        ) => {
+                            bounded(excerpt, MAX_TEXT_BYTES)
+                                && source_message
+                                    .is_some_and(|message| message.text.contains(excerpt))
+                        }
+                        (
+                            FutureObservationDisposition::None
+                            | FutureObservationDisposition::Inherited,
+                            None,
+                        ) => true,
+                        _ => false,
+                    };
                 if !bounded(request_id, MAX_TEXT_BYTES)
                     || matches!(lane, ExecutionLane::Ignore | ExecutionLane::Continue)
+                    || !future_observation_valid
                     || next.events.iter().any(|event| {
                         matches!(
                             &event.event,
@@ -1748,7 +1782,8 @@ pub async fn run_session_turn_recorded(
                     continue;
                 }
                 if matches!(trigger, SessionTurnTrigger::Operator)
-                    && let Err(error) = validate_explicit_follow_through(&session, &proposed)
+                    && let Err(error) =
+                        validate_explicit_follow_through(&session, &input, &proposed)
                 {
                     record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
                     continue;
@@ -2752,11 +2787,9 @@ fn validate_turn_input(
                 .iter()
                 .rev()
                 .find_map(|event| match &event.event {
-                    SessionEvent::RouteAccepted { request_id, lane }
-                        if request_id == &input.request_id =>
-                    {
-                        Some(*lane)
-                    }
+                    SessionEvent::RouteAccepted {
+                        request_id, lane, ..
+                    } if request_id == &input.request_id => Some(*lane),
                     _ => None,
                 });
             let Some(accepted_lane) = accepted_lane else {
@@ -2979,6 +3012,13 @@ fn validate_wake_completion(
                 .iter()
                 .any(|condition| observation_condition_matches(condition, observations))
         });
+    let notify = !accepted
+        && !alert
+        && current.attention_policy.as_ref().is_some_and(|policy| {
+            policy.notify_on_change.iter().any(|condition| {
+                observation_condition_transitioned(condition, observations, checkpoint.as_ref())
+            })
+        });
     let closed = matches!(
         next.status,
         CommitmentStatus::Completed | CommitmentStatus::Cancelled
@@ -3003,7 +3043,7 @@ fn validate_wake_completion(
         return Ok(());
     }
     if unhealthy_required_tools.is_empty() {
-        let required_delivery = if accepted || alert {
+        let required_delivery = if accepted || alert || notify {
             DeliveryDisposition::Visible
         } else {
             DeliveryDisposition::Silent
@@ -3051,6 +3091,29 @@ fn observation_condition_matches(
     })
 }
 
+fn observation_condition_transitioned(
+    condition: &ObservationCondition,
+    observations: &[ToolObservation],
+    checkpoint: Option<&CommitmentCheckpoint>,
+) -> bool {
+    observations.iter().any(|observation| {
+        if observation.call.tool_id != condition.tool_id
+            || observation.result.state != ToolResultState::Succeeded
+            || observation.result.data.pointer(&condition.data_pointer) != Some(&condition.equals)
+        {
+            return false;
+        }
+        let input_digest = observation.call.input_digest();
+        checkpoint.is_some_and(|checkpoint| {
+            checkpoint.observations.iter().rev().any(|prior| {
+                prior.tool_id == condition.tool_id
+                    && prior.input_digest == input_digest
+                    && prior.data.pointer(&condition.data_pointer) != Some(&condition.equals)
+            })
+        })
+    })
+}
+
 fn build_wake_assessment(
     session: &AgentSession,
     trigger: &SessionTurnTrigger,
@@ -3094,18 +3157,17 @@ fn build_wake_assessment(
         .attention_policy
         .as_ref()
         .map(|policy| {
-            policy
-                .alert_any
-                .iter()
-                .filter(|condition| {
-                    observations.iter().any(|observation| {
-                        observation.call.tool_id == condition.tool_id
-                            && observation.result.data.pointer(&condition.data_pointer)
-                                == Some(&condition.equals)
-                    })
+            let alerts = policy.alert_any.iter().filter(|condition| {
+                observations.iter().any(|observation| {
+                    observation.call.tool_id == condition.tool_id
+                        && observation.result.data.pointer(&condition.data_pointer)
+                            == Some(&condition.equals)
                 })
-                .cloned()
-                .collect()
+            });
+            let notifications = policy.notify_on_change.iter().filter(|condition| {
+                observation_condition_transitioned(condition, observations, checkpoint)
+            });
+            alerts.chain(notifications).cloned().collect()
         })
         .unwrap_or_default();
 
@@ -3271,10 +3333,23 @@ fn validate_commitment_baselines(
                     "the new commitment has alert_any conditions already true at baseline: {matching}. Remove those baseline-matching alerts. Put a desired future success value in acceptance_all; keep alert_any only for a regression, conflict, stale, or mismatch value that is not true now."
                 )));
             }
+            let matching_baseline_notifications = policy
+                .notify_on_change
+                .iter()
+                .filter(|condition| observation_condition_matches(condition, observations))
+                .collect::<Vec<_>>();
+            if !matching_baseline_notifications.is_empty() {
+                let matching = serde_json::to_string(&matching_baseline_notifications)
+                    .unwrap_or_else(|_| "the matching notification conditions".into());
+                return Err(AgentRuntimeError::InvalidFinal(format!(
+                    "the new commitment has notify_on_change conditions already true at baseline: {matching}. Keep only future operator-requested decision values so a later typed transition can be proven."
+                )));
+            }
             let covered = policy
                 .acceptance_all
                 .iter()
                 .chain(&policy.alert_any)
+                .chain(&policy.notify_on_change)
                 .map(|condition| (condition.tool_id.as_str(), condition.data_pointer.as_str()))
                 .collect::<BTreeSet<_>>();
             for observation in observations.iter().filter(|observation| {
@@ -4642,6 +4717,7 @@ pub fn validate_plan(
             .acceptance_all
             .iter()
             .chain(&follow_through.attention_policy.alert_any)
+            .chain(&follow_through.attention_policy.notify_on_change)
             .any(|condition| {
                 !follow_through
                     .required_tool_ids
@@ -4681,65 +4757,42 @@ pub fn validate_plan(
 
 fn validate_explicit_follow_through(
     session: &AgentSession,
+    input: &SessionTurnInput,
     plan: &ResearchPlan,
 ) -> Result<(), AgentRuntimeError> {
-    let request = session
-        .messages
+    let route = session
+        .events
         .iter()
         .rev()
-        .find(|message| message.role == SessionMessageRole::User)
-        .map(|message| message.text.as_str())
-        .unwrap_or_default();
-    let delegates_future_observation = explicitly_delegates_future_observation(request);
-    if delegates_future_observation && plan.follow_through.is_none() {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "the operator explicitly delegated future observation. Record one bounded follow_through with a stable commitment_ref, exact read tools, acceptance criteria, and a final scheduled commitment; do not finish this as one-turn advice"
+        .find_map(|event| match &event.event {
+            SessionEvent::RouteAccepted {
+                request_id,
+                future_observation,
+                ..
+            } if request_id == &input.request_id => Some(*future_observation),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidRequest(
+                "operator follow-through validation requires a durable semantic route".into(),
+            )
+        })?;
+    match (route, plan.follow_through.is_some()) {
+        (FutureObservationDisposition::Delegated, false) => Err(
+            AgentRuntimeError::InvalidFinal(
+                "the semantic route records delegated future observation. Record one bounded follow_through with a stable commitment_ref, exact read tools, acceptance criteria, and a final scheduled commitment; do not finish this as one-turn advice"
+                    .into(),
+            ),
+        ),
+        (
+            FutureObservationDisposition::Refused | FutureObservationDisposition::None,
+            true,
+        ) => Err(AgentRuntimeError::InvalidFinal(
+            "the semantic route does not authorize future observation. Remove follow_through and finish the current bounded work; do not invent a timer, monitor, or later assistant update"
                 .into(),
-        ));
+        )),
+        _ => Ok(()),
     }
-    if !delegates_future_observation && plan.follow_through.is_some() {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "the operator did not delegate future observation. Remove follow_through and finish the current bounded work; do not invent a timer, monitor, or later assistant update"
-                .into(),
-        ));
-    }
-    Ok(())
-}
-
-fn explicitly_delegates_future_observation(request: &str) -> bool {
-    let normalized = request.to_ascii_lowercase();
-    [
-        "keep an eye",
-        "keep checking",
-        "keep monitoring",
-        "keep watching",
-        "check again",
-        "keep owning",
-        "own the recovery",
-        "notify me when",
-    ]
-    .iter()
-    .any(|phrase| normalized.contains(phrase))
-        || (["set up", "schedule", "arrange"]
-            .iter()
-            .any(|phrase| normalized.contains(phrase))
-            && [
-                "re-inspection",
-                "reinspection",
-                "re-check",
-                "recheck",
-                "follow-up check",
-                "follow up check",
-            ]
-            .iter()
-            .any(|subject| normalized.contains(subject)))
-        || (normalized.contains("watch ")
-            && (normalized.contains("recovery")
-                || normalized.contains("until")
-                || normalized.contains("tell me when")
-                || normalized.contains("progress")))
-        || (normalized.contains("only interrupt me")
-            && (normalized.contains("final") || normalized.contains("gap")))
 }
 
 fn validate_plan_completion(
@@ -8837,8 +8890,25 @@ mod tests {
     }
 
     fn session_for_request(request_id: &str, lane: ExecutionLane) -> AgentSession {
+        session_for_request_intent(
+            request_id,
+            lane,
+            FutureObservationDisposition::None,
+            None,
+            "Check connector alpha.",
+        )
+    }
+
+    fn session_for_request_intent(
+        request_id: &str,
+        lane: ExecutionLane,
+        future_observation: FutureObservationDisposition,
+        future_observation_excerpt: Option<&str>,
+        message: &str,
+    ) -> AgentSession {
         let mut current = session();
         current.messages[0].message_ref = format!("operator:{request_id}");
+        current.messages[0].text = message.into();
         apply_session_events(
             &current,
             &[SessionEventRecord {
@@ -8849,6 +8919,8 @@ mod tests {
                 event: SessionEvent::RouteAccepted {
                     request_id: request_id.into(),
                     lane,
+                    future_observation,
+                    future_observation_excerpt: future_observation_excerpt.map(str::to_owned),
                 },
             }],
         )
@@ -8879,6 +8951,8 @@ mod tests {
                 event: SessionEvent::RouteAccepted {
                     request_id: "request:1".into(),
                     lane: ExecutionLane::Lookup,
+                    future_observation: FutureObservationDisposition::None,
+                    future_observation_excerpt: None,
                 },
             }],
         )
@@ -8933,6 +9007,8 @@ mod tests {
             event: SessionEvent::RouteAccepted {
                 request_id: "request:1".into(),
                 lane: ExecutionLane::Investigate,
+                future_observation: FutureObservationDisposition::None,
+                future_observation_excerpt: None,
             },
         };
         let current = apply_session_events(&session(), &[accepted])
@@ -8945,6 +9021,8 @@ mod tests {
             event: SessionEvent::RouteAccepted {
                 request_id: "request:1".into(),
                 lane: ExecutionLane::Investigate,
+                future_observation: FutureObservationDisposition::None,
+                future_observation_excerpt: None,
             },
         };
         assert!(apply_session_events(&current, &[duplicate]).is_err());
@@ -8957,6 +9035,8 @@ mod tests {
             event: SessionEvent::RouteAccepted {
                 request_id: "request:1".into(),
                 lane: ExecutionLane::Continue,
+                future_observation: FutureObservationDisposition::None,
+                future_observation_excerpt: None,
             },
         };
         assert!(apply_session_events(&session(), &[invalid]).is_err());
@@ -9189,6 +9269,7 @@ mod tests {
                     equals: json!("healthy"),
                 }],
                 alert_any: Vec::new(),
+                notify_on_change: Vec::new(),
             }),
             wake_at: Some("2026-07-31T00:00:30Z".into()),
             verification: Some("A current connector observation closes the check.".into()),
@@ -9227,6 +9308,7 @@ mod tests {
                     equals: json!("healthy"),
                 }],
                 alert_any: Vec::new(),
+                notify_on_change: Vec::new(),
             },
             check_after_seconds: 300,
             verification: "A current connector observation closes the check.".into(),
@@ -10457,6 +10539,7 @@ mod tests {
                     equals: json!(true),
                 }],
                 alert_any: Vec::new(),
+                notify_on_change: Vec::new(),
             },
             check_after_seconds: 300,
             verification: "graph.read reports decision_grade=true".into(),
@@ -10541,6 +10624,7 @@ mod tests {
                     equals: json!("healthy"),
                 }],
                 alert_any: Vec::new(),
+                notify_on_change: Vec::new(),
             },
             check_after_seconds: 300,
             verification: "A current connector observation closes the check.".into(),
@@ -10566,6 +10650,7 @@ mod tests {
                     equals: json!("healthy"),
                 }],
                 alert_any: Vec::new(),
+                notify_on_change: Vec::new(),
             },
             check_after_seconds: 300,
             verification: "A current connector observation closes the check.".into(),
@@ -10607,6 +10692,7 @@ mod tests {
                     equals: json!("healthy"),
                 }],
                 alert_any: Vec::new(),
+                notify_on_change: Vec::new(),
             },
             check_after_seconds: 300,
             verification: "A current connector observation closes the check.".into(),
@@ -11331,6 +11417,7 @@ mod tests {
                 equals: json!(true),
             }],
             alert_any: Vec::new(),
+            notify_on_change: Vec::new(),
         });
         scheduled.mission.commitments.push(commitment);
         let mut baseline = observation(true, Some("2026-07-31T00:06:00Z"));
@@ -11411,6 +11498,7 @@ mod tests {
                     equals: json!(true),
                 },
             ],
+            notify_on_change: Vec::new(),
         });
         scheduled.mission.commitments.push(commitment);
         let mut baseline = observation(true, Some("2026-07-31T00:06:00Z"));
@@ -13700,6 +13788,7 @@ mod tests {
                 data_pointer: "/receipt_fresh".into(),
                 equals: json!(false),
             }],
+            notify_on_change: Vec::new(),
         });
         awakened.mission.commitments.push(commitment);
         let mut current = observation(false, Some("2026-07-31T00:06:00Z"));
@@ -13882,22 +13971,30 @@ mod tests {
     }
 
     #[test]
-    fn explicit_future_delegation_requires_a_planned_executor() {
-        let mut delegated = session();
-        delegated.messages.push(SessionMessage {
-            role: SessionMessageRole::User,
-            message_ref: "message:delegation".into(),
-            actor_ref: "user:one".into(),
-            text: "Own the recovery check. Only interrupt me for a gap or the final result.".into(),
-            received_at: "2026-07-31T00:00:00Z".into(),
-        });
+    fn semantic_future_observation_route_intent_requires_follow_through() {
+        let request =
+            "Stay with Ternwheel until two fresh recovery observations agree, then tell me.";
+        let delegated = session_for_request_intent(
+            "request:semantic-delegation",
+            ExecutionLane::Investigate,
+            FutureObservationDisposition::Delegated,
+            Some("Stay with Ternwheel until two fresh recovery observations agree"),
+            request,
+        );
+        let input = SessionTurnInput {
+            request_id: "request:semantic-delegation".into(),
+            actor_ref: "user:1".into(),
+            assessment_at: "2026-07-31T00:01:00Z".into(),
+            requested_lane: Some(ExecutionLane::Investigate),
+            trigger: SessionTurnTrigger::Operator,
+        };
         let mut proposed = plan();
         proposed.follow_through = None;
         assert!(
-            validate_explicit_follow_through(&delegated, &proposed)
+            validate_explicit_follow_through(&delegated, &input, &proposed)
                 .unwrap_err()
                 .to_string()
-                .contains("explicitly delegated future observation")
+                .contains("records delegated future observation")
         );
 
         proposed.follow_through = Some(PlannedFollowThrough {
@@ -13912,71 +14009,58 @@ mod tests {
                     equals: json!("healthy"),
                 }],
                 alert_any: Vec::new(),
+                notify_on_change: Vec::new(),
             },
             check_after_seconds: 300,
             verification: "A current connector observation closes the check.".into(),
         });
-        assert!(validate_explicit_follow_through(&delegated, &proposed).is_ok());
+        assert!(validate_explicit_follow_through(&delegated, &input, &proposed).is_ok());
 
-        delegated
-            .messages
-            .last_mut()
-            .expect("the delegated request was added")
-            .text = "Summarize the current source state.".into();
-        proposed.follow_through = None;
-        assert!(validate_explicit_follow_through(&delegated, &proposed).is_ok());
-
-        proposed.follow_through = Some(planned_follow_through());
-        assert!(
-            validate_explicit_follow_through(&delegated, &proposed)
-                .unwrap_err()
-                .to_string()
-                .contains("did not delegate future observation")
-        );
-
-        delegated
-            .messages
-            .last_mut()
-            .expect("the delegated request was added")
-            .text = "Keep going and finish the current handoff.".into();
-        proposed.follow_through = None;
-        assert!(validate_explicit_follow_through(&delegated, &proposed).is_ok());
+        let replayed: AgentSession =
+            serde_json::from_slice(&serde_json::to_vec(&delegated).unwrap()).unwrap();
+        assert!(validate_explicit_follow_through(&replayed, &input, &proposed).is_ok());
     }
 
     #[test]
-    fn plain_continuation_does_not_delegate_future_observation() {
-        assert!(!explicitly_delegates_future_observation("Keep going."));
-        assert!(!explicitly_delegates_future_observation(
-            "Keep going—finish the handoff."
-        ));
-        assert!(explicitly_delegates_future_observation(
-            "Keep going and keep checking until the next receipt lands."
-        ));
-        assert!(explicitly_delegates_future_observation(
-            "Set up that audit-activity re-inspection and take it as far as you can."
-        ));
-        assert!(!explicitly_delegates_future_observation(
-            "Set up the current incident handoff."
-        ));
-
-        let mut continued = session();
-        continued.messages.push(SessionMessage {
-            role: SessionMessageRole::User,
-            message_ref: "message:continuation".into(),
-            actor_ref: "user:one".into(),
-            text: "Keep going—finish the handoff.".into(),
-            received_at: "2026-07-31T00:00:30Z".into(),
-        });
+    fn semantic_refusal_and_no_delegation_reject_invented_follow_through() {
+        let refused = session_for_request_intent(
+            "request:refused",
+            ExecutionLane::Lookup,
+            FutureObservationDisposition::Refused,
+            Some("One-time check only"),
+            "One-time check only. Do not follow up after this summary.",
+        );
+        let input = SessionTurnInput {
+            request_id: "request:refused".into(),
+            actor_ref: "user:1".into(),
+            assessment_at: "2026-07-31T00:01:00Z".into(),
+            requested_lane: Some(ExecutionLane::Lookup),
+            trigger: SessionTurnTrigger::Operator,
+        };
         let mut proposed = plan();
-        proposed.follow_through = None;
-        assert!(validate_explicit_follow_through(&continued, &proposed).is_ok());
+        proposed.follow_through = Some(planned_follow_through());
+        assert!(validate_explicit_follow_through(&refused, &input, &proposed).is_err());
 
-        continued
-            .messages
-            .last_mut()
-            .expect("the continuation request was added")
-            .text = "Keep checking and only interrupt me for a gap or final result.".into();
-        assert!(validate_explicit_follow_through(&continued, &proposed).is_err());
+        let none = session_for_request("request:none", ExecutionLane::Lookup);
+        let none_input = SessionTurnInput {
+            request_id: "request:none".into(),
+            ..input
+        };
+        assert!(validate_explicit_follow_through(&none, &none_input, &proposed).is_err());
+
+        let inherited = session_for_request_intent(
+            "request:continue",
+            ExecutionLane::Investigate,
+            FutureObservationDisposition::Inherited,
+            None,
+            "Keep going and finish the retained mission.",
+        );
+        let inherited_input = SessionTurnInput {
+            request_id: "request:continue".into(),
+            requested_lane: Some(ExecutionLane::Investigate),
+            ..none_input
+        };
+        assert!(validate_explicit_follow_through(&inherited, &inherited_input, &proposed).is_ok());
     }
 
     #[test]
@@ -14461,6 +14545,8 @@ mod tests {
                     event: SessionEvent::RouteAccepted {
                         request_id: "request:resumed-route-mismatch".into(),
                         lane: ExecutionLane::Lookup,
+                        future_observation: FutureObservationDisposition::None,
+                        future_observation_excerpt: None,
                     },
                 },
                 SessionEventRecord {
@@ -15163,6 +15249,8 @@ mod tests {
                 event: SessionEvent::RouteAccepted {
                     request_id: "request:1".into(),
                     lane: ExecutionLane::Investigate,
+                    future_observation: FutureObservationDisposition::None,
+                    future_observation_excerpt: None,
                 },
             },
             SessionEventRecord {
