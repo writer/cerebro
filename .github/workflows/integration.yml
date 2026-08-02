@@ -30,7 +30,6 @@ jobs:
           --health-retries 5
     env:
       CEREBRO_POSTGRES_DSN: postgres://postgres:postgres@127.0.0.1:5432/cerebro?sslmode=disable
-      CEREBRO_TEST_POSTGRES_DSN: postgres://postgres:postgres@127.0.0.1:5432/cerebro?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -42,6 +41,28 @@ jobs:
 
       - name: Run Postgres integration tests
         run: go test ./internal/statestore/postgres ./internal/findings ./cmd/cerebro -run '(Postgres|Closeout|Tombstone|TenantScoped|CloudflareZoneProtection|IdentityMFA|ProjectsTombstone)' -count=1 -v
+
+  slack-wake-postgres:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-integration')
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cerebro
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CEREBRO_TEST_POSTGRES_DSN: postgres://postgres:postgres@127.0.0.1:5432/cerebro?sslmode=disable
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Rust
         run: rustup toolchain install 1.93.1 --profile minimal
