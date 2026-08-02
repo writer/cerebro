@@ -37,6 +37,8 @@ const MAX_MESSAGE_BYTES: usize = 16 * 1024;
 const MAX_TEXT_BYTES: usize = 4 * 1024;
 const MAX_SESSION_MESSAGES: usize = 400;
 const MAX_SESSION_MESSAGE_BYTES: usize = 1024 * 1024;
+const MAX_CONVERSATIONAL_SYNTHESIS_BYTES: usize = 1_200;
+const MAX_CONVERSATIONAL_SYNTHESIS_SOURCES: usize = 8;
 const MAX_RECALLED_OBSERVATIONS: usize = 96;
 const MAX_SEMANTIC_ASSERTIONS: usize = 64;
 const MAX_SEMANTIC_CANDIDATES: usize = 16;
@@ -1499,6 +1501,9 @@ pub fn compact_session_messages(messages: &mut Vec<SessionMessage>) {
         .iter()
         .map(|message| message.text.len())
         .sum::<usize>();
+    if messages.len() <= MAX_SESSION_MESSAGES && retained_bytes <= MAX_SESSION_MESSAGE_BYTES {
+        return;
+    }
     let mut remove_count = 0;
     while messages.len().saturating_sub(remove_count) > 1
         && (messages.len().saturating_sub(remove_count) > MAX_SESSION_MESSAGES
@@ -1898,32 +1903,22 @@ pub async fn run_session_turn_recorded(
             }
             SessionModelDecision::Finish { mut draft } => {
                 if matches!(trigger, SessionTurnTrigger::Operator)
-                    && session
-                        .messages
-                        .iter()
-                        .rev()
-                        .find(|message| message.role == SessionMessageRole::User)
-                        .is_some_and(|message| {
-                            crate::request_explicitly_requires_current_evidence(&message.text)
-                        })
-                    && (plan
-                        .as_ref()
-                        .is_none_or(|plan| plan.selected_tools.is_empty())
-                        || plan.as_ref().is_none_or(|plan| {
-                            !current_required_claims_have_same_turn_evidence(
-                                plan,
-                                &draft,
-                                &observations[current_turn_observation_start..],
-                                assessment_at,
-                            )
-                        }))
+                    && draft.state == FinalState::Answered
+                    && plan.as_ref().is_some_and(|plan| {
+                        !current_required_claims_have_same_turn_evidence(
+                            plan,
+                            &draft,
+                            &observations[current_turn_observation_start..],
+                            assessment_at,
+                        )
+                    })
                 {
                     record_draft_repair(
                         &mut rejected_operating_drafts,
                         &draft,
                         &mut repairs,
                         &mut repair_feedback,
-                        "The newest operator request explicitly requires current evidence. Establish a typed research plan with at least one selected read and obtain a successful, complete, fresh same-turn observation before finishing."
+                        "Every answered operating plan requires at least one selected read and successful, complete, fresh same-turn evidence for every required planned claim. Use partial or blocked when that evidence is unavailable."
                             .into(),
                     );
                     continue;
@@ -4404,6 +4399,8 @@ pub fn validate_plan(
         ExecutionLane::Ignore | ExecutionLane::Converse | ExecutionLane::Continue
     ) || !bounded(&plan.decision, MAX_TEXT_BYTES)
         || plan.claims.is_empty()
+        || !plan.claims.iter().any(|claim| claim.required)
+        || plan.selected_tools.is_empty()
         || plan.claims.len() > MAX_PLAN_CLAIMS
         || plan.selected_tools.len() > MAX_PLAN_TOOLS
         || plan.selected_tools.len() > budget.max_selected_capabilities
@@ -4429,6 +4426,12 @@ pub fn validate_plan(
                 .iter()
                 .any(|subject| !plan.resolved_entities.contains(subject))
             || (claim.required && plan.resolved_entities.len() > 1 && claim.subject_refs.is_empty())
+            || (claim.required
+                && (claim.source_candidates.is_empty()
+                    || claim
+                        .source_candidates
+                        .iter()
+                        .any(|source| !plan.selected_tools.contains(source))))
             || !claim_refs.insert(&claim.claim_ref)
         {
             return Err(AgentRuntimeError::InvalidFinal(
@@ -4936,6 +4939,11 @@ pub fn validate_grounded_draft(
             _ => None,
         })
         .collect::<Vec<_>>();
+    let conversational_synthesis_count = draft
+        .claims
+        .iter()
+        .filter(|claim| matches!(claim.content, ClaimContent::ConversationalSynthesis { .. }))
+        .count();
     let has_answer_bearing_claim = draft.claims.iter().any(|claim| {
         claim.required_for_answer
             && matches!(
@@ -4945,6 +4953,7 @@ pub fn validate_grounded_draft(
                     | ClaimContent::Hypothesis { .. }
                     | ClaimContent::Commitment { .. }
                     | ClaimContent::StableExplanation { .. }
+                    | ClaimContent::ConversationalSynthesis { .. }
                     | ClaimContent::CoverageBoundary { .. }
                     | ClaimContent::Question { .. }
             )
@@ -4956,6 +4965,11 @@ pub fn validate_grounded_draft(
         return Err(AgentRuntimeError::InvalidFinal(
             "rhetorical moves require an answer-bearing typed claim and a response may use at most two distinct registered moves"
                 .into(),
+        ));
+    }
+    if conversational_synthesis_count > 1 {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "a response may contain at most one bounded conversational synthesis".into(),
         ));
     }
 
@@ -5226,11 +5240,17 @@ fn validate_claim(
             }
             return Ok(());
         }
-        ClaimContent::ConversationalSynthesis { .. } => {
-            return Err(AgentRuntimeError::InvalidFinal(
-                "legacy free-form conversational synthesis is not accepted; use an exact attributed context basis or a registered rhetorical move"
-                    .into(),
-            ));
+        ClaimContent::ConversationalSynthesis {
+            source_message_sequences,
+            source_atom_refs,
+        } => {
+            validate_conversational_synthesis(
+                claim,
+                source_message_sequences,
+                source_atom_refs,
+                context,
+            )?;
+            return Ok(());
         }
         ClaimContent::RhetoricalMove { move_id } => {
             if claim.planned_claim_ref.is_some()
@@ -5469,6 +5489,122 @@ fn validate_claim(
         cited_atoms.insert(atom_ref.clone());
     }
     Ok(())
+}
+
+fn validate_conversational_synthesis(
+    claim: &GroundedClaim,
+    source_message_sequences: &[u64],
+    source_atom_refs: &[String],
+    context: &ClaimValidationContext<'_, '_>,
+) -> Result<(), AgentRuntimeError> {
+    let operator_actor_ref = context.operator_actor_ref.ok_or_else(|| {
+        AgentRuntimeError::InvalidFinal(
+            "conversational synthesis requires a current operator message".into(),
+        )
+    })?;
+    let newest_operator_message = context
+        .messages
+        .iter()
+        .rev()
+        .find(|(_, message)| {
+            message.role == SessionMessageRole::User
+                && message.actor_ref.as_str() == operator_actor_ref
+        })
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal(
+                "conversational synthesis requires a current operator message".into(),
+            )
+        })?;
+    let unique_sequences = source_message_sequences.iter().collect::<BTreeSet<_>>();
+    if claim.planned_claim_ref.is_some()
+        || !source_atom_refs.is_empty()
+        || source_message_sequences.is_empty()
+        || source_message_sequences.len() > MAX_CONVERSATIONAL_SYNTHESIS_SOURCES
+        || unique_sequences.len() != source_message_sequences.len()
+        || !unique_sequences.contains(newest_operator_message.0)
+        || source_message_sequences
+            .iter()
+            .any(|sequence| !context.messages.contains_key(sequence))
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "conversational synthesis must cite the newest exact operator message, may cite at most seven earlier messages from the same thread, and cannot carry evidence or a planned claim"
+                .into(),
+        ));
+    }
+    let body = claim.text.trim();
+    let cited_context = source_message_sequences
+        .iter()
+        .filter_map(|sequence| context.messages.get(sequence))
+        .map(|message| message.text.as_str())
+        .collect::<Vec<_>>();
+    let newest_terms = synthesis_terms(&newest_operator_message.1.text);
+    if newest_terms.is_empty() && source_message_sequences.len() < 2 {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "a short conversational follow-up must cite at least one earlier thread message".into(),
+        ));
+    }
+    let transforms_supplied_text =
+        crate::request_is_artifact_transformation(&newest_operator_message.1.text);
+    let body_is_operational = crate::request_explicitly_requires_current_evidence(body)
+        || contains_operational_capability_assertion(body)
+        || contains_unbound_future_promise(body);
+    if crate::request_explicitly_requires_current_evidence(&newest_operator_message.1.text)
+        || (body_is_operational
+            && (!transforms_supplied_text
+                || !operational_transformation_is_source_bound(body, &cited_context)))
+        || body.is_empty()
+        || body.len() > MAX_CONVERSATIONAL_SYNTHESIS_BYTES
+        || body.lines().count() > 6
+        || body
+            .chars()
+            .any(|character| character.is_control() && !matches!(character, '\n' | '\t'))
+        || body.contains("```")
+        || body.contains("http://")
+        || body.contains("https://")
+        || crate::looks_like_raw_record_dump(body)
+        || crate::looks_like_internal_query_failure(body)
+        || crate::looks_like_report_copy(body)
+        || contains_raw_machine_field_syntax(body)
+        || !synthesis_is_relevant(body, &cited_context)
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "conversational synthesis must be bounded natural prose materially tied to its cited thread messages, without machine records, links, report scaffolding, promises, or unsupported operational claims"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+fn operational_transformation_is_source_bound(body: &str, source_messages: &[&str]) -> bool {
+    let source_terms = source_messages
+        .iter()
+        .flat_map(|message| synthesis_terms(message))
+        .collect::<BTreeSet<_>>();
+    synthesis_terms(body).is_subset(&source_terms)
+}
+
+fn synthesis_is_relevant(body: &str, source_messages: &[&str]) -> bool {
+    let body_terms = synthesis_terms(body);
+    let source_terms = source_messages
+        .iter()
+        .flat_map(|message| synthesis_terms(message))
+        .collect::<BTreeSet<_>>();
+    let required_overlap = source_terms.len().min(2);
+    required_overlap > 0 && source_terms.intersection(&body_terms).count() >= required_overlap
+}
+
+fn synthesis_terms(value: &str) -> BTreeSet<String> {
+    const STOP_WORDS: &[&str] = &[
+        "about", "after", "again", "also", "been", "being", "could", "from", "have", "into",
+        "just", "more", "only", "should", "that", "their", "them", "then", "there", "these",
+        "they", "this", "those", "what", "when", "where", "which", "while", "with", "would",
+        "your",
+    ];
+    value
+        .split(|character: char| !character.is_alphanumeric())
+        .map(str::to_lowercase)
+        .filter(|term| term.len() >= 4 && !STOP_WORDS.contains(&term.as_str()))
+        .collect()
 }
 
 pub fn render_rhetorical_move(move_id: RhetoricalMoveId) -> &'static str {
@@ -8095,6 +8231,19 @@ mod tests {
     }
 
     #[test]
+    fn session_message_compaction_is_a_noop_below_capacity() {
+        let mut messages = vec![
+            retained_message(1, 8),
+            retained_message(2, 8),
+            retained_message(3, 8),
+        ];
+        let original = messages.clone();
+        compact_session_messages(&mut messages);
+        assert_eq!(messages, original);
+        assert_eq!(messages[0].role, SessionMessageRole::Assistant);
+    }
+
+    #[test]
     fn session_message_compaction_survives_five_hundred_queued_turns() {
         let mut current = session();
         let original_mission = current.mission.clone();
@@ -9265,6 +9414,15 @@ mod tests {
         let mut optional = plan();
         optional.claims[0].required = false;
         assert!(validate_plan_completion(Some(&optional), &unfinished).is_ok());
+        assert!(validate_plan(&optional, &optional.selected_tools.clone()).is_err());
+
+        let mut no_selected_read = plan();
+        no_selected_read.selected_tools.clear();
+        assert!(validate_plan(&no_selected_read, &["connector.read".into()]).is_err());
+
+        let mut unbound_required_source = plan();
+        unbound_required_source.claims[0].source_candidates = vec!["other.read".into()];
+        assert!(validate_plan(&unbound_required_source, &["connector.read".into()]).is_err());
 
         let mut over_budget = plan();
         over_budget.lane = ExecutionLane::Lookup;
@@ -10792,17 +10950,128 @@ mod tests {
             candidate.message = candidate.claims[0].text.clone();
             assert!(
                 validate_grounded_draft(&session(), &candidate, &[], assessment).is_err(),
-                "conversational synthesis accepted an evidence-bearing claim: {unsupported}"
+                "registered rhetorical move accepted arbitrary prose: {unsupported}"
             );
         }
-        candidate.claims[0].text = "Any legacy synthesis is rejected.".into();
+        let mut synthesis_session = session();
+        synthesis_session.messages[0].text =
+            "Explain the difference between a control owner and an evidence owner.".into();
+        candidate.claims[0].text = "A control owner carries accountability for the control outcome; an evidence owner carries accountability for the supporting records. Keeping those responsibilities explicit prevents evidence collection from being mistaken for control performance.".into();
         candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
-            source_message_sequences: Vec::new(),
+            source_message_sequences: vec![1],
+            source_atom_refs: Vec::new(),
+        };
+        candidate.claims[0].required_for_answer = true;
+        candidate.message = candidate.claims[0].text.clone();
+        validate_grounded_draft(&synthesis_session, &candidate, &[], assessment).unwrap();
+
+        let accepted = candidate.clone();
+        candidate.claims[0].planned_claim_ref = Some("claim:state".into());
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(validate_grounded_draft(&synthesis_session, &candidate, &[], assessment).is_err());
+        candidate = accepted.clone();
+        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
+            source_message_sequences: vec![999],
+            source_atom_refs: Vec::new(),
+        };
+        assert!(validate_grounded_draft(&synthesis_session, &candidate, &[], assessment).is_err());
+        candidate = accepted.clone();
+        candidate.claims[0].text = "Bananas are better when the weather is warm.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(validate_grounded_draft(&synthesis_session, &candidate, &[], assessment).is_err());
+        let mut live_request_session = synthesis_session.clone();
+        live_request_session.messages[0].text = "What do you think: is Atlas green?".into();
+        candidate = accepted.clone();
+        candidate.claims[0].text = "Atlas looks green enough to ship.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&live_request_session, &candidate, &[], assessment).is_err()
+        );
+
+        for (request, unsupported) in [
+            (
+                "What do you think about the Atlas rollout?",
+                "I think the Atlas rollout landed yesterday.",
+            ),
+            (
+                "Help me think about Atlas remediation.",
+                "Atlas remediation is owned by Alice.",
+            ),
+            (
+                "Explain Atlas verification.",
+                "Atlas verification passed today.",
+            ),
+            (
+                "What security reasoning are you good at?",
+                "I can inspect and verify security systems.",
+            ),
+        ] {
+            let mut unsupported_session = synthesis_session.clone();
+            unsupported_session.messages[0].text = request.into();
+            candidate = accepted.clone();
+            candidate.claims[0].text = unsupported.into();
+            candidate.message = candidate.claims[0].text.clone();
+            assert!(
+                validate_grounded_draft(&unsupported_session, &candidate, &[], assessment).is_err(),
+                "conversational synthesis accepted unsupported operational prose: {unsupported}"
+            );
+        }
+
+        let mut follow_up_session = synthesis_session.clone();
+        follow_up_session.messages.push(SessionMessage {
+            role: SessionMessageRole::Assistant,
+            message_ref: "assistant:prior".into(),
+            actor_ref: "cerebro".into(),
+            text: "Use explicit acceptance criteria so a reversible decision can be revisited without guessing what success meant.".into(),
+            received_at: "2026-07-31T00:00:30Z".into(),
+        });
+        follow_up_session.messages.push(SessionMessage {
+            role: SessionMessageRole::User,
+            message_ref: "operator:follow-up".into(),
+            actor_ref: "user:1".into(),
+            text: "Why?".into(),
+            received_at: "2026-07-31T00:00:45Z".into(),
+        });
+        candidate = accepted.clone();
+        candidate.claims[0].text = "Explicit acceptance criteria preserve reversibility: when the decision is revisited, the team can compare the same definition of success instead of reconstructing intent from memory.".into();
+        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
+            source_message_sequences: vec![2, 3],
             source_atom_refs: Vec::new(),
         };
         candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&session(), &candidate, &[], assessment).is_err());
+        validate_grounded_draft(&follow_up_session, &candidate, &[], assessment).unwrap();
 
+        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
+            source_message_sequences: vec![3],
+            source_atom_refs: Vec::new(),
+        };
+        assert!(validate_grounded_draft(&follow_up_session, &candidate, &[], assessment).is_err());
+
+        let mut rewrite_session = synthesis_session.clone();
+        rewrite_session.messages[0].text = "Rewrite ‘Atlas has landed’ more concisely.".into();
+        candidate = accepted.clone();
+        candidate.claims[0].text = "Atlas landed.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        validate_grounded_draft(&rewrite_session, &candidate, &[], assessment).unwrap();
+        candidate.claims[0].text = "Atlas landed yesterday.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(validate_grounded_draft(&rewrite_session, &candidate, &[], assessment).is_err());
+
+        let mut duplicate_synthesis = accepted.clone();
+        let mut second = accepted.claims[0].clone();
+        second.claim_ref = "claim:synthesis:second".into();
+        duplicate_synthesis.claims.push(second);
+        duplicate_synthesis.message = duplicate_synthesis
+            .claims
+            .iter()
+            .map(|claim| claim.text.as_str())
+            .collect();
+        assert!(
+            validate_grounded_draft(&synthesis_session, &duplicate_synthesis, &[], assessment,)
+                .is_err()
+        );
+
+        candidate = accepted;
         candidate.claims[0].text =
             render_rhetorical_move(RhetoricalMoveId::SeparateEvidenceFromInference).into();
         candidate.claims[0].content = ClaimContent::RhetoricalMove {
@@ -12902,7 +13171,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_new_turn_can_ground_itself_in_fresh_prior_session_evidence() {
+    async fn a_new_operating_turn_must_refresh_prior_session_evidence() {
         let mut continued = session();
         continued.events.push(SessionEventRecord {
             schema_version: AGENT_SESSION_EVENT_V2.into(),
@@ -12936,13 +13205,15 @@ mod tests {
 
         let SessionTurnOutcome::PendingDelivery {
             evidence_atom_refs,
+            final_state,
             events,
             ..
         } = outcome
         else {
             panic!("expected a pending-delivery session turn")
         };
-        assert_eq!(evidence_atom_refs, vec!["atom:status"]);
+        assert!(evidence_atom_refs.is_empty());
+        assert_eq!(final_state, FinalState::Blocked);
         assert!(
             !events
                 .iter()
@@ -13083,6 +13354,43 @@ mod tests {
         } = outcome
         else {
             panic!("a current-state fallback should be visible");
+        };
+        assert_eq!(final_state, FinalState::Blocked);
+        assert!(markdown.contains("No current authoritative observation was obtained"));
+    }
+
+    #[tokio::test]
+    async fn answered_operating_plan_requires_same_turn_evidence_even_after_classifier_miss() {
+        let mut current = session();
+        current.messages[0].text = "Share your recommendation for connector alpha.".into();
+        let mut decisions = VecDeque::from([SessionModelDecision::EstablishPlan { plan: plan() }]);
+        decisions.extend(
+            (0..=MAX_MODEL_REPAIRS).map(|_| SessionModelDecision::Finish { draft: draft() }),
+        );
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(decisions),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            current,
+            SessionTurnInput {
+                request_id: "request:operating-plan-without-observation".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("the runtime should return a bounded fallback");
+        let SessionTurnOutcome::PendingDelivery {
+            final_state,
+            markdown,
+            ..
+        } = outcome
+        else {
+            panic!("an unsupported operating answer should be visible");
         };
         assert_eq!(final_state, FinalState::Blocked);
         assert!(markdown.contains("No current authoritative observation was obtained"));

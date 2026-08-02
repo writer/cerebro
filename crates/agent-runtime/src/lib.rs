@@ -1261,6 +1261,42 @@ fn request_explicitly_requires_current_evidence(message: &str) -> bool {
     clause_explicitly_requires_current_evidence(message)
 }
 
+pub(crate) fn request_is_artifact_transformation(message: &str) -> bool {
+    let normalized = normalized_phrase_text(message);
+    let transformation = [
+        " rewrite ",
+        " draft ",
+        " summarize ",
+        " tighten ",
+        " make that ",
+        " turn this into ",
+        " less technical ",
+        " more concise ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let requests_live_check = [
+        " check ",
+        " inspect ",
+        " verify ",
+        " reconcile ",
+        " look up ",
+        " search ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+        && [
+            " current ",
+            " currently ",
+            " today ",
+            " right now ",
+            " latest ",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(marker));
+    transformation && !requests_live_check
+}
+
 fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
     let normalized = normalized_phrase_text(clause);
     let words = normalized.split_whitespace().collect::<Vec<_>>();
@@ -1351,9 +1387,6 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                 .any(|marker| normalized.contains(&format!(" {marker} "))))
         || normalized.contains(" what does current evidence state mean ")
         || normalized.contains(" what does evidence state mean ");
-    if conceptual_explanation && !explicit_named_operational_read && !explicit_named_current_state {
-        return false;
-    }
     let explicit_time_boundary = [
         "current",
         "currently",
@@ -1482,10 +1515,65 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         || (normalized.contains(" collection ")
             && (normalized.contains(" is working ")
                 || normalized.contains(" whether collection ")));
-    (explicit_time_boundary && named_operational_state)
+    let generic_live_predicate = [
+        " green ",
+        " healthy ",
+        " ready ",
+        " working ",
+        " available ",
+        " landed ",
+        " passed ",
+        " failed ",
+        " completed ",
+        " shipped ",
+    ]
+    .iter()
+    .filter_map(|predicate| normalized.find(predicate))
+    .any(|predicate_index| {
+        [" is ", " are ", " has ", " have ", " did "]
+            .iter()
+            .filter_map(|verb| normalized.find(verb))
+            .any(|verb_index| verb_index < predicate_index)
+            || [
+                " now ",
+                " today ",
+                " yesterday ",
+                " currently ",
+                " recently ",
+                " already ",
+                " latest ",
+            ]
+            .iter()
+            .any(|time| normalized.contains(time))
+    });
+    let generic_live_ownership = normalized.contains(" who handles ")
+        || normalized.contains(" who owns ")
+        || normalized.contains(" owns remediation ")
+        || normalized.contains(" handles remediation ")
+        || normalized.contains(" is owned by ");
+    let generic_live_capability = normalized.contains(" are we able to ")
+        || normalized.contains(" can we ship ")
+        || normalized.contains(" can you execute ");
+    let requires_current = (explicit_time_boundary && named_operational_state)
         || explicit_reconciliation
         || named_access_boundary
         || present_operational_question
+        || generic_live_predicate
+        || generic_live_ownership
+        || generic_live_capability;
+    if request_is_artifact_transformation(clause) {
+        return false;
+    }
+    if conceptual_explanation
+        && !explicit_named_operational_read
+        && !explicit_named_current_state
+        && !generic_live_predicate
+        && !generic_live_ownership
+        && !generic_live_capability
+    {
+        return false;
+    }
+    requires_current
 }
 
 fn normalized_phrase_text(value: &str) -> String {
@@ -2996,6 +3084,9 @@ mod grounding_tests {
             "What does current evidence state mean in a provider-neutral system?",
             "What is the current state of the art for evidence theory?",
             "What is the current state of provider-neutral source architecture?",
+            "Explain why healthy evidence is not necessarily verified evidence.",
+            "Rewrite ‘Atlas has landed’ more concisely.",
+            "Draft a response saying the rollout is ready.",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),
@@ -3012,6 +3103,11 @@ mod grounding_tests {
             "Within the provider-neutral architecture inspect Source A's current receipt.",
             "Explain provider-neutral architecture but inspect Source A's current receipt.",
             "In the state of the art model, what is Source A's current receipt?",
+            "Is Atlas green?",
+            "Has the rollout landed?",
+            "Who handles remediation for Atlas?",
+            "Are we able to ship this?",
+            "Explain provider-neutral architecture, and is Atlas green?",
         ] {
             assert!(
                 request_explicitly_requires_current_evidence(current_evidence_request),

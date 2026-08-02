@@ -432,10 +432,15 @@ impl SlackAgentService {
         }
         session.effect_authorizations = request.effect_authorizations.clone();
         let message_ref = format!("operator:{}", request.request_id);
-        let message_exists = session
-            .messages
-            .iter()
-            .any(|message| message.message_ref == message_ref);
+        let original_message = durable_operator_message(&session, &request.request_id);
+        if original_message.is_some_and(|message| {
+            message.actor_ref != request.actor_ref || message.text != request.message
+        }) {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "request id was reused with a different actor or message".into(),
+            ));
+        }
+        let message_exists = original_message.is_some();
         if message_exists && let Some(replayed) = replay_completed_session_turn(&session, &request)?
         {
             return Ok(replayed);
@@ -946,14 +951,9 @@ fn replay_completed_session_turn(
     session: &AgentSession,
     request: &AgentTurnRequest,
 ) -> Result<Option<AgentTurnOutcome>, AgentRuntimeError> {
-    let message_ref = format!("operator:{}", request.request_id);
-    let original = session
-        .messages
-        .iter()
-        .find(|message| message.message_ref == message_ref)
-        .ok_or_else(|| {
-            AgentRuntimeError::InvalidRequest("replayed request has no durable message".into())
-        })?;
+    let original = durable_operator_message(session, &request.request_id).ok_or_else(|| {
+        AgentRuntimeError::InvalidRequest("replayed request has no durable message".into())
+    })?;
     if original.actor_ref != request.actor_ref || original.text != request.message {
         return Err(AgentRuntimeError::InvalidRequest(
             "request id was reused with a different actor or message".into(),
@@ -1033,14 +1033,9 @@ fn replay_pending_session_turn(
     session: &AgentSession,
     request: &AgentTurnRequest,
 ) -> Result<AgentTurnOutcome, AgentRuntimeError> {
-    let message_ref = format!("operator:{}", request.request_id);
-    let original = session
-        .messages
-        .iter()
-        .find(|message| message.message_ref == message_ref)
-        .ok_or_else(|| {
-            AgentRuntimeError::InvalidRequest("pending request has no durable message".into())
-        })?;
+    let original = durable_operator_message(session, &request.request_id).ok_or_else(|| {
+        AgentRuntimeError::InvalidRequest("pending request has no durable message".into())
+    })?;
     if original.actor_ref != request.actor_ref || original.text != request.message {
         return Err(AgentRuntimeError::InvalidRequest(
             "request id was reused with a different actor or message".into(),
@@ -1080,6 +1075,28 @@ fn replay_pending_session_turn(
             events,
         },
     ))
+}
+
+fn durable_operator_message<'a>(
+    session: &'a AgentSession,
+    request_id: &str,
+) -> Option<&'a SessionMessage> {
+    let message_ref = format!("operator:{request_id}");
+    session
+        .events
+        .iter()
+        .find_map(|event| match &event.event {
+            SessionEvent::UserMessageQueued { message } if message.message_ref == message_ref => {
+                Some(message)
+            }
+            _ => None,
+        })
+        .or_else(|| {
+            session
+                .messages
+                .iter()
+                .find(|message| message.message_ref == message_ref)
+        })
 }
 
 fn pending_wake_turn(
@@ -1967,7 +1984,7 @@ fn session_decision_schema() -> Value {
             "question": {"type": "string", "minLength": 1},
             "required": {"type": "boolean"},
             "subject_refs": string_array(),
-            "source_candidates": string_array(),
+            "source_candidates": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         },
         "required": ["claim_ref", "question", "required", "subject_refs", "source_candidates"]
     });
@@ -2022,7 +2039,7 @@ fn session_decision_schema() -> Value {
             "lane": {"type": "string", "enum": ["lookup", "investigate", "act"]},
             "resolved_entities": string_array(),
             "claims": {"type": "array", "minItems": 1, "maxItems": 16, "items": planned_claim},
-            "selected_tools": string_array(),
+            "selected_tools": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
             "stop_conditions": string_array(),
             "user_visible_work": string_array(),
             "follow_through": {"oneOf": [planned_follow_through, {"type": "null"}]},
@@ -2090,6 +2107,7 @@ fn session_decision_schema() -> Value {
         "oneOf": [
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["observation"]}, "atom_refs": string_array()}, "required": ["basis", "atom_refs"]},
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["operator_context"]}, "message_sequence": {"type": "integer", "minimum": 1}, "exact_excerpt": {"type": "string", "minLength": 1}}, "required": ["basis", "message_sequence", "exact_excerpt"]},
+            {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["conversational_synthesis"]}, "source_message_sequences": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"type": "integer", "minimum": 1}}, "source_atom_refs": {"type": "array", "maxItems": 0, "items": {"type": "string"}}}, "required": ["basis", "source_message_sequences", "source_atom_refs"]},
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["rhetorical_move"]}, "move_id": {"type": "string", "enum": ["separate_evidence_from_inference", "frame_decision_with_criteria", "compare_alternatives_consistently", "preserve_reversibility", "identify_decision_changing_information", "clarify_scope"]}}, "required": ["basis", "move_id"]},
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["historical_context"]}, "atom_ref": {"type": "string", "minLength": 1}, "exact_excerpt": {"type": "string", "minLength": 1, "maxLength": 1000}}, "required": ["basis", "atom_ref", "exact_excerpt"]},
             {"type": "object", "additionalProperties": false, "properties": {"basis": {"type": "string", "enum": ["retained_plan"]}, "open_loop_ref": {"type": "string", "minLength": 1}}, "required": ["basis", "open_loop_ref"]},
@@ -2472,7 +2490,7 @@ Return one flat JSON object with decision, plan, calls, and draft every time. Se
 
 - For a conversational answer that needs no current evidence, finish directly.
 - When the operator asks generally what security questions Cerebro is good at, answer with reasoning strengths rather than an operational inventory: separating fact from inference, connecting evidence to risk and decisions, finding the exact missing proof, and defining a bounded owner, trigger, and closure condition. Keep it natural and concise. Do not claim named tools, provider access, live data, scheduling, or execution without a current capability observation. This is a real answer, not a coverage-gap fallback.
-- Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. When the operator explicitly delegates a future re-observation, follow_through must define the complete executor contract before any tool runs: a stable commitment_ref, exact required read tools, acceptance criteria, next action, typed attention policy, bounded check delay, and verification. acceptance_all contains the desired completion values. alert_any contains only explicit boolean authority signals for a gap, regression, conflict, staleness, or mismatch; never put an ordinary numeric or string progress value in alert_any. Otherwise set follow_through to null. Rust materializes this plan into the durable scheduled commitment; final prose does not author or rewrite scheduling authority. Select only tools in available_tools.
+- Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. Select at least one available read tool, and give every required claim at least one source_candidate drawn from selected_tools. An Answered operating plan always requires successful, complete, fresh same-turn evidence for every required claim; when that proof is unavailable, use Partial or Blocked. When the operator explicitly delegates a future re-observation, follow_through must define the complete executor contract before any tool runs: a stable commitment_ref, exact required read tools, acceptance criteria, next action, typed attention policy, bounded check delay, and verification. acceptance_all contains the desired completion values. alert_any contains only explicit boolean authority signals for a gap, regression, conflict, staleness, or mismatch; never put an ordinary numeric or string progress value in alert_any. Otherwise set follow_through to null. Rust materializes this plan into the durable scheduled commitment; final prose does not author or rewrite scheduling authority. Select only tools in available_tools.
 - “Set up,” “schedule,” or “arrange” a re-inspection, recheck, or follow-up check is explicit future delegation even when the same sentence also says “keep going” or “take it as far as you can.” Perform the useful baseline read now and persist the bounded follow_through; an immediate read alone does not answer that request.
 - When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, select capability.search first with the user's intent. Search defaults to observe/read capabilities; request another authority or effect class only when the operator's request requires it. Use capability.describe only when the matching descriptor does not make its input contract clear. For a read or proposal MCP match, revise the plan to the returned execution_tool_id and call it with the exact returned selection_ref plus provider input matching the selected descriptor. A host-admitted external effect remains visible as its exact MCP tool id and may run only in an Act plan through the ordinary exact-input approval boundary. Never substitute graph.search for a missing or undiscovered provider capability.
 - capability.search, capability.describe, and capability.overview describe the bound catalog and its authority policy. Catalog metadata never establishes a fact about Slack, GitHub, a deployment, a web page, or any other external system. Invoke the discovered provider tool before making a current claim. If no matching tool is bound, state that exact capability gap instead of querying an unrelated source.
@@ -2496,6 +2514,7 @@ If repair_feedback is present, correct every item before returning. Do not repea
 Claims are ordered visible message units. Concatenating every claim.text in order must reproduce message byte-for-byte, including Markdown and whitespace; this is how the runtime proves that no visible material bypassed review. Choose one typed content basis:
 - {"basis":"observation","atom_refs":[...]} for a current fact returned by a tool.
 - {"basis":"operator_context","message_sequence":N,"exact_excerpt":"..."} for a complete user message from the current session. The excerpt must byte-preserve the whole trimmed message and render exactly as: You said: EXACT_EXCERPT.
+- {"basis":"conversational_synthesis","source_message_sequences":[...],"source_atom_refs":[]} for one tailored explanation, interpretation, comparison, rewrite, or piece of advice based only on the current thread. Cite the newest operator message sequence and up to seven earlier user or Cerebro messages needed to understand anaphora such as “why?” or “say more.” Write the answer directly and naturally; do not add a provenance disclaimer. Keep it within 1,200 bytes and six lines. This basis is conversational reasoning, not evidence: never attach atom refs or planned_claim_ref, never use it to introduce current or recent state, capability, ownership, work performed, execution, verification, or a future Cerebro promise. A requested rewrite or draft may transform operational wording the operator supplied, but must not add new operational facts. It may set required_for_answer=true for a converse request. An operating plan always has a required evidence claim backed by a selected read and same-turn evidence, and this basis can never satisfy it. Use at most one synthesis claim in a response.
 - {"basis":"rhetorical_move","move_id":"..."} for optional conversational connective tissue. Pick only from the schema enum and use its exact registered text: separate_evidence_from_inference => "A useful distinction here is between evidence and inference."; frame_decision_with_criteria => "A useful way to frame the decision is around explicit criteria."; compare_alternatives_consistently => "The alternatives are easiest to compare against the same criteria."; preserve_reversibility => "Another useful lens is reversibility."; identify_decision_changing_information => "The key question is which additional information would change the decision."; clarify_scope => "Clarifying the scope first keeps the reasoning focused." A rhetorical move cannot satisfy a planned claim or carry evidence. Set planned_claim_ref=null and required_for_answer=false. Use at most two distinct moves, and only alongside an answer-bearing typed claim with required_for_answer=true; operator_context, historical_context, and retained_plan do not satisfy that requirement.
 - {"basis":"historical_context","atom_ref":"...","exact_excerpt":"..."} for the complete single-line text of one typed Slack conversation-event atom returned by slack.thread.read or slack.history.search. Preserve the whole text exactly. The runtime rendering explicitly binds its actor or typed retained-context role, thread, and timestamp. This is historical context, never proof of current provider state or that a prior plan was executed.
 - {"basis":"retained_plan","open_loop_ref":"..."} for continuity only, never current evidence. text must be exactly: The recorded open question remains in context.
@@ -2557,7 +2576,7 @@ delivery=silent means this scheduled-wake draft is a durable internal audit summ
 
 The initiating operator turn must be visible even when the operator asks not to receive progress pings. A concise acknowledgement with the current bounded state and persisted next check answers that initiating request; it is not a later progress ping. Apply the quiet-progress preference only to scheduled nonterminal wakes after that acknowledgement.
 
-Set answers_newest_request only when the response addresses the newest request rather than merely narrating process. Set conversational only when a person can read it naturally in Slack. Conversational synthesis is valid for useful timeless reasoning and transformations of bounded conversation context, but reject it if it smuggles in current system state, operational capability, ownership, execution, or verification. Set owns_follow_through when Cerebro completed all safe bounded work available in this turn and asks the operator only for an actual decision or missing identifier. Future Cerebro work counts only when backed by a real executor-bound commitment; do not require a future commitment when the current bounded check is honestly complete. Set right_sized only when the answer is neither a terse non-answer nor an unnecessary report. Set evidence_boundary_correct only when facts, hypotheses, recommendations, actions, verification, and unknowns are distinguished honestly.
+Set answers_newest_request only when the response addresses the newest request rather than merely narrating process. Set conversational only when a person can read it naturally in Slack. Conversational synthesis is valid only as one source-message-bound explanation, transformation, or piece of advice. Reject it unless the body materially answers the newest operator message and remains within the cited thread context. Prefer a direct answer over a disclaimer. Reject any synthesis that introduces current or recent state, operational capability, ownership, work performed, execution, or verification as known; a requested draft or rewrite may transform those words only when the operator supplied them. Set owns_follow_through when Cerebro completed all safe bounded work available in this turn and asks the operator only for an actual decision or missing identifier. Future Cerebro work counts only when backed by a real executor-bound commitment; do not require a future commitment when the current bounded check is honestly complete. Set right_sized only when the answer is neither a terse non-answer nor an unnecessary report. Set evidence_boundary_correct only when facts, hypotheses, recommendations, actions, verification, and unknowns are distinguished honestly.
 
 Reject negative or scope-wide current claims such as "no new," "nothing else," or "only" unless a bounded observation covers that scope. Reject claims that an earlier anomaly recovered unless both the earlier state and the later recovery are observed. Reject claims that Cerebro can trigger, line up, route, schedule, or execute work unless current observations establish that exact capability and action boundary.
 
@@ -5219,6 +5238,135 @@ mod tests {
         ));
     }
 
+    fn replay_request() -> AgentTurnRequest {
+        AgentTurnRequest {
+            schema_version: "agent-turn-request/v1".into(),
+            tenant_id: "tenant:request-replay".into(),
+            request_id: "request:replay-after-compaction".into(),
+            thread_ref: "thread:request-replay".into(),
+            context_scope_ref: None,
+            actor_ref: "actor:request-replay".into(),
+            assessment_at: "2026-08-02T18:00:00Z".into(),
+            message: "Explain the durable replay boundary.".into(),
+            history: Vec::new(),
+            history_metadata: Vec::new(),
+            working_state: None,
+            effect_authorizations: Vec::new(),
+        }
+    }
+
+    fn replay_draft(session: &AgentSession) -> cerebro_agent_runtime::session::GroundedDraft {
+        cerebro_agent_runtime::session::GroundedDraft {
+            state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
+            message: "The durable event retains the original request identity.".into(),
+            claims: Vec::new(),
+            coverage_notice: None,
+            question: None,
+            mission: session.mission.clone(),
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        }
+    }
+
+    fn replay_events(
+        session: &AgentSession,
+        request: &AgentTurnRequest,
+        completed: bool,
+    ) -> Vec<SessionEventRecord> {
+        let mut events = vec![
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 1,
+                occurred_at: request.assessment_at.clone(),
+                event: SessionEvent::UserMessageQueued {
+                    message: SessionMessage {
+                        role: SessionMessageRole::User,
+                        message_ref: format!("operator:{}", request.request_id),
+                        actor_ref: request.actor_ref.clone(),
+                        text: request.message.clone(),
+                        received_at: request.assessment_at.clone(),
+                    },
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 2,
+                occurred_at: request.assessment_at.clone(),
+                event: SessionEvent::TurnStarted {
+                    request_id: request.request_id.clone(),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 3,
+                occurred_at: request.assessment_at.clone(),
+                event: SessionEvent::DraftProduced {
+                    request_id: request.request_id.clone(),
+                    draft: replay_draft(session),
+                },
+            },
+        ];
+        if completed {
+            events.push(SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 4,
+                occurred_at: request.assessment_at.clone(),
+                event: SessionEvent::TurnCompleted {
+                    request_id: request.request_id.clone(),
+                    state: FinalState::Answered,
+                },
+            });
+        }
+        events
+    }
+
+    #[test]
+    fn completed_request_replays_from_immutable_events_after_message_compaction() {
+        let request = replay_request();
+        let base = new_session(&request).unwrap();
+        let mut session =
+            apply_session_events(&base, &replay_events(&base, &request, true)).unwrap();
+        session.messages.clear();
+
+        assert!(matches!(
+            replay_completed_session_turn(&session, &request).unwrap(),
+            Some(AgentTurnOutcome::Delivered { .. })
+        ));
+
+        let mut changed = request;
+        changed.message.push_str(" Changed.");
+        assert!(matches!(
+            replay_completed_session_turn(&session, &changed),
+            Err(AgentRuntimeError::InvalidRequest(_))
+        ));
+    }
+
+    #[test]
+    fn pending_request_replays_from_immutable_events_after_message_compaction() {
+        let request = replay_request();
+        let base = new_session(&request).unwrap();
+        let mut session =
+            apply_session_events(&base, &replay_events(&base, &request, false)).unwrap();
+        session.messages.clear();
+
+        assert!(matches!(
+            replay_pending_session_turn(&session, &request).unwrap(),
+            AgentTurnOutcome::PendingDelivery { .. }
+        ));
+
+        let mut changed = request;
+        changed.actor_ref.push_str(":changed");
+        assert!(matches!(
+            replay_pending_session_turn(&session, &changed),
+            Err(AgentRuntimeError::InvalidRequest(_))
+        ));
+    }
+
     #[test]
     fn exact_delivery_receipt_replays_but_a_changed_receipt_conflicts() {
         let request = AgentTurnRequest {
@@ -5431,7 +5579,10 @@ mod tests {
         for explanation_id in ALL_STABLE_EXPLANATION_IDS {
             assert!(decision_schema.contains(explanation_id));
         }
+        assert!(decision_schema.contains("conversational_synthesis"));
+        assert!(decision_schema.contains("source_message_sequences"));
         assert!(!decision_schema.contains("coverage_boundary"));
+        assert!(session_instructions().contains("do not add a provenance disclaimer"));
         assert!(
             claim_review_instructions()
                 .contains("compare it with current observations when reviewing attention")
