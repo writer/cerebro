@@ -3558,6 +3558,16 @@ fn atomize_tool_result(
     call: &cerebro_agent_runtime::ToolCall,
     mut result: ToolResult,
 ) -> Result<ToolResult, AgentRuntimeError> {
+    if matches!(
+        call.tool_id.as_str(),
+        "slack.thread.read" | "slack.history.search"
+    ) {
+        for evidence in &mut result.evidence {
+            evidence.fresh_until = None;
+            evidence.atoms.clear();
+        }
+        return Ok(result);
+    }
     let subject_ref = production_input_subject(&call.tool_id, &call.input)?.map(str::to_owned);
     for evidence in &mut result.evidence {
         let semantic_assertions = evidence
@@ -5056,6 +5066,52 @@ mod tests {
                 .iter()
                 .any(|atom| matches!(&atom.assertion, EvidenceAssertion::LegacyStatement { .. }))
         );
+    }
+
+    #[test]
+    fn retained_slack_context_stays_non_evidentiary_after_atomization() {
+        for tool_id in ["slack.thread.read", "slack.history.search"] {
+            let call = cerebro_agent_runtime::ToolCall {
+                call_id: format!("call:{tool_id}"),
+                tool_id: tool_id.into(),
+                purpose: "Read retained Slack context.".into(),
+                input: json!({}),
+            };
+            let preexisting_atoms = evidence_atoms_from_json(EvidenceAtomization {
+                evidence_ref: "evidence://slack-context/pre-atomized",
+                subject_ref: None,
+                data: &json!({"messages": []}),
+                state: ToolResultState::Succeeded,
+                summary: "Pre-atomized retained Slack context.",
+                observed_at: "2026-08-01T00:00:00Z",
+                fresh_until: Some("2026-08-01T00:05:00Z"),
+                complete: true,
+            });
+            let result =
+                atomize_tool_result(
+                    &call,
+                    ToolResult {
+                        state: ToolResultState::Succeeded,
+                        summary: "Read retained Slack context.".into(),
+                        data: json!({"messages": [], "next_cursor": null}),
+                        evidence: vec![EvidenceRecord {
+                            evidence_ref: format!("evidence://slack-context/{tool_id}"),
+                            statement:
+                                "Retained Slack context is not current external-system evidence."
+                                    .into(),
+                            observed_at: "2026-08-01T00:00:00Z".into(),
+                            fresh_until: Some("2026-08-01T00:05:00Z".into()),
+                            complete: true,
+                            atoms: preexisting_atoms,
+                        }],
+                        blocker: None,
+                    },
+                )
+                .unwrap();
+
+            assert!(result.evidence[0].fresh_until.is_none(), "{tool_id}");
+            assert!(result.evidence[0].atoms.is_empty(), "{tool_id}");
+        }
     }
 
     #[test]

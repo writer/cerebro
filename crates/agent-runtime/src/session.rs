@@ -3250,7 +3250,6 @@ fn current_required_claims_have_same_turn_evidence(
                                                     atom.atom_ref == *atom_ref
                                                         && planned_claim_subject_matches(
                                                             expected_subject,
-                                                            observation,
                                                             atom,
                                                         )
                                                 })
@@ -3296,18 +3295,8 @@ fn evidence_record_supports_current_draft(
         })
 }
 
-fn planned_claim_subject_matches(
-    expected_subject: &str,
-    observation: &ToolObservation,
-    atom: &EvidenceAtom,
-) -> bool {
-    if observation.call.tool_id == "capability.overview" {
-        return true;
-    }
-    let Some(subject_ref) = atom.subject_ref.as_deref() else {
-        return false;
-    };
-    observation_text_names_subject(expected_subject, subject_ref)
+fn planned_claim_subject_matches(expected_subject: &str, atom: &EvidenceAtom) -> bool {
+    atom.subject_ref.as_deref() == Some(expected_subject)
 }
 
 fn claim_evidence_atom_refs(content: &ClaimContent) -> &[String] {
@@ -5042,7 +5031,8 @@ fn validate_claim(
     }
     if contains_ownership_assertion(&claim.text) {
         for clause in atomic_ownership_clauses(&claim.text) {
-            if !contains_ownership_assertion(clause) {
+            if !contains_ownership_assertion(clause) && !contains_gapped_ownership_assertion(clause)
+            {
                 continue;
             }
             if recommendation_clause_is_prospective_role_handoff(claim, clause) {
@@ -5933,6 +5923,26 @@ fn contains_ownership_assertion(text: &str) -> bool {
     .any(|phrase| normalized.contains(phrase))
 }
 
+fn contains_gapped_ownership_assertion(text: &str) -> bool {
+    let normalized = text.to_ascii_lowercase();
+    normalized.contains(" for ")
+        && [
+            "remediat",
+            "verif",
+            "approv",
+            "execut",
+            "provider admin",
+            "administer",
+            "evidence",
+        ]
+        .iter()
+        .any(|duty| {
+            normalized
+                .find(duty)
+                .is_some_and(|index| !normalized[..index].trim().is_empty())
+        })
+}
+
 fn recommendation_clause_is_prospective_role_handoff(claim: &GroundedClaim, clause: &str) -> bool {
     let ClaimContent::Recommendation { action, .. } = &claim.content else {
         return false;
@@ -5970,11 +5980,9 @@ fn atomic_ownership_clauses(text: &str) -> Vec<&str> {
         .flat_map(|clause| clause.split(" along with "))
         .flat_map(|clause| {
             let parts = clause.split(" and ").map(str::trim).collect::<Vec<_>>();
-            if parts
-                .iter()
-                .skip(1)
-                .any(|part| contains_ownership_assertion(part))
-            {
+            if parts.iter().skip(1).any(|part| {
+                contains_ownership_assertion(part) || contains_gapped_ownership_assertion(part)
+            }) {
                 parts
             } else {
                 vec![clause]
@@ -6032,7 +6040,7 @@ fn atom_binds_claimed_owner(
         return false;
     };
     let normalized = text.to_ascii_lowercase();
-    if *duty != required_duty || !observation_text_names_subject(text, subject_ref) {
+    if *duty != required_duty || !text_names_exact_semantic_identity(text, subject_ref) {
         return false;
     }
     let claims_cerebro = [
@@ -6056,11 +6064,108 @@ fn atom_binds_claimed_owner(
             "cerebro" | "service:cerebro" | "agent:cerebro"
         ) || principal.display_name.as_deref() == Some("Cerebro");
     }
-    normalized.contains(principal_leaf)
-        || principal
-            .display_name
-            .as_deref()
-            .is_some_and(|name| normalized.contains(&name.to_ascii_lowercase()))
+    text_names_exact_claimed_principal(text, principal_leaf, principal.display_name.as_deref())
+}
+
+fn text_names_exact_claimed_principal(
+    text: &str,
+    principal_leaf: &str,
+    display_name: Option<&str>,
+) -> bool {
+    let normalized = normalized_semantic_text(text);
+    [Some(principal_leaf), display_name]
+        .into_iter()
+        .flatten()
+        .map(normalized_semantic_text)
+        .map(|term| term.trim().to_owned())
+        .filter(|term| !term.is_empty())
+        .any(|term| {
+            [
+                "owns",
+                "is responsible for",
+                "is accountable for",
+                "has accountability for",
+                "is assigned to",
+                "is the accountable party",
+                "remediation",
+                "verification",
+                "approval",
+                "execution",
+                "provider administration",
+                "evidence",
+            ]
+            .iter()
+            .any(|marker| normalized.contains(&format!(" {term} {marker} ")))
+                || ["owner", "remediation owner", "falls to"]
+                    .iter()
+                    .any(|marker| normalized.contains(&format!(" {marker} {term} ")))
+        })
+}
+
+fn text_names_exact_semantic_identity(text: &str, identity_ref: &str) -> bool {
+    let text_tokens = normalized_semantic_text(text)
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let identity_tokens = normalized_semantic_text(identity_ref)
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    !identity_tokens.is_empty()
+        && text_tokens
+            .windows(identity_tokens.len())
+            .enumerate()
+            .any(|(index, candidate)| {
+                candidate == identity_tokens.as_slice()
+                    && text_tokens
+                        .get(index + identity_tokens.len())
+                        .is_none_or(|next| {
+                            matches!(
+                                next.as_str(),
+                                "and"
+                                    | "but"
+                                    | "while"
+                                    | "whereas"
+                                    | "plus"
+                                    | "as"
+                                    | "along"
+                                    | "is"
+                                    | "are"
+                                    | "was"
+                                    | "were"
+                                    | "has"
+                                    | "have"
+                                    | "had"
+                                    | "owns"
+                                    | "owner"
+                                    | "responsible"
+                                    | "accountable"
+                                    | "assigned"
+                                    | "falls"
+                                    | "should"
+                                    | "must"
+                                    | "can"
+                                    | "could"
+                                    | "will"
+                                    | "would"
+                                    | "remains"
+                                    | "remained"
+                                    | "returned"
+                                    | "reports"
+                                    | "shows"
+                                    | "with"
+                                    | "without"
+                                    | "after"
+                                    | "before"
+                                    | "at"
+                                    | "in"
+                                    | "on"
+                                    | "from"
+                                    | "to"
+                                    | "for"
+                            )
+                        })
+            })
 }
 
 fn validate_stable_explanation_wording(text: &str) -> Result<(), AgentRuntimeError> {
@@ -9942,6 +10047,34 @@ mod tests {
             &[observation(true, Some("2026-08-01T00:00:00Z"))],
             assessment,
         ));
+
+        let mut near_prefix_plan = plan();
+        near_prefix_plan.resolved_entities = vec!["connector:alpha-backup".into()];
+        near_prefix_plan.claims[0].subject_refs = vec!["connector:alpha-backup".into()];
+        let mut near_prefix_draft = draft();
+        near_prefix_draft.claims[0].text = "Connector alpha-backup is healthy.".into();
+        assert!(!current_required_claims_have_same_turn_evidence(
+            &near_prefix_plan,
+            &near_prefix_draft,
+            &[observation(true, Some("2026-08-01T00:00:00Z"))],
+            assessment,
+        ));
+
+        let mut catalog_plan = plan();
+        catalog_plan.resolved_entities = vec!["connector:beta".into()];
+        catalog_plan.claims[0].subject_refs = vec!["connector:beta".into()];
+        catalog_plan.claims[0].source_candidates = vec!["capability.overview".into()];
+        let mut catalog_draft = draft();
+        catalog_draft.claims[0].text = "Connector beta is healthy.".into();
+        let mut catalog = observation(true, Some("2026-08-01T00:00:00Z"));
+        catalog.call.tool_id = "capability.overview".into();
+        catalog.descriptor.tool_id = "capability.overview".into();
+        assert!(!current_required_claims_have_same_turn_evidence(
+            &catalog_plan,
+            &catalog_draft,
+            &[catalog],
+            assessment,
+        ));
     }
 
     #[test]
@@ -10043,7 +10176,71 @@ mod tests {
             "Synthetic Team Alpha owns remediation for connector alpha and verification.".into();
         compound.message = compound.claims[0].text.clone();
         assert!(
-            validate_grounded_draft(&session(), &compound, &[team_authority], assessment).is_err()
+            validate_grounded_draft(
+                &session(),
+                &compound,
+                std::slice::from_ref(&team_authority),
+                assessment,
+            )
+            .is_err()
+        );
+
+        let mut near_subject = compound.clone();
+        near_subject.claims[0].text =
+            "Synthetic Team Alpha owns remediation for connector alpha-backup.".into();
+        near_subject.message = near_subject.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &near_subject,
+                std::slice::from_ref(&team_authority),
+                assessment,
+            )
+            .is_err()
+        );
+
+        let mut near_principal = compound.clone();
+        near_principal.claims[0].text =
+            "Synthetic Team Alpha Extended owns remediation for connector alpha.".into();
+        near_principal.message = near_principal.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &near_principal,
+                std::slice::from_ref(&team_authority),
+                assessment,
+            )
+            .is_err()
+        );
+
+        let mut crosswired_authority = team_authority;
+        let mut verification = crosswired_authority.result.evidence[0].atoms[0].clone();
+        verification.atom_ref = "atom:verification".into();
+        verification.assertion = EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::AuthorityBinding {
+                subject_ref: "connector:alpha".into(),
+                duty: AuthorityDuty::Verification,
+                state: AuthorityBindingState::Bound {
+                    principal: AuthorityPrincipal {
+                        principal_ref: "team:synthetic-alpha".into(),
+                        display_name: Some("Synthetic Team Alpha".into()),
+                        kind: AuthorityPrincipalKind::Team,
+                    },
+                },
+            },
+        };
+        crosswired_authority.result.evidence[0]
+            .atoms
+            .push(verification);
+        let mut gapped = compound;
+        gapped.claims[0].text = "Synthetic Team Alpha owns remediation for connector alpha and Synthetic Team Beta verification for connector beta.".into();
+        gapped.claims[0].content = ClaimContent::Observation {
+            atom_refs: vec!["atom:status".into(), "atom:verification".into()],
+        };
+        gapped.message = gapped.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&session(), &gapped, &[crosswired_authority], assessment)
+                .is_err()
         );
     }
 

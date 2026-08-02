@@ -191,10 +191,26 @@ impl ConversationQualityJudgment {
 struct ConversationLabScenario {
     scenario_ref: String,
     fixture_ref: String,
+    behavior: ConversationBehavior,
     mission: String,
     operator_brief: String,
     initial_message: String,
     seed_history: Vec<ConversationMessage>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ConversationBehavior {
+    NaturalOperationalSynthesis,
+    CorrectionRecovery,
+    RetainedContextContinuation,
+    BoundedFollowThrough,
+    AuthorityBoundary,
+    CapabilityDiscovery,
+    ReasoningFailureRecovery,
+    ScopeCorrection,
+    AuthorizedChangeThenVerify,
+    AutonomousFollowThrough,
 }
 
 #[derive(Debug, Deserialize)]
@@ -273,9 +289,18 @@ struct AutonomyHoldoutPack {
 }
 
 struct AutonomyScenarioSelection {
-    scenario: AutonomyHoldoutScenario,
+    scenarios: Vec<AutonomyHoldoutScenario>,
     declared_scenario_count: usize,
     source: HoldoutSourceReceipt,
+}
+
+struct AutonomyRunContext<'a> {
+    commit_sha: &'a str,
+    evaluated_at: &'a str,
+    blinding_salt: &'a str,
+    holdout_source: &'a HoldoutSourceReceipt,
+    model: Arc<ConfiguredModel>,
+    judge: Arc<ConfiguredModel>,
 }
 
 struct ConversationScenarioSelection {
@@ -458,6 +483,24 @@ struct ConversationLabReceipt {
 }
 
 #[derive(Serialize)]
+struct AutonomyScenarioRunReceipt {
+    execution_completed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    execution_failure: Option<String>,
+    operator_message_count: usize,
+    scheduled_wake_count: usize,
+    unsolicited_follow_up_count: usize,
+    synthetic_operator_turn_count: usize,
+    fresh_observation_every_wake: bool,
+    candidate_authored_schedule_every_wake: bool,
+    rescheduled_schedule_chain_complete: bool,
+    unique_fresh_observation_receipts: bool,
+    commitment_closed: bool,
+    semantic_excellence_gate_passed: bool,
+    scenario: ConversationLabScenarioReceipt,
+}
+
+#[derive(Serialize)]
 struct AutonomyLabReceipt {
     schema_version: &'static str,
     commit_sha: String,
@@ -471,22 +514,19 @@ struct AutonomyLabReceipt {
     holdout_source: HoldoutSourceReceipt,
     blind_review_bundle_sha256: String,
     declared_scenario_count: usize,
-    selected_scenario_ref: String,
-    operator_message_count: usize,
-    scheduled_wake_count: usize,
-    unsolicited_follow_up_count: usize,
-    synthetic_operator_turn_count: usize,
-    fresh_observation_every_wake: bool,
-    candidate_authored_schedule_every_wake: bool,
-    rescheduled_schedule_chain_complete: bool,
-    unique_fresh_observation_receipts: bool,
-    commitment_closed: bool,
+    attempted_scenario_count: usize,
+    executed_scenario_count: usize,
+    all_declared_scenarios_attempted: bool,
+    all_declared_scenarios_executed: bool,
+    mechanics_gate_passed: bool,
+    latency_gate_passed: bool,
+    semantic_excellence_gate_passed: bool,
     operator_turn_latency_slo_ms: u128,
     scheduled_wake_latency_slo_ms: u128,
     independent_review_required: bool,
     promotion_ready: bool,
     suite_passed: bool,
-    scenario: ConversationLabScenarioReceipt,
+    scenarios: Vec<AutonomyScenarioRunReceipt>,
 }
 
 struct MeasuredModel {
@@ -663,8 +703,10 @@ struct EvalTools {
     observations: Mutex<Vec<EvaluationObservationReceipt>>,
     runtime_cursor_format: Mutex<String>,
     capability_selections: Mutex<BTreeMap<String, EvalCapabilitySelection>>,
+    capability_discovery_events: Mutex<Vec<String>>,
     prior_thread_contexts: Vec<EvalPriorThreadFixture>,
     prior_thread_scope: Mutex<Option<EvalPriorThreadScope>>,
+    session_thread_snapshot: Mutex<Option<Vec<SessionMessage>>>,
 }
 
 #[derive(Clone)]
@@ -740,8 +782,10 @@ impl EvalTools {
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
             capability_selections: Mutex::new(BTreeMap::new()),
+            capability_discovery_events: Mutex::new(Vec::new()),
             prior_thread_contexts: sealed_synthetic_prior_threads(),
             prior_thread_scope: Mutex::new(None),
+            session_thread_snapshot: Mutex::new(None),
         }
     }
 
@@ -755,12 +799,14 @@ impl EvalTools {
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
             capability_selections: Mutex::new(BTreeMap::new()),
+            capability_discovery_events: Mutex::new(Vec::new()),
             prior_thread_contexts: sealed_synthetic_prior_threads(),
             prior_thread_scope: Mutex::new(Some(EvalPriorThreadScope {
                 tenant_id: "rust-conversation-lab-tenant".into(),
                 actor_ref: "slack-user://rust-conversation-lab".into(),
                 context_scope_ref: SYNTHETIC_CONTEXT_SCOPE_REF.into(),
             })),
+            session_thread_snapshot: Mutex::new(None),
         }
     }
 
@@ -779,12 +825,14 @@ impl EvalTools {
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
             capability_selections: Mutex::new(BTreeMap::new()),
+            capability_discovery_events: Mutex::new(Vec::new()),
             prior_thread_contexts: sealed_synthetic_prior_threads(),
             prior_thread_scope: Mutex::new(Some(EvalPriorThreadScope {
                 tenant_id: "rust-autonomy-lab-tenant".into(),
                 actor_ref: "evaluation-operator".into(),
                 context_scope_ref: SYNTHETIC_CONTEXT_SCOPE_REF.into(),
             })),
+            session_thread_snapshot: Mutex::new(None),
         }
     }
 
@@ -792,6 +840,13 @@ impl EvalTools {
         self.observations
             .lock()
             .expect("evaluation observation receipt poisoned")
+            .clone()
+    }
+
+    fn capability_discovery_events(&self) -> Vec<String> {
+        self.capability_discovery_events
+            .lock()
+            .expect("evaluation capability discovery receipt poisoned")
             .clone()
     }
 
@@ -836,24 +891,31 @@ impl EvalTools {
         call: &ToolCall,
     ) -> Result<EvaluationFixture, AgentRuntimeError> {
         let (cursor, limit) = parse_slack_thread_read_input(&call.input)?;
-        let messages = request
-            .history
-            .iter()
-            .enumerate()
-            .map(|(index, message)| SessionMessage {
-                role: match message.role {
-                    ConversationRole::Assistant => SessionMessageRole::Assistant,
-                    ConversationRole::User => SessionMessageRole::User,
-                },
-                message_ref: format!("synthetic-thread-message:{index:04}"),
-                actor_ref: match message.role {
-                    ConversationRole::Assistant => "cerebro".into(),
-                    ConversationRole::User => request.actor_ref.clone(),
-                },
-                text: message.content.clone(),
-                received_at: request.assessment_at.clone(),
-            })
-            .collect::<Vec<_>>();
+        let messages = self
+            .session_thread_snapshot
+            .lock()
+            .expect("evaluation session thread snapshot poisoned")
+            .clone()
+            .unwrap_or_else(|| {
+                request
+                    .history
+                    .iter()
+                    .enumerate()
+                    .map(|(index, message)| SessionMessage {
+                        role: match message.role {
+                            ConversationRole::Assistant => SessionMessageRole::Assistant,
+                            ConversationRole::User => SessionMessageRole::User,
+                        },
+                        message_ref: format!("synthetic-thread-message:{index:04}"),
+                        actor_ref: match message.role {
+                            ConversationRole::Assistant => "cerebro".into(),
+                            ConversationRole::User => request.actor_ref.clone(),
+                        },
+                        text: message.content.clone(),
+                        received_at: request.assessment_at.clone(),
+                    })
+                    .collect::<Vec<_>>()
+            });
         let page = thread_transcript_page(&messages, cursor.as_deref(), limit)?;
         Ok(EvaluationFixture {
             summary: format!(
@@ -1134,9 +1196,17 @@ impl AgentTools for EvalTools {
         call: &cerebro_agent_runtime::ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
         if call.tool_id == "capability.search" {
+            self.capability_discovery_events
+                .lock()
+                .expect("evaluation capability discovery receipt poisoned")
+                .push(call.tool_id.clone());
             return self.search_capabilities(request, call);
         }
         if call.tool_id == "capability.describe" {
+            self.capability_discovery_events
+                .lock()
+                .expect("evaluation capability discovery receipt poisoned")
+                .push(call.tool_id.clone());
             return capability_describe_result(&self.complete_capability_catalog(), &call.input);
         }
         let selected_call;
@@ -1628,6 +1698,10 @@ impl SessionTools for EvalTools {
         input: &SessionTurnInput,
         call: &cerebro_agent_runtime::ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
+        *self
+            .session_thread_snapshot
+            .lock()
+            .expect("evaluation session thread snapshot poisoned") = Some(session.messages.clone());
         let request_text =
             cerebro_agent_runtime::session::session_turn_request_text(session, input)?;
         let request = AgentTurnRequest {
@@ -1657,7 +1731,12 @@ impl SessionTools for EvalTools {
             working_state: None,
             effect_authorizations: session.effect_authorizations.clone(),
         };
-        <Self as AgentTools>::invoke(self, &request, call).await
+        let result = <Self as AgentTools>::invoke(self, &request, call).await;
+        *self
+            .session_thread_snapshot
+            .lock()
+            .expect("evaluation session thread snapshot poisoned") = None;
+        result
     }
 }
 
@@ -1908,7 +1987,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         }
         let judge = Arc::new(ConfiguredModel::amazon_bedrock(judge_model_id.clone()).await?);
         if evaluation_suite == "autonomy_lab" {
-            let result = run_autonomy_lab(
+            return run_autonomy_lab(
                 commit_sha.clone(),
                 evaluated_at_text,
                 model_id.clone(),
@@ -1917,10 +1996,6 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
                 judge,
             )
             .await;
-            if result.is_err() {
-                write_autonomy_failure_blind_bundle(&commit_sha, &model_id, &judge_model_id)?;
-            }
-            return result;
         }
         return run_conversation_lab(
             commit_sha,
@@ -2714,6 +2789,7 @@ fn autonomy_lab_scenario() -> ConversationLabScenario {
     ConversationLabScenario {
         scenario_ref: "autonomous_recovery_follow_through".into(),
         fixture_ref: "case://held-out/autonomous-recovery".into(),
+        behavior: ConversationBehavior::AutonomousFollowThrough,
         mission: "Own the recovery check without another operator prompt. Establish the evidence threshold, re-observe it on durable scheduled wakes, avoid declaring recovery early, and tell the operator when the feed becomes decision-grade for the affected high-risk finding.".into(),
         operator_brief: "The operator will send exactly one message. No simulated operator supplies a follow-up, clarification, or nudge after that message.".into(),
         initial_message: "The governed evidence feed is recovering. Keep watching it and tell me when we can trust it for the high-risk finding. I don't want to keep checking in.".into(),
@@ -2762,20 +2838,15 @@ fn selected_autonomy_scenario() -> Result<AutonomyScenarioSelection, Box<dyn Err
             &serde_json::to_value(&pack.scenarios)?,
         )?;
         validate_autonomy_holdout_scenarios(&pack.scenarios)?;
-        let selected_ref = env::var("CEREBRO_SLACK_AGENT_EVAL_AUTONOMY_SCENARIO_REF")?;
         let declared_scenario_count = pack.scenarios.len();
-        let mut matches = pack
-            .scenarios
-            .into_iter()
-            .filter(|candidate| candidate.scenario.scenario_ref == selected_ref)
-            .collect::<Vec<_>>();
-        if matches.len() != 1 {
+        if env::var_os("CEREBRO_SLACK_AGENT_EVAL_AUTONOMY_SCENARIO_REF").is_some() {
             return Err(
-                "the autonomy scenario selector must match exactly one packed scenario".into(),
+                "external autonomy holdouts always execute every declared scenario; scenario selection is not supported"
+                    .into(),
             );
         }
         return Ok(AutonomyScenarioSelection {
-            scenario: matches.pop().expect("one selected autonomy scenario"),
+            scenarios: pack.scenarios,
             declared_scenario_count,
             source: HoldoutSourceReceipt {
                 source_kind: "external_pinned_holdout",
@@ -2791,7 +2862,7 @@ fn selected_autonomy_scenario() -> Result<AutonomyScenarioSelection, Box<dyn Err
     let scenario = embedded_autonomy_holdout_scenario();
     let bytes = serde_json::to_vec(&scenario)?;
     Ok(AutonomyScenarioSelection {
-        scenario,
+        scenarios: vec![scenario],
         declared_scenario_count: 1,
         source: HoldoutSourceReceipt {
             source_kind: "embedded_development_regression",
@@ -2853,8 +2924,73 @@ fn validate_autonomy_holdout_scenarios(
     Ok(())
 }
 
-fn autonomy_suite_passed(review_ready: bool, latency_slo_passed: bool) -> bool {
-    review_ready && latency_slo_passed
+fn autonomy_suite_passed(
+    all_declared_scenarios_executed: bool,
+    mechanics_gate_passed: bool,
+    latency_gate_passed: bool,
+    semantic_excellence_gate_passed: bool,
+) -> bool {
+    all_declared_scenarios_executed
+        && mechanics_gate_passed
+        && latency_gate_passed
+        && semantic_excellence_gate_passed
+}
+
+fn autonomy_execution_coverage(
+    declared_scenario_count: usize,
+    attempted_scenario_count: usize,
+    executed_scenario_count: usize,
+) -> (bool, bool) {
+    let all_declared_scenarios_attempted = attempted_scenario_count == declared_scenario_count;
+    let all_declared_scenarios_executed =
+        all_declared_scenarios_attempted && executed_scenario_count == declared_scenario_count;
+    (
+        all_declared_scenarios_attempted,
+        all_declared_scenarios_executed,
+    )
+}
+
+fn failed_autonomy_scenario_receipt(
+    scenario: &ConversationLabScenario,
+    candidate_label: String,
+    error: &dyn Error,
+) -> AutonomyScenarioRunReceipt {
+    AutonomyScenarioRunReceipt {
+        execution_completed: false,
+        execution_failure: Some(error.to_string()),
+        operator_message_count: 0,
+        scheduled_wake_count: 0,
+        unsolicited_follow_up_count: 0,
+        synthetic_operator_turn_count: 0,
+        fresh_observation_every_wake: false,
+        candidate_authored_schedule_every_wake: false,
+        rescheduled_schedule_chain_complete: false,
+        unique_fresh_observation_receipts: false,
+        commitment_closed: false,
+        semantic_excellence_gate_passed: false,
+        scenario: ConversationLabScenarioReceipt {
+            scenario_ref: scenario.scenario_ref.clone(),
+            candidate_label,
+            mission: scenario.mission.clone(),
+            attempted_turn_count: 0,
+            delivered_exchange_count: 0,
+            unanswered_user_turn_count: 1,
+            maximum_turn_latency_ms: 0,
+            total_turn_latency_ms: 0,
+            transcript: vec![ConversationMessage {
+                role: ConversationRole::User,
+                content: scenario.initial_message.clone(),
+            }],
+            final_judgment: None,
+            final_judgment_error: Some(
+                "scenario execution failed before a valid semantic judgment".into(),
+            ),
+            review_ready: false,
+            latency_slo_passed: false,
+            internal_judge_advisory_excellent: false,
+            turns: Vec::new(),
+        },
+    }
 }
 
 async fn run_autonomy_lab(
@@ -2876,24 +3012,137 @@ async fn run_autonomy_lab(
     let selection = selected_autonomy_scenario()?;
     let declared_scenario_count = selection.declared_scenario_count;
     let holdout_source = selection.source;
+    let run_context = AutonomyRunContext {
+        commit_sha: &commit_sha,
+        evaluated_at: &evaluated_at,
+        blinding_salt: &blinding_salt,
+        holdout_source: &holdout_source,
+        model,
+        judge,
+    };
+    let mut scenario_runs = Vec::with_capacity(selection.scenarios.len());
+    for (scenario_index, packed_scenario) in selection.scenarios.iter().enumerate() {
+        let candidate_label = blind_candidate_label(
+            &blinding_salt,
+            &commit_sha,
+            &holdout_source.pack_sha256,
+            &packed_scenario.scenario.scenario_ref,
+        );
+        let run = run_autonomy_scenario(scenario_index, packed_scenario, &run_context).await;
+        scenario_runs.push(match run {
+            Ok(receipt) => receipt,
+            Err(error) => failed_autonomy_scenario_receipt(
+                &packed_scenario.scenario,
+                candidate_label,
+                error.as_ref(),
+            ),
+        });
+    }
+
+    let attempted_scenario_count = scenario_runs.len();
+    let executed_scenario_count = scenario_runs
+        .iter()
+        .filter(|run| run.execution_completed)
+        .count();
+    let (all_declared_scenarios_attempted, all_declared_scenarios_executed) =
+        autonomy_execution_coverage(
+            declared_scenario_count,
+            attempted_scenario_count,
+            executed_scenario_count,
+        );
+    let mechanics_gate_passed = scenario_runs
+        .iter()
+        .all(|run| run.execution_completed && run.scenario.review_ready);
+    let latency_gate_passed = scenario_runs
+        .iter()
+        .all(|run| run.execution_completed && run.scenario.latency_slo_passed);
+    let semantic_excellence_gate_passed = scenario_runs.iter().all(|run| {
+        run.execution_completed
+            && run.semantic_excellence_gate_passed
+            && run.scenario.internal_judge_advisory_excellent
+    });
+    let suite_passed = autonomy_suite_passed(
+        all_declared_scenarios_executed,
+        mechanics_gate_passed,
+        latency_gate_passed,
+        semantic_excellence_gate_passed,
+    );
+    let blind_review_bundle = blind_review_bundle(
+        &holdout_source,
+        scenario_runs.iter().map(|run| &run.scenario),
+    );
+    let blind_review_bytes = serde_json::to_vec_pretty(&blind_review_bundle)?;
+    validate_blind_review_bytes(
+        &blind_review_bytes,
+        &[&commit_sha, &model_id, &judge_model_id, "aws_bedrock"],
+    )?;
+    let blind_review_bundle_sha256 = sha256_hex(&blind_review_bytes);
+    if let Ok(path) = env::var("CEREBRO_SLACK_AGENT_EVAL_BLIND_OUTPUT") {
+        fs::write(path, &blind_review_bytes)?;
+    }
+    let receipt = AutonomyLabReceipt {
+        schema_version: "cerebro-rust-slack-agent-autonomy-lab/v3",
+        commit_sha,
+        evaluated_at,
+        provider: "aws_bedrock",
+        model_id,
+        judge_model_id,
+        runtime_path: "session_v2_typed_wake",
+        candidate_identity_concealed_from_model_judge: true,
+        model_side_score_advisory: false,
+        holdout_source,
+        blind_review_bundle_sha256,
+        declared_scenario_count,
+        attempted_scenario_count,
+        executed_scenario_count,
+        all_declared_scenarios_attempted,
+        all_declared_scenarios_executed,
+        mechanics_gate_passed,
+        latency_gate_passed,
+        semantic_excellence_gate_passed,
+        operator_turn_latency_slo_ms: LAB_MAX_OPERATOR_TURN_LATENCY_MS,
+        scheduled_wake_latency_slo_ms: LAB_MAX_SCHEDULED_WAKE_LATENCY_MS,
+        independent_review_required: true,
+        promotion_ready: false,
+        suite_passed,
+        scenarios: scenario_runs,
+    };
+    println!("{}", serde_json::to_string_pretty(&receipt)?);
+    if suite_passed {
+        Ok(())
+    } else {
+        Err("the exact-head off-Slack autonomy trajectories were not all excellent".into())
+    }
+}
+
+async fn run_autonomy_scenario(
+    scenario_index: usize,
+    packed_scenario: &AutonomyHoldoutScenario,
+    context: &AutonomyRunContext<'_>,
+) -> Result<AutonomyScenarioRunReceipt, Box<dyn Error>> {
     let AutonomyHoldoutScenario {
         scenario,
         authority_groups,
         phases,
         expected_delivery,
         expected_terminal_commitment,
-    } = selection.scenario;
+    } = packed_scenario.clone();
     let wake_count = phases.len().saturating_sub(1);
     let candidate_label = blind_candidate_label(
-        &blinding_salt,
-        &commit_sha,
-        &holdout_source.pack_sha256,
+        context.blinding_salt,
+        context.commit_sha,
+        &context.holdout_source.pack_sha256,
         &scenario.scenario_ref,
     );
-    let mut session = evaluation_session(0, &scenario, &evaluated_at, "rust-autonomy-lab-tenant");
+    let mut session = evaluation_session(
+        scenario_index,
+        &scenario,
+        context.evaluated_at,
+        "rust-autonomy-lab-tenant",
+    );
     let tools = EvalTools::for_autonomy(
         &scenario.fixture_ref,
-        evaluated_at.clone(),
+        context.evaluated_at.to_owned(),
         phases,
         authority_groups,
     );
@@ -2905,11 +3154,11 @@ async fn run_autonomy_lab(
     let initial_request = AgentTurnRequest {
         schema_version: AGENT_TURN_REQUEST_V1.into(),
         tenant_id: session.tenant_id.clone(),
-        request_id: "rust-autonomy-lab-operator-00".into(),
+        request_id: format!("rust-autonomy-lab-{scenario_index:02}-operator-00"),
         thread_ref: session.thread_ref.clone(),
         context_scope_ref: session.context_scope_ref.clone(),
         actor_ref: "evaluation-operator".into(),
-        assessment_at: evaluated_at.clone(),
+        assessment_at: context.evaluated_at.to_owned(),
         message: scenario.initial_message.clone(),
         history: Vec::new(),
         working_state: None,
@@ -2919,7 +3168,7 @@ async fn run_autonomy_lab(
         role: ConversationRole::User,
         content: initial_request.message.clone(),
     });
-    let measured = MeasuredModel::new(model.clone());
+    let measured = MeasuredModel::new(context.model.clone());
     let started = Instant::now();
     let outcome = tokio::time::timeout(
         std::time::Duration::from_secs(900),
@@ -2955,7 +3204,7 @@ async fn run_autonomy_lab(
         return Err("the initial autonomy turn violated its expected delivery state".into());
     }
 
-    let mut prior_assessment = OffsetDateTime::parse(&evaluated_at, &Rfc3339)?;
+    let mut prior_assessment = OffsetDateTime::parse(context.evaluated_at, &Rfc3339)?;
     let mut fresh_observation_every_wake = true;
     for wake_index in 1..=wake_count {
         let commitment = active_autonomy_commitment(&session)?;
@@ -2971,8 +3220,8 @@ async fn run_autonomy_lab(
         }
         prior_assessment = wake_at;
         tools.set_autonomy_phase(wake_index as u8);
-        let request_id = format!("rust-autonomy-lab-wake-{wake_index:02}");
-        let occurrence_ref = format!("autonomy-occurrence-{wake_index:02}");
+        let request_id = format!("rust-autonomy-lab-{scenario_index:02}-wake-{wake_index:02}");
+        let occurrence_ref = format!("autonomy-occurrence-{scenario_index:02}-{wake_index:02}");
         let wake_input = session_turn_request_text(
             &session,
             &SessionTurnInput {
@@ -2985,7 +3234,7 @@ async fn run_autonomy_lab(
                 },
             },
         )?;
-        let measured = MeasuredModel::new(model.clone());
+        let measured = MeasuredModel::new(context.model.clone());
         let started = Instant::now();
         let outcome = tokio::time::timeout(
             std::time::Duration::from_secs(900),
@@ -3130,7 +3379,7 @@ async fn run_autonomy_lab(
                 })
             });
     let judgment = judge_conversation_trajectory(
-        judge.as_ref(),
+        context.judge.as_ref(),
         &scenario,
         &candidate_label,
         &transcript,
@@ -3175,32 +3424,9 @@ async fn run_autonomy_lab(
         internal_judge_advisory_excellent,
         turns,
     };
-    let blind_review_bundle =
-        blind_review_bundle(&holdout_source, std::slice::from_ref(&scenario_receipt));
-    let blind_review_bytes = serde_json::to_vec_pretty(&blind_review_bundle)?;
-    validate_blind_review_bytes(
-        &blind_review_bytes,
-        &[&commit_sha, &model_id, &judge_model_id, "aws_bedrock"],
-    )?;
-    let blind_review_bundle_sha256 = sha256_hex(&blind_review_bytes);
-    if let Ok(path) = env::var("CEREBRO_SLACK_AGENT_EVAL_BLIND_OUTPUT") {
-        fs::write(path, &blind_review_bytes)?;
-    }
-    let suite_passed = autonomy_suite_passed(review_ready, latency_slo_passed);
-    let receipt = AutonomyLabReceipt {
-        schema_version: "cerebro-rust-slack-agent-autonomy-lab/v2",
-        commit_sha,
-        evaluated_at,
-        provider: "aws_bedrock",
-        model_id,
-        judge_model_id,
-        runtime_path: "session_v2_typed_wake",
-        candidate_identity_concealed_from_model_judge: true,
-        model_side_score_advisory: true,
-        holdout_source: holdout_source.clone(),
-        blind_review_bundle_sha256,
-        declared_scenario_count,
-        selected_scenario_ref: scenario_receipt.scenario_ref.clone(),
+    Ok(AutonomyScenarioRunReceipt {
+        execution_completed: true,
+        execution_failure: None,
         operator_message_count,
         scheduled_wake_count: wake_count,
         unsolicited_follow_up_count,
@@ -3210,19 +3436,9 @@ async fn run_autonomy_lab(
         rescheduled_schedule_chain_complete,
         unique_fresh_observation_receipts,
         commitment_closed,
-        operator_turn_latency_slo_ms: LAB_MAX_OPERATOR_TURN_LATENCY_MS,
-        scheduled_wake_latency_slo_ms: LAB_MAX_SCHEDULED_WAKE_LATENCY_MS,
-        independent_review_required: true,
-        promotion_ready: false,
-        suite_passed,
+        semantic_excellence_gate_passed: internal_judge_advisory_excellent,
         scenario: scenario_receipt,
-    };
-    println!("{}", serde_json::to_string_pretty(&receipt)?);
-    if suite_passed {
-        Ok(())
-    } else {
-        Err("the exact-head off-Slack autonomy trajectory was not excellent".into())
-    }
+    })
 }
 
 async fn run_conversation_lab(
@@ -3288,33 +3504,35 @@ async fn run_conversation_lab(
             let request_id = format!("rust-conversation-lab-{scenario_index:02}-{turn_index:02}");
             let thread_ref = format!("slack-thread://rust-conversation-lab/{scenario_index:02}");
             let actor_ref = "slack-user://rust-conversation-lab".to_owned();
-            let effect_authorizations =
-                if scenario.scenario_ref == "exact_change_then_verify" && turn_index == 0 {
-                    let call = ToolCall {
-                        call_id: "authorization-digest-only".into(),
-                        tool_id: "runtime_config_update".into(),
-                        purpose: "Apply the exact governed connector cursor-format update.".into(),
-                        input: json!({
-                            "connector_ref": "governed-evidence-connector",
-                            "cursor_format": "current_revision",
-                        }),
-                    };
-                    let input_digest = call.input_digest();
-                    vec![EffectAuthorization {
-                        approval_ref: format!(
-                            "approval://agent-effect/{}",
-                            input_digest.trim_start_matches("sha256:")
-                        ),
-                        tenant_id: "rust-conversation-lab-tenant".into(),
-                        request_id: request_id.clone(),
-                        thread_ref: thread_ref.clone(),
-                        actor_ref: actor_ref.clone(),
-                        tool_id: call.tool_id.clone(),
-                        input_digest,
-                    }]
-                } else {
-                    Vec::new()
+            let effect_authorizations = if scenario.behavior
+                == ConversationBehavior::AuthorizedChangeThenVerify
+                && turn_index == 0
+            {
+                let call = ToolCall {
+                    call_id: "authorization-digest-only".into(),
+                    tool_id: "runtime_config_update".into(),
+                    purpose: "Apply the exact governed connector cursor-format update.".into(),
+                    input: json!({
+                        "connector_ref": "governed-evidence-connector",
+                        "cursor_format": "current_revision",
+                    }),
                 };
+                let input_digest = call.input_digest();
+                vec![EffectAuthorization {
+                    approval_ref: format!(
+                        "approval://agent-effect/{}",
+                        input_digest.trim_start_matches("sha256:")
+                    ),
+                    tenant_id: "rust-conversation-lab-tenant".into(),
+                    request_id: request_id.clone(),
+                    thread_ref: thread_ref.clone(),
+                    actor_ref: actor_ref.clone(),
+                    tool_id: call.tool_id.clone(),
+                    input_digest,
+                }]
+            } else {
+                Vec::new()
+            };
             let request = AgentTurnRequest {
                 schema_version: AGENT_TURN_REQUEST_V1.into(),
                 tenant_id: "rust-conversation-lab-tenant".into(),
@@ -3547,27 +3765,16 @@ async fn run_conversation_lab(
                     Err(error) => (None, Some(error.to_string())),
                 }
             };
-        let required_failure_path_exercised = scenario.scenario_ref
-            != "recover_from_broad_reasoning_gap"
-            || all_observations
-                .iter()
-                .any(|observation| observation.state == ToolResultState::Failed);
-        let required_action_path_exercised = scenario.scenario_ref != "exact_change_then_verify"
-            || (all_observations.iter().any(|observation| {
-                observation.tool_id == "runtime_config_update"
-                    && observation.state == ToolResultState::Succeeded
-            }) && all_observations.iter().any(|observation| {
-                matches!(
-                    observation.tool_id.as_str(),
-                    "source_runtime.inspect" | "source_runtime.overview"
-                ) && observation.data.get("collection_receipt") == Some(&json!("complete"))
-            }));
+        let behavioral_contract_passed = conversation_behavior_runtime_passed(
+            &scenario,
+            &all_observations,
+            &tools.capability_discovery_events(),
+        );
         let review_ready = !terminal_failure
             && operator_satisfied
             && delivered_exchange_count >= LAB_MIN_EXCHANGES
             && unanswered_user_turn_count == 0
-            && required_failure_path_exercised
-            && required_action_path_exercised;
+            && behavioral_contract_passed;
         let latency_slo_passed = turns
             .iter()
             .all(|turn| lab_turn_latency_slo_passed(turn.trigger, turn.latency_ms));
@@ -3658,6 +3865,92 @@ fn conversation_suite_passed(
     advisory_semantic_gate_passed: bool,
 ) -> bool {
     full_suite && targeted_regression_passed && latency_gate_passed && advisory_semantic_gate_passed
+}
+
+fn conversation_behavior_runtime_passed(
+    scenario: &ConversationLabScenario,
+    observations: &[EvaluationObservationReceipt],
+    capability_discovery_events: &[String],
+) -> bool {
+    let succeeded = |tool_id: &str| {
+        observations.iter().any(|observation| {
+            observation.tool_id == tool_id && observation.state == ToolResultState::Succeeded
+        })
+    };
+    let succeeded_any = |tool_ids: &[&str]| tool_ids.iter().any(|tool_id| succeeded(tool_id));
+    match scenario.behavior {
+        ConversationBehavior::NaturalOperationalSynthesis => succeeded_any(&[
+            "source_runtime.inspect",
+            "source_runtime.overview",
+            "mcp.cerebro.sources.health",
+        ]),
+        ConversationBehavior::CorrectionRecovery => {
+            scenario
+                .seed_history
+                .iter()
+                .any(|message| message.role == ConversationRole::Assistant)
+                && succeeded_any(&[
+                    "source_catalog.inspect",
+                    "source_runtime.inspect",
+                    "source_runtime.overview",
+                ])
+        }
+        ConversationBehavior::RetainedContextContinuation => {
+            succeeded("slack.thread.read") || succeeded("slack.history.search")
+        }
+        ConversationBehavior::BoundedFollowThrough => {
+            succeeded_any(&[
+                "source_runtime.inspect",
+                "source_runtime.overview",
+                "mcp.cerebro.sources.health",
+            ]) && observations
+                .iter()
+                .filter(|observation| observation.state == ToolResultState::Succeeded)
+                .map(|observation| observation.tool_id.as_str())
+                .collect::<BTreeSet<_>>()
+                .len()
+                >= 2
+        }
+        ConversationBehavior::AuthorityBoundary => {
+            succeeded("capability.overview")
+                && succeeded_any(&["source_catalog.inspect", "source_runtime.inspect"])
+        }
+        ConversationBehavior::CapabilityDiscovery => {
+            capability_discovery_events
+                .iter()
+                .any(|tool_id| tool_id == "capability.search")
+                && succeeded_any(&[
+                    "source_runtime.inspect",
+                    "source_runtime.overview",
+                    "mcp.cerebro.sources.health",
+                ])
+        }
+        ConversationBehavior::ReasoningFailureRecovery => {
+            observations.iter().any(|observation| {
+                observation.tool_id == "graph.reason"
+                    && observation.state == ToolResultState::Failed
+            }) && observations.iter().any(|observation| {
+                observation.tool_id != "graph.reason"
+                    && observation.state == ToolResultState::Succeeded
+            })
+        }
+        ConversationBehavior::ScopeCorrection => succeeded_any(&[
+            "source_runtime.inspect",
+            "source_runtime.overview",
+            "source_catalog.inspect",
+        ]),
+        ConversationBehavior::AuthorizedChangeThenVerify => {
+            succeeded("runtime_config_update")
+                && observations.iter().any(|observation| {
+                    matches!(
+                        observation.tool_id.as_str(),
+                        "source_runtime.inspect" | "source_runtime.overview"
+                    ) && observation.state == ToolResultState::Succeeded
+                        && observation.data.get("collection_receipt") == Some(&json!("complete"))
+                })
+        }
+        ConversationBehavior::AutonomousFollowThrough => false,
+    }
 }
 
 async fn preflight_judge(model: &ConfiguredModel) -> Result<(), AgentRuntimeError> {
@@ -3985,9 +4278,9 @@ fn embedded_synthetic_provenance() -> SyntheticHoldoutProvenance {
         synthetic_only: true,
         namespace: SYNTHETIC_HOLDOUT_NAMESPACE.into(),
         fictional_entities: vec![
-            "fictional connector".into(),
-            "synthetic operator".into(),
-            "synthetic team".into(),
+            "fictional:fictional connector".into(),
+            "fictional:synthetic operator".into(),
+            "fictional:synthetic team".into(),
         ],
     }
 }
@@ -4002,10 +4295,12 @@ fn validate_synthetic_holdout(
         || !pack_ref.starts_with(&provenance.namespace)
         || provenance.fictional_entities.is_empty()
         || provenance.fictional_entities.len() > 64
-        || provenance
-            .fictional_entities
-            .iter()
-            .any(|entity| entity.trim().is_empty() || entity.len() > 128)
+        || provenance.fictional_entities.iter().any(|entity| {
+            let Some(label) = entity.strip_prefix("fictional:") else {
+                return true;
+            };
+            label.trim().is_empty() || label.len() > 128
+        })
         || provenance
             .fictional_entities
             .iter()
@@ -4014,11 +4309,127 @@ fn validate_synthetic_holdout(
             .len()
             != provenance.fictional_entities.len()
     {
-        return Err("holdout provenance must declare one bounded fully synthetic namespace and fictional entity inventory".into());
+        return Err("holdout provenance must declare one bounded fully synthetic namespace and a fictional:-prefixed entity inventory".into());
     }
     let encoded = serde_json::to_string(payload)?.to_ascii_lowercase();
+    for inventory_entry in &provenance.fictional_entities {
+        let label = inventory_entry
+            .strip_prefix("fictional:")
+            .expect("the provenance shape was validated")
+            .trim()
+            .to_ascii_lowercase();
+        if !encoded.contains(&label) {
+            return Err(format!(
+                "fictional entity inventory entry does not occur in the holdout payload: {label}"
+            )
+            .into());
+        }
+    }
+    validate_synthetic_payload_names(payload, &provenance.fictional_entities)?;
     validate_synthetic_export_text(&encoded)?;
     Ok(())
+}
+
+fn validate_synthetic_payload_names(
+    payload: &Value,
+    fictional_entities: &[String],
+) -> Result<(), Box<dyn Error>> {
+    let declared_words = fictional_entities
+        .iter()
+        .filter_map(|entry| entry.strip_prefix("fictional:"))
+        .flat_map(|label| {
+            label
+                .split(|character: char| !character.is_alphanumeric())
+                .filter(|word| !word.is_empty())
+                .map(str::to_ascii_lowercase)
+                .collect::<Vec<_>>()
+        })
+        .collect::<BTreeSet<_>>();
+    let allowed_title_words = BTreeSet::from([
+        "a",
+        "act",
+        "actually",
+        "apply",
+        "assistant",
+        "cerebro",
+        "clearly",
+        "continue",
+        "do",
+        "end",
+        "establish",
+        "every",
+        "explain",
+        "figure",
+        "good",
+        "handle",
+        "honor",
+        "i",
+        "ignore",
+        "inspect",
+        "keep",
+        "no",
+        "operator",
+        "provider",
+        "recover",
+        "respond",
+        "slack",
+        "someone",
+        "source",
+        "state",
+        "stop",
+        "synthetic",
+        "team",
+        "the",
+        "treat",
+        "understood",
+        "use",
+        "what",
+        "when",
+        "you",
+    ]);
+    let mut strings = Vec::new();
+    collect_json_strings(payload, &mut strings);
+    for value in strings {
+        for raw_word in value.split_whitespace() {
+            let word = raw_word.trim_matches(|character: char| !character.is_alphanumeric());
+            let Some(first) = word.chars().next() else {
+                continue;
+            };
+            if word.len() < 2
+                || !first.is_uppercase()
+                || !word.chars().skip(1).any(char::is_lowercase)
+            {
+                continue;
+            }
+            let normalized = word.to_ascii_lowercase();
+            if !declared_words.contains(&normalized)
+                && !allowed_title_words.contains(normalized.as_str())
+            {
+                return Err(format!(
+                    "synthetic holdout material contains an undeclared name-like token: {word}"
+                )
+                .into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn collect_json_strings<'a>(value: &'a Value, strings: &mut Vec<&'a str>) {
+    match value {
+        Value::String(value) => strings.push(value),
+        Value::Array(values) => {
+            for value in values {
+                collect_json_strings(value, strings);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values() {
+                collect_json_strings(value, strings);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) => {}
+    }
 }
 
 fn validate_synthetic_export_text(encoded: &str) -> Result<(), Box<dyn Error>> {
@@ -4029,12 +4440,16 @@ fn validate_synthetic_export_text(encoded: &str) -> Result<(), Box<dyn Error>> {
         ".com",
         ".net",
         ".org",
+        ".internal",
+        ".corp",
         "@writer",
-        "amazon",
-        "aws",
-        "github",
+        "#security",
         "customer-id",
         "account-id",
+        "inc-",
+        "sev-",
+        "prod-",
+        "production-",
     ] {
         if encoded.contains(forbidden) {
             return Err(format!(
@@ -4043,10 +4458,25 @@ fn validate_synthetic_export_text(encoded: &str) -> Result<(), Box<dyn Error>> {
             .into());
         }
     }
+    for forbidden_identity in ["writer", "amazon", "aws", "github"] {
+        if contains_identity_token(encoded, forbidden_identity) {
+            return Err(format!(
+                "synthetic holdout material contains a forbidden external identity token: {forbidden_identity}"
+            )
+            .into());
+        }
+    }
     if encoded
         .split(|character: char| !character.is_ascii_alphanumeric() && character != '-')
         .any(|token| {
             token.len() >= 8 && token.bytes().all(|byte| byte.is_ascii_digit())
+                || (token.len() >= 8
+                    && matches!(token.as_bytes().first(), Some(b'u' | b'c' | b'g'))
+                    && token
+                        .bytes()
+                        .skip(1)
+                        .all(|byte| byte.is_ascii_alphanumeric())
+                    && token.bytes().any(|byte| byte.is_ascii_digit()))
                 || (token.len() == 36
                     && token.chars().enumerate().all(|(index, character)| {
                         matches!(index, 8 | 13 | 18 | 23) && character == '-'
@@ -4124,12 +4554,12 @@ fn blind_candidate_label(
     format!("candidate-{}", &sha256_hex(material.as_bytes())[..12])
 }
 
-fn blind_review_bundle(
+fn blind_review_bundle<'a>(
     holdout_source: &HoldoutSourceReceipt,
-    receipts: &[ConversationLabScenarioReceipt],
+    receipts: impl IntoIterator<Item = &'a ConversationLabScenarioReceipt>,
 ) -> serde_json::Value {
     let candidates = receipts
-        .iter()
+        .into_iter()
         .map(|receipt| {
             let turns = receipt
                 .turns
@@ -4177,31 +4607,7 @@ fn blind_review_bundle(
     })
 }
 
-fn write_autonomy_failure_blind_bundle(
-    commit_sha: &str,
-    model_id: &str,
-    judge_model_id: &str,
-) -> Result<(), Box<dyn Error>> {
-    let Ok(path) = env::var("CEREBRO_SLACK_AGENT_EVAL_BLIND_OUTPUT") else {
-        return Ok(());
-    };
-    let selection = selected_autonomy_scenario()?;
-    let scenario = selection.scenario.scenario;
-    let blinding_salt = env::var("CEREBRO_SLACK_AGENT_EVAL_BLINDING_SALT")?;
-    let candidate_label = blind_candidate_label(
-        &blinding_salt,
-        commit_sha,
-        &selection.source.pack_sha256,
-        &scenario.scenario_ref,
-    );
-    let bundle =
-        autonomy_failure_blind_bundle(&selection.source.pack_sha256, &scenario, &candidate_label);
-    let bytes = serde_json::to_vec_pretty(&bundle)?;
-    validate_blind_review_bytes(&bytes, &[commit_sha, model_id, judge_model_id])?;
-    fs::write(path, bytes)?;
-    Ok(())
-}
-
+#[cfg(test)]
 fn autonomy_failure_blind_bundle(
     pack_sha256: &str,
     scenario: &ConversationLabScenario,
@@ -4268,7 +4674,7 @@ fn selected_lab_scenarios() -> Result<ConversationScenarioSelection, Box<dyn Err
             );
         }
         let pack: ConversationHoldoutPack = serde_json::from_slice(&bytes)?;
-        if pack.schema_version != "cerebro-rust-slack-agent-holdout-pack/v2" {
+        if pack.schema_version != "cerebro-rust-slack-agent-holdout-pack/v3" {
             return Err("unsupported conversation holdout pack schema".into());
         }
         validate_synthetic_holdout(
@@ -4338,9 +4744,9 @@ fn selected_lab_scenarios() -> Result<ConversationScenarioSelection, Box<dyn Err
 fn validate_conversation_scenarios(
     scenarios: &[ConversationLabScenario],
 ) -> Result<(), Box<dyn Error>> {
-    if scenarios.len() < 4 {
+    if scenarios.len() < 9 {
         return Err(
-            "an external conversation holdout pack must contain at least four scenarios".into(),
+            "an external conversation holdout pack must contain at least nine behaviorally distinct scenarios".into(),
         );
     }
     let refs = scenarios
@@ -4350,17 +4756,75 @@ fn validate_conversation_scenarios(
     if refs.len() != scenarios.len() || refs.contains("") {
         return Err("conversation holdout scenario refs must be non-empty and unique".into());
     }
+    let fixture_refs = scenarios
+        .iter()
+        .map(|scenario| scenario.fixture_ref.trim())
+        .collect::<BTreeSet<_>>();
+    if fixture_refs.len() != scenarios.len() || fixture_refs.contains("") {
+        return Err("conversation holdout fixture refs must be non-empty and unique".into());
+    }
+    let required_behaviors = BTreeSet::from([
+        ConversationBehavior::NaturalOperationalSynthesis,
+        ConversationBehavior::CorrectionRecovery,
+        ConversationBehavior::RetainedContextContinuation,
+        ConversationBehavior::BoundedFollowThrough,
+        ConversationBehavior::AuthorityBoundary,
+        ConversationBehavior::CapabilityDiscovery,
+        ConversationBehavior::ReasoningFailureRecovery,
+        ConversationBehavior::ScopeCorrection,
+        ConversationBehavior::AuthorizedChangeThenVerify,
+    ]);
+    let observed_behaviors = scenarios
+        .iter()
+        .map(|scenario| scenario.behavior)
+        .collect::<BTreeSet<_>>();
+    if !required_behaviors.is_subset(&observed_behaviors) {
+        return Err(
+            "conversation holdout pack is missing a required behavioral coverage cell".into(),
+        );
+    }
+    let mut content_digests = BTreeSet::new();
     if scenarios.iter().any(|scenario| {
         scenario.mission.trim().is_empty()
             || scenario.operator_brief.trim().is_empty()
             || scenario.initial_message.trim().is_empty()
+            || !conversation_behavior_matches_fixture(scenario)
+            || !content_digests.insert(sha256_hex(
+                &serde_json::to_vec(&json!({
+                    "mission": scenario.mission,
+                    "operator_brief": scenario.operator_brief,
+                    "initial_message": scenario.initial_message,
+                    "seed_history": scenario.seed_history,
+                }))
+                .expect("conversation scenario content is serializable"),
+            ))
     }) {
         return Err(
-            "conversation holdout scenarios require a mission, operator brief, and initial message"
+            "conversation holdout scenarios require unique content and an allowed behavior-to-fixture contract"
                 .into(),
         );
     }
     Ok(())
+}
+
+fn conversation_behavior_matches_fixture(scenario: &ConversationLabScenario) -> bool {
+    let fixture = scenario.fixture_ref.as_str();
+    match scenario.behavior {
+        ConversationBehavior::NaturalOperationalSynthesis => {
+            fixture.contains("operational-check-in") && !fixture.contains("follow-through")
+        }
+        ConversationBehavior::CorrectionRecovery => fixture.contains("source-visibility"),
+        ConversationBehavior::RetainedContextContinuation => {
+            fixture.contains("finding-continuity") || fixture.contains("prior-thread")
+        }
+        ConversationBehavior::BoundedFollowThrough => fixture.contains("follow-through"),
+        ConversationBehavior::AuthorityBoundary => fixture.contains("source-access-boundary"),
+        ConversationBehavior::CapabilityDiscovery => fixture.contains("capability-discovery"),
+        ConversationBehavior::ReasoningFailureRecovery => fixture.contains("root-cause-recovery"),
+        ConversationBehavior::ScopeCorrection => fixture.contains("scope-correction"),
+        ConversationBehavior::AuthorizedChangeThenVerify => fixture.contains("diagnose-source"),
+        ConversationBehavior::AutonomousFollowThrough => fixture.contains("autonomous-recovery"),
+    }
 }
 
 fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
@@ -4368,6 +4832,7 @@ fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
         ConversationLabScenario {
             scenario_ref: "vanta_recovery".into(),
             fixture_ref: "case://held-out/source-visibility".into(),
+            behavior: ConversationBehavior::CorrectionRecovery,
             mission: "Recover from the prior inventory dump and establish Source A's authority boundary, live collection coverage, material evidence gap, and an actionable next step.".into(),
             operator_brief: "You are frustrated by a prior entity list. You care about whether the evidence is decision-grade, not catalog trivia.".into(),
             initial_message: "No. That's the same useless list. I asked what Source A access we actually have and whether collection works.".into(),
@@ -4379,6 +4844,7 @@ fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
         ConversationLabScenario {
             scenario_ref: "operational_partner".into(),
             fixture_ref: "case://held-out/informal-operational-check-in".into(),
+            behavior: ConversationBehavior::NaturalOperationalSynthesis,
             mission: "Turn a casual check-in into a material operational assessment, supported cause, risk consequence, and owned bounded response.".into(),
             operator_brief: "You are terse and busy. Force Cerebro to distinguish a merely degraded feed from a decision-impacting control gap.".into(),
             initial_message: "how we doin?".into(),
@@ -4387,6 +4853,7 @@ fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
         ConversationLabScenario {
             scenario_ref: "connector_diagnosis".into(),
             fixture_ref: "case://held-out/diagnose-source".into(),
+            behavior: ConversationBehavior::AuthorizedChangeThenVerify,
             mission: "Diagnose the repeated connector failure to a supported cause and produce a bounded correction and independent verification plan without claiming an unexecuted change.".into(),
             operator_brief: "Distrust easy root causes. Ask what rules out authentication, what changed, and how the fix will be independently verified.".into(),
             initial_message: "Figure out why the connector keeps failing end to end.".into(),
@@ -4395,6 +4862,7 @@ fn conversation_lab_scenarios() -> Vec<ConversationLabScenario> {
         ConversationLabScenario {
             scenario_ref: "capability_to_evidence".into(),
             fixture_ref: "case://shadow/source-access-boundary".into(),
+            behavior: ConversationBehavior::AuthorityBoundary,
             mission: "Move naturally from general capability conversation to a current named-source evidence check, preserving the provider authority boundary and identifying the material coverage gap.".into(),
             operator_brief: "Begin conversationally, then narrow to current evidence and challenge any implication that collected records equal provider administration.".into(),
             initial_message: "Hey—what kinds of security questions are you actually good at helping with?".into(),
@@ -5561,6 +6029,63 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn session_thread_read_includes_current_turn_and_preserves_message_time() {
+        let tools = EvalTools::new("case://synthetic/thread-parity");
+        let scenario = ConversationLabScenario {
+            scenario_ref: "thread-parity".into(),
+            fixture_ref: "case://synthetic/thread-parity".into(),
+            behavior: ConversationBehavior::RetainedContextContinuation,
+            mission: "Exercise a fully synthetic retained thread.".into(),
+            operator_brief: "Use only made-up context.".into(),
+            initial_message: "Continue the fictional check.".into(),
+            seed_history: Vec::new(),
+        };
+        let mut session =
+            evaluation_session(0, &scenario, "2026-07-31T00:00:00Z", "tenant:synthetic");
+        session.messages = vec![
+            SessionMessage {
+                role: SessionMessageRole::Assistant,
+                message_ref: "message:prior".into(),
+                actor_ref: "cerebro".into(),
+                text: "The fictional check is still open.".into(),
+                received_at: "2026-07-31T00:00:00Z".into(),
+            },
+            SessionMessage {
+                role: SessionMessageRole::User,
+                message_ref: "message:current".into(),
+                actor_ref: "operator:synthetic".into(),
+                text: "Continue the fictional check.".into(),
+                received_at: "2026-07-31T00:05:00Z".into(),
+            },
+        ];
+        let result = SessionTools::invoke(
+            &tools,
+            &session,
+            &SessionTurnInput {
+                request_id: "request:thread-parity".into(),
+                actor_ref: "operator:synthetic".into(),
+                assessment_at: "2026-07-31T00:05:00Z".into(),
+                trigger: SessionTurnTrigger::Operator,
+            },
+            &ToolCall {
+                call_id: "call:thread-parity".into(),
+                tool_id: "slack.thread.read".into(),
+                purpose: "Read the complete synthetic current thread.".into(),
+                input: json!({"limit": 4}),
+            },
+        )
+        .await
+        .unwrap();
+        let messages = result.data["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[1]["text"], "Continue the fictional check.");
+        assert_eq!(messages[0]["received_at"], "2026-07-31T00:00:00Z");
+        assert_eq!(messages[1]["received_at"], "2026-07-31T00:05:00Z");
+        assert!(result.evidence[0].fresh_until.is_none());
+        assert!(result.evidence[0].atoms.is_empty());
+    }
+
     #[test]
     fn external_autonomy_pack_requires_six_distinct_complete_scenario_contracts() {
         let base = embedded_autonomy_holdout_scenario();
@@ -5580,10 +6105,85 @@ mod tests {
     }
 
     #[test]
-    fn autonomy_suite_fails_closed_when_a_turn_misses_the_latency_slo() {
-        assert!(autonomy_suite_passed(true, true));
-        assert!(!autonomy_suite_passed(true, false));
-        assert!(!autonomy_suite_passed(false, true));
+    fn external_conversation_pack_requires_code_owned_behavioral_diversity() {
+        let definitions = [
+            (
+                ConversationBehavior::NaturalOperationalSynthesis,
+                "case://synthetic/operational-check-in",
+            ),
+            (
+                ConversationBehavior::CorrectionRecovery,
+                "case://synthetic/source-visibility",
+            ),
+            (
+                ConversationBehavior::RetainedContextContinuation,
+                "case://synthetic/prior-thread",
+            ),
+            (
+                ConversationBehavior::BoundedFollowThrough,
+                "case://synthetic/operational-check-in-follow-through",
+            ),
+            (
+                ConversationBehavior::AuthorityBoundary,
+                "case://synthetic/source-access-boundary",
+            ),
+            (
+                ConversationBehavior::CapabilityDiscovery,
+                "case://synthetic/capability-discovery",
+            ),
+            (
+                ConversationBehavior::ReasoningFailureRecovery,
+                "case://synthetic/root-cause-recovery",
+            ),
+            (
+                ConversationBehavior::ScopeCorrection,
+                "case://synthetic/source-visibility-scope-correction",
+            ),
+            (
+                ConversationBehavior::AuthorizedChangeThenVerify,
+                "case://synthetic/diagnose-source",
+            ),
+        ];
+        let scenarios = definitions
+            .into_iter()
+            .enumerate()
+            .map(|(index, (behavior, fixture_ref))| ConversationLabScenario {
+                scenario_ref: format!("synthetic-scenario-{index}"),
+                fixture_ref: fixture_ref.into(),
+                behavior,
+                mission: format!("Exercise the distinct fictional behavior cell {index}."),
+                operator_brief: format!("Keep fictional operator cell {index} bounded."),
+                initial_message: format!("Inspect fictional scenario {index}."),
+                seed_history: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        assert!(validate_conversation_scenarios(&scenarios).is_ok());
+
+        let mut renamed_clones = scenarios.clone();
+        renamed_clones[1].mission = renamed_clones[0].mission.clone();
+        renamed_clones[1].operator_brief = renamed_clones[0].operator_brief.clone();
+        renamed_clones[1].initial_message = renamed_clones[0].initial_message.clone();
+        assert!(validate_conversation_scenarios(&renamed_clones).is_err());
+
+        let mut missing_behavior = scenarios;
+        missing_behavior[8].behavior = ConversationBehavior::CorrectionRecovery;
+        assert!(validate_conversation_scenarios(&missing_behavior).is_err());
+    }
+
+    #[test]
+    fn autonomy_suite_requires_full_execution_mechanics_latency_and_semantic_excellence() {
+        assert!(autonomy_suite_passed(true, true, true, true));
+        assert!(!autonomy_suite_passed(false, true, true, true));
+        assert!(!autonomy_suite_passed(true, false, true, true));
+        assert!(!autonomy_suite_passed(true, true, false, true));
+        assert!(!autonomy_suite_passed(true, true, true, false));
+    }
+
+    #[test]
+    fn autonomy_execution_coverage_requires_every_declared_scenario_to_finish() {
+        assert_eq!(autonomy_execution_coverage(6, 6, 6), (true, true));
+        assert_eq!(autonomy_execution_coverage(6, 1, 1), (false, false));
+        assert_eq!(autonomy_execution_coverage(6, 6, 5), (true, false));
     }
 
     #[test]
@@ -5708,7 +6308,9 @@ mod tests {
             validate_synthetic_holdout(
                 "synthetic://cerebro-holdouts/test-pack",
                 &provenance,
-                &json!({"message": "A fully fictional connector is partial."}),
+                &json!({
+                    "message": "A synthetic operator asked the synthetic team to inspect the fictional connector."
+                }),
             )
             .is_ok()
         );
@@ -5802,10 +6404,66 @@ mod tests {
     }
 
     #[test]
+    fn synthetic_holdouts_reject_self_attested_incident_and_identity_material() {
+        let provenance = SyntheticHoldoutProvenance {
+            synthetic_only: true,
+            namespace: SYNTHETIC_HOLDOUT_NAMESPACE.into(),
+            fictional_entities: vec!["fictional:fictional connector".into()],
+        };
+        let real_shaped = json!({
+            "message": "Writer incident INC-1234 in #security on prod-db-01.internal for U09ABC123",
+            "decoy": "fictional connector"
+        });
+        assert!(
+            validate_synthetic_holdout(
+                "synthetic://cerebro-holdouts/rejected",
+                &provenance,
+                &real_shaped,
+            )
+            .is_err()
+        );
+
+        let undeclared_names = json!({
+            "message": "Acme assigned Jane Doe to the fictional connector exercise."
+        });
+        assert!(
+            validate_synthetic_holdout(
+                "synthetic://cerebro-holdouts/rejected",
+                &provenance,
+                &undeclared_names,
+            )
+            .is_err()
+        );
+
+        let missing_inventory_binding = json!({"message": "A generic made-up exercise."});
+        assert!(
+            validate_synthetic_holdout(
+                "synthetic://cerebro-holdouts/rejected",
+                &provenance,
+                &missing_inventory_binding,
+            )
+            .is_err()
+        );
+
+        let fully_synthetic = json!({
+            "message": "The fictional connector has a made-up bounded evidence gap."
+        });
+        assert!(
+            validate_synthetic_holdout(
+                "synthetic://cerebro-holdouts/accepted",
+                &provenance,
+                &fully_synthetic,
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
     fn evaluation_session_contains_only_candidate_visible_context() {
         let scenario = ConversationLabScenario {
             scenario_ref: "sealed".into(),
             fixture_ref: "case://sealed".into(),
+            behavior: ConversationBehavior::CorrectionRecovery,
             mission: "HIDDEN_MISSION_SENTINEL".into(),
             operator_brief: "HIDDEN_OPERATOR_BRIEF_SENTINEL".into(),
             initial_message: "Please investigate the visible problem.".into(),
