@@ -4573,22 +4573,27 @@ fn validate_synthetic_payload_names(
                 )
                 .into());
             }
-            let Some(first) = word.chars().next() else {
+            let name_word = word
+                .strip_suffix("'s")
+                .or_else(|| word.strip_suffix("’s"))
+                .unwrap_or(word);
+            let normalized_name = name_word.to_ascii_lowercase();
+            let Some(first) = name_word.chars().next() else {
                 continue;
             };
             if sentence_start
-                || word.len() < 2
+                || name_word.len() < 2
                 || !first.is_uppercase()
-                || !word.chars().skip(1).any(char::is_lowercase)
+                || !name_word.chars().skip(1).any(char::is_lowercase)
             {
                 sentence_start = raw_word.ends_with(['.', '!', '?']);
                 continue;
             }
-            if !declared_words.contains(&normalized)
-                && !allowed_title_words.contains(normalized.as_str())
+            if !declared_words.contains(&normalized_name)
+                && !allowed_title_words.contains(normalized_name.as_str())
             {
                 return Err(format!(
-                    "synthetic holdout material contains an undeclared name-like token: {word}"
+                    "synthetic holdout material contains an undeclared name-like token: {name_word}"
                 )
                 .into());
             }
