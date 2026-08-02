@@ -109,6 +109,7 @@ export interface SlackMentionClient extends SlackThreadRepliesClient {
   chat: {
     postMessage(input: {
       channel: string;
+      client_msg_id?: string;
       text: string;
       thread_ts: string;
     }): Promise<{ ts?: string }>;
@@ -1276,6 +1277,7 @@ export async function handleSlackMention(input: {
     });
     const progress = await input.client.chat.postMessage({
       channel: input.event.channel,
+      client_msg_id: slackClientMessageId(requestId),
       text: formatEnvironmentMessage(
         input.config,
         threadContext
@@ -1444,6 +1446,11 @@ export async function handleSlackMention(input: {
     if (!pendingOutcomeRecorded) await recordBlockedPending();
     throw error;
   }
+}
+
+function slackClientMessageId(identity: string): string {
+  const hex = digest(`slack-client-message:${identity}`).slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 export function formatEnvironmentMessage(

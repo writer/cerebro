@@ -897,13 +897,7 @@ pub trait SessionStore: Send + Sync {
 #[async_trait]
 pub trait SessionJournal: Send + Sync {
     async fn record(&self, event: &SessionEventRecord) -> Result<(), AgentRuntimeError>;
-
-    async fn finalize(&self, events: &[SessionEventRecord]) -> Result<(), AgentRuntimeError> {
-        for event in events {
-            self.record(event).await?;
-        }
-        Ok(())
-    }
+    async fn finalize(&self, events: &[SessionEventRecord]) -> Result<(), AgentRuntimeError>;
 }
 
 struct NoopSessionJournal;
@@ -911,6 +905,10 @@ struct NoopSessionJournal;
 #[async_trait]
 impl SessionJournal for NoopSessionJournal {
     async fn record(&self, _event: &SessionEventRecord) -> Result<(), AgentRuntimeError> {
+        Ok(())
+    }
+
+    async fn finalize(&self, _events: &[SessionEventRecord]) -> Result<(), AgentRuntimeError> {
         Ok(())
     }
 }
@@ -1854,14 +1852,14 @@ pub async fn run_session_turn_recorded(
                     })
                 }) {
                     let input_digest = call.input_digest();
-                    emit_event(
+                    emit_final_events(
                         &session,
                         &input.assessment_at,
                         &mut events,
-                        SessionEvent::ApprovalRequested {
+                        [SessionEvent::ApprovalRequested {
                             tool_id: call.tool_id.clone(),
                             input_digest: input_digest.clone(),
-                        },
+                        }],
                         journal,
                     )
                     .await?;
@@ -5814,6 +5812,29 @@ fn contains_new_named_ownership_principal(body: &str, source_messages: &[&str]) 
 }
 
 fn contains_unverified_named_operational_assertion(body: &str, source_messages: &[&str]) -> bool {
+    let named_source_tokens = source_messages
+        .iter()
+        .flat_map(|message| {
+            message
+                .split(|character: char| !character.is_alphanumeric())
+                .filter(|token| {
+                    token.len() >= 3
+                        && token.chars().next().is_some_and(char::is_uppercase)
+                        && !matches!(
+                            *token,
+                            "Can"
+                                | "Could"
+                                | "Explain"
+                                | "How"
+                                | "Please"
+                                | "Thoughts"
+                                | "What"
+                                | "Why"
+                        )
+                })
+                .map(str::to_ascii_lowercase)
+        })
+        .collect::<BTreeSet<_>>();
     let source_tokens = source_messages
         .iter()
         .flat_map(|message| {
@@ -5826,6 +5847,21 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
     if source_tokens.is_empty() {
         return false;
     }
+    let source_is_operational = source_tokens.iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "build"
+                | "connector"
+                | "deployment"
+                | "provider"
+                | "rollout"
+                | "runtime"
+                | "service"
+                | "source"
+                | "status"
+                | "system"
+        )
+    });
     body.split(['.', ';', '!', '?', '\n']).any(|clause| {
         let is_conditional = clause.trim_start().to_ascii_lowercase().starts_with("if ");
         if is_conditional {
@@ -5856,6 +5892,31 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "would"
                 )
         };
+        let subject_before = |index: usize| {
+            tokens[..index]
+                .iter()
+                .rev()
+                .find(|candidate| {
+                    !candidate.ends_with("ly")
+                        && !matches!(
+                            candidate.as_str(),
+                            "already"
+                                | "appears"
+                                | "became"
+                                | "currently"
+                                | "earlier"
+                                | "had"
+                                | "has"
+                                | "have"
+                                | "looks"
+                                | "now"
+                                | "reportedly"
+                                | "seems"
+                                | "the"
+                        )
+                })
+                .map(String::as_str)
+        };
         let finite_state = tokens.iter().enumerate().any(|(index, token)| {
             matches!(
                 token.as_str(),
@@ -5869,22 +5930,15 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                     | "landed"
                     | "owned"
                     | "owns"
+                    | "passed"
                     | "recovered"
                     | "remains"
                     | "shipped"
             ) && index > 0
-                && tokens[..index]
-                    .iter()
-                    .rev()
-                    .find(|candidate| {
-                        !matches!(
-                            candidate.as_str(),
-                            "currently" | "earlier" | "now" | "reportedly" | "the"
-                        )
-                    })
-                    .is_some_and(|subject| is_named_source_subject(subject))
+                && subject_before(index).is_some_and(is_named_source_subject)
         });
         let copular_state = tokens.iter().enumerate().any(|(state_index, token)| {
+            let ambiguous_state = matches!(token.as_str(), "green" | "healthy");
             if !matches!(
                 token.as_str(),
                 "approved"
@@ -5905,16 +5959,19 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
             else {
                 return false;
             };
+            let subject = subject_before(copula_index);
+            let names_operational_subject = subject.is_some_and(|subject| {
+                is_named_source_subject(subject)
+                    && (!ambiguous_state
+                        || source_is_operational
+                        || named_source_tokens.contains(subject))
+            });
             tokens[copula_index + 1..state_index].iter().all(|word| {
                 matches!(
                     word.as_str(),
                     "already" | "currently" | "now" | "reportedly"
                 )
-            }) && tokens[..copula_index]
-                .iter()
-                .rev()
-                .find(|candidate| !matches!(candidate.as_str(), "given" | "the"))
-                .is_some_and(|subject| is_named_source_subject(subject))
+            }) && names_operational_subject
         });
         finite_state || copular_state
     })
@@ -11513,6 +11570,8 @@ mod tests {
             ("what do you think about atlas?", "i think atlas recovered."),
             ("thoughts on atlas?", "atlas recovered."),
             ("do you like atlas?", "i like atlas; atlas recovered."),
+            ("do you like atlas?", "i like atlas; atlas has recovered."),
+            ("do you like atlas?", "i like atlas; atlas fully recovered."),
         ] {
             let mut unsupported_session = synthesis_session.clone();
             unsupported_session.messages[0].text = request.into();
@@ -11537,6 +11596,10 @@ mod tests {
             (
                 "thoughts on conflict?",
                 "My thoughts: healthy conflict is useful because disagreement surfaces assumptions.",
+            ),
+            (
+                "thoughts on conflict?",
+                "My thoughts: conflict is healthy when handled well.",
             ),
         ] {
             let mut conceptual_session = synthesis_session.clone();

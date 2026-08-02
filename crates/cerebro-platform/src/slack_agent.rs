@@ -612,9 +612,6 @@ impl SlackAgentService {
                 Ok(session_outcome_to_turn(outcome))
             }
             Ok(outcome @ SessionTurnOutcome::ApprovalRequired { .. }) => {
-                store
-                    .release_turn(&session.session_ref, &request.request_id, &lease_owner)
-                    .await?;
                 Ok(session_outcome_to_turn(outcome))
             }
             Err(error) => Err(release_turn_after_failure(
@@ -1319,36 +1316,11 @@ pub(crate) fn route_request_from_session(
                     | cerebro_agent_runtime::session::CommitmentStatus::Cancelled
             )
         });
-    let active_lane =
-        if mission_is_unresolved && latest_delivered_lane == Some(ExecutionLane::Converse) {
-            session
-                .events
-                .iter()
-                .enumerate()
-                .rev()
-                .find_map(|(route_index, event)| match &event.event {
-                    SessionEvent::RouteAccepted { request_id, lane }
-                        if matches!(
-                            lane,
-                            ExecutionLane::Lookup | ExecutionLane::Investigate | ExecutionLane::Act
-                        ) && session.events[route_index + 1..].iter().any(|later| {
-                            matches!(
-                                &later.event,
-                                SessionEvent::DeliveryRecorded {
-                                    request_id: delivered_request_id,
-                                    ..
-                                } if delivered_request_id == request_id
-                            )
-                        }) =>
-                    {
-                        Some(*lane)
-                    }
-                    _ => None,
-                })
-                .or(latest_delivered_lane)
-        } else {
-            latest_delivered_lane
-        };
+    let active_lane = if mission_is_unresolved {
+        delivered_mission_revision_lane(session).or(latest_delivered_lane)
+    } else {
+        latest_delivered_lane
+    };
     let last_outcome = delivered_events
         .iter()
         .rev()
@@ -1402,6 +1374,38 @@ pub(crate) fn route_request_from_session(
         open_loops,
     });
     routed
+}
+
+fn delivered_mission_revision_lane(session: &AgentSession) -> Option<ExecutionLane> {
+    let delivered_requests = session
+        .events
+        .iter()
+        .filter_map(|event| match &event.event {
+            SessionEvent::DeliveryRecorded { request_id, .. } => Some(request_id.as_str()),
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
+    let mut routes = BTreeMap::new();
+    let mut delivered_mission: Option<&MissionState> = None;
+    let mut revision_lane = None;
+    for event in &session.events {
+        match &event.event {
+            SessionEvent::RouteAccepted { request_id, lane } => {
+                routes.insert(request_id.as_str(), *lane);
+            }
+            SessionEvent::DraftProduced { request_id, draft }
+                if delivered_requests.contains(request_id.as_str())
+                    && delivered_mission != Some(&draft.mission) =>
+            {
+                delivered_mission = Some(&draft.mission);
+                revision_lane = routes.get(request_id.as_str()).copied();
+            }
+            _ => {}
+        }
+    }
+    (delivered_mission == Some(&session.mission))
+        .then_some(revision_lane)
+        .flatten()
 }
 
 fn pending_wake_turn(
@@ -5915,6 +5919,119 @@ mod tests {
                 .expect("delivered turns should create continuation state")
                 .active_lane,
             Some(ExecutionLane::Investigate)
+        );
+    }
+
+    #[test]
+    fn a_new_conversational_mission_does_not_resurrect_an_old_operating_lane() {
+        let prior = replay_request();
+        let mut session = new_session(&prior).unwrap();
+        let old_mission = session.mission.clone();
+        let mut conversational_mission = old_mission.clone();
+        conversational_mission.mission_ref = "mission:concise-handoff".into();
+        conversational_mission.objective = "Create a concise handoff.".into();
+        conversational_mission
+            .open_loops
+            .push(cerebro_agent_runtime::session::OpenLoop {
+                open_loop_ref: "open-loop:concise-handoff".into(),
+                summary: "Finish the concise handoff.".into(),
+                owner: cerebro_agent_runtime::session::WorkOwner::Cerebro,
+                next_action: Some("Draft the handoff.".into()),
+                blocked_by: None,
+            });
+        let old_draft = cerebro_agent_runtime::session::GroundedDraft {
+            mission: old_mission,
+            ..replay_draft(&session)
+        };
+        let conversational_draft = cerebro_agent_runtime::session::GroundedDraft {
+            message: "I can make that handoff concise.".into(),
+            mission: conversational_mission.clone(),
+            ..replay_draft(&session)
+        };
+        let record = |sequence, event| SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: session.session_ref.clone(),
+            sequence,
+            occurred_at: prior.assessment_at.clone(),
+            event,
+        };
+        session.events = vec![
+            record(
+                1,
+                SessionEvent::RouteAccepted {
+                    request_id: "request:old-act".into(),
+                    lane: ExecutionLane::Act,
+                },
+            ),
+            record(
+                2,
+                SessionEvent::DraftProduced {
+                    request_id: "request:old-act".into(),
+                    draft: old_draft,
+                },
+            ),
+            record(
+                3,
+                SessionEvent::DeliveryRecorded {
+                    request_id: "request:old-act".into(),
+                    transport: "slack".into(),
+                    delivery_ref: "slack-message:old-act".into(),
+                    payload_digest: format!("sha256:{}", "a".repeat(64)),
+                },
+            ),
+            record(
+                4,
+                SessionEvent::TurnCompleted {
+                    request_id: "request:old-act".into(),
+                    state: FinalState::Answered,
+                },
+            ),
+            record(
+                5,
+                SessionEvent::RouteAccepted {
+                    request_id: "request:new-conversation".into(),
+                    lane: ExecutionLane::Converse,
+                },
+            ),
+            record(
+                6,
+                SessionEvent::DraftProduced {
+                    request_id: "request:new-conversation".into(),
+                    draft: conversational_draft,
+                },
+            ),
+            record(
+                7,
+                SessionEvent::DeliveryRecorded {
+                    request_id: "request:new-conversation".into(),
+                    transport: "slack".into(),
+                    delivery_ref: "slack-message:new-conversation".into(),
+                    payload_digest: format!("sha256:{}", "b".repeat(64)),
+                },
+            ),
+            record(
+                8,
+                SessionEvent::TurnCompleted {
+                    request_id: "request:new-conversation".into(),
+                    state: FinalState::Answered,
+                },
+            ),
+        ];
+        session.mission = conversational_mission;
+
+        assert_eq!(
+            delivered_mission_revision_lane(&session),
+            Some(ExecutionLane::Converse)
+        );
+        let mut continuation = prior;
+        continuation.request_id = "request:continue-conversation".into();
+        continuation.message = "Keep going.".into();
+        assert_eq!(
+            route_request_from_session(&session, &continuation)
+                .working_state
+                .expect("the conversational mission is delivered")
+                .active_lane,
+            Some(ExecutionLane::Converse)
         );
     }
 

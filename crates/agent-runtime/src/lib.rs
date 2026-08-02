@@ -1546,7 +1546,30 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
     let conceptual_naming = normalized.contains(" codename ")
         || normalized.contains(" as a name ")
         || normalized.contains(" name choice ");
+    let generic_state_request = clause.trim_end().ends_with('?')
+        || words.first().is_some_and(|word| {
+            matches!(
+                *word,
+                "are"
+                    | "check"
+                    | "did"
+                    | "explain"
+                    | "find"
+                    | "give"
+                    | "has"
+                    | "have"
+                    | "is"
+                    | "tell"
+                    | "what"
+                    | "when"
+                    | "where"
+                    | "which"
+                    | "who"
+                    | "why"
+            )
+        });
     let generic_live_predicate = !conceptual_naming
+        && generic_state_request
         && words.iter().enumerate().any(|(predicate_index, word)| {
             if !matches!(
                 *word,
@@ -1590,10 +1613,17 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
             ]
             .iter()
             .any(|time| words.contains(time));
-            let nonterminal_why_explanation = words.first() == Some(&"why")
-                && predicate_index + 1 < words.len()
-                && !has_time_boundary;
-            (has_subject_bound_verb && !nonterminal_why_explanation) || has_time_boundary
+            let why_explains_generic_subject = words[..predicate_index]
+                .iter()
+                .position(|word| *word == "why")
+                .is_some_and(|why_index| {
+                    !has_time_boundary
+                        && (predicate_index + 1 < words.len()
+                            || words[why_index + 1..predicate_index]
+                                .iter()
+                                .any(|word| matches!(*word, "a" | "an")))
+                });
+            (has_subject_bound_verb && !why_explains_generic_subject) || has_time_boundary
         });
     let generic_live_ownership = normalized.contains(" who handles ")
         || normalized.contains(" who owns ")
@@ -3156,6 +3186,7 @@ mod grounding_tests {
             "Why is healthy conflict a useful concept?",
             "Why is a healthy debate useful?",
             "Why is the color green calming?",
+            "Explain why a debate is healthy.",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),

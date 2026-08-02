@@ -2307,6 +2307,7 @@ test("question service gives a bounded recovery action after a source timeout", 
 test("failed claimed mentions persist a blocked outcome before retries are suppressed", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
+    let progressClientMessageId = "";
     const store = new FileOutcomeStore(root, { log: () => undefined });
     const host = createAssistantTurnHost(store);
     const questions = new AssistantQuestionService(
@@ -2330,7 +2331,8 @@ test("failed claimed mentions persist a blocked outcome before retries are suppr
     };
     const client = {
       chat: {
-        postMessage: async () => {
+        postMessage: async (input: { client_msg_id?: string }) => {
+          progressClientMessageId = input.client_msg_id ?? "";
           throw new Error("Slack unavailable");
         },
         update: async () => undefined,
@@ -2364,6 +2366,10 @@ test("failed claimed mentions persist a blocked outcome before retries are suppr
     const pending = JSON.parse(await readFile(join(root, "pending", pendingFiles[0]!), "utf8"));
     assert.equal(pending.outcome_state, "blocked");
     assert.equal(pending.verified, false);
+    assert.match(
+      progressClientMessageId,
+      /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-a[a-f0-9]{3}-[a-f0-9]{12}$/u,
+    );
   } finally {
     await rm(root, { force: true, recursive: true });
   }
