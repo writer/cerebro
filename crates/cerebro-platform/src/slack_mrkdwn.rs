@@ -46,7 +46,7 @@ pub(super) fn render_slack_mrkdwn(markdown: &str) -> String {
         }
 
         let normalized = if let Some(heading) = markdown_heading(trimmed) {
-            format!("*{}*", render_inline_slack_mrkdwn(heading))
+            render_structural_strong(render_inline_slack_mrkdwn(heading))
         } else if is_markdown_horizontal_rule(trimmed) {
             SLACK_HORIZONTAL_RULE.to_owned()
         } else if let Some((indent, item)) = markdown_bullet(line) {
@@ -691,13 +691,26 @@ fn render_table_row(cells: &[String], header: bool) -> String {
         .map(|cell| {
             let rendered = render_inline_slack_mrkdwn(cell);
             if header && !rendered.is_empty() {
-                format!("*{rendered}*")
+                render_structural_strong(rendered)
             } else {
                 rendered
             }
         })
         .collect::<Vec<_>>();
     format!("• {}", cells.join(" — "))
+}
+
+fn render_structural_strong(rendered: String) -> String {
+    let already_strong = rendered.len() >= 2
+        && rendered.starts_with('*')
+        && rendered.ends_with('*')
+        && !rendered.starts_with("**")
+        && !rendered.ends_with("**");
+    if already_strong {
+        rendered
+    } else {
+        format!("*{rendered}*")
+    }
 }
 
 fn is_markdown_horizontal_rule(value: &str) -> bool {
@@ -720,6 +733,15 @@ mod tests {
             ),
             "*Current state*\n\n*Healthy* — <https://example.com/run|open run>"
         );
+    }
+
+    #[test]
+    fn does_not_double_wrap_strong_headings() {
+        for input in ["## **Current state**", "## __Current state__"] {
+            let rendered = render_slack_mrkdwn(input);
+            assert_eq!(rendered, "*Current state*");
+            assert_eq!(render_slack_mrkdwn(&rendered), rendered);
+        }
     }
 
     #[test]
@@ -754,6 +776,14 @@ mod tests {
             render_slack_mrkdwn("Check | State\n--- | ---\nSource | Healthy"),
             "• *Check* — *State*\n• Source — Healthy"
         );
+        let strong_header = render_slack_mrkdwn(
+            "| **Check** | __State__ | Owner |\n| --- | --- | --- |\n| Source | Healthy | Team |",
+        );
+        assert_eq!(
+            strong_header,
+            "• *Check* — *State* — *Owner*\n• Source — Healthy — Team"
+        );
+        assert_eq!(render_slack_mrkdwn(&strong_header), strong_header);
     }
 
     #[test]
