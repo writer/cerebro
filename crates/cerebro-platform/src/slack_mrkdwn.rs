@@ -359,10 +359,11 @@ fn raw_url_emphasis_boundary(
             .chars()
             .next_back()
             .is_some_and(|character| !character.is_whitespace());
-        let suffix_is_punctuation = value[start + index..end]
+        let suffix_starts_outside_word = value[start + index..end]
             .chars()
-            .all(|character| !character.is_alphanumeric() && !character.is_whitespace());
-        if allowed_runs.contains(&run_len) && previous_can_close && suffix_is_punctuation {
+            .next()
+            .is_none_or(|character| !character.is_alphanumeric());
+        if allowed_runs.contains(&run_len) && previous_can_close && suffix_starts_outside_word {
             boundary = Some(start + run_start);
         }
     }
@@ -640,6 +641,9 @@ mod tests {
             "**See https://example.com/value=**",
             "***See https://example.com/value&***",
             "**See this.**",
+            "**See https://example.com**—then continue",
+            "**See https://example.com**:details",
+            "***See https://example.com***✅done",
         ] {
             let rendered = render_slack_mrkdwn(input);
             assert_eq!(render_slack_mrkdwn(&rendered), rendered, "{input}");
