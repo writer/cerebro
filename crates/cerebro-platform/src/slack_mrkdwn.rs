@@ -364,6 +364,7 @@ fn raw_url_emphasis_boundary(
             .is_none_or(|character| !character.is_alphanumeric());
         let remaining = &token[index..];
         let later_run = first_allowed_delimiter_run(remaining, delimiter, allowed_runs);
+        let later_run_count = allowed_delimiter_run_count(remaining, delimiter, allowed_runs);
         let url_continuation =
             later_run.map(|later_run| &value[start + index..start + index + later_run]);
         let suffix_continues_url = url_continuation.is_some_and(|continuation| {
@@ -392,7 +393,7 @@ fn raw_url_emphasis_boundary(
                             | '#'
                             | '%'
                     )
-            }) && continuation.chars().any(char::is_alphanumeric)
+            }) && (later_run_count == 1 || continuation.chars().any(char::is_alphanumeric))
         });
         if allowed_runs.contains(&run_len)
             && previous_can_close
@@ -425,6 +426,25 @@ fn first_allowed_delimiter_run(
         }
     }
     None
+}
+
+fn allowed_delimiter_run_count(value: &[u8], delimiter: u8, allowed_runs: &[usize]) -> usize {
+    let mut index = 0;
+    let mut count = 0;
+    while index < value.len() {
+        if value[index] != delimiter {
+            index += 1;
+            continue;
+        }
+        let run_start = index;
+        while index < value.len() && value[index] == delimiter {
+            index += 1;
+        }
+        if allowed_runs.contains(&(index - run_start)) {
+            count += 1;
+        }
+    }
+    count
 }
 
 fn markdown_link(value: &str, start: usize, image: bool) -> Option<(usize, &str, &str)> {
@@ -730,6 +750,10 @@ mod tests {
             (
                 "**See https://example.com/a**~b**",
                 "*See https://example.com/a**~b*",
+            ),
+            (
+                "**See https://example.com/a**;**",
+                "*See https://example.com/a**;*",
             ),
         ] {
             let rendered = render_slack_mrkdwn(input);
