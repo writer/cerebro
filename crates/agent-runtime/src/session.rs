@@ -5851,6 +5851,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
         " in this movie ",
         " in the movie ",
         " as an example ",
+        " example ",
         " hypothetical ",
         " fictional ",
         " imagine ",
@@ -6002,6 +6003,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "fixed"
                         | "healthy"
                         | "landed"
+                        | "live"
                         | "offline"
                         | "online"
                         | "operational"

@@ -563,7 +563,7 @@ struct AutonomyScenarioRunReceipt {
     rescheduled_schedule_chain_complete: bool,
     unique_fresh_observation_receipts: bool,
     commitment_closed: bool,
-    _semantic_excellence_gate_passed: bool,
+    semantic_excellence_gate_passed: bool,
     scenario: ConversationLabScenarioReceipt,
 }
 
@@ -1430,7 +1430,7 @@ impl AgentTools for EvalTools {
         } else if unavailable_autonomy_tool || unavailable_conversation_tool {
             EvaluationFixture {
                 summary:
-                    "This capability has no subject-bound observation for the current sealed scenario."
+                    "This capability has no subject-bound observation for the current request."
                         .into(),
                 data: json!({"available": false, "subject_bound": false}),
             }
@@ -1524,7 +1524,7 @@ impl AgentTools for EvalTools {
         };
         let blocker = if unavailable_autonomy_tool || unavailable_conversation_tool {
             Some(
-                "No subject-bound observation is available from this capability in the current sealed scenario."
+                "No subject-bound observation is available from this capability for the current request."
                     .into(),
             )
         } else if autonomy_input_mismatch {
@@ -1876,7 +1876,7 @@ fn evaluation_fixture(
     if case_ref.contains("source-visibility") || case_ref.contains("source-access-boundary") {
         return match tool_id {
             "capability.overview" => EvaluationFixture {
-                summary: "The sealed source-coverage scenario binds only capability overview, source catalog, source runtime, and bounded graph search. It has no collected-event-content read, provider-configuration read, provider-fault diagnostic, provider administration, or scheduled monitor capability.".into(),
+                summary: "The current source scope binds only capability overview, source catalog, source runtime, and bounded graph search. It has no collected-event-content read, provider-configuration read, provider-fault diagnostic, provider administration, or scheduled monitor capability.".into(),
                 data: json!({
                     "bound_tool_ids": ["capability.overview", "source_catalog.inspect", "source_runtime.inspect", "source_runtime.overview", "graph.search"],
                     "collected_event_content_read": false,
@@ -3407,8 +3407,10 @@ async fn run_autonomy_lab(
     model: Arc<ConfiguredModel>,
     judge: Arc<ConfiguredModel>,
 ) -> Result<(), Box<dyn Error>> {
-    preflight_judge(judge.as_ref()).await?;
-    calibrate_blind_judge(judge.as_ref()).await?;
+    let _judge_advisory_setup = match preflight_judge(judge.as_ref()).await {
+        Ok(()) => calibrate_blind_judge(judge.as_ref()).await,
+        Err(error) => Err(error),
+    };
     let blinding_salt = env::var("CEREBRO_SLACK_AGENT_EVAL_BLINDING_SALT")?;
     if blinding_salt.len() < 16 {
         return Err(
@@ -3810,7 +3812,7 @@ async fn run_autonomy_scenario(
                             .map_or("", |schedule| schedule.scheduled_for.as_str())
                 })
             });
-    let judgment = judge_conversation_trajectory(
+    let (final_judgment, final_judgment_error) = match judge_conversation_trajectory(
         context.judge.as_ref(),
         &scenario,
         &candidate_label,
@@ -3818,7 +3820,11 @@ async fn run_autonomy_scenario(
         &all_observations,
         &turns,
     )
-    .await?;
+    .await
+    {
+        Ok(judgment) => (Some(judgment), None),
+        Err(error) => (None, Some(error.to_string())),
+    };
     let review_ready = operator_message_count == 1
         && turns.len() == wake_count + 1
         && unsolicited_follow_up_count
@@ -3832,7 +3838,9 @@ async fn run_autonomy_scenario(
         && rescheduled_schedule_chain_complete
         && unique_fresh_observation_receipts
         && commitment_state_matches;
-    let internal_judge_advisory_excellent = judgment.is_excellent();
+    let internal_judge_advisory_excellent = final_judgment
+        .as_ref()
+        .is_some_and(ConversationQualityJudgment::is_excellent);
     let latency_slo_passed = turns
         .iter()
         .all(|turn| lab_turn_latency_slo_passed(turn.trigger, turn.latency_ms));
@@ -3849,8 +3857,8 @@ async fn run_autonomy_scenario(
         maximum_turn_latency_ms: turns.iter().map(|turn| turn.latency_ms).max().unwrap_or(0),
         total_turn_latency_ms: turns.iter().map(|turn| turn.latency_ms).sum(),
         transcript,
-        final_judgment: Some(judgment),
-        final_judgment_error: None,
+        final_judgment,
+        final_judgment_error,
         review_ready,
         latency_slo_passed,
         internal_judge_advisory_excellent,
@@ -3928,8 +3936,10 @@ async fn run_conversation_lab(
     {
         return Err("external holdouts require the session_v2 runtime".into());
     }
-    preflight_judge(judge.as_ref()).await?;
-    calibrate_blind_judge(judge.as_ref()).await?;
+    let _judge_advisory_setup = match preflight_judge(judge.as_ref()).await {
+        Ok(()) => calibrate_blind_judge(judge.as_ref()).await,
+        Err(error) => Err(error),
+    };
     let use_session_v2 = runtime == ConversationRuntime::SessionV2;
     let declared_scenario_count = selection.declared_scenario_count;
     let selected_scenario_count = selection.scenarios.len();
@@ -4862,11 +4872,13 @@ fn validate_synthetic_payload_names(
         "before",
         "cerebro",
         "can",
+        "capability",
         "challenge",
         "check",
         "clearly",
         "collection",
         "continue",
+        "confirm",
         "coverage",
         "current",
         "do",
@@ -4878,7 +4890,9 @@ fn validate_synthetic_payload_names(
         "explain",
         "figure",
         "finding",
+        "give",
         "first",
+        "focus",
         "good",
         "handle",
         "honor",
@@ -4892,13 +4906,16 @@ fn validate_synthetic_payload_names(
         "inspect",
         "keep",
         "next",
+        "narrow",
         "no",
         "not",
+        "nothing",
         "now",
         "it",
         "morning",
         "my",
         "one",
+        "only",
         "operator",
         "own",
         "penalize",
@@ -4906,12 +4923,14 @@ fn validate_synthetic_payload_names(
         "please",
         "preserve",
         "provider",
+        "proceed",
         "push",
         "recover",
         "recovery",
         "require",
         "resume",
         "respond",
+        "repeat",
         "review",
         "reward",
         "right",
@@ -4922,8 +4941,12 @@ fn validate_synthetic_payload_names(
         "state",
         "stop",
         "short",
+        "separate",
+        "skip",
+        "so",
         "synthetic",
         "team",
+        "tell",
         "that",
         "the",
         "then",

@@ -1574,6 +1574,7 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                 "are"
                     | "check"
                     | "did"
+                    | "does"
                     | "explain"
                     | "find"
                     | "give"
@@ -3503,7 +3504,6 @@ mod grounding_tests {
         for message in [
             "See https://example.com/run__alpha__latest for the receipt.",
             "See https://example.com/run__alpha for the receipt.",
-            "See [the run](https://example.com/run__alpha__(latest)) for the receipt.",
         ] {
             assert!(
                 validate_presentation(&PresentationDecision {
@@ -3513,6 +3513,16 @@ mod grounding_tests {
                 "URL text was misclassified as emphasis: {message}"
             );
         }
+        assert!(
+            validate_presentation(&PresentationDecision {
+                messages: vec![
+                    "See [the run](https://example.com/run__alpha__(latest)) for the receipt."
+                        .into(),
+                ],
+            })
+            .is_err(),
+            "standard Markdown links must not leak into Slack mrkdwn"
+        );
     }
 
     #[test]
