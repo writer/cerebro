@@ -246,7 +246,18 @@ fn render_inline_markup(
                 } else {
                     &mut *strong_underscore_open
                 };
-                if !*emphasis_open && !previous_is_word && next_is_word {
+                let delimiter = character.to_string().repeat(run);
+                let clear_intraword_asterisk_open = character == '*'
+                    && previous.is_some_and(char::is_alphabetic)
+                    && value[cursor + run_bytes..]
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_alphabetic)
+                    && value[cursor + run_bytes..].contains(&delimiter);
+                if !*emphasis_open
+                    && next_is_word
+                    && (!previous_is_word || clear_intraword_asterisk_open)
+                {
                     output.push('*');
                     *emphasis_open = true;
                 } else if *emphasis_open && previous_can_close && !next_is_word {
@@ -362,67 +373,14 @@ fn raw_url_emphasis_boundary(
             .chars()
             .next()
             .is_none_or(|character| !character.is_alphanumeric());
-        let remaining = &token[index..];
-        let later_run = first_allowed_delimiter_run(remaining, delimiter, allowed_runs);
-        let later_run_count = allowed_delimiter_run_count(remaining, delimiter, allowed_runs);
-        let url_continuation =
-            later_run.map(|later_run| &value[start + index..start + index + later_run]);
-        let suffix_continues_url = url_continuation.is_some_and(|continuation| {
-            continuation.chars().next().is_some_and(|character| {
-                character.is_ascii_alphanumeric()
-                    || matches!(
-                        character,
-                        '-' | '.'
-                            | '_'
-                            | '~'
-                            | '!'
-                            | '$'
-                            | '&'
-                            | '\''
-                            | '('
-                            | ')'
-                            | '*'
-                            | '+'
-                            | ','
-                            | ';'
-                            | '='
-                            | ':'
-                            | '@'
-                            | '/'
-                            | '?'
-                            | '#'
-                            | '%'
-                    )
-            }) && (later_run_count == 1 || continuation.chars().any(char::is_alphanumeric))
-        });
+        let remaining_run_count =
+            allowed_delimiter_run_count(&token[index..], delimiter, allowed_runs);
         if allowed_runs.contains(&run_len)
             && previous_can_close
             && suffix_starts_outside_word
-            && !suffix_continues_url
+            && remaining_run_count.is_multiple_of(2)
         {
             return Some(start + run_start);
-        }
-    }
-    None
-}
-
-fn first_allowed_delimiter_run(
-    value: &[u8],
-    delimiter: u8,
-    allowed_runs: &[usize],
-) -> Option<usize> {
-    let mut index = 0;
-    while index < value.len() {
-        if value[index] != delimiter {
-            index += 1;
-            continue;
-        }
-        let run_start = index;
-        while index < value.len() && value[index] == delimiter {
-            index += 1;
-        }
-        if allowed_runs.contains(&(index - run_start)) {
-            return Some(run_start);
         }
     }
     None
@@ -754,6 +712,14 @@ mod tests {
             (
                 "**See https://example.com/a**;**",
                 "*See https://example.com/a**;*",
+            ),
+            (
+                "**See https://example.com/a**;**—**continue**",
+                "*See https://example.com/a**;*—*continue*",
+            ),
+            (
+                "**See https://example.com**;b**continue**",
+                "*See https://example.com*;b*continue*",
             ),
         ] {
             let rendered = render_slack_mrkdwn(input);
