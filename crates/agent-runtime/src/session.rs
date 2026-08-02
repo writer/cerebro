@@ -4898,11 +4898,13 @@ pub fn validate_grounded_draft(
             _ => None,
         })
         .collect::<Vec<_>>();
-    if rhetorical_moves.len() > 2
+    if rhetorical_moves.len() == draft.claims.len()
+        || rhetorical_moves.len() > 2
         || rhetorical_moves.iter().collect::<BTreeSet<_>>().len() != rhetorical_moves.len()
     {
         return Err(AgentRuntimeError::InvalidFinal(
-            "a response may use at most two distinct registered rhetorical moves".into(),
+            "a response requires a substantive non-rhetorical claim and may use at most two distinct registered rhetorical moves"
+                .into(),
         ));
     }
 
@@ -5160,6 +5162,7 @@ fn validate_claim(
             let attributed_quote = format!("You said: {exact_excerpt}");
             if message.role != SessionMessageRole::User
                 || exact_excerpt.is_empty()
+                || exact_excerpt.chars().any(unsafe_context_excerpt_character)
                 || message.text.trim() != exact_excerpt.trim()
                 || claim.text.trim() != attributed_quote
             {
@@ -5211,9 +5214,7 @@ fn validate_claim(
             });
             if exact_excerpt.is_empty()
                 || exact_excerpt.len() > 1_000
-                || exact_excerpt
-                    .chars()
-                    .any(unsafe_historical_excerpt_character)
+                || exact_excerpt.chars().any(unsafe_context_excerpt_character)
                 || event.is_none_or(|(thread_ref, actor_ref, role, occurred_at, _)| {
                     !historical_attribution_is_safe(thread_ref, actor_ref, role, occurred_at)
                 })
@@ -5458,9 +5459,9 @@ fn render_historical_context(
         "user" => format!(
             "Earlier, {actor_ref} said in {thread_ref} at {occurred_at}: \"{escaped_excerpt}\""
         ),
-        "assistant" => {
-            format!("Earlier, I said in {thread_ref} at {occurred_at}: \"{escaped_excerpt}\"")
-        }
+        "assistant" => format!(
+            "Earlier, {actor_ref} (assistant) said in {thread_ref} at {occurred_at}: \"{escaped_excerpt}\""
+        ),
         "objective" => format!(
             "The objective recorded in {thread_ref} at {occurred_at} was: \"{escaped_excerpt}\""
         ),
@@ -5479,7 +5480,7 @@ fn render_historical_context(
     }
 }
 
-fn unsafe_historical_excerpt_character(character: char) -> bool {
+fn unsafe_context_excerpt_character(character: char) -> bool {
     character.is_control()
         || matches!(
             character,
@@ -8743,6 +8744,23 @@ mod tests {
             )
             .is_err()
         );
+
+        polarity_session.messages[0].text = "No issue.\n\nConnector alpha owns remediation.".into();
+        polarity.message = "You said: No issue.\n\nConnector alpha owns remediation.".into();
+        polarity.claims[0].text = polarity.message.clone();
+        polarity.claims[0].content = ClaimContent::OperatorContext {
+            message_sequence: 1,
+            exact_excerpt: polarity_session.messages[0].text.clone(),
+        };
+        assert!(
+            validate_grounded_draft(
+                &polarity_session,
+                &polarity,
+                &[],
+                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -10519,7 +10537,28 @@ mod tests {
             move_id: RhetoricalMoveId::SeparateEvidenceFromInference,
         };
         candidate.message = candidate.claims[0].text.clone();
-        validate_grounded_draft(&session(), &candidate, &[], assessment).unwrap();
+        assert!(validate_grounded_draft(&session(), &candidate, &[], assessment).is_err());
+
+        let mut combined = candidate.clone();
+        combined.claims.insert(
+            0,
+            GroundedClaim {
+                claim_ref: "claim:operator-context".into(),
+                planned_claim_ref: None,
+                text: "You said: Check connector alpha.\n\n".into(),
+                required_for_answer: false,
+                content: ClaimContent::OperatorContext {
+                    message_sequence: 1,
+                    exact_excerpt: "Check connector alpha.".into(),
+                },
+            },
+        );
+        combined.message = combined
+            .claims
+            .iter()
+            .map(|claim| claim.text.as_str())
+            .collect();
+        validate_grounded_draft(&session(), &combined, &[], assessment).unwrap();
 
         for unsupported in [
             "Connector alpha is currently healthy.",
@@ -10612,6 +10651,16 @@ mod tests {
         candidate.message = candidate.claims[0].text.clone();
         assert!(
             validate_grounded_draft(&session(), &candidate, &[history.clone()], assessment).is_ok()
+        );
+        assert_eq!(
+            render_historical_context(
+                "thread:synthetic-prior",
+                "other-bot",
+                "assistant",
+                "2026-07-30T00:00:00Z",
+                "The outcome might change.",
+            ),
+            "Earlier, other-bot (assistant) said in thread:synthetic-prior at 2026-07-30T00:00:00Z: \"The outcome might change.\""
         );
         candidate.claims[0].text = "Earlier, operator:synthetic said in thread:synthetic-prior at 2026-07-30T00:00:00Z: \"reversible\"".into();
         candidate.claims[0].content = ClaimContent::HistoricalContext {

@@ -180,14 +180,23 @@ fn render_inline_markup(
             // inside an open strong span a terminal double delimiter belongs
             // to the surrounding Markdown. Leave it for the delimiter state
             // machine instead of swallowing it as part of the URL.
-            let closes_open_strong = (*strong_asterisk_open && value[cursor..end].ends_with("**"))
-                || (*strong_underscore_open && value[cursor..end].ends_with("__"));
+            let url = &value[cursor..end];
+            let trailing_asterisks = url.bytes().rev().take_while(|byte| *byte == b'*').count();
+            let trailing_underscores = url.bytes().rev().take_while(|byte| *byte == b'_').count();
+            let strong_closer_len = if *strong_asterisk_open && matches!(trailing_asterisks, 2 | 3)
+            {
+                trailing_asterisks
+            } else if *strong_underscore_open && matches!(trailing_underscores, 2 | 3) {
+                trailing_underscores
+            } else {
+                0
+            };
             let closes_open_single = (has_unclosed_single_emphasis(&value[..cursor], '*')
                 && value[cursor..end].ends_with('*'))
                 || (has_unclosed_single_emphasis(&value[..cursor], '_')
                     && value[cursor..end].ends_with('_'));
-            if closes_open_strong {
-                end -= 2;
+            if strong_closer_len > 0 {
+                end -= strong_closer_len;
             } else if closes_open_single {
                 end -= 1;
             }
@@ -586,6 +595,8 @@ mod tests {
             "**See https://example.com** now",
             "__See https://example.com__",
             "__See https://example.com__ now",
+            "***See https://example.com***",
+            "***See https://example.com*** now",
         ] {
             let rendered = render_slack_mrkdwn(input);
             assert_eq!(render_slack_mrkdwn(&rendered), rendered, "{input}");
