@@ -102,12 +102,15 @@ deployment secret store, not checked-in configuration.
 | `CEREBRO_SLACK_AGENT_MODEL` | unset | Amazon Bedrock Claude Opus model identifier used for the complete session loop and independent claim review. Other model families fail startup. |
 | `CEREBRO_SLACK_AGENT_MCP_URL` | unset | Optional HTTPS or loopback MCP endpoint whose tool catalog is added to the Slack agent. When unset, built-in graph, source catalog, and source-runtime tools remain available. |
 | `CEREBRO_SLACK_AGENT_MCP_BEARER_TOKEN` | unset | Tenant-scoped bearer token for the MCP endpoint. Required when the MCP URL is set. Store as a secret. |
+| `CEREBRO_SLACK_AGENT_CAPABILITY_SIGNING_KEY` | unset | Host-only key used to sign scoped capability selections. Required when the MCP URL is set, at least 32 bytes, and must differ from the bearer token. Never expose it to the MCP provider. |
 | `CEREBRO_SLACK_AGENT_MCP_TOOLSETS` | `task` | MCP toolset selection sent as `X-Cerebro-MCP-Toolsets`. Use the bounded task surface by default; deployment owners may select additional domain toolsets. |
+| `CEREBRO_SLACK_AGENT_MCP_OBSERVE_TOOLS` | unset | Comma-separated read-only MCP tools admitted as observe capabilities. Provider annotations are consistency checks only; unlisted tools are omitted. |
 | `CEREBRO_SLACK_AGENT_MCP_PROPOSE_TOOLS` | unset | Comma-separated read-only MCP tools that return proposals. These tools may run in investigation lanes but cannot apply changes. |
 | `CEREBRO_SLACK_AGENT_MCP_ACTUATE_TOOLS` | unset | Comma-separated write-capable MCP tools admitted to the exact effect-approval path. Unlisted write tools are omitted. Every admitted call still requires request-, actor-, thread-, tool-, and input-digest-bound authorization plus independent verification. |
 
-Read-only MCP tools are admitted from server-declared `readOnlyHint=true`
-metadata. A write-capable tool is unavailable to the agent unless the
-deployment lists it in `CEREBRO_SLACK_AGENT_MCP_ACTUATE_TOOLS`. A read-only tool
-cannot be promoted to actuation, and a write-capable tool cannot be mislabeled
-as a proposal.
+Every MCP tool requires a host-owned authority assignment. Server-declared
+`readOnlyHint` metadata must agree with that assignment but cannot grant it. A
+write-capable tool is unavailable to the agent unless the deployment lists it
+in `CEREBRO_SLACK_AGENT_MCP_ACTUATE_TOOLS`. A read-only tool cannot be promoted
+to actuation, and a write-capable tool cannot be classified as observe or
+proposal.

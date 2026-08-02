@@ -27,12 +27,14 @@ use cerebro_agent_runtime::{
     ROUTER_MAX_TOKENS, RouteDecision, RouteTurn, ToolAuthorityClass, ToolDescriptor,
     ToolEffectClass, ToolResult, ToolResultState, run_turn,
     session::{
-        AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2, AgentSession, ClaimReviewTurn,
-        DeliveryDisposition, EvidenceAtomization, MAX_SESSION_MEMORIES, MessageReview,
-        MissionState, SessionAgentModel, SessionEvent, SessionEventRecord, SessionMessage,
-        SessionMessageRole, SessionModelDecision, SessionModelTurn, SessionStatus, SessionStore,
-        SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
+        AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2, AgentSession,
+        ClaimReviewTurn, DeliveryDisposition, EvidenceAssertion, EvidenceAtomization,
+        MAX_SESSION_MEMORIES, MessageReview, MissionState, SemanticEvidenceAtomization,
+        SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent, SessionEventRecord,
+        SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelTurn, SessionStatus,
+        SessionStore, SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
         apply_session_events, evidence_atoms_from_json, message_digest, run_session_turn_recorded,
+        semantic_evidence_atoms,
     },
 };
 use cerebro_organizational_model::TenantId;
@@ -45,8 +47,8 @@ use time::{Duration as TimeDuration, OffsetDateTime, format_description::well_kn
 
 use super::slack_agent_mcp::McpAgentTools;
 use super::slack_agent_session::{
-    AgentPendingWakeDelivery, AgentWakeClaim, AgentWakeDeliveryLease, AgentWakeFailureDisposition,
-    PostgresAgentSessionStore, PostgresTurnJournal,
+    AgentPendingWakeDelivery, AgentPriorThreadSearch, AgentWakeClaim, AgentWakeDeliveryLease,
+    AgentWakeFailureDisposition, PostgresAgentSessionStore, PostgresTurnJournal,
 };
 use super::slack_mrkdwn::render_slack_mrkdwn;
 
@@ -63,6 +65,8 @@ const CLAIM_REVIEW_TOOL: &str = "submit_claim_reviews";
 const MAX_GRAPH_LIMIT: usize = 25;
 const MAX_GRAPH_DEPTH: usize = 3;
 const MAX_RUNTIME_LIMIT: usize = 25;
+const MAX_SLACK_HISTORY_LIMIT: usize = 4;
+const MAX_SLACK_TRANSCRIPT_LIMIT: usize = 20;
 const STARTUP_HEALTH_ATTEMPTS: usize = 12;
 const STARTUP_INITIAL_RETRY_DELAY: StdDuration = StdDuration::from_millis(500);
 const STARTUP_MAX_RETRY_DELAY: StdDuration = StdDuration::from_secs(5);
@@ -139,9 +143,8 @@ impl SlackAgentService {
             || PostgresLedger::connect_tls(&postgres_dsn),
         )
         .await?;
-        let sessions = Some(Arc::new(
-            PostgresAgentSessionStore::connect(&postgres_dsn).await?,
-        ));
+        let session_store = Arc::new(PostgresAgentSessionStore::connect(&postgres_dsn).await?);
+        let sessions = Some(session_store.clone());
         let model = retry_startup(
             STARTUP_DEPENDENCY_ATTEMPTS,
             STARTUP_DEPENDENCY_RETRY_DELAY,
@@ -151,8 +154,15 @@ impl SlackAgentService {
         .await?;
         let catalog = super::load_catalog()?;
         let mcp_configured = McpAgentTools::is_configured();
+        let mcp_authority_policy_configured = McpAgentTools::authority_policy_configured();
         let mcp = match McpAgentTools::from_env().await {
             Ok(mcp) => mcp.map(Arc::new),
+            Err(error) if mcp_authority_policy_configured => {
+                return Err(format!(
+                    "configured MCP capability authority policy could not be loaded: {error}"
+                )
+                .into());
+            }
             Err(error) => {
                 eprintln!(
                     "{}",
@@ -175,6 +185,7 @@ impl SlackAgentService {
                 ledger: Arc::new(ledger),
                 mcp,
                 mcp_configured,
+                sessions: session_store,
             }),
             sessions,
             tenant_id,
@@ -2444,6 +2455,8 @@ Return one flat JSON object with decision, plan, calls, and draft every time. Se
 
 - For a conversational answer that needs no current evidence, finish directly.
 - Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. When the operator explicitly delegates a future re-observation, follow_through must define the complete executor contract before any tool runs: a stable commitment_ref, exact required read tools, acceptance criteria, next action, typed attention policy, bounded check delay, and verification. acceptance_all contains the desired completion values. alert_any contains only explicit boolean authority signals for a gap, regression, conflict, staleness, or mismatch; never put an ordinary numeric or string progress value in alert_any. Otherwise set follow_through to null. Rust materializes this plan into the durable scheduled commitment; final prose does not author or rewrite scheduling authority. Select only tools in available_tools.
+- When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, select capability.search first with the user's intent. Search defaults to observe/read capabilities; request another authority or effect class only when the operator's request requires it. Use capability.describe only when the matching descriptor does not make its input contract clear. For a read or proposal MCP match, revise the plan to the returned execution_tool_id and call it with the exact returned selection_ref plus provider input matching the selected descriptor. A host-admitted external effect remains visible as its exact MCP tool id and may run only in an Act plan through the ordinary exact-input approval boundary. Never substitute graph.search for a missing or undiscovered provider capability.
+- capability.search, capability.describe, and capability.overview describe the bound catalog and its authority policy. Catalog metadata never establishes a fact about Slack, GitHub, a deployment, a web page, or any other external system. Invoke the discovered provider tool before making a current claim. If no matching tool is bound, state that exact capability gap instead of querying an unrelated source.
 - When plan is non-null, it is already active. Invoke its selected tools or finish from the observations. If a planned follow-through tool fails or proves irrelevant and another available read establishes the delegated baseline, that is a material revision: establish one revised plan with the corrected complete follow_through contract before finishing.
 - Then invoke_tools with one or more independent read calls. Keep effects alone in their own decision. The Rust host enforces exact approval and will return an approval request when authorization is absent.
 - Continue reading until the required claims are supported, contradicted, or bounded by an exact source failure. Do not keep calling tools after the answer is established.
@@ -2504,6 +2517,8 @@ Reject scope promotion in every direction. A complete packet for one finding or 
 
 Reject ranked or procedural speculation. A not_observed family leaves empty data, provider scope, provider failure, and connector configuration unresolved unless an observation compares them. Current healthy authentication or a downstream cursor failure does not rule out a prior transient authentication issue or prove the originating cause. Reject hypothetical event chains presented as explanation. Reject provider console navigation, permission names, configuration steps, workflow consequences, and predicted correction outcomes unless an authoritative observation supplies them. Provider-neutral verification boundaries and explicitly prospective recommendations are acceptable.
 
+Capability catalog observations prove only which tools were bound and their declared authority policy. Reject any Slack, GitHub, code, deployment, web, company-knowledge, or other provider claim supported only by capability.search, capability.describe, or capability.overview. Reject a response that fills a provider request with an unrelated graph, source, integration, or runtime inventory when the direct provider capability was not invoked.
+
 Reject any claimed future check, monitoring, follow-up, or operator update that is not represented by a claim with commitment basis bound to the exact active draft commitment. Stable explanation cannot carry future work. “Keep going” must be answered with the next safe bounded work or the strongest supported decision and exact remaining gap; asking the operator to request the same safe investigation again does not own follow-through. An unrelated successful observation cannot rescue the turn.
 
 delivery=silent means this scheduled-wake draft is a durable internal audit summary and will not be posted to Slack. prior_commitment_checkpoint is retained continuity from the exact commitment's previous completed turn; compare it with current observations when reviewing attention. Accept that attention boundary only when the current check completed normally, the acceptance condition remains unmet, and the same commitment is rescheduled. Reject silent delivery when the condition is met, the commitment closes, evidence regresses, a source fails, a blocker appears, or operator input is required. Do not require routine healthy progress to interrupt the operator.
@@ -2556,6 +2571,8 @@ Operate, do not merely describe a query:
 - Inspect current state with the smallest useful tool calls.
 - Give every tool invocation a new call_id that has not appeared earlier in the current turn. After duplicate-call repair feedback, use the existing observation or finish; never resend the same call identity.
 - Use capability.overview when the user asks what Cerebro can currently do or when a requested capability may not be bound. The available tool catalog is the exact capability boundary for this turn.
+- When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, use capability.search with the user's intent, then capability.describe only if the input contract remains unclear. For a read or proposal MCP match, revise the plan to the returned execution_tool_id and invoke it with the returned selection_ref and provider input. A host-admitted external effect uses its exact MCP tool id and remains subject to an Act plan and exact-input approval. Catalog metadata is capability evidence only. It is never evidence about the provider's current state.
+- Never substitute graph.search for a Slack, GitHub, code, deployment, web, or company-knowledge request. If capability.search returns no relevant provider tool, report the exact missing capability instead of filling the turn with an unrelated graph or source inventory.
 - Use the bound MCP task tools for findings, assets, evidence packets, investigation context, risk explanation, source health, action planning, and any other domain whose descriptor matches the request. Do not reduce a domain request to graph search when a more specific capability is available.
 - A complete evidence packet means the bounded packet exists and is current; it does not prove that every field the operator asks for was returned in the observation. Claim an asset identifier, exposed path, control ID, owner name, or change field only when that value is present in the observation. An owner-present flag proves only that an owner mapping exists, not the person's name, team, role, or notification route.
 - For a broad operational check-in, start with source_runtime.overview. If it shows a degraded source or evidence gap, establish decision impact before finishing: use the bounded findings, investigation, or risk capability that can show whether a current control, finding, investigation, or approval depends on it. Do not call the gap routine or ask the operator to identify the dependency. Prefer the domain capability over a general graph search or a second source-runtime read. If a live dependency is found, quantify the observed freshness margin and obtain the supported action priority in the same turn. Then finish; do not keep reading once the material decision, action, and exact remaining blocker are supported.
@@ -2731,6 +2748,7 @@ struct PlatformAgentTools {
     ledger: Arc<PostgresLedger>,
     mcp: Option<Arc<McpAgentTools>>,
     mcp_configured: bool,
+    sessions: Arc<PostgresAgentSessionStore>,
 }
 
 #[derive(Deserialize)]
@@ -2769,10 +2787,339 @@ struct SourceCatalogInspectInput {
     limit: usize,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SlackThreadReadInput {
+    #[serde(default)]
+    cursor: Option<String>,
+    #[serde(default = "default_slack_transcript_limit")]
+    limit: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SlackHistorySearchInput {
+    #[serde(default)]
+    cursor: Option<String>,
+    #[serde(default = "default_slack_history_limit")]
+    limit: usize,
+    #[serde(default)]
+    query: String,
+}
+
+const MAX_CAPABILITY_SEARCH_LIMIT: usize = 20;
+const MAX_CAPABILITY_DESCRIBE_IDS: usize = 12;
+const MAX_CAPABILITY_CATALOG_OFFSET: usize = 512;
+const MAX_CAPABILITY_QUERY_BYTES: usize = 512;
+const MAX_CAPABILITY_TOOL_ID_BYTES: usize = 256;
+const CAPABILITY_EXECUTE_READ: &str = "capability.execute_read";
+const CAPABILITY_EXECUTE_PROPOSAL: &str = "capability.execute_proposal";
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CapabilitySearchInput {
+    query: String,
+    #[serde(default)]
+    namespaces: Vec<String>,
+    #[serde(default)]
+    authority_classes: Vec<ToolAuthorityClass>,
+    #[serde(default)]
+    effect_classes: Vec<ToolEffectClass>,
+    #[serde(default = "default_capability_search_limit")]
+    limit: usize,
+    #[serde(default)]
+    offset: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CapabilityDescribeInput {
+    tool_ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CapabilityExecuteInput {
+    selection_ref: String,
+    input: Value,
+}
+
+fn default_capability_search_limit() -> usize {
+    8
+}
+
+fn search_capability_catalog<'a>(
+    catalog: &'a [ToolDescriptor],
+    input: &CapabilitySearchInput,
+) -> Vec<(usize, &'a ToolDescriptor)> {
+    let query = input.query.trim().to_ascii_lowercase();
+    let query_terms = capability_terms(&query);
+    let namespaces = input
+        .namespaces
+        .iter()
+        .map(|namespace| namespace.trim().to_ascii_lowercase())
+        .filter(|namespace| !namespace.is_empty())
+        .collect::<BTreeSet<_>>();
+    let mut matches = catalog
+        .iter()
+        .filter(|descriptor| {
+            namespaces.is_empty()
+                || namespaces
+                    .iter()
+                    .any(|namespace| capability_namespace_matches(&descriptor.tool_id, namespace))
+        })
+        .filter(|descriptor| {
+            if input.authority_classes.is_empty() {
+                descriptor.authority_class == ToolAuthorityClass::Observe
+            } else {
+                input
+                    .authority_classes
+                    .contains(&descriptor.authority_class)
+            }
+        })
+        .filter(|descriptor| {
+            if input.effect_classes.is_empty() {
+                descriptor.effect_class == ToolEffectClass::Read
+            } else {
+                input.effect_classes.contains(&descriptor.effect_class)
+            }
+        })
+        .filter_map(|descriptor| {
+            capability_match_score(descriptor, &query, &query_terms)
+                .map(|score| (score, descriptor))
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by(|(left_score, left), (right_score, right)| {
+        right_score
+            .cmp(left_score)
+            .then_with(|| left.tool_id.cmp(&right.tool_id))
+    });
+    matches
+}
+
+fn capability_match_score(
+    descriptor: &ToolDescriptor,
+    query: &str,
+    query_terms: &BTreeSet<String>,
+) -> Option<usize> {
+    let tool_id = descriptor.tool_id.to_ascii_lowercase();
+    let title = descriptor.title.to_ascii_lowercase();
+    let summary = capability_search_summary(&descriptor.summary).to_ascii_lowercase();
+    let id_terms = capability_terms(&tool_id);
+    let title_terms = capability_terms(&title);
+    let summary_terms = capability_terms(&summary);
+    if query_terms.is_empty() {
+        return None;
+    }
+    let exact_phrase = tool_id.contains(query) || title.contains(query) || summary.contains(query);
+    let matched_terms = query_terms
+        .iter()
+        .filter(|term| {
+            id_terms.contains(*term) || title_terms.contains(*term) || summary_terms.contains(*term)
+        })
+        .count();
+    let required_terms = if query_terms.len() <= 2 { 1 } else { 2 };
+    if !exact_phrase && matched_terms < required_terms {
+        return None;
+    }
+    let mut score = matched_terms * 10;
+    if tool_id == query {
+        score += 200;
+    } else if tool_id.contains(query) {
+        score += 80;
+    }
+    if title == query {
+        score += 120;
+    } else if title.contains(query) {
+        score += 50;
+    }
+    if summary.contains(query) {
+        score += 20;
+    }
+    for term in query_terms {
+        if id_terms.contains(term) {
+            score += 24;
+        } else if tool_id.contains(term) {
+            score += 12;
+        }
+        if title_terms.contains(term) {
+            score += 16;
+        } else if title.contains(term) {
+            score += 8;
+        }
+        if summary_terms.contains(term) {
+            score += 5;
+        } else if summary.contains(term) {
+            score += 2;
+        }
+    }
+    Some(score)
+}
+
+fn capability_terms(value: &str) -> BTreeSet<String> {
+    const STOP_WORDS: &[&str] = &[
+        "a", "an", "and", "for", "from", "in", "of", "on", "or", "the", "to", "with",
+    ];
+    value
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|term| term.len() >= 2)
+        .filter(|term| !STOP_WORDS.contains(term))
+        .map(str::to_owned)
+        .collect()
+}
+
+fn capability_search_summary(summary: &str) -> &str {
+    summary
+        .split(" Input JSON Schema:")
+        .next()
+        .unwrap_or(summary)
+}
+
+fn capability_namespace_matches(tool_id: &str, namespace: &str) -> bool {
+    let tool_id = tool_id.to_ascii_lowercase();
+    let namespace = namespace.trim_start_matches("mcp.");
+    let provider_id = tool_id.strip_prefix("mcp.").unwrap_or(&tool_id);
+    provider_id == namespace
+        || provider_id
+            .strip_prefix(namespace)
+            .is_some_and(|suffix| suffix.starts_with('.'))
+}
+
+fn capability_namespace(tool_id: &str) -> &str {
+    if let Some(provider_id) = tool_id.strip_prefix("mcp.") {
+        return provider_id
+            .split_once('.')
+            .map_or(tool_id, |(provider, _)| {
+                &tool_id[.."mcp.".len() + provider.len()]
+            });
+    }
+    tool_id
+        .split_once('.')
+        .map_or(tool_id, |(namespace, _)| namespace)
+}
+
+fn capability_executor_tool(descriptor: &ToolDescriptor) -> Option<&'static str> {
+    if !descriptor.tool_id.starts_with("mcp.") {
+        return None;
+    }
+    match (descriptor.authority_class, descriptor.effect_class) {
+        (ToolAuthorityClass::Observe, ToolEffectClass::Read) => Some(CAPABILITY_EXECUTE_READ),
+        (ToolAuthorityClass::Propose, ToolEffectClass::Read) => Some(CAPABILITY_EXECUTE_PROPOSAL),
+        _ => None,
+    }
+}
+
+fn capability_descriptor_json(descriptor: &ToolDescriptor, score: usize) -> Value {
+    let descriptor_value = json!({
+        "authority_class": descriptor.authority_class,
+        "effect_class": descriptor.effect_class,
+        "input_schema_ref": descriptor.input_schema_ref,
+        "result_schema_ref": descriptor.result_schema_ref,
+        "summary": descriptor.summary,
+        "title": descriptor.title,
+        "tool_id": descriptor.tool_id,
+    });
+    json!({
+        "descriptor": descriptor_value,
+        "descriptor_digest": sha256_digest(&descriptor_value.to_string()),
+        "namespace": capability_namespace(&descriptor.tool_id),
+        "score": score,
+    })
+}
+
+fn sha256_digest(value: &str) -> String {
+    let digest = Sha256::digest(value.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("sha256:{digest}")
+}
+
 #[async_trait]
 impl AgentTools for PlatformAgentTools {
     fn catalog(&self) -> Vec<ToolDescriptor> {
-        let mut catalog = vec![
+        model_capability_catalog(self.mcp.as_deref().map_or(&[], McpAgentTools::descriptors))
+    }
+
+    async fn invoke(
+        &self,
+        request: &AgentTurnRequest,
+        call: &cerebro_agent_runtime::ToolCall,
+    ) -> Result<ToolResult, AgentRuntimeError> {
+        let tenant_id = TenantId::parse(request.tenant_id.clone())
+            .map_err(|error| AgentRuntimeError::InvalidRequest(error.to_string()))?;
+        let result = match call.tool_id.as_str() {
+            "capability.search" => self.search_capabilities(request, call),
+            "capability.describe" => self.describe_capabilities(request, call),
+            "capability.overview" => self.inspect_capability_overview(request, call),
+            CAPABILITY_EXECUTE_READ | CAPABILITY_EXECUTE_PROPOSAL => {
+                return self.execute_selected_capability(request, call).await;
+            }
+            "graph.search" => self.search(&tenant_id, request, call).await,
+            "graph.expand" => self.expand(&tenant_id, request, call).await,
+            "source_runtime.inspect" => {
+                self.inspect_source_runtime(&tenant_id, request, call).await
+            }
+            "source_runtime.overview" => {
+                self.inspect_source_runtime_overview(&tenant_id, request, call)
+                    .await
+            }
+            "source_catalog.inspect" => self.inspect_source_catalog(request, call),
+            "slack.thread.read" => self.read_slack_thread(request, call).await,
+            "slack.history.search" => self.search_slack_history(request, call).await,
+            _ => match &self.mcp {
+                Some(mcp)
+                    if mcp.descriptor(&call.tool_id).is_some_and(|descriptor| {
+                        descriptor.authority_class == ToolAuthorityClass::Actuate
+                    }) =>
+                {
+                    mcp.invoke(request, call).await
+                }
+                _ => Err(AgentRuntimeError::ToolUnavailable(call.tool_id.clone())),
+            },
+        }?;
+        Ok(atomize_tool_result(call, result))
+    }
+}
+
+fn built_in_capability_catalog() -> Vec<ToolDescriptor> {
+    vec![
+            ToolDescriptor {
+                tool_id: "capability.search".into(),
+                title: "Find tools for an intent".into(),
+                summary: "Search the complete bound capability catalog by intent, namespace, authority class, and effect class before choosing a provider tool. Catalog results describe capability only and are not evidence about an external system. Input fields: query string, optional namespaces string array, optional authority_classes and effect_classes arrays, optional limit from 1 to 20, and optional offset.".into(),
+                authority_class: ToolAuthorityClass::Observe,
+                effect_class: ToolEffectClass::Read,
+                input_schema_ref: "schema://cerebro/capability-search-input/v1".into(),
+                result_schema_ref: "schema://cerebro/capability-search-result/v1".into(),
+            },
+            ToolDescriptor {
+                tool_id: "capability.describe".into(),
+                title: "Describe exact tools".into(),
+                summary: "Read exact bound tool descriptors, authority and effect policy, and input/result schema references for up to 12 tool ids. Catalog results describe capability only and are not evidence about an external system. Input field: tool_ids string array.".into(),
+                authority_class: ToolAuthorityClass::Observe,
+                effect_class: ToolEffectClass::Read,
+                input_schema_ref: "schema://cerebro/capability-describe-input/v1".into(),
+                result_schema_ref: "schema://cerebro/capability-describe-result/v1".into(),
+            },
+            ToolDescriptor {
+                tool_id: CAPABILITY_EXECUTE_READ.into(),
+                title: "Execute a selected read capability".into(),
+                summary: "Redeem one host-signed capability selection for its exact read-only provider tool. Input fields: selection_ref string returned by capability.search and input object matching the selected provider schema.".into(),
+                authority_class: ToolAuthorityClass::Observe,
+                effect_class: ToolEffectClass::Read,
+                input_schema_ref: "schema://cerebro/capability-execute-input/v1".into(),
+                result_schema_ref: "schema://cerebro/capability-execute-result/v1".into(),
+            },
+            ToolDescriptor {
+                tool_id: CAPABILITY_EXECUTE_PROPOSAL.into(),
+                title: "Execute a selected proposal capability".into(),
+                summary: "Redeem one host-signed capability selection for its exact proposal-only provider tool. Input fields: selection_ref string returned by capability.search and input object matching the selected provider schema.".into(),
+                authority_class: ToolAuthorityClass::Propose,
+                effect_class: ToolEffectClass::Read,
+                input_schema_ref: "schema://cerebro/capability-execute-input/v1".into(),
+                result_schema_ref: "schema://cerebro/capability-execute-result/v1".into(),
+            },
             ToolDescriptor {
                 tool_id: "capability.overview".into(),
                 title: "Read current agent capabilities".into(),
@@ -2827,39 +3174,36 @@ impl AgentTools for PlatformAgentTools {
                 input_schema_ref: "schema://cerebro/source-catalog-inspect-input/v1".into(),
                 result_schema_ref: "schema://cerebro/source-catalog-inspect-result/v1".into(),
             },
-        ];
-        if let Some(mcp) = &self.mcp {
-            catalog.extend(mcp.descriptors().iter().cloned());
-        }
-        catalog
-    }
-
-    async fn invoke(
-        &self,
-        request: &AgentTurnRequest,
-        call: &cerebro_agent_runtime::ToolCall,
-    ) -> Result<ToolResult, AgentRuntimeError> {
-        let tenant_id = TenantId::parse(request.tenant_id.clone())
-            .map_err(|error| AgentRuntimeError::InvalidRequest(error.to_string()))?;
-        let result = match call.tool_id.as_str() {
-            "capability.overview" => self.inspect_capability_overview(request, call),
-            "graph.search" => self.search(&tenant_id, request, call).await,
-            "graph.expand" => self.expand(&tenant_id, request, call).await,
-            "source_runtime.inspect" => {
-                self.inspect_source_runtime(&tenant_id, request, call).await
-            }
-            "source_runtime.overview" => {
-                self.inspect_source_runtime_overview(&tenant_id, request, call)
-                    .await
-            }
-            "source_catalog.inspect" => self.inspect_source_catalog(request, call),
-            _ => match &self.mcp {
-                Some(mcp) => mcp.invoke(request, call).await,
-                None => Err(AgentRuntimeError::ToolUnavailable(call.tool_id.clone())),
+            ToolDescriptor {
+                tool_id: "slack.thread.read".into(),
+                title: "Read this owned Slack thread".into(),
+                summary: "Read one bounded page of the current Cerebro-owned thread transcript. Scope is derived from the active tenant and thread; no channel or thread selector is accepted. Input fields: optional cursor string, optional limit from 1 to 20.".into(),
+                authority_class: ToolAuthorityClass::Observe,
+                effect_class: ToolEffectClass::Read,
+                input_schema_ref: "schema://cerebro/slack-thread-read-input/v1".into(),
+                result_schema_ref: "schema://cerebro/slack-thread-read-result/v1".into(),
             },
-        }?;
-        Ok(atomize_tool_result(call, result))
-    }
+            ToolDescriptor {
+                tool_id: "slack.history.search".into(),
+                title: "Search prior Slack thread context".into(),
+                summary: "Read one bounded page of prior completed thread context for the same tenant, operator, and channel as the active request. Input fields: optional query string up to 256 bytes, optional cursor string, optional limit from 1 to 4.".into(),
+                authority_class: ToolAuthorityClass::Observe,
+                effect_class: ToolEffectClass::Read,
+                input_schema_ref: "schema://cerebro/slack-history-search-input/v1".into(),
+                result_schema_ref: "schema://cerebro/slack-history-search-result/v1".into(),
+            },
+    ]
+}
+
+fn model_capability_catalog(remote: &[ToolDescriptor]) -> Vec<ToolDescriptor> {
+    let mut catalog = built_in_capability_catalog();
+    catalog.extend(
+        remote
+            .iter()
+            .filter(|descriptor| descriptor.authority_class == ToolAuthorityClass::Actuate)
+            .cloned(),
+    );
+    catalog
 }
 
 fn atomize_tool_result(
@@ -2882,16 +3226,41 @@ fn atomize_tool_result(
         })
         .map(str::to_owned);
     for evidence in &mut result.evidence {
-        evidence.atoms = evidence_atoms_from_json(EvidenceAtomization {
-            evidence_ref: &evidence.evidence_ref,
-            subject_ref: subject_ref.as_deref(),
-            data: &result.data,
-            state: result.state,
-            summary: &result.summary,
-            observed_at: &evidence.observed_at,
-            fresh_until: evidence.fresh_until.as_deref(),
-            complete: evidence.complete,
-        });
+        let semantic_assertions = evidence
+            .atoms
+            .iter()
+            .filter_map(|atom| match &atom.assertion {
+                EvidenceAssertion::Semantic { assertion } => Some(assertion.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        evidence.atoms = if semantic_assertions.is_empty() {
+            Vec::new()
+        } else {
+            semantic_evidence_atoms(SemanticEvidenceAtomization {
+                evidence_ref: &evidence.evidence_ref,
+                envelope: SemanticEvidenceEnvelope {
+                    schema_version: AGENT_SEMANTIC_EVIDENCE_V1.into(),
+                    assertions: semantic_assertions,
+                },
+                observed_at: &evidence.observed_at,
+                fresh_until: evidence.fresh_until.as_deref(),
+                complete: evidence.complete,
+            })
+            .unwrap_or_default()
+        };
+        evidence
+            .atoms
+            .extend(evidence_atoms_from_json(EvidenceAtomization {
+                evidence_ref: &evidence.evidence_ref,
+                subject_ref: subject_ref.as_deref(),
+                data: &result.data,
+                state: result.state,
+                summary: &result.summary,
+                observed_at: &evidence.observed_at,
+                fresh_until: evidence.fresh_until.as_deref(),
+                complete: evidence.complete,
+            }));
     }
     result
 }
@@ -2945,6 +3314,169 @@ impl SessionTools for PlatformAgentTools {
 }
 
 impl PlatformAgentTools {
+    fn complete_capability_catalog(&self) -> Vec<ToolDescriptor> {
+        let mut catalog = built_in_capability_catalog();
+        if let Some(mcp) = &self.mcp {
+            catalog.extend(mcp.descriptors().iter().cloned());
+        }
+        catalog
+    }
+
+    fn search_capabilities(
+        &self,
+        request: &AgentTurnRequest,
+        call: &cerebro_agent_runtime::ToolCall,
+    ) -> Result<ToolResult, AgentRuntimeError> {
+        let input: CapabilitySearchInput = serde_json::from_value(call.input.clone())
+            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+        let query = input.query.trim();
+        if query.is_empty()
+            || query.len() > MAX_CAPABILITY_QUERY_BYTES
+            || input.limit == 0
+            || input.limit > MAX_CAPABILITY_SEARCH_LIMIT
+            || input.offset > MAX_CAPABILITY_CATALOG_OFFSET
+            || input.namespaces.len() > MAX_CAPABILITY_DESCRIBE_IDS
+            || input.namespaces.iter().any(|namespace| {
+                namespace.trim().is_empty() || namespace.len() > MAX_CAPABILITY_TOOL_ID_BYTES
+            })
+        {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "capability search bounds are invalid".into(),
+            ));
+        }
+        let catalog = self.complete_capability_catalog();
+        let matches = search_capability_catalog(&catalog, &input);
+        let total_matches = matches.len();
+        let query_digest = sha256_digest(query);
+        let page = matches
+            .into_iter()
+            .skip(input.offset)
+            .take(input.limit)
+            .enumerate()
+            .map(|(index, (score, descriptor))| {
+                let mut value = capability_descriptor_json(descriptor, score);
+                value["rank"] = json!(input.offset + index + 1);
+                if let (Some(mcp), Some(executor_tool_id)) =
+                    (&self.mcp, capability_executor_tool(descriptor))
+                {
+                    let selection_ref = mcp
+                        .issue_selection_ref(request, descriptor, &query_digest)
+                        .map_err(AgentRuntimeError::InvalidToolCall)?;
+                    value["execution_tool_id"] = Value::String(executor_tool_id.into());
+                    value["selection_ref"] = Value::String(selection_ref);
+                }
+                Ok(value)
+            })
+            .collect::<Result<Vec<_>, AgentRuntimeError>>()?;
+        let next_offset =
+            (input.offset + page.len() < total_matches).then_some(input.offset + page.len());
+        Ok(ToolResult {
+            state: ToolResultState::Succeeded,
+            summary: format!(
+                "Found {} bound tools matching the requested intent.",
+                page.len()
+            ),
+            data: json!({
+                "matches": page,
+                "next_offset": next_offset,
+                "offset": input.offset,
+                "query": query,
+                "query_digest": query_digest,
+                "schema_version": "capability-search-result/v1",
+                "total_matches": total_matches,
+            }),
+            evidence: vec![],
+            blocker: None,
+        })
+    }
+
+    fn describe_capabilities(
+        &self,
+        _request: &AgentTurnRequest,
+        call: &cerebro_agent_runtime::ToolCall,
+    ) -> Result<ToolResult, AgentRuntimeError> {
+        let input: CapabilityDescribeInput = serde_json::from_value(call.input.clone())
+            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+        if input.tool_ids.is_empty() || input.tool_ids.len() > MAX_CAPABILITY_DESCRIBE_IDS {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "capability describe requires between 1 and 12 tool ids".into(),
+            ));
+        }
+        let requested = input.tool_ids.into_iter().collect::<BTreeSet<_>>();
+        if requested.len() > MAX_CAPABILITY_DESCRIBE_IDS
+            || requested.iter().any(|tool_id| {
+                tool_id.trim().is_empty() || tool_id.len() > MAX_CAPABILITY_TOOL_ID_BYTES
+            })
+        {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "capability describe tool ids are invalid".into(),
+            ));
+        }
+        let catalog = self.complete_capability_catalog();
+        let by_id = catalog
+            .iter()
+            .map(|descriptor| (descriptor.tool_id.as_str(), descriptor))
+            .collect::<BTreeMap<_, _>>();
+        let mut described = Vec::new();
+        let mut unavailable = Vec::new();
+        for tool_id in &requested {
+            if let Some(descriptor) = by_id.get(tool_id.as_str()) {
+                described.push(capability_descriptor_json(descriptor, 0));
+            } else {
+                unavailable.push(tool_id);
+            }
+        }
+        let complete = unavailable.is_empty();
+        Ok(ToolResult {
+            state: if complete {
+                ToolResultState::Succeeded
+            } else {
+                ToolResultState::Partial
+            },
+            summary: "Read exact bound tool descriptors and authority policy.".into(),
+            data: json!({
+                "schema_version": "capability-describe-result/v1",
+                "tools": described,
+                "unavailable_tool_ids": unavailable,
+            }),
+            evidence: vec![],
+            blocker: (!complete).then(|| "One or more requested tools are not bound.".into()),
+        })
+    }
+
+    async fn execute_selected_capability(
+        &self,
+        request: &AgentTurnRequest,
+        call: &cerebro_agent_runtime::ToolCall,
+    ) -> Result<ToolResult, AgentRuntimeError> {
+        let input: CapabilityExecuteInput = serde_json::from_value(call.input.clone())
+            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+        if input.selection_ref.len() > 1_024 || !input.input.is_object() {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "capability execution requires a bounded selection_ref and object input".into(),
+            ));
+        }
+        let mcp = self.mcp.as_ref().ok_or_else(|| {
+            AgentRuntimeError::ToolUnavailable("MCP capability gateway is not bound".into())
+        })?;
+        let descriptor = mcp
+            .verify_selection_ref(request, &input.selection_ref)
+            .map_err(AgentRuntimeError::InvalidToolCall)?;
+        if capability_executor_tool(&descriptor) != Some(call.tool_id.as_str()) {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "capability selection authority does not match this executor".into(),
+            ));
+        }
+        let provider_call = cerebro_agent_runtime::ToolCall {
+            call_id: call.call_id.clone(),
+            tool_id: descriptor.tool_id,
+            purpose: call.purpose.clone(),
+            input: input.input,
+        };
+        let result = mcp.invoke(request, &provider_call).await?;
+        Ok(atomize_tool_result(&provider_call, result))
+    }
+
     fn inspect_capability_overview(
         &self,
         request: &AgentTurnRequest,
@@ -2988,7 +3520,7 @@ impl PlatformAgentTools {
             call,
             complete,
             format!(
-                "The Slack agent capability registry observed six built-in tools and {} bound MCP tools; MCP gateway state={gateway_state}.",
+                "The Slack agent capability registry observed twelve built-in tools and {} bound MCP tools; MCP gateway state={gateway_state}.",
                 remote.len()
             ),
         )?;
@@ -3001,12 +3533,18 @@ impl PlatformAgentTools {
             summary: "Read the current Slack agent capability registry.".into(),
             data: json!({
                 "built_in": [
+                    "capability.search",
+                    "capability.describe",
+                    CAPABILITY_EXECUTE_READ,
+                    CAPABILITY_EXECUTE_PROPOSAL,
                     "capability.overview",
                     "graph.search",
                     "graph.expand",
                     "source_catalog.inspect",
                     "source_runtime.inspect",
                     "source_runtime.overview",
+                    "slack.history.search",
+                    "slack.thread.read",
                 ],
                 "mcp": {
                     "actuate_tools": actuated,
@@ -3025,6 +3563,125 @@ impl PlatformAgentTools {
             evidence: vec![evidence],
             blocker: (!complete).then(|| {
                 "The configured MCP capability gateway did not return its tool catalog.".into()
+            }),
+        })
+    }
+
+    async fn read_slack_thread(
+        &self,
+        request: &AgentTurnRequest,
+        call: &cerebro_agent_runtime::ToolCall,
+    ) -> Result<ToolResult, AgentRuntimeError> {
+        let input: SlackThreadReadInput = serde_json::from_value(call.input.clone())
+            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+        if input.limit == 0 || input.limit > MAX_SLACK_TRANSCRIPT_LIMIT {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "Slack thread transcript limit is invalid".into(),
+            ));
+        }
+        let page = self
+            .sessions
+            .read_owned_thread_transcript(
+                &request.tenant_id,
+                &request.thread_ref,
+                input.cursor.as_deref(),
+                input.limit,
+            )
+            .await?;
+        let complete = page.next_cursor.is_none();
+        let evidence = slack_history_evidence(
+            request,
+            call,
+            complete,
+            format!(
+                "The durable Slack session returned {} transcript messages from the current Cerebro-owned thread; more_pages={}. This retained context is not current external-system evidence.",
+                page.messages.len(),
+                !complete,
+            ),
+        )?;
+        Ok(ToolResult {
+            state: if complete {
+                ToolResultState::Succeeded
+            } else {
+                ToolResultState::Partial
+            },
+            summary: format!(
+                "Read {} messages from this owned Slack thread.",
+                page.messages.len()
+            ),
+            data: serde_json::to_value(page)
+                .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
+            evidence: vec![evidence],
+            blocker: (!complete).then(|| {
+                "Older messages remain available through the returned bounded cursor.".into()
+            }),
+        })
+    }
+
+    async fn search_slack_history(
+        &self,
+        request: &AgentTurnRequest,
+        call: &cerebro_agent_runtime::ToolCall,
+    ) -> Result<ToolResult, AgentRuntimeError> {
+        let input: SlackHistorySearchInput = serde_json::from_value(call.input.clone())
+            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+        if input.query.len() > 256 || input.limit == 0 || input.limit > MAX_SLACK_HISTORY_LIMIT {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "prior Slack thread search input is invalid".into(),
+            ));
+        }
+        let context_scope_ref = request.context_scope_ref.as_deref().ok_or_else(|| {
+            AgentRuntimeError::InvalidToolCall(
+                "prior Slack thread search requires the active channel scope".into(),
+            )
+        })?;
+        validate_context_scope_ref(context_scope_ref)?;
+        let session = self
+            .sessions
+            .load_by_thread(&request.tenant_id, &request.thread_ref)
+            .await?
+            .ok_or_else(|| {
+                AgentRuntimeError::InvalidRequest("Slack thread session does not exist".into())
+            })?;
+        let page = self
+            .sessions
+            .search_prior_thread_contexts(AgentPriorThreadSearch {
+                actor_ref: &request.actor_ref,
+                context_scope_ref,
+                cursor: input.cursor.as_deref(),
+                exclude_session_ref: &session.session_ref,
+                limit: input.limit,
+                query: input.query.trim(),
+                tenant_id: &request.tenant_id,
+            })
+            .await?;
+        let complete = page.next_cursor.is_none();
+        let evidence = slack_history_evidence(
+            request,
+            call,
+            complete,
+            format!(
+                "The durable Slack context index returned {} prior completed threads scoped to the same tenant, operator, and channel; more_pages={}. Retained context is not current external-system evidence.",
+                page.threads.len(),
+                !complete,
+            ),
+        )?;
+        Ok(ToolResult {
+            state: if complete {
+                ToolResultState::Succeeded
+            } else {
+                ToolResultState::Partial
+            },
+            summary: format!(
+                "Read {} prior thread contexts for this operator and channel.",
+                page.threads.len()
+            ),
+            data: serde_json::to_value(page)
+                .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
+            evidence: vec![evidence],
+            blocker: (!complete).then(|| {
+                "More matching prior threads remain available through the returned bounded cursor."
+                    .into()
             }),
         })
     }
@@ -3671,6 +4328,41 @@ fn catalog_evidence(
     })
 }
 
+fn slack_history_evidence(
+    request: &AgentTurnRequest,
+    call: &cerebro_agent_runtime::ToolCall,
+    complete: bool,
+    statement: String,
+) -> Result<EvidenceRecord, AgentRuntimeError> {
+    let observed_at = OffsetDateTime::now_utc();
+    let identity = format!(
+        "{}:{}:{}:{}:{}:{}",
+        request.tenant_id,
+        request.actor_ref,
+        request
+            .context_scope_ref
+            .as_deref()
+            .unwrap_or("current-thread"),
+        request.thread_ref,
+        call.call_id,
+        call.input_digest(),
+    );
+    let digest = Sha256::digest(identity.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    Ok(EvidenceRecord {
+        evidence_ref: format!("evidence://slack-context/{digest}"),
+        statement,
+        observed_at: observed_at
+            .format(&Rfc3339)
+            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
+        fresh_until: None,
+        complete,
+        atoms: Vec::new(),
+    })
+}
+
 const fn auth_model_name(model: &AuthModel) -> &'static str {
     match model {
         AuthModel::None => "none",
@@ -3707,6 +4399,14 @@ const fn default_runtime_limit() -> usize {
     10
 }
 
+const fn default_slack_history_limit() -> usize {
+    4
+}
+
+const fn default_slack_transcript_limit() -> usize {
+    12
+}
+
 fn enabled(value: &str) -> bool {
     matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true")
 }
@@ -3723,8 +4423,332 @@ fn required_env(name: &str) -> Result<String, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cerebro_agent_runtime::session::{
+        AuthorityBindingState, AuthorityDuty, SemanticEvidenceAssertion,
+    };
     use cerebro_organizational_store::SourceRuntimeCollectionObservation;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn discovered_tool(
+        tool_id: &str,
+        title: &str,
+        summary: &str,
+        authority_class: ToolAuthorityClass,
+        effect_class: ToolEffectClass,
+    ) -> ToolDescriptor {
+        ToolDescriptor {
+            tool_id: tool_id.into(),
+            title: title.into(),
+            summary: summary.into(),
+            authority_class,
+            effect_class,
+            input_schema_ref: format!("schema://{tool_id}/input"),
+            result_schema_ref: format!("schema://{tool_id}/result"),
+        }
+    }
+
+    #[test]
+    fn direct_model_catalog_exposes_only_bounded_host_tools() {
+        let catalog = model_capability_catalog(&[]);
+
+        assert_eq!(catalog.len(), 12);
+        assert!(catalog.iter().all(|tool| !tool.tool_id.starts_with("mcp.")));
+        assert!(
+            catalog
+                .iter()
+                .any(|tool| tool.tool_id == "capability.search")
+        );
+        assert!(
+            catalog
+                .iter()
+                .any(|tool| tool.tool_id == "slack.thread.read")
+        );
+        assert!(
+            catalog
+                .iter()
+                .any(|tool| tool.tool_id == "slack.history.search")
+        );
+    }
+
+    #[test]
+    fn direct_model_catalog_hides_remote_reads_but_keeps_exact_effect_identity() {
+        let read = discovered_tool(
+            "mcp.slack.thread.read",
+            "Read a thread",
+            "Read messages.",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        );
+        let actuation = discovered_tool(
+            "mcp.slack.message.send",
+            "Send a message",
+            "Send one message.",
+            ToolAuthorityClass::Actuate,
+            ToolEffectClass::ExternalEffect,
+        );
+
+        let catalog = model_capability_catalog(&[read, actuation]);
+
+        assert!(
+            !catalog
+                .iter()
+                .any(|tool| tool.tool_id == "mcp.slack.thread.read")
+        );
+        assert!(catalog.iter().any(|tool| {
+            tool.tool_id == "mcp.slack.message.send"
+                && tool.authority_class == ToolAuthorityClass::Actuate
+        }));
+    }
+
+    #[test]
+    fn capability_search_prefers_the_direct_provider_tool() {
+        let catalog = vec![
+            discovered_tool(
+                "graph.search",
+                "Search governed graph",
+                "Find graph entities and relations.",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            discovered_tool(
+                "mcp.slack.thread.read",
+                "Read a Slack thread",
+                "Read the exact prior messages in an owned Slack conversation.",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            discovered_tool(
+                "github.pull_request.read",
+                "Read a GitHub pull request",
+                "Read pull request state and checks.",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+        ];
+        let input = CapabilitySearchInput {
+            query: "prior Slack thread conversation".into(),
+            namespaces: Vec::new(),
+            authority_classes: vec![ToolAuthorityClass::Observe],
+            effect_classes: vec![ToolEffectClass::Read],
+            limit: 8,
+            offset: 0,
+        };
+
+        let matches = search_capability_catalog(&catalog, &input);
+
+        assert_eq!(matches[0].1.tool_id, "mcp.slack.thread.read");
+        assert_eq!(
+            capability_namespace(matches[0].1.tool_id.as_str()),
+            "mcp.slack"
+        );
+        assert!(capability_namespace_matches(
+            matches[0].1.tool_id.as_str(),
+            "slack"
+        ));
+        assert!(
+            matches
+                .iter()
+                .all(|(_, tool)| tool.tool_id != "graph.search")
+        );
+    }
+
+    #[test]
+    fn capability_search_applies_namespace_and_effect_policy_filters() {
+        let catalog = vec![
+            discovered_tool(
+                "mcp.slack.thread.read",
+                "Read a Slack thread",
+                "Read Slack conversation history.",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            discovered_tool(
+                "mcp.slack.message.send",
+                "Send a Slack message",
+                "Send a Slack message to a channel.",
+                ToolAuthorityClass::Actuate,
+                ToolEffectClass::ExternalEffect,
+            ),
+            discovered_tool(
+                "github.issue.create",
+                "Create a GitHub issue",
+                "Create an issue.",
+                ToolAuthorityClass::Actuate,
+                ToolEffectClass::ExternalEffect,
+            ),
+        ];
+        let input = CapabilitySearchInput {
+            query: "Slack message".into(),
+            namespaces: vec!["slack".into()],
+            authority_classes: vec![ToolAuthorityClass::Actuate],
+            effect_classes: vec![ToolEffectClass::ExternalEffect],
+            limit: 8,
+            offset: 0,
+        };
+
+        let matches = search_capability_catalog(&catalog, &input);
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].1.tool_id, "mcp.slack.message.send");
+    }
+
+    #[test]
+    fn capability_search_defaults_to_observe_read_and_ignores_schema_keyword_stuffing() {
+        let catalog = vec![
+            discovered_tool(
+                "mcp.slack.thread.read",
+                "Read a conversation",
+                "Read retained conversation messages. Input JSON Schema: {\"description\":\"deploy change issue create send write\"}",
+                ToolAuthorityClass::Observe,
+                ToolEffectClass::Read,
+            ),
+            discovered_tool(
+                "mcp.slack.message.send",
+                "Send a message",
+                "Send a message to a conversation.",
+                ToolAuthorityClass::Actuate,
+                ToolEffectClass::ExternalEffect,
+            ),
+            discovered_tool(
+                "mcp.code.change.apply",
+                "Apply a deployment change",
+                "Apply an external deployment change.",
+                ToolAuthorityClass::Actuate,
+                ToolEffectClass::ExternalEffect,
+            ),
+        ];
+        let input = CapabilitySearchInput {
+            query: "deployment change".into(),
+            namespaces: Vec::new(),
+            authority_classes: Vec::new(),
+            effect_classes: Vec::new(),
+            limit: 8,
+            offset: 0,
+        };
+
+        assert!(search_capability_catalog(&catalog, &input).is_empty());
+    }
+
+    #[test]
+    fn capability_executor_preserves_the_selected_authority_boundary() {
+        let read = discovered_tool(
+            "mcp.slack.thread.read",
+            "Read a thread",
+            "Read retained conversation messages.",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        );
+        let proposal = discovered_tool(
+            "mcp.change.propose",
+            "Propose a change",
+            "Prepare a proposal.",
+            ToolAuthorityClass::Propose,
+            ToolEffectClass::Read,
+        );
+        let actuation = discovered_tool(
+            "mcp.change.apply",
+            "Apply a change",
+            "Apply an approved effect.",
+            ToolAuthorityClass::Actuate,
+            ToolEffectClass::ExternalEffect,
+        );
+
+        assert_eq!(
+            capability_executor_tool(&read),
+            Some(CAPABILITY_EXECUTE_READ)
+        );
+        assert_eq!(
+            capability_executor_tool(&proposal),
+            Some(CAPABILITY_EXECUTE_PROPOSAL)
+        );
+        assert_eq!(capability_executor_tool(&actuation), None);
+    }
+
+    #[test]
+    fn agent_and_critic_require_provider_tool_discovery_without_graph_substitution() {
+        for instructions in [session_instructions(), model_instructions()] {
+            assert!(instructions.contains("capability.search"));
+            assert!(instructions.contains("Never substitute graph.search"));
+            assert!(instructions.contains("Catalog metadata"));
+        }
+        assert!(
+            claim_review_instructions().contains(
+                "Reject a response that fills a provider request with an unrelated graph"
+            )
+        );
+    }
+
+    #[test]
+    fn generic_atomization_preserves_validated_semantic_atoms() {
+        let evidence_ref = "evidence://semantic/preserved";
+        let semantic_atoms = semantic_evidence_atoms(SemanticEvidenceAtomization {
+            evidence_ref,
+            envelope: SemanticEvidenceEnvelope {
+                schema_version: AGENT_SEMANTIC_EVIDENCE_V1.into(),
+                assertions: vec![SemanticEvidenceAssertion::AuthorityBinding {
+                    subject_ref: "finding:one".into(),
+                    duty: AuthorityDuty::Remediation,
+                    state: AuthorityBindingState::PresentIdentityNotReturned,
+                }],
+            },
+            observed_at: "2026-08-01T00:00:00Z",
+            fresh_until: Some("2026-08-01T00:05:00Z"),
+            complete: true,
+        })
+        .unwrap();
+        let mut producer_atoms = semantic_atoms.clone();
+        producer_atoms.push(cerebro_agent_runtime::session::EvidenceAtom {
+            atom_ref: "producer://unvalidated".into(),
+            subject_ref: Some("finding:one".into()),
+            assertion: EvidenceAssertion::LegacyStatement {
+                statement: "Unvalidated producer atom.".into(),
+            },
+            observed_at: "2026-08-01T00:00:00Z".into(),
+            fresh_until: Some("2026-08-01T00:05:00Z".into()),
+            complete: true,
+        });
+        let call = cerebro_agent_runtime::ToolCall {
+            call_id: "call:semantic".into(),
+            tool_id: "finding.read".into(),
+            purpose: "Read the finding.".into(),
+            input: json!({"subject_ref": "finding:one"}),
+        };
+        let result = atomize_tool_result(
+            &call,
+            ToolResult {
+                state: ToolResultState::Succeeded,
+                summary: "Read the finding.".into(),
+                data: json!({"owner_present": true}),
+                evidence: vec![EvidenceRecord {
+                    evidence_ref: evidence_ref.into(),
+                    statement: "The finding was observed.".into(),
+                    observed_at: "2026-08-01T00:00:00Z".into(),
+                    fresh_until: Some("2026-08-01T00:05:00Z".into()),
+                    complete: true,
+                    atoms: producer_atoms,
+                }],
+                blocker: None,
+            },
+        );
+
+        let atoms = &result.evidence[0].atoms;
+        assert_eq!(&atoms[..semantic_atoms.len()], semantic_atoms.as_slice());
+        assert!(
+            atoms
+                .iter()
+                .any(|atom| atom.atom_ref.ends_with("#tool-outcome"))
+        );
+        assert!(
+            atoms
+                .iter()
+                .any(|atom| atom.atom_ref.ends_with("#value:/owner_present"))
+        );
+        assert!(
+            !atoms
+                .iter()
+                .any(|atom| matches!(&atom.assertion, EvidenceAssertion::LegacyStatement { .. }))
+        );
+    }
 
     #[test]
     fn exact_delivery_receipt_replays_but_a_changed_receipt_conflicts() {

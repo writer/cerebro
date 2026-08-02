@@ -153,6 +153,44 @@ pub struct AgentPendingWakeDelivery {
     pub thread_ref: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct AgentThreadTranscriptMessage {
+    pub actor_ref: String,
+    pub message_ref: String,
+    pub received_at: String,
+    pub role: SessionMessageRole,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct AgentThreadTranscriptPage {
+    pub messages: Vec<AgentThreadTranscriptMessage>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct AgentPriorThreadContext {
+    pub context: Value,
+    pub thread_ref: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct AgentPriorThreadContextPage {
+    pub next_cursor: Option<String>,
+    pub threads: Vec<AgentPriorThreadContext>,
+}
+
+pub struct AgentPriorThreadSearch<'a> {
+    pub actor_ref: &'a str,
+    pub context_scope_ref: &'a str,
+    pub cursor: Option<&'a str>,
+    pub exclude_session_ref: &'a str,
+    pub limit: usize,
+    pub query: &'a str,
+    pub tenant_id: &'a str,
+}
+
 fn wake_identity(parts: &[&str]) -> String {
     Sha256::digest(parts.join("\0").as_bytes())
         .iter()
@@ -226,6 +264,92 @@ impl PostgresAgentSessionStore {
             .await
             .map_err(store_unavailable)?;
         row.map(|row| decode_session(row.get(0))).transpose()
+    }
+
+    pub async fn read_owned_thread_transcript(
+        &self,
+        tenant_id: &str,
+        thread_ref: &str,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<AgentThreadTranscriptPage, AgentRuntimeError> {
+        let session = self
+            .load_by_thread(tenant_id, thread_ref)
+            .await?
+            .ok_or_else(|| {
+                AgentRuntimeError::InvalidRequest("Slack thread session does not exist".into())
+            })?;
+        thread_transcript_page(&session.messages, cursor, limit)
+    }
+
+    pub async fn search_prior_thread_contexts(
+        &self,
+        search: AgentPriorThreadSearch<'_>,
+    ) -> Result<AgentPriorThreadContextPage, AgentRuntimeError> {
+        if search.actor_ref.trim().is_empty()
+            || search.context_scope_ref.trim().is_empty()
+            || search.query.len() > 256
+            || !(1..=4).contains(&search.limit)
+        {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "prior Slack thread search input is invalid".into(),
+            ));
+        }
+        let normalized_query = search.query.trim();
+        let requested = i64::try_from(search.limit.saturating_add(1)).map_err(|_| {
+            AgentRuntimeError::InvalidRequest("prior Slack thread limit is invalid".into())
+        })?;
+        let parsed_cursor = search.cursor.map(parse_prior_thread_cursor).transpose()?;
+        let rows = if let Some((updated_at, session_ref)) = parsed_cursor.as_ref() {
+            self.client
+                .lock()
+                .await
+                .query(
+                    "SELECT session_ref, thread_ref, context_json, to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') FROM cerebro_agent_thread_contexts WHERE tenant_id = $1 AND actor_ref = $2 AND context_scope_ref = $3 AND session_ref <> $4 AND ($5 = '' OR position(lower($5) in lower(context_json::text)) > 0) AND (updated_at, session_ref) < (($6::text)::timestamptz, $7) ORDER BY updated_at DESC, session_ref DESC LIMIT $8",
+                    &[&search.tenant_id, &search.actor_ref, &search.context_scope_ref, &search.exclude_session_ref, &normalized_query, &updated_at, &session_ref, &requested],
+                )
+                .await
+                .map_err(store_unavailable)?
+        } else {
+            self.client
+                .lock()
+                .await
+                .query(
+                    "SELECT session_ref, thread_ref, context_json, to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') FROM cerebro_agent_thread_contexts WHERE tenant_id = $1 AND actor_ref = $2 AND context_scope_ref = $3 AND session_ref <> $4 AND ($5 = '' OR position(lower($5) in lower(context_json::text)) > 0) ORDER BY updated_at DESC, session_ref DESC LIMIT $6",
+                    &[&search.tenant_id, &search.actor_ref, &search.context_scope_ref, &search.exclude_session_ref, &normalized_query, &requested],
+                )
+                .await
+                .map_err(store_unavailable)?
+        };
+        let has_more = rows.len() > search.limit;
+        let mut threads = rows
+            .into_iter()
+            .take(search.limit)
+            .map(|row| {
+                let session_ref: String = row.get(0);
+                let thread = AgentPriorThreadContext {
+                    context: row.get(2),
+                    thread_ref: row.get(1),
+                    updated_at: row.get(3),
+                };
+                (session_ref, thread)
+            })
+            .collect::<Vec<_>>();
+        let next_cursor = if has_more {
+            threads
+                .last()
+                .map(|(session_ref, thread)| prior_thread_cursor(&thread.updated_at, session_ref))
+                .transpose()?
+        } else {
+            None
+        };
+        for (_, thread) in &mut threads {
+            bound_prior_thread_context(&mut thread.context);
+        }
+        Ok(AgentPriorThreadContextPage {
+            next_cursor,
+            threads: threads.into_iter().map(|(_, thread)| thread).collect(),
+        })
     }
 
     pub async fn bind_context_scope(
@@ -1245,6 +1369,143 @@ fn bounded_context_text(value: &str, maximum_bytes: usize) -> String {
     format!("{}...", &value[..boundary])
 }
 
+fn thread_transcript_page(
+    messages: &[SessionMessage],
+    cursor: Option<&str>,
+    limit: usize,
+) -> Result<AgentThreadTranscriptPage, AgentRuntimeError> {
+    if !(1..=20).contains(&limit) {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "Slack thread transcript limit is invalid".into(),
+        ));
+    }
+    let end = match cursor {
+        None => messages.len(),
+        Some(cursor) if !cursor.trim().is_empty() && cursor.len() <= 256 => messages
+            .iter()
+            .position(|message| message.message_ref == cursor)
+            .ok_or_else(|| {
+                AgentRuntimeError::InvalidRequest(
+                    "Slack thread transcript cursor is invalid".into(),
+                )
+            })?,
+        Some(_) => {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "Slack thread transcript cursor is invalid".into(),
+            ));
+        }
+    };
+    let start = end.saturating_sub(limit);
+    let page = messages[start..end]
+        .iter()
+        .map(|message| AgentThreadTranscriptMessage {
+            actor_ref: bounded_context_text(&message.actor_ref, 256),
+            message_ref: message.message_ref.clone(),
+            received_at: message.received_at.clone(),
+            role: message.role,
+            text: bounded_context_text(&message.text, 2_400),
+        })
+        .collect();
+    Ok(AgentThreadTranscriptPage {
+        messages: page,
+        next_cursor: (start > 0).then(|| messages[start].message_ref.clone()),
+    })
+}
+
+fn prior_thread_cursor(updated_at: &str, session_ref: &str) -> Result<String, AgentRuntimeError> {
+    validate_prior_thread_cursor_parts(updated_at, session_ref)?;
+    Ok(format!("{updated_at}|{session_ref}"))
+}
+
+fn parse_prior_thread_cursor(value: &str) -> Result<(String, String), AgentRuntimeError> {
+    if value.len() > 256 {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "prior Slack thread cursor is invalid".into(),
+        ));
+    }
+    let (updated_at, session_ref) = value.split_once('|').ok_or_else(|| {
+        AgentRuntimeError::InvalidRequest("prior Slack thread cursor is invalid".into())
+    })?;
+    validate_prior_thread_cursor_parts(updated_at, session_ref)?;
+    Ok((updated_at.into(), session_ref.into()))
+}
+
+fn validate_prior_thread_cursor_parts(
+    updated_at: &str,
+    session_ref: &str,
+) -> Result<(), AgentRuntimeError> {
+    let valid_session_ref = session_ref
+        .strip_prefix("agent-session:")
+        .is_some_and(|digest| {
+            digest.len() == 64
+                && digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+        });
+    if !valid_session_ref || OffsetDateTime::parse(updated_at, &Rfc3339).is_err() {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "prior Slack thread cursor is invalid".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn bound_prior_thread_context(context: &mut Value) {
+    let Some(source) = context.as_object() else {
+        *context = serde_json::json!({"state": "invalid_stored_context"});
+        return;
+    };
+    let bounded = |name: &str, maximum_bytes: usize| {
+        source
+            .get(name)
+            .and_then(Value::as_str)
+            .map(|value| bounded_context_text(value, maximum_bytes))
+    };
+    *context = serde_json::json!({
+        "commitments": bounded_prior_items(source.get("commitments"), false),
+        "desired_outcome": bounded("desired_outcome", 600),
+        "latest_assistant_message": bounded("latest_assistant_message", 1_000),
+        "latest_user_message": bounded("latest_user_message", 800),
+        "objective": bounded("objective", 600),
+        "open_loops": bounded_prior_items(source.get("open_loops"), true),
+        "source_thread_ref": bounded("source_thread_ref", 256),
+        "status": source.get("status").cloned(),
+    });
+}
+
+fn bounded_prior_items(value: Option<&Value>, open_loop: bool) -> Vec<Value> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .take(2)
+        .filter_map(Value::as_object)
+        .map(|item| {
+            let text = |name: &str, maximum_bytes: usize| {
+                item.get(name)
+                    .and_then(Value::as_str)
+                    .map(|value| bounded_context_text(value, maximum_bytes))
+            };
+            if open_loop {
+                serde_json::json!({
+                    "blocked_by": text("blocked_by", 300),
+                    "next_action": text("next_action", 300),
+                    "open_loop_ref": text("open_loop_ref", 256),
+                    "owner": item.get("owner").cloned(),
+                    "summary": text("summary", 400),
+                })
+            } else {
+                serde_json::json!({
+                    "commitment_ref": text("commitment_ref", 256),
+                    "next_action": text("next_action", 300),
+                    "status": item.get("status").cloned(),
+                    "summary": text("summary", 400),
+                })
+            }
+        })
+        .collect()
+}
+
 async fn insert_event(
     transaction: &tokio_postgres::Transaction<'_>,
     event: &SessionEventRecord,
@@ -1355,6 +1616,98 @@ mod tests {
         assert_eq!(completed.text, "Second operator message");
     }
 
+    #[test]
+    fn owned_thread_transcript_pages_newest_messages_without_overlap() {
+        let messages = (1..=5)
+            .map(|index| SessionMessage {
+                role: if index % 2 == 0 {
+                    SessionMessageRole::Assistant
+                } else {
+                    SessionMessageRole::User
+                },
+                message_ref: format!("message:{index}"),
+                actor_ref: format!("actor:{index}"),
+                text: format!("message text {index}"),
+                received_at: format!("2026-07-31T00:0{index}:00Z"),
+            })
+            .collect::<Vec<_>>();
+
+        let newest = thread_transcript_page(&messages, None, 2).unwrap();
+        assert_eq!(
+            newest
+                .messages
+                .iter()
+                .map(|message| message.message_ref.as_str())
+                .collect::<Vec<_>>(),
+            ["message:4", "message:5"]
+        );
+        assert_eq!(newest.next_cursor.as_deref(), Some("message:4"));
+
+        let older = thread_transcript_page(&messages, newest.next_cursor.as_deref(), 2).unwrap();
+        assert_eq!(
+            older
+                .messages
+                .iter()
+                .map(|message| message.message_ref.as_str())
+                .collect::<Vec<_>>(),
+            ["message:2", "message:3"]
+        );
+        assert_eq!(older.next_cursor.as_deref(), Some("message:2"));
+
+        let oldest = thread_transcript_page(&messages, older.next_cursor.as_deref(), 2).unwrap();
+        assert_eq!(oldest.messages[0].message_ref, "message:1");
+        assert!(oldest.next_cursor.is_none());
+    }
+
+    #[test]
+    fn slack_history_cursors_are_bounded_and_canonical() {
+        let session_ref = format!("agent-session:{}", "a".repeat(64));
+        let updated_at = "2026-07-31T00:00:00.000001Z";
+        let encoded = prior_thread_cursor(updated_at, &session_ref).unwrap();
+
+        assert_eq!(
+            parse_prior_thread_cursor(&encoded).unwrap(),
+            (updated_at.into(), session_ref)
+        );
+        assert!(parse_prior_thread_cursor("not-a-cursor").is_err());
+        assert!(
+            parse_prior_thread_cursor(&format!("{updated_at}|agent-session:{}", "z".repeat(64)))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn prior_thread_context_results_are_structurally_bounded() {
+        let oversized = "x".repeat(20_000);
+        let mut context = serde_json::json!({
+            "commitments": (0..10).map(|index| serde_json::json!({
+                "commitment_ref": format!("commitment:{index}"),
+                "next_action": &oversized,
+                "status": "in_progress",
+                "summary": &oversized,
+            })).collect::<Vec<_>>(),
+            "desired_outcome": &oversized,
+            "latest_assistant_message": &oversized,
+            "latest_user_message": &oversized,
+            "objective": &oversized,
+            "open_loops": (0..10).map(|index| serde_json::json!({
+                "blocked_by": &oversized,
+                "next_action": &oversized,
+                "open_loop_ref": format!("loop:{index}"),
+                "owner": "cerebro",
+                "summary": &oversized,
+            })).collect::<Vec<_>>(),
+            "source_thread_ref": format!("thread:{}", "a".repeat(1_000)),
+            "status": "active",
+        });
+
+        bound_prior_thread_context(&mut context);
+
+        assert_eq!(context["commitments"].as_array().unwrap().len(), 2);
+        assert_eq!(context["open_loops"].as_array().unwrap().len(), 2);
+        assert!(serde_json::to_vec(&context).unwrap().len() < 8_000);
+    }
+
     #[tokio::test]
     #[ignore = "requires CEREBRO_TEST_POSTGRES_DSN"]
     async fn postgres_completed_thread_context_recall_is_actor_and_scope_isolated() {
@@ -1450,6 +1803,56 @@ mod tests {
                 )
                 .await
                 .unwrap()
+                .is_empty()
+        );
+        let searched = restarted
+            .search_prior_thread_contexts(AgentPriorThreadSearch {
+                actor_ref,
+                context_scope_ref: &context_scope_ref,
+                cursor: None,
+                exclude_session_ref: "agent-session:postgres-context-target",
+                limit: 2,
+                query: "completed source-thread decision",
+                tenant_id,
+            })
+            .await
+            .unwrap();
+        assert_eq!(searched.threads.len(), 1);
+        assert_eq!(
+            searched.threads[0].context["latest_user_message"],
+            "Remember the completed source-thread decision."
+        );
+        assert!(searched.next_cursor.is_none());
+        assert!(
+            restarted
+                .search_prior_thread_contexts(AgentPriorThreadSearch {
+                    actor_ref: other_actor_ref,
+                    context_scope_ref: &context_scope_ref,
+                    cursor: None,
+                    exclude_session_ref: "agent-session:postgres-context-target",
+                    limit: 2,
+                    query: "",
+                    tenant_id,
+                })
+                .await
+                .unwrap()
+                .threads
+                .is_empty()
+        );
+        assert!(
+            restarted
+                .search_prior_thread_contexts(AgentPriorThreadSearch {
+                    actor_ref,
+                    context_scope_ref: &other_scope_ref,
+                    cursor: None,
+                    exclude_session_ref: "agent-session:postgres-context-target",
+                    limit: 2,
+                    query: "",
+                    tenant_id,
+                })
+                .await
+                .unwrap()
+                .threads
                 .is_empty()
         );
 

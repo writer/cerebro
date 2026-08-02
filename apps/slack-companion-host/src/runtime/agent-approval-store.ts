@@ -34,7 +34,10 @@ export class FileAgentApprovalStore {
     return this.serialize(async () => {
       const now = this.clock();
       const approval: PendingAgentApproval = {
-        ...input.approval,
+        approvalRef: input.approval.approvalRef,
+        inputDigest: input.approval.inputDigest,
+        purpose: input.approval.purpose,
+        toolId: input.approval.toolId,
         actorRef: requiredText(input.actorRef, "actorRef"),
         createdAt: now.toISOString(),
         expiresAt: new Date(now.getTime() + APPROVAL_LIFETIME_MS).toISOString(),
