@@ -88,6 +88,16 @@ impl McpAgentTools {
         env::var(MCP_URL_ENV).is_ok_and(|value| !value.trim().is_empty())
     }
 
+    pub fn authority_policy_configured() -> bool {
+        [
+            MCP_OBSERVE_TOOLS_ENV,
+            MCP_PROPOSE_TOOLS_ENV,
+            MCP_ACTUATE_TOOLS_ENV,
+        ]
+        .iter()
+        .any(|name| env::var(name).is_ok_and(|value| !value.trim().is_empty()))
+    }
+
     pub async fn from_env() -> Result<Option<Self>, String> {
         let raw_url = env::var(MCP_URL_ENV).unwrap_or_default();
         if raw_url.trim().is_empty() {
@@ -95,10 +105,6 @@ impl McpAgentTools {
         }
         let endpoint = validated_endpoint(raw_url.trim())?;
         let bearer_token = required_env(MCP_TOKEN_ENV)?;
-        let selection_signing_key = required_env(MCP_SELECTION_SIGNING_KEY_ENV)?;
-        if selection_signing_key.len() < 32 || selection_signing_key == bearer_token {
-            return Err("capability signing key must be distinct and at least 32 bytes".into());
-        }
         let toolsets = env::var(MCP_TOOLSETS_ENV)
             .unwrap_or_else(|_| "task".into())
             .trim()
@@ -109,6 +115,13 @@ impl McpAgentTools {
         let observe_tools = configured_tool_names(MCP_OBSERVE_TOOLS_ENV)?;
         let propose_tools = configured_tool_names(MCP_PROPOSE_TOOLS_ENV)?;
         let actuate_tools = configured_tool_names(MCP_ACTUATE_TOOLS_ENV)?;
+        let authority_policy_configured =
+            !observe_tools.is_empty() || !propose_tools.is_empty() || !actuate_tools.is_empty();
+        let selection_signing_key = selection_signing_key(
+            env::var(MCP_SELECTION_SIGNING_KEY_ENV).ok(),
+            &bearer_token,
+            authority_policy_configured,
+        )?;
         if !observe_tools.is_disjoint(&propose_tools)
             || !observe_tools.is_disjoint(&actuate_tools)
             || !propose_tools.is_disjoint(&actuate_tools)
@@ -891,6 +904,21 @@ fn required_env(name: &str) -> Result<String, String> {
     Ok(value.to_owned())
 }
 
+fn selection_signing_key(
+    configured: Option<String>,
+    bearer_token: &str,
+    required: bool,
+) -> Result<String, String> {
+    let key = configured.unwrap_or_default().trim().to_owned();
+    if key.is_empty() && !required {
+        return Ok(key);
+    }
+    if key.len() < 32 || key == bearer_token {
+        return Err("capability signing key must be distinct and at least 32 bytes".into());
+    }
+    Ok(key)
+}
+
 fn nonempty(value: &str, fallback: &str) -> String {
     let value = value.trim();
     if value.is_empty() {
@@ -1209,6 +1237,24 @@ mod tests {
         assert!(validated_endpoint("https://token@cerebro.example.com/api/v1/mcp").is_err());
         assert!(validated_endpoint("http://127.0.0.1:8080/api/v1/mcp").is_ok());
         assert!(validated_endpoint("https://cerebro.example.com/api/v1/mcp").is_ok());
+    }
+
+    #[test]
+    fn empty_host_authority_policy_does_not_require_a_signing_key() {
+        assert_eq!(
+            selection_signing_key(None, "mcp-bearer", false).unwrap(),
+            ""
+        );
+        assert!(selection_signing_key(None, "mcp-bearer", true).is_err());
+        assert!(selection_signing_key(Some("mcp-bearer".into()), "mcp-bearer", true).is_err());
+        assert!(
+            selection_signing_key(
+                Some("host-only-capability-signing-secret".into()),
+                "mcp-bearer",
+                true
+            )
+            .is_ok()
+        );
     }
 
     #[test]

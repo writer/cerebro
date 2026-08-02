@@ -153,8 +153,15 @@ impl SlackAgentService {
         .await?;
         let catalog = super::load_catalog()?;
         let mcp_configured = McpAgentTools::is_configured();
+        let mcp_authority_policy_configured = McpAgentTools::authority_policy_configured();
         let mcp = match McpAgentTools::from_env().await {
             Ok(mcp) => mcp.map(Arc::new),
+            Err(error) if mcp_authority_policy_configured => {
+                return Err(format!(
+                    "configured MCP capability authority policy could not be loaded: {error}"
+                )
+                .into());
+            }
             Err(error) => {
                 eprintln!(
                     "{}",
