@@ -4393,6 +4393,11 @@ async fn simulate_operator(
     observations: &[EvaluationObservationReceipt],
     interaction_kinds: &[OperatorInteractionKind],
 ) -> Result<OperatorDecision, AgentRuntimeError> {
+    // The operator simulator is part of the blind judge. Reject a candidate
+    // identity leak before this model sees the transcript, not merely before
+    // the final trajectory score. Otherwise a leaked identity can steer the
+    // generated follow-up turns even when the eventual score is discarded.
+    validate_judge_identity_blinding(&json!({ "conversation": transcript }))?;
     let mut repair_feedback = Vec::new();
     let required_interaction_kind =
         if !interaction_kinds.contains(&OperatorInteractionKind::ScopeRefinement) {

@@ -436,6 +436,17 @@ pub enum StableExplanationId {
     SourceDeclarationProviderPermissionBoundary,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RhetoricalMoveId {
+    SeparateEvidenceFromInference,
+    FrameDecisionWithCriteria,
+    CompareAlternativesConsistently,
+    PreserveReversibility,
+    IdentifyDecisionChangingInformation,
+    ClarifyScope,
+}
+
 pub const ALL_STABLE_EXPLANATIONS: &[StableExplanationId] = &[
     StableExplanationId::EvidenceFreshnessDefinition,
     StableExplanationId::EvidenceAuthorityBoundary,
@@ -491,6 +502,9 @@ pub enum ClaimContent {
         source_message_sequences: Vec<u64>,
         #[serde(default)]
         source_atom_refs: Vec<String>,
+    },
+    RhetoricalMove {
+        move_id: RhetoricalMoveId,
     },
     HistoricalContext {
         atom_ref: String,
@@ -3431,6 +3445,7 @@ fn claim_evidence_atom_refs(content: &ClaimContent) -> &[String] {
             source_atom_refs, ..
         } => source_atom_refs,
         ClaimContent::OperatorContext { .. }
+        | ClaimContent::RhetoricalMove { .. }
         | ClaimContent::RetainedPlan { .. }
         | ClaimContent::Commitment { .. }
         | ClaimContent::StableExplanation { .. }
@@ -4875,6 +4890,21 @@ pub fn validate_grounded_draft(
         }
         validate_claim(claim, &claim_context, &mut cited_atoms)?;
     }
+    let rhetorical_moves = draft
+        .claims
+        .iter()
+        .filter_map(|claim| match claim.content {
+            ClaimContent::RhetoricalMove { move_id } => Some(move_id),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if rhetorical_moves.len() > 2
+        || rhetorical_moves.iter().collect::<BTreeSet<_>>().len() != rhetorical_moves.len()
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "a response may use at most two distinct registered rhetorical moves".into(),
+        ));
+    }
 
     for update in &draft.memory_updates {
         let exact_operator_preference = update.kind == MemoryKind::Preference
@@ -5130,7 +5160,7 @@ fn validate_claim(
             let attributed_quote = format!("You said: {exact_excerpt}");
             if message.role != SessionMessageRole::User
                 || exact_excerpt.is_empty()
-                || !message.text.contains(exact_excerpt)
+                || message.text.trim() != exact_excerpt.trim()
                 || claim.text.trim() != attributed_quote
             {
                 return Err(AgentRuntimeError::InvalidFinal(
@@ -5140,37 +5170,22 @@ fn validate_claim(
             }
             return Ok(());
         }
-        ClaimContent::ConversationalSynthesis {
-            source_message_sequences,
-            source_atom_refs,
-        } => {
-            let sources = source_message_sequences.iter().collect::<BTreeSet<_>>();
-            let historical_sources = source_atom_refs.iter().collect::<BTreeSet<_>>();
-            if source_message_sequences.len() > 16
-                || sources.len() != source_message_sequences.len()
-                || source_atom_refs.len() > 16
-                || historical_sources.len() != source_atom_refs.len()
-                || source_message_sequences
-                    .iter()
-                    .any(|sequence| !context.messages.contains_key(sequence))
-                || source_atom_refs.iter().any(|atom_ref| {
-                    !context.atoms.get(atom_ref).is_some_and(|atom| {
-                        matches!(
-                            atom.atom.assertion,
-                            EvidenceAssertion::ConversationEvent { .. }
-                        )
-                    })
-                })
-                || !source_message_sequences.is_empty()
-                || !source_atom_refs.is_empty()
-                || !conversational_synthesis_is_entailed(&claim.text)
+        ClaimContent::ConversationalSynthesis { .. } => {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "legacy free-form conversational synthesis is not accepted; use an exact attributed context basis or a registered rhetorical move"
+                    .into(),
+            ));
+        }
+        ClaimContent::RhetoricalMove { move_id } => {
+            if claim.planned_claim_ref.is_some()
+                || claim.required_for_answer
+                || !text_matches_registered_rendering(&claim.text, render_rhetorical_move(*move_id))
             {
                 return Err(AgentRuntimeError::InvalidFinal(
-                    "conversational synthesis must be positively entailed by one bounded conversation source or use only the registered timeless reasoning vocabulary"
+                    "a rhetorical move must be optional, unplanned, and exactly match its registered rendering"
                         .into(),
                 ));
             }
-            cited_atoms.extend(source_atom_refs.iter().cloned());
             return Ok(());
         }
         ClaimContent::HistoricalContext {
@@ -5202,7 +5217,7 @@ fn validate_claim(
                 || event.is_none_or(|(thread_ref, actor_ref, role, occurred_at, _)| {
                     !historical_attribution_is_safe(thread_ref, actor_ref, role, occurred_at)
                 })
-                || event.is_none_or(|(_, _, _, _, text)| !text.contains(exact_excerpt))
+                || event.is_none_or(|(_, _, _, _, text)| text.trim() != exact_excerpt.trim())
                 || rendering.as_deref().is_none_or(|rendering| {
                     !text_matches_registered_rendering(&claim.text, rendering)
                 })
@@ -5402,128 +5417,23 @@ fn validate_claim(
     Ok(())
 }
 
-fn conversational_synthesis_is_entailed(text: &str) -> bool {
-    if text.trim().is_empty() || text.len() > 4_000 || contains_raw_machine_field_syntax(text) {
-        return false;
+pub fn render_rhetorical_move(move_id: RhetoricalMoveId) -> &'static str {
+    match move_id {
+        RhetoricalMoveId::SeparateEvidenceFromInference => {
+            "A useful distinction here is between evidence and inference."
+        }
+        RhetoricalMoveId::FrameDecisionWithCriteria => {
+            "A useful way to frame the decision is around explicit criteria."
+        }
+        RhetoricalMoveId::CompareAlternativesConsistently => {
+            "The alternatives are easiest to compare against the same criteria."
+        }
+        RhetoricalMoveId::PreserveReversibility => "Another useful lens is reversibility.",
+        RhetoricalMoveId::IdentifyDecisionChangingInformation => {
+            "The key question is which additional information would change the decision."
+        }
+        RhetoricalMoveId::ClarifyScope => "Clarifying the scope first keeps the reasoning focused.",
     }
-    conversational_synthesis_clauses(text)
-        .into_iter()
-        .all(timeless_reasoning_clause)
-}
-
-fn conversational_synthesis_clauses(text: &str) -> Vec<&str> {
-    text.split(['.', ';', ':', '\n'])
-        .map(str::trim)
-        .filter(|clause| !clause.is_empty())
-        .collect()
-}
-
-fn timeless_reasoning_clause(clause: &str) -> bool {
-    const TIMELESS_REASONING: &[&str] = &[
-        "acceptance",
-        "alternative",
-        "assumption",
-        "boundary",
-        "bounded",
-        "clarify",
-        "closure",
-        "compare",
-        "condition",
-        "constraint",
-        "context",
-        "criterion",
-        "criteria",
-        "decision",
-        "depend",
-        "distinction",
-        "distinguish",
-        "evidence",
-        "explain",
-        "fact",
-        "first",
-        "frame",
-        "framed",
-        "gap",
-        "hypothesis",
-        "impact",
-        "inference",
-        "information",
-        "known",
-        "next",
-        "preserve",
-        "prioritize",
-        "proof",
-        "question",
-        "reason",
-        "reasoning",
-        "reversible",
-        "reversibility",
-        "risk",
-        "scope",
-        "separate",
-        "signal",
-        "source",
-        "test",
-        "timeless",
-        "trigger",
-        "uncertainty",
-        "useful",
-        "value",
-        "verification",
-        "what",
-        "whether",
-        "why",
-    ];
-    const TIMELESS_OPERATIONS: &[&str] = &[
-        "clarify",
-        "compare",
-        "distinction",
-        "distinguish",
-        "explain",
-        "frame",
-        "framed",
-        "prioritize",
-        "question",
-        "reasoning",
-        "separate",
-        "whether",
-        "why",
-    ];
-    const LIST_CONTINUATION_TERMS: &[&str] = &[
-        "alternative",
-        "assumption",
-        "criterion",
-        "criteria",
-        "decision",
-        "evidence",
-        "fact",
-        "impact",
-        "inference",
-        "proof",
-        "question",
-        "risk",
-        "signal",
-    ];
-    let tokens = semantic_content_tokens(clause);
-    let safe_list_continuations = clause.split(',').skip(1).all(|segment| {
-        let segment_tokens = semantic_content_tokens(segment);
-        segment_tokens
-            .iter()
-            .any(|token| TIMELESS_OPERATIONS.contains(&token.as_str()))
-            || (!segment_tokens.is_empty()
-                && segment_tokens.len() <= 3
-                && segment_tokens
-                    .iter()
-                    .all(|token| LIST_CONTINUATION_TERMS.contains(&token.as_str())))
-    });
-    !tokens.is_empty()
-        && safe_list_continuations
-        && tokens
-            .iter()
-            .any(|token| TIMELESS_OPERATIONS.contains(&token.as_str()))
-        && tokens
-            .iter()
-            .all(|token| TIMELESS_REASONING.contains(&token.as_str()))
 }
 
 fn render_historical_context(
@@ -5544,9 +5454,29 @@ fn render_historical_context(
             _ => character.to_string(),
         })
         .collect::<String>();
-    format!(
-        "Earlier in Slack, {actor_ref} ({role}) wrote in {thread_ref} at {occurred_at}: \"{escaped_excerpt}\""
-    )
+    match role {
+        "user" => format!(
+            "Earlier, {actor_ref} said in {thread_ref} at {occurred_at}: \"{escaped_excerpt}\""
+        ),
+        "assistant" => {
+            format!("Earlier, I said in {thread_ref} at {occurred_at}: \"{escaped_excerpt}\"")
+        }
+        "objective" => format!(
+            "The objective recorded in {thread_ref} at {occurred_at} was: \"{escaped_excerpt}\""
+        ),
+        "desired_outcome" => format!(
+            "The desired outcome recorded in {thread_ref} at {occurred_at} was: \"{escaped_excerpt}\""
+        ),
+        "open_loop" => {
+            format!("That thread recorded this open loop at {occurred_at}: \"{escaped_excerpt}\"")
+        }
+        "commitment" => {
+            format!("That thread recorded this commitment at {occurred_at}: \"{escaped_excerpt}\"")
+        }
+        _ => format!(
+            "Earlier in Slack, {actor_ref} ({role}) wrote in {thread_ref} at {occurred_at}: \"{escaped_excerpt}\""
+        ),
+    }
 }
 
 fn unsafe_historical_excerpt_character(character: char) -> bool {
@@ -8794,6 +8724,25 @@ mod tests {
             )
             .is_err()
         );
+
+        let mut polarity = attributed;
+        let mut polarity_session = session();
+        polarity_session.messages[0].text = "Connector alpha is not verified.".into();
+        polarity.message = "You said: verified".into();
+        polarity.claims[0].text = polarity.message.clone();
+        polarity.claims[0].content = ClaimContent::OperatorContext {
+            message_sequence: 1,
+            exact_excerpt: "verified".into(),
+        };
+        assert!(
+            validate_grounded_draft(
+                &polarity_session,
+                &polarity,
+                &[],
+                OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -10558,16 +10507,16 @@ mod tests {
     }
 
     #[test]
-    fn conversational_synthesis_is_useful_without_becoming_live_evidence() {
+    fn registered_rhetorical_moves_are_useful_without_becoming_live_evidence() {
         let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
         let mut candidate = draft();
         candidate.claims.truncate(1);
         candidate.claims[0].planned_claim_ref = None;
+        candidate.claims[0].required_for_answer = false;
         candidate.claims[0].text =
-            "A useful distinction separates known facts, inferences, and decision criteria.".into();
-        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
-            source_message_sequences: Vec::new(),
-            source_atom_refs: Vec::new(),
+            render_rhetorical_move(RhetoricalMoveId::SeparateEvidenceFromInference).into();
+        candidate.claims[0].content = ClaimContent::RhetoricalMove {
+            move_id: RhetoricalMoveId::SeparateEvidenceFromInference,
         };
         candidate.message = candidate.claims[0].text.clone();
         validate_grounded_draft(&session(), &candidate, &[], assessment).unwrap();
@@ -10585,7 +10534,8 @@ mod tests {
             "The deployment landed successfully.",
             "Earlier, Atlas approved the provider change.",
             "The evidence is sufficient.",
-            "A useful distinction separates fact and inference, the source evidence is sufficient.",
+            "A useful distinction here is between evidence and inference. The evidence is sufficient.",
+            "A useful distinction here is between evidence and inference",
         ] {
             candidate.claims[0].text = unsupported.into();
             candidate.message = candidate.claims[0].text.clone();
@@ -10594,34 +10544,40 @@ mod tests {
                 "conversational synthesis accepted an evidence-bearing claim: {unsupported}"
             );
         }
-        candidate.claims[0].text =
-            "The decision can be framed around reversibility and information gain.".into();
+        candidate.claims[0].text = "Any legacy synthesis is rejected.".into();
         candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
-            source_message_sequences: vec![99],
+            source_message_sequences: Vec::new(),
             source_atom_refs: Vec::new(),
         };
         candidate.message = candidate.claims[0].text.clone();
         assert!(validate_grounded_draft(&session(), &candidate, &[], assessment).is_err());
 
-        let mut reported_session = session();
-        reported_session.messages[0].text = "Keep connector alpha reversible.".into();
-        candidate.claims[0].text = "You said: Keep connector alpha reversible.".into();
-        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
-            source_message_sequences: vec![1],
-            source_atom_refs: Vec::new(),
+        candidate.claims[0].text =
+            render_rhetorical_move(RhetoricalMoveId::SeparateEvidenceFromInference).into();
+        candidate.claims[0].content = ClaimContent::RhetoricalMove {
+            move_id: RhetoricalMoveId::SeparateEvidenceFromInference,
         };
+        candidate.claims[0].required_for_answer = true;
         candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&reported_session, &candidate, &[], assessment).is_err());
+        assert!(validate_grounded_draft(&session(), &candidate, &[], assessment).is_err());
 
-        reported_session.messages[0].text = "Connector alpha is not verified.".into();
-        candidate.claims[0].text = "You said connector alpha is verified.".into();
+        candidate.claims[0].required_for_answer = false;
+        candidate.claims[0].planned_claim_ref = Some("claim:state".into());
         candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&reported_session, &candidate, &[], assessment).is_err());
+        assert!(validate_grounded_draft(&session(), &candidate, &[], assessment).is_err());
 
-        reported_session.messages[0].text = "Service atlas controls provider beta.".into();
-        candidate.claims[0].text = "You said provider beta controls service atlas.".into();
-        candidate.message = candidate.claims[0].text.clone();
-        assert!(validate_grounded_draft(&reported_session, &candidate, &[], assessment).is_err());
+        let mut duplicate = draft();
+        duplicate.claims = vec![candidate.claims[0].clone(), candidate.claims[0].clone()];
+        for (index, claim) in duplicate.claims.iter_mut().enumerate() {
+            claim.claim_ref = format!("claim:rhetorical:{index}");
+            claim.planned_claim_ref = None;
+        }
+        duplicate.message = duplicate
+            .claims
+            .iter()
+            .map(|claim| claim.text.as_str())
+            .collect();
+        assert!(validate_grounded_draft(&session(), &duplicate, &[], assessment).is_err());
     }
 
     #[test]
@@ -10648,7 +10604,7 @@ mod tests {
         let mut candidate = draft();
         candidate.claims.truncate(1);
         candidate.claims[0].planned_claim_ref = None;
-        candidate.claims[0].text = "Earlier in Slack, operator:synthetic (user) wrote in thread:synthetic-prior at 2026-07-30T00:00:00Z: \"Keep the decision reversible.\"".into();
+        candidate.claims[0].text = "Earlier, operator:synthetic said in thread:synthetic-prior at 2026-07-30T00:00:00Z: \"Keep the decision reversible.\"".into();
         candidate.claims[0].content = ClaimContent::HistoricalContext {
             atom_ref: "atom:historical-message".into(),
             exact_excerpt: "Keep the decision reversible.".into(),
@@ -10657,6 +10613,22 @@ mod tests {
         assert!(
             validate_grounded_draft(&session(), &candidate, &[history.clone()], assessment).is_ok()
         );
+        candidate.claims[0].text = "Earlier, operator:synthetic said in thread:synthetic-prior at 2026-07-30T00:00:00Z: \"reversible\"".into();
+        candidate.claims[0].content = ClaimContent::HistoricalContext {
+            atom_ref: "atom:historical-message".into(),
+            exact_excerpt: "reversible".into(),
+        };
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&session(), &candidate, &[history.clone()], assessment)
+                .is_err()
+        );
+        candidate.claims[0].text = "Earlier, operator:synthetic said in thread:synthetic-prior at 2026-07-30T00:00:00Z: \"Keep the decision reversible.\"".into();
+        candidate.claims[0].content = ClaimContent::HistoricalContext {
+            atom_ref: "atom:historical-message".into(),
+            exact_excerpt: "Keep the decision reversible.".into(),
+        };
+        candidate.message = candidate.claims[0].text.clone();
         let mut promoted = candidate.clone();
         promoted.claims[0].content = ClaimContent::Observation {
             atom_refs: vec!["atom:historical-message".into()],

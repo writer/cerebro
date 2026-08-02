@@ -175,7 +175,25 @@ fn render_inline_markup(
     let mut output = String::with_capacity(value.len());
     let mut cursor = 0;
     while cursor < value.len() {
-        if let Some(end) = raw_url_end(value, cursor) {
+        if let Some(mut end) = raw_url_end(value, cursor) {
+            // A raw URL is allowed to contain `*` and `_`, but when the URL is
+            // inside an open strong span a terminal double delimiter belongs
+            // to the surrounding Markdown. Leave it for the delimiter state
+            // machine instead of swallowing it as part of the URL.
+            let closes_open_strong = (*strong_asterisk_open && value[cursor..end].ends_with("**"))
+                || (*strong_underscore_open && value[cursor..end].ends_with("__"));
+            let closes_open_single = (has_unclosed_single_emphasis(&value[..cursor], '*')
+                && value[cursor..end].ends_with('*'))
+                || (has_unclosed_single_emphasis(&value[..cursor], '_')
+                    && value[cursor..end].ends_with('_'));
+            if closes_open_strong {
+                end -= 2;
+            } else if closes_open_single {
+                end -= 1;
+            }
+            if end == cursor {
+                continue;
+            }
             output.push_str(&value[cursor..end]);
             cursor = end;
             continue;
@@ -253,9 +271,14 @@ fn has_unclosed_single_emphasis(value: &str, delimiter: char) -> bool {
             cursor = end;
             continue;
         }
-        if let Some(end) = raw_url_end(value, cursor) {
-            cursor = end;
-            continue;
+        if let Some(mut end) = raw_url_end(value, cursor) {
+            if open && value[cursor..end].ends_with(delimiter) {
+                end -= delimiter.len_utf8();
+            }
+            if end > cursor {
+                cursor = end;
+                continue;
+            }
         }
         let remainder = &value[cursor..];
         if remainder.starts_with(delimiter) {
@@ -558,5 +581,15 @@ mod tests {
             render_slack_mrkdwn("**See https://example.com/run__alpha"),
             "*See https://example.com/run__alpha*"
         );
+        for input in [
+            "**See https://example.com**",
+            "**See https://example.com** now",
+            "__See https://example.com__",
+            "__See https://example.com__ now",
+        ] {
+            let rendered = render_slack_mrkdwn(input);
+            assert_eq!(render_slack_mrkdwn(&rendered), rendered, "{input}");
+            assert_eq!(rendered.matches('*').count(), 2, "{input}");
+        }
     }
 }

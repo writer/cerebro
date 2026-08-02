@@ -19,11 +19,11 @@ fn main() {
     let commit_sha = git_output(&repo_root, &["rev-parse", "--verify", "HEAD"])
         .filter(|value| value.len() == 40)
         .unwrap_or_else(|| "unknown".into());
-    let tracked_status = git_output(
+    let tree_status = git_output(
         &repo_root,
-        &["status", "--porcelain", "--untracked-files=no"],
+        &["status", "--porcelain=v1", "--untracked-files=all"],
     );
-    let tree_clean = tracked_status.as_deref() == Some("");
+    let tree_clean = tree_status.as_deref() == Some("");
 
     println!("cargo:rustc-env=CEREBRO_GIT_COMMIT_SHA={commit_sha}");
     println!(
@@ -35,5 +35,10 @@ fn main() {
         println!("cargo:rerun-if-changed={git_dir}/HEAD");
         println!("cargo:rerun-if-changed={git_dir}/index");
     }
+    // Watching the repository root makes an unstaged tracked edit or a new
+    // untracked build input rerun this attestation. The managed Cargo target
+    // directory lives outside the checkout, so build output cannot trigger a
+    // self-invalidating loop here.
+    println!("cargo:rerun-if-changed={}", repo_root.display());
     println!("cargo:rerun-if-changed=build.rs");
 }
