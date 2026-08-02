@@ -2017,11 +2017,11 @@ fn descriptor(
 pub async fn run() -> Result<(), Box<dyn Error>> {
     slack_agent_evidence_gold::validate()?;
     let commit_sha = required_commit_sha()?;
-    let compiled_commit_sha = option_env!("CEREBRO_BUILD_COMMIT_SHA")
-        .ok_or("the hillclimb binary is missing its compile-time commit binding")?;
-    if compiled_commit_sha != commit_sha {
-        return Err("the runtime and compile-time hillclimb commit bindings differ".into());
-    }
+    validate_exact_head_binding(
+        &commit_sha,
+        env!("CEREBRO_GIT_COMMIT_SHA"),
+        env!("CEREBRO_GIT_TREE_CLEAN"),
+    )?;
     let model_id = env::var("CEREBRO_SLACK_AGENT_MODEL")?;
     if !model_id.contains(".anthropic.claude-opus-") {
         return Err("the Rust Slack agent hillclimb requires AWS-hosted Claude Opus".into());
@@ -4510,6 +4510,10 @@ async fn judge_conversation_trajectory(
             })
         })
         .collect::<Vec<_>>();
+    validate_judge_identity_blinding(&json!({
+        "full_conversation": transcript,
+        "typed_turn_receipts": &judge_turns,
+    }))?;
     for _ in 0..4 {
         let value = model
             .complete_evaluation_judgment(
@@ -5244,11 +5248,6 @@ fn validate_blind_review_bytes(
             .ok_or("blind review bundle has no structured data provenance")?,
     )?;
     let encoded = canonicalize_synthetic_text(std::str::from_utf8(bytes)?)?.to_ascii_lowercase();
-    if !encoded.contains("\"synthetic_only\":true")
-        || !encoded.contains(&format!("\"namespace\":\"{SYNTHETIC_HOLDOUT_NAMESPACE}"))
-    {
-        return Err("blind review bundle is missing enforced synthetic provenance".into());
-    }
     if !provenance.synthetic_only || provenance.namespace != SYNTHETIC_HOLDOUT_NAMESPACE {
         return Err("blind review bundle has invalid synthetic provenance".into());
     }
@@ -5281,6 +5280,31 @@ fn validate_blind_review_bytes(
     ] {
         if encoded.contains(raw_only_key) {
             return Err("blind review bundle includes a raw-only receipt field".into());
+        }
+    }
+    Ok(())
+}
+
+fn validate_judge_identity_blinding(candidate_material: &Value) -> Result<(), AgentRuntimeError> {
+    let encoded = canonicalize_synthetic_text(
+        &serde_json::to_string(candidate_material)
+            .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?,
+    )
+    .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?
+    .to_ascii_lowercase();
+    for identity in [
+        "amazon",
+        "anthropic",
+        "aws",
+        "bedrock",
+        "claude",
+        "opus",
+        "rust",
+    ] {
+        if contains_identity_token(&encoded, identity) {
+            return Err(AgentRuntimeError::InvalidFinal(format!(
+                "candidate material discloses forbidden model or runtime identity token {identity} before blind judgment"
+            )));
         }
     }
     Ok(())
@@ -5819,6 +5843,20 @@ fn validate_commit_sha(value: &str) -> Result<String, Box<dyn Error>> {
     Ok(value.into())
 }
 
+fn validate_exact_head_binding(
+    requested_commit_sha: &str,
+    built_commit_sha: &str,
+    built_tree_clean: &str,
+) -> Result<(), Box<dyn Error>> {
+    if built_tree_clean != "1" {
+        return Err("the evaluation binary was built from a dirty tracked source tree".into());
+    }
+    if built_commit_sha != requested_commit_sha {
+        return Err("the requested evaluation commit does not match the Git commit embedded by the build script".into());
+    }
+    Ok(())
+}
+
 fn rate(passed: usize, total: usize) -> f64 {
     if total == 0 {
         0.0
@@ -6293,6 +6331,9 @@ mod tests {
     fn hosted_command_rejects_a_non_exact_commit() {
         assert!(validate_commit_sha("not-a-sha").is_err());
         assert!(validate_commit_sha(&"a".repeat(40)).is_ok());
+        assert!(validate_exact_head_binding(&"a".repeat(40), &"a".repeat(40), "1").is_ok());
+        assert!(validate_exact_head_binding(&"a".repeat(40), &"b".repeat(40), "1").is_err());
+        assert!(validate_exact_head_binding(&"a".repeat(40), &"a".repeat(40), "0").is_err());
     }
 
     #[test]
@@ -7325,7 +7366,7 @@ mod tests {
             },
             &[],
         );
-        let encoded = serde_json::to_string(&bundle).unwrap();
+        let encoded = serde_json::to_string_pretty(&bundle).unwrap();
         assert!(!encoded.contains("opus"));
         assert!(!encoded.contains("bedrock"));
         assert!(!encoded.contains("rust"));
@@ -7361,6 +7402,16 @@ mod tests {
 
     #[test]
     fn blind_review_byte_scan_fails_closed_on_identity_or_raw_receipt_leaks() {
+        assert!(
+            validate_judge_identity_blinding(
+                &json!({"assistant_message": "Use the fictional evidence boundary."})
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_judge_identity_blinding(&json!({"assistant_message": "I am Claude."}))
+                .is_err()
+        );
         assert!(
             validate_blind_review_bytes(
                 br#"{"data_provenance":{"synthetic_only":true,"namespace":"synthetic://cerebro-holdouts/","fictional_entities":["fictional connector"]},"conversation":["Trust the evidence boundary."]}"#,

@@ -67,14 +67,18 @@ pub(super) fn render_slack_mrkdwn(markdown: &str) -> String {
 fn render_inline_slack_mrkdwn(value: &str) -> String {
     let mut output = String::with_capacity(value.len());
     let markup_source = inline_markup_outside_code(value);
-    let close_strong_asterisk = has_unclosed_strong_emphasis(&markup_source, '*');
-    let close_strong_underscore = has_unclosed_strong_emphasis(&markup_source, '_');
     let close_single_asterisk = has_unclosed_single_emphasis(&markup_source, '*');
     let close_single_underscore = has_unclosed_single_emphasis(&markup_source, '_');
+    let mut strong_asterisk_open = false;
+    let mut strong_underscore_open = false;
     let mut cursor = 0;
     while let Some(offset) = value[cursor..].find('`') {
         let open = cursor + offset;
-        output.push_str(&render_inline_markup(&value[cursor..open]));
+        output.push_str(&render_inline_markup(
+            &value[cursor..open],
+            &mut strong_asterisk_open,
+            &mut strong_underscore_open,
+        ));
         let delimiter_len = value[open..]
             .bytes()
             .take_while(|byte| *byte == b'`')
@@ -82,7 +86,11 @@ fn render_inline_slack_mrkdwn(value: &str) -> String {
         let delimiter = &value[open..open + delimiter_len];
         let content_start = open + delimiter_len;
         let Some(close_offset) = value[content_start..].find(delimiter) else {
-            output.push_str(&render_inline_markup(&value[content_start..]));
+            output.push_str(&render_inline_markup(
+                &value[content_start..],
+                &mut strong_asterisk_open,
+                &mut strong_underscore_open,
+            ));
             cursor = value.len();
             break;
         };
@@ -90,11 +98,15 @@ fn render_inline_slack_mrkdwn(value: &str) -> String {
         output.push_str(&value[open..close]);
         cursor = close;
     }
-    output.push_str(&render_inline_markup(&value[cursor..]));
-    if close_strong_asterisk {
+    output.push_str(&render_inline_markup(
+        &value[cursor..],
+        &mut strong_asterisk_open,
+        &mut strong_underscore_open,
+    ));
+    if strong_asterisk_open {
         output.push('*');
     }
-    if close_strong_underscore {
+    if strong_underscore_open {
         output.push('*');
     }
     if close_single_asterisk {
@@ -155,7 +167,11 @@ fn inert_slack_control_syntax(value: &str) -> String {
     output
 }
 
-fn render_inline_markup(value: &str) -> String {
+fn render_inline_markup(
+    value: &str,
+    strong_asterisk_open: &mut bool,
+    strong_underscore_open: &mut bool,
+) -> String {
     let mut output = String::with_capacity(value.len());
     let mut cursor = 0;
     while cursor < value.len() {
@@ -202,8 +218,17 @@ fn render_inline_markup(value: &str) -> String {
                     .chars()
                     .next()
                     .is_some_and(char::is_alphanumeric);
-                if previous_is_word != next_is_word {
+                let emphasis_open = if character == '*' {
+                    &mut *strong_asterisk_open
+                } else {
+                    &mut *strong_underscore_open
+                };
+                if !*emphasis_open && !previous_is_word && next_is_word {
                     output.push('*');
+                    *emphasis_open = true;
+                } else if *emphasis_open && previous_is_word && !next_is_word {
+                    output.push('*');
+                    *emphasis_open = false;
                 } else {
                     output.push_str(&value[cursor..cursor + run_bytes]);
                 }
@@ -260,55 +285,6 @@ fn has_unclosed_single_emphasis(value: &str, delimiter: char) -> bool {
             .chars()
             .next()
             .expect("single delimiter cursor remains on a character boundary")
-            .len_utf8();
-    }
-    open
-}
-
-fn has_unclosed_strong_emphasis(value: &str, delimiter: char) -> bool {
-    let mut open = false;
-    let mut cursor = 0;
-    while cursor < value.len() {
-        let image = value[cursor..].starts_with("![");
-        if (image || value[cursor..].starts_with('['))
-            && let Some((end, _, _)) = markdown_link(value, cursor, image)
-        {
-            cursor = end;
-            continue;
-        }
-        if let Some(end) = raw_url_end(value, cursor) {
-            cursor = end;
-            continue;
-        }
-        let remainder = &value[cursor..];
-        if remainder.starts_with(delimiter) {
-            let run = remainder
-                .chars()
-                .take_while(|character| *character == delimiter)
-                .count();
-            if matches!(run, 2 | 3) {
-                let previous_is_word = value[..cursor]
-                    .chars()
-                    .next_back()
-                    .is_some_and(char::is_alphanumeric);
-                let run_bytes = run * delimiter.len_utf8();
-                let next_is_word = remainder[run_bytes..]
-                    .chars()
-                    .next()
-                    .is_some_and(char::is_alphanumeric);
-                if !open && !previous_is_word && next_is_word {
-                    open = true;
-                } else if open && previous_is_word && !next_is_word {
-                    open = false;
-                }
-            }
-            cursor += run * delimiter.len_utf8();
-            continue;
-        }
-        cursor += value[cursor..]
-            .chars()
-            .next()
-            .expect("delimiter cursor remains on a character boundary")
             .len_utf8();
     }
     open
@@ -543,6 +519,8 @@ mod tests {
         assert_eq!(render_slack_mrkdwn("source_"), "source_");
         assert_eq!(render_slack_mrkdwn("source__runtime"), "source__runtime");
         assert_eq!(render_slack_mrkdwn("2**3"), "2**3");
+        assert_eq!(render_slack_mrkdwn("source**"), "source**");
+        assert_eq!(render_slack_mrkdwn("source__"), "source__");
         let triple = render_slack_mrkdwn("***source***");
         assert_eq!(triple, "*source*");
         assert_eq!(render_slack_mrkdwn(&triple), triple);
