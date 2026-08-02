@@ -5872,7 +5872,14 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
     ]
     .iter()
     .any(|marker| normalized_source.contains(marker));
-    let normalized_body = format!(" {} ", body.to_ascii_lowercase());
+    let normalized_body = format!(
+        " {} ",
+        body.split(|character: char| !character.is_alphanumeric())
+            .filter(|token| !token.is_empty())
+            .map(str::to_ascii_lowercase)
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
     let body_expresses_opinion = [
         " i think ",
         " i find ",
@@ -6032,7 +6039,15 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "working"
                 )
             });
-            let normalized_clause = format!(" {} ", clause.to_ascii_lowercase());
+            let normalized_clause = format!(
+                " {} ",
+                clause
+                    .split(|character: char| !character.is_alphanumeric())
+                    .filter(|token| !token.is_empty())
+                    .map(str::to_ascii_lowercase)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
             let subjective_opinion = source_invites_opinion
                 && !operational_predicate
                 && (body_expresses_opinion
