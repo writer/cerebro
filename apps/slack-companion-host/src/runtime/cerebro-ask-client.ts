@@ -205,7 +205,7 @@ export class CerebroAskClient {
           "",
           `Exact input (${outcome.request.input_digest}):`,
           "```",
-          outcome.request.input_preview,
+          safeApprovalPreview(outcome.request.input_preview),
           "```",
           "Sensitive fields are redacted here but remain included in the approved digest.",
           "",
@@ -654,6 +654,14 @@ export function approvalCommandCode(approvalRef: string): string {
     throw new CerebroAskError("unavailable", "The Rust agent returned an invalid approval identity.");
   }
   return suffix.slice(0, 12);
+}
+
+function safeApprovalPreview(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("`", "\\u0060");
 }
 
 interface RustWorkingState {
