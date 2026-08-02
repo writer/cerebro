@@ -5916,10 +5916,15 @@ fn contains_ownership_assertion(text: &str) -> bool {
         " has accountability for ",
         " is the accountable party",
         " is owned by ",
+        " is the owner of ",
         " is the remediation owner for ",
         " is the verification owner for ",
         " is the approval owner for ",
         " is the execution owner for ",
+        " owner for ",
+        " belongs to ",
+        " rests with ",
+        " has responsibility for ",
         " falls to ",
         "owner —",
         "owner -",
@@ -6152,6 +6157,21 @@ fn syntactically_binds_principal_to_duty(
                 format!(" {subject} s {duty_phrase} is owned by {principal} "),
                 format!(" {principal} is the {duty_phrase} owner for {subject} "),
                 format!(" {principal} is {duty_phrase} owner for {subject} "),
+                format!(" {principal} is the owner of {duty_phrase} for {subject} "),
+                format!(" {principal} is the owner of {duty_phrase} on {subject} "),
+                format!(" {principal} is the owner of {duty_phrase} of {subject} "),
+                format!(" {duty_phrase} owner for {subject} is {principal} "),
+                format!(" {duty_phrase} owner on {subject} is {principal} "),
+                format!(" {duty_phrase} owner of {subject} is {principal} "),
+                format!(" {duty_phrase} for {subject} belongs to {principal} "),
+                format!(" {duty_phrase} on {subject} belongs to {principal} "),
+                format!(" {duty_phrase} of {subject} belongs to {principal} "),
+                format!(" {duty_phrase} for {subject} rests with {principal} "),
+                format!(" {duty_phrase} on {subject} rests with {principal} "),
+                format!(" {duty_phrase} of {subject} rests with {principal} "),
+                format!(" {principal} has responsibility for {duty_phrase} for {subject} "),
+                format!(" {principal} has responsibility for {duty_phrase} on {subject} "),
+                format!(" {principal} has responsibility for {duty_phrase} of {subject} "),
             ]
             .iter()
             .any(|pattern| normalized.contains(pattern))
@@ -6198,6 +6218,8 @@ fn text_names_exact_semantic_identity(text: &str, identity_ref: &str) -> bool {
                                     | "accountable"
                                     | "assigned"
                                     | "falls"
+                                    | "belongs"
+                                    | "rests"
                                     | "should"
                                     | "must"
                                     | "can"
@@ -9476,6 +9498,9 @@ mod tests {
             "Audit activity is inherently bursty and should report later.",
             "A persistent connector gap argues for a provider-side fix by the source owner.",
             "Owner: me.",
+            "Remediation for connector beta belongs to Cerebro.",
+            "Remediation for connector beta rests with Cerebro.",
+            "Cerebro has responsibility for remediation for connector beta.",
         ] {
             let mut candidate = draft();
             candidate.claims[0].text = text.into();
@@ -10355,6 +10380,11 @@ mod tests {
         for contradictory_owner in [
             "Remediation for connector beta is owned by Synthetic Team Beta.",
             "Synthetic Team Beta is the remediation owner for connector beta.",
+            "Synthetic Team Beta is the owner of remediation for connector beta.",
+            "The remediation owner for connector beta is Synthetic Team Beta.",
+            "Remediation for connector beta belongs to Synthetic Team Beta.",
+            "Remediation for connector beta rests with Synthetic Team Beta.",
+            "Synthetic Team Beta has responsibility for remediation for connector beta.",
         ] {
             sourced_owner.claims[0].text = contradictory_owner.into();
             sourced_owner.message = sourced_owner.claims[0].text.clone();
@@ -10373,6 +10403,11 @@ mod tests {
             "Cerebro owns remediation for connector beta.",
             "Remediation for connector beta is owned by Cerebro.",
             "Cerebro is the remediation owner for connector beta.",
+            "Cerebro is the owner of remediation for connector beta.",
+            "The remediation owner for connector beta is Cerebro.",
+            "Remediation for connector beta belongs to Cerebro.",
+            "Remediation for connector beta rests with Cerebro.",
+            "Cerebro has responsibility for remediation for connector beta.",
         ] {
             sourced_owner.claims[0].text = exact_owner.into();
             sourced_owner.message = sourced_owner.claims[0].text.clone();
