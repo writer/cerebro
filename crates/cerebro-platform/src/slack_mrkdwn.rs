@@ -516,12 +516,15 @@ fn emphasis_suffix_is_well_formed(
         let has_later_run = bytes[index..].contains(&delimiter);
         let clear_intraword_asterisk_open = delimiter == b'*'
             && previous.is_some_and(char::is_alphabetic)
-            && next.is_some_and(char::is_alphabetic)
+            && next.is_some_and(char::is_alphanumeric)
             && has_later_run;
         let can_open = next.is_some_and(char::is_alphanumeric)
             && (!previous_is_word || clear_intraword_asterisk_open);
+        let clear_intraword_asterisk_close =
+            delimiter == b'*' && previous_is_word && next.is_some_and(char::is_alphanumeric);
         let can_close = previous.is_some_and(|character| !character.is_whitespace())
-            && next.is_none_or(|character| !character.is_alphanumeric());
+            && (next.is_none_or(|character| !character.is_alphanumeric())
+                || clear_intraword_asterisk_close);
         match (open, can_open, can_close) {
             (false, true, _) => open = true,
             (true, _, true) => open = false,
@@ -986,6 +989,14 @@ mod tests {
             (
                 "**See https://example.com**—oops****",
                 "*See https://example.com*—oops****",
+            ),
+            (
+                "**See https://example.com**—alpha**beta**gamma",
+                "*See https://example.com*—alpha*beta*gamma",
+            ),
+            (
+                "**See https://example.com**—alpha**2beta**gamma",
+                "*See https://example.com*—alpha*2beta*gamma",
             ),
             (
                 "**See https://example.com/a**b%done",
