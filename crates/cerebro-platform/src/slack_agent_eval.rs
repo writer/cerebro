@@ -7729,7 +7729,7 @@ mod tests {
         ];
         let bundle = blind_review_bundle(
             &HoldoutSourceReceipt {
-                source_kind: "external_pinned_holdout".into(),
+                source_kind: "external_pinned_holdout",
                 pack_ref: "hidden".into(),
                 pack_sha256: "c".repeat(64),
                 digest_verified: true,
