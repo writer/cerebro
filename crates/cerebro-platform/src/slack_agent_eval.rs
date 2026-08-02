@@ -2032,17 +2032,19 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     let model = Arc::new(ConfiguredModel::from_env().await?);
     let evaluated_at = OffsetDateTime::now_utc();
     let evaluated_at_text = evaluated_at.format(&Rfc3339)?;
-    let evaluation_suite = env::var("CEREBRO_SLACK_AGENT_EVAL_SUITE").unwrap_or_default();
+    let evaluation_suite = env::var("CEREBRO_SLACK_AGENT_EVAL_SUITE")
+        .map_err(|_| "CEREBRO_SLACK_AGENT_EVAL_SUITE must name an explicit evaluation mode")?;
+    let evaluation_mode = evaluation_suite_mode(&evaluation_suite)?;
     if matches!(
-        evaluation_suite.as_str(),
-        "conversation_lab" | "autonomy_lab"
+        evaluation_mode,
+        EvaluationSuiteMode::ConversationLab | EvaluationSuiteMode::AutonomyLab
     ) {
         let judge_model_id = env::var("CEREBRO_SLACK_AGENT_EVAL_JUDGE_MODEL")?;
         if !judge_model_id.contains(".anthropic.claude-opus-") {
             return Err("the conversation and autonomy labs require AWS-hosted Claude Opus for simulation and model-side scoring".into());
         }
         let judge = Arc::new(ConfiguredModel::amazon_bedrock(judge_model_id.clone()).await?);
-        if evaluation_suite == "autonomy_lab" {
+        if evaluation_mode == EvaluationSuiteMode::AutonomyLab {
             return run_autonomy_lab(
                 commit_sha.clone(),
                 evaluated_at_text,
@@ -2315,7 +2317,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         blockers.push("p95 hosted Rust loop latency exceeds 60 seconds".into());
     }
     let suite_passed = blockers.is_empty();
-    let promotion_ready = suite == "full" && suite_passed;
+    // The embedded shadow suite is useful for diagnostics, but it is neither
+    // externally blinded nor independently judged and can never promote.
+    let promotion_ready = false;
     let receipt = EvalReceipt {
         schema_version: SCHEMA_VERSION,
         suite,
@@ -2360,6 +2364,22 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         Ok(())
     } else {
         Err("the exact-head Rust Slack conversation harness did not meet its quality goal".into())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EvaluationSuiteMode {
+    ConversationLab,
+    AutonomyLab,
+    EmbeddedShadow,
+}
+
+fn evaluation_suite_mode(value: &str) -> Result<EvaluationSuiteMode, Box<dyn Error>> {
+    match value {
+        "conversation_lab" => Ok(EvaluationSuiteMode::ConversationLab),
+        "autonomy_lab" => Ok(EvaluationSuiteMode::AutonomyLab),
+        "embedded_shadow" => Ok(EvaluationSuiteMode::EmbeddedShadow),
+        _ => Err("CEREBRO_SLACK_AGENT_EVAL_SUITE must be conversation_lab, autonomy_lab, or embedded_shadow".into()),
     }
 }
 
@@ -4856,6 +4876,14 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
         .replace("[.]", ".")
         .replace("(.)", ".")
         .replace("{.}", ".");
+    let raw_token = word.trim_matches(|character: char| !character.is_ascii_alphanumeric());
+    let aws_principal_or_access_key_like = raw_token.len() == 20
+        && ["AIDA", "AIPA", "AKIA", "ANPA", "ANVA", "AROA", "ASIA"]
+            .iter()
+            .any(|prefix| raw_token.starts_with(prefix))
+        && raw_token
+            .chars()
+            .all(|character| character.is_ascii_uppercase() || character.is_ascii_digit());
     let contains_reserved_segment = canonical
         .split(|character: char| !character.is_ascii_alphanumeric())
         .any(|segment| RESERVED_REAL_WORLD_TOKENS.contains(&segment));
@@ -5011,6 +5039,7 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
         .iter()
         .any(|identity| compact.contains(identity));
     contains_reserved_segment
+        || aws_principal_or_access_key_like
         || identifier_prefix
         || domain_like
         || ipv4_like
@@ -7268,6 +7297,7 @@ mod tests {
             "The fictional connector references jira:1234.",
             "The fictional connector uses vol-0abc123def456.",
             "The fictional connector is at secret.example.xn--p1ai.",
+            "The fictional connector references AKIAIOSFODNN7EXAMPLE.",
         ] {
             let bundle = json!({
                 "data_provenance": {
@@ -7705,5 +7735,24 @@ mod tests {
         assert!(fixture.summary.contains("owner mapping"));
         assert!(fixture.summary.contains("identity was not returned"));
         assert!(!fixture.summary.contains("named remediation owner"));
+    }
+
+    #[test]
+    fn evaluation_suite_mode_is_explicit_and_embedded_is_shadow_only() {
+        assert_eq!(
+            evaluation_suite_mode("conversation_lab").unwrap(),
+            EvaluationSuiteMode::ConversationLab
+        );
+        assert_eq!(
+            evaluation_suite_mode("autonomy_lab").unwrap(),
+            EvaluationSuiteMode::AutonomyLab
+        );
+        assert_eq!(
+            evaluation_suite_mode("embedded_shadow").unwrap(),
+            EvaluationSuiteMode::EmbeddedShadow
+        );
+        assert!(evaluation_suite_mode("").is_err());
+        assert!(evaluation_suite_mode("conversation-lab").is_err());
+        assert!(evaluation_suite_mode("full").is_err());
     }
 }
