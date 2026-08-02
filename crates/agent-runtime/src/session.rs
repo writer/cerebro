@@ -1580,6 +1580,7 @@ pub async fn run_session_turn_recorded(
                             ),
                             tool_id: call.tool_id.clone(),
                             input_digest,
+                            input_preview: crate::approval_input_preview(&call.input),
                             purpose: call.purpose.clone(),
                         },
                         events,
@@ -4167,8 +4168,16 @@ pub fn validate_grounded_draft(
     }
 
     for update in &draft.memory_updates {
+        let exact_operator_preference = update.kind == MemoryKind::Preference
+            && !update.promotion_requested
+            && update.evidence_atom_refs.is_empty()
+            && session.messages.iter().any(|message| {
+                message.role == SessionMessageRole::User
+                    && message.text.trim() == update.statement.trim()
+            });
         if !bounded(&update.memory_ref, MAX_TEXT_BYTES)
             || !bounded(&update.statement, MAX_TEXT_BYTES)
+            || (update.evidence_atom_refs.is_empty() && !exact_operator_preference)
             || update
                 .evidence_atom_refs
                 .iter()
@@ -4179,14 +4188,15 @@ pub fn validate_grounded_draft(
             ));
         }
         if update.promotion_requested
-            && update.evidence_atom_refs.iter().any(|atom_ref| {
-                atoms.get(atom_ref).is_none_or(|atom| {
-                    !atom.complete
-                        || atom
-                            .fresh_until
-                            .is_none_or(|fresh_until| fresh_until < assessment_at)
-                })
-            })
+            && (update.evidence_atom_refs.is_empty()
+                || update.evidence_atom_refs.iter().any(|atom_ref| {
+                    atoms.get(atom_ref).is_none_or(|atom| {
+                        !atom.complete
+                            || atom
+                                .fresh_until
+                                .is_none_or(|fresh_until| fresh_until < assessment_at)
+                    })
+                }))
         {
             return Err(AgentRuntimeError::InvalidFinal(
                 "promoted memory requires complete fresh evidence".into(),
@@ -5317,6 +5327,167 @@ mod tests {
         descriptor: ToolDescriptor,
     }
 
+    struct DirectMcpEffectTools {
+        ambiguous: bool,
+        calls: Mutex<Vec<ToolCall>>,
+    }
+
+    impl DirectMcpEffectTools {
+        fn send_call() -> ToolCall {
+            ToolCall {
+                call_id: "call:mcp-send".into(),
+                tool_id: "mcp.slack.message.send".into(),
+                purpose: "Send the approved message to channel one.".into(),
+                input: json!({"channel_id": "channel-one", "text": "hello"}),
+            }
+        }
+
+        fn plan() -> ResearchPlan {
+            ResearchPlan {
+                decision: "Send and verify one Slack message.".into(),
+                lane: ExecutionLane::Act,
+                resolved_entities: vec!["channel-one".into()],
+                claims: vec![PlannedClaim {
+                    claim_ref: "claim:mcp-message-state".into(),
+                    question: "Does the channel contain the approved message?".into(),
+                    required: true,
+                    source_candidates: vec!["mcp.slack.message.read".into()],
+                }],
+                selected_tools: vec![
+                    "mcp.slack.message.send".into(),
+                    "mcp.slack.message.read".into(),
+                ],
+                stop_conditions: vec!["The exact message is observed after dispatch.".into()],
+                user_visible_work: vec!["I’ll send the approved message and verify it.".into()],
+                follow_through: None,
+            }
+        }
+
+        fn verified_draft() -> GroundedDraft {
+            GroundedDraft {
+                state: FinalState::Answered,
+                delivery: DeliveryDisposition::Visible,
+                message: "The approved message was sent and verified.".into(),
+                claims: vec![GroundedClaim {
+                    claim_ref: "claim:mcp-message-result".into(),
+                    planned_claim_ref: Some("claim:mcp-message-state".into()),
+                    text: "The approved message was sent and verified.".into(),
+                    required_for_answer: true,
+                    content: ClaimContent::Observation {
+                        atom_refs: vec!["atom:mcp-message-text".into()],
+                    },
+                }],
+                coverage_notice: None,
+                question: None,
+                mission: MissionState {
+                    status: SessionStatus::Completed,
+                    ..mission()
+                },
+                memory_updates: Vec::new(),
+                presentation_ready: true,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl SessionTools for DirectMcpEffectTools {
+        fn catalog(&self) -> Vec<ToolDescriptor> {
+            vec![
+                ToolDescriptor {
+                    tool_id: "mcp.slack.message.send".into(),
+                    title: "Send a Slack message".into(),
+                    summary: "Send one message.".into(),
+                    authority_class: ToolAuthorityClass::Actuate,
+                    effect_class: ToolEffectClass::ExternalEffect,
+                    input_schema_ref: "mcp://slack.message.send/input".into(),
+                    result_schema_ref: "mcp://slack.message.send/output".into(),
+                },
+                ToolDescriptor {
+                    tool_id: "mcp.slack.message.read".into(),
+                    title: "Read a Slack message".into(),
+                    summary: "Read one message.".into(),
+                    authority_class: ToolAuthorityClass::Observe,
+                    effect_class: ToolEffectClass::Read,
+                    input_schema_ref: "mcp://slack.message.read/input".into(),
+                    result_schema_ref: "mcp://slack.message.read/output".into(),
+                },
+            ]
+        }
+
+        async fn invoke(
+            &self,
+            _session: &AgentSession,
+            _input: &SessionTurnInput,
+            call: &ToolCall,
+        ) -> Result<ToolResult, AgentRuntimeError> {
+            self.calls
+                .lock()
+                .expect("MCP call log poisoned")
+                .push(call.clone());
+            if call.tool_id == "mcp.slack.message.send" {
+                if self.ambiguous {
+                    return Err(AgentRuntimeError::ModelUnavailable(
+                        "provider response was lost after dispatch".into(),
+                    ));
+                }
+                return Ok(ToolResult {
+                    state: ToolResultState::Succeeded,
+                    summary: "The provider accepted the message.".into(),
+                    data: json!({
+                        "verification_expectation": {
+                            "target_ref": "channel-one",
+                            "input_digest": call.input_digest(),
+                            "assertions": {"/text": "hello"}
+                        }
+                    }),
+                    evidence: vec![crate::EvidenceRecord {
+                        evidence_ref: "evidence:mcp-dispatch".into(),
+                        statement: "The provider returned a dispatch receipt.".into(),
+                        observed_at: "2026-07-31T00:01:00Z".into(),
+                        fresh_until: Some("2026-08-01T00:00:00Z".into()),
+                        complete: true,
+                        atoms: vec![EvidenceAtom {
+                            atom_ref: "atom:mcp-dispatch".into(),
+                            subject_ref: Some("channel-one".into()),
+                            assertion: EvidenceAssertion::Value {
+                                predicate: "/dispatched".into(),
+                                value: json!(true),
+                            },
+                            observed_at: "2026-07-31T00:01:00Z".into(),
+                            fresh_until: Some("2026-08-01T00:00:00Z".into()),
+                            complete: true,
+                        }],
+                    }],
+                    blocker: None,
+                });
+            }
+            Ok(ToolResult {
+                state: ToolResultState::Succeeded,
+                summary: "The exact message was observed in the channel.".into(),
+                data: json!({"channel_id": "channel-one", "text": "hello"}),
+                evidence: vec![crate::EvidenceRecord {
+                    evidence_ref: "evidence:mcp-message-read".into(),
+                    statement: "The exact message was observed in the channel.".into(),
+                    observed_at: "2026-07-31T00:02:00Z".into(),
+                    fresh_until: Some("2026-08-01T00:00:00Z".into()),
+                    complete: true,
+                    atoms: vec![EvidenceAtom {
+                        atom_ref: "atom:mcp-message-text".into(),
+                        subject_ref: Some("channel-one".into()),
+                        assertion: EvidenceAssertion::Value {
+                            predicate: "/text".into(),
+                            value: json!("hello"),
+                        },
+                        observed_at: "2026-07-31T00:02:00Z".into(),
+                        fresh_until: Some("2026-08-01T00:00:00Z".into()),
+                        complete: true,
+                    }],
+                }],
+                blocker: None,
+            })
+        }
+    }
+
     struct WakeTools {
         effects: AtomicUsize,
     }
@@ -5378,6 +5549,65 @@ mod tests {
         .unwrap();
         assert_eq!(validated.markdown, draft().message);
         assert_eq!(validated.evidence_atom_refs, vec!["atom:status"]);
+    }
+
+    #[test]
+    fn catalog_only_results_cannot_be_persisted_as_unproven_memory() {
+        let mut unproven = draft();
+        unproven.memory_updates.push(MemoryUpdate {
+            memory_ref: "memory:catalog-claim".into(),
+            kind: MemoryKind::Fact,
+            statement: "A provider capability exists.".into(),
+            evidence_atom_refs: Vec::new(),
+            promotion_requested: false,
+        });
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &unproven,
+                &[observation(true, Some("2026-08-01T00:00:00Z"))],
+                assessment,
+            )
+            .is_err()
+        );
+
+        let mut preference = draft();
+        preference.memory_updates.push(MemoryUpdate {
+            memory_ref: "memory:operator-preference".into(),
+            kind: MemoryKind::Preference,
+            statement: "Check connector alpha.".into(),
+            evidence_atom_refs: Vec::new(),
+            promotion_requested: false,
+        });
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &preference,
+                &[observation(true, Some("2026-08-01T00:00:00Z"))],
+                assessment,
+            )
+            .is_ok()
+        );
+
+        let mut unsafe_substring = draft();
+        unsafe_substring.memory_updates.push(MemoryUpdate {
+            memory_ref: "memory:negated-fragment".into(),
+            kind: MemoryKind::Preference,
+            statement: "connector alpha".into(),
+            evidence_atom_refs: Vec::new(),
+            promotion_requested: false,
+        });
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &unsafe_substring,
+                &[observation(true, Some("2026-08-01T00:00:00Z"))],
+                assessment,
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -6268,6 +6498,145 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event.event, SessionEvent::DraftProduced { .. }))
         );
+    }
+
+    #[tokio::test]
+    async fn direct_mcp_effect_preserves_approval_dispatch_verification_and_uncertainty() {
+        let call = DirectMcpEffectTools::send_call();
+        let input_digest = call.input_digest();
+        let input = SessionTurnInput {
+            request_id: "request:mcp-effect".into(),
+            actor_ref: "user:1".into(),
+            assessment_at: "2026-07-31T00:03:00Z".into(),
+            trigger: SessionTurnTrigger::Operator,
+        };
+        let unapproved_model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::EstablishPlan {
+                    plan: DirectMcpEffectTools::plan(),
+                },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![call.clone()],
+                },
+            ])),
+        };
+        let unapproved_tools = DirectMcpEffectTools {
+            ambiguous: false,
+            calls: Mutex::new(Vec::new()),
+        };
+        let approval = run_session_turn(
+            &unapproved_model,
+            &unapproved_tools,
+            session(),
+            input.clone(),
+        )
+        .await
+        .unwrap();
+        let SessionTurnOutcome::ApprovalRequired { request, .. } = approval else {
+            panic!("the exact MCP effect must require approval")
+        };
+        assert_eq!(request.tool_id, "mcp.slack.message.send");
+        assert_eq!(request.input_digest, input_digest);
+        assert!(request.input_preview.contains("channel-one"));
+        assert!(request.input_preview.contains("hello"));
+        assert!(
+            unapproved_tools
+                .calls
+                .lock()
+                .expect("MCP call log poisoned")
+                .is_empty()
+        );
+
+        let mut authorized = session();
+        authorized.effect_authorizations.push(EffectAuthorization {
+            approval_ref: format!(
+                "approval://agent-effect/{}",
+                input_digest.trim_start_matches("sha256:")
+            ),
+            tenant_id: authorized.tenant_id.clone(),
+            request_id: input.request_id.clone(),
+            thread_ref: authorized.thread_ref.clone(),
+            actor_ref: input.actor_ref.clone(),
+            tool_id: call.tool_id.clone(),
+            input_digest: input_digest.clone(),
+        });
+        let authorized_model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::EstablishPlan {
+                    plan: DirectMcpEffectTools::plan(),
+                },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![call.clone()],
+                },
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:mcp-read".into(),
+                        tool_id: "mcp.slack.message.read".into(),
+                        purpose: "Verify the approved message in channel one.".into(),
+                        input: json!({"channel_id": "channel-one"}),
+                    }],
+                },
+                SessionModelDecision::Finish {
+                    draft: DirectMcpEffectTools::verified_draft(),
+                },
+            ])),
+        };
+        let authorized_tools = DirectMcpEffectTools {
+            ambiguous: false,
+            calls: Mutex::new(Vec::new()),
+        };
+        let completed = run_session_turn(
+            &authorized_model,
+            &authorized_tools,
+            authorized.clone(),
+            input.clone(),
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            completed,
+            SessionTurnOutcome::PendingDelivery { .. }
+        ));
+        {
+            let calls = authorized_tools
+                .calls
+                .lock()
+                .expect("MCP call log poisoned");
+            assert_eq!(calls.as_slice()[0], call);
+            assert_eq!(calls.as_slice()[1].tool_id, "mcp.slack.message.read");
+        }
+
+        let ambiguous_model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::EstablishPlan {
+                    plan: DirectMcpEffectTools::plan(),
+                },
+                SessionModelDecision::InvokeTools { calls: vec![call] },
+            ])),
+        };
+        let ambiguous_tools = DirectMcpEffectTools {
+            ambiguous: true,
+            calls: Mutex::new(Vec::new()),
+        };
+        let ambiguous = run_session_turn(&ambiguous_model, &ambiguous_tools, authorized, input)
+            .await
+            .expect("ambiguous dispatch must produce a visible reconciliation boundary");
+        let SessionTurnOutcome::PendingDelivery {
+            final_state,
+            events,
+            ..
+        } = ambiguous
+        else {
+            panic!("an ambiguous effect must not request another approval")
+        };
+        assert_eq!(final_state, FinalState::Blocked);
+        assert!(events.iter().any(|event| {
+            matches!(
+                &event.event,
+                SessionEvent::ToolInvoked { observation }
+                    if observation.result.state == ToolResultState::OutcomeUnknown
+            )
+        }));
     }
 
     #[tokio::test]

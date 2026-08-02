@@ -404,6 +404,7 @@ test("Slack persists an exact Rust approval and resumes the original turn once",
               request: {
                 approval_ref: approvalRef,
                 input_digest: inputDigest,
+                input_preview: '{\n  "connector_ref": "connector:alpha",\n  "enabled": false\n}',
                 purpose: "Disable connector alpha.",
                 tool_id: "connector.update",
               },

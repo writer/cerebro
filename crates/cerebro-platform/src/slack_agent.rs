@@ -2617,7 +2617,7 @@ Return one flat JSON object with decision, plan, calls, and draft every time. Se
 
 - For a conversational answer that needs no current evidence, finish directly.
 - Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. When the operator explicitly delegates a future re-observation, follow_through must define the complete executor contract before any tool runs: a stable commitment_ref, exact required read tools, acceptance criteria, next action, typed attention policy, bounded check delay, and verification. acceptance_all contains the desired completion values. alert_any contains only explicit boolean authority signals for a gap, regression, conflict, staleness, or mismatch; never put an ordinary numeric or string progress value in alert_any. Otherwise set follow_through to null. Rust materializes this plan into the durable scheduled commitment; final prose does not author or rewrite scheduling authority. Select only tools in available_tools.
-- When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, select capability.search first with the user's intent. Search defaults to observe/read capabilities; request another authority or effect class only when the operator's request requires it. Use capability.describe only when the matching descriptor does not make its input contract clear. For an MCP match, revise the plan to the returned execution_tool_id and call it with the exact returned selection_ref plus provider input matching the selected descriptor. Never substitute graph.search for a missing or undiscovered provider capability.
+- When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, select capability.search first with the user's intent. Search defaults to observe/read capabilities; request another authority or effect class only when the operator's request requires it. Use capability.describe only when the matching descriptor does not make its input contract clear. For a read or proposal MCP match, revise the plan to the returned execution_tool_id and call it with the exact returned selection_ref plus provider input matching the selected descriptor. A host-admitted external effect remains visible as its exact MCP tool id and may run only in an Act plan through the ordinary exact-input approval boundary. Never substitute graph.search for a missing or undiscovered provider capability.
 - capability.search, capability.describe, and capability.overview describe the bound catalog and its authority policy. Catalog metadata never establishes a fact about Slack, GitHub, a deployment, a web page, or any other external system. Invoke the discovered provider tool before making a current claim. If no matching tool is bound, state that exact capability gap instead of querying an unrelated source.
 - When plan is non-null, it is already active. Invoke its selected tools or finish from the observations. If a planned follow-through tool fails or proves irrelevant and another available read establishes the delegated baseline, that is a material revision: establish one revised plan with the corrected complete follow_through contract before finishing.
 - Then invoke_tools with one or more independent read calls. Keep effects alone in their own decision. The Rust host enforces exact approval and will return an approval request when authorization is absent.
@@ -2733,7 +2733,7 @@ Operate, do not merely describe a query:
 - Inspect current state with the smallest useful tool calls.
 - Give every tool invocation a new call_id that has not appeared earlier in the current turn. After duplicate-call repair feedback, use the existing observation or finish; never resend the same call identity.
 - Use capability.overview when the user asks what Cerebro can currently do or when a requested capability may not be bound. The available tool catalog is the exact capability boundary for this turn.
-- When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, use capability.search with the user's intent, then capability.describe only if the input contract remains unclear. For an MCP match, revise the plan to the returned execution_tool_id and invoke it with the returned selection_ref and provider input. Catalog metadata is capability evidence only. It is never evidence about the provider's current state.
+- When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, use capability.search with the user's intent, then capability.describe only if the input contract remains unclear. For a read or proposal MCP match, revise the plan to the returned execution_tool_id and invoke it with the returned selection_ref and provider input. A host-admitted external effect uses its exact MCP tool id and remains subject to an Act plan and exact-input approval. Catalog metadata is capability evidence only. It is never evidence about the provider's current state.
 - Never substitute graph.search for a Slack, GitHub, code, deployment, web, or company-knowledge request. If capability.search returns no relevant provider tool, report the exact missing capability instead of filling the turn with an unrelated graph or source inventory.
 - Use the bound MCP task tools for findings, assets, evidence packets, investigation context, risk explanation, source health, action planning, and any other domain whose descriptor matches the request. Do not reduce a domain request to graph search when a more specific capability is available.
 - A complete evidence packet means the bounded packet exists and is current; it does not prove that every field the operator asks for was returned in the observation. Claim an asset identifier, exposed path, control ID, owner name, or change field only when that value is present in the observation. An owner-present flag proves only that an owner mapping exists, not the person's name, team, role, or notification route.
@@ -2976,7 +2976,6 @@ const MAX_CAPABILITY_QUERY_BYTES: usize = 512;
 const MAX_CAPABILITY_TOOL_ID_BYTES: usize = 256;
 const CAPABILITY_EXECUTE_READ: &str = "capability.execute_read";
 const CAPABILITY_EXECUTE_PROPOSAL: &str = "capability.execute_proposal";
-const CAPABILITY_EXECUTE_ACTUATION: &str = "capability.execute_actuation";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -3168,9 +3167,6 @@ fn capability_executor_tool(descriptor: &ToolDescriptor) -> Option<&'static str>
     match (descriptor.authority_class, descriptor.effect_class) {
         (ToolAuthorityClass::Observe, ToolEffectClass::Read) => Some(CAPABILITY_EXECUTE_READ),
         (ToolAuthorityClass::Propose, ToolEffectClass::Read) => Some(CAPABILITY_EXECUTE_PROPOSAL),
-        (ToolAuthorityClass::Actuate, ToolEffectClass::ExternalEffect) => {
-            Some(CAPABILITY_EXECUTE_ACTUATION)
-        }
         _ => None,
     }
 }
@@ -3204,7 +3200,7 @@ fn sha256_digest(value: &str) -> String {
 #[async_trait]
 impl AgentTools for PlatformAgentTools {
     fn catalog(&self) -> Vec<ToolDescriptor> {
-        built_in_capability_catalog()
+        model_capability_catalog(self.mcp.as_deref().map_or(&[], McpAgentTools::descriptors))
     }
 
     async fn invoke(
@@ -3218,9 +3214,7 @@ impl AgentTools for PlatformAgentTools {
             "capability.search" => self.search_capabilities(request, call),
             "capability.describe" => self.describe_capabilities(request, call),
             "capability.overview" => self.inspect_capability_overview(request, call),
-            CAPABILITY_EXECUTE_READ
-            | CAPABILITY_EXECUTE_PROPOSAL
-            | CAPABILITY_EXECUTE_ACTUATION => {
+            CAPABILITY_EXECUTE_READ | CAPABILITY_EXECUTE_PROPOSAL => {
                 return self.execute_selected_capability(request, call).await;
             }
             "graph.search" => self.search(&tenant_id, request, call).await,
@@ -3235,7 +3229,16 @@ impl AgentTools for PlatformAgentTools {
             "source_catalog.inspect" => self.inspect_source_catalog(request, call),
             "slack.thread.read" => self.read_slack_thread(request, call).await,
             "slack.history.search" => self.search_slack_history(request, call).await,
-            _ => Err(AgentRuntimeError::ToolUnavailable(call.tool_id.clone())),
+            _ => match &self.mcp {
+                Some(mcp)
+                    if mcp.descriptor(&call.tool_id).is_some_and(|descriptor| {
+                        descriptor.authority_class == ToolAuthorityClass::Actuate
+                    }) =>
+                {
+                    mcp.invoke(request, call).await
+                }
+                _ => Err(AgentRuntimeError::ToolUnavailable(call.tool_id.clone())),
+            },
         }?;
         Ok(atomize_tool_result(call, result))
     }
@@ -3276,15 +3279,6 @@ fn built_in_capability_catalog() -> Vec<ToolDescriptor> {
                 summary: "Redeem one host-signed capability selection for its exact proposal-only provider tool. Input fields: selection_ref string returned by capability.search and input object matching the selected provider schema.".into(),
                 authority_class: ToolAuthorityClass::Propose,
                 effect_class: ToolEffectClass::Read,
-                input_schema_ref: "schema://cerebro/capability-execute-input/v1".into(),
-                result_schema_ref: "schema://cerebro/capability-execute-result/v1".into(),
-            },
-            ToolDescriptor {
-                tool_id: CAPABILITY_EXECUTE_ACTUATION.into(),
-                title: "Execute a selected external effect".into(),
-                summary: "Redeem one host-signed capability selection for its exact effect-capable provider tool. The ordinary exact-input approval boundary applies. Input fields: selection_ref string returned by capability.search and input object matching the selected provider schema.".into(),
-                authority_class: ToolAuthorityClass::Actuate,
-                effect_class: ToolEffectClass::ExternalEffect,
                 input_schema_ref: "schema://cerebro/capability-execute-input/v1".into(),
                 result_schema_ref: "schema://cerebro/capability-execute-result/v1".into(),
             },
@@ -3361,6 +3355,17 @@ fn built_in_capability_catalog() -> Vec<ToolDescriptor> {
                 result_schema_ref: "schema://cerebro/slack-history-search-result/v1".into(),
             },
     ]
+}
+
+fn model_capability_catalog(remote: &[ToolDescriptor]) -> Vec<ToolDescriptor> {
+    let mut catalog = built_in_capability_catalog();
+    catalog.extend(
+        remote
+            .iter()
+            .filter(|descriptor| descriptor.authority_class == ToolAuthorityClass::Actuate)
+            .cloned(),
+    );
+    catalog
 }
 
 fn atomize_tool_result(
@@ -3472,7 +3477,7 @@ impl SessionTools for PlatformAgentTools {
 
 impl PlatformAgentTools {
     fn complete_capability_catalog(&self) -> Vec<ToolDescriptor> {
-        let mut catalog = <Self as AgentTools>::catalog(self);
+        let mut catalog = built_in_capability_catalog();
         if let Some(mcp) = &self.mcp {
             catalog.extend(mcp.descriptors().iter().cloned());
         }
@@ -3677,7 +3682,7 @@ impl PlatformAgentTools {
             call,
             complete,
             format!(
-                "The Slack agent capability registry observed thirteen built-in tools and {} bound MCP tools; MCP gateway state={gateway_state}.",
+                "The Slack agent capability registry observed twelve built-in tools and {} bound MCP tools; MCP gateway state={gateway_state}.",
                 remote.len()
             ),
         )?;
@@ -3694,7 +3699,6 @@ impl PlatformAgentTools {
                     "capability.describe",
                     CAPABILITY_EXECUTE_READ,
                     CAPABILITY_EXECUTE_PROPOSAL,
-                    CAPABILITY_EXECUTE_ACTUATION,
                     "capability.overview",
                     "graph.search",
                     "graph.expand",
@@ -4607,9 +4611,9 @@ mod tests {
 
     #[test]
     fn direct_model_catalog_exposes_only_bounded_host_tools() {
-        let catalog = built_in_capability_catalog();
+        let catalog = model_capability_catalog(&[]);
 
-        assert_eq!(catalog.len(), 13);
+        assert_eq!(catalog.len(), 12);
         assert!(catalog.iter().all(|tool| !tool.tool_id.starts_with("mcp.")));
         assert!(
             catalog
@@ -4626,6 +4630,36 @@ mod tests {
                 .iter()
                 .any(|tool| tool.tool_id == "slack.history.search")
         );
+    }
+
+    #[test]
+    fn direct_model_catalog_hides_remote_reads_but_keeps_exact_effect_identity() {
+        let read = discovered_tool(
+            "mcp.slack.thread.read",
+            "Read a thread",
+            "Read messages.",
+            ToolAuthorityClass::Observe,
+            ToolEffectClass::Read,
+        );
+        let actuation = discovered_tool(
+            "mcp.slack.message.send",
+            "Send a message",
+            "Send one message.",
+            ToolAuthorityClass::Actuate,
+            ToolEffectClass::ExternalEffect,
+        );
+
+        let catalog = model_capability_catalog(&[read, actuation]);
+
+        assert!(
+            !catalog
+                .iter()
+                .any(|tool| tool.tool_id == "mcp.slack.thread.read")
+        );
+        assert!(catalog.iter().any(|tool| {
+            tool.tool_id == "mcp.slack.message.send"
+                && tool.authority_class == ToolAuthorityClass::Actuate
+        }));
     }
 
     #[test]
@@ -4789,10 +4823,7 @@ mod tests {
             capability_executor_tool(&proposal),
             Some(CAPABILITY_EXECUTE_PROPOSAL)
         );
-        assert_eq!(
-            capability_executor_tool(&actuation),
-            Some(CAPABILITY_EXECUTE_ACTUATION)
-        );
+        assert_eq!(capability_executor_tool(&actuation), None);
     }
 
     #[test]

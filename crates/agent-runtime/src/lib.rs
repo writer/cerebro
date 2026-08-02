@@ -464,7 +464,71 @@ pub struct ApprovalRequest {
     pub approval_ref: String,
     pub tool_id: String,
     pub input_digest: String,
+    pub input_preview: String,
     pub purpose: String,
+}
+
+fn approval_input_preview(input: &Value) -> String {
+    const MAX_APPROVAL_PREVIEW_BYTES: usize = 12 * 1024;
+
+    fn sensitive_key(key: &str) -> bool {
+        let key = key
+            .chars()
+            .filter(|character| character.is_ascii_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect::<String>();
+        key == "auth"
+            || [
+                "accesskey",
+                "apikey",
+                "authorization",
+                "bearer",
+                "cookie",
+                "credential",
+                "encryptionkey",
+                "passphrase",
+                "password",
+                "privatekey",
+                "secret",
+                "sessionid",
+                "sessiontoken",
+                "signingkey",
+                "token",
+            ]
+            .iter()
+            .any(|sensitive| key.contains(sensitive))
+    }
+
+    fn redacted(value: &Value, key: Option<&str>) -> Value {
+        if key.is_some_and(sensitive_key) {
+            return Value::String("<redacted>".into());
+        }
+        match value {
+            Value::Object(map) => Value::Object(
+                map.iter()
+                    .map(|(key, value)| (key.clone(), redacted(value, Some(key))))
+                    .collect(),
+            ),
+            Value::Array(items) => {
+                Value::Array(items.iter().map(|item| redacted(item, key)).collect())
+            }
+            _ => value.clone(),
+        }
+    }
+
+    let preview = serde_json::to_string_pretty(&redacted(input, None))
+        .unwrap_or_else(|_| "<input preview unavailable>".into());
+    if preview.len() <= MAX_APPROVAL_PREVIEW_BYTES {
+        return preview;
+    }
+    let mut boundary = MAX_APPROVAL_PREVIEW_BYTES;
+    while boundary > 0 && !preview.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    format!(
+        "{}\n<truncated; exact input remains bound by digest>",
+        &preview[..boundary]
+    )
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -760,9 +824,10 @@ pub async fn run_turn(
                                     "approval://agent-effect/{}",
                                     input_digest.trim_start_matches("sha256:")
                                 ),
-                                tool_id: call.tool_id,
+                                tool_id: call.tool_id.clone(),
                                 input_digest,
-                                purpose: call.purpose,
+                                input_preview: approval_input_preview(&call.input),
+                                purpose: call.purpose.clone(),
                             },
                             tool_call_count: observations.len(),
                         });
@@ -2485,6 +2550,26 @@ fn looks_like_user_handback(value: &str) -> bool {
 mod grounding_tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn approval_preview_shows_targets_and_redacts_credentials() {
+        let preview = approval_input_preview(&json!({
+            "channel_id": "channel-one",
+            "text": "send this",
+            "apiKey": "must-not-leak",
+            "access_key": "also-secret",
+            "nested": {"bearer": "third-secret"},
+            "target_key": "target-one"
+        }));
+
+        assert!(preview.contains("channel-one"));
+        assert!(preview.contains("send this"));
+        assert!(!preview.contains("must-not-leak"));
+        assert!(!preview.contains("also-secret"));
+        assert!(!preview.contains("third-secret"));
+        assert!(preview.contains("target-one"));
+        assert_eq!(preview.matches("<redacted>").count(), 3);
+    }
 
     #[test]
     fn investigate_budget_allows_bounded_recovery_after_bad_reads() {
