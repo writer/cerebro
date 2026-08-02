@@ -1021,11 +1021,12 @@ impl AgentTools for EvalTools {
             "evidence://rust-hillclimb/{}/{}",
             request.request_id, call.call_id
         );
-        let subject_ref = call
-            .input
-            .get("connector_ref")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
+        let subject_ref = call.input.as_object().and_then(|input| {
+            ["subject_ref", "connector_ref", "runtime_ref", "source_ref"]
+                .iter()
+                .find_map(|field| input.get(*field).and_then(Value::as_str))
+                .map(str::to_owned)
+        });
         Ok(ToolResult {
             state,
             summary: summary.clone(),
@@ -1226,8 +1227,19 @@ fn evaluation_fixture(
 ) -> EvaluationFixture {
     if case_ref.contains("source-visibility") || case_ref.contains("source-access-boundary") {
         return match tool_id {
+            "capability.overview" => EvaluationFixture {
+                summary: "The sealed source-coverage scenario binds only capability overview, source catalog, source runtime, and bounded graph search. It has no collected-event-content read, provider-configuration read, provider-fault diagnostic, provider administration, or scheduled monitor capability.".into(),
+                data: json!({
+                    "bound_tool_ids": ["capability.overview", "source_catalog.inspect", "source_runtime.inspect", "source_runtime.overview", "graph.search"],
+                    "collected_event_content_read": false,
+                    "provider_configuration_read": false,
+                    "provider_fault_diagnostic": false,
+                    "provider_administration": false,
+                    "scheduled_monitor": false
+                }),
+            },
             "source_catalog.inspect" => EvaluationFixture {
-                summary: "The named compliance source declares five collectible families: controls, tests, evidence, people, and audit activity. This declaration does not prove provider-side permission.".into(),
+                summary: "The named compliance source declares five collectible families: controls, tests, evidence, people, and audit activity. The authority field says Cerebro has no provider-administration authority through this source. Neither declaration proves event-type coverage, provider-side permission, a collection attempt, or collection cause.".into(),
                 data: json!({"declared_families": 5, "families": ["controls", "tests", "evidence", "people", "audit activity"], "provider_admin_access": false}),
             },
             "source_runtime.inspect" | "source_runtime.overview" => EvaluationFixture {
