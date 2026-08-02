@@ -1,6 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
-import { App, LogLevel } from "@slack/bolt";
+import {
+  App,
+  LogLevel,
+  SocketModeReceiver,
+  type ReceiverEvent,
+} from "@slack/bolt";
 import type { HomeView } from "@slack/types";
 import {
   assessAssistantTurnOutcome,
@@ -43,6 +48,10 @@ import {
 } from "./agent-delivery-outbox.js";
 import type { SlackRuntimeConfig } from "./config.js";
 import { FileSlackThreadRouteStore } from "./slack-thread-route-store.js";
+import {
+  FileSlackIngressQueue,
+  type SlackIngressClaim,
+} from "./slack-ingress-store.js";
 import { FileWakeDeliveryOutbox } from "./wake-delivery-outbox.js";
 import {
   type SlackWakeDeliveryClient,
@@ -666,10 +675,41 @@ export class AssistantQuestionService {
   }
 }
 
+class DurableSocketModeReceiver extends SocketModeReceiver {
+  constructor(appToken: string, private readonly ingress: FileSlackIngressQueue) {
+    super({
+      appToken,
+      logLevel: LogLevel.WARN,
+      processEventErrorHandler: async () => false,
+    });
+  }
+
+  override init(app: App): void {
+    super.init({
+      processEvent: async (event: ReceiverEvent) => {
+        await dispatchSlackEnvelopeDurably(this.ingress, app, event);
+      },
+    } as App);
+  }
+}
+
+export async function dispatchSlackEnvelopeDurably(
+  ingress: FileSlackIngressQueue,
+  app: Pick<App, "processEvent">,
+  event: ReceiverEvent,
+): Promise<void> {
+  await ingress.admitEnvelope(event.body);
+  await app.processEvent(event);
+}
+
 export class SlackCompanionRuntime {
   private agentDeliveryTimer?: NodeJS.Timeout;
   private readonly app: App;
   private healthServer?: Server;
+  private ingressDrain: Promise<void> = Promise.resolve();
+  private readonly ingressQueue: FileSlackIngressQueue;
+  private ingressTimer?: NodeJS.Timeout;
+  private readonly ingressWorkerRef: string;
   private outcomeTimer?: NodeJS.Timeout;
   private releaseNoticeMonitor?: ReleaseNoticeMonitor;
   private ready = false;
@@ -688,10 +728,18 @@ export class SlackCompanionRuntime {
     wakeDeliveries: FileWakeDeliveryOutbox,
     private readonly archetype?: ArchetypeSlackWorkspace,
   ) {
+    this.ingressQueue = new FileSlackIngressQueue(config.memoryDirectory);
+    this.ingressWorkerRef = [
+      "slack-host",
+      config.environmentLabel,
+      config.appName,
+      process.pid,
+      randomUUID(),
+    ].join(":");
+    const receiver = new DurableSocketModeReceiver(config.appToken, this.ingressQueue);
     this.app = new App({
-      appToken: config.appToken,
       logLevel: LogLevel.WARN,
-      socketMode: true,
+      receiver,
       token: config.botToken,
     });
     if (config.rustAgentEnabled) {
@@ -707,7 +755,11 @@ export class SlackCompanionRuntime {
   }
 
   async start(): Promise<void> {
-    await this.outcomes.initialize();
+    await Promise.all([
+      this.outcomes.initialize(),
+      this.ingressQueue.initialize(),
+    ]);
+    await this.ingressQueue.maintain();
     await this.app.start();
     this.healthServer = createServer((request, response) => {
       if (request.method !== "GET" || (request.url !== "/healthz" && request.url !== "/readyz")) {
@@ -726,6 +778,9 @@ export class SlackCompanionRuntime {
       this.healthServer?.listen(this.config.port, "0.0.0.0", resolve);
     });
     this.ready = true;
+    void this.flushSlackIngress();
+    this.ingressTimer = setInterval(() => void this.flushSlackIngress(), 5_000);
+    this.ingressTimer.unref();
     if (
       this.config.lifecycleNoticesEnabled
       && this.config.learningTableName
@@ -768,8 +823,10 @@ export class SlackCompanionRuntime {
     this.ready = false;
     this.releaseNoticeMonitor?.stop();
     if (this.agentDeliveryTimer) clearInterval(this.agentDeliveryTimer);
+    if (this.ingressTimer) clearInterval(this.ingressTimer);
     if (this.wakeDeliveryTimer) clearInterval(this.wakeDeliveryTimer);
     if (this.outcomeTimer) clearInterval(this.outcomeTimer);
+    await this.ingressDrain;
     await Promise.all([
       this.app.stop(),
       closeHealthServer(this.healthServer),
@@ -882,49 +939,17 @@ export class SlackCompanionRuntime {
       }
     });
 
-    this.app.event("app_mention", async ({ context, event, client }) => {
+    this.app.event("app_mention", async ({ context }) => {
       if (
         !context.teamId
-        || !event.user
         || !this.config.allowedTeamIds.has(context.teamId)
       ) return;
-      await handleSlackMention({
-        client,
-        config: this.config,
-        event: {
-          channel: event.channel,
-          botUserId: context.botUserId,
-          eventTs: event.ts,
-          hasThreadContext: Boolean(event.thread_ts),
-          teamId: context.teamId,
-          text: event.text,
-          threadTs: event.thread_ts ?? event.ts,
-          userId: event.user,
-        },
-        host: this.host,
-        outcomes: this.outcomes,
-        questions: this.questions,
-        scratchpads: this.scratchpads,
-        agentDeliveries: this.agentDeliveries,
-        threadRoutes: this.threadRoutes,
-      });
+      await this.flushSlackIngress();
     });
 
-    this.app.event("message", async ({ context, event, client }) => {
+    this.app.event("message", async ({ context }) => {
       if (!context.teamId) return;
-      await handleSlackThreadReply({
-        agentDeliveries: this.agentDeliveries,
-        botUserId: context.botUserId,
-        client,
-        config: this.config,
-        event,
-        host: this.host,
-        outcomes: this.outcomes,
-        questions: this.questions,
-        scratchpads: this.scratchpads,
-        teamId: context.teamId,
-        threadRoutes: this.threadRoutes,
-      });
+      await this.flushSlackIngress();
     });
 
     this.app.event("reaction_added", async ({ context, event }) => {
@@ -946,6 +971,78 @@ export class SlackCompanionRuntime {
         state: "failed",
       })}\n`);
     }
+  }
+
+  private flushSlackIngress(): Promise<void> {
+    this.ingressDrain = this.ingressDrain
+      .then(async () => this.drainSlackIngress())
+      .catch((error: unknown) => {
+        logSlackIngressFailure("drain", error);
+      });
+    return this.ingressDrain;
+  }
+
+  private async drainSlackIngress(): Promise<void> {
+    while (true) {
+      const claim = await this.ingressQueue.claimNext(this.ingressWorkerRef);
+      if (!claim) return;
+      try {
+        await this.processSlackIngressClaim(claim);
+        await this.ingressQueue.complete(claim);
+      } catch (error) {
+        await this.ingressQueue.release(claim).catch((releaseError: unknown) => {
+          logSlackIngressFailure("release", releaseError);
+        });
+        logSlackIngressFailure("process", error);
+        return;
+      }
+    }
+  }
+
+  private async processSlackIngressClaim(claim: SlackIngressClaim): Promise<void> {
+    const event = claim.event;
+    if (!this.config.allowedTeamIds.has(event.teamId)) return;
+    const client = this.app.client as unknown as SlackMentionClient;
+    if (event.kind === "app_mention") {
+      await handleSlackMention({
+        agentDeliveries: this.agentDeliveries,
+        client,
+        config: this.config,
+        event,
+        host: this.host,
+        ingressQueue: this.ingressQueue,
+        outcomes: this.outcomes,
+        questions: this.questions,
+        scratchpads: this.scratchpads,
+        threadRoutes: this.threadRoutes,
+      });
+      return;
+    }
+    const threadRef = slackThreadScratchpadRef(event.teamId, event.channel, event.threadTs);
+    const route = await this.threadRoutes.read(threadRef);
+    const botUserId = event.botUserId ?? route?.botUserId;
+    if (!botUserId) return;
+    await handleSlackThreadReply({
+      agentDeliveries: this.agentDeliveries,
+      botUserId,
+      client,
+      config: this.config,
+      event: {
+        channel: event.channel,
+        text: event.text,
+        thread_ts: event.threadTs,
+        ts: event.eventTs,
+        type: "message",
+        user: event.userId,
+      },
+      host: this.host,
+      ingressQueue: this.ingressQueue,
+      outcomes: this.outcomes,
+      questions: this.questions,
+      scratchpads: this.scratchpads,
+      teamId: event.teamId,
+      threadRoutes: this.threadRoutes,
+    });
   }
 
   private async pollWakeWorker(): Promise<void> {
@@ -1015,6 +1112,15 @@ function logAgentDeliveryFailure(operation: string, error: unknown): void {
   })}\n`);
 }
 
+function logSlackIngressFailure(operation: string, error: unknown): void {
+  process.stderr.write(`${JSON.stringify({
+    component: "slack-ingress",
+    error_kind: error instanceof Error ? error.name : "unknown",
+    operation,
+    state: "retrying",
+  })}\n`);
+}
+
 export async function handleSlackThreadReply(input: {
   agentDeliveries?: FileAgentDeliveryOutbox;
   botUserId?: string;
@@ -1022,6 +1128,7 @@ export async function handleSlackThreadReply(input: {
   config: SlackRuntimeConfig;
   event: unknown;
   host: AssistantTurnHostAdapter;
+  ingressQueue?: FileSlackIngressQueue;
   outcomes: FileOutcomeStore;
   questions: AssistantQuestionService;
   scratchpads?: SlackThreadScratchpadPort;
@@ -1062,6 +1169,7 @@ export async function handleSlackThreadReply(input: {
       userId: event.userId,
     },
     host: input.host,
+    ingressQueue: input.ingressQueue,
     outcomes: input.outcomes,
     questions: input.questions,
     scratchpads: input.scratchpads,
@@ -1104,6 +1212,7 @@ export async function handleSlackMention(input: {
   config: SlackRuntimeConfig;
   event: SlackMentionEvent;
   host: AssistantTurnHostAdapter;
+  ingressQueue?: FileSlackIngressQueue;
   outcomes: FileOutcomeStore;
   questions: AssistantQuestionService;
   scratchpads?: SlackThreadScratchpadPort;
@@ -1177,9 +1286,11 @@ export async function handleSlackMention(input: {
       );
       const deliveredText = formatEnvironmentMessage(input.config, commandText);
       const delivered = await postOrRecoverSlackMessage(input.client, {
+        bindings: input.ingressQueue,
         botUserId: input.event.botUserId,
         channel: input.event.channel,
         clientMessageId: progressClientMessageId,
+        requestKey,
         text: deliveredText,
         threadTs: input.event.threadTs,
       });
@@ -1241,9 +1352,11 @@ export async function handleSlackMention(input: {
         );
       } catch (error) {
         const blocked = await postOrRecoverSlackMessage(input.client, {
+          bindings: input.ingressQueue,
           botUserId: input.event.botUserId,
           channel: input.event.channel,
           clientMessageId: progressClientMessageId,
+          requestKey,
           text: formatEnvironmentMessage(
             input.config,
             `I couldn't read this thread, so I didn't send your message as a standalone graph query. Retry after ${input.config.appName} has channel history access.`,
@@ -1277,9 +1390,11 @@ export async function handleSlackMention(input: {
       status: "Reading this thread and working the request",
     });
     const progress = await postOrRecoverSlackMessage(input.client, {
+      bindings: input.ingressQueue,
       botUserId: input.event.botUserId,
       channel: input.event.channel,
       clientMessageId: progressClientMessageId,
+      requestKey,
       text: formatEnvironmentMessage(
         input.config,
         threadContext
@@ -1457,13 +1572,27 @@ function slackClientMessageId(identity: string): string {
 async function postOrRecoverSlackMessage(
   client: SlackMentionClient,
   input: {
+    bindings?: FileSlackIngressQueue;
     botUserId?: string;
     channel: string;
     clientMessageId: string;
+    requestKey: string;
     text: string;
     threadTs: string;
   },
 ): Promise<{ ts: string }> {
+  const bound = await input.bindings?.readMessageBinding(
+    input.requestKey,
+    input.clientMessageId,
+  );
+  if (bound) return { ts: bound };
+
+  const existing = await findSlackMessageByClientId(client, input);
+  if (existing) {
+    await input.bindings?.bindMessage(input.requestKey, input.clientMessageId, existing);
+    return { ts: existing };
+  }
+
   let postError: unknown;
   try {
     const posted = await client.chat.postMessage({
@@ -1472,14 +1601,20 @@ async function postOrRecoverSlackMessage(
       text: input.text,
       thread_ts: input.threadTs,
     });
-    if (posted.ts) return { ts: posted.ts };
+    if (posted.ts) {
+      await input.bindings?.bindMessage(input.requestKey, input.clientMessageId, posted.ts);
+      return { ts: posted.ts };
+    }
     postError = new Error("Slack did not return a timestamp for the message.");
   } catch (error) {
     postError = error;
   }
 
   const recovered = await findSlackMessageByClientId(client, input);
-  if (recovered) return { ts: recovered };
+  if (recovered) {
+    await input.bindings?.bindMessage(input.requestKey, input.clientMessageId, recovered);
+    return { ts: recovered };
+  }
   throw postError;
 }
 

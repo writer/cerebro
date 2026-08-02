@@ -1576,6 +1576,8 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                 *word,
                 "green"
                     | "healthy"
+                    | "online"
+                    | "operational"
                     | "ready"
                     | "working"
                     | "available"
@@ -1616,7 +1618,7 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
             .any(|time| words.contains(time));
             let question_explains_generic_subject = words[..predicate_index]
                 .iter()
-                .position(|word| matches!(*word, "how" | "why"))
+                .position(|word| matches!(*word, "how" | "when" | "why"))
                 .is_some_and(|question_index| {
                     !has_time_boundary
                         && (predicate_index + 1 < words.len()
@@ -1747,6 +1749,8 @@ fn presentation_markup_is_balanced(value: &str) -> bool {
         let mut cursor = 0;
         let mut strong_asterisks = 0;
         let mut strong_underscores = 0;
+        let mut single_asterisk_open = false;
+        let mut single_underscore_open = false;
         while cursor < line.len() {
             let remaining = &line[cursor..];
             let image = remaining.starts_with("![");
@@ -1780,13 +1784,47 @@ fn presentation_markup_is_balanced(value: &str) -> bool {
                 cursor += 2;
                 continue;
             }
+            if remaining.starts_with('*') || remaining.starts_with('_') {
+                let delimiter = remaining
+                    .chars()
+                    .next()
+                    .expect("markup cursor remains on a character boundary");
+                let open = if delimiter == '*' {
+                    &mut single_asterisk_open
+                } else {
+                    &mut single_underscore_open
+                };
+                let previous = line[..cursor].chars().next_back();
+                let previous_is_word = previous.is_some_and(char::is_alphanumeric);
+                let previous_can_close = previous.is_some_and(|value| !value.is_whitespace());
+                let next_is_word = remaining[delimiter.len_utf8()..]
+                    .chars()
+                    .next()
+                    .is_some_and(char::is_alphanumeric);
+                let clear_intraword_asterisk_close =
+                    delimiter == '*' && previous_is_word && next_is_word;
+                if !*open && !previous_is_word && next_is_word {
+                    *open = true;
+                } else if *open
+                    && previous_can_close
+                    && (!next_is_word || clear_intraword_asterisk_close)
+                {
+                    *open = false;
+                }
+                cursor += delimiter.len_utf8();
+                continue;
+            }
             cursor += remaining
                 .chars()
                 .next()
                 .expect("markup cursor remains on a character boundary")
                 .len_utf8();
         }
-        if strong_asterisks % 2 != 0 || strong_underscores % 2 != 0 {
+        if strong_asterisks % 2 != 0
+            || strong_underscores % 2 != 0
+            || single_asterisk_open
+            || single_underscore_open
+        {
             return false;
         }
     }
@@ -3189,6 +3227,8 @@ mod grounding_tests {
             "Why is the color green calming?",
             "Explain why a debate is healthy.",
             "Explain how a debate is healthy.",
+            "Tell me when a debate is healthy.",
+            "Why did Atlas fail in this story?",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),
@@ -3206,6 +3246,8 @@ mod grounding_tests {
             "Explain provider-neutral architecture but inspect Source A's current receipt.",
             "In the state of the art model, what is Source A's current receipt?",
             "Is Atlas green?",
+            "Is Atlas online?",
+            "Is Atlas operational?",
             "Has the rollout landed?",
             "Who handles remediation for Atlas?",
             "Are we able to ship this?",
@@ -3266,6 +3308,8 @@ mod grounding_tests {
             "The result is:\n```\nhealthy",
             "The source is **healthy.",
             "The source is __healthy.",
+            "The source is *healthy.",
+            "The source is _healthy.",
             "The source is `healthy.",
         ] {
             assert!(

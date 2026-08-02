@@ -15,6 +15,7 @@ import {
 import { loadSlackRuntimeConfig, SlackRuntimeConfigError } from "../src/runtime/config.js";
 import { FileOutcomeStore } from "../src/runtime/outcome-store.js";
 import { FileSlackThreadRouteStore } from "../src/runtime/slack-thread-route-store.js";
+import { FileSlackIngressQueue } from "../src/runtime/slack-ingress-store.js";
 import { FileWakeDeliveryOutbox } from "../src/runtime/wake-delivery-outbox.js";
 import { WakeDeliveryWorker } from "../src/runtime/wake-delivery-worker.js";
 import {
@@ -27,6 +28,7 @@ import {
   closeHealthServer,
   contextualHistory,
   createAssistantTurnHost,
+  dispatchSlackEnvelopeDurably,
   environmentHomeView,
   formatEnvironmentMessage,
   formatSlackThreadContext,
@@ -35,6 +37,109 @@ import {
   readSlackThreadContext,
   slackDeliveryReferences,
 } from "../src/runtime/slack-runtime.js";
+
+test("Socket Mode persists a resumable Slack event before Bolt can acknowledge it", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-"));
+  try {
+    const ingress = new FileSlackIngressQueue(root);
+    let acknowledged = false;
+    await dispatchSlackEnvelopeDurably(
+      ingress,
+      {
+        processEvent: async (event) => {
+          const claim = await ingress.claimNext("worker:test");
+          assert.ok(claim, "the ingress record must exist before Bolt receives the event");
+          assert.equal(claim.event.kind, "app_mention");
+          await ingress.release(claim);
+          await event.ack();
+        },
+      },
+      {
+        ack: async () => {
+          acknowledged = true;
+        },
+        body: slackEnvelopeFixture(),
+      },
+    );
+    assert.equal(acknowledged, true);
+    assert.ok(await ingress.claimNext("worker:restart"));
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Socket Mode does not acknowledge an event when durable admission fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-failure-"));
+  try {
+    const blockedRoot = join(root, "not-a-directory");
+    await writeFile(blockedRoot, "occupied\n", "utf8");
+    const ingress = new FileSlackIngressQueue(blockedRoot);
+    let acknowledged = false;
+    let dispatched = false;
+    await assert.rejects(
+      dispatchSlackEnvelopeDurably(
+        ingress,
+        {
+          processEvent: async () => {
+            dispatched = true;
+          },
+        },
+        {
+          ack: async () => {
+            acknowledged = true;
+          },
+          body: slackEnvelopeFixture(),
+        },
+      ),
+      /ENOTDIR|not a directory/u,
+    );
+    assert.equal(dispatched, false);
+    assert.equal(acknowledged, false);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Slack ingress leases recover after a crash without duplicating admission", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-"));
+  let now = new Date("2026-08-02T20:00:00.000Z");
+  try {
+    const ingress = new FileSlackIngressQueue(root, () => now);
+    assert.equal(await ingress.admitEnvelope(slackEnvelopeFixture()), true);
+    assert.equal(await ingress.admitEnvelope(slackEnvelopeFixture()), true);
+    const crashed = await ingress.claimNext("worker:crashed");
+    assert.ok(crashed);
+    assert.equal(await ingress.claimNext("worker:competing"), undefined);
+    now = new Date("2026-08-02T20:21:00.000Z");
+    const recovered = await ingress.claimNext("worker:recovered");
+    assert.ok(recovered);
+    assert.equal(recovered.recordRef, crashed.recordRef);
+    await ingress.complete(recovered);
+    assert.equal(await ingress.claimNext("worker:complete"), undefined);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Slack ingress keeps one durable client message binding across restarts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-"));
+  try {
+    const first = new FileSlackIngressQueue(root);
+    await first.bindMessage("request:one", "client-message-one", "1710000000.000002");
+    const restarted = new FileSlackIngressQueue(root);
+    assert.equal(
+      await restarted.readMessageBinding("request:one", "client-message-one"),
+      "1710000000.000002",
+    );
+    await restarted.bindMessage("request:one", "client-message-one", "1710000000.000002");
+    await assert.rejects(
+      restarted.bindMessage("request:one", "client-message-one", "1710000000.000003"),
+      /changed for an exact request/u,
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
 
 test("owned Slack threads accept human replies without another mention", () => {
   assert.deepEqual(
@@ -2384,6 +2489,91 @@ test("an ambiguous Slack post is recovered by deterministic client message ID", 
   }
 });
 
+test("a restart reuses the durable Slack message binding without searching or posting", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-binding-"));
+  try {
+    const store = new FileOutcomeStore(root, { log: () => undefined });
+    const ingressQueue = new FileSlackIngressQueue(root);
+    const host = createAssistantTurnHost(store);
+    const questions = new AssistantQuestionService(
+      host,
+      new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
+        apiKey: "bound-at-runtime",
+        baseUrl: "https://cerebro.example.com",
+        fetchImpl: async () => sseResponse([]),
+        tenantId: "writer",
+      }),
+    );
+    const event = {
+      botUserId: "U-BOT",
+      channel: "C-ONE",
+      eventTs: "1710000000.000001",
+      hasThreadContext: false,
+      teamId: "T-ONE",
+      text: "<@BOT> What changed?",
+      threadTs: "1710000000.000001",
+      userId: "U-ONE",
+    };
+    const requestKey = "T-ONE:C-ONE:1710000000.000001:1710000000.000001";
+    const expectedClientMessageId = `${createHash("sha256")
+      .update(`slack-client-message:slack-request-${createHash("sha256").update(requestKey).digest("hex")}`)
+      .digest("hex")
+      .slice(0, 8)}-`;
+    let updatedTs = "";
+    const client = {
+      chat: {
+        postMessage: async () => {
+          throw new Error("a durable binding must suppress a duplicate post");
+        },
+        update: async (input: { ts: string }) => {
+          updatedTs = input.ts;
+        },
+      },
+      conversations: {
+        replies: async () => {
+          throw new Error("a durable binding must suppress Slack history search");
+        },
+      },
+    };
+    const config = loadSlackRuntimeConfig({
+      CEREBRO_BASE_URL: "https://cerebro.example.com",
+      CEREBRO_READ_API_KEY: "bound-at-runtime",
+      CEREBRO_SLACK_APP_NAME: "Cerebro Development",
+      CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
+      CEREBRO_SLACK_PRODUCTION: "false",
+      CEREBRO_TENANT_ID: "writer",
+      SLACK_ALLOWED_TEAM_IDS: "T-ONE",
+      SLACK_APP_TOKEN: "bound-at-runtime",
+      SLACK_BOT_TOKEN: "bound-at-runtime",
+    });
+    const requestId = `slack-request-${createHash("sha256").update(requestKey).digest("hex")}`;
+    const clientMessageHex = createHash("sha256")
+      .update(`slack-client-message:${requestId}`)
+      .digest("hex")
+      .slice(0, 32);
+    const clientMessageId = `${clientMessageHex.slice(0, 8)}-${clientMessageHex.slice(8, 12)}-4${clientMessageHex.slice(13, 16)}-a${clientMessageHex.slice(17, 20)}-${clientMessageHex.slice(20, 32)}`;
+    assert.match(clientMessageId, new RegExp(`^${expectedClientMessageId}`, "u"));
+    await ingressQueue.bindMessage(requestKey, clientMessageId, "1710000000.000002");
+
+    assert.equal(
+      await handleSlackMention({
+        client,
+        config,
+        event,
+        host,
+        ingressQueue: new FileSlackIngressQueue(root),
+        outcomes: store,
+        questions,
+      }),
+      true,
+    );
+    assert.equal(updatedTs, "1710000000.000002");
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("a failed event retries across Slack hosts with one deterministic message ID", async () => {
   const roots = await Promise.all([
     mkdtemp(join(tmpdir(), "cerebro-slack-runtime-a-")),
@@ -2514,6 +2704,21 @@ test("outcome maintenance removes expired telemetry receipts", async () => {
     await rm(root, { force: true, recursive: true });
   }
 });
+
+function slackEnvelopeFixture(): Record<string, unknown> {
+  return {
+    authorizations: [{ user_id: "U-BOT" }],
+    event: {
+      channel: "C-ONE",
+      text: "<@U-BOT> What changed?",
+      ts: "1710000000.000001",
+      type: "app_mention",
+      user: "U-ONE",
+    },
+    team_id: "T-ONE",
+    type: "events_api",
+  };
+}
 
 function sseResponse(events: ReadonlyArray<readonly [string, unknown]>): Response {
   const body = events.map(([name, data]) =>

@@ -4997,6 +4997,11 @@ pub fn validate_grounded_draft(
             "visible response is empty, too large, or contains invalid control characters".into(),
         ));
     }
+    if !crate::presentation_markup_is_balanced(&draft.message) {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "visible response contains an unclosed code fence or emphasis span".into(),
+        ));
+    }
 
     let atoms = evidence_atoms(observations)?;
     let open_loops = draft
@@ -5875,6 +5880,9 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                 | "story"
         )
     });
+    if source_is_conceptual && !source_is_operational {
+        return false;
+    }
     body.split(['.', ';', '!', '?', '\n']).any(|clause| {
         let is_conditional = clause.trim_start().to_ascii_lowercase().starts_with("if ");
         if is_conditional {
@@ -5945,6 +5953,8 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                     | "green"
                     | "healthy"
                     | "live"
+                    | "online"
+                    | "operational"
                     | "ready"
             ) {
                 return false;
@@ -11576,6 +11586,8 @@ mod tests {
                 "do you like atlas?",
                 "i like atlas; atlas appears to have recovered.",
             ),
+            ("do you like atlas?", "i like atlas; atlas is online."),
+            ("do you like atlas?", "i like atlas; atlas is operational."),
         ] {
             let mut unsupported_session = synthesis_session.clone();
             unsupported_session.messages[0].text = request.into();
@@ -11600,6 +11612,10 @@ mod tests {
             (
                 "Why is Atlas healthy in this story?",
                 "Atlas is healthy in this story because the character learned to ask for help before the burden became isolating.",
+            ),
+            (
+                "Why did Atlas fail in this story?",
+                "Atlas failed in this story because he refused help.",
             ),
             (
                 "thoughts on conflict?",
@@ -11664,6 +11680,18 @@ mod tests {
                     panic!("conceptual prose was rejected: {supported}: {error}")
                 });
         }
+
+        let mut malformed_markup_session = synthesis_session.clone();
+        malformed_markup_session.messages[0].text = "Thoughts on conflict?".into();
+        candidate = accepted.clone();
+        candidate.claims[0].text =
+            "My thoughts: *conflict is useful because disagreement surfaces assumptions.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&malformed_markup_session, &candidate, &[], assessment,)
+                .is_err(),
+            "session delivery accepted unbalanced Slack emphasis"
+        );
 
         let mut follow_up_session = synthesis_session.clone();
         follow_up_session.messages.push(SessionMessage {
