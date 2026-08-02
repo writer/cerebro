@@ -1547,36 +1547,50 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         || normalized.contains(" as a name ")
         || normalized.contains(" name choice ");
     let generic_live_predicate = !conceptual_naming
-        && [
-            " green ",
-            " healthy ",
-            " ready ",
-            " working ",
-            " available ",
-            " landed ",
-            " passed ",
-            " failed ",
-            " completed ",
-            " shipped ",
-        ]
-        .iter()
-        .filter_map(|predicate| normalized.find(predicate))
-        .any(|predicate_index| {
-            [" is ", " are ", " has ", " have ", " did "]
-                .iter()
-                .filter_map(|verb| normalized.find(verb))
-                .any(|verb_index| verb_index < predicate_index)
-                || [
-                    " now ",
-                    " today ",
-                    " yesterday ",
-                    " currently ",
-                    " recently ",
-                    " already ",
-                    " latest ",
-                ]
-                .iter()
-                .any(|time| normalized.contains(time))
+        && words.iter().enumerate().any(|(predicate_index, word)| {
+            if !matches!(
+                *word,
+                "green"
+                    | "healthy"
+                    | "ready"
+                    | "working"
+                    | "available"
+                    | "landed"
+                    | "passed"
+                    | "failed"
+                    | "completed"
+                    | "shipped"
+            ) {
+                return false;
+            }
+            let has_subject_bound_verb =
+                words[..predicate_index]
+                    .iter()
+                    .enumerate()
+                    .any(|(verb_index, verb)| {
+                        if !matches!(*verb, "is" | "are" | "has" | "have" | "did") {
+                            return false;
+                        }
+                        let verb_has_subject_before = verb_index > 0
+                            && !matches!(
+                                words[verb_index - 1],
+                                "why" | "what" | "when" | "where" | "how" | "which"
+                            );
+                        let verb_has_subject_after = predicate_index > verb_index + 1;
+                        verb_has_subject_before || verb_has_subject_after
+                    });
+            let has_time_boundary = [
+                "now",
+                "today",
+                "yesterday",
+                "currently",
+                "recently",
+                "already",
+                "latest",
+            ]
+            .iter()
+            .any(|time| words.contains(time));
+            has_subject_bound_verb || has_time_boundary
         });
     let generic_live_ownership = normalized.contains(" who handles ")
         || normalized.contains(" who owns ")
@@ -2480,10 +2494,11 @@ pub fn validate_agent_turn_request(request: &AgentTurnRequest) -> Result<(), Age
                 .actor_ref
                 .as_ref()
                 .is_some_and(|value| !bounded_text(value))
-                || metadata
-                    .message_ref
-                    .as_ref()
-                    .is_some_and(|value| !bounded_text(value))
+                || metadata.message_ref.as_ref().is_some_and(|value| {
+                    !bounded_text(value)
+                        || value.starts_with("operator:")
+                        || value.starts_with("assistant:")
+                })
                 || metadata
                     .received_at
                     .as_ref()
@@ -3134,6 +3149,8 @@ mod grounding_tests {
             "Rewrite ‘Atlas has landed’ more concisely.",
             "Draft a response saying the rollout is ready.",
             "Why is Atlas Green a good codename?",
+            "Why is green a calming color?",
+            "Why is healthy conflict a useful concept?",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),

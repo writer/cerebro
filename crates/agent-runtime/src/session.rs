@@ -2745,7 +2745,7 @@ fn validate_turn_input(
                     "turn identity does not match the latest queued user message".into(),
                 ));
             }
-            if session
+            let accepted_lane = session
                 .events
                 .iter()
                 .rev()
@@ -2756,9 +2756,13 @@ fn validate_turn_input(
                         Some(*lane)
                     }
                     _ => None,
-                })
-                .is_some_and(|lane| Some(lane) != input.requested_lane)
-            {
+                });
+            let Some(accepted_lane) = accepted_lane else {
+                return Err(AgentRuntimeError::InvalidRequest(
+                    "operator turn requires a durable accepted route".into(),
+                ));
+            };
+            if Some(accepted_lane) != input.requested_lane {
                 return Err(AgentRuntimeError::InvalidRequest(
                     "turn route does not match the durable accepted route".into(),
                 ));
@@ -5828,7 +5832,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
         for pair in tokens.windows(2) {
             if matches!(
                 pair[0].as_str(),
-                "about" | "concerning" | "regarding" | "re"
+                "about" | "concerning" | "for" | "of" | "on" | "regarding" | "re"
             ) && pair[1].len() >= 3
             {
                 named_entities.insert(pair[1].clone());
@@ -5848,29 +5852,31 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                 .collect::<Vec<_>>()
                 .join(" ")
         );
-        let names_entity = named_entities
-            .iter()
-            .any(|entity| normalized.contains(&format!(" {entity} ")));
+        let operational_states = [
+            "remains",
+            "became",
+            "owns",
+            "owned",
+            "handles",
+            "live",
+            "recovered",
+            "shipped",
+            "healthy",
+            "failed",
+            "deployed",
+            "landed",
+            "approved",
+            "enabled",
+            "disabled",
+        ];
+        let names_entity = named_entities.iter().any(|entity| {
+            !operational_states.contains(&entity.as_str())
+                && normalized.contains(&format!(" {entity} "))
+        });
         let is_conditional = clause.trim_start().to_ascii_lowercase().starts_with("if ");
-        let asserts_operational_state = [
-            " remains ",
-            " became ",
-            " owns ",
-            " owned ",
-            " handles ",
-            " live ",
-            " recovered ",
-            " shipped ",
-            " healthy ",
-            " failed ",
-            " deployed ",
-            " landed ",
-            " approved ",
-            " enabled ",
-            " disabled ",
-        ]
-        .iter()
-        .any(|marker| normalized.contains(marker));
+        let asserts_operational_state = operational_states
+            .iter()
+            .any(|state| normalized.contains(&format!(" {state} ")));
         names_entity && asserts_operational_state && !is_conditional
     })
 }
@@ -8463,10 +8469,23 @@ mod tests {
         }
     }
 
-    fn session_for_request(request_id: &str) -> AgentSession {
+    fn session_for_request(request_id: &str, lane: ExecutionLane) -> AgentSession {
         let mut current = session();
         current.messages[0].message_ref = format!("operator:{request_id}");
-        current
+        apply_session_events(
+            &current,
+            &[SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: current.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:00:30Z".into(),
+                event: SessionEvent::RouteAccepted {
+                    request_id: request_id.into(),
+                    lane,
+                },
+            }],
+        )
+        .expect("the test operator request should have one durable accepted route")
     }
 
     #[test]
@@ -8481,6 +8500,7 @@ mod tests {
         let mut wrong_message = session();
         wrong_message.messages[0].message_ref = "operator:request:other".into();
         assert!(validate_turn_input(&wrong_message, &input).is_err());
+        assert!(validate_turn_input(&session(), &input).is_err());
 
         let current = apply_session_events(
             &session(),
@@ -10462,7 +10482,7 @@ mod tests {
         let outcome = run_session_turn(
             &model,
             &ConnectorTools,
-            session(),
+            session_for_request("request:1", ExecutionLane::Investigate),
             SessionTurnInput {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
@@ -10484,7 +10504,7 @@ mod tests {
         };
         assert_eq!(markdown, draft().message);
         assert_eq!(evidence_atom_refs, vec!["atom:status"]);
-        assert_eq!(events.first().map(|event| event.sequence), Some(1));
+        assert_eq!(events.first().map(|event| event.sequence), Some(2));
         assert!(
             events
                 .windows(2)
@@ -10535,7 +10555,7 @@ mod tests {
         let approval = run_session_turn(
             &unapproved_model,
             &unapproved_tools,
-            session_for_request(&input.request_id),
+            session_for_request(&input.request_id, ExecutionLane::Act),
             input.clone(),
         )
         .await
@@ -10555,7 +10575,7 @@ mod tests {
                 .is_empty()
         );
 
-        let mut authorized = session_for_request(&input.request_id);
+        let mut authorized = session_for_request(&input.request_id, ExecutionLane::Act);
         authorized.effect_authorizations.push(EffectAuthorization {
             approval_ref: format!(
                 "approval://agent-effect/{}",
@@ -11396,6 +11416,7 @@ mod tests {
                 "Given Atlas is live, consider rollout escalation.",
             ),
             ("what do you think about atlas?", "i think atlas recovered."),
+            ("thoughts on atlas?", "atlas recovered."),
         ] {
             let mut unsupported_session = synthesis_session.clone();
             unsupported_session.messages[0].text = request.into();
@@ -13595,7 +13616,7 @@ mod tests {
         let outcome = run_session_turn(
             &model,
             &ConnectorTools,
-            session(),
+            session_for_request("request:1", ExecutionLane::Investigate),
             SessionTurnInput {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
@@ -13635,7 +13656,7 @@ mod tests {
         let outcome = run_session_turn(
             &model,
             &ConnectorTools,
-            session(),
+            session_for_request("request:1", ExecutionLane::Investigate),
             SessionTurnInput {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
@@ -13655,7 +13676,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_new_operating_turn_must_refresh_prior_session_evidence() {
-        let mut continued = session_for_request("request:2");
+        let mut continued = session_for_request("request:2", ExecutionLane::Investigate);
         continued.events.push(SessionEventRecord {
             schema_version: AGENT_SESSION_EVENT_V2.into(),
             session_ref: continued.session_ref.clone(),
@@ -13772,7 +13793,7 @@ mod tests {
         let result = run_session_turn(
             &model,
             &ConnectorTools,
-            session(),
+            session_for_request("request:1", ExecutionLane::Investigate),
             SessionTurnInput {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
@@ -13800,7 +13821,8 @@ mod tests {
 
     #[tokio::test]
     async fn resumed_plan_must_match_the_durable_accepted_route() {
-        let initial = session_for_request("request:resumed-route-mismatch");
+        let mut initial = session();
+        initial.messages[0].message_ref = "operator:request:resumed-route-mismatch".into();
         let mut investigate_plan = plan();
         investigate_plan.lane = ExecutionLane::Investigate;
         let resumed = apply_session_events(
@@ -13859,7 +13881,8 @@ mod tests {
 
     #[tokio::test]
     async fn accepted_converse_lane_can_finish_with_named_conceptual_reasoning() {
-        let mut conversational = session_for_request("request:conceptual-converse");
+        let mut conversational =
+            session_for_request("request:conceptual-converse", ExecutionLane::Converse);
         conversational.messages[0].text =
             "Why is Atlas a useful example for explaining reversibility?".into();
         let message = "Atlas is a useful example because reversibility is about preserving a safe path back while you learn. The value is in the decision shape: keep options open while uncertainty shrinks.".to_string();
@@ -13920,7 +13943,8 @@ mod tests {
 
     #[tokio::test]
     async fn current_state_question_cannot_finish_without_a_plan_or_observation() {
-        let mut current = session_for_request("request:current-without-plan");
+        let mut current =
+            session_for_request("request:current-without-plan", ExecutionLane::Lookup);
         current.messages[0].text = "Is Atlas green?".into();
         let mut unsupported = draft();
         unsupported.message =
@@ -13970,7 +13994,10 @@ mod tests {
 
     #[tokio::test]
     async fn answered_operating_plan_requires_same_turn_evidence_even_after_classifier_miss() {
-        let mut current = session_for_request("request:operating-plan-without-observation");
+        let mut current = session_for_request(
+            "request:operating-plan-without-observation",
+            ExecutionLane::Investigate,
+        );
         current.messages[0].text = "Share your recommendation for connector alpha.".into();
         let mut decisions = VecDeque::from([SessionModelDecision::EstablishPlan { plan: plan() }]);
         decisions.extend(
@@ -14508,6 +14535,16 @@ mod tests {
                 session_ref: resumed_session.session_ref.clone(),
                 sequence: 1,
                 occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::RouteAccepted {
+                    request_id: "request:1".into(),
+                    lane: ExecutionLane::Investigate,
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: resumed_session.session_ref.clone(),
+                sequence: 2,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
                 event: SessionEvent::TurnStarted {
                     request_id: "request:1".into(),
                 },
@@ -14515,14 +14552,14 @@ mod tests {
             SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: resumed_session.session_ref.clone(),
-                sequence: 2,
+                sequence: 3,
                 occurred_at: "2026-07-31T00:01:01Z".into(),
                 event: SessionEvent::PlanEstablished { plan: plan() },
             },
             SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: resumed_session.session_ref.clone(),
-                sequence: 3,
+                sequence: 4,
                 occurred_at: "2026-07-31T00:01:02Z".into(),
                 event: SessionEvent::EffectStarted {
                     call: call.clone(),

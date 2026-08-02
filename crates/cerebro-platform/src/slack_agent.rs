@@ -73,6 +73,8 @@ const STARTUP_INITIAL_RETRY_DELAY: StdDuration = StdDuration::from_millis(500);
 const STARTUP_MAX_RETRY_DELAY: StdDuration = StdDuration::from_secs(5);
 const STARTUP_DEPENDENCY_ATTEMPTS: usize = 5;
 const STARTUP_DEPENDENCY_RETRY_DELAY: StdDuration = StdDuration::from_millis(250);
+const OPERATOR_ROUTE_TIMEOUT: StdDuration = StdDuration::from_secs(90);
+const OPERATOR_TURN_LEASE_SECONDS: i64 = 1_000;
 
 pub struct SlackAgentService {
     model: Arc<ConfiguredModel>,
@@ -475,7 +477,7 @@ impl SlackAgentService {
                 &session.session_ref,
                 &request.request_id,
                 &lease_owner,
-                1_000,
+                OPERATOR_TURN_LEASE_SECONDS,
             )
             .await?
         {
@@ -487,7 +489,18 @@ impl SlackAgentService {
             Some(lane) => lane,
             None => {
                 let route_request = route_request_from_session(&session, &request);
-                match resolve_request_lane(self.model.as_ref(), route_request).await {
+                let route = tokio::time::timeout(
+                    OPERATOR_ROUTE_TIMEOUT,
+                    resolve_request_lane(self.model.as_ref(), route_request),
+                )
+                .await
+                .map_err(|_| {
+                    AgentRuntimeError::ModelUnavailable(
+                        "semantic route decision deadline exceeded".into(),
+                    )
+                })
+                .and_then(|result| result);
+                match route {
                     Ok(lane) => lane,
                     Err(error) => {
                         return Err(release_turn_after_failure(
@@ -533,7 +546,14 @@ impl SlackAgentService {
                 },
             });
             if let Err(error) = store
-                .append(&session.session_ref, expected_sequence, &durable_events)
+                .append_operator_fenced(
+                    &session.session_ref,
+                    &request.request_id,
+                    &lease_owner,
+                    OPERATOR_TURN_LEASE_SECONDS,
+                    expected_sequence,
+                    &durable_events,
+                )
                 .await
             {
                 return Err(release_turn_after_failure(
@@ -563,6 +583,9 @@ impl SlackAgentService {
         let journal = PostgresTurnJournal::new(
             store.clone(),
             session.session_ref.clone(),
+            request.request_id.clone(),
+            lease_owner.clone(),
+            OPERATOR_TURN_LEASE_SECONDS,
             expected_sequence,
         );
         let outcome = tokio::time::timeout(
@@ -852,6 +875,7 @@ fn merge_recalled_memories(
 }
 
 fn new_session(request: &AgentTurnRequest) -> Result<AgentSession, AgentRuntimeError> {
+    validate_agent_turn_request(request)?;
     let identity = format!("{}:{}", request.tenant_id, request.thread_ref);
     let digest = Sha256::digest(identity.as_bytes())
         .iter()
@@ -999,7 +1023,7 @@ pub(super) fn session_outcome_to_turn(outcome: SessionTurnOutcome) -> AgentTurnO
     }
 }
 
-fn replay_completed_session_turn(
+pub(crate) fn replay_completed_session_turn(
     session: &AgentSession,
     request: &AgentTurnRequest,
 ) -> Result<Option<AgentTurnOutcome>, AgentRuntimeError> {
@@ -1091,7 +1115,7 @@ fn replay_completed_session_turn(
     }))
 }
 
-fn replay_pending_session_turn(
+pub(crate) fn replay_pending_session_turn(
     session: &AgentSession,
     request: &AgentTurnRequest,
 ) -> Result<AgentTurnOutcome, AgentRuntimeError> {
@@ -1149,26 +1173,17 @@ fn replay_pending_session_turn(
     ))
 }
 
-fn durable_operator_message<'a>(
+pub(crate) fn durable_operator_message<'a>(
     session: &'a AgentSession,
     request_id: &str,
 ) -> Option<&'a SessionMessage> {
     let message_ref = format!("operator:{request_id}");
-    session
-        .events
-        .iter()
-        .find_map(|event| match &event.event {
-            SessionEvent::UserMessageQueued { message } if message.message_ref == message_ref => {
-                Some(message)
-            }
-            _ => None,
-        })
-        .or_else(|| {
-            session
-                .messages
-                .iter()
-                .find(|message| message.message_ref == message_ref)
-        })
+    session.events.iter().find_map(|event| match &event.event {
+        SessionEvent::UserMessageQueued { message } if message.message_ref == message_ref => {
+            Some(message)
+        }
+        _ => None,
+    })
 }
 
 pub(crate) fn accepted_route_for_request(
@@ -1255,8 +1270,23 @@ pub(crate) fn route_request_from_session(
             )
         })
     });
-    let delivered_events = match (delivered_start, delivered_index) {
-        (Some(start), Some(end)) => &session.events[start..=end],
+    let delivered_end = match (delivered_index, delivered_request_id) {
+        (Some(delivery), Some(request_id)) => session.events[delivery..]
+            .iter()
+            .position(|event| {
+                matches!(
+                    &event.event,
+                    SessionEvent::TurnCompleted {
+                        request_id: completed_request_id,
+                        ..
+                    } if completed_request_id == request_id
+                )
+            })
+            .map_or(delivery, |offset| delivery + offset),
+        _ => 0,
+    };
+    let delivered_events = match delivered_start {
+        Some(start) => &session.events[start..=delivered_end],
         _ => &session.events[0..0],
     };
     let active_lane = delivered_events
@@ -5455,11 +5485,19 @@ mod tests {
         );
         assert_eq!(session.messages[0].received_at, "2026-08-02T17:59:00Z");
 
+        let mut reserved = request.clone();
+        reserved.history_metadata[0].message_ref =
+            Some(format!("operator:{}", reserved.request_id));
+        assert!(matches!(
+            new_session(&reserved),
+            Err(AgentRuntimeError::HistoryInvalid)
+        ));
+
         let mut oversized = request;
         oversized.history[0].content = "x".repeat(16 * 1024 + 1);
         assert!(matches!(
             new_session(&oversized),
-            Err(AgentRuntimeError::InvalidRequest(_))
+            Err(AgentRuntimeError::HistoryInvalid)
         ));
     }
 
@@ -5612,21 +5650,34 @@ mod tests {
     fn routing_context_comes_from_the_last_delivered_session_not_the_caller() {
         let prior = replay_request();
         let base = new_session(&prior).unwrap();
-        let mut session = apply_session_events(&base, &replay_events(&base, &prior, true)).unwrap();
+        let mut session =
+            apply_session_events(&base, &replay_events(&base, &prior, false)).unwrap();
         session = apply_session_events(
             &session,
-            &[SessionEventRecord {
-                schema_version: AGENT_SESSION_EVENT_V2.into(),
-                session_ref: session.session_ref.clone(),
-                sequence: 6,
-                occurred_at: prior.assessment_at.clone(),
-                event: SessionEvent::DeliveryRecorded {
-                    request_id: prior.request_id.clone(),
-                    transport: "slack".into(),
-                    delivery_ref: "slack-message:prior".into(),
-                    payload_digest: message_digest(&replay_draft(&base).message),
+            &[
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: 5,
+                    occurred_at: prior.assessment_at.clone(),
+                    event: SessionEvent::DeliveryRecorded {
+                        request_id: prior.request_id.clone(),
+                        transport: "slack".into(),
+                        delivery_ref: "slack-message:prior".into(),
+                        payload_digest: message_digest(&replay_draft(&base).message),
+                    },
                 },
-            }],
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: 6,
+                    occurred_at: prior.assessment_at.clone(),
+                    event: SessionEvent::TurnCompleted {
+                        request_id: prior.request_id.clone(),
+                        state: FinalState::Answered,
+                    },
+                },
+            ],
         )
         .unwrap();
 
@@ -6325,7 +6376,7 @@ mod tests {
     #[test]
     fn catalog_evidence_remains_fresh_for_the_turn() {
         let request = AgentTurnRequest {
-            schema_version: "v1".into(),
+            schema_version: cerebro_agent_runtime::AGENT_TURN_REQUEST_V1.into(),
             tenant_id: "tenant-1".into(),
             request_id: "request-1".into(),
             thread_ref: "thread-1".into(),
@@ -6464,7 +6515,7 @@ mod tests {
     #[test]
     fn recalled_threads_never_overflow_the_durable_memory_bound() {
         let request = AgentTurnRequest {
-            schema_version: "v1".into(),
+            schema_version: cerebro_agent_runtime::AGENT_TURN_REQUEST_V1.into(),
             tenant_id: "tenant:memory-bound".into(),
             request_id: "request:memory-bound".into(),
             thread_ref: "thread:memory-bound".into(),

@@ -33,8 +33,9 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 use super::slack_agent::{
     CAPABILITY_EXECUTE_PROPOSAL, CAPABILITY_EXECUTE_READ, ConfiguredModel,
     accepted_route_for_request, capability_describe_result, capability_descriptor_binding_digest,
-    capability_search_result, model_capability_catalog, parse_slack_history_search_input,
-    parse_slack_thread_read_input, route_request_from_session, validate_context_scope_ref,
+    capability_search_result, durable_operator_message, model_capability_catalog,
+    parse_slack_history_search_input, parse_slack_thread_read_input, replay_completed_session_turn,
+    replay_pending_session_turn, route_request_from_session, validate_context_scope_ref,
 };
 use super::slack_agent_evidence_gold;
 use super::slack_agent_session::{
@@ -2463,15 +2464,27 @@ async fn run_evaluation_session_turn(
 ) -> Result<(AgentTurnOutcome, DeliveryDisposition), AgentRuntimeError> {
     session.effect_authorizations = request.effect_authorizations.clone();
     let message_ref = format!("operator:{}", request.request_id);
-    let durable_message = session
-        .messages
-        .iter()
-        .find(|message| message.message_ref == message_ref);
+    let durable_message = durable_operator_message(session, &request.request_id);
     if durable_message.is_some_and(|message| {
         message.actor_ref != request.actor_ref || message.text != request.message
     }) {
         return Err(AgentRuntimeError::InvalidRequest(
             "request id was reused with a different actor or message".into(),
+        ));
+    }
+    let durable_message_exists = durable_message.is_some();
+    if durable_message_exists
+        && let Some(replayed) = replay_completed_session_turn(session, &request)?
+    {
+        return Ok((replayed, DeliveryDisposition::Visible));
+    }
+    if let Some(pending) = &session.pending_delivery {
+        if pending.request_id == request.request_id && durable_message_exists {
+            let delivery = pending.draft.delivery;
+            return Ok((replay_pending_session_turn(session, &request)?, delivery));
+        }
+        return Err(AgentRuntimeError::InvalidRequest(
+            "the previous response is still awaiting a delivery receipt".into(),
         ));
     }
     if durable_message.is_some()
@@ -2484,7 +2497,6 @@ async fn run_evaluation_session_turn(
             "retried request is not the latest queued operator message".into(),
         ));
     }
-    let durable_message_exists = durable_message.is_some();
     let accepted_route = accepted_route_for_request(session, &request.request_id);
     let requested_lane = match accepted_route {
         Some(lane) => lane,
