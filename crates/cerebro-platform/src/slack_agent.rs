@@ -27,12 +27,14 @@ use cerebro_agent_runtime::{
     ROUTER_MAX_TOKENS, RouteDecision, RouteTurn, ToolAuthorityClass, ToolDescriptor,
     ToolEffectClass, ToolResult, ToolResultState, run_turn,
     session::{
-        AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2, AgentSession, ClaimReviewTurn,
-        DeliveryDisposition, EvidenceAtomization, GroundedDraft, MAX_SESSION_MEMORIES,
-        MessageReview, MissionState, SessionAgentModel, SessionEvent, SessionEventRecord,
-        SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelTurn, SessionStatus,
-        SessionStore, SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
-        apply_session_events, evidence_atoms_from_json, message_digest, run_session_turn_recorded,
+        AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2, AgentSession,
+        ClaimReviewTurn, DeliveryDisposition, EvidenceAssertion, EvidenceAtomization,
+        GroundedDraft, MAX_SESSION_MEMORIES, MessageReview, MissionState,
+        SemanticEvidenceAtomization, SemanticEvidenceEnvelope, SessionAgentModel, SessionEvent,
+        SessionEventRecord, SessionMessage, SessionMessageRole, SessionModelDecision,
+        SessionModelTurn, SessionStatus, SessionStore, SessionTools, SessionTurnInput,
+        SessionTurnOutcome, SessionTurnTrigger, apply_session_events, evidence_atoms_from_json,
+        message_digest, run_session_turn_recorded, semantic_evidence_atoms,
     },
 };
 use cerebro_organizational_model::TenantId;
@@ -3094,16 +3096,41 @@ fn atomize_tool_result(
         })
         .map(str::to_owned);
     for evidence in &mut result.evidence {
-        evidence.atoms = evidence_atoms_from_json(EvidenceAtomization {
-            evidence_ref: &evidence.evidence_ref,
-            subject_ref: subject_ref.as_deref(),
-            data: &result.data,
-            state: result.state,
-            summary: &result.summary,
-            observed_at: &evidence.observed_at,
-            fresh_until: evidence.fresh_until.as_deref(),
-            complete: evidence.complete,
-        });
+        let semantic_assertions = evidence
+            .atoms
+            .iter()
+            .filter_map(|atom| match &atom.assertion {
+                EvidenceAssertion::Semantic { assertion } => Some(assertion.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        evidence.atoms = if semantic_assertions.is_empty() {
+            Vec::new()
+        } else {
+            semantic_evidence_atoms(SemanticEvidenceAtomization {
+                evidence_ref: &evidence.evidence_ref,
+                envelope: SemanticEvidenceEnvelope {
+                    schema_version: AGENT_SEMANTIC_EVIDENCE_V1.into(),
+                    assertions: semantic_assertions,
+                },
+                observed_at: &evidence.observed_at,
+                fresh_until: evidence.fresh_until.as_deref(),
+                complete: evidence.complete,
+            })
+            .unwrap_or_default()
+        };
+        evidence
+            .atoms
+            .extend(evidence_atoms_from_json(EvidenceAtomization {
+                evidence_ref: &evidence.evidence_ref,
+                subject_ref: subject_ref.as_deref(),
+                data: &result.data,
+                state: result.state,
+                summary: &result.summary,
+                observed_at: &evidence.observed_at,
+                fresh_until: evidence.fresh_until.as_deref(),
+                complete: evidence.complete,
+            }));
     }
     result
 }
@@ -4099,8 +4126,83 @@ fn required_env(name: &str) -> Result<String, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cerebro_agent_runtime::session::{
+        AuthorityBindingState, AuthorityDuty, SemanticEvidenceAssertion,
+    };
     use cerebro_organizational_store::SourceRuntimeCollectionObservation;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn generic_atomization_preserves_validated_semantic_atoms() {
+        let evidence_ref = "evidence://semantic/preserved";
+        let semantic_atoms = semantic_evidence_atoms(SemanticEvidenceAtomization {
+            evidence_ref,
+            envelope: SemanticEvidenceEnvelope {
+                schema_version: AGENT_SEMANTIC_EVIDENCE_V1.into(),
+                assertions: vec![SemanticEvidenceAssertion::AuthorityBinding {
+                    subject_ref: "finding:one".into(),
+                    duty: AuthorityDuty::Remediation,
+                    state: AuthorityBindingState::PresentIdentityNotReturned,
+                }],
+            },
+            observed_at: "2026-08-01T00:00:00Z",
+            fresh_until: Some("2026-08-01T00:05:00Z"),
+            complete: true,
+        })
+        .unwrap();
+        let mut producer_atoms = semantic_atoms.clone();
+        producer_atoms.push(cerebro_agent_runtime::session::EvidenceAtom {
+            atom_ref: "producer://unvalidated".into(),
+            subject_ref: Some("finding:one".into()),
+            assertion: EvidenceAssertion::LegacyStatement {
+                statement: "Unvalidated producer atom.".into(),
+            },
+            observed_at: "2026-08-01T00:00:00Z".into(),
+            fresh_until: Some("2026-08-01T00:05:00Z".into()),
+            complete: true,
+        });
+        let call = cerebro_agent_runtime::ToolCall {
+            call_id: "call:semantic".into(),
+            tool_id: "finding.read".into(),
+            purpose: "Read the finding.".into(),
+            input: json!({"subject_ref": "finding:one"}),
+        };
+        let result = atomize_tool_result(
+            &call,
+            ToolResult {
+                state: ToolResultState::Succeeded,
+                summary: "Read the finding.".into(),
+                data: json!({"owner_present": true}),
+                evidence: vec![EvidenceRecord {
+                    evidence_ref: evidence_ref.into(),
+                    statement: "The finding was observed.".into(),
+                    observed_at: "2026-08-01T00:00:00Z".into(),
+                    fresh_until: Some("2026-08-01T00:05:00Z".into()),
+                    complete: true,
+                    atoms: producer_atoms,
+                }],
+                blocker: None,
+            },
+        );
+
+        let atoms = &result.evidence[0].atoms;
+        assert_eq!(&atoms[..semantic_atoms.len()], semantic_atoms.as_slice());
+        assert!(
+            atoms
+                .iter()
+                .any(|atom| atom.atom_ref.ends_with("#tool-outcome"))
+        );
+        assert!(
+            atoms
+                .iter()
+                .any(|atom| atom.atom_ref.ends_with("#value:/owner_present"))
+        );
+        assert!(
+            !atoms
+                .iter()
+                .any(|atom| matches!(&atom.assertion, EvidenceAssertion::LegacyStatement { .. }))
+        );
+    }
 
     #[test]
     fn exact_delivery_receipt_replays_but_a_changed_receipt_conflicts() {

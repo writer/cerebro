@@ -6,6 +6,7 @@ use std::{
 use cerebro_agent_runtime::{
     AgentRuntimeError, AgentTurnRequest, EvidenceRecord, ToolAuthorityClass, ToolCall,
     ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
+    session::{SemanticEvidenceAtomization, SemanticEvidenceEnvelope, semantic_evidence_atoms},
 };
 use reqwest::{
     Client, Url,
@@ -27,6 +28,7 @@ const MAX_SCHEMA_BYTES: usize = 8 * 1024;
 const MAX_MCP_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_GRAPH_REASON_HISTORY_ITEMS: usize = 12;
 const MAX_GRAPH_REASON_HISTORY_ITEM_BYTES: usize = 4 * 1024;
+const SEMANTIC_EVIDENCE_META_KEY: &str = "cerebro.semantic_evidence";
 
 pub struct McpAgentTools {
     client: Client,
@@ -195,6 +197,7 @@ impl McpAgentTools {
             .get("isError")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        let semantic_envelope = semantic_evidence_envelope(&result)?;
         let data = result
             .get("structuredContent")
             .cloned()
@@ -212,6 +215,7 @@ impl McpAgentTools {
                 &tool.mcp_name,
                 &data,
                 complete,
+                semantic_envelope.as_ref(),
             )?]
         };
         Ok(ToolResult {
@@ -564,15 +568,22 @@ fn mcp_evidence(
     tool_name: &str,
     data: &Value,
     complete: bool,
+    semantic_envelope: Option<&SemanticEvidenceEnvelope>,
 ) -> Result<EvidenceRecord, AgentRuntimeError> {
     let observed_at = OffsetDateTime::now_utc();
     let fresh_until = observed_at
         .checked_add(Duration::minutes(5))
         .ok_or_else(|| AgentRuntimeError::InvalidToolCall("evidence time overflow".into()))?;
-    let response_digest = hex_digest(&Sha256::digest(
+    let response_bytes = if let Some(semantic_envelope) = semantic_envelope {
+        serde_json::to_vec(&json!({
+            "data": data,
+            "semantic_evidence": semantic_envelope,
+        }))
+    } else {
         serde_json::to_vec(data)
-            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
-    ));
+    }
+    .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+    let response_digest = hex_digest(&Sha256::digest(response_bytes));
     let identity = format!(
         "{}:{}:{}:{}:{response_digest}",
         request.tenant_id,
@@ -581,22 +592,60 @@ fn mcp_evidence(
         call.input_digest()
     );
     let digest = hex_digest(&Sha256::digest(identity.as_bytes()));
-    Ok(EvidenceRecord {
+    let observed_at = observed_at
+        .format(&Rfc3339)
+        .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+    let fresh_until = fresh_until
+        .format(&Rfc3339)
+        .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+    let mut evidence = EvidenceRecord {
         evidence_ref: format!("evidence://mcp/{tool_name}/{digest}"),
         statement: format!(
             "The tenant-scoped MCP tool {tool_name} returned this bounded result; complete={complete}; response_digest=sha256:{response_digest}."
         ),
-        observed_at: observed_at
-            .format(&Rfc3339)
-            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
-        fresh_until: Some(
-            fresh_until
-                .format(&Rfc3339)
-                .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
-        ),
+        observed_at,
+        fresh_until: Some(fresh_until),
         complete,
         atoms: Vec::new(),
-    })
+    };
+    if let Some(envelope) = semantic_envelope {
+        evidence.atoms = semantic_evidence_atoms(SemanticEvidenceAtomization {
+            evidence_ref: &evidence.evidence_ref,
+            envelope: envelope.clone(),
+            observed_at: &evidence.observed_at,
+            fresh_until: evidence.fresh_until.as_deref(),
+            complete,
+        })?;
+    }
+    Ok(evidence)
+}
+
+fn semantic_evidence_envelope(
+    result: &Value,
+) -> Result<Option<SemanticEvidenceEnvelope>, AgentRuntimeError> {
+    let Some(value) = result
+        .get("_meta")
+        .and_then(|meta| meta.get(SEMANTIC_EVIDENCE_META_KEY))
+    else {
+        return Ok(None);
+    };
+    let envelope: SemanticEvidenceEnvelope =
+        serde_json::from_value(value.clone()).map_err(|error| {
+            AgentRuntimeError::InvalidToolCall(format!(
+                "MCP semantic evidence envelope is invalid: {error}"
+            ))
+        })?;
+    let canonical = serde_json::to_value(&envelope).map_err(|error| {
+        AgentRuntimeError::InvalidToolCall(format!(
+            "MCP semantic evidence envelope is invalid: {error}"
+        ))
+    })?;
+    if canonical != *value {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "MCP semantic evidence envelope contains unknown or non-canonical fields".into(),
+        ));
+    }
+    Ok(Some(envelope))
 }
 
 fn configured_tool_names(name: &str) -> Result<BTreeSet<String>, String> {
@@ -667,7 +716,145 @@ fn hex_digest(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use axum::{Json, Router, routing::post};
-    use cerebro_agent_runtime::{ConversationMessage, ConversationRole};
+    use cerebro_agent_runtime::{
+        ConversationMessage, ConversationRole,
+        session::{
+            AGENT_SEMANTIC_EVIDENCE_V1, AuthorityBindingState, AuthorityDuty, EvidenceAssertion,
+            SemanticEvidenceAssertion,
+        },
+    };
+
+    #[test]
+    fn parses_and_receipt_binds_versioned_semantic_evidence_metadata() {
+        let result = json!({
+            "structuredContent": {"owner_present": true},
+            "_meta": {
+                (SEMANTIC_EVIDENCE_META_KEY): {
+                    "schema_version": AGENT_SEMANTIC_EVIDENCE_V1,
+                    "assertions": [{
+                        "kind": "authority_binding",
+                        "subject_ref": "finding:one",
+                        "duty": "remediation",
+                        "state": {"state": "present_identity_not_returned"}
+                    }]
+                }
+            }
+        });
+        let envelope = semantic_evidence_envelope(&result).unwrap().unwrap();
+        let request = turn_request();
+        let call = ToolCall {
+            call_id: "semantic-call".into(),
+            tool_id: "mcp.cerebro.finding.read".into(),
+            purpose: "Read the finding authority.".into(),
+            input: json!({"subject_ref": "finding:one"}),
+        };
+        let evidence = mcp_evidence(
+            &request,
+            &call,
+            "cerebro.finding.read",
+            &result["structuredContent"],
+            true,
+            Some(&envelope),
+        )
+        .unwrap();
+
+        assert_eq!(evidence.atoms.len(), 1);
+        assert_eq!(
+            evidence.atoms[0].subject_ref.as_deref(),
+            Some("finding:one")
+        );
+        assert!(matches!(
+            &evidence.atoms[0].assertion,
+            EvidenceAssertion::Semantic {
+                assertion: SemanticEvidenceAssertion::AuthorityBinding {
+                    duty: AuthorityDuty::Remediation,
+                    state: AuthorityBindingState::PresentIdentityNotReturned,
+                    ..
+                }
+            }
+        ));
+    }
+
+    #[test]
+    fn preserves_pre_semantic_mcp_response_digests() {
+        let request = turn_request();
+        let call = ToolCall {
+            call_id: "legacy-digest-call".into(),
+            tool_id: "mcp.cerebro.finding.read".into(),
+            purpose: "Read the finding.".into(),
+            input: json!({"subject_ref": "finding:one"}),
+        };
+        let data = json!({"owner_present": false});
+        let expected_digest = hex_digest(&Sha256::digest(serde_json::to_vec(&data).unwrap()));
+
+        let evidence =
+            mcp_evidence(&request, &call, "cerebro.finding.read", &data, true, None).unwrap();
+
+        assert!(
+            evidence
+                .statement
+                .contains(&format!("response_digest=sha256:{expected_digest}"))
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_or_unsupported_semantic_evidence_metadata() {
+        let malformed = json!({
+            "_meta": {
+                (SEMANTIC_EVIDENCE_META_KEY): {
+                    "schema_version": AGENT_SEMANTIC_EVIDENCE_V1,
+                    "assertions": [],
+                    "unexpected": true
+                }
+            }
+        });
+        assert!(semantic_evidence_envelope(&malformed).is_err());
+
+        let malformed_assertion = json!({
+            "_meta": {
+                (SEMANTIC_EVIDENCE_META_KEY): {
+                    "schema_version": AGENT_SEMANTIC_EVIDENCE_V1,
+                    "assertions": [{
+                        "kind": "authority_binding",
+                        "subject_ref": "finding:one",
+                        "duty": "remediation",
+                        "state": {
+                            "state": "not_observed",
+                            "unexpected": true
+                        }
+                    }]
+                }
+            }
+        });
+        assert!(semantic_evidence_envelope(&malformed_assertion).is_err());
+
+        let unsupported = SemanticEvidenceEnvelope {
+            schema_version: "agent-semantic-evidence/v2".into(),
+            assertions: vec![SemanticEvidenceAssertion::AuthorityBinding {
+                subject_ref: "finding:one".into(),
+                duty: AuthorityDuty::Remediation,
+                state: AuthorityBindingState::NotObserved,
+            }],
+        };
+        let request = turn_request();
+        let call = ToolCall {
+            call_id: "unsupported-semantic-call".into(),
+            tool_id: "mcp.cerebro.finding.read".into(),
+            purpose: "Read the finding authority.".into(),
+            input: json!({"subject_ref": "finding:one"}),
+        };
+        assert!(
+            mcp_evidence(
+                &request,
+                &call,
+                "cerebro.finding.read",
+                &json!({"owner_present": false}),
+                true,
+                Some(&unsupported),
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn binds_read_tools_and_omits_unapproved_write_tools() {
