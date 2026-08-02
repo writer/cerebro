@@ -233,10 +233,9 @@ fn render_inline_markup(
                 .take_while(|candidate| *candidate == character)
                 .count();
             if matches!(run, 2 | 3) {
-                let previous_is_word = value[..cursor]
-                    .chars()
-                    .next_back()
-                    .is_some_and(char::is_alphanumeric);
+                let previous = value[..cursor].chars().next_back();
+                let previous_is_word = previous.is_some_and(char::is_alphanumeric);
+                let previous_can_close = previous.is_some_and(|value| !value.is_whitespace());
                 let run_bytes = run * character.len_utf8();
                 let next_is_word = value[cursor + run_bytes..]
                     .chars()
@@ -250,7 +249,7 @@ fn render_inline_markup(
                 if !*emphasis_open && !previous_is_word && next_is_word {
                     output.push('*');
                     *emphasis_open = true;
-                } else if *emphasis_open && previous_is_word && !next_is_word {
+                } else if *emphasis_open && previous_can_close && !next_is_word {
                     output.push('*');
                     *emphasis_open = false;
                 } else {
@@ -296,17 +295,16 @@ fn has_unclosed_single_emphasis(value: &str, delimiter: char) -> bool {
                 .take_while(|character| *character == delimiter)
                 .count();
             if run == 1 {
-                let previous_is_word = value[..cursor]
-                    .chars()
-                    .next_back()
-                    .is_some_and(char::is_alphanumeric);
+                let previous = value[..cursor].chars().next_back();
+                let previous_is_word = previous.is_some_and(char::is_alphanumeric);
+                let previous_can_close = previous.is_some_and(|value| !value.is_whitespace());
                 let next_is_word = remainder[delimiter.len_utf8()..]
                     .chars()
                     .next()
                     .is_some_and(char::is_alphanumeric);
                 if !open && !previous_is_word && next_is_word {
                     open = true;
-                } else if open && previous_is_word && !next_is_word {
+                } else if open && previous_can_close && !next_is_word {
                     open = false;
                 }
             }
@@ -357,14 +355,14 @@ fn raw_url_emphasis_boundary(
             index += 1;
         }
         let run_len = index - run_start;
-        let previous_is_word = value[..start + run_start]
+        let previous_can_close = value[..start + run_start]
             .chars()
             .next_back()
-            .is_some_and(char::is_alphanumeric);
+            .is_some_and(|character| !character.is_whitespace());
         let suffix_is_punctuation = value[start + index..end]
             .chars()
             .all(|character| !character.is_alphanumeric() && !character.is_whitespace());
-        if allowed_runs.contains(&run_len) && previous_is_word && suffix_is_punctuation {
+        if allowed_runs.contains(&run_len) && previous_can_close && suffix_is_punctuation {
             boundary = Some(start + run_start);
         }
     }
@@ -638,6 +636,10 @@ mod tests {
             "**See https://example.com**\"",
             "***See https://example.com***’",
             "***See https://example.com***…",
+            "**See https://example.com/**",
+            "**See https://example.com/value=**",
+            "***See https://example.com/value&***",
+            "**See this.**",
         ] {
             let rendered = render_slack_mrkdwn(input);
             assert_eq!(render_slack_mrkdwn(&rendered), rendered, "{input}");
