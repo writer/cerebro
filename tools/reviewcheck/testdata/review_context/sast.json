@@ -4,7 +4,7 @@
   "head": "head",
   "changed_files": [
     "internal/graphagent/ask.go",
-    ".github/workflows/droid-review.yml"
+    ".github/workflows/deterministic-review.yml"
   ],
   "changed_go_packages": ["./internal/graphagent"],
   "blocking_findings": [],

@@ -632,7 +632,7 @@ jobs:
               "- Prefer existing Go, Makefile, source connector, graph, findings, and SDK patterns.",
               "- Add or update tests for behavioral changes and for every review finding that can regress.",
               "- Run focused tests first, then run `make verify` when feasible.",
-              "- Run `make droid-review-sast`, `make droid-ci-context`, and `make droid-review-context` when review context matters; use them as advisory inputs that must be validated against changed code.",
+              "- Run `make deterministic-review` before relying on manual task context; use its structured invariant report as pass-scoped evidence.",
               "- For fix mode, run `make droid-feedback DROID_PR=<pr-number>` to classify active Droid comments and use the structured JSON as pass-scoped input.",
               "- Keep PRs small: split business-logic fixes from static-analyzer/tooling rewrites when possible.",
               "- Preserve known invariants from `.factory/skills/review-guidelines/SKILL.md` and cite the local command that validates them.",

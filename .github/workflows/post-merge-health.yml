@@ -1,4 +1,4 @@
-name: Droid Post-Merge Health
+name: Post-Merge Health
 
 on:
   push:
@@ -13,9 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      checks: read
-      pull-requests: read
-      issues: write
+      actions: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,18 +23,18 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          DROID_POST_MERGE_HEAD: ${{ github.sha }}
-          DROID_POST_MERGE_STRICT: "true"
-          DROID_POST_MERGE_OUT: tmp/droid-post-merge-health.md
-          DROID_POST_MERGE_JSON_OUT: tmp/droid-post-merge-health.json
+          POST_MERGE_HEAD: ${{ github.sha }}
+          POST_MERGE_STRICT: "true"
+          POST_MERGE_OUT: tmp/post-merge-health.md
+          POST_MERGE_JSON_OUT: tmp/post-merge-health.json
         run: |
           set -euo pipefail
-          make droid-post-merge-health
-          if [ -s "${DROID_POST_MERGE_OUT}" ]; then
+          make post-merge-health
+          if [ -s "${POST_MERGE_OUT}" ]; then
             {
-              echo "### Droid Post-Merge Health"
+              echo "### Post-Merge Health"
               echo
-              sed 's/^/    /' "${DROID_POST_MERGE_OUT}"
+              sed 's/^/    /' "${POST_MERGE_OUT}"
             } >> "${GITHUB_STEP_SUMMARY}"
           fi
       - name: Upload post-merge health artifact
@@ -44,7 +42,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: droid-post-merge-health
+          name: post-merge-health
           path: |
-            tmp/droid-post-merge-health.md
-            tmp/droid-post-merge-health.json
+            tmp/post-merge-health.md
+            tmp/post-merge-health.json

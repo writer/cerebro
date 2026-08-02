@@ -11,7 +11,7 @@
       "name": "workflow-permissions",
       "path_globs": [".github/workflows/**"],
       "invariants": ["workflow"],
-      "commands": ["make droid-review-sast"],
+      "commands": ["make deterministic-review"],
       "required_evidence": ["permissions"]
     }
   ]

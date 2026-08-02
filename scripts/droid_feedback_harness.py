@@ -107,8 +107,8 @@ def suggested_checks(comment: DroidComment) -> list[str]:
     text = f"{comment.path}\n{comment.body}".lower()
     checks: list[str] = []
     if "io.readall" in text or "limitreader" in text or "body read" in text:
-        checks.append("make droid-review-preflight")
-        checks.append("go test ./tools/droidreview/...")
+        checks.append("make review-invariants")
+        checks.append("go test ./tools/reviewcheck/...")
         checks.append("go test ./tools/archtests -run '^TestProductionBodyReadsAreBounded$' -count=1 -v")
     if "cypher" in text or "graphagent" in text or "tenant" in text:
         checks.append("go test ./internal/graphagent -count=1")

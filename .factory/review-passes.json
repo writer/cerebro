@@ -109,7 +109,7 @@
       ],
       "commands": [
         "python3 -m unittest discover -s scripts/tests",
-        "make droid-review-preflight"
+        "make review-invariants"
       ],
       "required_evidence": [
         "script unit tests",
