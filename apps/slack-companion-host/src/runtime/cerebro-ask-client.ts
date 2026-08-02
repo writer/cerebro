@@ -50,6 +50,7 @@ export interface RustPendingWakeDelivery {
 export interface AgentApprovalRequest {
   approvalRef: string;
   inputDigest: string;
+  inputPreview?: string;
   purpose: string;
   toolId: string;
 }
@@ -202,11 +203,18 @@ export class CerebroAskClient {
           "",
           outcome.request.purpose,
           "",
+          `Exact input (${outcome.request.input_digest}):`,
+          "```",
+          safeApprovalPreview(outcome.request.input_preview),
+          "```",
+          "Sensitive fields are redacted here but remain included in the approved digest.",
+          "",
           `To run the exact ${outcome.request.tool_id} operation, reply \`approve ${approvalCode}\`.`,
         ].join("\n"),
         pendingApproval: {
           approvalRef: outcome.request.approval_ref,
           inputDigest: outcome.request.input_digest,
+          inputPreview: outcome.request.input_preview,
           purpose: outcome.request.purpose,
           toolId: outcome.request.tool_id,
         },
@@ -508,6 +516,7 @@ type RustAgentTurnOutcome =
       request: {
         approval_ref: string;
         input_digest: string;
+        input_preview: string;
         purpose: string;
         tool_id: string;
       };
@@ -645,6 +654,14 @@ export function approvalCommandCode(approvalRef: string): string {
     throw new CerebroAskError("unavailable", "The Rust agent returned an invalid approval identity.");
   }
   return suffix.slice(0, 12);
+}
+
+function safeApprovalPreview(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("`", "\\u0060");
 }
 
 interface RustWorkingState {
