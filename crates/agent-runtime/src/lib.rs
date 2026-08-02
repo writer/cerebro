@@ -1543,37 +1543,41 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         || (normalized.contains(" collection ")
             && (normalized.contains(" is working ")
                 || normalized.contains(" whether collection ")));
-    let generic_live_predicate = [
-        " green ",
-        " healthy ",
-        " ready ",
-        " working ",
-        " available ",
-        " landed ",
-        " passed ",
-        " failed ",
-        " completed ",
-        " shipped ",
-    ]
-    .iter()
-    .filter_map(|predicate| normalized.find(predicate))
-    .any(|predicate_index| {
-        [" is ", " are ", " has ", " have ", " did "]
-            .iter()
-            .filter_map(|verb| normalized.find(verb))
-            .any(|verb_index| verb_index < predicate_index)
-            || [
-                " now ",
-                " today ",
-                " yesterday ",
-                " currently ",
-                " recently ",
-                " already ",
-                " latest ",
-            ]
-            .iter()
-            .any(|time| normalized.contains(time))
-    });
+    let conceptual_naming = normalized.contains(" codename ")
+        || normalized.contains(" as a name ")
+        || normalized.contains(" name choice ");
+    let generic_live_predicate = !conceptual_naming
+        && [
+            " green ",
+            " healthy ",
+            " ready ",
+            " working ",
+            " available ",
+            " landed ",
+            " passed ",
+            " failed ",
+            " completed ",
+            " shipped ",
+        ]
+        .iter()
+        .filter_map(|predicate| normalized.find(predicate))
+        .any(|predicate_index| {
+            [" is ", " are ", " has ", " have ", " did "]
+                .iter()
+                .filter_map(|verb| normalized.find(verb))
+                .any(|verb_index| verb_index < predicate_index)
+                || [
+                    " now ",
+                    " today ",
+                    " yesterday ",
+                    " currently ",
+                    " recently ",
+                    " already ",
+                    " latest ",
+                ]
+                .iter()
+                .any(|time| normalized.contains(time))
+        });
     let generic_live_ownership = normalized.contains(" who handles ")
         || normalized.contains(" who owns ")
         || normalized.contains(" owns remediation ")
@@ -3129,6 +3133,7 @@ mod grounding_tests {
             "Explain why healthy evidence is not necessarily verified evidence.",
             "Rewrite ‘Atlas has landed’ more concisely.",
             "Draft a response saying the rollout is ready.",
+            "Why is Atlas Green a good codename?",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),

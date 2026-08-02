@@ -478,7 +478,8 @@ impl PostgresAgentSessionStore {
         request_id: &str,
         lease_owner: &str,
     ) -> Result<(), AgentRuntimeError> {
-        self.client
+        let changed = self
+            .client
             .lock()
             .await
             .execute(
@@ -487,6 +488,11 @@ impl PostgresAgentSessionStore {
             )
             .await
             .map_err(store_unavailable)?;
+        if changed != 1 {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "turn lease release did not match the exact active request and owner".into(),
+            ));
+        }
         Ok(())
     }
 

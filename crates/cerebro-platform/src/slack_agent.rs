@@ -454,6 +454,17 @@ impl SlackAgentService {
                 "the previous response is still awaiting a Slack delivery receipt".into(),
             ));
         }
+        if message_exists
+            && session
+                .messages
+                .last()
+                .is_none_or(|message| message.message_ref != message_ref)
+        {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "retried request is not the latest queued operator message".into(),
+            ));
+        }
+        let accepted_route = accepted_route_for_request(&session, &request.request_id);
         let lease_owner = format!(
             "rust-slack-agent:{}:{}",
             request.request_id,
@@ -472,56 +483,82 @@ impl SlackAgentService {
                 "another turn currently owns this Slack session".into(),
             ));
         }
-        if !message_exists {
+        let requested_lane = match accepted_route {
+            Some(lane) => lane,
+            None => {
+                let route_request = route_request_from_session(&session, &request);
+                match resolve_request_lane(self.model.as_ref(), route_request).await {
+                    Ok(lane) => lane,
+                    Err(error) => {
+                        return Err(release_turn_after_failure(
+                            store,
+                            &session.session_ref,
+                            &request.request_id,
+                            &lease_owner,
+                            error,
+                        )
+                        .await);
+                    }
+                }
+            }
+        };
+        if !message_exists || accepted_route.is_none() {
             let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
-            let event = SessionEventRecord {
+            let mut durable_events = Vec::new();
+            if !message_exists {
+                durable_events.push(SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: session.session_ref.clone(),
+                    sequence: expected_sequence + 1,
+                    occurred_at: request.assessment_at.clone(),
+                    event: SessionEvent::UserMessageQueued {
+                        message: SessionMessage {
+                            role: SessionMessageRole::User,
+                            message_ref,
+                            actor_ref: request.actor_ref.clone(),
+                            text: request.message.clone(),
+                            received_at: request.assessment_at.clone(),
+                        },
+                    },
+                });
+            }
+            durable_events.push(SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: session.session_ref.clone(),
-                sequence: expected_sequence + 1,
+                sequence: expected_sequence + durable_events.len() as u64 + 1,
                 occurred_at: request.assessment_at.clone(),
-                event: SessionEvent::UserMessageQueued {
-                    message: SessionMessage {
-                        role: SessionMessageRole::User,
-                        message_ref,
-                        actor_ref: request.actor_ref.clone(),
-                        text: request.message.clone(),
-                        received_at: request.assessment_at.clone(),
-                    },
+                event: SessionEvent::RouteAccepted {
+                    request_id: request.request_id.clone(),
+                    lane: requested_lane,
                 },
-            };
+            });
             if let Err(error) = store
-                .append(
-                    &session.session_ref,
-                    expected_sequence,
-                    std::slice::from_ref(&event),
-                )
+                .append(&session.session_ref, expected_sequence, &durable_events)
                 .await
             {
-                let _ = store
-                    .release_turn(&session.session_ref, &request.request_id, &lease_owner)
-                    .await;
-                return Err(error);
+                return Err(release_turn_after_failure(
+                    store,
+                    &session.session_ref,
+                    &request.request_id,
+                    &lease_owner,
+                    error,
+                )
+                .await);
             }
-            session = match apply_session_events(&session, &[event]) {
+            session = match apply_session_events(&session, &durable_events) {
                 Ok(session) => session,
                 Err(error) => {
-                    let _ = store
-                        .release_turn(&session.session_ref, &request.request_id, &lease_owner)
-                        .await;
-                    return Err(error);
+                    return Err(release_turn_after_failure(
+                        store,
+                        &session.session_ref,
+                        &request.request_id,
+                        &lease_owner,
+                        error,
+                    )
+                    .await);
                 }
             };
         }
-        let requested_lane = match resolve_request_lane(self.model.as_ref(), request.clone()).await
-        {
-            Ok(lane) => lane,
-            Err(error) => {
-                let _ = store
-                    .release_turn(&session.session_ref, &request.request_id, &lease_owner)
-                    .await;
-                return Err(error);
-            }
-        };
         let expected_sequence = session.events.last().map_or(0, |event| event.sequence);
         let journal = PostgresTurnJournal::new(
             store.clone(),
@@ -552,7 +589,10 @@ impl SlackAgentService {
             .await;
         match (outcome, release) {
             (Ok(outcome), Ok(())) => Ok(session_outcome_to_turn(outcome)),
-            (Err(error), _) => Err(error),
+            (Err(error), Ok(())) => Err(error),
+            (Err(error), Err(release_error)) => {
+                Err(combine_turn_release_error(error, release_error))
+            }
             (Ok(_), Err(error)) => Err(error),
         }
     }
@@ -996,7 +1036,17 @@ fn replay_completed_session_turn(
         .ok_or_else(|| {
             AgentRuntimeError::InvalidRequest("completed turn has no start event".into())
         })?;
-    let events = session.events[started_index..=completed_index].to_vec();
+    let route_index = session.events[..=started_index]
+        .iter()
+        .rposition(|event| {
+            matches!(
+                &event.event,
+                SessionEvent::RouteAccepted { request_id, .. }
+                    if request_id == &request.request_id
+            )
+        })
+        .unwrap_or(started_index);
+    let events = session.events[route_index..=completed_index].to_vec();
     let draft = events
         .iter()
         .rev()
@@ -1073,7 +1123,17 @@ fn replay_pending_session_turn(
         .ok_or_else(|| {
             AgentRuntimeError::InvalidRequest("pending turn has no start event".into())
         })?;
-    let events = session.events[started_index..].to_vec();
+    let route_index = session.events[..=started_index]
+        .iter()
+        .rposition(|event| {
+            matches!(
+                &event.event,
+                SessionEvent::RouteAccepted { request_id, .. }
+                    if request_id == &request.request_id
+            )
+        })
+        .unwrap_or(started_index);
+    let events = session.events[route_index..].to_vec();
     let lane = event_lane(&events);
     let evidence_atom_refs = draft_evidence_refs(&pending.draft);
     Ok(session_outcome_to_turn(
@@ -1109,6 +1169,157 @@ fn durable_operator_message<'a>(
                 .iter()
                 .find(|message| message.message_ref == message_ref)
         })
+}
+
+pub(crate) fn accepted_route_for_request(
+    session: &AgentSession,
+    request_id: &str,
+) -> Option<ExecutionLane> {
+    session
+        .events
+        .iter()
+        .rev()
+        .find_map(|event| match &event.event {
+            SessionEvent::RouteAccepted {
+                request_id: accepted_request_id,
+                lane,
+            } if accepted_request_id == request_id => Some(*lane),
+            _ => None,
+        })
+}
+
+fn combine_turn_release_error(
+    primary: AgentRuntimeError,
+    release: AgentRuntimeError,
+) -> AgentRuntimeError {
+    AgentRuntimeError::ModelUnavailable(format!(
+        "{primary}; the exact turn lease also failed to release: {release}"
+    ))
+}
+
+async fn release_turn_after_failure(
+    store: &PostgresAgentSessionStore,
+    session_ref: &str,
+    request_id: &str,
+    lease_owner: &str,
+    primary: AgentRuntimeError,
+) -> AgentRuntimeError {
+    match store
+        .release_turn(session_ref, request_id, lease_owner)
+        .await
+    {
+        Ok(()) => primary,
+        Err(release) => combine_turn_release_error(primary, release),
+    }
+}
+
+pub(crate) fn route_request_from_session(
+    session: &AgentSession,
+    request: &AgentTurnRequest,
+) -> AgentTurnRequest {
+    let current_message_ref = format!("operator:{}", request.request_id);
+    let history = session
+        .messages
+        .iter()
+        .filter(|message| message.message_ref != current_message_ref)
+        .map(|message| cerebro_agent_runtime::ConversationMessage {
+            role: match message.role {
+                SessionMessageRole::Assistant => cerebro_agent_runtime::ConversationRole::Assistant,
+                SessionMessageRole::User => cerebro_agent_runtime::ConversationRole::User,
+            },
+            content: message.text.clone(),
+        })
+        .collect();
+    let has_delivered_turn = session
+        .events
+        .iter()
+        .any(|event| matches!(&event.event, SessionEvent::DeliveryRecorded { .. }));
+    let delivered_index = session
+        .events
+        .iter()
+        .rposition(|event| matches!(&event.event, SessionEvent::DeliveryRecorded { .. }));
+    let delivered_request_id =
+        delivered_index.and_then(|index| match &session.events[index].event {
+            SessionEvent::DeliveryRecorded { request_id, .. } => Some(request_id.as_str()),
+            _ => None,
+        });
+    let delivered_start = delivered_index.and_then(|end| {
+        let request_id = delivered_request_id?;
+        session.events[..=end].iter().rposition(|event| {
+            matches!(
+                &event.event,
+                SessionEvent::RouteAccepted {
+                    request_id: accepted_request_id,
+                    ..
+                } if accepted_request_id == request_id
+            )
+        })
+    });
+    let delivered_events = match (delivered_start, delivered_index) {
+        (Some(start), Some(end)) => &session.events[start..=end],
+        _ => &session.events[0..0],
+    };
+    let active_lane = delivered_events
+        .iter()
+        .rev()
+        .find_map(|event| match &event.event {
+            SessionEvent::PlanEstablished { plan } => Some(plan.lane),
+            SessionEvent::RouteAccepted { lane, .. } => Some(*lane),
+            _ => None,
+        });
+    let last_outcome = delivered_events
+        .iter()
+        .rev()
+        .find_map(|event| match &event.event {
+            SessionEvent::TurnCompleted { state, .. } => Some(match state {
+                FinalState::Answered => cerebro_agent_runtime::WorkingOutcome::Completed,
+                FinalState::Partial | FinalState::Blocked => {
+                    cerebro_agent_runtime::WorkingOutcome::Blocked
+                }
+                FinalState::NeedsInput => cerebro_agent_runtime::WorkingOutcome::NeedsUser,
+            }),
+            _ => None,
+        });
+    let last_blocker = delivered_events
+        .iter()
+        .rev()
+        .find_map(|event| match &event.event {
+            SessionEvent::DraftProduced { draft, .. } => draft.coverage_notice.clone(),
+            _ => None,
+        });
+    let open_loops = session
+        .mission
+        .open_loops
+        .iter()
+        .map(|open_loop| open_loop.summary.clone())
+        .chain(
+            session
+                .mission
+                .commitments
+                .iter()
+                .filter(|commitment| {
+                    !matches!(
+                        commitment.status,
+                        cerebro_agent_runtime::session::CommitmentStatus::Completed
+                            | cerebro_agent_runtime::session::CommitmentStatus::Cancelled
+                    )
+                })
+                .map(|commitment| commitment.summary.clone()),
+        )
+        .collect();
+    let mut routed = request.clone();
+    routed.history = history;
+    routed.history_metadata.clear();
+    routed.working_state = has_delivered_turn.then(|| cerebro_agent_runtime::WorkingState {
+        mission_ref: Some(session.mission.mission_ref.clone()),
+        current_request: session.mission.objective.clone(),
+        last_outcome: last_outcome.unwrap_or(cerebro_agent_runtime::WorkingOutcome::Unknown),
+        last_blocker,
+        active_lane,
+        requires_current_evidence: active_lane.map(|lane| lane != ExecutionLane::Converse),
+        open_loops,
+    });
+    routed
 }
 
 fn pending_wake_turn(
@@ -1148,6 +1359,7 @@ fn event_lane(events: &[SessionEventRecord]) -> ExecutionLane {
         .rev()
         .find_map(|event| match &event.event {
             SessionEvent::PlanEstablished { plan } => Some(plan.lane),
+            SessionEvent::RouteAccepted { lane, .. } => Some(*lane),
             _ => None,
         })
         .unwrap_or(ExecutionLane::Converse)
@@ -5308,6 +5520,16 @@ mod tests {
                 session_ref: session.session_ref.clone(),
                 sequence: 2,
                 occurred_at: request.assessment_at.clone(),
+                event: SessionEvent::RouteAccepted {
+                    request_id: request.request_id.clone(),
+                    lane: ExecutionLane::Investigate,
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 3,
+                occurred_at: request.assessment_at.clone(),
                 event: SessionEvent::TurnStarted {
                     request_id: request.request_id.clone(),
                 },
@@ -5315,7 +5537,7 @@ mod tests {
             SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: session.session_ref.clone(),
-                sequence: 3,
+                sequence: 4,
                 occurred_at: request.assessment_at.clone(),
                 event: SessionEvent::DraftProduced {
                     request_id: request.request_id.clone(),
@@ -5327,7 +5549,7 @@ mod tests {
             events.push(SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: session.session_ref.clone(),
-                sequence: 4,
+                sequence: 5,
                 occurred_at: request.assessment_at.clone(),
                 event: SessionEvent::TurnCompleted {
                     request_id: request.request_id.clone(),
@@ -5348,7 +5570,10 @@ mod tests {
 
         assert!(matches!(
             replay_completed_session_turn(&session, &request).unwrap(),
-            Some(AgentTurnOutcome::Delivered { .. })
+            Some(AgentTurnOutcome::Delivered {
+                lane: ExecutionLane::Investigate,
+                ..
+            })
         ));
 
         let mut changed = request;
@@ -5369,7 +5594,10 @@ mod tests {
 
         assert!(matches!(
             replay_pending_session_turn(&session, &request).unwrap(),
-            AgentTurnOutcome::PendingDelivery { .. }
+            AgentTurnOutcome::PendingDelivery {
+                lane: ExecutionLane::Investigate,
+                ..
+            }
         ));
 
         let mut changed = request;
@@ -5378,6 +5606,75 @@ mod tests {
             replay_pending_session_turn(&session, &changed),
             Err(AgentRuntimeError::InvalidRequest(_))
         ));
+    }
+
+    #[test]
+    fn routing_context_comes_from_the_last_delivered_session_not_the_caller() {
+        let prior = replay_request();
+        let base = new_session(&prior).unwrap();
+        let mut session = apply_session_events(&base, &replay_events(&base, &prior, true)).unwrap();
+        session = apply_session_events(
+            &session,
+            &[SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence: 6,
+                occurred_at: prior.assessment_at.clone(),
+                event: SessionEvent::DeliveryRecorded {
+                    request_id: prior.request_id.clone(),
+                    transport: "slack".into(),
+                    delivery_ref: "slack-message:prior".into(),
+                    payload_digest: message_digest(&replay_draft(&base).message),
+                },
+            }],
+        )
+        .unwrap();
+
+        let mut next = prior.clone();
+        next.request_id = "request:next".into();
+        next.message = "Keep going.".into();
+        next.history = vec![cerebro_agent_runtime::ConversationMessage {
+            role: cerebro_agent_runtime::ConversationRole::User,
+            content: "caller supplied fiction".into(),
+        }];
+        next.history_metadata = vec![cerebro_agent_runtime::ConversationMessageMetadata {
+            actor_ref: Some("caller".into()),
+            message_ref: Some("caller:message".into()),
+            received_at: Some(next.assessment_at.clone()),
+        }];
+        next.working_state = Some(cerebro_agent_runtime::WorkingState {
+            mission_ref: Some("caller:mission".into()),
+            current_request: "caller supplied fiction".into(),
+            last_outcome: cerebro_agent_runtime::WorkingOutcome::NeedsUser,
+            last_blocker: Some("caller blocker".into()),
+            active_lane: Some(ExecutionLane::Converse),
+            requires_current_evidence: Some(false),
+            open_loops: vec!["caller loop".into()],
+        });
+
+        let routed = route_request_from_session(&session, &next);
+        assert!(routed.history_metadata.is_empty());
+        assert_eq!(routed.history.len(), 2);
+        assert!(
+            routed
+                .history
+                .iter()
+                .all(|message| message.content != "caller supplied fiction")
+        );
+        let working = routed
+            .working_state
+            .expect("a delivered durable turn should create continuation state");
+        assert_eq!(
+            working.mission_ref.as_deref(),
+            Some(session.mission.mission_ref.as_str())
+        );
+        assert_eq!(
+            working.last_outcome,
+            cerebro_agent_runtime::WorkingOutcome::Completed
+        );
+        assert_eq!(working.active_lane, Some(ExecutionLane::Investigate));
+        assert_eq!(working.requires_current_evidence, Some(true));
+        assert!(!working.open_loops.iter().any(|item| item == "caller loop"));
     }
 
     #[test]

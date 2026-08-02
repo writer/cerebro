@@ -32,9 +32,9 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::slack_agent::{
     CAPABILITY_EXECUTE_PROPOSAL, CAPABILITY_EXECUTE_READ, ConfiguredModel,
-    capability_describe_result, capability_descriptor_binding_digest, capability_search_result,
-    model_capability_catalog, parse_slack_history_search_input, parse_slack_thread_read_input,
-    validate_context_scope_ref,
+    accepted_route_for_request, capability_describe_result, capability_descriptor_binding_digest,
+    capability_search_result, model_capability_catalog, parse_slack_history_search_input,
+    parse_slack_thread_read_input, route_request_from_session, validate_context_scope_ref,
 };
 use super::slack_agent_evidence_gold;
 use super::slack_agent_session::{
@@ -2461,25 +2461,68 @@ async fn run_evaluation_session_turn(
     session: &mut AgentSession,
     request: AgentTurnRequest,
 ) -> Result<(AgentTurnOutcome, DeliveryDisposition), AgentRuntimeError> {
-    let requested_lane = resolve_request_lane(model, request.clone()).await?;
     session.effect_authorizations = request.effect_authorizations.clone();
-    let sequence = session.events.last().map_or(1, |event| event.sequence + 1);
-    let queued = SessionEventRecord {
-        schema_version: AGENT_SESSION_EVENT_V2.into(),
-        session_ref: session.session_ref.clone(),
-        sequence,
-        occurred_at: request.assessment_at.clone(),
-        event: SessionEvent::UserMessageQueued {
-            message: SessionMessage {
-                role: SessionMessageRole::User,
-                message_ref: format!("operator:{}", request.request_id),
-                actor_ref: request.actor_ref.clone(),
-                text: request.message,
-                received_at: request.assessment_at.clone(),
-            },
-        },
+    let message_ref = format!("operator:{}", request.request_id);
+    let durable_message = session
+        .messages
+        .iter()
+        .find(|message| message.message_ref == message_ref);
+    if durable_message.is_some_and(|message| {
+        message.actor_ref != request.actor_ref || message.text != request.message
+    }) {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "request id was reused with a different actor or message".into(),
+        ));
+    }
+    if durable_message.is_some()
+        && session
+            .messages
+            .last()
+            .is_none_or(|message| message.message_ref != message_ref)
+    {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "retried request is not the latest queued operator message".into(),
+        ));
+    }
+    let durable_message_exists = durable_message.is_some();
+    let accepted_route = accepted_route_for_request(session, &request.request_id);
+    let requested_lane = match accepted_route {
+        Some(lane) => lane,
+        None => resolve_request_lane(model, route_request_from_session(session, &request)).await?,
     };
-    *session = apply_session_events(session, &[queued])?;
+    if !durable_message_exists || accepted_route.is_none() {
+        let mut sequence = session.events.last().map_or(1, |event| event.sequence + 1);
+        let mut events = Vec::new();
+        if !durable_message_exists {
+            events.push(SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: session.session_ref.clone(),
+                sequence,
+                occurred_at: request.assessment_at.clone(),
+                event: SessionEvent::UserMessageQueued {
+                    message: SessionMessage {
+                        role: SessionMessageRole::User,
+                        message_ref,
+                        actor_ref: request.actor_ref.clone(),
+                        text: request.message.clone(),
+                        received_at: request.assessment_at.clone(),
+                    },
+                },
+            });
+            sequence += 1;
+        }
+        events.push(SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: session.session_ref.clone(),
+            sequence,
+            occurred_at: request.assessment_at.clone(),
+            event: SessionEvent::RouteAccepted {
+                request_id: request.request_id.clone(),
+                lane: requested_lane,
+            },
+        });
+        *session = apply_session_events(session, &events)?;
+    }
     run_evaluation_session_input(
         model,
         tools,
