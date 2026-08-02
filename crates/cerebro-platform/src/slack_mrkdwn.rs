@@ -458,7 +458,7 @@ fn raw_url_suffix_continues_path(
     if !rfc_url_continuation {
         return false;
     }
-    has_path_context || matches!(first, '/' | '?' | '#')
+    has_path_context
 }
 
 fn raw_url_has_path_context(value: &str, url_start: usize, delimiter_start: usize) -> bool {
@@ -1019,6 +1019,15 @@ mod tests {
             (
                 "**See https://example.com**next",
                 "*See https://example.com*next",
+            ),
+            ("**See https://example.com**?", "*See https://example.com*?"),
+            (
+                "**See https://example.com**#details",
+                "*See https://example.com*#details",
+            ),
+            (
+                "**See https://example.com**/details",
+                "*See https://example.com*/details",
             ),
             (
                 "**See https://example.com/a**next",
