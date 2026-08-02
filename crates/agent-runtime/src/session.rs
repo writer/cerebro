@@ -5817,29 +5817,6 @@ fn contains_new_named_ownership_principal(body: &str, source_messages: &[&str]) 
 }
 
 fn contains_unverified_named_operational_assertion(body: &str, source_messages: &[&str]) -> bool {
-    let named_source_tokens = source_messages
-        .iter()
-        .flat_map(|message| {
-            message
-                .split(|character: char| !character.is_alphanumeric())
-                .filter(|token| {
-                    token.len() >= 3
-                        && token.chars().next().is_some_and(char::is_uppercase)
-                        && !matches!(
-                            *token,
-                            "Can"
-                                | "Could"
-                                | "Explain"
-                                | "How"
-                                | "Please"
-                                | "Thoughts"
-                                | "What"
-                                | "Why"
-                        )
-                })
-                .map(str::to_ascii_lowercase)
-        })
-        .collect::<BTreeSet<_>>();
     let source_tokens = source_messages
         .iter()
         .flat_map(|message| {
@@ -5852,21 +5829,6 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
     if source_tokens.is_empty() {
         return false;
     }
-    let source_is_operational = source_tokens.iter().any(|token| {
-        matches!(
-            token.as_str(),
-            "build"
-                | "connector"
-                | "deployment"
-                | "provider"
-                | "rollout"
-                | "runtime"
-                | "service"
-                | "source"
-                | "status"
-                | "system"
-        )
-    });
     let source_is_conceptual = source_tokens.iter().any(|token| {
         matches!(
             token.as_str(),
@@ -5896,19 +5858,21 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
             .map(str::to_ascii_lowercase)
             .collect::<Vec<_>>();
         let conceptual_context_applies = source_is_conceptual
-            && !source_is_operational
             && !tokens.iter().any(|token| {
                 matches!(
                     token.as_str(),
-                    "currently"
+                    "actual"
+                        | "actually"
+                        | "currently"
                         | "latest"
                         | "now"
                         | "outside"
                         | "production"
+                        | "real"
+                        | "reality"
                         | "recently"
-                        | "runtime"
-                        | "service"
                         | "today"
+                        | "unlike"
                 )
             });
         let is_named_source_subject = |token: &str| {
@@ -5951,6 +5915,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                     | "down"
                     | "enabled"
                     | "failed"
+                    | "fixed"
                     | "handles"
                     | "landed"
                     | "owned"
@@ -5958,54 +5923,25 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                     | "offline"
                     | "passed"
                     | "recovered"
+                    | "reachable"
                     | "remains"
+                    | "resolved"
+                    | "responsive"
+                    | "restored"
+                    | "running"
                     | "shipped"
+                    | "stable"
                     | "up"
+                    | "unavailable"
             ) && index > 0
                 && named_subject_before(index).is_some()
         });
-        let copular_state = tokens.iter().enumerate().any(|(state_index, token)| {
-            let ambiguous_state = matches!(token.as_str(), "green" | "healthy");
-            if !matches!(
-                token.as_str(),
-                "approved"
-                    | "available"
-                    | "broken"
-                    | "degraded"
-                    | "deployed"
-                    | "disabled"
-                    | "down"
-                    | "enabled"
-                    | "green"
-                    | "healthy"
-                    | "live"
-                    | "offline"
-                    | "online"
-                    | "operational"
-                    | "ready"
-                    | "up"
-            ) {
-                return false;
-            }
-            let Some(copula_index) = tokens[..state_index]
-                .iter()
-                .rposition(|candidate| matches!(candidate.as_str(), "is" | "are" | "was" | "were"))
-            else {
-                return false;
-            };
-            let subject = named_subject_before(copula_index);
-            let names_operational_subject = subject.is_some_and(|subject| {
-                is_named_source_subject(subject)
-                    && (!ambiguous_state
-                        || source_is_operational
-                        || (named_source_tokens.contains(subject) && !source_is_conceptual))
-            });
-            tokens[copula_index + 1..state_index].iter().all(|word| {
-                matches!(
-                    word.as_str(),
-                    "already" | "currently" | "now" | "reportedly"
-                )
-            }) && names_operational_subject
+        let copular_state = tokens.iter().enumerate().any(|(copula_index, token)| {
+            matches!(token.as_str(), "is" | "are" | "was" | "were")
+                && named_subject_before(copula_index).is_some()
+                && tokens[copula_index + 1..]
+                    .iter()
+                    .any(|predicate| !matches!(predicate.as_str(), "a" | "an" | "the"))
         });
         (finite_state || copular_state) && !conceptual_context_applies
     })
@@ -11621,6 +11557,14 @@ mod tests {
             ("do you like atlas?", "i like atlas; atlas is degraded."),
             ("do you like atlas?", "i like atlas; atlas is broken."),
             ("do you like atlas?", "i like atlas; atlas is up."),
+            ("do you like atlas?", "i like atlas; atlas is fixed."),
+            ("do you like atlas?", "i like atlas; atlas is restored."),
+            ("do you like atlas?", "i like atlas; atlas is resolved."),
+            ("do you like atlas?", "i like atlas; atlas is running."),
+            ("do you like atlas?", "i like atlas; atlas is reachable."),
+            ("do you like atlas?", "i like atlas; atlas is responsive."),
+            ("do you like atlas?", "i like atlas; atlas is stable."),
+            ("do you like atlas?", "i like atlas; atlas is unavailable."),
         ] {
             let mut unsupported_session = synthesis_session.clone();
             unsupported_session.messages[0].text = request.into();
@@ -11653,6 +11597,10 @@ mod tests {
             (
                 "Why is Atlas operational in the novel?",
                 "Atlas is operational in the novel because the author needs the machine.",
+            ),
+            (
+                "Why is the system healthy in this analogy?",
+                "The system is healthy in this analogy because every part reinforces the others.",
             ),
             (
                 "thoughts on conflict?",
@@ -11728,6 +11676,12 @@ mod tests {
             validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
             "a fictional prompt disabled a current operational assertion check"
         );
+        candidate.claims[0].text = "Atlas is operational in reality, unlike the story.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
+            "a fictional prompt suppressed an assertion that escaped into reality"
+        );
 
         let mut malformed_markup_session = synthesis_session.clone();
         malformed_markup_session.messages[0].text = "Thoughts on conflict?".into();
@@ -11748,6 +11702,18 @@ mod tests {
                 .is_err(),
             "session delivery accepted a stray Slack emphasis closer"
         );
+        for malformed in [
+            "My thoughts: [conflict](unfinished is useful.",
+            "My thoughts: ask <@U123 about conflict.",
+        ] {
+            candidate.claims[0].text = malformed.into();
+            candidate.message = candidate.claims[0].text.clone();
+            assert!(
+                validate_grounded_draft(&malformed_markup_session, &candidate, &[], assessment,)
+                    .is_err(),
+                "session delivery accepted malformed Slack markup: {malformed}"
+            );
+        }
 
         let mut follow_up_session = synthesis_session.clone();
         follow_up_session.messages.push(SessionMessage {

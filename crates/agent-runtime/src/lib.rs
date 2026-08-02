@@ -1545,7 +1545,12 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                 || normalized.contains(" whether collection ")));
     let conceptual_naming = normalized.contains(" codename ")
         || normalized.contains(" as a name ")
-        || normalized.contains(" name choice ");
+        || normalized.contains(" name choice ")
+        || normalized.contains(" title ")
+        || normalized.contains(" story ")
+        || normalized.contains(" novel ")
+        || normalized.contains(" analogy ")
+        || normalized.contains(" metaphor ");
     let generic_state_request = clause.trim_end().ends_with('?')
         || words.first().is_some_and(|word| {
             matches!(
@@ -1577,13 +1582,21 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                 "broken"
                     | "degraded"
                     | "down"
+                    | "fixed"
                     | "green"
                     | "healthy"
                     | "offline"
                     | "online"
                     | "operational"
                     | "ready"
+                    | "reachable"
+                    | "resolved"
+                    | "responsive"
+                    | "restored"
+                    | "running"
+                    | "stable"
                     | "up"
+                    | "unavailable"
                     | "working"
                     | "available"
                     | "landed"
@@ -1633,32 +1646,35 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                 });
             (has_subject_bound_verb && !question_explains_generic_subject) || has_time_boundary
         });
-    let named_current_follow_up = generic_state_request
+    let named_current_follow_up = !conceptual_naming
+        && generic_state_request
         && ["now", "today", "currently", "recently", "already", "latest"]
             .iter()
             .any(|time| words.contains(time))
-        && clause
-            .split(|character: char| !character.is_alphanumeric())
-            .filter(|token| token.len() >= 3)
-            .any(|token| {
-                token.chars().next().is_some_and(char::is_uppercase)
-                    && !matches!(
-                        token,
-                        "Can"
-                            | "Could"
-                            | "How"
-                            | "Now"
-                            | "Please"
-                            | "Tell"
-                            | "Today"
-                            | "What"
-                            | "When"
-                            | "Where"
-                            | "Which"
-                            | "Who"
-                            | "Why"
-                    )
-            });
+        && words.iter().enumerate().any(|(index, word)| {
+            index > 0
+                && !matches!(
+                    *word,
+                    "about"
+                        | "already"
+                        | "currently"
+                        | "how"
+                        | "latest"
+                        | "now"
+                        | "please"
+                        | "recently"
+                        | "tell"
+                        | "that"
+                        | "this"
+                        | "today"
+                        | "what"
+                        | "when"
+                        | "where"
+                        | "which"
+                        | "who"
+                        | "why"
+                )
+        });
     let generic_live_ownership = normalized.contains(" who handles ")
         || normalized.contains(" who owns ")
         || normalized.contains(" owns remediation ")
@@ -1792,8 +1808,23 @@ fn presentation_markup_is_balanced(value: &str) -> bool {
                 cursor = end;
                 continue;
             }
+            if (image || remaining.starts_with('[')) && remaining.contains("](") {
+                return false;
+            }
             if let Some(end) = presentation_raw_url_end(line, cursor) {
                 cursor = end;
+                continue;
+            }
+            if remaining.starts_with('<')
+                && remaining[1..]
+                    .chars()
+                    .next()
+                    .is_some_and(|next| matches!(next, '@' | '#' | '!' | 'h' | 'm'))
+            {
+                let Some(close_offset) = remaining.find('>') else {
+                    return false;
+                };
+                cursor += close_offset + 1;
                 continue;
             }
             if remaining.starts_with('`') {
@@ -1836,9 +1867,16 @@ fn presentation_markup_is_balanced(value: &str) -> bool {
                 let clear_intraword_asterisk_close =
                     delimiter == '*' && previous_is_word && next_is_word;
                 let next = remaining[delimiter.len_utf8()..].chars().next();
+                let previous_nonspace = line[..cursor]
+                    .chars()
+                    .rev()
+                    .find(|value| !value.is_whitespace());
+                let next_nonspace = remaining[delimiter.len_utf8()..]
+                    .chars()
+                    .find(|value| !value.is_whitespace());
                 let numeric_infix = delimiter == '*'
-                    && previous.is_some_and(|value| value.is_ascii_digit())
-                    && next.is_some_and(|value| value.is_ascii_digit());
+                    && previous_nonspace.is_some_and(|value| value.is_ascii_digit())
+                    && next_nonspace.is_some_and(|value| value.is_ascii_digit());
                 let underscore_infix = delimiter == '_' && previous_is_word && next_is_word;
                 if !*open && !previous_is_word && next_is_word {
                     *open = true;
@@ -3269,6 +3307,8 @@ mod grounding_tests {
             "Tell me when a debate is healthy.",
             "Why did Atlas fail in this story?",
             "Why is Atlas operational in the novel?",
+            "Why is the system healthy in this analogy?",
+            "Why is “Atlas Now” a good title?",
             "Break down this idea for me.",
             "Why is feeling down hard?",
         ] {
@@ -3296,6 +3336,15 @@ mod grounding_tests {
             "Is Atlas broken?",
             "Is Atlas up?",
             "What about Atlas now?",
+            "what about atlas now?",
+            "Is Atlas fixed?",
+            "Is Atlas restored?",
+            "Is Atlas resolved?",
+            "Is Atlas running?",
+            "Is Atlas reachable?",
+            "Is Atlas responsive?",
+            "Is Atlas stable?",
+            "Is Atlas unavailable?",
             "Has the rollout landed?",
             "Who handles remediation for Atlas?",
             "Are we able to ship this?",
@@ -3360,6 +3409,8 @@ mod grounding_tests {
             "The source is _healthy.",
             "The source is healthy*.",
             "The source is healthy_.",
+            "Read [the source](unfinished before answering.",
+            "Ask <@U123 for the source.",
             "The source is `healthy.",
         ] {
             assert!(
@@ -3370,7 +3421,11 @@ mod grounding_tests {
                 "unbalanced Slack markup was accepted: {message}"
             );
         }
-        for message in ["snake_case remains readable.", "The ratio is 2*3."] {
+        for message in [
+            "snake_case remains readable.",
+            "The ratio is 2*3.",
+            "To explain multiplication: 2 * 3 = 6.",
+        ] {
             assert!(
                 validate_presentation(&PresentationDecision {
                     messages: vec![message.into()],

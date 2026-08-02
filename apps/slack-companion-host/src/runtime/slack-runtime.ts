@@ -738,6 +738,17 @@ export class SlackCompanionRuntime {
     ].join(":");
     const receiver = new DurableSocketModeReceiver(config.appToken, this.ingressQueue);
     this.app = new App({
+      clientOptions: {
+        rejectRateLimitedCalls: true,
+        retryConfig: {
+          factor: 2,
+          maxTimeout: 5_000,
+          minTimeout: 1_000,
+          randomize: true,
+          retries: 3,
+        },
+        timeout: 30_000,
+      },
       logLevel: LogLevel.WARN,
       receiver,
       token: config.botToken,
@@ -1002,6 +1013,8 @@ export class SlackCompanionRuntime {
   private async processSlackIngressClaim(claim: SlackIngressClaim): Promise<void> {
     const event = claim.event;
     if (!this.config.allowedTeamIds.has(event.teamId)) return;
+    const leaseGuard = async (): Promise<void> => this.ingressQueue.renew(claim);
+    await leaseGuard();
     const client = this.app.client as unknown as SlackMentionClient;
     if (event.kind === "app_mention") {
       await handleSlackMention({
@@ -1011,6 +1024,7 @@ export class SlackCompanionRuntime {
         event,
         host: this.host,
         ingressQueue: this.ingressQueue,
+        leaseGuard,
         outcomes: this.outcomes,
         questions: this.questions,
         scratchpads: this.scratchpads,
@@ -1037,6 +1051,7 @@ export class SlackCompanionRuntime {
       },
       host: this.host,
       ingressQueue: this.ingressQueue,
+      leaseGuard,
       outcomes: this.outcomes,
       questions: this.questions,
       scratchpads: this.scratchpads,
@@ -1129,6 +1144,7 @@ export async function handleSlackThreadReply(input: {
   event: unknown;
   host: AssistantTurnHostAdapter;
   ingressQueue?: FileSlackIngressQueue;
+  leaseGuard?: () => Promise<void>;
   outcomes: FileOutcomeStore;
   questions: AssistantQuestionService;
   scratchpads?: SlackThreadScratchpadPort;
@@ -1170,6 +1186,7 @@ export async function handleSlackThreadReply(input: {
     },
     host: input.host,
     ingressQueue: input.ingressQueue,
+    leaseGuard: input.leaseGuard,
     outcomes: input.outcomes,
     questions: input.questions,
     scratchpads: input.scratchpads,
@@ -1213,6 +1230,7 @@ export async function handleSlackMention(input: {
   event: SlackMentionEvent;
   host: AssistantTurnHostAdapter;
   ingressQueue?: FileSlackIngressQueue;
+  leaseGuard?: () => Promise<void>;
   outcomes: FileOutcomeStore;
   questions: AssistantQuestionService;
   scratchpads?: SlackThreadScratchpadPort;
@@ -1290,6 +1308,7 @@ export async function handleSlackMention(input: {
         botUserId: input.event.botUserId,
         channel: input.event.channel,
         clientMessageId: progressClientMessageId,
+        leaseGuard: input.leaseGuard,
         requestKey,
         text: deliveredText,
         threadTs: input.event.threadTs,
@@ -1349,6 +1368,7 @@ export async function handleSlackMention(input: {
           input.event.eventTs,
           input.event.teamId,
           input.event.botUserId,
+          input.leaseGuard,
         );
       } catch (error) {
         const blocked = await postOrRecoverSlackMessage(input.client, {
@@ -1356,6 +1376,7 @@ export async function handleSlackMention(input: {
           botUserId: input.event.botUserId,
           channel: input.event.channel,
           clientMessageId: progressClientMessageId,
+          leaseGuard: input.leaseGuard,
           requestKey,
           text: formatEnvironmentMessage(
             input.config,
@@ -1394,6 +1415,7 @@ export async function handleSlackMention(input: {
       botUserId: input.event.botUserId,
       channel: input.event.channel,
       clientMessageId: progressClientMessageId,
+      leaseGuard: input.leaseGuard,
       requestKey,
       text: formatEnvironmentMessage(
         input.config,
@@ -1405,6 +1427,7 @@ export async function handleSlackMention(input: {
       threadTs: input.event.threadTs,
     });
     deliveredMessageTs = progress.ts;
+    await input.leaseGuard?.();
     const result = await input.questions.answer({
       actorRef: slackScratchpadAuthorRef(input.event.teamId, input.event.userId),
       contextScopeRef,
@@ -1447,6 +1470,7 @@ export async function handleSlackMention(input: {
           threadRef: result.agentDelivery.threadRef,
         })
       : undefined;
+    await input.leaseGuard?.();
     await input.client.chat.update({
       channel: input.event.channel,
       text: deliveredText,
@@ -1457,6 +1481,7 @@ export async function handleSlackMention(input: {
     }
     if (result.agentDelivery) {
       try {
+        await input.leaseGuard?.();
         await input.questions.acknowledgeAgentDelivery({
           deliveredAt,
           deliveryRef: references.destinationReceipt,
@@ -1576,6 +1601,7 @@ async function postOrRecoverSlackMessage(
     botUserId?: string;
     channel: string;
     clientMessageId: string;
+    leaseGuard?: () => Promise<void>;
     requestKey: string;
     text: string;
     threadTs: string;
@@ -1587,14 +1613,23 @@ async function postOrRecoverSlackMessage(
   );
   if (bound) return { ts: bound };
 
+  await input.leaseGuard?.();
   const existing = await findSlackMessageByClientId(client, input);
   if (existing) {
     await input.bindings?.bindMessage(input.requestKey, input.clientMessageId, existing);
     return { ts: existing };
   }
 
+  await input.leaseGuard?.();
+  const rebound = await input.bindings?.readMessageBinding(
+    input.requestKey,
+    input.clientMessageId,
+  );
+  if (rebound) return { ts: rebound };
+
   let postError: unknown;
   try {
+    await input.leaseGuard?.();
     const posted = await client.chat.postMessage({
       channel: input.channel,
       client_msg_id: input.clientMessageId,
@@ -1624,12 +1659,14 @@ async function findSlackMessageByClientId(
     botUserId?: string;
     channel: string;
     clientMessageId: string;
+    leaseGuard?: () => Promise<void>;
     threadTs: string;
   },
 ): Promise<string | undefined> {
   let cursor: string | undefined;
   let matchedTs: string | undefined;
   for (let page = 0; page < MAX_THREAD_SCAN_PAGES; page += 1) {
+    await input.leaseGuard?.();
     const response = await client.conversations.replies({
       channel: input.channel,
       cursor,
@@ -1938,10 +1975,12 @@ export async function readSlackThreadContext(
   currentMessageTs: string,
   teamId: string,
   botUserId?: string,
+  leaseGuard?: () => Promise<void>,
 ): Promise<CerebroAskHistoryMessage[] | undefined> {
   let cursor: string | undefined;
   let recentMessages: SlackThreadMessage[] = [];
   for (let page = 0; page < MAX_THREAD_SCAN_PAGES; page += 1) {
+    await leaseGuard?.();
     const response = await client.conversations.replies({
       channel,
       cursor,

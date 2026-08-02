@@ -250,6 +250,26 @@ export class FileSlackIngressQueue {
     });
   }
 
+  async renew(claim: SlackIngressClaim): Promise<void> {
+    await this.initialize();
+    this.transaction((database) => {
+      this.verifyLease(database, claim);
+      const result = database.prepare(`
+        UPDATE slack_ingress_leases
+        SET expires_at_ms = ?
+        WHERE record_ref = ? AND worker_ref = ? AND lease_token = ?
+      `).run(
+        this.clock().getTime() + INGRESS_LEASE_MS,
+        claim.recordRef,
+        claim.workerRef,
+        claim.leaseToken,
+      );
+      if (result.changes !== 1) {
+        throw new Error("Slack ingress lease changed before renewal.");
+      }
+    });
+  }
+
   private parseRecord(serialized: string): SlackIngressRecord {
     const record = JSON.parse(serialized) as SlackIngressRecord;
     if (

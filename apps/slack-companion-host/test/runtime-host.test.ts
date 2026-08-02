@@ -2676,6 +2676,76 @@ test("a failed event retries across Slack hosts with one deterministic message I
   }
 });
 
+test("an expired ingress worker cannot post after another worker takes its lease", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-stale-worker-"));
+  let now = new Date("2026-08-02T20:00:00.000Z");
+  try {
+    const ingressQueue = new FileSlackIngressQueue(root, () => now);
+    await ingressQueue.admitEnvelope(slackEnvelopeFixture());
+    const staleClaim = await ingressQueue.claimNext("worker:stale");
+    assert.ok(staleClaim);
+    let postCount = 0;
+    let replacementClaimed = false;
+    const client = {
+      chat: {
+        postMessage: async () => {
+          postCount += 1;
+          return { ts: "1710000000.000009" };
+        },
+        update: async () => undefined,
+      },
+      conversations: {
+        replies: async () => {
+          now = new Date("2026-08-02T20:21:00.000Z");
+          replacementClaimed = Boolean(await ingressQueue.claimNext("worker:replacement"));
+          return { messages: [] };
+        },
+      },
+    };
+    const config = loadSlackRuntimeConfig({
+      CEREBRO_BASE_URL: "https://cerebro.example.com",
+      CEREBRO_READ_API_KEY: "bound-at-runtime",
+      CEREBRO_SLACK_APP_NAME: "Cerebro Development",
+      CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
+      CEREBRO_SLACK_PRODUCTION: "false",
+      CEREBRO_TENANT_ID: "writer",
+      SLACK_ALLOWED_TEAM_IDS: "T-ONE",
+      SLACK_APP_TOKEN: "bound-at-runtime",
+      SLACK_BOT_TOKEN: "bound-at-runtime",
+    });
+    const store = new FileOutcomeStore(root, { log: () => undefined });
+    const host = createAssistantTurnHost(store);
+    const questions = new AssistantQuestionService(
+      host,
+      new CerebroAskClient({
+        answerAuthority: testAnswerAuthority,
+        apiKey: "bound-at-runtime",
+        baseUrl: "https://cerebro.example.com",
+        fetchImpl: async () => sseResponse([]),
+        tenantId: "writer",
+      }),
+    );
+
+    await assert.rejects(
+      handleSlackMention({
+        client,
+        config,
+        event: staleClaim.event,
+        host,
+        ingressQueue,
+        leaseGuard: async () => ingressQueue.renew(staleClaim),
+        outcomes: store,
+        questions,
+      }),
+      /exact live lease/u,
+    );
+    assert.equal(replacementClaimed, true);
+    assert.equal(postCount, 0);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("outcome store applies negative feedback before the durable 24-hour assessment", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   const telemetry: unknown[] = [];
