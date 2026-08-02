@@ -5237,20 +5237,22 @@ mod tests {
     }
 
     #[test]
-    fn configured_access_boundary_is_conversation_without_graph_evidence() {
+    fn generic_authority_is_conversation_but_named_capabilities_require_evidence() {
         let route = route_instructions();
         assert!(route.contains(
-            "asking what visibility, access, or capability Cerebro has is asking for non-operational self-description"
+            "asking only for the generic configured authority boundary may use converse"
         ));
         assert!(route.contains(
-            "Route to lookup or investigate only when they also ask which current records are present"
+            "named tools, connected or enabled capabilities, a named provider or source"
         ));
 
         let operating = model_instructions();
         assert!(
-            operating.contains("you do not log into, administer, or change the named provider")
+            operating
+                .contains("use capability.overview and answer only from the exact bound tool IDs")
         );
-        assert!(operating.contains("does not verify which current provider records are present"));
+        assert!(operating.contains("does not verify provider records, provider behavior"));
+        assert!(operating.contains("does not log into or administer providers"));
     }
 
     #[test]
