@@ -8379,13 +8379,13 @@ mod tests {
 
     fn retained_message(index: usize, bytes: usize) -> SessionMessage {
         SessionMessage {
-            role: if index % 2 == 0 {
+            role: if index.is_multiple_of(2) {
                 SessionMessageRole::User
             } else {
                 SessionMessageRole::Assistant
             },
             message_ref: format!("message:{index}"),
-            actor_ref: if index % 2 == 0 {
+            actor_ref: if index.is_multiple_of(2) {
                 "user:1".into()
             } else {
                 "cerebro".into()

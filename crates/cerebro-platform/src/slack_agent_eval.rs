@@ -7140,8 +7140,10 @@ mod tests {
 
     #[test]
     fn same_model_quality_judging_is_advisory_only() {
-        assert!(!MODEL_JUDGE_INDEPENDENT);
-        assert!(MODEL_SIDE_SCORE_ADVISORY);
+        const {
+            assert!(!MODEL_JUDGE_INDEPENDENT);
+            assert!(MODEL_SIDE_SCORE_ADVISORY);
+        }
     }
 
     #[test]
