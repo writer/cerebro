@@ -1368,6 +1368,19 @@ pub async fn run_session_turn_recorded(
             )
         })
         .collect::<BTreeSet<_>>();
+    if !operator_explicitly_requests_retry(&session) {
+        call_fingerprints.extend(
+            observations
+                .iter()
+                .filter(|observation| observation.result.state == ToolResultState::Failed)
+                .map(|observation| {
+                    (
+                        observation.call.tool_id.clone(),
+                        observation.call.input_digest(),
+                    )
+                }),
+        );
+    }
     let mut consumed_approvals = BTreeSet::new();
     let mut repair_feedback = Vec::new();
     let mut repairs = 0;
@@ -4881,6 +4894,32 @@ fn validate_observation_wording(
                 .into(),
         ));
     }
+    let asserts_event_family_membership = [
+        " exactly in the ",
+        " live in the ",
+        " lives in the ",
+        " belong to the ",
+        " belongs to the ",
+        " map to the ",
+        " maps to the ",
+        " covered by the ",
+        " captured by the ",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase));
+    if asserts_event_family_membership
+        && !atom_refs.iter().any(|atom_ref| {
+            context
+                .atoms
+                .get(atom_ref)
+                .is_some_and(atom_supports_event_family_membership)
+        })
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "a declared collectible family does not establish that a named event type belongs to it; event-family membership requires an explicit subject-bound mapping observation"
+                .into(),
+        ));
+    }
     let turns_not_observed_into_empty = [
         "came back empty",
         "returned nothing",
@@ -4997,6 +5036,40 @@ fn atom_reports_legitimate_empty(atom: &AtomContext<'_>) -> bool {
         }
         _ => false,
     }
+}
+
+fn atom_supports_event_family_membership(atom: &AtomContext<'_>) -> bool {
+    match &atom.atom.assertion {
+        EvidenceAssertion::Value { predicate, value } => {
+            (predicate.contains("event_family_mapping")
+                || predicate.contains("event_type_family")
+                || predicate.contains("family_membership"))
+                && !value.is_null()
+        }
+        _ => false,
+    }
+}
+
+fn operator_explicitly_requests_retry(session: &AgentSession) -> bool {
+    let Some(message) = session
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == SessionMessageRole::User)
+    else {
+        return false;
+    };
+    let normalized = message.text.to_ascii_lowercase();
+    [
+        "retry",
+        "try that again",
+        "try it again",
+        "rerun",
+        "run that again",
+        "re-run",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase))
 }
 
 fn validate_stable_explanation_wording(text: &str) -> Result<(), AgentRuntimeError> {
@@ -8198,6 +8271,41 @@ mod tests {
         let error = validate_grounded_draft(&session(), &candidate, &[observation], assessment)
             .unwrap_err();
         assert!(error.to_string().contains("not a legitimate empty"));
+    }
+
+    #[test]
+    fn declared_family_cannot_be_recast_as_event_type_membership() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let declared = observation(true, Some("2026-08-01T00:00:00Z"));
+        let mut candidate = draft();
+        candidate.claims.truncate(1);
+        candidate.claims[0].text =
+            "The administrative configuration events live in the audit family.".into();
+        candidate.message = candidate.claims[0].text.clone();
+
+        let error =
+            validate_grounded_draft(&session(), &candidate, &[declared], assessment).unwrap_err();
+        assert!(error.to_string().contains("event-family membership"));
+
+        let mut mapped = observation(true, Some("2026-08-01T00:00:00Z"));
+        mapped.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Value {
+            predicate: "/event_type_family_mapping/administrative_configuration".into(),
+            value: json!("audit"),
+        };
+        assert!(validate_grounded_draft(&session(), &candidate, &[mapped], assessment).is_ok());
+    }
+
+    #[test]
+    fn only_an_explicit_retry_request_lifts_the_failed_call_cooldown() {
+        let mut ordinary = session();
+        ordinary.messages[0].text = "Keep going with the evidence check.".into();
+        assert!(!operator_explicitly_requests_retry(&ordinary));
+
+        for text in ["Retry that exact read.", "Please run that again."] {
+            let mut retry = session();
+            retry.messages[0].text = text.into();
+            assert!(operator_explicitly_requests_retry(&retry), "{text}");
+        }
     }
 
     #[test]
