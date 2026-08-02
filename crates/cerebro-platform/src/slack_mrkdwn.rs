@@ -362,7 +362,15 @@ fn raw_url_emphasis_boundary(
             .chars()
             .next()
             .is_none_or(|character| !character.is_alphanumeric());
-        if allowed_runs.contains(&run_len) && previous_can_close && suffix_starts_outside_word {
+        let suffix_continues_url = value[start + index..end]
+            .chars()
+            .next()
+            .is_some_and(|character| matches!(character, '/' | '?' | '&' | '=' | '#' | '%'));
+        if allowed_runs.contains(&run_len)
+            && previous_can_close
+            && suffix_starts_outside_word
+            && !suffix_continues_url
+        {
             return Some(start + run_start);
         }
     }
@@ -656,6 +664,10 @@ mod tests {
             (
                 "__See https://example.com__—__continue__",
                 "*See https://example.com*—*continue*",
+            ),
+            (
+                "**See https://example.com/a**/b**",
+                "*See https://example.com/a**/b*",
             ),
         ] {
             let rendered = render_slack_mrkdwn(input);
