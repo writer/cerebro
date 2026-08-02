@@ -28,10 +28,10 @@ use cerebro_agent_runtime::{
     ToolEffectClass, ToolResult, ToolResultState, run_turn,
     session::{
         AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2, AgentSession, ClaimReviewTurn,
-        DeliveryDisposition, EvidenceAtomization, GroundedDraft, MAX_SESSION_MEMORIES,
-        MessageReview, MissionState, SessionAgentModel, SessionEvent, SessionEventRecord,
-        SessionMessage, SessionMessageRole, SessionModelDecision, SessionModelTurn, SessionStatus,
-        SessionStore, SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
+        DeliveryDisposition, EvidenceAtomization, MAX_SESSION_MEMORIES, MessageReview,
+        MissionState, SessionAgentModel, SessionEvent, SessionEventRecord, SessionMessage,
+        SessionMessageRole, SessionModelDecision, SessionModelTurn, SessionStatus, SessionStore,
+        SessionTools, SessionTurnInput, SessionTurnOutcome, SessionTurnTrigger,
         apply_session_events, evidence_atoms_from_json, message_digest, run_session_turn_recorded,
     },
 };
@@ -48,6 +48,7 @@ use super::slack_agent_session::{
     AgentPendingWakeDelivery, AgentWakeClaim, AgentWakeDeliveryLease, AgentWakeFailureDisposition,
     PostgresAgentSessionStore, PostgresTurnJournal,
 };
+use super::slack_mrkdwn::render_slack_mrkdwn;
 
 const MAX_MODEL_RESPONSE_BYTES: usize = 512 * 1024;
 const MAX_MODEL_HISTORY_ITEMS: usize = 24;
@@ -355,10 +356,11 @@ impl SlackAgentService {
                 "scheduled wakes cannot request effect approval".into(),
             ));
         };
+        let delivery_markdown = render_slack_mrkdwn(markdown.trim());
         Ok(ClaimedWakeTurn {
             delivery,
             final_state,
-            payload_digest: message_digest(markdown),
+            payload_digest: message_digest(&delivery_markdown),
         })
     }
 
@@ -550,7 +552,8 @@ impl SlackAgentService {
                 "delivery receipt belongs to another request".into(),
             ));
         }
-        if receipt.payload_digest != message_digest(&pending.draft.message) {
+        let delivery_markdown = render_slack_mrkdwn(pending.draft.message.trim());
+        if receipt.payload_digest != message_digest(&delivery_markdown) {
             return Err(AgentRuntimeError::InvalidRequest(
                 "delivery receipt payload does not match the pending response".into(),
             ));
@@ -629,7 +632,8 @@ impl SlackAgentService {
             AgentRuntimeError::InvalidRequest("wake delivery has no pending response".into())
         })?;
         if pending.request_id != receipt.request_id
-            || message_digest(&pending.draft.message) != receipt.payload_digest
+            || message_digest(&render_slack_mrkdwn(pending.draft.message.trim()))
+                != receipt.payload_digest
         {
             return Err(AgentRuntimeError::InvalidRequest(
                 "wake delivery does not match the durable pending response".into(),
@@ -884,7 +888,7 @@ pub(super) fn session_outcome_to_turn(outcome: SessionTurnOutcome) -> AgentTurnO
             AgentTurnOutcome::PendingDelivery {
                 schema_version: cerebro_agent_runtime::AGENT_TURN_RESULT_V1,
                 lane,
-                markdown,
+                markdown: render_slack_mrkdwn(markdown.trim()),
                 final_state,
                 evidence_refs: evidence_atom_refs,
                 tool_call_count,
@@ -1089,7 +1093,7 @@ fn pending_wake_turn(
     Ok(ClaimedWakeTurn {
         delivery: pending.draft.delivery,
         final_state: pending.draft.state,
-        payload_digest: message_digest(&pending.draft.message),
+        payload_digest: message_digest(&render_slack_mrkdwn(pending.draft.message.trim())),
     })
 }
 
@@ -1249,11 +1253,7 @@ impl SessionAgentModel for ConfiguredModel {
                 session_decision_schema(),
             )
             .await?;
-        let mut decision = parse_session_decision_value(value)?;
-        if let SessionModelDecision::Finish { draft } = &mut decision {
-            normalize_slack_draft(draft);
-        }
-        Ok(decision)
+        parse_session_decision_value(value)
     }
 
     async fn review_message(
@@ -2431,175 +2431,6 @@ fn truncate_model_context(value: &str, maximum_bytes: usize) -> String {
         boundary -= 1;
     }
     format!("{}...", value[..boundary].trim_end())
-}
-
-fn normalize_slack_draft(draft: &mut GroundedDraft) {
-    let declared = draft
-        .claims
-        .iter()
-        .map(|claim| claim.text.as_str())
-        .collect::<String>();
-    if declared != draft.message {
-        return;
-    }
-    for claim in &mut draft.claims {
-        claim.text = normalize_slack_mrkdwn(&claim.text);
-    }
-    draft.message = draft
-        .claims
-        .iter()
-        .map(|claim| claim.text.as_str())
-        .collect();
-    draft.coverage_notice = draft.coverage_notice.as_deref().map(normalize_slack_mrkdwn);
-    draft.question = draft.question.as_deref().map(normalize_slack_mrkdwn);
-}
-
-fn normalize_slack_mrkdwn(value: &str) -> String {
-    let mut in_code_block = false;
-    let mut lines = Vec::new();
-    for line in value.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("```") {
-            in_code_block = !in_code_block;
-            lines.push(line.to_owned());
-            continue;
-        }
-        if in_code_block {
-            lines.push(line.to_owned());
-            continue;
-        }
-        if is_markdown_table_separator(trimmed) || is_markdown_horizontal_rule(trimmed) {
-            continue;
-        }
-        let normalized = if let Some(heading) = markdown_heading(trimmed) {
-            format!("*{}*", normalize_inline_slack_mrkdwn(heading))
-        } else if let Some(cells) = markdown_table_cells(trimmed) {
-            format!("• {}", cells.join(" — "))
-        } else {
-            normalize_inline_slack_mrkdwn(line)
-        };
-        lines.push(normalized);
-    }
-    let mut normalized = lines.join("\n");
-    if value.ends_with('\n') {
-        normalized.push('\n');
-    }
-    normalized
-}
-
-fn normalize_inline_slack_mrkdwn(value: &str) -> String {
-    let value = value.replace("**", "*").replace("__", "_");
-    let mut output = String::with_capacity(value.len());
-    let mut cursor = 0;
-    while let Some(open_offset) = value[cursor..].find('[') {
-        let open = cursor + open_offset;
-        let image = open > cursor && value.as_bytes().get(open - 1) == Some(&b'!');
-        output.push_str(&value[cursor..if image { open - 1 } else { open }]);
-        let label_start = open + 1;
-        let Some(close_offset) = value[label_start..].find("](") else {
-            output.push_str(&value[open..]);
-            cursor = value.len();
-            break;
-        };
-        let close = label_start + close_offset;
-        let url_start = close + 2;
-        let Some(end_offset) = value[url_start..].find(')') else {
-            output.push_str(&value[open..]);
-            cursor = value.len();
-            break;
-        };
-        let end = url_start + end_offset;
-        let label = &value[label_start..close];
-        let url = &value[url_start..end];
-        if (url.starts_with("https://") || url.starts_with("http://"))
-            && !label.contains('<')
-            && !label.contains('>')
-            && !url.contains('<')
-            && !url.contains('>')
-            && !url.contains('|')
-        {
-            output.push('<');
-            output.push_str(url);
-            output.push('|');
-            output.push_str(label);
-            output.push('>');
-            cursor = end + 1;
-        } else {
-            output.push_str(&value[open..=end]);
-            cursor = end + 1;
-        }
-    }
-    if cursor < value.len() {
-        output.push_str(&value[cursor..]);
-    }
-    inert_slack_control_syntax(&output)
-}
-
-fn inert_slack_control_syntax(value: &str) -> String {
-    let mut output = String::with_capacity(value.len());
-    let mut cursor = 0;
-    while let Some(offset) = value[cursor..].find('<') {
-        let open = cursor + offset;
-        output.push_str(&value[cursor..open]);
-        let marker = value.as_bytes().get(open + 1).copied();
-        if !matches!(marker, Some(b'@' | b'#' | b'!')) {
-            output.push('<');
-            cursor = open + 1;
-            continue;
-        }
-        let Some(end_offset) = value[open + 2..].find('>') else {
-            output.push_str(&value[open..]);
-            cursor = value.len();
-            break;
-        };
-        let end = open + 2 + end_offset;
-        let token = &value[open + 2..end];
-        let display = token.split_once('|').map_or(token, |(_, display)| display);
-        output.push(if marker == Some(b'#') { '#' } else { '@' });
-        output.push_str(display);
-        cursor = end + 1;
-    }
-    if cursor < value.len() {
-        output.push_str(&value[cursor..]);
-    }
-    output
-}
-
-fn markdown_heading(value: &str) -> Option<&str> {
-    let marker_bytes = value.bytes().take_while(|byte| *byte == b'#').count();
-    if !(1..=6).contains(&marker_bytes) || value.as_bytes().get(marker_bytes) != Some(&b' ') {
-        return None;
-    }
-    Some(value[marker_bytes + 1..].trim())
-}
-
-fn markdown_table_cells(value: &str) -> Option<Vec<String>> {
-    if !value.starts_with('|') || !value.ends_with('|') {
-        return None;
-    }
-    let cells = value[1..value.len() - 1]
-        .split('|')
-        .map(|cell| normalize_inline_slack_mrkdwn(cell.trim()))
-        .filter(|cell| !cell.is_empty())
-        .collect::<Vec<_>>();
-    (cells.len() >= 2).then_some(cells)
-}
-
-fn is_markdown_table_separator(value: &str) -> bool {
-    markdown_table_cells(value).is_some_and(|cells| {
-        cells.iter().all(|cell| {
-            let marker = cell.trim_matches(':');
-            marker.len() >= 3 && marker.bytes().all(|byte| byte == b'-')
-        })
-    })
-}
-
-fn is_markdown_horizontal_rule(value: &str) -> bool {
-    let compact = value.replace(' ', "");
-    compact.len() >= 3
-        && compact
-            .bytes()
-            .all(|byte| matches!(byte, b'-' | b'_' | b'*'))
 }
 
 fn session_instructions() -> &'static str {
@@ -4608,35 +4439,35 @@ mod tests {
     }
 
     #[test]
-    fn slack_formatting_normalizes_headings_links_and_tables() {
-        let normalized = normalize_slack_mrkdwn(
-            "## Current state\n\n**Healthy** — [open run](https://example.com/run)\n\n| Check | State |\n| --- | --- |\n| Session | Ready |",
-        );
+    fn session_transport_renders_validated_markdown_for_slack_delivery() {
+        let request = AgentTurnRequest {
+            schema_version: "agent-turn-request/v1".into(),
+            tenant_id: "tenant:slack-render".into(),
+            request_id: "request:slack-render".into(),
+            thread_ref: "thread:slack-render".into(),
+            context_scope_ref: None,
+            actor_ref: "actor:slack-render".into(),
+            assessment_at: "2026-08-01T23:30:00Z".into(),
+            message: "Show the current state.".into(),
+            history: Vec::new(),
+            working_state: None,
+            effect_authorizations: Vec::new(),
+        };
+        let mission = new_session(&request).unwrap().mission;
+        let outcome = session_outcome_to_turn(SessionTurnOutcome::PendingDelivery {
+            lane: ExecutionLane::Converse,
+            delivery: DeliveryDisposition::Visible,
+            markdown: "## Current state\n\n**Healthy**".into(),
+            final_state: FinalState::Answered,
+            evidence_atom_refs: Vec::new(),
+            mission,
+            events: Vec::new(),
+        });
 
-        assert_eq!(
-            normalized,
-            "*Current state*\n\n*Healthy* — <https://example.com/run|open run>\n\n• Check — State\n• Session — Ready"
-        );
-    }
-
-    #[test]
-    fn slack_formatting_preserves_code_and_normalizes_image_links() {
-        let normalized = normalize_slack_mrkdwn(
-            "![trace](https://example.com/trace.png)\n```rust\n## not a heading\n**not bold**\n```\n",
-        );
-
-        assert_eq!(
-            normalized,
-            "<https://example.com/trace.png|trace>\n```rust\n## not a heading\n**not bold**\n```\n"
-        );
-    }
-
-    #[test]
-    fn slack_formatting_never_activates_model_authored_mentions() {
-        assert_eq!(
-            normalize_slack_mrkdwn("Ask <@U123>, see <#C123|security>, then <!channel>."),
-            "Ask @U123, see #security, then @channel."
-        );
+        let AgentTurnOutcome::PendingDelivery { markdown, .. } = outcome else {
+            panic!("validated Slack answer should remain pending delivery");
+        };
+        assert_eq!(markdown, "*Current state*\n\n*Healthy*");
     }
 
     #[test]

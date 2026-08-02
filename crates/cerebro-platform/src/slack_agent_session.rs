@@ -17,6 +17,8 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::sync::Mutex;
 use tokio_postgres::Client;
 
+use super::slack_mrkdwn::render_slack_mrkdwn;
+
 const POSTGRES_AGENT_SESSION_SCHEMA_LOCK_KEY: i64 = 0x4342_524f_5345_5353;
 
 pub const POSTGRES_AGENT_SESSION_SCHEMA: &str = r#"
@@ -469,7 +471,7 @@ impl PostgresAgentSessionStore {
         })?;
         if pending.request_id != claim.request_id
             || pending.draft.delivery != DeliveryDisposition::Silent
-            || message_digest(&pending.draft.message) != payload_digest
+            || message_digest(&render_slack_mrkdwn(pending.draft.message.trim())) != payload_digest
             || pending.draft.state != final_state
         {
             return Err(AgentRuntimeError::InvalidRequest(
@@ -552,7 +554,7 @@ impl PostgresAgentSessionStore {
             AgentRuntimeError::InvalidRequest("wake has no pending delivery payload".into())
         })?;
         if pending.request_id != request_id
-            || message_digest(&pending.draft.message) != payload_digest
+            || message_digest(&render_slack_mrkdwn(pending.draft.message.trim())) != payload_digest
         {
             return Err(AgentRuntimeError::InvalidRequest(
                 "wake delivery identity does not match the durable payload".into(),
@@ -637,7 +639,7 @@ impl PostgresAgentSessionStore {
                 })?,
                 session_ref,
             },
-            markdown: pending.draft.message.clone(),
+            markdown: render_slack_mrkdwn(pending.draft.message.trim()),
             mode,
             tenant_id: session.tenant_id,
             thread_ref: session.thread_ref,
