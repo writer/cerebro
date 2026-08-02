@@ -11699,7 +11699,7 @@ mod tests {
                 "What do you think about Atlas?",
                 "I think Atlas is a thoughtful name.",
             ),
-            ("Do you like Atlas?", "Atlas is memorable."),
+            ("Do you like Atlas?", "I like Atlas; Atlas is memorable."),
         ] {
             let mut opinion_session = synthesis_session.clone();
             opinion_session.messages[0].text = request.into();
