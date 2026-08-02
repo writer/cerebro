@@ -4768,18 +4768,29 @@ fn validate_synthetic_payload_names(
     for value in strings {
         validate_synthetic_assignment_subjects(value, &declared_words)?;
         for raw_word in value.split_whitespace() {
-            let suffixes = raw_word.char_indices().filter_map(|(index, character)| {
-                (!character.is_ascii_alphanumeric())
-                    .then(|| &raw_word[index + character.len_utf8()..])
-                    .filter(|candidate| !candidate.is_empty())
-            });
-            let segments = raw_word
-                .split(|character: char| {
-                    !character.is_ascii_alphanumeric()
-                        && !matches!(character, '.' | '_' | '-' | ':' | '%' | '[' | ']' | '@')
-                })
-                .filter(|candidate| !candidate.is_empty());
-            for candidate in std::iter::once(raw_word).chain(suffixes).chain(segments) {
+            if raw_word.len() > 512 {
+                return Err("synthetic holdout material contains an oversized token".into());
+            }
+            let mut starts = vec![0];
+            let mut ends = vec![raw_word.len()];
+            for (index, character) in raw_word.char_indices() {
+                if !character.is_ascii_alphanumeric() {
+                    ends.push(index);
+                    starts.push(index + character.len_utf8());
+                }
+            }
+            starts.sort_unstable();
+            starts.dedup();
+            ends.sort_unstable();
+            ends.dedup();
+            if starts.len() > 65 || ends.len() > 65 {
+                return Err("synthetic holdout material contains too many token delimiters".into());
+            }
+            for candidate in starts.iter().flat_map(|start| {
+                ends.iter()
+                    .filter(move |end| *end > start)
+                    .map(move |end| &raw_word[*start..*end])
+            }) {
                 let word = candidate.trim_matches(|character: char| !character.is_alphanumeric());
                 let name_word = word
                     .strip_suffix("'s")
@@ -4793,6 +4804,9 @@ fn validate_synthetic_payload_names(
                         "synthetic holdout material contains an external-looking token: {word}"
                     )
                     .into());
+                }
+                if candidate != raw_word {
+                    continue;
                 }
                 let Some(first) = name_word.chars().next() else {
                     continue;
@@ -7358,6 +7372,8 @@ mod tests {
             "The fictional connector references ghp_0123456789abcdefghijklmnopqrstuvwxyz/meta.",
             "The fictional connector references vol-0abc123def456#tag.",
             "The fictional connector references JIRA-1234,closed.",
+            "The fictional connector references AKIAIOSFODNN7EXAMPLE-meta.",
+            "The fictional connector references vol-0abc123def456-meta.",
         ] {
             let bundle = json!({
                 "data_provenance": {

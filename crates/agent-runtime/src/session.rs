@@ -5332,7 +5332,8 @@ fn validate_factual_claim_support(
     for clause in atomic_assertion_clauses(text) {
         let supported = atom_refs.iter().any(|atom_ref| {
             context.atoms.get(atom_ref).is_some_and(|atom| {
-                atom_capability_overview_supports_text(atom, clause, context.assessment_at)
+                (atom_capability_overview_supports_text(atom, clause, context.assessment_at)
+                    && factual_clause_uses_only_atom_terms(atom, clause))
                     || atom_positively_supports_factual_clause(atom, clause, context.assessment_at)
             })
         });
@@ -5351,7 +5352,7 @@ fn atom_positively_supports_factual_clause(
     clause: &str,
     assessment_at: OffsetDateTime,
 ) -> bool {
-    match &atom.atom.assertion {
+    let semantic_match = match &atom.atom.assertion {
         EvidenceAssertion::Semantic {
             assertion: SemanticEvidenceAssertion::AuthorityBinding { duty, .. },
         } => {
@@ -5399,7 +5400,8 @@ fn atom_positively_supports_factual_clause(
         EvidenceAssertion::Semantic { .. } => {
             lexical_statement_supports_clause(atom.evidence.statement.as_str(), clause)
         }
-    }
+    };
+    semantic_match && factual_clause_uses_only_atom_terms(atom, clause)
 }
 
 fn atom_subject_and_scalar_match(
@@ -5408,6 +5410,7 @@ fn atom_subject_and_scalar_match(
     value: &Value,
     clause: &str,
 ) -> bool {
+    let subject_bound = subject_ref.is_some();
     if subject_ref.is_some_and(|subject_ref| !observation_text_names_subject(clause, subject_ref)) {
         return false;
     }
@@ -5464,7 +5467,136 @@ fn atom_subject_and_scalar_match(
         Value::Number(value) => text_contains_semantic_term(clause, &value.to_string()),
         Value::Null | Value::Array(_) | Value::Object(_) => false,
     };
-    value_match && (predicate_match || predicate_overlap || !matches!(value, Value::Bool(_)))
+    value_match && (predicate_match || predicate_overlap || subject_bound)
+}
+
+fn factual_clause_uses_only_atom_terms(atom: &AtomContext<'_>, clause: &str) -> bool {
+    let mut allowed = BTreeSet::new();
+    if let Some(subject_ref) = atom.atom.subject_ref.as_deref() {
+        extend_semantic_tokens(&mut allowed, subject_ref);
+        extend_semantic_tokens(&mut allowed, atom.evidence.statement.as_str());
+    }
+    collect_assertion_tokens(&atom.atom.assertion, &mut allowed);
+    match &atom.atom.assertion {
+        EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::AuthorityBinding { .. },
+        } => extend_semantic_tokens(
+            &mut allowed,
+            "i me my we our own owned owner owns responsible responsibility accountable assigned duty belongs rests tasked hands bears carries",
+        ),
+        EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::CausalAssessment { .. },
+        } => extend_semantic_tokens(
+            &mut allowed,
+            "cause causal caused likely plausible explanation points rules out eliminates stronger weaker toward",
+        ),
+        EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::EventFamilyMembership { .. },
+        } => extend_semantic_tokens(
+            &mut allowed,
+            "event family live lives belong map mapped covered captured part",
+        ),
+        EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::CollectionVisibility { .. },
+        } => extend_semantic_tokens(
+            &mut allowed,
+            "collection visibility event window observed empty complete unavailable unverified",
+        ),
+        EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::SearchCoverage { .. },
+        } => extend_semantic_tokens(
+            &mut allowed,
+            "search coverage scope found match partial failed returned truncated",
+        ),
+        _ => {}
+    }
+    if matches!(
+        atom.atom.assertion,
+        EvidenceAssertion::ToolOutcome { .. }
+            | EvidenceAssertion::LegacyStatement { .. }
+            | EvidenceAssertion::Semantic { .. }
+    ) {
+        extend_semantic_tokens(&mut allowed, atom.evidence.statement.as_str());
+    }
+    if atom.observation.call.tool_id == "capability.overview" {
+        extend_semantic_tokens(
+            &mut allowed,
+            "cerebro i me my we our can cannot able access authority bound permit permits permitted read search inspect check list find query view monitor watch pull recheck propose draft plan recommend prepare delete write remove change update administer send create edit revoke disable enable assign merge deploy trigger route schedule execute notify follow up set up",
+        );
+        for tools in [
+            atom.observation.result.data.get("built_in"),
+            atom.observation.result.data.pointer("/mcp/tools"),
+        ]
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_array)
+        {
+            for tool in tools {
+                for field in [
+                    "tool_id",
+                    "title",
+                    "summary",
+                    "authority_class",
+                    "effect_class",
+                ] {
+                    if let Some(value) = tool.get(field).and_then(Value::as_str) {
+                        extend_semantic_tokens(&mut allowed, value);
+                    }
+                }
+            }
+        }
+    }
+    extend_semantic_tokens(
+        &mut allowed,
+        "true false zero enabled disabled active inactive available unavailable configured unconfigured connected disconnected bound healthy unknown observed empty mapped verified failed partial complete current currently may might could possibly possibility hypothesis explanation alternative likely plausible",
+    );
+    semantic_content_tokens(clause)
+        .into_iter()
+        .all(|token| allowed.contains(&token))
+}
+
+fn collect_assertion_tokens(assertion: &EvidenceAssertion, allowed: &mut BTreeSet<String>) {
+    let Ok(value) = serde_json::to_value(assertion) else {
+        return;
+    };
+    fn collect(value: &Value, allowed: &mut BTreeSet<String>) {
+        match value {
+            Value::String(value) => extend_semantic_tokens(allowed, value),
+            Value::Number(value) => extend_semantic_tokens(allowed, &value.to_string()),
+            Value::Bool(value) => extend_semantic_tokens(allowed, &value.to_string()),
+            Value::Array(values) => {
+                for value in values {
+                    collect(value, allowed);
+                }
+            }
+            Value::Object(values) => {
+                for (key, value) in values {
+                    extend_semantic_tokens(allowed, key);
+                    collect(value, allowed);
+                }
+            }
+            Value::Null => {}
+        }
+    }
+    collect(&value, allowed);
+}
+
+fn extend_semantic_tokens(tokens: &mut BTreeSet<String>, value: &str) {
+    tokens.extend(semantic_content_tokens(value));
+}
+
+fn semantic_content_tokens(value: &str) -> Vec<String> {
+    const GRAMMAR: &[&str] = &[
+        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being", "do", "does", "did",
+        "has", "have", "had", "this", "that", "these", "those", "it", "its", "to", "for", "of",
+        "on", "in", "at", "with", "without", "by", "from", "as", "and", "or", "but", "not", "no",
+        "than", "then", "s",
+    ];
+    normalized_semantic_text(value)
+        .split_whitespace()
+        .filter(|token| !GRAMMAR.contains(token))
+        .map(|token| token.strip_suffix('s').unwrap_or(token).to_owned())
+        .collect()
 }
 
 fn validate_hypothesis_wording(
@@ -11158,6 +11290,8 @@ mod tests {
             "Synthetic Team Beta has charge of correcting connector beta.",
             "The steward holds the grant to alter provider settings.",
             "Atlas holds the grant to alter provider settings.",
+            "Atlas oversees remediation because connector alpha is healthy.",
+            "Atlas alters provider settings because connector alpha is healthy.",
         ] {
             unrelated_authority.claims[0].text = unsupported.into();
             unrelated_authority.message = unrelated_authority.claims[0].text.clone();
@@ -11172,6 +11306,15 @@ mod tests {
                 "untyped principal effect was accepted: {unsupported}"
             );
         }
+
+        let mut subjectless = observation(true, Some("2026-08-01T00:00:00Z"));
+        subjectless.result.evidence[0].atoms[0].subject_ref = None;
+        unrelated_authority.claims[0].text = "Connector beta is healthy.".into();
+        unrelated_authority.message = unrelated_authority.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&session(), &unrelated_authority, &[subjectless], assessment,)
+                .is_err()
+        );
         for exact_owner in [
             "Cerebro owns remediation for connector beta.",
             "Remediation for connector beta is owned by Cerebro.",
