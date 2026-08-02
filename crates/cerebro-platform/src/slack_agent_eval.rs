@@ -4986,6 +4986,19 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
                 && part.chars().all(|character| character.is_ascii_digit())
                 && part.parse::<u8>().is_ok()
         });
+    let embedded_ipv4_parts = canonical
+        .rsplit(':')
+        .next()
+        .unwrap_or_default()
+        .split('.')
+        .collect::<Vec<_>>();
+    let ipv4_embedded_ipv6_like = canonical.contains(':')
+        && embedded_ipv4_parts.len() == 4
+        && embedded_ipv4_parts.iter().all(|part| {
+            !part.is_empty()
+                && part.chars().all(|character| character.is_ascii_digit())
+                && part.parse::<u8>().is_ok()
+        });
     let issue_parts = canonical.split(['-', '_']).collect::<Vec<_>>();
     let issue_key_like = issue_parts.len() >= 2
         && issue_parts.first().is_some_and(|prefix| {
@@ -5064,6 +5077,7 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
         || identifier_prefix
         || domain_like
         || ipv4_like
+        || ipv4_embedded_ipv6_like
         || ipv6_like
         || issue_key_like
         || alphanumeric_issue_key_like
@@ -7320,6 +7334,7 @@ mod tests {
             "The fictional connector is at secret.example.xn--p1ai.",
             "The fictional connector references AKIAIOSFODNN7EXAMPLE.",
             "The fictional connector references ghp_0123456789abcdefghijklmnopqrstuvwxyz.",
+            "The fictional connector is at [::ffff:192.0.2.1].",
         ] {
             let bundle = json!({
                 "data_provenance": {

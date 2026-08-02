@@ -5041,6 +5041,7 @@ fn validate_claim(
                 ));
             }
             validate_observation_wording(&claim.text, supporting_atom_refs, context, false)?;
+            validate_hypothesis_wording(&claim.text, supporting_atom_refs, context)?;
             supporting_atom_refs.as_slice()
         }
         ClaimContent::OperatorContext {
@@ -5247,6 +5248,61 @@ fn validate_claim(
         cited_atoms.insert(atom_ref.clone());
     }
     Ok(())
+}
+
+fn validate_hypothesis_wording(
+    text: &str,
+    atom_refs: &[String],
+    context: &ClaimValidationContext<'_, '_>,
+) -> Result<(), AgentRuntimeError> {
+    let padded = format!(" {} ", text.to_ascii_lowercase());
+    let qualified = [
+        " may ",
+        " might ",
+        " could ",
+        " possibly ",
+        " possibility ",
+        " hypothesis ",
+        " one explanation ",
+    ]
+    .iter()
+    .any(|marker| padded.contains(marker));
+    let subject_bound = atom_refs.iter().any(|atom_ref| {
+        context.atoms.get(atom_ref).is_some_and(|atom| {
+            atom.atom
+                .subject_ref
+                .as_deref()
+                .is_some_and(|subject_ref| observation_text_names_subject(text, subject_ref))
+                || lexical_statement_supports_clause(atom.evidence.statement.as_str(), text)
+        })
+    });
+    if !qualified || !subject_bound {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "a hypothesis must be visibly qualified and remain bound to a cited evidence subject or statement"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+fn lexical_statement_supports_clause(statement: &str, clause: &str) -> bool {
+    const STOP_WORDS: &[&str] = &[
+        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is", "it", "of",
+        "on", "or", "that", "the", "this", "to", "was", "were", "with",
+    ];
+    let normalized_statement = normalized_semantic_text(statement);
+    let normalized_clause = normalized_semantic_text(clause);
+    let statement_tokens = normalized_statement
+        .split_whitespace()
+        .filter(|token| token.len() >= 3 && !STOP_WORDS.contains(token))
+        .collect::<BTreeSet<_>>();
+    let clause_tokens = normalized_clause
+        .split_whitespace()
+        .filter(|token| token.len() >= 3 && !STOP_WORDS.contains(token))
+        .collect::<BTreeSet<_>>();
+    let required_overlap = clause_tokens.len().min(3);
+    required_overlap > 0
+        && statement_tokens.intersection(&clause_tokens).count() >= required_overlap
 }
 
 fn validate_observation_wording(
@@ -6059,6 +6115,7 @@ fn parse_tool_effect_class(value: &str) -> Option<ToolEffectClass> {
 
 fn contains_ownership_assertion(text: &str) -> bool {
     let normalized = text.to_ascii_lowercase();
+    let padded = format!(" {normalized} ");
     let explicit_relation = [
         "owner: me",
         "owner is me",
@@ -6097,7 +6154,32 @@ fn contains_ownership_assertion(text: &str) -> bool {
     .any(|phrase| normalized.contains(phrase));
     let hands_relation = (normalized.contains("'s hands") || normalized.contains("’s hands"))
         && !claimed_authority_duties(text).is_empty();
-    explicit_relation || hands_relation
+    let structural_authority_relation = !claimed_authority_duties(text).is_empty()
+        && [
+            " i ",
+            " me ",
+            " my ",
+            " we ",
+            " our ",
+            " cerebro ",
+            " team ",
+            " group ",
+            " user ",
+            " role ",
+            " owner ",
+            " accountab",
+            " responsib",
+            " authority ",
+            " authorized ",
+            " duty ",
+            " tasked ",
+            " empowered ",
+            " permitted ",
+            " assigned ",
+        ]
+        .iter()
+        .any(|marker| padded.contains(marker));
+    explicit_relation || hands_relation || structural_authority_relation
 }
 
 fn contains_gapped_ownership_assertion(text: &str) -> bool {
@@ -6842,6 +6924,7 @@ fn contains_unbound_future_promise(value: &str) -> bool {
 
 fn contains_operational_capability_assertion(value: &str) -> bool {
     let normalized = value.to_lowercase().replace('’', "'");
+    let padded = format!(" {normalized} ");
     let asserts_self_capability = [
         "i can ",
         "i can't ",
@@ -6929,7 +7012,26 @@ fn contains_operational_capability_assertion(value: &str) -> bool {
     ]
     .iter()
     .any(|verb| normalized.contains(verb));
-    asserts_self_capability && operational_verb
+    let names_agent = [" i ", " me ", " my ", " we ", " our ", " cerebro "]
+        .iter()
+        .any(|actor| padded.contains(actor));
+    let asserts_authority = [
+        " authority ",
+        " authorized ",
+        " access ",
+        " able ",
+        " allowed ",
+        " empowered ",
+        " permitted ",
+        " can ",
+        " cannot ",
+        " can't ",
+    ]
+    .iter()
+    .any(|marker| padded.contains(marker));
+    let structural_capability =
+        names_agent && asserts_authority && !capability_operations_claimed(&normalized).is_empty();
+    (asserts_self_capability && operational_verb) || structural_capability
 }
 
 #[cfg(test)]
@@ -9797,6 +9899,13 @@ mod tests {
         tag.message = tag.claims[0].text.clone();
         tag.question = Some(tag.message.clone());
         assert!(validate_grounded_draft(&session(), &tag, &[], assessment).is_err());
+
+        let mut presupposition = tag;
+        presupposition.claims[0].text =
+            "How did Cerebro become accountable for remediating connector beta?".into();
+        presupposition.message = presupposition.claims[0].text.clone();
+        presupposition.question = Some(presupposition.message.clone());
+        assert!(validate_grounded_draft(&session(), &presupposition, &[], assessment).is_err());
     }
 
     #[test]
@@ -10691,6 +10800,7 @@ mod tests {
             "Synthetic Team Beta is tasked with remediation for connector beta.",
             "Remediation for connector beta is in Synthetic Team Beta's hands.",
             "Synthetic Team Beta bears responsibility for remediation of connector beta.",
+            "Synthetic Team Beta carries the remediation duty for connector beta.",
         ] {
             sourced_owner.claims[0].text = contradictory_owner.into();
             sourced_owner.message = sourced_owner.claims[0].text.clone();
@@ -10705,6 +10815,34 @@ mod tests {
                 "contradictory passive owner was accepted: {contradictory_owner}"
             );
         }
+
+        let mut unrelated_authority = draft();
+        unrelated_authority.claims.truncate(1);
+        unrelated_authority.claims[0].text =
+            "Cerebro carries the remediation duty for connector beta.".into();
+        unrelated_authority.message = unrelated_authority.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &unrelated_authority,
+                &[observation(true, Some("2026-08-01T00:00:00Z"))],
+                assessment,
+            )
+            .is_err()
+        );
+
+        unrelated_authority.claims[0].text =
+            "Cerebro possesses authority to administer the provider.".into();
+        unrelated_authority.message = unrelated_authority.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &unrelated_authority,
+                &[observation(true, Some("2026-08-01T00:00:00Z"))],
+                assessment,
+            )
+            .is_err()
+        );
         for exact_owner in [
             "Cerebro owns remediation for connector beta.",
             "Remediation for connector beta is owned by Cerebro.",
