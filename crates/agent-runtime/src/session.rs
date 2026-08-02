@@ -4147,6 +4147,19 @@ fn explicitly_delegates_future_observation(request: &str) -> bool {
     ]
     .iter()
     .any(|phrase| normalized.contains(phrase))
+        || (["set up", "schedule", "arrange"]
+            .iter()
+            .any(|phrase| normalized.contains(phrase))
+            && [
+                "re-inspection",
+                "reinspection",
+                "re-check",
+                "recheck",
+                "follow-up check",
+                "follow up check",
+            ]
+            .iter()
+            .any(|subject| normalized.contains(subject)))
         || (normalized.contains("watch ")
             && (normalized.contains("recovery")
                 || normalized.contains("until")
@@ -4168,6 +4181,11 @@ fn validate_plan_completion(
         .iter()
         .map(|claim| claim.claim_ref.as_str())
         .collect::<BTreeSet<_>>();
+    let covered = draft
+        .claims
+        .iter()
+        .filter_map(|claim| claim.planned_claim_ref.as_deref())
+        .collect::<BTreeSet<_>>();
     for claim in &draft.claims {
         if let Some(planned_claim_ref) = claim.planned_claim_ref.as_deref()
             && !planned.contains(planned_claim_ref)
@@ -4175,6 +4193,20 @@ fn validate_plan_completion(
             return Err(AgentRuntimeError::InvalidFinal(
                 "visible claim references an unknown planned claim".into(),
             ));
+        }
+    }
+    if draft.state == FinalState::Answered {
+        let uncovered = plan
+            .claims
+            .iter()
+            .filter(|claim| claim.required && !covered.contains(claim.claim_ref.as_str()))
+            .map(|claim| claim.claim_ref.as_str())
+            .collect::<Vec<_>>();
+        if !uncovered.is_empty() {
+            return Err(AgentRuntimeError::InvalidFinal(format!(
+                "answered requires every required planned claim to be covered; missing: {}",
+                uncovered.join(", ")
+            )));
         }
     }
     if let Some(follow_through) = &plan.follow_through {
@@ -4718,6 +4750,32 @@ fn validate_observation_wording(
         ));
     }
     let normalized = text.to_ascii_lowercase();
+    let asserts_causal_location = [
+        "points past",
+        "points to a provider",
+        "provider-side cause",
+        "provider-side scope",
+        "provider-side fix",
+        "connector-side cause",
+        "connector-side fix",
+        "caused by",
+        "cause is",
+        "rules out the connector",
+        "not a connector",
+        "fix on my side",
+    ]
+    .iter()
+    .any(|phrase| normalized.contains(phrase));
+    if asserts_causal_location
+        && !atom_refs
+            .iter()
+            .any(|atom_ref| context.atoms.get(atom_ref).is_some_and(atom_supports_cause))
+    {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "provider authority, collection coverage, and an unbound action plan do not establish which side caused or owns a gap; causal location requires a subject-bound causal assessment"
+                .into(),
+        ));
+    }
     if normalized.contains("healthy")
         && !atom_refs.iter().any(|atom_ref| {
             context.atoms.get(atom_ref).is_some_and(|atom| {
@@ -4762,6 +4820,33 @@ fn validate_observation_wording(
         }
     }
     Ok(())
+}
+
+fn atom_supports_cause(atom: &AtomContext<'_>) -> bool {
+    match &atom.atom.assertion {
+        EvidenceAssertion::Semantic {
+            assertion:
+                SemanticEvidenceAssertion::CausalAssessment {
+                    candidates,
+                    ranking,
+                    ..
+                },
+        } => {
+            matches!(ranking, CausalRanking::Ranked { .. })
+                || candidates.iter().any(|candidate| {
+                    matches!(
+                        candidate.state,
+                        CausalCandidateState::Established | CausalCandidateState::Supported
+                    )
+                })
+        }
+        EvidenceAssertion::Value { predicate, value } => {
+            (predicate.ends_with("/cause_ranking_supported")
+                || predicate == "cause_ranking_supported")
+                && value.as_bool() == Some(true)
+        }
+        _ => false,
+    }
 }
 
 fn validate_stable_explanation_wording(text: &str) -> Result<(), AgentRuntimeError> {
@@ -6407,10 +6492,14 @@ mod tests {
     }
 
     #[test]
-    fn internal_plan_claims_do_not_force_user_visible_prose() {
+    fn required_plan_claims_must_be_resolved_in_the_visible_answer() {
         let mut unfinished = draft();
         unfinished.claims[0].planned_claim_ref = None;
-        assert!(validate_plan_completion(Some(&plan()), &unfinished).is_ok());
+        assert!(validate_plan_completion(Some(&plan()), &unfinished).is_err());
+
+        let mut optional = plan();
+        optional.claims[0].required = false;
+        assert!(validate_plan_completion(Some(&optional), &unfinished).is_ok());
 
         let mut over_budget = plan();
         over_budget.lane = ExecutionLane::Lookup;
@@ -6616,6 +6705,21 @@ mod tests {
         let plan = plan();
         assert!(validate_plan(&plan, &["connector.read".into()]).is_ok());
         assert!(validate_plan(&plan, &["graph.read".into()]).is_err());
+    }
+
+    #[test]
+    fn answered_requires_every_required_planned_claim() {
+        let mut proposed = plan();
+        proposed.claims.push(PlannedClaim {
+            claim_ref: "claim:owner".into(),
+            question: "Who owns the unresolved gap?".into(),
+            required: true,
+            source_candidates: vec!["connector.read".into()],
+        });
+        let answer = draft();
+
+        let error = validate_plan_completion(Some(&proposed), &answer).unwrap_err();
+        assert!(error.to_string().contains("claim:owner"));
     }
 
     #[test]
@@ -7874,6 +7978,25 @@ mod tests {
     }
 
     #[test]
+    fn provider_authority_cannot_be_recast_as_causal_location() {
+        let assessment = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut authority = observation(true, Some("2026-08-01T00:00:00Z"));
+        authority.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Value {
+            predicate: "/provider_admin_access".into(),
+            value: json!(false),
+        };
+        let mut candidate = draft();
+        candidate.claims.truncate(1);
+        candidate.claims[0].text =
+            "The missing family points past the connector to provider-side scope.".into();
+        candidate.message = candidate.claims[0].text.clone();
+
+        let error =
+            validate_grounded_draft(&session(), &candidate, &[authority], assessment).unwrap_err();
+        assert!(error.to_string().contains("causal location"));
+    }
+
+    #[test]
     fn unbound_scheduling_phrases_are_detected() {
         for text in [
             "I can keep an eye on it.",
@@ -8175,6 +8298,12 @@ mod tests {
         ));
         assert!(explicitly_delegates_future_observation(
             "Keep going and keep checking until the next receipt lands."
+        ));
+        assert!(explicitly_delegates_future_observation(
+            "Set up that audit-activity re-inspection and take it as far as you can."
+        ));
+        assert!(!explicitly_delegates_future_observation(
+            "Set up the current incident handoff."
         ));
 
         let mut continued = session();
