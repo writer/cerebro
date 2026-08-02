@@ -51,6 +51,7 @@ import { FileSlackThreadRouteStore } from "./slack-thread-route-store.js";
 import {
   FileSlackIngressQueue,
   type SlackIngressClaim,
+  type SlackIngressExecutionPermit,
 } from "./slack-ingress-store.js";
 import { FileWakeDeliveryOutbox } from "./wake-delivery-outbox.js";
 import {
@@ -994,26 +995,50 @@ export class SlackCompanionRuntime {
   }
 
   private async drainSlackIngress(): Promise<void> {
+    await this.ingressQueue.tryWithExclusiveExecution(
+      this.ingressWorkerRef,
+      async (permit) => this.drainSlackIngressExclusively(permit),
+    );
+  }
+
+  private async drainSlackIngressExclusively(
+    permit: SlackIngressExecutionPermit,
+  ): Promise<void> {
     while (true) {
-      const claim = await this.ingressQueue.claimNext(this.ingressWorkerRef);
+      const claim = await this.ingressQueue.claimNext(permit);
       if (!claim) return;
       try {
-        await this.processSlackIngressClaim(claim);
-        await this.ingressQueue.complete(claim);
+        await this.processSlackIngressClaim(permit, claim);
+        await this.ingressQueue.complete(permit, claim);
       } catch (error) {
-        await this.ingressQueue.release(claim).catch((releaseError: unknown) => {
-          logSlackIngressFailure("release", releaseError);
-        });
-        logSlackIngressFailure("process", error);
-        return;
+        let disposition: "dead_lettered" | "retry_scheduled";
+        try {
+          disposition = await this.ingressQueue.fail(permit, claim, error);
+        } catch (failureError) {
+          logSlackIngressFailure("record_failure", failureError);
+          await this.ingressQueue.release(permit, claim).catch((releaseError: unknown) => {
+            logSlackIngressFailure("release", releaseError);
+          });
+          logSlackIngressFailure("process", error);
+          return;
+        }
+        logSlackIngressFailure(
+          "process",
+          error,
+          disposition === "dead_lettered" ? "dead_lettered" : "retrying",
+        );
+        if (disposition === "retry_scheduled") return;
       }
     }
   }
 
-  private async processSlackIngressClaim(claim: SlackIngressClaim): Promise<void> {
+  private async processSlackIngressClaim(
+    permit: SlackIngressExecutionPermit,
+    claim: SlackIngressClaim,
+  ): Promise<void> {
     const event = claim.event;
     if (!this.config.allowedTeamIds.has(event.teamId)) return;
-    const leaseGuard = async (): Promise<void> => this.ingressQueue.renew(claim);
+    const leaseGuard = async (): Promise<void> => this.ingressQueue.renew(permit, claim);
     await leaseGuard();
     const client = this.app.client as unknown as SlackMentionClient;
     if (event.kind === "app_mention") {
@@ -1127,12 +1152,16 @@ function logAgentDeliveryFailure(operation: string, error: unknown): void {
   })}\n`);
 }
 
-function logSlackIngressFailure(operation: string, error: unknown): void {
+function logSlackIngressFailure(
+  operation: string,
+  error: unknown,
+  state: "dead_lettered" | "retrying" = "retrying",
+): void {
   process.stderr.write(`${JSON.stringify({
     component: "slack-ingress",
     error_kind: error instanceof Error ? error.name : "unknown",
     operation,
-    state: "retrying",
+    state,
   })}\n`);
 }
 

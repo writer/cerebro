@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +15,10 @@ import {
 import { loadSlackRuntimeConfig, SlackRuntimeConfigError } from "../src/runtime/config.js";
 import { FileOutcomeStore } from "../src/runtime/outcome-store.js";
 import { FileSlackThreadRouteStore } from "../src/runtime/slack-thread-route-store.js";
-import { FileSlackIngressQueue } from "../src/runtime/slack-ingress-store.js";
+import {
+  FileSlackIngressQueue,
+  type SlackIngressExecutionPermit,
+} from "../src/runtime/slack-ingress-store.js";
 import { FileWakeDeliveryOutbox } from "../src/runtime/wake-delivery-outbox.js";
 import { WakeDeliveryWorker } from "../src/runtime/wake-delivery-worker.js";
 import {
@@ -38,6 +41,17 @@ import {
   slackDeliveryReferences,
 } from "../src/runtime/slack-runtime.js";
 
+async function withIngressExecution<T>(
+  ingress: FileSlackIngressQueue,
+  workerRef: string,
+  operation: (permit: SlackIngressExecutionPermit) => Promise<T>,
+): Promise<T> {
+  const attempt = await ingress.tryWithExclusiveExecution(workerRef, operation);
+  assert.equal(attempt.acquired, true, "the test worker must acquire the execution gate");
+  if (!attempt.acquired) throw new Error("Slack ingress execution gate was busy.");
+  return attempt.value;
+}
+
 test("Socket Mode persists a resumable Slack event before Bolt can acknowledge it", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-"));
   try {
@@ -47,10 +61,12 @@ test("Socket Mode persists a resumable Slack event before Bolt can acknowledge i
       ingress,
       {
         processEvent: async (event) => {
-          const claim = await ingress.claimNext("worker:test");
-          assert.ok(claim, "the ingress record must exist before Bolt receives the event");
-          assert.equal(claim.event.kind, "app_mention");
-          await ingress.release(claim);
+          await withIngressExecution(ingress, "worker:test", async (permit) => {
+            const claim = await ingress.claimNext(permit);
+            assert.ok(claim, "the ingress record must exist before Bolt receives the event");
+            assert.equal(claim.event.kind, "app_mention");
+            await ingress.release(permit, claim);
+          });
           await event.ack();
         },
       },
@@ -62,7 +78,11 @@ test("Socket Mode persists a resumable Slack event before Bolt can acknowledge i
       },
     );
     assert.equal(acknowledged, true);
-    assert.ok(await ingress.claimNext("worker:restart"));
+    assert.ok(await withIngressExecution(
+      ingress,
+      "worker:restart",
+      async (permit) => ingress.claimNext(permit),
+    ));
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -107,15 +127,195 @@ test("Slack ingress leases recover after a crash without duplicating admission",
     const ingress = new FileSlackIngressQueue(root, () => now);
     assert.equal(await ingress.admitEnvelope(slackEnvelopeFixture()), true);
     assert.equal(await ingress.admitEnvelope(slackEnvelopeFixture()), true);
-    const crashed = await ingress.claimNext("worker:crashed");
+    const crashed = await withIngressExecution(
+      ingress,
+      "worker:crashed",
+      async (permit) => ingress.claimNext(permit),
+    );
     assert.ok(crashed);
-    assert.equal(await ingress.claimNext("worker:competing"), undefined);
+    assert.equal(await withIngressExecution(
+      ingress,
+      "worker:competing",
+      async (permit) => ingress.claimNext(permit),
+    ), undefined);
     now = new Date("2026-08-02T20:21:00.000Z");
-    const recovered = await ingress.claimNext("worker:recovered");
-    assert.ok(recovered);
-    assert.equal(recovered.recordRef, crashed.recordRef);
-    await ingress.complete(recovered);
-    assert.equal(await ingress.claimNext("worker:complete"), undefined);
+    await withIngressExecution(ingress, "worker:recovered", async (permit) => {
+      const recovered = await ingress.claimNext(permit);
+      assert.ok(recovered);
+      assert.equal(recovered.recordRef, crashed.recordRef);
+      await ingress.complete(permit, recovered);
+    });
+    assert.equal(await withIngressExecution(
+      ingress,
+      "worker:complete",
+      async (permit) => ingress.claimNext(permit),
+    ), undefined);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a thrown handler releases the execution gate for crash recovery", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-gate-crash-"));
+  let now = new Date("2026-08-02T20:00:00.000Z");
+  try {
+    const crashedProcess = new FileSlackIngressQueue(root, () => now);
+    const recoveredProcess = new FileSlackIngressQueue(root, () => now);
+    await crashedProcess.admitEnvelope(slackEnvelopeFixture());
+    await recoveredProcess.initialize();
+    let crashedRecordRef = "";
+    await assert.rejects(
+      withIngressExecution(crashedProcess, "worker:crashed", async (permit) => {
+        const claim = await crashedProcess.claimNext(permit);
+        assert.ok(claim);
+        crashedRecordRef = claim.recordRef;
+        throw new Error("simulated handler crash");
+      }),
+      /simulated handler crash/u,
+    );
+
+    now = new Date("2026-08-02T20:21:00.000Z");
+    await withIngressExecution(recoveredProcess, "worker:recovered", async (permit) => {
+      const recovered = await recoveredProcess.claimNext(permit);
+      assert.ok(recovered);
+      assert.equal(recovered.recordRef, crashedRecordRef);
+      await recoveredProcess.complete(permit, recovered);
+    });
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Slack ingress retry backoff is durable across queue restarts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-backoff-"));
+  let now = new Date("2026-08-02T20:00:00.000Z");
+  try {
+    const first = new FileSlackIngressQueue(root, () => now);
+    const recordRef = await first.admit(slackIngressEventFixture());
+    await withIngressExecution(first, "worker:first-attempt", async (permit) => {
+      const claim = await first.claimNext(permit);
+      assert.ok(claim);
+      assert.equal(claim.attempt, 1);
+      assert.equal(await first.fail(permit, claim, new TypeError("injected failure")), "retry_scheduled");
+    });
+
+    const restarted = new FileSlackIngressQueue(root, () => now);
+    assert.equal(await withIngressExecution(
+      restarted,
+      "worker:too-early",
+      async (permit) => restarted.claimNext(permit),
+    ), undefined);
+    now = new Date("2026-08-02T20:00:04.999Z");
+    assert.equal(await withIngressExecution(
+      restarted,
+      "worker:still-too-early",
+      async (permit) => restarted.claimNext(permit),
+    ), undefined);
+    now = new Date("2026-08-02T20:00:05.000Z");
+    await withIngressExecution(restarted, "worker:second-attempt", async (permit) => {
+      const claim = await restarted.claimNext(permit);
+      assert.ok(claim);
+      assert.equal(claim.attempt, 2);
+      assert.equal(claim.recordRef, recordRef);
+      await restarted.complete(permit, claim);
+    });
+    assert.equal(await restarted.readDeadLetter(recordRef), undefined);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("the fifth failed ingress attempt dead-letters poison and unblocks the next event", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-dead-letter-"));
+  let now = new Date("2026-08-02T20:00:00.000Z");
+  const retryBackoffMs = [5_000, 30_000, 2 * 60_000, 10 * 60_000];
+  try {
+    const ingress = new FileSlackIngressQueue(root, () => now);
+    const poison = slackIngressEventFixture();
+    const poisonRecordRef = await ingress.admit(poison);
+    await ingress.admit({
+      ...poison,
+      eventTs: "1710000001.000002",
+      text: "Run after the poison event is isolated.",
+    });
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await withIngressExecution(ingress, `worker:attempt-${attempt}`, async (permit) => {
+        const claim = await ingress.claimNext(permit);
+        assert.ok(claim);
+        assert.equal(claim.attempt, attempt);
+        assert.equal(claim.recordRef, poisonRecordRef);
+        const error = new Error(`poison attempt ${attempt}`);
+        error.name = "PoisonIngressError";
+        const disposition = await ingress.fail(permit, claim, error);
+        assert.equal(
+          disposition,
+          attempt === 5 ? "dead_lettered" : "retry_scheduled",
+        );
+        if (disposition === "dead_lettered") {
+          const following = await ingress.claimNext(permit);
+          assert.ok(following);
+          assert.equal(following.attempt, 1);
+          assert.equal(following.event.text, "Run after the poison event is isolated.");
+          await ingress.complete(permit, following);
+        }
+      });
+      const delay = retryBackoffMs[attempt - 1];
+      if (delay !== undefined) now = new Date(now.getTime() + delay);
+    }
+
+    assert.deepEqual(await ingress.readDeadLetter(poisonRecordRef), {
+      attemptCount: 5,
+      deadLetteredAt: "2026-08-02T20:12:35.000Z",
+      event: poison,
+      lastErrorKind: "PoisonIngressError",
+      recordRef: poisonRecordRef,
+      requestKey: "T-ONE:C-ONE:1710000000.000001:1710000000.000001",
+      schemaVersion: "cerebro-slack-ingress-dead-letter/v1",
+    });
+    assert.equal(await ingress.admit(poison), poisonRecordRef);
+    assert.equal(await withIngressExecution(
+      ingress,
+      "worker:terminal-replay",
+      async (permit) => ingress.claimNext(permit),
+    ), undefined);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("repeated expired ingress leases dead-letter a crashing head event", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-ingress-crash-poison-"));
+  let now = new Date("2026-08-02T20:00:00.000Z");
+  try {
+    const ingress = new FileSlackIngressQueue(root, () => now);
+    const poison = slackIngressEventFixture();
+    const poisonRecordRef = await ingress.admit(poison);
+    await ingress.admit({
+      ...poison,
+      eventTs: "1710000001.000002",
+      text: "Continue after repeated worker crashes.",
+    });
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await withIngressExecution(ingress, `worker:crash-${attempt}`, async (permit) => {
+        const claim = await ingress.claimNext(permit);
+        assert.ok(claim);
+        assert.equal(claim.attempt, attempt);
+        assert.equal(claim.recordRef, poisonRecordRef);
+      });
+      now = new Date(now.getTime() + 21 * 60_000);
+    }
+
+    await withIngressExecution(ingress, "worker:after-crashes", async (permit) => {
+      const following = await ingress.claimNext(permit);
+      assert.ok(following);
+      assert.equal(following.attempt, 1);
+      assert.equal(following.event.text, "Continue after repeated worker crashes.");
+      await ingress.complete(permit, following);
+    });
+    const deadLetter = await ingress.readDeadLetter(poisonRecordRef);
+    assert.ok(deadLetter);
+    assert.equal(deadLetter.attemptCount, 5);
+    assert.equal(deadLetter.lastErrorKind, "SlackIngressLeaseExpired");
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -128,24 +328,43 @@ test("concurrent stale-lease recovery elects one SQLite-fenced worker", async ()
     const first = new FileSlackIngressQueue(root, () => now);
     const second = new FileSlackIngressQueue(root, () => now);
     await first.admitEnvelope(slackEnvelopeFixture());
-    assert.ok(await first.claimNext("worker:crashed"));
+    assert.ok(await withIngressExecution(
+      first,
+      "worker:crashed",
+      async (permit) => first.claimNext(permit),
+    ));
     now = new Date("2026-08-02T20:21:00.000Z");
-    const claims = await Promise.all([
-      first.claimNext("worker:first-contender"),
-      second.claimNext("worker:second-contender"),
+    const attempts = await Promise.all([
+      first.tryWithExclusiveExecution(
+        "worker:first-contender",
+        async (permit) => first.claimNext(permit),
+      ),
+      second.tryWithExclusiveExecution(
+        "worker:second-contender",
+        async (permit) => second.claimNext(permit),
+      ),
     ]);
+    const claims = attempts.map((attempt) => attempt.acquired ? attempt.value : undefined);
     assert.equal(claims.filter(Boolean).length, 1);
-    const winner = claims.find((claim) => claim !== undefined);
+    const winnerIndex = claims.findIndex((claim) => claim !== undefined);
+    const winner = claims[winnerIndex];
     assert.ok(winner);
-    await assert.rejects(
-      first.complete({
-        ...winner,
-        leaseToken: "stale-or-losing-token",
-      }),
-      /exact live lease/u,
-    );
-    await second.complete(winner);
-    assert.equal(await first.claimNext("worker:after-completion"), undefined);
+    const winningQueue = winnerIndex === 0 ? first : second;
+    await withIngressExecution(winningQueue, winner.workerRef, async (permit) => {
+      await assert.rejects(
+        winningQueue.complete(permit, {
+          ...winner,
+          leaseToken: "stale-or-losing-token",
+        }),
+        /exact live lease/u,
+      );
+      await winningQueue.complete(permit, winner);
+    });
+    assert.equal(await withIngressExecution(
+      first,
+      "worker:after-completion",
+      async (permit) => first.claimNext(permit),
+    ), undefined);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -170,17 +389,26 @@ test("Slack ingress preserves mention-before-reply order across queue processes"
       },
     });
 
-    const mention = await second.claimNext("worker:mention");
-    assert.ok(mention);
-    assert.equal(mention.event.kind, "app_mention");
-    assert.equal(await first.claimNext("worker:reply-too-early"), undefined);
+    const mention = await withIngressExecution(second, "worker:mention", async (permit) => {
+      const claimed = await second.claimNext(permit);
+      assert.ok(claimed);
+      assert.equal(claimed.event.kind, "app_mention");
+      const competing = await first.tryWithExclusiveExecution(
+        "worker:reply-too-early",
+        async (competingPermit) => first.claimNext(competingPermit),
+      );
+      assert.equal(competing.acquired, false);
+      await second.complete(permit, claimed);
+      return claimed;
+    });
 
-    await second.complete(mention);
-    const reply = await first.claimNext("worker:reply");
-    assert.ok(reply);
-    assert.equal(reply.event.kind, "message");
-    assert.equal(reply.event.threadTs, mention.event.threadTs);
-    await first.complete(reply);
+    await withIngressExecution(first, "worker:reply", async (permit) => {
+      const reply = await first.claimNext(permit);
+      assert.ok(reply);
+      assert.equal(reply.event.kind, "message");
+      assert.equal(reply.event.threadTs, mention.event.threadTs);
+      await first.complete(permit, reply);
+    });
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -770,6 +998,109 @@ test("Slack persists one immutable private route for an opaque Rust thread refer
       }),
       /route changed/u,
     );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Slack route binding is one immutable SQLite CAS across processes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-thread-route-race-"));
+  const threadRef = `slack-scratchpad://sha256/${"b".repeat(64)}`;
+  try {
+    const firstProcess = new FileSlackThreadRouteStore(
+      root,
+      () => new Date("2026-07-31T20:00:00.000Z"),
+    );
+    const secondProcess = new FileSlackThreadRouteStore(
+      root,
+      () => new Date("2026-07-31T21:00:00.000Z"),
+    );
+    const base = {
+      appRef: "slack-app:production:Cerebro",
+      botUserId: "U-CEREBRO",
+      teamId: "T-ONE",
+      threadRef,
+      threadTs: "1753992060.000100",
+    };
+    const results = await Promise.allSettled([
+      firstProcess.bind({ ...base, channelId: "C-ONE" }),
+      secondProcess.bind({ ...base, channelId: "C-TWO" }),
+    ]);
+    const fulfilled = results.filter(
+      (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof firstProcess.bind>>> =>
+        result.status === "fulfilled",
+    );
+    const rejected = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    assert.equal(fulfilled.length, 1);
+    assert.equal(rejected.length, 1);
+    assert.match(String(rejected[0]!.reason), /route changed/u);
+    assert.deepEqual(await firstProcess.read(threadRef), fulfilled[0]!.value);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("identical concurrent route binds return the canonical first row", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-thread-route-identical-"));
+  const threadRef = `slack-scratchpad://sha256/${"c".repeat(64)}`;
+  try {
+    const firstProcess = new FileSlackThreadRouteStore(
+      root,
+      () => new Date("2026-07-31T20:00:00.000Z"),
+    );
+    const secondProcess = new FileSlackThreadRouteStore(
+      root,
+      () => new Date("2026-07-31T21:00:00.000Z"),
+    );
+    const input = {
+      appRef: "slack-app:production:Cerebro",
+      botUserId: "U-CEREBRO",
+      channelId: "C-ONE",
+      teamId: "T-ONE",
+      threadRef,
+      threadTs: "1753992060.000100",
+    };
+    const routes = await Promise.all([
+      firstProcess.bind(input),
+      secondProcess.bind(input),
+    ]);
+    assert.deepEqual(routes[0], routes[1]);
+    assert.deepEqual(await firstProcess.read(threadRef), routes[0]);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("SQLite route authority imports an exact legacy JSON route", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-thread-route-migration-"));
+  const threadRef = `slack-scratchpad://sha256/${"d".repeat(64)}`;
+  const route = {
+    appRef: "slack-app:production:Cerebro",
+    botUserId: "U-CEREBRO",
+    boundAt: "2026-07-31T20:00:00.000Z",
+    channelId: "C-ONE",
+    schemaVersion: "private-slack-thread-route/v1",
+    teamId: "T-ONE",
+    threadRef,
+    threadTs: "1753992060.000100",
+  } as const;
+  try {
+    const directory = join(root, "slack-thread-routes");
+    await mkdir(directory, { recursive: true });
+    const filename = `${createHash("sha256").update(threadRef, "utf8").digest("hex")}.json`;
+    await writeFile(join(directory, filename), `${JSON.stringify(route)}\n`, "utf8");
+    const routes = new FileSlackThreadRouteStore(root);
+    assert.deepEqual(await routes.read(threadRef), route);
+    assert.deepEqual(await routes.bind({
+      appRef: route.appRef,
+      botUserId: route.botUserId,
+      channelId: route.channelId,
+      teamId: route.teamId,
+      threadRef: route.threadRef,
+      threadTs: route.threadTs,
+    }), route);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -2711,28 +3042,35 @@ test("a failed event retries across Slack hosts with one deterministic message I
   }
 });
 
-test("an expired ingress worker cannot post after another worker takes its lease", async () => {
+test("a suspended ingress owner excludes replacement until its Slack effects complete", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-stale-worker-"));
   let now = new Date("2026-08-02T20:00:00.000Z");
   try {
     const ingressQueue = new FileSlackIngressQueue(root, () => now);
+    const replacementQueue = new FileSlackIngressQueue(root, () => now);
     await ingressQueue.admitEnvelope(slackEnvelopeFixture());
-    const staleClaim = await ingressQueue.claimNext("worker:stale");
-    assert.ok(staleClaim);
+    await replacementQueue.initialize();
     let postCount = 0;
-    let replacementClaimed = false;
+    let updateCount = 0;
+    let replacementAcquired = true;
     const client = {
       chat: {
         postMessage: async () => {
           postCount += 1;
           return { ts: "1710000000.000009" };
         },
-        update: async () => undefined,
+        update: async () => {
+          updateCount += 1;
+        },
       },
       conversations: {
         replies: async () => {
           now = new Date("2026-08-02T20:21:00.000Z");
-          replacementClaimed = Boolean(await ingressQueue.claimNext("worker:replacement"));
+          const replacement = await replacementQueue.tryWithExclusiveExecution(
+            "worker:replacement",
+            async (permit) => replacementQueue.claimNext(permit),
+          );
+          replacementAcquired = replacement.acquired;
           return { messages: [] };
         },
       },
@@ -2749,22 +3087,6 @@ test("an expired ingress worker cannot post after another worker takes its lease
       SLACK_BOT_TOKEN: "bound-at-runtime",
     });
     const store = new FileOutcomeStore(root, { log: () => undefined });
-    const requestId = `slack-request-${createHash("sha256")
-      .update(staleClaim.requestKey, "utf8")
-      .digest("hex")}`;
-    await store.recordPending({
-      delivered_message_ts: "1710000000.000008",
-      execution_lane: "lookup",
-      latency_budget_ms: 30_000,
-      negative_feedback_count: 0,
-      opened_at: "2026-08-02T19:59:00.000Z",
-      outcome_state: "completed",
-      request_id: requestId,
-      schema_version: "assistant-turn-pending-outcome/v1",
-      user_correction_count: 0,
-      useful_answer_at: "2026-08-02T19:59:10.000Z",
-      verified: true,
-    });
     const host = createAssistantTurnHost(store);
     const questions = new AssistantQuestionService(
       host,
@@ -2777,28 +3099,29 @@ test("an expired ingress worker cannot post after another worker takes its lease
       }),
     );
 
-    await assert.rejects(
-      handleSlackMention({
+    await withIngressExecution(ingressQueue, "worker:suspended", async (permit) => {
+      const claim = await ingressQueue.claimNext(permit);
+      assert.ok(claim);
+      assert.equal(await handleSlackMention({
         client,
         config,
-        event: staleClaim.event,
+        event: claim.event,
         host,
         ingressQueue,
-        leaseGuard: async () => ingressQueue.renew(staleClaim),
+        leaseGuard: async () => ingressQueue.renew(permit, claim),
         outcomes: store,
         questions,
-      }),
-      /exact live lease/u,
-    );
-    assert.equal(replacementClaimed, true);
-    assert.equal(postCount, 0);
-    const pendingFiles = await readdir(join(root, "pending"));
-    assert.equal(pendingFiles.length, 1);
-    const pending = JSON.parse(
-      await readFile(join(root, "pending", pendingFiles[0]!), "utf8"),
-    ) as { outcome_state: string; verified: boolean };
-    assert.equal(pending.outcome_state, "completed");
-    assert.equal(pending.verified, true);
+      }), true);
+      await ingressQueue.complete(permit, claim);
+    });
+    assert.equal(replacementAcquired, false);
+    assert.equal(postCount, 1);
+    assert.equal(updateCount, 1);
+    assert.equal(await withIngressExecution(
+      replacementQueue,
+      "worker:after-completion",
+      async (permit) => replacementQueue.claimNext(permit),
+    ), undefined);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -2875,6 +3198,20 @@ function slackEnvelopeFixture(): Record<string, unknown> {
     },
     team_id: "T-ONE",
     type: "event_callback",
+  };
+}
+
+function slackIngressEventFixture() {
+  return {
+    botUserId: "U-BOT",
+    channel: "C-ONE",
+    eventTs: "1710000000.000001",
+    hasThreadContext: false,
+    kind: "app_mention" as const,
+    teamId: "T-ONE",
+    text: "<@U-BOT> What changed?",
+    threadTs: "1710000000.000001",
+    userId: "U-ONE",
   };
 }
 
