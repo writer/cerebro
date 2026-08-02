@@ -344,7 +344,6 @@ fn raw_url_emphasis_boundary(
 ) -> Option<usize> {
     let token = &value.as_bytes()[start..end];
     let mut index = 0;
-    let mut boundary = None;
     while index < token.len() {
         if token[index] != delimiter {
             index += 1;
@@ -364,10 +363,10 @@ fn raw_url_emphasis_boundary(
             .next()
             .is_none_or(|character| !character.is_alphanumeric());
         if allowed_runs.contains(&run_len) && previous_can_close && suffix_starts_outside_word {
-            boundary = Some(start + run_start);
+            return Some(start + run_start);
         }
     }
-    boundary
+    None
 }
 
 fn markdown_link(value: &str, start: usize, image: bool) -> Option<(usize, &str, &str)> {
@@ -648,6 +647,20 @@ mod tests {
             let rendered = render_slack_mrkdwn(input);
             assert_eq!(render_slack_mrkdwn(&rendered), rendered, "{input}");
             assert_eq!(rendered.matches('*').count(), 2, "{input}");
+        }
+        for (input, expected) in [
+            (
+                "**See https://example.com**—**continue**",
+                "*See https://example.com*—*continue*",
+            ),
+            (
+                "__See https://example.com__—__continue__",
+                "*See https://example.com*—*continue*",
+            ),
+        ] {
+            let rendered = render_slack_mrkdwn(input);
+            assert_eq!(rendered, expected, "{input}");
+            assert_eq!(render_slack_mrkdwn(&rendered), rendered, "{input}");
         }
     }
 }
