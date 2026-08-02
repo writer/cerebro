@@ -45,8 +45,8 @@ use time::{Duration as TimeDuration, OffsetDateTime, format_description::well_kn
 
 use super::slack_agent_mcp::McpAgentTools;
 use super::slack_agent_session::{
-    AgentPendingWakeDelivery, AgentWakeClaim, AgentWakeDeliveryLease, AgentWakeFailureDisposition,
-    PostgresAgentSessionStore, PostgresTurnJournal,
+    AgentPendingWakeDelivery, AgentPriorThreadSearch, AgentWakeClaim, AgentWakeDeliveryLease,
+    AgentWakeFailureDisposition, PostgresAgentSessionStore, PostgresTurnJournal,
 };
 
 const MAX_MODEL_RESPONSE_BYTES: usize = 512 * 1024;
@@ -62,6 +62,8 @@ const CLAIM_REVIEW_TOOL: &str = "submit_claim_reviews";
 const MAX_GRAPH_LIMIT: usize = 25;
 const MAX_GRAPH_DEPTH: usize = 3;
 const MAX_RUNTIME_LIMIT: usize = 25;
+const MAX_SLACK_HISTORY_LIMIT: usize = 4;
+const MAX_SLACK_TRANSCRIPT_LIMIT: usize = 20;
 const STARTUP_HEALTH_ATTEMPTS: usize = 12;
 const STARTUP_INITIAL_RETRY_DELAY: StdDuration = StdDuration::from_millis(500);
 const STARTUP_MAX_RETRY_DELAY: StdDuration = StdDuration::from_secs(5);
@@ -138,9 +140,8 @@ impl SlackAgentService {
             || PostgresLedger::connect_tls(&postgres_dsn),
         )
         .await?;
-        let sessions = Some(Arc::new(
-            PostgresAgentSessionStore::connect(&postgres_dsn).await?,
-        ));
+        let session_store = Arc::new(PostgresAgentSessionStore::connect(&postgres_dsn).await?);
+        let sessions = Some(session_store.clone());
         let model = retry_startup(
             STARTUP_DEPENDENCY_ATTEMPTS,
             STARTUP_DEPENDENCY_RETRY_DELAY,
@@ -174,6 +175,7 @@ impl SlackAgentService {
                 ledger: Arc::new(ledger),
                 mcp,
                 mcp_configured,
+                sessions: session_store,
             }),
             sessions,
             tenant_id,
@@ -2900,6 +2902,7 @@ struct PlatformAgentTools {
     ledger: Arc<PostgresLedger>,
     mcp: Option<Arc<McpAgentTools>>,
     mcp_configured: bool,
+    sessions: Arc<PostgresAgentSessionStore>,
 }
 
 #[derive(Deserialize)]
@@ -2936,6 +2939,26 @@ struct SourceCatalogInspectInput {
     query: String,
     #[serde(default = "default_runtime_limit")]
     limit: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SlackThreadReadInput {
+    #[serde(default)]
+    cursor: Option<String>,
+    #[serde(default = "default_slack_transcript_limit")]
+    limit: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SlackHistorySearchInput {
+    #[serde(default)]
+    cursor: Option<String>,
+    #[serde(default = "default_slack_history_limit")]
+    limit: usize,
+    #[serde(default)]
+    query: String,
 }
 
 #[async_trait]
@@ -2996,6 +3019,24 @@ impl AgentTools for PlatformAgentTools {
                 input_schema_ref: "schema://cerebro/source-catalog-inspect-input/v1".into(),
                 result_schema_ref: "schema://cerebro/source-catalog-inspect-result/v1".into(),
             },
+            ToolDescriptor {
+                tool_id: "slack.thread.read".into(),
+                title: "Read this owned Slack thread".into(),
+                summary: "Read one bounded page of the current Cerebro-owned thread transcript. Scope is derived from the active tenant and thread; no channel or thread selector is accepted. Input fields: optional cursor string, optional limit from 1 to 20.".into(),
+                authority_class: ToolAuthorityClass::Observe,
+                effect_class: ToolEffectClass::Read,
+                input_schema_ref: "schema://cerebro/slack-thread-read-input/v1".into(),
+                result_schema_ref: "schema://cerebro/slack-thread-read-result/v1".into(),
+            },
+            ToolDescriptor {
+                tool_id: "slack.history.search".into(),
+                title: "Search prior Slack thread context".into(),
+                summary: "Read one bounded page of prior completed thread context for the same tenant, operator, and channel as the active request. Input fields: optional query string up to 256 bytes, optional cursor string, optional limit from 1 to 4.".into(),
+                authority_class: ToolAuthorityClass::Observe,
+                effect_class: ToolEffectClass::Read,
+                input_schema_ref: "schema://cerebro/slack-history-search-input/v1".into(),
+                result_schema_ref: "schema://cerebro/slack-history-search-result/v1".into(),
+            },
         ];
         if let Some(mcp) = &self.mcp {
             catalog.extend(mcp.descriptors().iter().cloned());
@@ -3022,6 +3063,8 @@ impl AgentTools for PlatformAgentTools {
                     .await
             }
             "source_catalog.inspect" => self.inspect_source_catalog(request, call),
+            "slack.thread.read" => self.read_slack_thread(request, call).await,
+            "slack.history.search" => self.search_slack_history(request, call).await,
             _ => match &self.mcp {
                 Some(mcp) => mcp.invoke(request, call).await,
                 None => Err(AgentRuntimeError::ToolUnavailable(call.tool_id.clone())),
@@ -3157,7 +3200,7 @@ impl PlatformAgentTools {
             call,
             complete,
             format!(
-                "The Slack agent capability registry observed six built-in tools and {} bound MCP tools; MCP gateway state={gateway_state}.",
+                "The Slack agent capability registry observed eight built-in tools and {} bound MCP tools; MCP gateway state={gateway_state}.",
                 remote.len()
             ),
         )?;
@@ -3176,6 +3219,8 @@ impl PlatformAgentTools {
                     "source_catalog.inspect",
                     "source_runtime.inspect",
                     "source_runtime.overview",
+                    "slack.history.search",
+                    "slack.thread.read",
                 ],
                 "mcp": {
                     "actuate_tools": actuated,
@@ -3194,6 +3239,125 @@ impl PlatformAgentTools {
             evidence: vec![evidence],
             blocker: (!complete).then(|| {
                 "The configured MCP capability gateway did not return its tool catalog.".into()
+            }),
+        })
+    }
+
+    async fn read_slack_thread(
+        &self,
+        request: &AgentTurnRequest,
+        call: &cerebro_agent_runtime::ToolCall,
+    ) -> Result<ToolResult, AgentRuntimeError> {
+        let input: SlackThreadReadInput = serde_json::from_value(call.input.clone())
+            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+        if input.limit == 0 || input.limit > MAX_SLACK_TRANSCRIPT_LIMIT {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "Slack thread transcript limit is invalid".into(),
+            ));
+        }
+        let page = self
+            .sessions
+            .read_owned_thread_transcript(
+                &request.tenant_id,
+                &request.thread_ref,
+                input.cursor.as_deref(),
+                input.limit,
+            )
+            .await?;
+        let complete = page.next_cursor.is_none();
+        let evidence = slack_history_evidence(
+            request,
+            call,
+            complete,
+            format!(
+                "The durable Slack session returned {} transcript messages from the current Cerebro-owned thread; more_pages={}. This retained context is not current external-system evidence.",
+                page.messages.len(),
+                !complete,
+            ),
+        )?;
+        Ok(ToolResult {
+            state: if complete {
+                ToolResultState::Succeeded
+            } else {
+                ToolResultState::Partial
+            },
+            summary: format!(
+                "Read {} messages from this owned Slack thread.",
+                page.messages.len()
+            ),
+            data: serde_json::to_value(page)
+                .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
+            evidence: vec![evidence],
+            blocker: (!complete).then(|| {
+                "Older messages remain available through the returned bounded cursor.".into()
+            }),
+        })
+    }
+
+    async fn search_slack_history(
+        &self,
+        request: &AgentTurnRequest,
+        call: &cerebro_agent_runtime::ToolCall,
+    ) -> Result<ToolResult, AgentRuntimeError> {
+        let input: SlackHistorySearchInput = serde_json::from_value(call.input.clone())
+            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+        if input.query.len() > 256 || input.limit == 0 || input.limit > MAX_SLACK_HISTORY_LIMIT {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "prior Slack thread search input is invalid".into(),
+            ));
+        }
+        let context_scope_ref = request.context_scope_ref.as_deref().ok_or_else(|| {
+            AgentRuntimeError::InvalidToolCall(
+                "prior Slack thread search requires the active channel scope".into(),
+            )
+        })?;
+        validate_context_scope_ref(context_scope_ref)?;
+        let session = self
+            .sessions
+            .load_by_thread(&request.tenant_id, &request.thread_ref)
+            .await?
+            .ok_or_else(|| {
+                AgentRuntimeError::InvalidRequest("Slack thread session does not exist".into())
+            })?;
+        let page = self
+            .sessions
+            .search_prior_thread_contexts(AgentPriorThreadSearch {
+                actor_ref: &request.actor_ref,
+                context_scope_ref,
+                cursor: input.cursor.as_deref(),
+                exclude_session_ref: &session.session_ref,
+                limit: input.limit,
+                query: input.query.trim(),
+                tenant_id: &request.tenant_id,
+            })
+            .await?;
+        let complete = page.next_cursor.is_none();
+        let evidence = slack_history_evidence(
+            request,
+            call,
+            complete,
+            format!(
+                "The durable Slack context index returned {} prior completed threads scoped to the same tenant, operator, and channel; more_pages={}. Retained context is not current external-system evidence.",
+                page.threads.len(),
+                !complete,
+            ),
+        )?;
+        Ok(ToolResult {
+            state: if complete {
+                ToolResultState::Succeeded
+            } else {
+                ToolResultState::Partial
+            },
+            summary: format!(
+                "Read {} prior thread contexts for this operator and channel.",
+                page.threads.len()
+            ),
+            data: serde_json::to_value(page)
+                .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
+            evidence: vec![evidence],
+            blocker: (!complete).then(|| {
+                "More matching prior threads remain available through the returned bounded cursor."
+                    .into()
             }),
         })
     }
@@ -3840,6 +4004,41 @@ fn catalog_evidence(
     })
 }
 
+fn slack_history_evidence(
+    request: &AgentTurnRequest,
+    call: &cerebro_agent_runtime::ToolCall,
+    complete: bool,
+    statement: String,
+) -> Result<EvidenceRecord, AgentRuntimeError> {
+    let observed_at = OffsetDateTime::now_utc();
+    let identity = format!(
+        "{}:{}:{}:{}:{}:{}",
+        request.tenant_id,
+        request.actor_ref,
+        request
+            .context_scope_ref
+            .as_deref()
+            .unwrap_or("current-thread"),
+        request.thread_ref,
+        call.call_id,
+        call.input_digest(),
+    );
+    let digest = Sha256::digest(identity.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    Ok(EvidenceRecord {
+        evidence_ref: format!("evidence://slack-context/{digest}"),
+        statement,
+        observed_at: observed_at
+            .format(&Rfc3339)
+            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
+        fresh_until: None,
+        complete,
+        atoms: Vec::new(),
+    })
+}
+
 const fn auth_model_name(model: &AuthModel) -> &'static str {
     match model {
         AuthModel::None => "none",
@@ -3874,6 +4073,14 @@ const fn default_graph_depth() -> usize {
 
 const fn default_runtime_limit() -> usize {
     10
+}
+
+const fn default_slack_history_limit() -> usize {
+    4
+}
+
+const fn default_slack_transcript_limit() -> usize {
+    12
 }
 
 fn enabled(value: &str) -> bool {
