@@ -425,8 +425,13 @@ fn raw_url_suffix_continues_path(
     let Some(first) = characters.next() else {
         return false;
     };
+    let has_path_context = value[url_start..delimiter_start]
+        .split_once("://")
+        .is_some_and(|(_, after_scheme)| {
+            after_scheme.contains('/') || after_scheme.contains('?') || after_scheme.contains('#')
+        });
     if first == '%' {
-        return true;
+        return has_path_context;
     }
     let rfc_url_continuation = matches!(
         first,
@@ -453,15 +458,7 @@ fn raw_url_suffix_continues_path(
     if !rfc_url_continuation {
         return false;
     }
-    let has_path_context = value[url_start..delimiter_start]
-        .split_once("://")
-        .is_some_and(|(_, after_scheme)| {
-            after_scheme.contains('/') || after_scheme.contains('?') || after_scheme.contains('#')
-        });
-    if characters.any(char::is_alphanumeric) && (first != ':' || has_path_context) {
-        return true;
-    }
-    has_path_context
+    has_path_context || matches!(first, '/' | '?' | '#')
 }
 
 fn valid_percent_encoding(value: &str) -> bool {
@@ -928,6 +925,14 @@ mod tests {
             (
                 "**See https://example.com**%done",
                 "*See https://example.com*%done",
+            ),
+            (
+                "**See https://example.com**.Next",
+                "*See https://example.com*.Next",
+            ),
+            (
+                "**See https://example.com**,Next",
+                "*See https://example.com*,Next",
             ),
             (
                 "**See https://example.com/a**%2F%done",
