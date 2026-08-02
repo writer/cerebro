@@ -254,13 +254,22 @@ fn render_inline_markup(
                         .next()
                         .is_some_and(char::is_alphabetic)
                     && value[cursor + run_bytes..].contains(&delimiter);
+                let clear_intraword_asterisk_close = character == '*'
+                    && previous.is_some_and(char::is_alphabetic)
+                    && value[cursor + run_bytes..]
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_alphabetic);
                 if !*emphasis_open
                     && next_is_word
                     && (!previous_is_word || clear_intraword_asterisk_open)
                 {
                     output.push('*');
                     *emphasis_open = true;
-                } else if *emphasis_open && previous_can_close && !next_is_word {
+                } else if *emphasis_open
+                    && previous_can_close
+                    && (!next_is_word || clear_intraword_asterisk_close)
+                {
                     output.push('*');
                     *emphasis_open = false;
                 } else {
@@ -424,7 +433,10 @@ fn emphasis_suffix_is_well_formed(
             _ => return false,
         }
     }
-    !open
+    // A final unmatched opener is recoverable: the renderer closes a clear
+    // trailing emphasis span at the end of the line. Invalid transitions
+    // (including a stray closer left inside a raw URL) returned false above.
+    true
 }
 
 fn markdown_link(value: &str, start: usize, image: bool) -> Option<(usize, &str, &str)> {
@@ -751,6 +763,15 @@ mod tests {
                 "**See https://example.com/a**-b**-c**",
                 "*See https://example.com/a**-b**-c*",
             ),
+            (
+                "**See https://example.com**—**continue",
+                "*See https://example.com*—*continue*",
+            ),
+            (
+                "__See https://example.com__—__continue",
+                "*See https://example.com*—*continue*",
+            ),
+            ("alpha**beta**gamma", "alpha*beta*gamma"),
         ] {
             let rendered = render_slack_mrkdwn(input);
             assert_eq!(rendered, expected, "{input}");
