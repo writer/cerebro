@@ -67,10 +67,8 @@ pub(super) fn render_slack_mrkdwn(markdown: &str) -> String {
 fn render_inline_slack_mrkdwn(value: &str) -> String {
     let mut output = String::with_capacity(value.len());
     let markup_source = inline_markup_outside_code(value);
-    let close_strong_asterisk =
-        !strong_delimiter_count_outside_urls(&markup_source, "**").is_multiple_of(2);
-    let close_strong_underscore =
-        !strong_delimiter_count_outside_urls(&markup_source, "__").is_multiple_of(2);
+    let close_strong_asterisk = has_unclosed_strong_emphasis(&markup_source, '*');
+    let close_strong_underscore = has_unclosed_strong_emphasis(&markup_source, '_');
     let close_single_asterisk = has_unclosed_single_emphasis(&markup_source, '*');
     let close_single_underscore = has_unclosed_single_emphasis(&markup_source, '_');
     let mut cursor = 0;
@@ -166,12 +164,6 @@ fn render_inline_markup(value: &str) -> String {
             cursor = end;
             continue;
         }
-        if value[cursor..].starts_with("**") || value[cursor..].starts_with("__") {
-            output.push('*');
-            cursor += 2;
-            continue;
-        }
-
         let image = value[cursor..].starts_with("![");
         if (image || value[cursor..].starts_with('['))
             && let Some((end, label, url)) = markdown_link(value, cursor, image)
@@ -195,6 +187,30 @@ fn render_inline_markup(value: &str) -> String {
             .chars()
             .next()
             .expect("cursor remains on a character boundary");
+        if matches!(character, '*' | '_') {
+            let run = value[cursor..]
+                .chars()
+                .take_while(|candidate| *candidate == character)
+                .count();
+            if matches!(run, 2 | 3) {
+                let previous_is_word = value[..cursor]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_alphanumeric);
+                let run_bytes = run * character.len_utf8();
+                let next_is_word = value[cursor + run_bytes..]
+                    .chars()
+                    .next()
+                    .is_some_and(char::is_alphanumeric);
+                if previous_is_word != next_is_word {
+                    output.push('*');
+                } else {
+                    output.push_str(&value[cursor..cursor + run_bytes]);
+                }
+                cursor += run_bytes;
+                continue;
+            }
+        }
         output.push(character);
         cursor += character.len_utf8();
     }
@@ -249,8 +265,8 @@ fn has_unclosed_single_emphasis(value: &str, delimiter: char) -> bool {
     open
 }
 
-fn strong_delimiter_count_outside_urls(value: &str, delimiter: &str) -> usize {
-    let mut count = 0;
+fn has_unclosed_strong_emphasis(value: &str, delimiter: char) -> bool {
+    let mut open = false;
     let mut cursor = 0;
     while cursor < value.len() {
         let image = value[cursor..].starts_with("![");
@@ -264,9 +280,29 @@ fn strong_delimiter_count_outside_urls(value: &str, delimiter: &str) -> usize {
             cursor = end;
             continue;
         }
-        if value[cursor..].starts_with(delimiter) {
-            count += 1;
-            cursor += delimiter.len();
+        let remainder = &value[cursor..];
+        if remainder.starts_with(delimiter) {
+            let run = remainder
+                .chars()
+                .take_while(|character| *character == delimiter)
+                .count();
+            if matches!(run, 2 | 3) {
+                let previous_is_word = value[..cursor]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_alphanumeric);
+                let run_bytes = run * delimiter.len_utf8();
+                let next_is_word = remainder[run_bytes..]
+                    .chars()
+                    .next()
+                    .is_some_and(char::is_alphanumeric);
+                if !open && !previous_is_word && next_is_word {
+                    open = true;
+                } else if open && previous_is_word && !next_is_word {
+                    open = false;
+                }
+            }
+            cursor += run * delimiter.len_utf8();
             continue;
         }
         cursor += value[cursor..]
@@ -275,7 +311,7 @@ fn strong_delimiter_count_outside_urls(value: &str, delimiter: &str) -> usize {
             .expect("delimiter cursor remains on a character boundary")
             .len_utf8();
     }
-    count
+    open
 }
 
 fn raw_url_end(value: &str, start: usize) -> Option<usize> {
@@ -505,6 +541,11 @@ mod tests {
         assert_eq!(render_slack_mrkdwn("source_runtime"), "source_runtime");
         assert_eq!(render_slack_mrkdwn("2*3"), "2*3");
         assert_eq!(render_slack_mrkdwn("source_"), "source_");
+        assert_eq!(render_slack_mrkdwn("source__runtime"), "source__runtime");
+        assert_eq!(render_slack_mrkdwn("2**3"), "2**3");
+        let triple = render_slack_mrkdwn("***source***");
+        assert_eq!(triple, "*source*");
+        assert_eq!(render_slack_mrkdwn(&triple), triple);
     }
 
     #[test]
