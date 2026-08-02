@@ -492,6 +492,7 @@ fn emphasis_suffix_is_well_formed(
     let bytes = &value.as_bytes()[start..end];
     let mut index = 0;
     let mut open = false;
+    let clear_prose_suffix = clear_prose_suffix(value, start, end);
     while index < bytes.len() {
         if bytes[index] != delimiter {
             index += 1;
@@ -503,9 +504,7 @@ fn emphasis_suffix_is_well_formed(
         }
         let run_len = index - run_start;
         if !allowed_runs.contains(&run_len) {
-            if index == bytes.len()
-                && clear_prose_suffix_before_stray_closer(value, start, run_start)
-            {
+            if clear_prose_suffix {
                 continue;
             }
             return false;
@@ -535,6 +534,7 @@ fn emphasis_suffix_is_well_formed(
                 // Preserve a terminal stray closer after an unambiguous prose
                 // boundary. URL-shaped suffixes still reject this candidate.
             }
+            _ if clear_prose_suffix => {}
             _ => return false,
         }
     }
@@ -542,6 +542,10 @@ fn emphasis_suffix_is_well_formed(
     // trailing emphasis span at the end of the line. Invalid transitions
     // (including a stray closer left inside a raw URL) returned false above.
     true
+}
+
+fn clear_prose_suffix(value: &str, start: usize, end: usize) -> bool {
+    clear_prose_suffix_before_stray_closer(value, start, end - start)
 }
 
 fn clear_prose_suffix_before_stray_closer(value: &str, start: usize, run_start: usize) -> bool {
@@ -997,6 +1001,14 @@ mod tests {
             (
                 "**See https://example.com**—alpha**2beta**gamma",
                 "*See https://example.com*—alpha*2beta*gamma",
+            ),
+            (
+                "__See https://example.com__—alpha__beta__gamma",
+                "*See https://example.com*—alpha__beta__gamma",
+            ),
+            (
+                "**See https://example.com**—alpha*beta*gamma",
+                "*See https://example.com*—alpha*beta*gamma",
             ),
             (
                 "**See https://example.com/a**b%done",
