@@ -668,7 +668,7 @@ pub async fn run_turn(
     request: AgentTurnRequest,
 ) -> Result<AgentTurnOutcome, AgentRuntimeError> {
     validate_agent_turn_request(&request)?;
-    let routed_lane = route_with_repair(model, request.clone()).await?;
+    let routed_lane = route_request(model, request.clone()).await?;
     let resumed_mission = routed_lane == ExecutionLane::Continue;
     let lane = if resumed_mission {
         let state = request.working_state.as_ref().ok_or_else(|| {
@@ -690,7 +690,7 @@ pub async fn run_turn(
             let mut resumed = request.clone();
             resumed.message.clone_from(&state.current_request);
             resumed.working_state = None;
-            match route_with_repair(model, resumed).await? {
+            match route_request(model, resumed).await? {
                 ExecutionLane::Ignore | ExecutionLane::Converse | ExecutionLane::Continue => {
                     ExecutionLane::Investigate
                 }
@@ -1140,7 +1140,7 @@ async fn critique_with_repair(
     Err(AgentRuntimeError::CriticRepairLimit)
 }
 
-async fn route_with_repair(
+pub async fn route_request(
     model: &dyn AgentModel,
     request: AgentTurnRequest,
 ) -> Result<ExecutionLane, AgentRuntimeError> {
@@ -1168,6 +1168,43 @@ async fn route_with_repair(
     Err(AgentRuntimeError::InvalidRoute(
         "router repair attempts were exhausted".into(),
     ))
+}
+
+pub async fn resolve_request_lane(
+    model: &dyn AgentModel,
+    request: AgentTurnRequest,
+) -> Result<ExecutionLane, AgentRuntimeError> {
+    validate_agent_turn_request(&request)?;
+    let routed_lane = route_request(model, request.clone()).await?;
+    if routed_lane != ExecutionLane::Continue {
+        return Ok(routed_lane);
+    }
+    let state = request.working_state.as_ref().ok_or_else(|| {
+        AgentRuntimeError::InvalidRequest("continuation requires working state".into())
+    })?;
+    if state.mission_ref.is_none() {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "continuation requires a durable mission".into(),
+        ));
+    }
+    if let Some(active_lane) = state.active_lane {
+        if matches!(active_lane, ExecutionLane::Ignore | ExecutionLane::Continue) {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "durable mission contains an invalid active lane".into(),
+            ));
+        }
+        return Ok(active_lane);
+    }
+    let current_request = state.current_request.clone();
+    let mut resumed = request;
+    resumed.message = current_request;
+    resumed.working_state = None;
+    Ok(match route_request(model, resumed).await? {
+        ExecutionLane::Ignore | ExecutionLane::Converse | ExecutionLane::Continue => {
+            ExecutionLane::Investigate
+        }
+        lane => lane,
+    })
 }
 
 fn validate_route(

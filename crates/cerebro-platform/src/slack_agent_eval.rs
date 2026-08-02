@@ -14,7 +14,8 @@ use cerebro_agent_runtime::{
     DECISION_MAX_TOKENS, EffectAuthorization, ExecutionLane, HARD_MAX_GENERATION_TOKENS,
     ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS, PresentationDecision, PresentationTurn,
     ROUTER_MAX_TOKENS, RouteDecision, RouteTurn, ToolAuthorityClass, ToolCall, ToolDescriptor,
-    ToolEffectClass, ToolResult, ToolResultState, WorkingOutcome, WorkingState, run_turn,
+    ToolEffectClass, ToolResult, ToolResultState, WorkingOutcome, WorkingState,
+    resolve_request_lane, run_turn,
     session::{
         AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2, AgentSession, ClaimReviewTurn, Commitment,
         CommitmentStatus, DeliveryDisposition, EvidenceAtomization, MessageReview, MissionState,
@@ -2460,6 +2461,7 @@ async fn run_evaluation_session_turn(
     session: &mut AgentSession,
     request: AgentTurnRequest,
 ) -> Result<(AgentTurnOutcome, DeliveryDisposition), AgentRuntimeError> {
+    let requested_lane = resolve_request_lane(model, request.clone()).await?;
     session.effect_authorizations = request.effect_authorizations.clone();
     let sequence = session.events.last().map_or(1, |event| event.sequence + 1);
     let queued = SessionEventRecord {
@@ -2486,6 +2488,7 @@ async fn run_evaluation_session_turn(
             request_id: request.request_id,
             actor_ref: request.actor_ref,
             assessment_at: request.assessment_at,
+            requested_lane: Some(requested_lane),
             trigger: SessionTurnTrigger::Operator,
         },
     )
@@ -2526,6 +2529,7 @@ async fn run_evaluation_session_wake(
             request_id,
             actor_ref: "cerebro-scheduler".into(),
             assessment_at: scheduled_for,
+            requested_lane: None,
             trigger: SessionTurnTrigger::Wake {
                 commitment_ref,
                 occurrence_ref,
@@ -3498,6 +3502,7 @@ async fn run_autonomy_scenario(
                 request_id: request_id.clone(),
                 actor_ref: "cerebro-scheduler".into(),
                 assessment_at: wake_at_text.clone(),
+                requested_lane: None,
                 trigger: SessionTurnTrigger::Wake {
                     commitment_ref: commitment.commitment_ref.clone(),
                     occurrence_ref: occurrence_ref.clone(),
@@ -6902,6 +6907,7 @@ mod tests {
                 request_id: "request:thread-parity".into(),
                 actor_ref: "operator:synthetic".into(),
                 assessment_at: "2026-07-31T00:05:00Z".into(),
+                requested_lane: Some(ExecutionLane::Investigate),
                 trigger: SessionTurnTrigger::Operator,
             },
             &ToolCall {

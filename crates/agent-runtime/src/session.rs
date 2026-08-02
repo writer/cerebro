@@ -729,6 +729,7 @@ pub struct SessionModelTurn {
     pub session: AgentSession,
     pub trigger: SessionTurnTrigger,
     pub assessment_at: String,
+    pub requested_lane: Option<ExecutionLane>,
     pub prior_commitment_checkpoint: Option<CommitmentCheckpoint>,
     pub wake_assessment: Option<WakeAssessment>,
     pub plan: Option<ResearchPlan>,
@@ -909,6 +910,7 @@ pub struct SessionTurnInput {
     pub request_id: String,
     pub actor_ref: String,
     pub assessment_at: String,
+    pub requested_lane: Option<ExecutionLane>,
     pub trigger: SessionTurnTrigger,
 }
 
@@ -1646,6 +1648,7 @@ pub async fn run_session_turn_recorded(
                 session: session.clone(),
                 trigger: trigger.clone(),
                 assessment_at: input.assessment_at.clone(),
+                requested_lane: input.requested_lane,
                 prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
                 wake_assessment: build_wake_assessment(
                     &session,
@@ -1695,6 +1698,17 @@ pub async fn run_session_turn_recorded(
                 }
                 if let Err(error) = validate_plan(&proposed, &available_tool_ids) {
                     record_operating_repair(&mut repairs, &mut repair_feedback, error.to_string());
+                    continue;
+                }
+                if matches!(trigger, SessionTurnTrigger::Operator)
+                    && input.requested_lane != Some(proposed.lane)
+                {
+                    record_operating_repair(
+                        &mut repairs,
+                        &mut repair_feedback,
+                        "The research plan lane must exactly match the accepted semantic route for this operator turn."
+                            .into(),
+                    );
                     continue;
                 }
                 if matches!(trigger, SessionTurnTrigger::Operator)
@@ -1902,27 +1916,36 @@ pub async fn run_session_turn_recorded(
                 repair_feedback.clear();
             }
             SessionModelDecision::Finish { mut draft } => {
-                let newest_operator_requires_current_evidence =
-                    matches!(trigger, SessionTurnTrigger::Operator)
-                        && session
-                            .messages
-                            .iter()
-                            .rev()
-                            .find(|message| message.role == SessionMessageRole::User)
-                            .is_some_and(|message| {
-                                crate::request_explicitly_requires_current_evidence(&message.text)
-                            });
+                let requested_operating_lane = matches!(
+                    input.requested_lane,
+                    Some(ExecutionLane::Lookup | ExecutionLane::Investigate | ExecutionLane::Act)
+                );
+                if matches!(trigger, SessionTurnTrigger::Operator)
+                    && ((input.requested_lane == Some(ExecutionLane::Converse)
+                        && (plan.is_some() || observations.len() > current_turn_observation_start))
+                        || (requested_operating_lane && plan.is_none()))
+                {
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        "The accepted semantic route is authoritative: converse turns cannot establish or use an evidence plan, and operating turns cannot finish without one."
+                            .into(),
+                    );
+                    continue;
+                }
                 if matches!(trigger, SessionTurnTrigger::Operator)
                     && draft.state == FinalState::Answered
-                    && ((newest_operator_requires_current_evidence && plan.is_none())
-                        || plan.as_ref().is_some_and(|plan| {
-                            !current_required_claims_have_same_turn_evidence(
-                                plan,
-                                &draft,
-                                &observations[current_turn_observation_start..],
-                                assessment_at,
-                            )
-                        }))
+                    && requested_operating_lane
+                    && plan.as_ref().is_some_and(|plan| {
+                        !current_required_claims_have_same_turn_evidence(
+                            plan,
+                            &draft,
+                            &observations[current_turn_observation_start..],
+                            assessment_at,
+                        )
+                    })
                 {
                     record_draft_repair(
                         &mut rejected_operating_drafts,
@@ -2659,6 +2682,19 @@ fn validate_turn_input(
     }
     match &input.trigger {
         SessionTurnTrigger::Operator => {
+            if !matches!(
+                input.requested_lane,
+                Some(
+                    ExecutionLane::Converse
+                        | ExecutionLane::Lookup
+                        | ExecutionLane::Investigate
+                        | ExecutionLane::Act
+                )
+            ) {
+                return Err(AgentRuntimeError::InvalidRequest(
+                    "operator turn requires one accepted semantic route lane".into(),
+                ));
+            }
             let latest = session.messages.last().ok_or_else(|| {
                 AgentRuntimeError::InvalidRequest(
                     "operator turn requires a queued user message".into(),
@@ -2674,7 +2710,8 @@ fn validate_turn_input(
             commitment_ref,
             occurrence_ref,
         } => {
-            if input.actor_ref != "cerebro-scheduler"
+            if input.requested_lane.is_some()
+                || input.actor_ref != "cerebro-scheduler"
                 || !bounded(commitment_ref, MAX_TEXT_BYTES)
                 || !bounded(occurrence_ref, MAX_TEXT_BYTES)
                 || !session.events.iter().any(|event| {
@@ -5561,7 +5598,7 @@ fn validate_conversational_synthesis(
         || contains_unbound_future_promise(body)
         || contains_nominal_operational_assertion(body)
         || contains_new_named_ownership_principal(body, &cited_context)
-        || contains_unverified_named_entity_assertion(body, &cited_context);
+        || contains_unverified_named_operational_assertion(body, &cited_context);
     if crate::request_explicitly_requires_current_evidence(&newest_operator_message.1.text)
         || (body_is_operational
             && (!transforms_supplied_text
@@ -5610,6 +5647,7 @@ fn operational_transformation_is_source_bound(body: &str, source_messages: &[&st
 
 fn transformation_control_tokens(value: &str) -> Vec<String> {
     value
+        .replace('’', "'")
         .split(|character: char| !character.is_alphanumeric() && character != '\'')
         .map(str::to_ascii_lowercase)
         .filter(|token| {
@@ -5635,7 +5673,7 @@ fn transformation_control_tokens(value: &str) -> Vec<String> {
 }
 
 fn contains_nominal_operational_assertion(value: &str) -> bool {
-    let normalized = value.to_ascii_lowercase();
+    let normalized = format!(" {} ", value.to_ascii_lowercase());
     [
         " status:",
         " state:",
@@ -5690,7 +5728,7 @@ fn contains_new_named_ownership_principal(body: &str, source_messages: &[&str]) 
     })
 }
 
-fn contains_unverified_named_entity_assertion(body: &str, source_messages: &[&str]) -> bool {
+fn contains_unverified_named_operational_assertion(body: &str, source_messages: &[&str]) -> bool {
     let named_entities = source_messages
         .iter()
         .flat_map(|message| {
@@ -5743,27 +5781,29 @@ fn contains_unverified_named_entity_assertion(body: &str, source_messages: &[&st
         ]
         .iter()
         .any(|marker| normalized.contains(marker));
-        let asserts_state = [
-            " is ",
-            " are ",
-            " was ",
-            " were ",
-            " has ",
-            " have ",
-            " did ",
+        let asserts_operational_state = [
             " remains ",
             " became ",
             " owns ",
             " owned ",
             " handles ",
             " live ",
+            " recovered ",
+            " shipped ",
+            " healthy ",
+            " green ",
+            " red ",
+            " failed ",
+            " deployed ",
+            " landed ",
+            " approved ",
+            " enabled ",
+            " disabled ",
+            " connected ",
         ]
         .iter()
-        .any(|marker| normalized.contains(marker))
-            || normalized
-                .split_whitespace()
-                .any(|token| token.len() > 4 && token.ends_with("ed"));
-        names_entity && asserts_state && !is_conditional_or_advice
+        .any(|marker| normalized.contains(marker));
+        names_entity && asserts_operational_state && !is_conditional_or_advice
     })
 }
 
@@ -9676,6 +9716,7 @@ mod tests {
             request_id: "request:1".into(),
             actor_ref: "user:1".into(),
             assessment_at: "2026-07-31T00:01:00Z".into(),
+            requested_lane: Some(ExecutionLane::Investigate),
             trigger: SessionTurnTrigger::Operator,
         };
         let mut authorized = session();
@@ -10283,6 +10324,7 @@ mod tests {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Investigate),
                 trigger: SessionTurnTrigger::Operator,
             },
         )
@@ -10330,6 +10372,7 @@ mod tests {
             request_id: "request:mcp-effect".into(),
             actor_ref: "user:1".into(),
             assessment_at: "2026-07-31T00:03:00Z".into(),
+            requested_lane: Some(ExecutionLane::Act),
             trigger: SessionTurnTrigger::Operator,
         };
         let unapproved_model = ScriptedSessionModel {
@@ -10520,6 +10563,7 @@ mod tests {
                 request_id: "wake-request:1".into(),
                 actor_ref: "cerebro-scheduler".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: None,
                 trigger: SessionTurnTrigger::Wake {
                     commitment_ref: "commitment:scheduled-check".into(),
                     occurrence_ref: "occurrence:1".into(),
@@ -13289,6 +13333,7 @@ mod tests {
                 request_id: "wake-request:effect".into(),
                 actor_ref: "cerebro-scheduler".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: None,
                 trigger: SessionTurnTrigger::Wake {
                     commitment_ref: "commitment:scheduled-check".into(),
                     occurrence_ref: "occurrence:effect".into(),
@@ -13342,6 +13387,7 @@ mod tests {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Investigate),
                 trigger: SessionTurnTrigger::Operator,
             },
         )
@@ -13381,6 +13427,7 @@ mod tests {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Investigate),
                 trigger: SessionTurnTrigger::Operator,
             },
         )
@@ -13420,6 +13467,7 @@ mod tests {
                 request_id: "request:2".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Investigate),
                 trigger: SessionTurnTrigger::Operator,
             },
         )
@@ -13516,6 +13564,7 @@ mod tests {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Investigate),
                 trigger: SessionTurnTrigger::Operator,
             },
         )
@@ -13532,6 +13581,67 @@ mod tests {
         assert_eq!(delivery, DeliveryDisposition::Visible);
         assert_eq!(final_state, FinalState::Blocked);
         assert!(markdown.contains("No current authoritative observation was obtained"));
+    }
+
+    #[tokio::test]
+    async fn accepted_converse_lane_can_finish_with_named_conceptual_reasoning() {
+        let mut conversational = session();
+        conversational.messages[0].text =
+            "Why is Atlas a useful example for explaining reversibility?".into();
+        let message = "Atlas is a useful example because reversibility is about preserving a safe path back while you learn. The value is in the decision shape: keep options open while uncertainty shrinks.".to_string();
+        let draft = GroundedDraft {
+            state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
+            message: message.clone(),
+            claims: vec![GroundedClaim {
+                claim_ref: "claim:conceptual-answer".into(),
+                planned_claim_ref: None,
+                text: message.clone(),
+                required_for_answer: true,
+                content: ClaimContent::ConversationalSynthesis {
+                    source_message_sequences: vec![1],
+                    source_atom_refs: Vec::new(),
+                },
+            }],
+            coverage_notice: None,
+            question: None,
+            mission: MissionState {
+                status: SessionStatus::Completed,
+                ..mission()
+            },
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        };
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([SessionModelDecision::Finish { draft }])),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            conversational,
+            SessionTurnInput {
+                request_id: "request:conceptual-converse".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Converse),
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("the accepted converse lane should deliver natural conceptual prose");
+        let SessionTurnOutcome::PendingDelivery {
+            final_state,
+            markdown,
+            evidence_atom_refs,
+            ..
+        } = outcome
+        else {
+            panic!("a converse answer should be ready for delivery");
+        };
+        assert_eq!(final_state, FinalState::Answered);
+        assert_eq!(markdown, message);
+        assert!(evidence_atom_refs.is_empty());
     }
 
     #[tokio::test]
@@ -13566,6 +13676,7 @@ mod tests {
                 request_id: "request:current-without-plan".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Lookup),
                 trigger: SessionTurnTrigger::Operator,
             },
         )
@@ -13603,6 +13714,7 @@ mod tests {
                 request_id: "request:operating-plan-without-observation".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Investigate),
                 trigger: SessionTurnTrigger::Operator,
             },
         )
@@ -13642,6 +13754,7 @@ mod tests {
             request_id: "request:failed-read".into(),
             actor_ref: "user:1".into(),
             assessment_at: "2026-07-31T00:01:00Z".into(),
+            requested_lane: Some(ExecutionLane::Lookup),
             trigger: SessionTurnTrigger::Operator,
         };
 
@@ -13844,6 +13957,7 @@ mod tests {
             request_id: "request:synthetic-empty-uncertainty".into(),
             actor_ref: "user:1".into(),
             assessment_at: "2026-07-31T00:01:00Z".into(),
+            requested_lane: Some(ExecutionLane::Investigate),
             trigger: SessionTurnTrigger::Operator,
         };
 
@@ -13909,6 +14023,7 @@ mod tests {
             request_id: "request:latest-fallback".into(),
             actor_ref: "user:1".into(),
             assessment_at: "2026-07-31T00:01:00Z".into(),
+            requested_lane: Some(ExecutionLane::Investigate),
             trigger: SessionTurnTrigger::Operator,
         };
         let outcome = repair_fallback_outcome(
@@ -13954,6 +14069,7 @@ mod tests {
             request_id: "request:strict-fallback".into(),
             actor_ref: "user:1".into(),
             assessment_at: "2026-07-31T00:01:00Z".into(),
+            requested_lane: Some(ExecutionLane::Investigate),
             trigger: SessionTurnTrigger::Operator,
         };
         assert_eq!(
@@ -14016,6 +14132,7 @@ mod tests {
                 request_id: "wake-request:repair-fallback".into(),
                 actor_ref: "cerebro-scheduler".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: None,
                 trigger: SessionTurnTrigger::Wake {
                     commitment_ref: "commitment:scheduled-check".into(),
                     occurrence_ref: "occurrence:repair-fallback".into(),
@@ -14061,6 +14178,7 @@ mod tests {
                 request_id: "request:operator-fallback".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Investigate),
                 trigger: SessionTurnTrigger::Operator,
             },
             &SessionTurnTrigger::Operator,
@@ -14156,6 +14274,7 @@ mod tests {
                 request_id: "request:1".into(),
                 actor_ref: "user:1".into(),
                 assessment_at: "2026-07-31T00:02:00Z".into(),
+                requested_lane: Some(ExecutionLane::Investigate),
                 trigger: SessionTurnTrigger::Operator,
             },
         )
