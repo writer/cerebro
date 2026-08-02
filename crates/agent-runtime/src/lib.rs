@@ -1245,75 +1245,121 @@ fn validate_route(
 }
 
 fn request_explicitly_requires_current_evidence(message: &str) -> bool {
-    let normalized = message.to_ascii_lowercase();
+    let normalized = normalized_phrase_text(message);
     let explicit_time_boundary = [
-        "current ",
-        "currently ",
+        "current",
+        "currently",
         "right now",
         "today",
         "actually have",
         "actually available",
     ]
     .iter()
-    .any(|marker| normalized.contains(marker));
+    .any(|marker| normalized.contains(&format!(" {marker} ")));
     let named_operational_state = [
         "status",
+        "statuses",
         "state",
+        "states",
         "evidence",
         "receipt",
+        "receipts",
         "access",
         "visibility",
         "field",
+        "fields",
         "source",
+        "sources",
         "connector",
+        "connectors",
         "provider",
+        "providers",
         "runtime",
+        "runtimes",
         "tool",
-        "capabilit",
+        "tools",
+        "capability",
+        "capabilities",
     ]
     .iter()
-    .any(|marker| normalized.contains(marker));
-    let explicit_reconciliation = ["reconcile", "correct", "re-read", "recheck", "verify"]
-        .iter()
-        .any(|marker| normalized.contains(marker))
+    .any(|marker| normalized.contains(&format!(" {marker} ")));
+    let explicit_reconciliation = [
+        "reconcile",
+        "reconciled",
+        "reconciling",
+        "correct",
+        "corrected",
+        "correction",
+        "re read",
+        "reread",
+        "recheck",
+        "rechecked",
+        "verify",
+        "verification",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(&format!(" {marker} ")))
         && [
             "field",
+            "fields",
             "receipt",
+            "receipts",
             "source",
+            "sources",
             "connector",
+            "connectors",
             "provider",
+            "providers",
             "runtime",
+            "runtimes",
         ]
         .iter()
-        .any(|marker| normalized.contains(marker));
-    let named_access_boundary = (normalized.contains("visibility")
-        || normalized.contains("access"))
-        && ["source", "connector", "provider", "runtime"]
-            .iter()
-            .any(|marker| normalized.contains(marker));
-    let present_operational_question = ((normalized.contains("what ")
-        || normalized.contains("which ")
-        || normalized.contains("whether ")
-        || normalized.contains("can you ")
-        || normalized.contains("do we have "))
+        .any(|marker| normalized.contains(&format!(" {marker} ")));
+    let named_access_boundary = (normalized.contains(" visibility ")
+        || normalized.contains(" access "))
+        && [
+            "source",
+            "sources",
+            "connector",
+            "connectors",
+            "provider",
+            "providers",
+            "runtime",
+            "runtimes",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} ")));
+    let present_operational_question = ((["what", "which", "whether", "can you", "do we have"]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} "))))
         && [
             "evidence",
             "collection",
+            "collections",
             "receipt",
+            "receipts",
             "access",
             "visibility",
             "runtime",
+            "runtimes",
             "connector",
+            "connectors",
             "source",
+            "sources",
             "tool",
-            "capabilit",
+            "tools",
+            "capability",
+            "capabilities",
         ]
         .iter()
-        .any(|marker| normalized.contains(marker))
+        .any(|marker| normalized.contains(&format!(" {marker} ")))
         && [
             "inspect",
+            "inspected",
             "read",
+            "reads",
             "search",
+            "searched",
             "working",
             "missing",
             "enabled",
@@ -1324,13 +1370,23 @@ fn request_explicitly_requires_current_evidence(message: &str) -> bool {
             "can access",
         ]
         .iter()
-        .any(|marker| normalized.contains(marker)))
-        || (normalized.contains("collection")
-            && (normalized.contains("is working") || normalized.contains("whether collection")));
+        .any(|marker| normalized.contains(&format!(" {marker} "))))
+        || (normalized.contains(" collection ")
+            && (normalized.contains(" is working ")
+                || normalized.contains(" whether collection ")));
     (explicit_time_boundary && named_operational_state)
         || explicit_reconciliation
         || named_access_boundary
         || present_operational_question
+}
+
+fn normalized_phrase_text(value: &str) -> String {
+    let words = value
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    format!(" {} ", words.join(" "))
 }
 
 fn request_explicitly_requires_investigation(message: &str) -> bool {
@@ -2706,6 +2762,17 @@ mod grounding_tests {
         assert!(request_explicitly_requires_current_evidence(
             "What Lantern Vale evidence can you actually inspect, whether collection is working, and what is missing?"
         ));
+        for conversational_message in [
+            "I don't have access to that resource.",
+            "That's incorrect, the provider is fine.",
+            "What tools have we already covered in this thread?",
+            "Please read the statement correctly before replying.",
+        ] {
+            assert!(
+                !request_explicitly_requires_current_evidence(conversational_message),
+                "ordinary conversation was misclassified: {conversational_message}"
+            );
+        }
 
         let synthesis = route_request(
             "Reconcile Source A's current receipt, identify who owns the gap, state the next check trigger, and tell me what closes it.",
