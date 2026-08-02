@@ -2258,7 +2258,7 @@ async fn repair_fallback_outcome(
                     text: summary,
                     required_for_answer: true,
                     content: ClaimContent::Observation {
-                        atom_refs: vec![atom_ref.clone()],
+                        atom_refs: vec![atom_ref],
                     },
                 },
                 GroundedClaim {
@@ -2266,8 +2266,8 @@ async fn repair_fallback_outcome(
                     planned_claim_ref: None,
                     text: notice,
                     required_for_answer: true,
-                    content: ClaimContent::Observation {
-                        atom_refs: vec![atom_ref],
+                    content: ClaimContent::CoverageBoundary {
+                        boundary: coverage_boundary,
                     },
                 },
             ],
@@ -2284,7 +2284,7 @@ async fn repair_fallback_outcome(
                     text: summary,
                     required_for_answer: true,
                     content: ClaimContent::Observation {
-                        atom_refs: vec![atom_ref.clone()],
+                        atom_refs: vec![atom_ref],
                     },
                 },
                 GroundedClaim {
@@ -2292,8 +2292,8 @@ async fn repair_fallback_outcome(
                     planned_claim_ref: None,
                     text: notice,
                     required_for_answer: true,
-                    content: ClaimContent::Observation {
-                        atom_refs: vec![atom_ref],
+                    content: ClaimContent::CoverageBoundary {
+                        boundary: coverage_boundary,
                     },
                 },
             ],
@@ -2340,16 +2340,13 @@ async fn repair_fallback_outcome(
         }
         let notice = format!("\n\n{coverage_notice}");
         message.push_str(&notice);
-        let boundary_atom_ref = failed_reads
-            .first()
-            .map_or_else(|| supported[0].1.clone(), |(_, atom_ref)| atom_ref.clone());
         claims.push(GroundedClaim {
             claim_ref: format!("fallback-boundary:{}", input.request_id),
             planned_claim_ref: None,
             text: notice,
             required_for_answer: true,
-            content: ClaimContent::Observation {
-                atom_refs: vec![boundary_atom_ref],
+            content: ClaimContent::CoverageBoundary {
+                boundary: coverage_boundary,
             },
         });
         (FinalState::Partial, message, claims)
@@ -2384,8 +2381,8 @@ async fn repair_fallback_outcome(
             planned_claim_ref: None,
             text: notice,
             required_for_answer: true,
-            content: ClaimContent::Observation {
-                atom_refs: vec![failed_reads[0].1.clone()],
+            content: ClaimContent::CoverageBoundary {
+                boundary: coverage_boundary,
             },
         });
         (FinalState::Blocked, message, claims)
@@ -5146,12 +5143,22 @@ fn validate_claim(
         }
         ClaimContent::Question => {
             let text = claim.text.trim();
+            let normalized = text.to_ascii_lowercase();
             let one_interrogative = text.ends_with('?')
                 && text.matches('?').count() == 1
                 && !text[..text.len() - 1].contains(['.', '!', ';', '\n']);
-            let bounded_question = ["what ", "which ", "who ", "when ", "where ", "how "]
+            let bounded_opening = ["what ", "which ", "when ", "where "]
                 .iter()
-                .any(|opening| text.to_ascii_lowercase().starts_with(opening))
+                .any(|opening| normalized.starts_with(opening))
+                || [
+                    "who should ",
+                    "who can provide ",
+                    "how should i ",
+                    "how can i ",
+                ]
+                .iter()
+                .any(|opening| normalized.starts_with(opening));
+            let bounded_question = bounded_opening
                 && !text.contains([',', ':'])
                 && !contains_ownership_assertion(text)
                 && !contains_operational_capability_assertion(text)
@@ -5982,6 +5989,14 @@ fn capability_operations_claimed(text: &str) -> Vec<CapabilityOperation> {
         " follow up ",
         " follow-up ",
         " set up ",
+        " fix ",
+        " fixing ",
+        " repair ",
+        " repairing ",
+        " patch ",
+        " patching ",
+        " configure ",
+        " configuring ",
     ]
     .iter()
     .any(|marker| padded.contains(marker))
@@ -6179,7 +6194,19 @@ fn contains_ownership_assertion(text: &str) -> bool {
         ]
         .iter()
         .any(|marker| padded.contains(marker));
-    explicit_relation || hands_relation || structural_authority_relation
+    let principal_effect_relation =
+        names_non_agent_principal(text) && !capability_operations_claimed(&normalized).is_empty();
+    explicit_relation
+        || hands_relation
+        || structural_authority_relation
+        || principal_effect_relation
+}
+
+fn names_non_agent_principal(text: &str) -> bool {
+    let padded = format!(" {} ", text.to_ascii_lowercase());
+    [" team ", " group ", " role ", " user ", " owner "]
+        .iter()
+        .any(|principal| padded.contains(principal))
 }
 
 fn contains_gapped_ownership_assertion(text: &str) -> bool {
@@ -6261,6 +6288,16 @@ fn claimed_authority_duties(text: &str) -> Vec<AuthorityDuty> {
         || normalized.contains("owns the gap")
         || normalized.contains("owns this gap")
         || normalized.contains("remaining gap")
+        || [
+            " fix ",
+            " fixing ",
+            " repair ",
+            " repairing ",
+            " patch ",
+            " patching ",
+        ]
+        .iter()
+        .any(|marker| format!(" {normalized} ").contains(marker))
     {
         duties.push(AuthorityDuty::Remediation);
     }
@@ -7031,7 +7068,9 @@ fn contains_operational_capability_assertion(value: &str) -> bool {
     .any(|marker| padded.contains(marker));
     let structural_capability =
         names_agent && asserts_authority && !capability_operations_claimed(&normalized).is_empty();
-    (asserts_self_capability && operational_verb) || structural_capability
+    let agent_effect_statement =
+        names_agent && !capability_operations_claimed(&normalized).is_empty();
+    (asserts_self_capability && operational_verb) || structural_capability || agent_effect_statement
 }
 
 #[cfg(test)]
@@ -9906,6 +9945,12 @@ mod tests {
         presupposition.message = presupposition.claims[0].text.clone();
         presupposition.question = Some(presupposition.message.clone());
         assert!(validate_grounded_draft(&session(), &presupposition, &[], assessment).is_err());
+
+        presupposition.claims[0].text =
+            "Who put Cerebro on the hook for fixing connector beta?".into();
+        presupposition.message = presupposition.claims[0].text.clone();
+        presupposition.question = Some(presupposition.message.clone());
+        assert!(validate_grounded_draft(&session(), &presupposition, &[], assessment).is_err());
     }
 
     #[test]
@@ -10843,6 +10888,25 @@ mod tests {
             )
             .is_err()
         );
+
+        for unsupported in [
+            "Cerebro is on the hook for fixing connector beta.",
+            "Cerebro is cleared to change the provider configuration.",
+            "Synthetic Team Beta is on the hook for fixing connector beta.",
+        ] {
+            unrelated_authority.claims[0].text = unsupported.into();
+            unrelated_authority.message = unrelated_authority.claims[0].text.clone();
+            assert!(
+                validate_grounded_draft(
+                    &session(),
+                    &unrelated_authority,
+                    &[observation(true, Some("2026-08-01T00:00:00Z"))],
+                    assessment,
+                )
+                .is_err(),
+                "untyped principal effect was accepted: {unsupported}"
+            );
+        }
         for exact_owner in [
             "Cerebro owns remediation for connector beta.",
             "Remediation for connector beta is owned by Cerebro.",

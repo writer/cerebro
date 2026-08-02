@@ -4768,41 +4768,48 @@ fn validate_synthetic_payload_names(
     for value in strings {
         validate_synthetic_assignment_subjects(value, &declared_words)?;
         for raw_word in value.split_whitespace() {
-            let word = raw_word.trim_matches(|character: char| !character.is_alphanumeric());
-            let name_word = word
-                .strip_suffix("'s")
-                .or_else(|| word.strip_suffix("'S"))
-                .or_else(|| word.strip_suffix("’s"))
-                .or_else(|| word.strip_suffix("’S"))
-                .unwrap_or(word);
-            let normalized_name = name_word.to_ascii_lowercase();
-            if synthetic_token_looks_external(word, &normalized_name) {
-                return Err(format!(
-                    "synthetic holdout material contains an external-looking token: {word}"
-                )
-                .into());
-            }
-            let Some(first) = name_word.chars().next() else {
-                continue;
-            };
-            if name_word.len() < 2 || !first.is_uppercase() {
-                continue;
-            }
-            let allowed_acronym = ["api", "mcp", "slo", "ui"].contains(&normalized_name.as_str());
-            let name_like = name_word.chars().skip(1).any(char::is_lowercase)
-                || (name_word.len() >= 3
-                    && name_word
-                        .chars()
-                        .all(|character| character.is_ascii_uppercase())
-                    && !allowed_acronym);
-            if name_like
-                && !declared_words.contains(&normalized_name)
-                && !allowed_title_words.contains(normalized_name.as_str())
-            {
-                return Err(format!(
+            for candidate in std::iter::once(raw_word).chain(
+                raw_word
+                    .split(['=', ':'])
+                    .filter(|candidate| !candidate.is_empty()),
+            ) {
+                let word = candidate.trim_matches(|character: char| !character.is_alphanumeric());
+                let name_word = word
+                    .strip_suffix("'s")
+                    .or_else(|| word.strip_suffix("'S"))
+                    .or_else(|| word.strip_suffix("’s"))
+                    .or_else(|| word.strip_suffix("’S"))
+                    .unwrap_or(word);
+                let normalized_name = name_word.to_ascii_lowercase();
+                if synthetic_token_looks_external(word, &normalized_name) {
+                    return Err(format!(
+                        "synthetic holdout material contains an external-looking token: {word}"
+                    )
+                    .into());
+                }
+                let Some(first) = name_word.chars().next() else {
+                    continue;
+                };
+                if name_word.len() < 2 || !first.is_uppercase() {
+                    continue;
+                }
+                let allowed_acronym =
+                    ["api", "mcp", "slo", "ui"].contains(&normalized_name.as_str());
+                let name_like = name_word.chars().skip(1).any(char::is_lowercase)
+                    || (name_word.len() >= 3
+                        && name_word
+                            .chars()
+                            .all(|character| character.is_ascii_uppercase())
+                        && !allowed_acronym);
+                if name_like
+                    && !declared_words.contains(&normalized_name)
+                    && !allowed_title_words.contains(normalized_name.as_str())
+                {
+                    return Err(format!(
                     "synthetic holdout material contains an undeclared name-like token: {name_word}"
                 )
                 .into());
+                }
             }
         }
     }
@@ -7335,6 +7342,8 @@ mod tests {
             "The fictional connector references AKIAIOSFODNN7EXAMPLE.",
             "The fictional connector references ghp_0123456789abcdefghijklmnopqrstuvwxyz.",
             "The fictional connector is at [::ffff:192.0.2.1].",
+            "The fictional connector references token=ghp_0123456789abcdefghijklmnopqrstuvwxyz.",
+            "The fictional connector is at endpoint=secret.example.xyz.",
         ] {
             let bundle = json!({
                 "data_provenance": {
