@@ -1367,7 +1367,7 @@ fn bounded_context_text(value: &str, maximum_bytes: usize) -> String {
     format!("{}...", &value[..boundary])
 }
 
-fn thread_transcript_page(
+pub(super) fn thread_transcript_page(
     messages: &[SessionMessage],
     cursor: Option<&str>,
     limit: usize,
@@ -1410,12 +1410,17 @@ fn thread_transcript_page(
     })
 }
 
-fn prior_thread_cursor(updated_at: &str, session_ref: &str) -> Result<String, AgentRuntimeError> {
+pub(super) fn prior_thread_cursor(
+    updated_at: &str,
+    session_ref: &str,
+) -> Result<String, AgentRuntimeError> {
     validate_prior_thread_cursor_parts(updated_at, session_ref)?;
     Ok(format!("{updated_at}|{session_ref}"))
 }
 
-fn parse_prior_thread_cursor(value: &str) -> Result<(String, String), AgentRuntimeError> {
+pub(super) fn parse_prior_thread_cursor(
+    value: &str,
+) -> Result<(String, String), AgentRuntimeError> {
     if value.len() > 256 {
         return Err(AgentRuntimeError::InvalidRequest(
             "prior Slack thread cursor is invalid".into(),
@@ -1448,7 +1453,7 @@ fn validate_prior_thread_cursor_parts(
     Ok(())
 }
 
-fn bound_prior_thread_context(context: &mut Value) {
+pub(super) fn bound_prior_thread_context(context: &mut Value) {
     let Some(source) = context.as_object() else {
         *context = serde_json::json!({"state": "invalid_stored_context"});
         return;

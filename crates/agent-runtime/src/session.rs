@@ -3221,34 +3221,45 @@ fn current_required_claims_have_same_turn_evidence(
         .collect::<Vec<_>>();
     !required.is_empty()
         && required.into_iter().all(|planned| {
-            observations.iter().any(|observation| {
-                planned
-                    .source_candidates
-                    .contains(&observation.call.tool_id)
-                    && draft.claims.iter().any(|claim| {
-                        claim.planned_claim_ref.as_deref() == Some(planned.claim_ref.as_str())
-                            && claim_evidence_atom_refs(&claim.content)
-                                .iter()
-                                .any(|atom_ref| {
-                                    observation.result.evidence.iter().any(|evidence| {
-                                        evidence_record_supports_current_draft(
-                                            evidence,
-                                            observation.result.state,
-                                            draft.state,
-                                            assessment_at,
-                                        ) && evidence.atoms.iter().any(|atom| {
-                                            atom.atom_ref == *atom_ref
-                                                && planned_claim_subject_matches(
-                                                    plan,
-                                                    planned,
-                                                    observation,
-                                                    atom,
-                                                )
-                                        })
-                                    })
-                                })
+            let expected_subjects = if planned.subject_refs.is_empty() {
+                plan.resolved_entities
+                    .first()
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            } else {
+                planned.subject_refs.iter().collect::<Vec<_>>()
+            };
+            !expected_subjects.is_empty()
+                && expected_subjects.into_iter().all(|expected_subject| {
+                    observations.iter().any(|observation| {
+                        planned
+                            .source_candidates
+                            .contains(&observation.call.tool_id)
+                            && draft.claims.iter().any(|claim| {
+                                claim.planned_claim_ref.as_deref()
+                                    == Some(planned.claim_ref.as_str())
+                                    && claim_evidence_atom_refs(&claim.content).iter().any(
+                                        |atom_ref| {
+                                            observation.result.evidence.iter().any(|evidence| {
+                                                evidence_record_supports_current_draft(
+                                                    evidence,
+                                                    observation.result.state,
+                                                    draft.state,
+                                                    assessment_at,
+                                                ) && evidence.atoms.iter().any(|atom| {
+                                                    atom.atom_ref == *atom_ref
+                                                        && planned_claim_subject_matches(
+                                                            expected_subject,
+                                                            observation,
+                                                            atom,
+                                                        )
+                                                })
+                                            })
+                                        },
+                                    )
+                            })
                     })
-            })
+                })
         })
 }
 
@@ -3286,8 +3297,7 @@ fn evidence_record_supports_current_draft(
 }
 
 fn planned_claim_subject_matches(
-    plan: &ResearchPlan,
-    planned: &PlannedClaim,
+    expected_subject: &str,
     observation: &ToolObservation,
     atom: &EvidenceAtom,
 ) -> bool {
@@ -3297,13 +3307,7 @@ fn planned_claim_subject_matches(
     let Some(subject_ref) = atom.subject_ref.as_deref() else {
         return false;
     };
-    planned
-        .subject_refs
-        .iter()
-        .any(|expected| observation_text_names_subject(expected, subject_ref))
-        || (planned.subject_refs.is_empty()
-            && plan.resolved_entities.len() == 1
-            && observation_text_names_subject(&plan.resolved_entities[0], subject_ref))
+    observation_text_names_subject(expected_subject, subject_ref)
 }
 
 fn claim_evidence_atom_refs(content: &ClaimContent) -> &[String] {
@@ -5762,13 +5766,21 @@ fn capability_operations_claimed(text: &str) -> Vec<CapabilityOperation> {
         " assign ",
         " merge ",
         " deploy ",
+        " trigger ",
+        " route ",
+        " schedule ",
+        " execute ",
+        " notify ",
+        " follow up ",
+        " follow-up ",
+        " set up ",
     ]
     .iter()
     .any(|marker| padded.contains(marker))
     {
         operations.push(CapabilityOperation::Actuate);
     }
-    if [" propose ", " draft ", " plan ", " recommend "]
+    if [" propose ", " draft ", " plan ", " recommend ", " prepare "]
         .iter()
         .any(|marker| padded.contains(marker))
     {
@@ -5784,6 +5796,11 @@ fn capability_operations_claimed(text: &str) -> Vec<CapabilityOperation> {
         " query ",
         " view ",
         " monitor ",
+        " watch ",
+        " pull ",
+        " re-read ",
+        " recheck ",
+        " re-check ",
     ]
     .iter()
     .any(|marker| padded.contains(marker));
@@ -5806,6 +5823,9 @@ fn atomic_assertion_clauses(text: &str) -> Vec<&str> {
         .flat_map(|clause| clause.split(" and "))
         .flat_map(|clause| clause.split(" while "))
         .flat_map(|clause| clause.split(" whereas "))
+        .flat_map(|clause| clause.split(" plus "))
+        .flat_map(|clause| clause.split(" as well as "))
+        .flat_map(|clause| clause.split(" along with "))
         .map(str::trim)
         .filter(|clause| !clause.is_empty())
         .collect()
@@ -5941,7 +5961,28 @@ fn recommendation_clause_is_prospective_role_handoff(claim: &GroundedClaim, clau
 }
 
 fn atomic_ownership_clauses(text: &str) -> Vec<&str> {
-    atomic_assertion_clauses(text)
+    text.split(['.', ';', ',', '\n'])
+        .flat_map(|clause| clause.split(" but "))
+        .flat_map(|clause| clause.split(" while "))
+        .flat_map(|clause| clause.split(" whereas "))
+        .flat_map(|clause| clause.split(" plus "))
+        .flat_map(|clause| clause.split(" as well as "))
+        .flat_map(|clause| clause.split(" along with "))
+        .flat_map(|clause| {
+            let parts = clause.split(" and ").map(str::trim).collect::<Vec<_>>();
+            if parts
+                .iter()
+                .skip(1)
+                .any(|part| contains_ownership_assertion(part))
+            {
+                parts
+            } else {
+                vec![clause]
+            }
+        })
+        .map(str::trim)
+        .filter(|clause| !clause.is_empty())
+        .collect()
 }
 
 fn claimed_authority_duties(text: &str) -> Vec<AuthorityDuty> {
@@ -9542,8 +9583,23 @@ mod tests {
     #[test]
     fn capability_validation_covers_every_actuating_verb_and_clause() {
         for verb in [
-            "write", "remove", "edit", "revoke", "disable", "enable", "assign", "merge", "deploy",
+            "write",
+            "remove",
+            "edit",
+            "revoke",
+            "disable",
+            "enable",
+            "assign",
+            "merge",
+            "deploy",
             "send",
+            "trigger",
+            "route",
+            "schedule",
+            "execute",
+            "notify",
+            "follow up",
+            "set up",
         ] {
             assert!(
                 contains_operational_capability_assertion(&format!(
@@ -9578,6 +9634,19 @@ mod tests {
                 assessment,
             )
             .is_ok()
+        );
+
+        candidate.claims[0].text =
+            "Cerebro can read synthetic records and execute synthetic remediations.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &candidate,
+                std::slice::from_ref(&overview),
+                assessment,
+            )
+            .is_err()
         );
 
         candidate.claims[0].text =
@@ -9861,6 +9930,18 @@ mod tests {
             &[beta_only],
             assessment,
         ));
+
+        let mut compound_subject = plan();
+        compound_subject.resolved_entities =
+            vec!["connector:alpha".into(), "connector:beta".into()];
+        compound_subject.claims[0].subject_refs =
+            vec!["connector:alpha".into(), "connector:beta".into()];
+        assert!(!current_required_claims_have_same_turn_evidence(
+            &compound_subject,
+            &draft(),
+            &[observation(true, Some("2026-08-01T00:00:00Z"))],
+            assessment,
+        ));
     }
 
     #[test]
@@ -9932,6 +10013,38 @@ mod tests {
         compound.claims[0].text = "Synthetic Team Alpha owns remediation for connector alpha while Synthetic Team Beta owns remediation for connector beta.".into();
         compound.message = compound.claims[0].text.clone();
         assert!(validate_grounded_draft(&session(), &compound, &[authority], assessment).is_err());
+
+        let mut team_authority = observation(true, Some("2026-08-01T00:00:00Z"));
+        team_authority.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::AuthorityBinding {
+                subject_ref: "connector:alpha".into(),
+                duty: AuthorityDuty::Remediation,
+                state: AuthorityBindingState::Bound {
+                    principal: AuthorityPrincipal {
+                        principal_ref: "team:synthetic-alpha".into(),
+                        display_name: Some("Synthetic Team Alpha".into()),
+                        kind: AuthorityPrincipalKind::Team,
+                    },
+                },
+            },
+        };
+        compound.claims[0].text = "Synthetic Team Alpha owns remediation for connector alpha plus Synthetic Team Beta owns remediation for connector beta.".into();
+        compound.message = compound.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &compound,
+                std::slice::from_ref(&team_authority),
+                assessment,
+            )
+            .is_err()
+        );
+        compound.claims[0].text =
+            "Synthetic Team Alpha owns remediation for connector alpha and verification.".into();
+        compound.message = compound.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&session(), &compound, &[team_authority], assessment).is_err()
+        );
     }
 
     #[test]

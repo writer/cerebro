@@ -31,7 +31,13 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::slack_agent::{
     CAPABILITY_EXECUTE_PROPOSAL, CAPABILITY_EXECUTE_READ, ConfiguredModel,
-    capability_describe_result, capability_search_result, model_capability_catalog,
+    capability_describe_result, capability_descriptor_binding_digest, capability_search_result,
+    model_capability_catalog, parse_slack_history_search_input, parse_slack_thread_read_input,
+    validate_context_scope_ref,
+};
+use super::slack_agent_session::{
+    AgentPriorThreadContext, bound_prior_thread_context, parse_prior_thread_cursor,
+    prior_thread_cursor, thread_transcript_page,
 };
 
 const SCHEMA_VERSION: &str = "cerebro-rust-slack-agent-conversation-harness/v2";
@@ -47,6 +53,9 @@ const LAB_MAX_OPERATOR_TURN_LATENCY_MS: u128 = 300_000;
 const LAB_MAX_SCHEDULED_WAKE_LATENCY_MS: u128 = 300_000;
 const AUTONOMY_WAKE_COUNT: usize = 2;
 const AUTONOMY_MAX_WAKE_DELAY: Duration = Duration::hours(24);
+const SYNTHETIC_CONTEXT_SCOPE_REF: &str =
+    "slack-context-scope://sha256/1111111111111111111111111111111111111111111111111111111111111111";
+const SYNTHETIC_HOLDOUT_NAMESPACE: &str = "synthetic://cerebro-holdouts/";
 
 #[derive(Clone, Copy)]
 struct EvalCase {
@@ -193,7 +202,16 @@ struct ConversationLabScenario {
 struct ConversationHoldoutPack {
     schema_version: String,
     pack_ref: String,
+    provenance: SyntheticHoldoutProvenance,
     scenarios: Vec<ConversationLabScenario>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct SyntheticHoldoutProvenance {
+    synthetic_only: bool,
+    namespace: String,
+    fictional_entities: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -250,6 +268,7 @@ struct AutonomyHoldoutScenario {
 struct AutonomyHoldoutPack {
     schema_version: String,
     pack_ref: String,
+    provenance: SyntheticHoldoutProvenance,
     scenarios: Vec<AutonomyHoldoutScenario>,
 }
 
@@ -295,6 +314,7 @@ struct HoldoutSourceReceipt {
     pack_sha256: String,
     digest_verified: bool,
     runtime_loaded_after_exact_head_binding: bool,
+    provenance: SyntheticHoldoutProvenance,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -643,15 +663,34 @@ struct EvalTools {
     observations: Mutex<Vec<EvaluationObservationReceipt>>,
     runtime_cursor_format: Mutex<String>,
     capability_selections: Mutex<BTreeMap<String, EvalCapabilitySelection>>,
+    prior_thread_contexts: Vec<EvalPriorThreadFixture>,
+    prior_thread_scope: Mutex<Option<EvalPriorThreadScope>>,
 }
 
 #[derive(Clone)]
 struct EvalCapabilitySelection {
     tool_id: String,
+    query_digest: String,
+    descriptor_digest: String,
     tenant_id: String,
     actor_ref: String,
     thread_ref: String,
     context_scope_ref: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct EvalPriorThreadScope {
+    tenant_id: String,
+    actor_ref: String,
+    context_scope_ref: String,
+}
+
+#[derive(Clone)]
+struct EvalPriorThreadFixture {
+    session_ref: String,
+    context: Value,
+    thread_ref: String,
+    updated_at: String,
 }
 
 #[derive(Deserialize)]
@@ -659,6 +698,35 @@ struct EvalCapabilitySelection {
 struct EvalCapabilityExecuteInput {
     selection_ref: String,
     input: Value,
+}
+
+fn sealed_synthetic_prior_threads() -> Vec<EvalPriorThreadFixture> {
+    vec![
+        EvalPriorThreadFixture {
+            session_ref: format!("agent-session:{}", "a".repeat(64)),
+            thread_ref: "thread:synthetic-prior-alpha".into(),
+            updated_at: "2026-07-30T00:02:00Z".into(),
+            context: json!({
+                "desired_outcome": "Determine whether fictional connector alpha recovered.",
+                "latest_assistant_message": "Fictional connector alpha still needed one bounded check.",
+                "latest_user_message": "Keep the synthetic check scoped to connector alpha.",
+                "open_loops": ["Re-read fictional connector alpha after the synthetic boundary."],
+                "commitments": [],
+            }),
+        },
+        EvalPriorThreadFixture {
+            session_ref: format!("agent-session:{}", "b".repeat(64)),
+            thread_ref: "thread:synthetic-prior-beta".into(),
+            updated_at: "2026-07-30T00:01:00Z".into(),
+            context: json!({
+                "desired_outcome": "Explain a fictional archive evidence gap.",
+                "latest_assistant_message": "The fictional archive remained explicitly partial.",
+                "latest_user_message": "Preserve the synthetic evidence boundary.",
+                "open_loops": [],
+                "commitments": [],
+            }),
+        },
+    ]
 }
 
 impl EvalTools {
@@ -672,6 +740,8 @@ impl EvalTools {
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
             capability_selections: Mutex::new(BTreeMap::new()),
+            prior_thread_contexts: sealed_synthetic_prior_threads(),
+            prior_thread_scope: Mutex::new(None),
         }
     }
 
@@ -685,6 +755,12 @@ impl EvalTools {
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
             capability_selections: Mutex::new(BTreeMap::new()),
+            prior_thread_contexts: sealed_synthetic_prior_threads(),
+            prior_thread_scope: Mutex::new(Some(EvalPriorThreadScope {
+                tenant_id: "rust-conversation-lab-tenant".into(),
+                actor_ref: "slack-user://rust-conversation-lab".into(),
+                context_scope_ref: SYNTHETIC_CONTEXT_SCOPE_REF.into(),
+            })),
         }
     }
 
@@ -703,6 +779,12 @@ impl EvalTools {
             observations: Mutex::new(Vec::new()),
             runtime_cursor_format: Mutex::new("legacy_revision".into()),
             capability_selections: Mutex::new(BTreeMap::new()),
+            prior_thread_contexts: sealed_synthetic_prior_threads(),
+            prior_thread_scope: Mutex::new(Some(EvalPriorThreadScope {
+                tenant_id: "rust-autonomy-lab-tenant".into(),
+                actor_ref: "evaluation-operator".into(),
+                context_scope_ref: SYNTHETIC_CONTEXT_SCOPE_REF.into(),
+            })),
         }
     }
 
@@ -718,6 +800,134 @@ impl EvalTools {
             .autonomy_phase
             .lock()
             .expect("evaluation autonomy phase poisoned") = phase;
+    }
+
+    fn bind_prior_thread_scope(&self, request: &AgentTurnRequest) -> Result<(), AgentRuntimeError> {
+        let context_scope_ref = request.context_scope_ref.as_deref().ok_or_else(|| {
+            AgentRuntimeError::InvalidToolCall(
+                "prior Slack thread search requires the active channel scope".into(),
+            )
+        })?;
+        validate_context_scope_ref(context_scope_ref)?;
+        let requested = EvalPriorThreadScope {
+            tenant_id: request.tenant_id.clone(),
+            actor_ref: request.actor_ref.clone(),
+            context_scope_ref: context_scope_ref.into(),
+        };
+        let mut bound = self
+            .prior_thread_scope
+            .lock()
+            .expect("evaluation prior-thread scope poisoned");
+        match bound.as_ref() {
+            Some(existing) if existing != &requested => Err(AgentRuntimeError::InvalidToolCall(
+                "evaluation prior-thread store belongs to another scope".into(),
+            )),
+            Some(_) => Ok(()),
+            None => {
+                *bound = Some(requested);
+                Ok(())
+            }
+        }
+    }
+
+    fn read_synthetic_slack_thread(
+        &self,
+        request: &AgentTurnRequest,
+        call: &ToolCall,
+    ) -> Result<EvaluationFixture, AgentRuntimeError> {
+        let (cursor, limit) = parse_slack_thread_read_input(&call.input)?;
+        let messages = request
+            .history
+            .iter()
+            .enumerate()
+            .map(|(index, message)| SessionMessage {
+                role: match message.role {
+                    ConversationRole::Assistant => SessionMessageRole::Assistant,
+                    ConversationRole::User => SessionMessageRole::User,
+                },
+                message_ref: format!("synthetic-thread-message:{index:04}"),
+                actor_ref: match message.role {
+                    ConversationRole::Assistant => "cerebro".into(),
+                    ConversationRole::User => request.actor_ref.clone(),
+                },
+                text: message.content.clone(),
+                received_at: request.assessment_at.clone(),
+            })
+            .collect::<Vec<_>>();
+        let page = thread_transcript_page(&messages, cursor.as_deref(), limit)?;
+        Ok(EvaluationFixture {
+            summary: format!(
+                "Read {} synthetic messages from the current owned conversation. This retained context is not current external-system evidence.",
+                page.messages.len()
+            ),
+            data: serde_json::to_value(page)
+                .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
+        })
+    }
+
+    fn search_synthetic_slack_history(
+        &self,
+        request: &AgentTurnRequest,
+        call: &ToolCall,
+    ) -> Result<EvaluationFixture, AgentRuntimeError> {
+        let (cursor, limit, query) = parse_slack_history_search_input(&call.input)?;
+        self.bind_prior_thread_scope(request)?;
+        let parsed_cursor = cursor
+            .as_deref()
+            .map(parse_prior_thread_cursor)
+            .transpose()?;
+        let normalized_query = query.to_ascii_lowercase();
+        let mut matching = self
+            .prior_thread_contexts
+            .iter()
+            .filter(|fixture| {
+                parsed_cursor
+                    .as_ref()
+                    .is_none_or(|(updated_at, session_ref)| {
+                        (&fixture.updated_at, &fixture.session_ref) < (updated_at, session_ref)
+                    })
+                    && (normalized_query.is_empty()
+                        || fixture
+                            .context
+                            .to_string()
+                            .to_ascii_lowercase()
+                            .contains(&normalized_query))
+            })
+            .take(limit.saturating_add(1))
+            .cloned()
+            .collect::<Vec<_>>();
+        let has_more = matching.len() > limit;
+        matching.truncate(limit);
+        let next_cursor = if has_more {
+            matching
+                .last()
+                .map(|fixture| prior_thread_cursor(&fixture.updated_at, &fixture.session_ref))
+                .transpose()?
+        } else {
+            None
+        };
+        let threads = matching
+            .into_iter()
+            .map(|fixture| {
+                let mut context = fixture.context;
+                bound_prior_thread_context(&mut context);
+                AgentPriorThreadContext {
+                    context,
+                    thread_ref: fixture.thread_ref,
+                    updated_at: fixture.updated_at,
+                }
+            })
+            .collect::<Vec<_>>();
+        Ok(EvaluationFixture {
+            summary: format!(
+                "Read {} bounded synthetic prior-thread contexts for this sealed operator scope. Retained context is not current external-system evidence.",
+                threads.len()
+            ),
+            data: json!({
+                "next_cursor": next_cursor,
+                "threads": threads,
+            }),
+        })
     }
 
     fn provider_catalog(&self) -> Vec<ToolDescriptor> {
@@ -791,7 +1001,7 @@ impl EvalTools {
         call: &ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
         let catalog = self.complete_capability_catalog();
-        capability_search_result(&catalog, &call.input, |descriptor, _query_digest| {
+        capability_search_result(&catalog, &call.input, |descriptor, query_digest| {
             if !descriptor.tool_id.starts_with("mcp.")
                 || !matches!(
                     (descriptor.authority_class, descriptor.effect_class),
@@ -801,12 +1011,20 @@ impl EvalTools {
             {
                 return Ok(None);
             }
+            let descriptor_digest = capability_descriptor_binding_digest(descriptor);
             let selection_ref = format!(
                 "selection://synthetic/{}",
                 sha256_hex(
                     format!(
-                        "{}\0{}\0{}",
-                        self.case_ref, request.request_id, descriptor.tool_id
+                        "{}\0{}\0{}\0{}\0{}\0{}\0{}\0{}",
+                        self.case_ref,
+                        request.tenant_id,
+                        request.actor_ref,
+                        request.thread_ref,
+                        request.context_scope_ref.as_deref().unwrap_or(""),
+                        descriptor.tool_id,
+                        descriptor_digest,
+                        query_digest,
                     )
                     .as_bytes()
                 )
@@ -818,6 +1036,8 @@ impl EvalTools {
                     selection_ref.clone(),
                     EvalCapabilitySelection {
                         tool_id: descriptor.tool_id.clone(),
+                        query_digest: query_digest.into(),
+                        descriptor_digest,
                         tenant_id: request.tenant_id.clone(),
                         actor_ref: request.actor_ref.clone(),
                         thread_ref: request.thread_ref.clone(),
@@ -863,7 +1083,7 @@ impl EvalTools {
         }
         let tool_id = selection.tool_id;
         let descriptor = self
-            .provider_catalog()
+            .complete_capability_catalog()
             .into_iter()
             .find(|descriptor| descriptor.tool_id == tool_id)
             .ok_or_else(|| {
@@ -871,6 +1091,18 @@ impl EvalTools {
                     "evaluation capability selection is no longer bound".into(),
                 )
             })?;
+        if capability_descriptor_binding_digest(&descriptor) != selection.descriptor_digest
+            || !selection
+                .query_digest
+                .strip_prefix("sha256:")
+                .is_some_and(|digest| {
+                    digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+                })
+        {
+            return Err(AgentRuntimeError::InvalidToolCall(
+                "evaluation capability selection descriptor or query binding changed".into(),
+            ));
+        }
         let expected_executor = if descriptor.authority_class == ToolAuthorityClass::Propose {
             CAPABILITY_EXECUTE_PROPOSAL
         } else {
@@ -976,77 +1208,9 @@ impl AgentTools for EvalTools {
                 }),
             }
         } else if call.tool_id == "slack.thread.read" {
-            let limit = call
-                .input
-                .get("limit")
-                .and_then(Value::as_u64)
-                .unwrap_or(12)
-                .clamp(1, 20) as usize;
-            let messages = request
-                .history
-                .iter()
-                .rev()
-                .take(limit)
-                .rev()
-                .map(|message| {
-                    json!({
-                        "role": message.role,
-                        "content": message.content,
-                    })
-                })
-                .collect::<Vec<_>>();
-            EvaluationFixture {
-                summary: format!(
-                    "Read {} synthetic messages from the current owned conversation.",
-                    messages.len()
-                ),
-                data: json!({
-                    "messages": messages,
-                    "next_cursor": null,
-                    "scope": "current_owned_thread",
-                }),
-            }
+            self.read_synthetic_slack_thread(request, call)?
         } else if call.tool_id == "slack.history.search" {
-            let query = call
-                .input
-                .get("query")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .trim()
-                .to_ascii_lowercase();
-            let limit = call
-                .input
-                .get("limit")
-                .and_then(Value::as_u64)
-                .unwrap_or(4)
-                .clamp(1, 8) as usize;
-            let matches = request
-                .history
-                .iter()
-                .enumerate()
-                .filter(|(_, message)| {
-                    query.is_empty() || message.content.to_ascii_lowercase().contains(&query)
-                })
-                .take(limit)
-                .map(|(index, message)| {
-                    json!({
-                        "thread_ref": format!("thread:synthetic-prior-{index}"),
-                        "role": message.role,
-                        "excerpt": message.content,
-                    })
-                })
-                .collect::<Vec<_>>();
-            EvaluationFixture {
-                summary: format!(
-                    "Read {} bounded synthetic prior-thread contexts for this sealed operator scope.",
-                    matches.len()
-                ),
-                data: json!({
-                    "matches": matches,
-                    "next_cursor": null,
-                    "scope": "sealed_synthetic_operator_history",
-                }),
-            }
+            self.search_synthetic_slack_history(request, call)?
         } else if call.tool_id == "runtime_config_update" {
             if call.input != expected_action {
                 return Err(AgentRuntimeError::InvalidToolCall(
@@ -1130,6 +1294,14 @@ impl AgentTools for EvalTools {
         };
         let summary = fixture.summary;
         let data = fixture.data;
+        let retained_slack_context = matches!(
+            call.tool_id.as_str(),
+            "slack.thread.read" | "slack.history.search"
+        );
+        let retained_context_has_more = retained_slack_context
+            && data
+                .get("next_cursor")
+                .is_some_and(|cursor| !cursor.is_null());
         let state = if unavailable_autonomy_tool
             || unavailable_conversation_tool
             || autonomy_input_mismatch
@@ -1140,7 +1312,9 @@ impl AgentTools for EvalTools {
                 || {
                     if call.tool_id == "graph.reason" {
                         ToolResultState::Failed
-                    } else if data.get("coverage").and_then(Value::as_str) == Some("partial") {
+                    } else if retained_context_has_more
+                        || data.get("coverage").and_then(Value::as_str) == Some("partial")
+                    {
                         ToolResultState::Partial
                     } else {
                         ToolResultState::Succeeded
@@ -1149,10 +1323,14 @@ impl AgentTools for EvalTools {
                 |fixture| fixture.state,
             )
         };
-        let complete = autonomy_fixture.as_ref().map_or(
-            matches!(state, ToolResultState::Succeeded | ToolResultState::Partial),
-            |fixture| fixture.complete,
-        );
+        let complete = if retained_slack_context {
+            !retained_context_has_more
+        } else {
+            autonomy_fixture.as_ref().map_or(
+                matches!(state, ToolResultState::Succeeded | ToolResultState::Partial),
+                |fixture| fixture.complete,
+            )
+        };
         let blocker = if unavailable_autonomy_tool || unavailable_conversation_tool {
             Some(
                 "No subject-bound observation is available from this capability in the current sealed scenario."
@@ -1161,6 +1339,11 @@ impl AgentTools for EvalTools {
         } else if autonomy_input_mismatch {
             Some(
                 "The runtime read requires the exact operator-named subject identifier in its input."
+                    .into(),
+            )
+        } else if retained_context_has_more {
+            Some(
+                "More retained Slack context remains available through the returned bounded cursor."
                     .into(),
             )
         } else {
@@ -1241,26 +1424,32 @@ impl AgentTools for EvalTools {
                 evidence_ref: evidence_ref.clone(),
                 statement: summary.clone(),
                 observed_at: request.assessment_at.clone(),
-                fresh_until: Some(
-                    fresh_until
-                        .format(&Rfc3339)
-                        .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?,
-                ),
-                complete,
-                atoms: evidence_atoms_from_json(EvidenceAtomization {
-                    evidence_ref: &evidence_ref,
-                    subject_ref: subject_ref.as_deref(),
-                    data: &data,
-                    state,
-                    summary: &summary,
-                    observed_at: &request.assessment_at,
-                    fresh_until: Some(
-                        &fresh_until.format(&Rfc3339).map_err(|error| {
+                fresh_until: if retained_slack_context {
+                    None
+                } else {
+                    Some(
+                        fresh_until.format(&Rfc3339).map_err(|error| {
                             AgentRuntimeError::InvalidToolCall(error.to_string())
                         })?,
-                    ),
-                    complete,
-                }),
+                    )
+                },
+                complete,
+                atoms: if retained_slack_context {
+                    Vec::new()
+                } else {
+                    evidence_atoms_from_json(EvidenceAtomization {
+                        evidence_ref: &evidence_ref,
+                        subject_ref: subject_ref.as_deref(),
+                        data: &data,
+                        state,
+                        summary: &summary,
+                        observed_at: &request.assessment_at,
+                        fresh_until: Some(&fresh_until.format(&Rfc3339).map_err(|error| {
+                            AgentRuntimeError::InvalidToolCall(error.to_string())
+                        })?),
+                        complete,
+                    })
+                },
             }],
             blocker,
         })
@@ -2071,7 +2260,7 @@ fn evaluation_session(
         session_ref: session_ref.clone(),
         tenant_id: tenant_id.into(),
         thread_ref: format!("evaluation-thread:{scenario_index:02}"),
-        context_scope_ref: None,
+        context_scope_ref: Some(SYNTHETIC_CONTEXT_SCOPE_REF.into()),
         mission: MissionState {
             mission_ref: format!("evaluation-mission:{scenario_index:02}"),
             objective: scenario.initial_message.clone(),
@@ -2564,9 +2753,14 @@ fn selected_autonomy_scenario() -> Result<AutonomyScenarioSelection, Box<dyn Err
             );
         }
         let pack: AutonomyHoldoutPack = serde_json::from_slice(&bytes)?;
-        if pack.schema_version != "cerebro-slack-agent-autonomy-holdout-pack/v2" {
+        if pack.schema_version != "cerebro-slack-agent-autonomy-holdout-pack/v3" {
             return Err("unsupported autonomy holdout pack schema".into());
         }
+        validate_synthetic_holdout(
+            &pack.pack_ref,
+            &pack.provenance,
+            &serde_json::to_value(&pack.scenarios)?,
+        )?;
         validate_autonomy_holdout_scenarios(&pack.scenarios)?;
         let selected_ref = env::var("CEREBRO_SLACK_AGENT_EVAL_AUTONOMY_SCENARIO_REF")?;
         let declared_scenario_count = pack.scenarios.len();
@@ -2589,6 +2783,7 @@ fn selected_autonomy_scenario() -> Result<AutonomyScenarioSelection, Box<dyn Err
                 pack_sha256: digest,
                 digest_verified: true,
                 runtime_loaded_after_exact_head_binding: true,
+                provenance: pack.provenance,
             },
         });
     }
@@ -2604,6 +2799,7 @@ fn selected_autonomy_scenario() -> Result<AutonomyScenarioSelection, Box<dyn Err
             pack_sha256: sha256_hex(&bytes),
             digest_verified: false,
             runtime_loaded_after_exact_head_binding: false,
+            provenance: embedded_synthetic_provenance(),
         },
     })
 }
@@ -3784,11 +3980,99 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
+fn embedded_synthetic_provenance() -> SyntheticHoldoutProvenance {
+    SyntheticHoldoutProvenance {
+        synthetic_only: true,
+        namespace: SYNTHETIC_HOLDOUT_NAMESPACE.into(),
+        fictional_entities: vec![
+            "fictional connector".into(),
+            "synthetic operator".into(),
+            "synthetic team".into(),
+        ],
+    }
+}
+
+fn validate_synthetic_holdout(
+    pack_ref: &str,
+    provenance: &SyntheticHoldoutProvenance,
+    payload: &Value,
+) -> Result<(), Box<dyn Error>> {
+    if !provenance.synthetic_only
+        || provenance.namespace != SYNTHETIC_HOLDOUT_NAMESPACE
+        || !pack_ref.starts_with(&provenance.namespace)
+        || provenance.fictional_entities.is_empty()
+        || provenance.fictional_entities.len() > 64
+        || provenance
+            .fictional_entities
+            .iter()
+            .any(|entity| entity.trim().is_empty() || entity.len() > 128)
+        || provenance
+            .fictional_entities
+            .iter()
+            .map(|entity| entity.to_ascii_lowercase())
+            .collect::<BTreeSet<_>>()
+            .len()
+            != provenance.fictional_entities.len()
+    {
+        return Err("holdout provenance must declare one bounded fully synthetic namespace and fictional entity inventory".into());
+    }
+    let encoded = serde_json::to_string(payload)?.to_ascii_lowercase();
+    validate_synthetic_export_text(&encoded)?;
+    Ok(())
+}
+
+fn validate_synthetic_export_text(encoded: &str) -> Result<(), Box<dyn Error>> {
+    for forbidden in [
+        "http://",
+        "https://",
+        "arn:",
+        ".com",
+        ".net",
+        ".org",
+        "@writer",
+        "amazon",
+        "aws",
+        "github",
+        "customer-id",
+        "account-id",
+    ] {
+        if encoded.contains(forbidden) {
+            return Err(format!(
+                "synthetic holdout material contains a forbidden external identifier marker: {forbidden}"
+            )
+            .into());
+        }
+    }
+    if encoded
+        .split(|character: char| !character.is_ascii_alphanumeric() && character != '-')
+        .any(|token| {
+            token.len() >= 8 && token.bytes().all(|byte| byte.is_ascii_digit())
+                || (token.len() == 36
+                    && token.chars().enumerate().all(|(index, character)| {
+                        matches!(index, 8 | 13 | 18 | 23) && character == '-'
+                            || !matches!(index, 8 | 13 | 18 | 23) && character.is_ascii_hexdigit()
+                    }))
+        })
+    {
+        return Err(
+            "synthetic holdout material contains a production-shaped numeric or UUID identifier"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 fn validate_blind_review_bytes(
     bytes: &[u8],
     sensitive_values: &[&str],
 ) -> Result<(), Box<dyn Error>> {
     let encoded = std::str::from_utf8(bytes)?.to_ascii_lowercase();
+    if !encoded.contains("\"synthetic_only\":true")
+        || !encoded.contains(&format!("\"namespace\":\"{SYNTHETIC_HOLDOUT_NAMESPACE}"))
+    {
+        return Err("blind review bundle is missing enforced synthetic provenance".into());
+    }
+    validate_synthetic_export_text(&encoded)?;
     for identity in ["rust", "opus", "claude", "anthropic", "bedrock"] {
         if contains_identity_token(&encoded, identity) {
             return Err(format!(
@@ -3882,6 +4166,7 @@ fn blind_review_bundle(
     json!({
         "schema_version": "cerebro-slack-agent-blind-review/v3",
         "identity_disclosure": "model_provider_implementation_and_commit_withheld",
+        "data_provenance": &holdout_source.provenance,
         "holdout_pack_sha256": holdout_source.pack_sha256,
         "rubric": {
             "dimensions": ["task_completion", "factual_grounding", "conversational_quality", "initiative", "judgment", "continuity", "burden_reduction"],
@@ -3925,6 +4210,7 @@ fn autonomy_failure_blind_bundle(
     json!({
         "schema_version": "cerebro-slack-agent-blind-review/v3",
         "identity_disclosure": "model_provider_implementation_and_commit_withheld",
+        "data_provenance": embedded_synthetic_provenance(),
         "holdout_pack_sha256": pack_sha256,
         "rubric": {
             "dimensions": ["task_completion", "factual_grounding", "conversational_quality", "initiative", "judgment", "continuity", "burden_reduction"],
@@ -3982,9 +4268,14 @@ fn selected_lab_scenarios() -> Result<ConversationScenarioSelection, Box<dyn Err
             );
         }
         let pack: ConversationHoldoutPack = serde_json::from_slice(&bytes)?;
-        if pack.schema_version != "cerebro-rust-slack-agent-holdout-pack/v1" {
+        if pack.schema_version != "cerebro-rust-slack-agent-holdout-pack/v2" {
             return Err("unsupported conversation holdout pack schema".into());
         }
+        validate_synthetic_holdout(
+            &pack.pack_ref,
+            &pack.provenance,
+            &serde_json::to_value(&pack.scenarios)?,
+        )?;
         validate_conversation_scenarios(&pack.scenarios)?;
         (
             pack.scenarios,
@@ -3994,6 +4285,7 @@ fn selected_lab_scenarios() -> Result<ConversationScenarioSelection, Box<dyn Err
                 pack_sha256: digest,
                 digest_verified: true,
                 runtime_loaded_after_exact_head_binding: true,
+                provenance: pack.provenance,
             },
         )
     } else {
@@ -4007,6 +4299,7 @@ fn selected_lab_scenarios() -> Result<ConversationScenarioSelection, Box<dyn Err
                 pack_sha256: sha256_hex(&bytes),
                 digest_verified: false,
                 runtime_loaded_after_exact_head_binding: false,
+                provenance: embedded_synthetic_provenance(),
             },
         )
     };
@@ -5108,6 +5401,27 @@ mod tests {
         assert!(!selection_ref.contains("cerebro"));
         assert!(!selection_ref.contains("source"));
 
+        let second_search = AgentTools::invoke(
+            &tools,
+            &request,
+            &ToolCall {
+                call_id: "call:second-search".into(),
+                tool_id: "capability.search".into(),
+                purpose: "Repeat discovery with a distinct synthetic intent.".into(),
+                input: json!({"query": "sources health", "limit": 20}),
+            },
+        )
+        .await
+        .unwrap();
+        let second_selection_ref = second_search.data["matches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|candidate| candidate["descriptor"]["tool_id"] == "mcp.cerebro.sources.health")
+            .and_then(|candidate| candidate["selection_ref"].as_str())
+            .unwrap();
+        assert_ne!(selection_ref, second_selection_ref);
+
         let described = AgentTools::invoke(
             &tools,
             &request,
@@ -5166,6 +5480,7 @@ mod tests {
         );
 
         let mut context_request = request.clone();
+        context_request.context_scope_ref = Some(SYNTHETIC_CONTEXT_SCOPE_REF.into());
         context_request.history = vec![
             ConversationMessage {
                 role: ConversationRole::User,
@@ -5189,7 +5504,8 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(thread.data["messages"].as_array().unwrap().len(), 1);
-        assert_eq!(thread.data["scope"], "current_owned_thread");
+        assert!(thread.evidence[0].fresh_until.is_none());
+        assert!(thread.evidence[0].atoms.is_empty());
 
         let history = AgentTools::invoke(
             &tools,
@@ -5203,8 +5519,46 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(history.data["matches"].as_array().unwrap().len(), 1);
-        assert_eq!(history.data["scope"], "sealed_synthetic_operator_history");
+        assert_eq!(history.data["threads"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            history.data["threads"][0]["thread_ref"],
+            "thread:synthetic-prior-alpha"
+        );
+        assert!(history.evidence[0].fresh_until.is_none());
+        assert!(history.evidence[0].atoms.is_empty());
+        assert!(
+            AgentTools::invoke(
+                &tools,
+                &context_request,
+                &ToolCall {
+                    call_id: "call:invalid-history-limit".into(),
+                    tool_id: "slack.history.search".into(),
+                    purpose: "Reject an out-of-contract synthetic page.".into(),
+                    input: json!({"query": "connector", "limit": 8}),
+                },
+            )
+            .await
+            .is_err()
+        );
+        let mut another_scope = context_request;
+        another_scope.context_scope_ref =
+            Some(format!("slack-context-scope://sha256/{}", "2".repeat(64)));
+        assert!(
+            AgentTools::invoke(
+                &tools,
+                &another_scope,
+                &ToolCall {
+                    call_id: "call:wrong-history-scope".into(),
+                    tool_id: "slack.history.search".into(),
+                    purpose: "Reject another synthetic operator scope.".into(),
+                    input: json!({"query": "connector", "limit": 4}),
+                },
+            )
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("another scope")
+        );
     }
 
     #[test]
@@ -5348,6 +5702,37 @@ mod tests {
     }
 
     #[test]
+    fn synthetic_holdout_provenance_rejects_external_identifiers() {
+        let mut provenance = embedded_synthetic_provenance();
+        assert!(
+            validate_synthetic_holdout(
+                "synthetic://cerebro-holdouts/test-pack",
+                &provenance,
+                &json!({"message": "A fully fictional connector is partial."}),
+            )
+            .is_ok()
+        );
+        provenance.synthetic_only = false;
+        assert!(
+            validate_synthetic_holdout(
+                "synthetic://cerebro-holdouts/test-pack",
+                &provenance,
+                &json!({"message": "A fully fictional connector is partial."}),
+            )
+            .is_err()
+        );
+        provenance.synthetic_only = true;
+        assert!(
+            validate_synthetic_holdout(
+                "synthetic://cerebro-holdouts/test-pack",
+                &provenance,
+                &json!({"message": "Inspect https://real.example.com/inc-12345678"}),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn empty_blind_review_bundle_discloses_no_model_identity() {
         let bundle = blind_review_bundle(
             &HoldoutSourceReceipt {
@@ -5356,6 +5741,7 @@ mod tests {
                 pack_sha256: "c".repeat(64),
                 digest_verified: true,
                 runtime_loaded_after_exact_head_binding: true,
+                provenance: embedded_synthetic_provenance(),
             },
             &[],
         );
@@ -5397,14 +5783,14 @@ mod tests {
     fn blind_review_byte_scan_fails_closed_on_identity_or_raw_receipt_leaks() {
         assert!(
             validate_blind_review_bytes(
-                br#"{"conversation":["Trust the evidence boundary."]}"#,
+                br#"{"data_provenance":{"synthetic_only":true,"namespace":"synthetic://cerebro-holdouts/","fictional_entities":["fictional connector"]},"conversation":["Trust the evidence boundary."]}"#,
                 &[&"a".repeat(40)]
             )
             .is_ok()
         );
         assert!(
             validate_blind_review_bytes(
-                br#"{"conversation":["This was generated by Claude."]}"#,
+                br#"{"data_provenance":{"synthetic_only":true,"namespace":"synthetic://cerebro-holdouts/","fictional_entities":["fictional connector"]},"conversation":["This was generated by Claude."]}"#,
                 &[]
             )
             .is_err()
@@ -5507,6 +5893,7 @@ mod tests {
                 pack_sha256: "c".repeat(64),
                 digest_verified: true,
                 runtime_loaded_after_exact_head_binding: true,
+                provenance: embedded_synthetic_provenance(),
             },
             &receipts,
         );
@@ -5572,6 +5959,7 @@ mod tests {
                 pack_sha256: "d".repeat(64),
                 digest_verified: false,
                 runtime_loaded_after_exact_head_binding: false,
+                provenance: embedded_synthetic_provenance(),
             },
             &receipts,
         );

@@ -751,7 +751,7 @@ fn is_bedrock_opus_model(value: &str) -> bool {
     model.starts_with("anthropic.claude-opus-") || model.contains(".anthropic.claude-opus-")
 }
 
-fn validate_context_scope_ref(value: &str) -> Result<(), AgentRuntimeError> {
+pub(super) fn validate_context_scope_ref(value: &str) -> Result<(), AgentRuntimeError> {
     const PREFIX: &str = "slack-context-scope://sha256/";
     let digest = value.strip_prefix(PREFIX).ok_or_else(|| {
         AgentRuntimeError::InvalidRequest(
@@ -2995,6 +2995,32 @@ struct SlackHistorySearchInput {
     query: String,
 }
 
+pub(super) fn parse_slack_thread_read_input(
+    value: &Value,
+) -> Result<(Option<String>, usize), AgentRuntimeError> {
+    let input: SlackThreadReadInput = serde_json::from_value(value.clone())
+        .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+    if input.limit == 0 || input.limit > MAX_SLACK_TRANSCRIPT_LIMIT {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "Slack thread transcript limit is invalid".into(),
+        ));
+    }
+    Ok((input.cursor, input.limit))
+}
+
+pub(super) fn parse_slack_history_search_input(
+    value: &Value,
+) -> Result<(Option<String>, usize, String), AgentRuntimeError> {
+    let input: SlackHistorySearchInput = serde_json::from_value(value.clone())
+        .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
+    if input.query.len() > 256 || input.limit == 0 || input.limit > MAX_SLACK_HISTORY_LIMIT {
+        return Err(AgentRuntimeError::InvalidToolCall(
+            "prior Slack thread search input is invalid".into(),
+        ));
+    }
+    Ok((input.cursor, input.limit, input.query.trim().into()))
+}
+
 const MAX_CAPABILITY_SEARCH_LIMIT: usize = 20;
 const MAX_CAPABILITY_DESCRIBE_IDS: usize = 12;
 const MAX_CAPABILITY_CATALOG_OFFSET: usize = 512;
@@ -3213,6 +3239,13 @@ fn capability_descriptor_json(descriptor: &ToolDescriptor, score: usize) -> Valu
         "namespace": capability_namespace(&descriptor.tool_id),
         "score": score,
     })
+}
+
+pub(super) fn capability_descriptor_binding_digest(descriptor: &ToolDescriptor) -> String {
+    capability_descriptor_json(descriptor, 0)["descriptor_digest"]
+        .as_str()
+        .expect("capability descriptors always have a digest")
+        .into()
 }
 
 pub(super) fn capability_search_result<F>(
@@ -3798,20 +3831,14 @@ impl PlatformAgentTools {
         request: &AgentTurnRequest,
         call: &cerebro_agent_runtime::ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
-        let input: SlackThreadReadInput = serde_json::from_value(call.input.clone())
-            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
-        if input.limit == 0 || input.limit > MAX_SLACK_TRANSCRIPT_LIMIT {
-            return Err(AgentRuntimeError::InvalidToolCall(
-                "Slack thread transcript limit is invalid".into(),
-            ));
-        }
+        let (cursor, limit) = parse_slack_thread_read_input(&call.input)?;
         let page = self
             .sessions
             .read_owned_thread_transcript(
                 &request.tenant_id,
                 &request.thread_ref,
-                input.cursor.as_deref(),
-                input.limit,
+                cursor.as_deref(),
+                limit,
             )
             .await?;
         let complete = page.next_cursor.is_none();
@@ -3849,13 +3876,7 @@ impl PlatformAgentTools {
         request: &AgentTurnRequest,
         call: &cerebro_agent_runtime::ToolCall,
     ) -> Result<ToolResult, AgentRuntimeError> {
-        let input: SlackHistorySearchInput = serde_json::from_value(call.input.clone())
-            .map_err(|error| AgentRuntimeError::InvalidToolCall(error.to_string()))?;
-        if input.query.len() > 256 || input.limit == 0 || input.limit > MAX_SLACK_HISTORY_LIMIT {
-            return Err(AgentRuntimeError::InvalidToolCall(
-                "prior Slack thread search input is invalid".into(),
-            ));
-        }
+        let (cursor, limit, query) = parse_slack_history_search_input(&call.input)?;
         let context_scope_ref = request.context_scope_ref.as_deref().ok_or_else(|| {
             AgentRuntimeError::InvalidToolCall(
                 "prior Slack thread search requires the active channel scope".into(),
@@ -3874,10 +3895,10 @@ impl PlatformAgentTools {
             .search_prior_thread_contexts(AgentPriorThreadSearch {
                 actor_ref: &request.actor_ref,
                 context_scope_ref,
-                cursor: input.cursor.as_deref(),
+                cursor: cursor.as_deref(),
                 exclude_session_ref: &session.session_ref,
-                limit: input.limit,
-                query: input.query.trim(),
+                limit,
+                query: &query,
                 tenant_id: &request.tenant_id,
             })
             .await?;
