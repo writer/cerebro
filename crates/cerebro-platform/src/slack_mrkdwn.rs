@@ -422,10 +422,20 @@ fn raw_url_suffix_continues_path(
     let Some(first) = characters.next() else {
         return false;
     };
+    if first == '%' {
+        let mut encoded = characters.take(2);
+        return encoded
+            .next()
+            .is_some_and(|character| character.is_ascii_hexdigit())
+            && encoded
+                .next()
+                .is_some_and(|character| character.is_ascii_hexdigit());
+    }
     let rfc_url_continuation = matches!(
         first,
         '/' | '-'
             | '.'
+            | '_'
             | '~'
             | '!'
             | '$'
@@ -438,7 +448,6 @@ fn raw_url_suffix_continues_path(
             | ';'
             | '='
             | '@'
-            | '%'
             | '?'
             | '#'
             | ':'
@@ -889,6 +898,18 @@ mod tests {
             (
                 "**See https://example.com/a**:b",
                 "*See https://example.com/a**:b*",
+            ),
+            (
+                "**See https://example.com/a**%2Fb",
+                "*See https://example.com/a**%2Fb*",
+            ),
+            (
+                "**See https://example.com/a**_b",
+                "*See https://example.com/a**_b*",
+            ),
+            (
+                "**See https://example.com**%done",
+                "*See https://example.com*%done",
             ),
         ] {
             let rendered = render_slack_mrkdwn(input);
