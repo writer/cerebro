@@ -22,6 +22,9 @@ var securityReviewerFindingControlRefs = []ports.FindingControlRef{
 	{FrameworkName: "ISO 27001:2022", ControlID: "A.8.8"},
 }
 
+// Keep the historical Droid event kind readable for replay; new producers use
+// the provider-neutral security_reviewer event kinds below.
+
 var securityReviewerFindingDefinition = RuleDefinition{
 	ID:             securityReviewerFindingRuleID,
 	Name:           securityReviewerFindingTitle,

@@ -63,8 +63,6 @@ class LandPRTests(unittest.TestCase):
 
     def test_default_required_checks_use_deterministic_review(self):
         self.assertIn("deterministic-review", land_pr.DEFAULT_REQUIRED_CHECKS)
-        self.assertNotIn("droid-review", land_pr.DEFAULT_REQUIRED_CHECKS)
-        self.assertNotIn("droid-review-preflight", land_pr.DEFAULT_REQUIRED_CHECKS)
 
     def test_check_no_active_review_threads_accepts_empty_threads(self):
         ok, reason = land_pr.check_no_active_review_threads([])

@@ -38,7 +38,7 @@ func TestClassifyReviewSkipsDocsOnly(t *testing.T) {
 func TestReviewProbePlanIncludesPathSpecificPasses(t *testing.T) {
 	passes := reviewProbePlan([]string{
 		"internal/graphagent/ask.go",
-		"scripts/droid_ci_context.py",
+		"scripts/land_pr.py",
 		"sources/github/source.go",
 	})
 	names := map[string]bool{}

@@ -26,7 +26,7 @@ func TestSecurityReviewerFindingRuleMapsReviewerFindingDeterministically(t *test
 		"repository":       "writer/cerebro",
 		"review_subject":   "https://github.com/writer/cerebro/pull/1058",
 		"reviewer":         "security-reviewer",
-		"reviewer_source":  "droid-review",
+		"reviewer_source":  "security-reviewer",
 		"rule":             "open-redirect",
 		"severity":         "high",
 		"pull_request_url": "https://github.com/writer/cerebro/pull/1058",
