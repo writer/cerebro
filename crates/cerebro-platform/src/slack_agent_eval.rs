@@ -4768,11 +4768,12 @@ fn validate_synthetic_payload_names(
     for value in strings {
         validate_synthetic_assignment_subjects(value, &declared_words)?;
         for raw_word in value.split_whitespace() {
-            for candidate in std::iter::once(raw_word).chain(
-                raw_word
-                    .split(['=', ':'])
-                    .filter(|candidate| !candidate.is_empty()),
-            ) {
+            let suffixes = raw_word.char_indices().filter_map(|(index, character)| {
+                (!character.is_ascii_alphanumeric())
+                    .then(|| &raw_word[index + character.len_utf8()..])
+                    .filter(|candidate| !candidate.is_empty())
+            });
+            for candidate in std::iter::once(raw_word).chain(suffixes) {
                 let word = candidate.trim_matches(|character: char| !character.is_alphanumeric());
                 let name_word = word
                     .strip_suffix("'s")
@@ -7344,6 +7345,10 @@ mod tests {
             "The fictional connector is at [::ffff:192.0.2.1].",
             "The fictional connector references token=ghp_0123456789abcdefghijklmnopqrstuvwxyz.",
             "The fictional connector is at endpoint=secret.example.xyz.",
+            "The fictional connector references token/ghp_0123456789abcdefghijklmnopqrstuvwxyz.",
+            "The fictional connector references resource/vol-0abc123def456.",
+            "The fictional connector references issue/JIRA-1234.",
+            "The fictional connector is at addr/192.0.2.1.",
         ] {
             let bundle = json!({
                 "data_provenance": {

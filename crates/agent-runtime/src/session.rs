@@ -5158,8 +5158,39 @@ fn validate_claim(
                 ]
                 .iter()
                 .any(|opening| normalized.starts_with(opening));
+            let names_asserted_principal = [
+                " cerebro ",
+                " assistant ",
+                " agent ",
+                " bot ",
+                " automation ",
+                " system ",
+                " platform ",
+                " service ",
+                " owner ",
+                " account ",
+                " principal ",
+            ]
+            .iter()
+            .any(|principal| format!(" {normalized} ").contains(principal));
+            let organizational_principal = [" team ", " group ", " role ", " user ", " operator "]
+                .iter()
+                .any(|principal| format!(" {normalized} ").contains(principal));
+            let asks_for_principal_input = [
+                "which team ",
+                "which group ",
+                "which role ",
+                "which user ",
+                "which operator ",
+                "who should ",
+                "who can provide ",
+            ]
+            .iter()
+            .any(|opening| normalized.starts_with(opening));
             let bounded_question = bounded_opening
                 && !text.contains([',', ':'])
+                && !names_asserted_principal
+                && (!organizational_principal || asks_for_principal_input)
                 && !contains_ownership_assertion(text)
                 && !contains_operational_capability_assertion(text)
                 && !contains_unbound_future_promise(text);
@@ -5233,6 +5264,7 @@ fn validate_claim(
             }
         }
     }
+    validate_principal_claims(claim, atom_refs, context)?;
     for atom_ref in atom_refs {
         let atom = context
             .atoms
@@ -5255,6 +5287,171 @@ fn validate_claim(
         cited_atoms.insert(atom_ref.clone());
     }
     Ok(())
+}
+
+fn validate_principal_claims(
+    claim: &GroundedClaim,
+    atom_refs: &[String],
+    context: &ClaimValidationContext<'_, '_>,
+) -> Result<(), AgentRuntimeError> {
+    for clause in atomic_assertion_clauses(&claim.text) {
+        if !clause_names_principal(clause)
+            || recommendation_clause_is_normative(claim, clause)
+            || recommendation_clause_is_prospective_role_handoff(claim, clause)
+        {
+            continue;
+        }
+        let supported = atom_refs.iter().any(|atom_ref| {
+            context.atoms.get(atom_ref).is_some_and(|atom| {
+                atom_capability_overview_supports_text(atom, clause, context.assessment_at)
+                    || atom_positively_supports_principal_clause(atom, clause)
+            })
+        });
+        if !supported {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "a current statement about an agent, team, role, service, or other principal must positively match a typed subject-bound atom or a fresh bound capability descriptor"
+                    .into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn clause_names_principal(text: &str) -> bool {
+    let normalized = normalized_semantic_text(text);
+    [
+        " cerebro ",
+        " assistant ",
+        " agent ",
+        " bot ",
+        " automation ",
+        " system ",
+        " platform ",
+        " service ",
+        " team ",
+        " group ",
+        " role ",
+        " user ",
+        " operator ",
+        " owner ",
+        " account ",
+        " principal ",
+    ]
+    .iter()
+    .any(|principal| normalized.contains(principal))
+        || normalized.starts_with(" i ")
+        || normalized.starts_with(" we ")
+}
+
+fn recommendation_clause_is_normative(claim: &GroundedClaim, clause: &str) -> bool {
+    let ClaimContent::Recommendation { action, .. } = &claim.content else {
+        return false;
+    };
+    let normalized = clause.to_ascii_lowercase();
+    let normative = [
+        "recommend ",
+        "recommended ",
+        "should ",
+        "would ",
+        "next ",
+        "handoff ",
+        "accept when ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let _ = action;
+    normative
+}
+
+fn atom_positively_supports_principal_clause(atom: &AtomContext<'_>, clause: &str) -> bool {
+    match &atom.atom.assertion {
+        EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::AuthorityBinding { duty, .. },
+        } => {
+            claimed_authority_duties(clause).contains(duty)
+                && atom_binds_claimed_owner(atom, clause, *duty)
+        }
+        EvidenceAssertion::Value { predicate, value } => atom_subject_and_scalar_match(
+            atom.atom.subject_ref.as_deref(),
+            predicate,
+            value,
+            clause,
+        ),
+        EvidenceAssertion::Relation {
+            predicate,
+            object_ref,
+        } => atom.atom.subject_ref.as_deref().is_some_and(|subject_ref| {
+            observation_text_names_subject(clause, subject_ref)
+                && observation_text_names_subject(clause, object_ref)
+                && text_contains_semantic_term(clause, predicate)
+        }),
+        EvidenceAssertion::FieldCoverage { field, state } => {
+            atom.atom
+                .subject_ref
+                .as_deref()
+                .is_some_and(|subject_ref| observation_text_names_subject(clause, subject_ref))
+                && text_contains_semantic_term(clause, field)
+                && text_contains_semantic_term(clause, &format!("{state:?}"))
+        }
+        EvidenceAssertion::ToolOutcome { summary, .. }
+        | EvidenceAssertion::LegacyStatement { statement: summary } => {
+            lexical_statement_supports_clause(summary, clause)
+        }
+        EvidenceAssertion::Semantic { .. } => {
+            lexical_statement_supports_clause(atom.evidence.statement.as_str(), clause)
+        }
+    }
+}
+
+fn atom_subject_and_scalar_match(
+    subject_ref: Option<&str>,
+    predicate: &str,
+    value: &Value,
+    clause: &str,
+) -> bool {
+    if subject_ref.is_some_and(|subject_ref| !observation_text_names_subject(clause, subject_ref)) {
+        return false;
+    }
+    let predicate_leaf = predicate
+        .rsplit(['/', '.', ':'])
+        .find(|part| !part.is_empty())
+        .unwrap_or(predicate)
+        .replace(['_', '-'], " ");
+    let predicate_match = text_contains_semantic_term(clause, &predicate_leaf);
+    let value_match = match value {
+        Value::String(value) => {
+            text_contains_semantic_term(clause, &value.replace(['_', '-'], " "))
+        }
+        Value::Bool(value) => {
+            let normalized = normalized_semantic_text(clause);
+            if *value {
+                [
+                    " true ",
+                    " enabled ",
+                    " active ",
+                    " available ",
+                    " configured ",
+                    " connected ",
+                ]
+                .iter()
+                .any(|term| normalized.contains(term))
+            } else {
+                [
+                    " false ",
+                    " disabled ",
+                    " inactive ",
+                    " unavailable ",
+                    " unconfigured ",
+                    " disconnected ",
+                ]
+                .iter()
+                .any(|term| normalized.contains(term))
+            }
+        }
+        Value::Number(value) => text_contains_semantic_term(clause, &value.to_string()),
+        Value::Null | Value::Array(_) | Value::Object(_) => false,
+    };
+    value_match && (predicate_match || !matches!(value, Value::Bool(_)))
 }
 
 fn validate_hypothesis_wording(
@@ -9951,6 +10148,11 @@ mod tests {
         presupposition.message = presupposition.claims[0].text.clone();
         presupposition.question = Some(presupposition.message.clone());
         assert!(validate_grounded_draft(&session(), &presupposition, &[], assessment).is_err());
+
+        presupposition.claims[0].text = "What grant lets Cerebro alter provider settings?".into();
+        presupposition.message = presupposition.claims[0].text.clone();
+        presupposition.question = Some(presupposition.message.clone());
+        assert!(validate_grounded_draft(&session(), &presupposition, &[], assessment).is_err());
     }
 
     #[test]
@@ -10893,6 +11095,8 @@ mod tests {
             "Cerebro is on the hook for fixing connector beta.",
             "Cerebro is cleared to change the provider configuration.",
             "Synthetic Team Beta is on the hook for fixing connector beta.",
+            "Cerebro holds the grant to alter provider settings.",
+            "Synthetic Team Beta has charge of correcting connector beta.",
         ] {
             unrelated_authority.claims[0].text = unsupported.into();
             unrelated_authority.message = unrelated_authority.claims[0].text.clone();
