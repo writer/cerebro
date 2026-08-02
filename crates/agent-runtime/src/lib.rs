@@ -1565,6 +1565,8 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         " thought experiment ",
         " in this scenario ",
         " scenario ",
+        " in this simulation ",
+        " simulation ",
         " sorting algorithm ",
         " hypothetical ",
         " fictional ",
@@ -1578,18 +1580,13 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
             "algorithm" | "argument" | "concept" | "example" | "idea" | "theory"
         )
     });
-    let named_subject_in_request = clause
-        .split(|character: char| !character.is_alphanumeric())
-        .filter(|token| !token.is_empty())
-        .enumerate()
-        .any(|(index, token)| {
-            index > 0
-                && token.chars().next().is_some_and(char::is_uppercase)
-                && !matches!(
-                    token,
-                    "A" | "An" | "I" | "It" | "That" | "The" | "These" | "This" | "Those"
-                )
-        });
+    let ambiguous_demonstrative_concept = words
+        .first()
+        .is_some_and(|word| matches!(*word, "does" | "is"))
+        && words.get(1).is_some_and(|word| *word == "this")
+        && !["now", "today", "currently", "recently", "latest"]
+            .iter()
+            .any(|time| words.contains(time));
     let generic_state_request = clause.trim_end().ends_with('?')
         || words.first().is_some_and(|word| {
             matches!(
@@ -1616,6 +1613,7 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         });
     let generic_live_predicate = !conceptual_naming
         && !generic_concept_subject
+        && !ambiguous_demonstrative_concept
         && generic_state_request
         && words.iter().enumerate().any(|(predicate_index, word)| {
             if !matches!(
@@ -1628,6 +1626,7 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                     | "degraded"
                     | "down"
                     | "fixed"
+                    | "flaky"
                     | "green"
                     | "healthy"
                     | "offline"
@@ -1641,6 +1640,8 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
                     | "restored"
                     | "running"
                     | "stable"
+                    | "stale"
+                    | "stalled"
                     | "synchronized"
                     | "up"
                     | "unavailable"
@@ -1738,15 +1739,6 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         .first()
         .is_some_and(|word| matches!(*word, "did" | "does" | "has" | "have" | "is" | "was"))
         && (normalized.contains(" time out ") || normalized.contains(" timed out "));
-    let generic_named_state_question = !conceptual_naming
-        && !generic_concept_subject
-        && named_subject_in_request
-        && words.first().is_some_and(|word| {
-            matches!(
-                *word,
-                "are" | "did" | "does" | "has" | "have" | "is" | "was" | "were"
-            )
-        });
     let generic_live_read = [
         " after you check ",
         " and check ",
@@ -1768,7 +1760,6 @@ fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
         || generic_live_ownership
         || generic_live_capability
         || generic_live_timeout
-        || generic_named_state_question
         || generic_live_read;
     if request_is_artifact_transformation(clause) {
         return false;
@@ -1918,6 +1909,10 @@ fn presentation_markup_is_balanced(value: &str) -> bool {
                 continue;
             }
             if remaining.starts_with("**") {
+                if remaining.starts_with("**/") {
+                    cursor += 2;
+                    continue;
+                }
                 strong_asterisks += 1;
                 cursor += 2;
                 continue;
@@ -3427,7 +3422,10 @@ mod grounding_tests {
             "Why is patience valuable?",
             "What about the second argument now?",
             "Does this idea work?",
+            "Does this proposal work?",
             "In this scenario, why is Atlas healthy?",
+            "Why is Atlas healthy in this simulation?",
+            "Is Rust expressive?",
         ] {
             assert!(
                 !request_explicitly_requires_current_evidence(conversational_message),
@@ -3469,6 +3467,7 @@ mod grounding_tests {
             "Has Atlas restarted?",
             "Has Atlas stalled?",
             "Is Atlas flaky?",
+            "is atlas stale?",
             "How's Atlas now?",
             "Any update on Atlas?",
             "Is Story Service operational?",
@@ -3560,6 +3559,7 @@ mod grounding_tests {
             "To explain multiplication: 2 * 3 = 6.",
             "The configuration variable is FOO__BAR.",
             "Inspect *.rs files first.",
+            "Use the recursive glob src/**/test.rs for Rust tests.",
         ] {
             assert!(
                 validate_presentation(&PresentationDecision {

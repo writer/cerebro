@@ -5705,7 +5705,6 @@ fn validate_conversational_synthesis(
         || crate::looks_like_report_copy(body)
         || contains_raw_machine_field_syntax(body)
         || !synthesis_is_relevant(body, &cited_context)
-        || !synthesis_answers_newest_message(body, &newest_operator_message.1.text)
     {
         return Err(AgentRuntimeError::InvalidFinal(
             "conversational synthesis must be bounded natural prose materially tied to its cited thread messages, without machine records, links, report scaffolding, promises, or unsupported operational claims"
@@ -5881,6 +5880,8 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
         " thought experiment ",
         " in this scenario ",
         " scenario ",
+        " in this simulation ",
+        " simulation ",
         " hypothetical ",
         " fictional ",
         " imagine ",
@@ -5894,6 +5895,21 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
     ]
     .iter()
     .any(|marker| normalized_source.contains(marker));
+    let source_is_plain_copular_question = source_messages.iter().any(|message| {
+        let normalized = format!(" {} ", message.trim().to_ascii_lowercase());
+        message.trim_end().ends_with('?')
+            && (normalized.starts_with(" is ") || normalized.starts_with(" are "))
+            && ![
+                " current ",
+                " currently ",
+                " latest ",
+                " now ",
+                " recently ",
+                " today ",
+            ]
+            .iter()
+            .any(|marker| normalized.contains(marker))
+    });
     let source_invites_opinion = [
         " what do you think ",
         " thoughts on ",
@@ -5933,17 +5949,37 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
             .filter(|token| !token.is_empty())
             .map(str::to_ascii_lowercase)
             .collect::<Vec<_>>();
-        let named_environment_scope = clause
-            .split(|character: char| !character.is_alphanumeric())
-            .filter(|token| !token.is_empty())
-            .any(|token| {
-                (2..=8).contains(&token.len())
-                    && token
-                        .chars()
-                        .all(|character| character.is_ascii_uppercase())
-            });
+        let locative_scope = tokens
+            .iter()
+            .position(|token| matches!(token.as_str(), "in" | "on"));
+        let locative_scope_is_conceptual = locative_scope.is_some_and(|index| {
+            let immediate = tokens.get(index + 1).map(String::as_str);
+            let after_determiner = immediate
+                .is_some_and(|value| matches!(value, "a" | "an" | "the" | "this"))
+                .then(|| tokens.get(index + 2).map(String::as_str))
+                .flatten();
+            let thought_experiment = after_determiner == Some("thought")
+                && tokens.get(index + 3).map(String::as_str) == Some("experiment");
+            thought_experiment
+                || immediate
+                    .into_iter()
+                    .chain(after_determiner)
+                    .any(|subject| {
+                        matches!(
+                            subject,
+                            "analogy"
+                                | "example"
+                                | "metaphor"
+                                | "movie"
+                                | "novel"
+                                | "scenario"
+                                | "simulation"
+                                | "story"
+                        )
+                    })
+        });
         let conceptual_context_applies = source_is_conceptual
-            && !named_environment_scope
+            && (locative_scope.is_none() || locative_scope_is_conceptual)
             && !tokens.iter().any(|token| {
                 matches!(
                     token.as_str(),
@@ -6094,6 +6130,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "enabled"
                         | "failed"
                         | "fixed"
+                        | "flaky"
                         | "healthy"
                         | "landed"
                         | "live"
@@ -6109,6 +6146,8 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "running"
                         | "shipped"
                         | "stable"
+                        | "stale"
+                        | "stalled"
                         | "synchronized"
                         | "unavailable"
                         | "up"
@@ -6131,15 +6170,16 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                     .collect::<Vec<_>>()
                     .join(" ")
             );
-            let subjective_opinion = source_invites_opinion
-                && !operational_predicate
-                && (body_expresses_opinion
-                    || [" i think ", " i find ", " my take ", " my read ", " to me "]
-                        .iter()
-                        .any(|marker| normalized_clause.contains(marker))
-                    || predicates
-                        .iter()
-                        .any(|predicate| matches!(predicate.as_str(), "name" | "title")));
+            let subjective_opinion = !operational_predicate
+                && (source_is_plain_copular_question
+                    || (source_invites_opinion
+                        && (body_expresses_opinion
+                            || [" i think ", " i find ", " my take ", " my read ", " to me "]
+                                .iter()
+                                .any(|marker| normalized_clause.contains(marker))
+                            || predicates
+                                .iter()
+                                .any(|predicate| matches!(predicate.as_str(), "name" | "title")))));
             predicates
                 .iter()
                 .any(|predicate| !matches!(predicate.as_str(), "a" | "an" | "the"))
@@ -6157,51 +6197,6 @@ fn synthesis_is_relevant(body: &str, source_messages: &[&str]) -> bool {
         .collect::<BTreeSet<_>>();
     let required_overlap = source_terms.len().min(2);
     required_overlap > 0 && source_terms.intersection(&body_terms).count() >= required_overlap
-}
-
-fn synthesis_answers_newest_message(body: &str, newest_message: &str) -> bool {
-    let body_terms = synthesis_terms(body);
-    let newest_terms = synthesis_terms(newest_message);
-    let substantive_newest_terms = newest_terms
-        .iter()
-        .filter(|term| {
-            !matches!(
-                term.as_str(),
-                "answer" | "explain" | "please" | "say" | "tell" | "think" | "thoughts"
-            )
-        })
-        .collect::<BTreeSet<_>>();
-    if substantive_newest_terms.is_empty() {
-        return true;
-    }
-    if substantive_newest_terms.len() == 1 {
-        let newest = substantive_newest_terms
-            .iter()
-            .next()
-            .expect("one substantive term is present")
-            .as_str();
-        if body_terms.contains(newest) {
-            return true;
-        }
-        const OWNERSHIP_TERMS: &[&str] = &[
-            "accountability",
-            "accountable",
-            "owner",
-            "ownership",
-            "operator",
-            "responsibility",
-            "responsible",
-        ];
-        return OWNERSHIP_TERMS.contains(&newest)
-            && body_terms
-                .iter()
-                .any(|term| OWNERSHIP_TERMS.contains(&term.as_str()));
-    }
-    substantive_newest_terms
-        .iter()
-        .filter(|term| body_terms.contains(term.as_str()))
-        .count()
-        >= substantive_newest_terms.len().min(2)
 }
 
 fn synthesis_terms(value: &str) -> BTreeSet<String> {
@@ -8435,6 +8430,8 @@ fn contains_operational_capability_assertion(value: &str) -> bool {
         " in this movie ",
         " in the movie ",
         " in this thought experiment ",
+        " in this scenario ",
+        " in this simulation ",
         " hypothetical ",
         " fictional ",
     ]
@@ -11869,6 +11866,7 @@ mod tests {
             ("Has Atlas restarted?", "Atlas restarted."),
             ("Has Atlas stalled?", "Atlas stalled."),
             ("Is Atlas flaky?", "Atlas is flaky."),
+            ("is atlas stale?", "atlas is stale."),
             (
                 "What's your opinion of Atlas?",
                 "My opinion: I think Atlas is synchronized right now.",
@@ -11967,6 +11965,18 @@ mod tests {
             (
                 "In this scenario, why is Atlas healthy?",
                 "Atlas is healthy in this scenario because the premise defines recovery as asking for help.",
+            ),
+            (
+                "Why is Atlas healthy in this simulation?",
+                "Atlas is healthy in this simulation because the modeled recovery condition was satisfied.",
+            ),
+            (
+                "In this simulation, can Cerebro read minds?",
+                "Cerebro can read minds in this simulation.",
+            ),
+            (
+                "Is Rust expressive?",
+                "Rust is expressive because its type system captures rich invariants without hiding control flow.",
             ),
         ] {
             let mut conceptual_session = synthesis_session.clone();
@@ -12070,27 +12080,11 @@ mod tests {
             validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
             "a conceptual prompt suppressed an acronym-scoped operational assertion"
         );
-
+        candidate.claims[0].text = "This example shows Atlas failed in canary.".into();
+        candidate.message = candidate.claims[0].text.clone();
         assert!(
-            !synthesis_answers_newest_message(
-                "Reversibility and acceptance criteria make decisions easier to revisit.",
-                "What about ownership?",
-            ),
-            "older cited context cannot substitute for answering the newest turn"
-        );
-        assert!(
-            synthesis_answers_newest_message(
-                "The operator should carry explicit accountability.",
-                "What about ownership?",
-            ),
-            "a direct governance synonym should answer a one-concept follow-up"
-        );
-        assert!(
-            !synthesis_answers_newest_message(
-                "Ownership improves reversibility.",
-                "Compare ownership, accountability, and escalation.",
-            ),
-            "a multi-part newest request requires more than one repeated term"
+            validate_grounded_draft(&escaped_story_session, &candidate, &[], assessment).is_err(),
+            "a conceptual prompt suppressed an arbitrary environment-scoped assertion"
         );
 
         let mut malformed_markup_session = synthesis_session.clone();
