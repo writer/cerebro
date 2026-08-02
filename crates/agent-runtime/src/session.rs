@@ -5872,6 +5872,10 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
     ]
     .iter()
     .any(|marker| normalized_source.contains(marker));
+    let normalized_body = format!(" {} ", body.to_ascii_lowercase());
+    let body_expresses_opinion = [" i think ", " i find ", " i like ", " my take ", " to me "]
+        .iter()
+        .any(|marker| normalized_body.contains(marker));
     body.split(['.', ';', '!', '?', '\n']).any(|clause| {
         let is_conditional = clause.trim_start().to_ascii_lowercase().starts_with("if ");
         if is_conditional {
@@ -6024,9 +6028,10 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
             let normalized_clause = format!(" {} ", clause.to_ascii_lowercase());
             let subjective_opinion = source_invites_opinion
                 && !operational_predicate
-                && ([" i think ", " i find ", " my take ", " to me "]
-                    .iter()
-                    .any(|marker| normalized_clause.contains(marker))
+                && (body_expresses_opinion
+                    || [" i think ", " i find ", " my take ", " to me "]
+                        .iter()
+                        .any(|marker| normalized_clause.contains(marker))
                     || predicates
                         .iter()
                         .any(|predicate| matches!(predicate.as_str(), "name" | "title")));
