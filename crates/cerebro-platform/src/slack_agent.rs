@@ -22,11 +22,10 @@ use cerebro_agent_context::{AgentGraph, ContextError};
 use cerebro_agent_runtime::{
     AGENT_DELIVERY_RECEIPT_V1, AgentDeliveryReceipt, AgentModel, AgentRuntimeError, AgentTools,
     AgentTurnOutcome, AgentTurnRequest, CRITIC_MAX_TOKENS, CritiqueDecision, CritiqueTurn,
-    DECISION_MAX_TOKENS, EvidenceRecord, ExecutionLane, FinalState, FutureObservationDisposition,
-    HARD_MAX_GENERATION_TOKENS, ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS,
-    PresentationDecision, PresentationTurn, ROUTER_MAX_TOKENS, ResolvedRequestRoute, RouteDecision,
-    RouteTurn, ToolAuthorityClass, ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState,
-    resolve_request_lane, resolve_request_route, run_turn,
+    DECISION_MAX_TOKENS, EvidenceRecord, ExecutionLane, FinalState, HARD_MAX_GENERATION_TOKENS,
+    ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS, PresentationDecision, PresentationTurn,
+    ROUTER_MAX_TOKENS, ResolvedRequestRoute, RouteDecision, RouteTurn, ToolAuthorityClass,
+    ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState, resolve_request_route, run_turn,
     session::{
         AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
         ALL_STABLE_EXPLANATION_IDS, AgentSession, ClaimReviewTurn, DeliveryDisposition,
@@ -1197,24 +1196,6 @@ pub(crate) fn durable_operator_message<'a>(
         }
         _ => None,
     })
-}
-
-pub(crate) fn accepted_route_for_request(
-    session: &AgentSession,
-    request_id: &str,
-) -> Option<ExecutionLane> {
-    session
-        .events
-        .iter()
-        .rev()
-        .find_map(|event| match &event.event {
-            SessionEvent::RouteAccepted {
-                request_id: accepted_request_id,
-                lane,
-                ..
-            } if accepted_request_id == request_id => Some(*lane),
-            _ => None,
-        })
 }
 
 pub(crate) fn accepted_route_receipt_for_request(
@@ -5650,7 +5631,7 @@ mod tests {
                 event: SessionEvent::RouteAccepted {
                     request_id: request.request_id.clone(),
                     lane: ExecutionLane::Investigate,
-                    future_observation: FutureObservationDisposition::None,
+                    future_observation: cerebro_agent_runtime::FutureObservationDisposition::None,
                     future_observation_excerpt: None,
                 },
             },
@@ -5897,7 +5878,8 @@ mod tests {
                     event: SessionEvent::RouteAccepted {
                         request_id: side_request_id.into(),
                         lane: ExecutionLane::Converse,
-                        future_observation: FutureObservationDisposition::None,
+                        future_observation:
+                            cerebro_agent_runtime::FutureObservationDisposition::None,
                         future_observation_excerpt: None,
                     },
                 },
@@ -5998,7 +5980,7 @@ mod tests {
                 SessionEvent::RouteAccepted {
                     request_id: "request:old-act".into(),
                     lane: ExecutionLane::Act,
-                    future_observation: FutureObservationDisposition::None,
+                    future_observation: cerebro_agent_runtime::FutureObservationDisposition::None,
                     future_observation_excerpt: None,
                 },
             ),
@@ -6030,7 +6012,7 @@ mod tests {
                 SessionEvent::RouteAccepted {
                     request_id: "request:new-conversation".into(),
                     lane: ExecutionLane::Converse,
-                    future_observation: FutureObservationDisposition::None,
+                    future_observation: cerebro_agent_runtime::FutureObservationDisposition::None,
                     future_observation_excerpt: None,
                 },
             ),

@@ -15,7 +15,7 @@ use cerebro_agent_runtime::{
     ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS, PresentationDecision, PresentationTurn,
     ROUTER_MAX_TOKENS, RouteDecision, RouteTurn, ToolAuthorityClass, ToolCall, ToolDescriptor,
     ToolEffectClass, ToolResult, ToolResultState, WorkingOutcome, WorkingState,
-    resolve_request_lane, resolve_request_route, run_turn,
+    resolve_request_route, run_turn,
     session::{
         AGENT_SESSION_EVENT_V2, AgentSession, ClaimReviewTurn, Commitment, CommitmentStatus,
         DeliveryDisposition, EvidenceAtomization, MessageReview, SessionAgentModel, SessionEvent,
@@ -32,8 +32,8 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::slack_agent::{
     CAPABILITY_EXECUTE_PROPOSAL, CAPABILITY_EXECUTE_READ, ConfiguredModel,
-    accepted_route_for_request, capability_describe_result, capability_descriptor_binding_digest,
-    capability_search_result, durable_operator_message, model_capability_catalog, new_session,
+    capability_describe_result, capability_descriptor_binding_digest, capability_search_result,
+    durable_operator_message, model_capability_catalog, new_session,
     parse_slack_history_search_input, parse_slack_thread_read_input, replay_completed_session_turn,
     replay_pending_session_turn, route_request_from_session, validate_context_scope_ref,
 };
