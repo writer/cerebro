@@ -4773,7 +4773,13 @@ fn validate_synthetic_payload_names(
                     .then(|| &raw_word[index + character.len_utf8()..])
                     .filter(|candidate| !candidate.is_empty())
             });
-            for candidate in std::iter::once(raw_word).chain(suffixes) {
+            let segments = raw_word
+                .split(|character: char| {
+                    !character.is_ascii_alphanumeric()
+                        && !matches!(character, '.' | '_' | '-' | ':' | '%' | '[' | ']' | '@')
+                })
+                .filter(|candidate| !candidate.is_empty());
+            for candidate in std::iter::once(raw_word).chain(suffixes).chain(segments) {
                 let word = candidate.trim_matches(|character: char| !character.is_alphanumeric());
                 let name_word = word
                     .strip_suffix("'s")
@@ -7349,6 +7355,9 @@ mod tests {
             "The fictional connector references resource/vol-0abc123def456.",
             "The fictional connector references issue/JIRA-1234.",
             "The fictional connector is at addr/192.0.2.1.",
+            "The fictional connector references ghp_0123456789abcdefghijklmnopqrstuvwxyz/meta.",
+            "The fictional connector references vol-0abc123def456#tag.",
+            "The fictional connector references JIRA-1234,closed.",
         ] {
             let bundle = json!({
                 "data_provenance": {

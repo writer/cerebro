@@ -394,6 +394,31 @@ pub struct ActionSpec {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub enum RecommendationDirective {
+    LeaveUnchanged,
+    PerformBoundedCheck,
+    WaitForFreshObservation,
+    InspectTarget,
+    VerifyTarget,
+    ReconcileProviderState,
+    RequestApproval,
+    RemediateTarget,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuestionDirective {
+    WhichTarget,
+    WhichSource,
+    WhatDecision,
+    WhatOutcome,
+    WhoCanProvideIdentifier,
+    WhenDue,
+    WhereEvidence,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StableExplanationId {
     EvidenceFreshnessDefinition,
     EvidenceAuthorityBoundary,
@@ -463,6 +488,7 @@ pub enum ClaimContent {
     },
     Recommendation {
         action: ActionSpec,
+        directive: RecommendationDirective,
         rationale_atom_refs: Vec<String>,
     },
     Hypothesis {
@@ -475,7 +501,9 @@ pub enum ClaimContent {
     CoverageBoundary {
         boundary: CoverageBoundaryKind,
     },
-    Question,
+    Question {
+        directive: QuestionDirective,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -3365,7 +3393,7 @@ fn claim_evidence_atom_refs(content: &ClaimContent) -> &[String] {
         | ClaimContent::Commitment { .. }
         | ClaimContent::StableExplanation { .. }
         | ClaimContent::CoverageBoundary { .. }
-        | ClaimContent::Question => &[],
+        | ClaimContent::Question { .. } => &[],
     }
 }
 
@@ -5022,10 +5050,19 @@ fn validate_claim(
             ));
         }
         ClaimContent::Recommendation {
+            directive,
             rationale_atom_refs,
             ..
         } => {
-            validate_observation_wording(&claim.text, rationale_atom_refs, context, true)?;
+            if !text_matches_registered_rendering(
+                &claim.text,
+                render_recommendation_directive(*directive),
+            ) {
+                return Err(AgentRuntimeError::InvalidFinal(
+                    "recommendation text must exactly match its registered prospective directive rendering"
+                        .into(),
+                ));
+            }
             rationale_atom_refs.as_slice()
         }
         ClaimContent::Hypothesis {
@@ -5141,66 +5178,15 @@ fn validate_claim(
             }
             return Ok(());
         }
-        ClaimContent::Question => {
+        ClaimContent::Question { directive } => {
             let text = claim.text.trim();
-            let normalized = text.to_ascii_lowercase();
-            let one_interrogative = text.ends_with('?')
-                && text.matches('?').count() == 1
-                && !text[..text.len() - 1].contains(['.', '!', ';', '\n']);
-            let bounded_opening = ["what ", "which ", "when ", "where "]
-                .iter()
-                .any(|opening| normalized.starts_with(opening))
-                || [
-                    "who should ",
-                    "who can provide ",
-                    "how should i ",
-                    "how can i ",
-                ]
-                .iter()
-                .any(|opening| normalized.starts_with(opening));
-            let names_asserted_principal = [
-                " cerebro ",
-                " assistant ",
-                " agent ",
-                " bot ",
-                " automation ",
-                " system ",
-                " platform ",
-                " service ",
-                " owner ",
-                " account ",
-                " principal ",
-            ]
-            .iter()
-            .any(|principal| format!(" {normalized} ").contains(principal));
-            let organizational_principal = [" team ", " group ", " role ", " user ", " operator "]
-                .iter()
-                .any(|principal| format!(" {normalized} ").contains(principal));
-            let asks_for_principal_input = [
-                "which team ",
-                "which group ",
-                "which role ",
-                "which user ",
-                "which operator ",
-                "who should ",
-                "who can provide ",
-            ]
-            .iter()
-            .any(|opening| normalized.starts_with(opening));
-            let bounded_question = bounded_opening
-                && !text.contains([',', ':'])
-                && !names_asserted_principal
-                && (!organizational_principal || asks_for_principal_input)
-                && !contains_ownership_assertion(text)
-                && !contains_operational_capability_assertion(text)
-                && !contains_unbound_future_promise(text);
             if context.final_state != FinalState::NeedsInput
                 || context.question.map(str::trim) != Some(text)
-                || !one_interrogative
-                || !bounded_question
+                || !text_matches_registered_rendering(text, render_question_directive(*directive))
             {
                 return Err(AgentRuntimeError::InvalidFinal(
-                    "question claim text must be the draft's exact single interrogative".into(),
+                    "question claim text must exactly match its registered missing-input rendering"
+                        .into(),
                 ));
             }
             return Ok(());
@@ -5213,8 +5199,16 @@ fn validate_claim(
                 .into(),
         ));
     }
-    let claim_is_capability = contains_operational_capability_assertion(&claim.text);
+    let validates_current_facts = matches!(
+        claim.content,
+        ClaimContent::Observation { .. } | ClaimContent::Hypothesis { .. }
+    );
+    let claim_is_capability =
+        validates_current_facts && contains_operational_capability_assertion(&claim.text);
     for clause in atomic_assertion_clauses(&claim.text) {
+        if !validates_current_facts {
+            break;
+        }
         if (contains_operational_capability_assertion(clause)
             || (claim_is_capability
                 && !capability_operations_claimed(&clause.to_ascii_lowercase()).is_empty()))
@@ -5230,7 +5224,7 @@ fn validate_claim(
             ));
         }
     }
-    if contains_ownership_assertion(&claim.text) {
+    if validates_current_facts && contains_ownership_assertion(&claim.text) {
         for clause in atomic_ownership_clauses(&claim.text) {
             if !contains_ownership_assertion(clause) && !contains_gapped_ownership_assertion(clause)
             {
@@ -5264,7 +5258,9 @@ fn validate_claim(
             }
         }
     }
-    validate_principal_claims(claim, atom_refs, context)?;
+    if validates_current_facts {
+        validate_factual_claim_support(&claim.text, atom_refs, context)?;
+    }
     for atom_ref in atom_refs {
         let atom = context
             .atoms
@@ -5289,27 +5285,60 @@ fn validate_claim(
     Ok(())
 }
 
-fn validate_principal_claims(
-    claim: &GroundedClaim,
+fn render_recommendation_directive(directive: RecommendationDirective) -> &'static str {
+    match directive {
+        RecommendationDirective::LeaveUnchanged => {
+            "I recommend leaving the current target unchanged."
+        }
+        RecommendationDirective::PerformBoundedCheck => {
+            "I recommend that the external owner perform the next bounded check."
+        }
+        RecommendationDirective::WaitForFreshObservation => {
+            "I recommend waiting for a fresh authoritative observation."
+        }
+        RecommendationDirective::InspectTarget => "I recommend inspecting the current target.",
+        RecommendationDirective::VerifyTarget => {
+            "I recommend independently verifying the current target."
+        }
+        RecommendationDirective::ReconcileProviderState => {
+            "I recommend reconciling the provider state before another effect."
+        }
+        RecommendationDirective::RequestApproval => {
+            "I recommend requesting approval for the bounded action."
+        }
+        RecommendationDirective::RemediateTarget => {
+            "I recommend remediating the current target, then verifying it independently."
+        }
+    }
+}
+
+fn render_question_directive(directive: QuestionDirective) -> &'static str {
+    match directive {
+        QuestionDirective::WhichTarget => "Which target should I inspect?",
+        QuestionDirective::WhichSource => "Which source should I inspect?",
+        QuestionDirective::WhatDecision => "What decision do you want me to evaluate?",
+        QuestionDirective::WhatOutcome => "What outcome should I optimize for?",
+        QuestionDirective::WhoCanProvideIdentifier => "Who can provide the missing identifier?",
+        QuestionDirective::WhenDue => "When is the decision due?",
+        QuestionDirective::WhereEvidence => "Where should I look for the missing evidence?",
+    }
+}
+
+fn validate_factual_claim_support(
+    text: &str,
     atom_refs: &[String],
     context: &ClaimValidationContext<'_, '_>,
 ) -> Result<(), AgentRuntimeError> {
-    for clause in atomic_assertion_clauses(&claim.text) {
-        if !clause_names_principal(clause)
-            || recommendation_clause_is_normative(claim, clause)
-            || recommendation_clause_is_prospective_role_handoff(claim, clause)
-        {
-            continue;
-        }
+    for clause in atomic_assertion_clauses(text) {
         let supported = atom_refs.iter().any(|atom_ref| {
             context.atoms.get(atom_ref).is_some_and(|atom| {
                 atom_capability_overview_supports_text(atom, clause, context.assessment_at)
-                    || atom_positively_supports_principal_clause(atom, clause)
+                    || atom_positively_supports_factual_clause(atom, clause, context.assessment_at)
             })
         });
         if !supported {
             return Err(AgentRuntimeError::InvalidFinal(
-                "a current statement about an agent, team, role, service, or other principal must positively match a typed subject-bound atom or a fresh bound capability descriptor"
+                "every observation or hypothesis clause must positively match a typed subject-bound atom or a fresh bound capability descriptor"
                     .into(),
             ));
         }
@@ -5317,53 +5346,11 @@ fn validate_principal_claims(
     Ok(())
 }
 
-fn clause_names_principal(text: &str) -> bool {
-    let normalized = normalized_semantic_text(text);
-    [
-        " cerebro ",
-        " assistant ",
-        " agent ",
-        " bot ",
-        " automation ",
-        " system ",
-        " platform ",
-        " service ",
-        " team ",
-        " group ",
-        " role ",
-        " user ",
-        " operator ",
-        " owner ",
-        " account ",
-        " principal ",
-    ]
-    .iter()
-    .any(|principal| normalized.contains(principal))
-        || normalized.starts_with(" i ")
-        || normalized.starts_with(" we ")
-}
-
-fn recommendation_clause_is_normative(claim: &GroundedClaim, clause: &str) -> bool {
-    let ClaimContent::Recommendation { action, .. } = &claim.content else {
-        return false;
-    };
-    let normalized = clause.to_ascii_lowercase();
-    let normative = [
-        "recommend ",
-        "recommended ",
-        "should ",
-        "would ",
-        "next ",
-        "handoff ",
-        "accept when ",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker));
-    let _ = action;
-    normative
-}
-
-fn atom_positively_supports_principal_clause(atom: &AtomContext<'_>, clause: &str) -> bool {
+fn atom_positively_supports_factual_clause(
+    atom: &AtomContext<'_>,
+    clause: &str,
+    assessment_at: OffsetDateTime,
+) -> bool {
     match &atom.atom.assertion {
         EvidenceAssertion::Semantic {
             assertion: SemanticEvidenceAssertion::AuthorityBinding { duty, .. },
@@ -5397,6 +5384,18 @@ fn atom_positively_supports_principal_clause(atom: &AtomContext<'_>, clause: &st
         | EvidenceAssertion::LegacyStatement { statement: summary } => {
             lexical_statement_supports_clause(summary, clause)
         }
+        EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::CausalAssessment { .. },
+        } => atom_supports_cause(atom, clause) || atom_supports_ranked_cause(atom, clause),
+        EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::EventFamilyMembership { .. },
+        } => atom_supports_event_family_membership(atom, clause),
+        EvidenceAssertion::Semantic {
+            assertion: SemanticEvidenceAssertion::CollectionVisibility { .. },
+        } => {
+            atom_supports_legitimately_empty(atom, clause, assessment_at)
+                || lexical_statement_supports_clause(atom.evidence.statement.as_str(), clause)
+        }
         EvidenceAssertion::Semantic { .. } => {
             lexical_statement_supports_clause(atom.evidence.statement.as_str(), clause)
         }
@@ -5418,6 +5417,18 @@ fn atom_subject_and_scalar_match(
         .unwrap_or(predicate)
         .replace(['_', '-'], " ");
     let predicate_match = text_contains_semantic_term(clause, &predicate_leaf);
+    let normalized_predicate = normalized_semantic_text(&predicate_leaf);
+    let normalized_clause = normalized_semantic_text(clause);
+    let predicate_tokens = normalized_predicate
+        .split_whitespace()
+        .filter(|token| token.len() >= 3)
+        .collect::<BTreeSet<_>>();
+    let clause_tokens = normalized_clause
+        .split_whitespace()
+        .filter(|token| token.len() >= 3)
+        .collect::<BTreeSet<_>>();
+    let predicate_overlap =
+        predicate_tokens.len() >= 2 && predicate_tokens.intersection(&clause_tokens).count() >= 2;
     let value_match = match value {
         Value::String(value) => {
             text_contains_semantic_term(clause, &value.replace(['_', '-'], " "))
@@ -5432,6 +5443,7 @@ fn atom_subject_and_scalar_match(
                     " available ",
                     " configured ",
                     " connected ",
+                    " is bound ",
                 ]
                 .iter()
                 .any(|term| normalized.contains(term))
@@ -5443,6 +5455,7 @@ fn atom_subject_and_scalar_match(
                     " unavailable ",
                     " unconfigured ",
                     " disconnected ",
+                    " not bound ",
                 ]
                 .iter()
                 .any(|term| normalized.contains(term))
@@ -5451,7 +5464,7 @@ fn atom_subject_and_scalar_match(
         Value::Number(value) => text_contains_semantic_term(clause, &value.to_string()),
         Value::Null | Value::Array(_) | Value::Object(_) => false,
     };
-    value_match && (predicate_match || !matches!(value, Value::Bool(_)))
+    value_match && (predicate_match || predicate_overlap || !matches!(value, Value::Bool(_)))
 }
 
 fn validate_hypothesis_wording(
@@ -7553,7 +7566,9 @@ mod tests {
         GroundedDraft {
             state: FinalState::Answered,
             delivery: DeliveryDisposition::Visible,
-            message: "Connector alpha is healthy. I would leave it unchanged.".into(),
+            message:
+                "Connector alpha is healthy. I recommend leaving the current target unchanged."
+                    .into(),
             claims: vec![
                 GroundedClaim {
                     claim_ref: "claim:state".into(),
@@ -7567,7 +7582,7 @@ mod tests {
                 GroundedClaim {
                     claim_ref: "claim:recommendation".into(),
                     planned_claim_ref: None,
-                    text: " I would leave it unchanged.".into(),
+                    text: " I recommend leaving the current target unchanged.".into(),
                     required_for_answer: false,
                     content: ClaimContent::Recommendation {
                         action: ActionSpec {
@@ -7575,6 +7590,7 @@ mod tests {
                             target_ref: Some("connector:alpha".into()),
                             input: json!({}),
                         },
+                        directive: RecommendationDirective::LeaveUnchanged,
                         rationale_atom_refs: vec!["atom:status".into()],
                     },
                 },
@@ -8157,6 +8173,7 @@ mod tests {
                     target_ref: Some("connector:alpha".into()),
                     input: json!({}),
                 },
+                directive: RecommendationDirective::InspectTarget,
                 rationale_atom_refs: vec!["atom:status".into()],
             },
             ClaimContent::Hypothesis {
@@ -9885,7 +9902,9 @@ mod tests {
             planned_claim_ref: None,
             text: handback.into(),
             required_for_answer: false,
-            content: ClaimContent::Question,
+            content: ClaimContent::Question {
+                directive: QuestionDirective::WhatDecision,
+            },
         });
 
         normalize_passive_wake_handback(
@@ -10109,8 +10128,10 @@ mod tests {
         candidate.state = FinalState::NeedsInput;
         candidate.claims.truncate(1);
         candidate.claims[0].planned_claim_ref = None;
-        candidate.claims[0].text = "Which connector should I inspect?".into();
-        candidate.claims[0].content = ClaimContent::Question;
+        candidate.claims[0].text = "Which target should I inspect?".into();
+        candidate.claims[0].content = ClaimContent::Question {
+            directive: QuestionDirective::WhichTarget,
+        };
         candidate.message = candidate.claims[0].text.clone();
         candidate.question = Some(candidate.message.clone());
         assert!(validate_grounded_draft(&session(), &candidate, &[], assessment).is_ok());
@@ -10150,6 +10171,12 @@ mod tests {
         assert!(validate_grounded_draft(&session(), &presupposition, &[], assessment).is_err());
 
         presupposition.claims[0].text = "What grant lets Cerebro alter provider settings?".into();
+        presupposition.message = presupposition.claims[0].text.clone();
+        presupposition.question = Some(presupposition.message.clone());
+        assert!(validate_grounded_draft(&session(), &presupposition, &[], assessment).is_err());
+
+        presupposition.claims[0].text =
+            "What grant lets the steward alter provider settings?".into();
         presupposition.message = presupposition.claims[0].text.clone();
         presupposition.question = Some(presupposition.message.clone());
         assert!(validate_grounded_draft(&session(), &presupposition, &[], assessment).is_err());
@@ -10364,6 +10391,7 @@ mod tests {
             predicate: "/collected_event_content_read".into(),
             value: json!(true),
         };
+        overview.result.evidence[0].atoms[0].subject_ref = None;
         overview.result.evidence[0].atoms.push(EvidenceAtom {
             atom_ref: "atom:provider-admin".into(),
             subject_ref: None,
@@ -10397,7 +10425,7 @@ mod tests {
         valid.claims[0].text =
             "Provider administration is not bound but collected-content read is bound.".into();
         valid.message = valid.claims[0].text.clone();
-        assert!(validate_grounded_draft(&session(), &valid, &[overview], assessment).is_ok());
+        validate_grounded_draft(&session(), &valid, &[overview], assessment).unwrap();
     }
 
     #[test]
@@ -10545,9 +10573,24 @@ mod tests {
             predicate: "/enabled".into(),
             value: json!(true),
         };
+        runtime.result.evidence[0].atoms.push(EvidenceAtom {
+            atom_ref: "atom:audit-status".into(),
+            subject_ref: Some("connector:alpha".into()),
+            assertion: EvidenceAssertion::Value {
+                predicate: "/audit_activity/status".into(),
+                value: json!("not_observed"),
+            },
+            observed_at: "2026-07-31T00:00:00Z".into(),
+            fresh_until: Some("2026-08-01T00:00:00Z".into()),
+            complete: true,
+        });
         let mut candidate = draft();
         candidate.claims.truncate(1);
-        candidate.claims[0].text = "Connector alpha is enabled. Audit activity is not_observed with no explicit error code; this does not rule out an empty family, missing scope, provider failure, or connector defect.".into();
+        candidate.claims[0].text =
+            "Connector alpha is enabled. Connector alpha audit activity is not observed.".into();
+        candidate.claims[0].content = ClaimContent::Observation {
+            atom_refs: vec!["atom:status".into(), "atom:audit-status".into()],
+        };
         candidate.message = candidate.claims[0].text.clone();
         assert!(validate_grounded_draft(&session(), &candidate, &[runtime], assessment).is_ok());
     }
@@ -10573,13 +10616,15 @@ mod tests {
         let current = observation(true, Some("2026-08-01T00:00:00Z"));
         let mut candidate = draft();
         candidate.claims.truncate(1);
-        candidate.claims[0].text = "Recommended owner: provider administrator. Accept when a future complete receipt shows observed audit activity or an explicitly complete empty window.".into();
+        candidate.claims[0].text =
+            "I recommend that the external owner perform the next bounded check.".into();
         candidate.claims[0].content = ClaimContent::Recommendation {
             action: ActionSpec {
                 tool_id: None,
                 target_ref: Some("role:provider-administrator".into()),
                 input: json!({"trigger": "next bounded collection receipt"}),
             },
+            directive: RecommendationDirective::PerformBoundedCheck,
             rationale_atom_refs: vec!["atom:status".into()],
         };
         candidate.message = candidate.claims[0].text.clone();
@@ -10591,6 +10636,19 @@ mod tests {
                 assessment,
             )
             .is_ok()
+        );
+
+        candidate.claims[0].text =
+            "The recommended team already holds the grant to alter provider settings.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(
+                &session(),
+                &candidate,
+                std::slice::from_ref(&current),
+                assessment,
+            )
+            .is_err()
         );
 
         candidate.claims[0].text =
@@ -10629,6 +10687,7 @@ mod tests {
                 target_ref: Some("Synthetic Team A".into()),
                 input: json!({"subject_ref": "connector:alpha"}),
             },
+            directive: RecommendationDirective::PerformBoundedCheck,
             rationale_atom_refs: vec!["atom:status".into()],
         };
         candidate.message = candidate.claims[0].text.clone();
@@ -11097,6 +11156,8 @@ mod tests {
             "Synthetic Team Beta is on the hook for fixing connector beta.",
             "Cerebro holds the grant to alter provider settings.",
             "Synthetic Team Beta has charge of correcting connector beta.",
+            "The steward holds the grant to alter provider settings.",
+            "Atlas holds the grant to alter provider settings.",
         ] {
             unrelated_authority.claims[0].text = unsupported.into();
             unrelated_authority.message = unrelated_authority.claims[0].text.clone();
