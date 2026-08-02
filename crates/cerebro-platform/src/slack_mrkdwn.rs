@@ -180,34 +180,22 @@ fn render_inline_markup(
             // inside an open strong span a terminal double delimiter belongs
             // to the surrounding Markdown. Leave it for the delimiter state
             // machine instead of swallowing it as part of the URL.
-            let markup_end = raw_url_markup_end(value, cursor, end);
-            let url_before_punctuation = &value[cursor..markup_end];
-            let trailing_asterisks = url_before_punctuation
-                .bytes()
-                .rev()
-                .take_while(|byte| *byte == b'*')
-                .count();
-            let trailing_underscores = url_before_punctuation
-                .bytes()
-                .rev()
-                .take_while(|byte| *byte == b'_')
-                .count();
-            let strong_closer_len = if *strong_asterisk_open && matches!(trailing_asterisks, 2 | 3)
-            {
-                trailing_asterisks
-            } else if *strong_underscore_open && matches!(trailing_underscores, 2 | 3) {
-                trailing_underscores
+            let strong_boundary = if *strong_asterisk_open {
+                raw_url_emphasis_boundary(value, cursor, end, b'*', &[2, 3])
+            } else if *strong_underscore_open {
+                raw_url_emphasis_boundary(value, cursor, end, b'_', &[2, 3])
             } else {
-                0
+                None
             };
-            let closes_open_single = (has_unclosed_single_emphasis(&value[..cursor], '*')
-                && url_before_punctuation.ends_with('*'))
-                || (has_unclosed_single_emphasis(&value[..cursor], '_')
-                    && url_before_punctuation.ends_with('_'));
-            if strong_closer_len > 0 {
-                end = markup_end - strong_closer_len;
-            } else if closes_open_single {
-                end = markup_end - 1;
+            let single_boundary = if has_unclosed_single_emphasis(&value[..cursor], '*') {
+                raw_url_emphasis_boundary(value, cursor, end, b'*', &[1])
+            } else if has_unclosed_single_emphasis(&value[..cursor], '_') {
+                raw_url_emphasis_boundary(value, cursor, end, b'_', &[1])
+            } else {
+                None
+            };
+            if let Some(boundary) = strong_boundary.or(single_boundary) {
+                end = boundary;
             }
             if end == cursor {
                 continue;
@@ -290,9 +278,11 @@ fn has_unclosed_single_emphasis(value: &str, delimiter: char) -> bool {
             continue;
         }
         if let Some(mut end) = raw_url_end(value, cursor) {
-            let markup_end = raw_url_markup_end(value, cursor, end);
-            if open && value[cursor..markup_end].ends_with(delimiter) {
-                end = markup_end - delimiter.len_utf8();
+            if open
+                && let Some(boundary) =
+                    raw_url_emphasis_boundary(value, cursor, end, delimiter as u8, &[1])
+            {
+                end = boundary;
             }
             if end > cursor {
                 cursor = end;
@@ -347,33 +337,38 @@ fn raw_url_end(value: &str, start: usize) -> Option<usize> {
     )
 }
 
-fn raw_url_markup_end(value: &str, start: usize, end: usize) -> usize {
-    let punctuation_bytes = value[start..end]
-        .char_indices()
-        .rev()
-        .take_while(|(_, character)| {
-            matches!(
-                character,
-                '.' | ','
-                    | ';'
-                    | ':'
-                    | '!'
-                    | '?'
-                    | ')'
-                    | ']'
-                    | '}'
-                    | '"'
-                    | '\''
-                    | '”'
-                    | '’'
-                    | '»'
-                    | '›'
-                    | '…'
-            )
-        })
-        .map(|(_, character)| character.len_utf8())
-        .sum::<usize>();
-    end - punctuation_bytes
+fn raw_url_emphasis_boundary(
+    value: &str,
+    start: usize,
+    end: usize,
+    delimiter: u8,
+    allowed_runs: &[usize],
+) -> Option<usize> {
+    let token = &value.as_bytes()[start..end];
+    let mut index = 0;
+    let mut boundary = None;
+    while index < token.len() {
+        if token[index] != delimiter {
+            index += 1;
+            continue;
+        }
+        let run_start = index;
+        while index < token.len() && token[index] == delimiter {
+            index += 1;
+        }
+        let run_len = index - run_start;
+        let previous_is_word = value[..start + run_start]
+            .chars()
+            .next_back()
+            .is_some_and(char::is_alphanumeric);
+        let suffix_is_punctuation = value[start + index..end]
+            .chars()
+            .all(|character| !character.is_alphanumeric() && !character.is_whitespace());
+        if allowed_runs.contains(&run_len) && previous_is_word && suffix_is_punctuation {
+            boundary = Some(start + run_start);
+        }
+    }
+    boundary
 }
 
 fn markdown_link(value: &str, start: usize, image: bool) -> Option<(usize, &str, &str)> {
