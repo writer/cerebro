@@ -8085,6 +8085,64 @@ mod tests {
     }
 
     #[test]
+    fn partial_autonomy_failure_preserves_completed_turn_evidence() {
+        let scenario = autonomy_lab_scenario();
+        let session = evaluation_session(
+            0,
+            &scenario,
+            "2026-08-02T00:00:00Z",
+            &evaluation_tenant_id(),
+            "synthetic-secret",
+        );
+        let turns = vec![ConversationLabTurnReceipt {
+            turn_index: 1,
+            trigger: LabTurnTrigger::Operator,
+            trigger_input: scenario.initial_message.clone(),
+            actual_route: Some(ExecutionLane::Investigate),
+            actual_lane: Some(ExecutionLane::Investigate),
+            latency_ms: 42,
+            route_attempt_count: 1,
+            operating_step_count: 3,
+            presentation_attempt_count: 1,
+            critic_attempt_count: 1,
+            repair_feedback: vec![vec!["Preserved repair evidence".into()]],
+            presentation_repair_feedback: Vec::new(),
+            critic_repair_feedback: Vec::new(),
+            schedule: None,
+            tool_observations: Vec::new(),
+            response_markdown: Some("I completed the bounded current check.".into()),
+            terminal_state: "delivered:Answered".into(),
+            operator_decision: None,
+        }];
+        let transcript = vec![
+            ConversationMessage {
+                role: ConversationRole::User,
+                content: scenario.initial_message.clone(),
+            },
+            ConversationMessage {
+                role: ConversationRole::Assistant,
+                content: "I completed the bounded current check.".into(),
+            },
+        ];
+        let receipt = partial_autonomy_scenario_receipt(
+            &scenario,
+            "candidate-opaque".into(),
+            &session,
+            transcript,
+            turns,
+            "the semantic route required a commitment",
+        );
+        let raw = serde_json::to_value(&receipt).unwrap();
+        assert_eq!(raw["scenario"]["attempted_turn_count"], 1);
+        assert_eq!(raw["scenario"]["delivered_exchange_count"], 1);
+        assert_eq!(raw["scenario"]["unanswered_user_turn_count"], 0);
+        assert_eq!(
+            raw["scenario"]["turns"][0]["repair_feedback"][0][0],
+            "Preserved repair evidence"
+        );
+    }
+
+    #[test]
     fn blind_review_byte_scan_fails_closed_on_identity_or_raw_receipt_leaks() {
         assert!(
             validate_judge_identity_blinding(

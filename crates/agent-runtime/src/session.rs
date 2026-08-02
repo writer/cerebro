@@ -13866,6 +13866,26 @@ mod tests {
                 .map(|comparison| comparison.relation),
             Some(WakeScalarRelation::AddedToCurrentRead)
         );
+
+        let mut progressed = observation(true, Some("2026-07-31T00:06:00Z"));
+        progressed.result.data = json!({"fresh_complete_receipts": 2});
+        let notification = ObservationCondition {
+            tool_id: "connector.read".into(),
+            data_pointer: "/fresh_complete_receipts".into(),
+            equals: json!(2),
+        };
+        assert!(observation_condition_transitioned(
+            &notification,
+            std::slice::from_ref(&progressed),
+            Some(&checkpoint),
+        ));
+        let mut unchanged_checkpoint = checkpoint;
+        unchanged_checkpoint.observations[0].data["fresh_complete_receipts"] = json!(2);
+        assert!(!observation_condition_transitioned(
+            &notification,
+            std::slice::from_ref(&progressed),
+            Some(&unchanged_checkpoint),
+        ));
     }
 
     #[test]
