@@ -1,11 +1,10 @@
 {
   "changed_files": [
     "internal/graphagent/ask.go",
-    ".github/workflows/droid-review.yml",
-    "scripts/droid_ci_context.py"
+    ".github/workflows/deterministic-review.yml",
+    "scripts/land_pr.py"
   ],
-  "run_droid_review": true,
-  "review_model": "glm-5.2",
+  "review_required": true,
   "review_reason": "code, workflow, API, source, or security-sensitive paths changed",
   "checks": [
     "bounded-body-read",
@@ -19,8 +18,8 @@
   "probe_plan": [
     {
       "name": "changed-invariants",
-      "why": "Map changed paths to repository invariants before reviewing diffs.",
-      "commands": ["make droid-review-preflight"]
+      "why": "Map changed paths to repository invariants before accepting the diff.",
+      "commands": ["make review-invariants"]
     },
     {
       "name": "ask-trajectory",
@@ -29,8 +28,8 @@
     },
     {
       "name": "security-context",
-      "why": "Workflow, script, and connector changes need scanner context plus manual exploitability validation.",
-      "commands": ["make droid-review-sast"]
+      "why": "Workflow, script, and connector changes need deterministic scanner and permission validation.",
+      "commands": ["make deterministic-review"]
     }
   ]
 }

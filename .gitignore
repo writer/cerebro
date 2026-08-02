@@ -42,8 +42,6 @@ node_modules/
 *.swp
 *.swo
 .factory/*
-!.factory/review-memory.json
-!.factory/review-passes.json
 !.factory/skills/
 !.factory/skills/**
 **/.cerebro/
