@@ -383,13 +383,15 @@ fn raw_url_emphasis_boundary(
             .chars()
             .next_back()
             .is_some_and(|character| !character.is_whitespace());
-        let suffix_starts_outside_word = value[start + index..end]
+        let suffix = &value[start + index..end];
+        let suffix_can_start_boundary = suffix
             .chars()
             .next()
-            .is_none_or(|character| !character.is_alphanumeric());
+            .is_none_or(|character| !character.is_alphanumeric())
+            || !valid_percent_encoding(suffix);
         if allowed_runs.contains(&run_len)
             && previous_can_close
-            && suffix_starts_outside_word
+            && suffix_can_start_boundary
             && !raw_url_suffix_continues_path(
                 value,
                 start,
@@ -499,7 +501,15 @@ fn emphasis_suffix_is_well_formed(
         while index < bytes.len() && bytes[index] == delimiter {
             index += 1;
         }
-        if !allowed_runs.contains(&(index - run_start)) {
+        let run_len = index - run_start;
+        if !allowed_runs.contains(&run_len) {
+            if allowed_runs == [1]
+                && matches!(run_len, 2 | 3)
+                && index == bytes.len()
+                && clear_prose_suffix_before_stray_closer(value, start, run_start)
+            {
+                continue;
+            }
             return false;
         }
         let previous = value[..start + run_start].chars().next_back();
@@ -517,6 +527,13 @@ fn emphasis_suffix_is_well_formed(
         match (open, can_open, can_close) {
             (false, true, _) => open = true,
             (true, _, true) => open = false,
+            (false, _, true)
+                if index == bytes.len()
+                    && clear_prose_suffix_before_stray_closer(value, start, run_start) =>
+            {
+                // Preserve a terminal stray closer after an unambiguous prose
+                // boundary. URL-shaped suffixes still reject this candidate.
+            }
             _ => return false,
         }
     }
@@ -524,6 +541,36 @@ fn emphasis_suffix_is_well_formed(
     // trailing emphasis span at the end of the line. Invalid transitions
     // (including a stray closer left inside a raw URL) returned false above.
     true
+}
+
+fn clear_prose_suffix_before_stray_closer(value: &str, start: usize, run_start: usize) -> bool {
+    let Some(first) = value[start..start + run_start].chars().next() else {
+        return false;
+    };
+    !first.is_alphanumeric()
+        && !matches!(
+            first,
+            '/' | '-'
+                | '.'
+                | '_'
+                | '~'
+                | '!'
+                | '$'
+                | '&'
+                | '\''
+                | '('
+                | ')'
+                | '*'
+                | '+'
+                | ','
+                | ';'
+                | '='
+                | '@'
+                | '%'
+                | '?'
+                | '#'
+                | ':'
+        )
 }
 
 fn markdown_link(value: &str, start: usize, image: bool) -> Option<(usize, &str, &str)> {
@@ -933,6 +980,18 @@ mod tests {
             (
                 "**See https://example.com**,Next",
                 "*See https://example.com*,Next",
+            ),
+            (
+                "**See https://example.com**—oops**",
+                "*See https://example.com*—oops**",
+            ),
+            (
+                "**See https://example.com/a**b%done",
+                "*See https://example.com/a*b%done",
+            ),
+            (
+                "**See https://example.com/a**b%2F%done",
+                "*See https://example.com/a*b%2F%done",
             ),
             (
                 "**See https://example.com/a**%2F%done",
