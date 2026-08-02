@@ -255,11 +255,11 @@ fn render_inline_markup(
                         .is_some_and(char::is_alphabetic)
                     && value[cursor + run_bytes..].contains(&delimiter);
                 let clear_intraword_asterisk_close = character == '*'
-                    && previous.is_some_and(char::is_alphabetic)
+                    && previous_is_word
                     && value[cursor + run_bytes..]
                         .chars()
                         .next()
-                        .is_some_and(char::is_alphabetic);
+                        .is_some_and(char::is_alphanumeric);
                 if !*emphasis_open
                     && next_is_word
                     && (!previous_is_word || clear_intraword_asterisk_open)
@@ -322,9 +322,14 @@ fn has_unclosed_single_emphasis(value: &str, delimiter: char) -> bool {
                     .chars()
                     .next()
                     .is_some_and(char::is_alphanumeric);
+                let clear_intraword_asterisk_close =
+                    delimiter == '*' && previous_is_word && next_is_word;
                 if !open && !previous_is_word && next_is_word {
                     open = true;
-                } else if open && previous_can_close && !next_is_word {
+                } else if open
+                    && previous_can_close
+                    && (!next_is_word || clear_intraword_asterisk_close)
+                {
                     open = false;
                 }
             }
@@ -385,12 +390,28 @@ fn raw_url_emphasis_boundary(
         if allowed_runs.contains(&run_len)
             && previous_can_close
             && suffix_starts_outside_word
+            && !raw_url_suffix_continues_path(value, start + index, end, delimiter)
             && emphasis_suffix_is_well_formed(value, start + index, end, delimiter, allowed_runs)
         {
             return Some(start + run_start);
         }
     }
     None
+}
+
+fn raw_url_suffix_continues_path(value: &str, start: usize, end: usize, delimiter: u8) -> bool {
+    let suffix = &value[start..end];
+    if suffix.as_bytes().contains(&delimiter) {
+        return false;
+    }
+    let mut characters = suffix.chars();
+    let Some(first) = characters.next() else {
+        return false;
+    };
+    matches!(
+        first,
+        '/' | '-' | ';' | '~' | '?' | '#' | '&' | '=' | '%' | '+' | '@'
+    ) && characters.any(char::is_alphanumeric)
 }
 
 fn emphasis_suffix_is_well_formed(
@@ -772,6 +793,28 @@ mod tests {
                 "*See https://example.com*—*continue*",
             ),
             ("alpha**beta**gamma", "alpha*beta*gamma"),
+            ("alpha**beta2**gamma", "alpha*beta2*gamma"),
+            ("**alpha**beta", "*alpha*beta"),
+            (
+                "**See https://example.com/a**/b",
+                "*See https://example.com/a**/b*",
+            ),
+            (
+                "__See https://example.com/a__/b",
+                "*See https://example.com/a__/b*",
+            ),
+            (
+                "**See https://example.com/a**-b",
+                "*See https://example.com/a**-b*",
+            ),
+            (
+                "**See https://example.com/a**;b",
+                "*See https://example.com/a**;b*",
+            ),
+            (
+                "**See https://example.com/a**~b",
+                "*See https://example.com/a**~b*",
+            ),
         ] {
             let rendered = render_slack_mrkdwn(input);
             assert_eq!(rendered, expected, "{input}");
