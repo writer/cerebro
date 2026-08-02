@@ -4746,6 +4746,7 @@ fn validate_synthetic_payload_names(
     let mut strings = Vec::new();
     collect_json_strings(payload, &mut strings);
     for value in strings {
+        validate_synthetic_assignment_subjects(value, &declared_words)?;
         for raw_word in value.split_whitespace() {
             let word = raw_word.trim_matches(|character: char| !character.is_alphanumeric());
             let name_word = word
@@ -4788,20 +4789,67 @@ fn validate_synthetic_payload_names(
     Ok(())
 }
 
+fn validate_synthetic_assignment_subjects(
+    value: &str,
+    declared_words: &BTreeSet<String>,
+) -> Result<(), Box<dyn Error>> {
+    let words = value
+        .split_whitespace()
+        .map(|word| {
+            let trimmed = word.trim_matches(|character: char| !character.is_alphanumeric());
+            ["'s", "'S", "’s", "’S"]
+                .iter()
+                .find_map(|suffix| trimmed.strip_suffix(suffix))
+                .unwrap_or(trimmed)
+                .to_ascii_lowercase()
+        })
+        .collect::<Vec<_>>();
+    let generic_actors = [
+        "assistant",
+        "cerebro",
+        "i",
+        "operator",
+        "owner",
+        "synthetic",
+        "team",
+        "the",
+        "we",
+    ];
+    for window in words.windows(3) {
+        if window[1] == "assigned"
+            && !declared_words.contains(&window[0])
+            && !generic_actors.contains(&window[0].as_str())
+        {
+            return Err(format!(
+                "synthetic holdout material contains an undeclared assignment actor: {}",
+                window[0]
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
 fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
     const RESERVED_REAL_WORLD_TOKENS: &[&str] = &[
         "acme",
+        "alice",
         "amazon",
         "anthropic",
+        "apple",
+        "atlassian",
         "aws",
         "github",
         "google",
+        "meta",
         "microsoft",
         "netflix",
+        "okta",
         "openai",
         "jane",
         "john",
         "salesforce",
+        "stripe",
         "writer",
     ];
     let canonical = normalized
@@ -4836,13 +4884,34 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
         .split(':')
         .next()
         .unwrap_or(&canonical);
-    let domain_like = endpoint.rsplit_once('.').is_some_and(|(host, suffix)| {
-        !host.is_empty()
-            && [
-                "ai", "app", "cloud", "co", "com", "corp", "dev", "internal", "io", "net", "org",
-            ]
-            .contains(&suffix)
-    });
+    let domain_labels = endpoint.split('.').collect::<Vec<_>>();
+    let code_owned_dotted_identifier = [
+        "artifact.",
+        "capability.",
+        "finding.",
+        "graph.",
+        "mcp.cerebro.",
+        "slack.",
+        "source_catalog.",
+        "source_runtime.",
+    ]
+    .iter()
+    .any(|prefix| canonical.starts_with(prefix));
+    let domain_like = !code_owned_dotted_identifier
+        && domain_labels.len() >= 2
+        && !endpoint.contains('_')
+        && domain_labels.iter().all(|label| {
+            !label.is_empty()
+                && label
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '-')
+        })
+        && domain_labels.last().is_some_and(|suffix| {
+            (2..=24).contains(&suffix.len())
+                && suffix
+                    .chars()
+                    .all(|character| character.is_ascii_alphabetic())
+        });
     let ipv4_like = endpoint.split('.').collect::<Vec<_>>();
     let ipv4_like = ipv4_like.len() == 4
         && ipv4_like.iter().all(|part| {
@@ -4861,6 +4930,34 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
         && issue_parts.iter().skip(1).any(|suffix| {
             !suffix.is_empty() && suffix.chars().all(|character| character.is_ascii_digit())
         });
+    let alphanumeric_issue_key_like = canonical
+        .find(|character: char| character.is_ascii_digit())
+        .is_some_and(|digit_index| {
+            let (prefix, suffix) = canonical.split_at(digit_index);
+            (2..=16).contains(&prefix.len())
+                && prefix
+                    .chars()
+                    .all(|character| character.is_ascii_alphabetic())
+                && !suffix.is_empty()
+                && suffix.chars().all(|character| character.is_ascii_digit())
+        });
+    let colon_identifier_parts = canonical.split(':').collect::<Vec<_>>();
+    let colon_identifier_like = colon_identifier_parts.len() >= 3
+        && colon_identifier_parts.first().is_some_and(|prefix| {
+            !prefix.is_empty()
+                && prefix
+                    .chars()
+                    .all(|character| character.is_ascii_alphabetic())
+        })
+        && colon_identifier_parts.last().is_some_and(|suffix| {
+            !suffix.is_empty() && suffix.chars().all(|character| character.is_ascii_digit())
+        });
+    let cloud_instance_like = canonical.strip_prefix("i-").is_some_and(|suffix| {
+        suffix.len() >= 8
+            && suffix
+                .chars()
+                .all(|character| character.is_ascii_hexdigit())
+    });
     let opaque_workspace_like = normalized.strip_prefix("workspace-").is_some_and(|suffix| {
         suffix.len() >= 6
             && suffix
@@ -4868,15 +4965,19 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
                 .all(|character| character.is_ascii_alphanumeric())
             && suffix.chars().any(|character| character.is_ascii_digit())
     });
-    let ipv6_like = word.matches(':').count() >= 2
-        && word.trim_matches(['[', ']']).split(':').all(|group| {
+    let ipv6_candidate = word
+        .trim_matches(['[', ']'])
+        .split_once('%')
+        .map_or_else(|| word.trim_matches(['[', ']']), |(address, _)| address);
+    let ipv6_like = ipv6_candidate.matches(':').count() >= 2
+        && ipv6_candidate.split(':').all(|group| {
             group.is_empty() || group.chars().all(|character| character.is_ascii_hexdigit())
         });
     let compact = canonical
         .chars()
         .filter(|character| character.is_ascii_alphanumeric())
         .collect::<String>();
-    let concealed_model_identity = ["claudeopus", "opus4", "anthropicbedrock"]
+    let concealed_model_identity = ["anthropic", "bedrock", "claude", "opus"]
         .iter()
         .any(|identity| compact.contains(identity));
     contains_reserved_segment
@@ -4885,6 +4986,9 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
         || ipv4_like
         || ipv6_like
         || issue_key_like
+        || alphanumeric_issue_key_like
+        || colon_identifier_like
+        || cloud_instance_like
         || opaque_workspace_like
         || concealed_model_identity
         || (word.contains('@') && !word.starts_with('@'))
@@ -7122,6 +7226,12 @@ mod tests {
             "The fictional connector is at [2001:db8::1].",
             "The fictional connector is at secret[.]example[.]io.",
             "The fictional connector was generated by claudeopus opus4.",
+            "okta assigned alice to JIRA1234 for the fictional connector.",
+            "The fictional connector is at secret.example.xyz.",
+            "The fictional connector is at fe80::1%en0.",
+            "The fictional connector was generated by claude4opus or op.us.",
+            "The fictional connector uses i-0123456789abcdef0.",
+            "The fictional connector references finding:jira:1234.",
         ] {
             let bundle = json!({
                 "data_provenance": {

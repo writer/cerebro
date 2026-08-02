@@ -5915,6 +5915,11 @@ fn contains_ownership_assertion(text: &str) -> bool {
         " is assigned to ",
         " has accountability for ",
         " is the accountable party",
+        " is owned by ",
+        " is the remediation owner for ",
+        " is the verification owner for ",
+        " is the approval owner for ",
+        " is the execution owner for ",
         " falls to ",
         "owner —",
         "owner -",
@@ -6140,6 +6145,13 @@ fn syntactically_binds_principal_to_duty(
                 format!(" {subject} s {duty_phrase} owner is {principal} "),
                 format!(" owner {principal} for {duty_phrase} on {subject} "),
                 format!(" owner {principal} for {duty_phrase} of {subject} "),
+                format!(" {duty_phrase} for {subject} is owned by {principal} "),
+                format!(" {duty_phrase} on {subject} is owned by {principal} "),
+                format!(" {duty_phrase} of {subject} is owned by {principal} "),
+                format!(" {subject} {duty_phrase} is owned by {principal} "),
+                format!(" {subject} s {duty_phrase} is owned by {principal} "),
+                format!(" {principal} is the {duty_phrase} owner for {subject} "),
+                format!(" {principal} is {duty_phrase} owner for {subject} "),
             ]
             .iter()
             .any(|pattern| normalized.contains(pattern))
@@ -10340,17 +10352,41 @@ mod tests {
             )
             .is_err()
         );
-        sourced_owner.claims[0].text = "Cerebro owns remediation for connector beta.".into();
-        sourced_owner.message = sourced_owner.claims[0].text.clone();
-        assert!(
-            validate_grounded_draft(
-                &session(),
-                &sourced_owner,
-                &[cerebro_beta_authority],
-                assessment,
-            )
-            .is_ok()
-        );
+        for contradictory_owner in [
+            "Remediation for connector beta is owned by Synthetic Team Beta.",
+            "Synthetic Team Beta is the remediation owner for connector beta.",
+        ] {
+            sourced_owner.claims[0].text = contradictory_owner.into();
+            sourced_owner.message = sourced_owner.claims[0].text.clone();
+            assert!(
+                validate_grounded_draft(
+                    &session(),
+                    &sourced_owner,
+                    std::slice::from_ref(&cerebro_beta_authority),
+                    assessment,
+                )
+                .is_err(),
+                "contradictory passive owner was accepted: {contradictory_owner}"
+            );
+        }
+        for exact_owner in [
+            "Cerebro owns remediation for connector beta.",
+            "Remediation for connector beta is owned by Cerebro.",
+            "Cerebro is the remediation owner for connector beta.",
+        ] {
+            sourced_owner.claims[0].text = exact_owner.into();
+            sourced_owner.message = sourced_owner.claims[0].text.clone();
+            assert!(
+                validate_grounded_draft(
+                    &session(),
+                    &sourced_owner,
+                    std::slice::from_ref(&cerebro_beta_authority),
+                    assessment,
+                )
+                .is_ok(),
+                "exact passive owner was rejected: {exact_owner}"
+            );
+        }
     }
 
     #[test]
