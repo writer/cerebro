@@ -7079,16 +7079,17 @@ mod tests {
             &ToolCall {
                 call_id: "call:history".into(),
                 tool_id: "slack.history.search".into(),
-                purpose: "Search sealed synthetic prior context.".into(),
+                purpose: "Search bounded prior context.".into(),
                 input: json!({"query": "connector alpha", "limit": 4}),
             },
         )
         .await
         .unwrap();
         assert_eq!(history.data["threads"].as_array().unwrap().len(), 1);
-        assert_eq!(
-            history.data["threads"][0]["thread_ref"],
-            "thread:synthetic-prior-alpha"
+        assert!(
+            history.data["threads"][0]["thread_ref"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("slack-thread://sha256/"))
         );
         assert!(history.evidence[0].fresh_until.is_none());
         assert!(history.evidence[0].atoms.is_empty());
@@ -7398,6 +7399,8 @@ mod tests {
         renamed_clones[1].mission = renamed_clones[0].mission.clone();
         renamed_clones[1].operator_brief = renamed_clones[0].operator_brief.clone();
         renamed_clones[1].initial_message = renamed_clones[0].initial_message.clone();
+        renamed_clones[1].seed_history = renamed_clones[0].seed_history.clone();
+        renamed_clones[1].operator_turns = renamed_clones[0].operator_turns.clone();
         assert!(validate_conversation_scenarios(&renamed_clones).is_err());
 
         let mut missing_behavior = scenarios;
