@@ -384,11 +384,13 @@ fn raw_url_emphasis_boundary(
             .next_back()
             .is_some_and(|character| !character.is_whitespace());
         let suffix = &value[start + index..end];
+        let has_path_context = raw_url_has_path_context(value, start, start + run_start);
         let suffix_can_start_boundary = suffix
             .chars()
             .next()
             .is_none_or(|character| !character.is_alphanumeric())
-            || !valid_percent_encoding(suffix);
+            || !valid_percent_encoding(suffix)
+            || !has_path_context;
         if allowed_runs.contains(&run_len)
             && previous_can_close
             && suffix_can_start_boundary
@@ -427,11 +429,7 @@ fn raw_url_suffix_continues_path(
     let Some(first) = characters.next() else {
         return false;
     };
-    let has_path_context = value[url_start..delimiter_start]
-        .split_once("://")
-        .is_some_and(|(_, after_scheme)| {
-            after_scheme.contains('/') || after_scheme.contains('?') || after_scheme.contains('#')
-        });
+    let has_path_context = raw_url_has_path_context(value, url_start, delimiter_start);
     if first == '%' {
         return has_path_context;
     }
@@ -461,6 +459,14 @@ fn raw_url_suffix_continues_path(
         return false;
     }
     has_path_context || matches!(first, '/' | '?' | '#')
+}
+
+fn raw_url_has_path_context(value: &str, url_start: usize, delimiter_start: usize) -> bool {
+    value[url_start..delimiter_start]
+        .split_once("://")
+        .is_some_and(|(_, after_scheme)| {
+            after_scheme.contains('/') || after_scheme.contains('?') || after_scheme.contains('#')
+        })
 }
 
 fn valid_percent_encoding(value: &str) -> bool {
@@ -1009,6 +1015,14 @@ mod tests {
             (
                 "**See https://example.com**—alpha*beta*gamma",
                 "*See https://example.com*—alpha*beta*gamma",
+            ),
+            (
+                "**See https://example.com**next",
+                "*See https://example.com*next",
+            ),
+            (
+                "**See https://example.com/a**next",
+                "*See https://example.com/a**next*",
             ),
             (
                 "**See https://example.com/a**b%done",
