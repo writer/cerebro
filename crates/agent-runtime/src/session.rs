@@ -6185,15 +6185,26 @@ fn validate_conversational_synthesis(
     }
     let transforms_supplied_text =
         crate::request_is_artifact_transformation(&newest_operator_message.1.text);
+    let normalized_body = body.to_ascii_lowercase().replace('’', "'");
+    let acknowledges_correction = [
+        "you're right",
+        "you are right",
+        "fair correction",
+        "that was another",
+    ]
+    .iter()
+    .any(|marker| normalized_body.contains(marker));
     let body_is_operational = crate::request_explicitly_requires_current_evidence(body)
         || contains_operational_capability_assertion(body)
         || contains_unbound_future_promise(body)
         || contains_nominal_operational_assertion(body)
         || contains_new_named_ownership_principal(body, &cited_context)
         || contains_unverified_named_operational_assertion(body, &cited_context);
-    if (body_is_operational
-        && (!transforms_supplied_text
-            || !operational_transformation_is_source_bound(body, &cited_context)))
+    if (crate::request_explicitly_requires_current_evidence(&newest_operator_message.1.text)
+        && !acknowledges_correction)
+        || (body_is_operational
+            && (!transforms_supplied_text
+                || !operational_transformation_is_source_bound(body, &cited_context)))
         || body.is_empty()
         || body.len() > MAX_CONVERSATIONAL_SYNTHESIS_BYTES
         || body.lines().count() > 6
