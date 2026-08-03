@@ -487,6 +487,13 @@ pub async fn execute_supervisor_v2(
         },
         &mut defects,
     );
+    match crate::transcript_quality::execution_defects(&transcript) {
+        Ok(transcript_defects) => defects.extend(transcript_defects),
+        Err(error) => defects.push(terminal(
+            "transcript_lint_failed",
+            format!("The deterministic transcript lint could not bind its input: {error}"),
+        )),
+    }
     let fact_receipt_digests = facts
         .iter()
         .map(|receipt| receipt.payload_digest.clone())

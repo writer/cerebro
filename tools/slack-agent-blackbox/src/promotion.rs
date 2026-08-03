@@ -9,9 +9,9 @@ use std::{
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use cerebro_slack_agent_eval_wire::{
-    ExactHeadBindingV2, ExecutionPrincipalsV2, HoldoutAssignmentCommitmentV2,
-    IndependentGradeReceiptV2, PromotionAggregationReceiptV2, PromotionPolicyV2,
-    SealedHoldoutAssignmentsV2, SealedSuiteManifestV2, SignatureAlgorithmV2,
+    BlindPacketKindV2, ExactHeadBindingV2, ExecutionPrincipalsV2, HoldoutAssignmentCommitmentV2,
+    IndependentGradeReceiptV2, MaterializedBlindPacketV2, PromotionAggregationReceiptV2,
+    PromotionPolicyV2, SealedHoldoutAssignmentsV2, SealedSuiteManifestV2, SignatureAlgorithmV2,
     SignedReceiptEnvelopeV2, SignerAttestationV2, SlackCanaryReceiptV2,
     SupervisorExecutionReceiptV2, sha256_json,
 };
@@ -149,6 +149,7 @@ pub struct RequiredPromotionArtifacts<'a> {
     pub slack_canary: &'a SignedReceiptEnvelopeV2<SlackCanaryReceiptV2>,
     pub execution_receipts: &'a [SignedReceiptEnvelopeV2<SupervisorExecutionReceiptV2>],
     pub independent_grades: &'a [SignedReceiptEnvelopeV2<IndependentGradeReceiptV2>],
+    pub materialized_packets: &'a [MaterializedBlindPacketV2],
 }
 
 #[derive(Debug, Deserialize)]
@@ -159,6 +160,7 @@ struct PromotionVerificationBundle {
     exact_head: SignedReceiptEnvelopeV2<ExactHeadBindingV2>,
     execution_receipts: Vec<SignedReceiptEnvelopeV2<SupervisorExecutionReceiptV2>>,
     independent_grades: Vec<SignedReceiptEnvelopeV2<IndependentGradeReceiptV2>>,
+    materialized_packets: Vec<MaterializedBlindPacketV2>,
     policy: PromotionPolicyV2,
     principals: ExecutionPrincipalsV2,
     public_keys: Vec<Ed25519PublicKeyBinding>,
@@ -182,6 +184,7 @@ pub fn verify_promotion_file(
             slack_canary: &bundle.slack_canary,
             execution_receipts: &bundle.execution_receipts,
             independent_grades: &bundle.independent_grades,
+            materialized_packets: &bundle.materialized_packets,
         },
         &verifier,
     )
@@ -367,10 +370,66 @@ pub fn validate_promotion_aggregate<V: ReceiptSignatureVerifier>(
             .map_err(PromotionValidationError::Contract)?;
         grades.push(grade.payload.clone());
     }
+    validate_independent_grade_packet_bindings(&grades, artifacts.materialized_packets)?;
     aggregate
         .payload
         .validate_against(suite, policy, principals, &grades)
         .map_err(PromotionValidationError::Contract)
+}
+
+fn validate_independent_grade_packet_bindings(
+    grades: &[IndependentGradeReceiptV2],
+    packets: &[MaterializedBlindPacketV2],
+) -> Result<(), PromotionValidationError> {
+    let mut packets_by_assignment_and_kind =
+        BTreeMap::<(&str, BlindPacketKindV2), &MaterializedBlindPacketV2>::new();
+    let mut candidate_by_assignment = BTreeMap::<&str, &str>::new();
+    for packet in packets {
+        let key = (packet.assignment_alias(), packet.packet_kind());
+        if packets_by_assignment_and_kind.insert(key, packet).is_some() {
+            return Err(PromotionValidationError::Contract(
+                "materialized blind packets must be unique by assignment and packet kind".into(),
+            ));
+        }
+        if candidate_by_assignment
+            .insert(packet.assignment_alias(), packet.candidate_alias())
+            .is_some_and(|candidate| candidate != packet.candidate_alias())
+        {
+            return Err(PromotionValidationError::Contract(
+                "materialized blind packets for an assignment substitute different candidates"
+                    .into(),
+            ));
+        }
+    }
+    let grade_keys = grades
+        .iter()
+        .map(|grade| (grade.assignment_alias.as_str(), grade.packet_kind))
+        .collect::<BTreeSet<_>>();
+    if grade_keys
+        != packets_by_assignment_and_kind
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>()
+    {
+        return Err(PromotionValidationError::Contract(
+            "promotion bundle omits a graded materialized packet or includes an ungraded packet"
+                .into(),
+        ));
+    }
+    for grade in grades {
+        let packet = packets_by_assignment_and_kind
+            .get(&(grade.assignment_alias.as_str(), grade.packet_kind))
+            .ok_or_else(|| {
+                PromotionValidationError::Contract(
+                    "promotion bundle is missing the materialized packet for an independent grade"
+                        .into(),
+                )
+            })?;
+        packet
+            .validate_grade_binding(grade)
+            .map_err(PromotionValidationError::Contract)?;
+    }
+    Ok(())
 }
 
 fn verify_signed<T: Serialize, V: ReceiptSignatureVerifier>(
@@ -427,10 +486,11 @@ fn write_new_json(
 mod tests {
     use super::*;
     use cerebro_slack_agent_eval_wire::{
-        EPISODE_EVENT_PROGRAM_V2, EpisodeEventProgramV2, EpisodeLimitsV2,
-        OperatorControllerAttestationV2, SEALED_EPISODE_MANIFEST_V2, SEALED_SUITE_MANIFEST_V2,
-        SealedEpisodeManifestV2, SuiteEpisodeBindingV2, SuiteFamilyRequirementV2,
-        SurfaceGeneratorAttestationV2,
+        CONTENT_BLIND_PACKET_V2, ContentBlindPacketV2, DimensionScoreV2, EPISODE_EVENT_PROGRAM_V2,
+        EpisodeEventProgramV2, EpisodeLimitsV2, GradeCitationV2, GradeDimensionV2,
+        GraderAttestationV2, INDEPENDENT_GRADE_RECEIPT_V2, OperatorControllerAttestationV2,
+        SEALED_EPISODE_MANIFEST_V2, SEALED_SUITE_MANIFEST_V2, SealedEpisodeManifestV2,
+        SuiteEpisodeBindingV2, SuiteFamilyRequirementV2, SurfaceGeneratorAttestationV2,
     };
 
     fn episode_digest(label: &str) -> String {
@@ -526,5 +586,121 @@ mod tests {
         assert!(!encoded.contains("candidate_attestation_digest"));
         assert!(!encoded.contains("blinding_nonce"));
         assert!(!encoded.contains("presentation_order"));
+    }
+
+    fn packet_and_grade() -> (MaterializedBlindPacketV2, IndependentGradeReceiptV2) {
+        let packet = MaterializedBlindPacketV2::Content(ContentBlindPacketV2 {
+            schema_version: CONTENT_BLIND_PACKET_V2.into(),
+            assignment_alias: "assignment:red".into(),
+            candidate_alias: "participant:blue".into(),
+            task: cerebro_slack_agent_eval_wire::BlindTaskBriefV2 {
+                operator_request: "Explain the decision.".into(),
+                success_definition: "The operator can act.".into(),
+            },
+            transcript: vec![cerebro_slack_agent_eval_wire::BlindTranscriptTurn {
+                role: "assistant".into(),
+                message: "Here is the decision and its basis.".into(),
+            }],
+        });
+        let grade = IndependentGradeReceiptV2 {
+            schema_version: INDEPENDENT_GRADE_RECEIPT_V2.into(),
+            grade_ref: "grade:one".into(),
+            suite_manifest_digest: "sha256:suite".into(),
+            assignment_alias: "assignment:red".into(),
+            packet_kind: BlindPacketKindV2::Content,
+            packet_digest: packet.payload_digest().unwrap(),
+            grader: GraderAttestationV2 {
+                principal_ref: "principal:grader".into(),
+                artifact_digest: "sha256:grader".into(),
+                rubric_digest: "sha256:rubric".into(),
+                calibration_receipt_digest: "sha256:calibration".into(),
+                calibration_passed: true,
+            },
+            scores: vec![DimensionScoreV2 {
+                dimension: GradeDimensionV2::HumanUsefulness,
+                score: 90,
+            }],
+            hard_defect_codes: Vec::new(),
+            citations: vec![GradeCitationV2 {
+                dimension: GradeDimensionV2::HumanUsefulness,
+                packet_item_ref: "/transcript/0/message".into(),
+                rationale: "The cited response states the decision.".into(),
+            }],
+            graded_at: "2026-08-03T00:01:00Z".into(),
+        };
+        (packet, grade)
+    }
+
+    #[test]
+    fn promotion_requires_exactly_the_graded_materialized_packets() {
+        let (packet, grade) = packet_and_grade();
+        assert!(
+            validate_independent_grade_packet_bindings(
+                std::slice::from_ref(&grade),
+                std::slice::from_ref(&packet),
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_independent_grade_packet_bindings(&[grade], &[])
+                .unwrap_err()
+                .to_string()
+                .contains("omits a graded materialized packet")
+        );
+        assert!(
+            validate_independent_grade_packet_bindings(&[], &[packet])
+                .unwrap_err()
+                .to_string()
+                .contains("includes an ungraded packet")
+        );
+    }
+
+    #[test]
+    fn promotion_rejects_substituted_and_unresolvable_grade_packets() {
+        let (packet, mut grade) = packet_and_grade();
+        grade.packet_digest = "sha256:substituted".into();
+        assert!(
+            validate_independent_grade_packet_bindings(
+                std::slice::from_ref(&grade),
+                std::slice::from_ref(&packet),
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("does not bind the exact materialized packet")
+        );
+
+        grade.packet_digest = packet.payload_digest().unwrap();
+        grade.citations[0].packet_item_ref = "/transcript/99/message".into();
+        assert!(
+            validate_independent_grade_packet_bindings(&[grade], &[packet])
+                .unwrap_err()
+                .to_string()
+                .contains("citation does not resolve")
+        );
+    }
+
+    #[test]
+    fn promotion_rejects_cross_candidate_packet_substitution() {
+        let (content, _) = packet_and_grade();
+        let evidence = MaterializedBlindPacketV2::Evidence(
+            cerebro_slack_agent_eval_wire::EvidenceBlindPacketV2 {
+                schema_version: cerebro_slack_agent_eval_wire::EVIDENCE_BLIND_PACKET_V2.into(),
+                assignment_alias: "assignment:red".into(),
+                candidate_alias: "participant:substituted".into(),
+                task: cerebro_slack_agent_eval_wire::BlindTaskBriefV2 {
+                    operator_request: "Explain the decision.".into(),
+                    success_definition: "The operator can act.".into(),
+                },
+                claims: Vec::new(),
+                authoritative_facts: Vec::new(),
+                authoritative_actions: Vec::new(),
+            },
+        );
+        assert!(
+            validate_independent_grade_packet_bindings(&[], &[content, evidence])
+                .unwrap_err()
+                .to_string()
+                .contains("substitute different candidates")
+        );
     }
 }

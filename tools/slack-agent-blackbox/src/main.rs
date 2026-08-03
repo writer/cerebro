@@ -2,6 +2,7 @@
 
 mod execution_v2;
 mod promotion;
+mod transcript_quality;
 
 use std::{env, error::Error, fs, path::Path, time::Duration};
 
@@ -17,7 +18,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-const USAGE: &str = "usage:\n  slack-agent-blackbox run CONFIG.json RECEIPT.json\n  slack-agent-blackbox run-v2 CONFIG.json RECEIPT.json\n  slack-agent-blackbox blind RECEIPT.json ASSIGNMENT_REF CANDIDATE_ALIAS BRIEF.json PACKET.json\n  slack-agent-blackbox verify-receipt RECEIPT.json\n  slack-agent-blackbox commit-holdouts-v2 SUITE.json PRIVATE_ASSIGNMENTS.json COMMITMENT.json\n  slack-agent-blackbox verify-promotion-v2 BUNDLE.json";
+const USAGE: &str = "usage:\n  slack-agent-blackbox run CONFIG.json RECEIPT.json\n  slack-agent-blackbox run-v2 CONFIG.json RECEIPT.json\n  slack-agent-blackbox blind RECEIPT.json ASSIGNMENT_REF CANDIDATE_ALIAS BRIEF.json PACKET.json\n  slack-agent-blackbox verify-receipt RECEIPT.json\n  slack-agent-blackbox score-transcript-v2 PACKET.json REPORT.json\n  slack-agent-blackbox commit-holdouts-v2 SUITE.json PRIVATE_ASSIGNMENTS.json COMMITMENT.json\n  slack-agent-blackbox verify-promotion-v2 BUNDLE.json";
 const RUN_CONFIG_V1: &str = "slack-agent-blackbox-run-config/v1";
 
 #[derive(Debug, Deserialize)]
@@ -87,6 +88,10 @@ async fn dispatch(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
             blind(receipt, assignment, alias, brief, output)
         }
         [command, receipt] if command == "verify-receipt" => verify_receipt(receipt),
+        [command, packet, output] if command == "score-transcript-v2" => {
+            transcript_quality::score_file(packet, output)?;
+            Ok(())
+        }
         [command, suite, assignments, output] if command == "commit-holdouts-v2" => {
             promotion::validate_suite_files_and_write_commitment(suite, assignments, output)?;
             Ok(())

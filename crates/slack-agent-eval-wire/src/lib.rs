@@ -1321,6 +1321,93 @@ pub enum BlindPacketKindV2 {
     Operational,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(
+    tag = "packet_kind",
+    content = "packet",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum MaterializedBlindPacketV2 {
+    Content(ContentBlindPacketV2),
+    Evidence(EvidenceBlindPacketV2),
+    Operational(OperationalBlindPacketV2),
+}
+
+impl MaterializedBlindPacketV2 {
+    pub fn packet_kind(&self) -> BlindPacketKindV2 {
+        match self {
+            Self::Content(_) => BlindPacketKindV2::Content,
+            Self::Evidence(_) => BlindPacketKindV2::Evidence,
+            Self::Operational(_) => BlindPacketKindV2::Operational,
+        }
+    }
+
+    pub fn assignment_alias(&self) -> &str {
+        match self {
+            Self::Content(packet) => &packet.assignment_alias,
+            Self::Evidence(packet) => &packet.assignment_alias,
+            Self::Operational(packet) => &packet.assignment_alias,
+        }
+    }
+
+    pub fn candidate_alias(&self) -> &str {
+        match self {
+            Self::Content(packet) => &packet.candidate_alias,
+            Self::Evidence(packet) => &packet.candidate_alias,
+            Self::Operational(packet) => &packet.candidate_alias,
+        }
+    }
+
+    pub fn payload_digest(&self) -> Result<String, serde_json::Error> {
+        match self {
+            Self::Content(packet) => sha256_json(packet),
+            Self::Evidence(packet) => sha256_json(packet),
+            Self::Operational(packet) => sha256_json(packet),
+        }
+    }
+
+    pub fn validate_grade_binding(&self, grade: &IndependentGradeReceiptV2) -> Result<(), String> {
+        let (schema_version, payload) = match self {
+            Self::Content(packet) => (packet.schema_version.as_str(), serde_json::to_value(packet)),
+            Self::Evidence(packet) => {
+                (packet.schema_version.as_str(), serde_json::to_value(packet))
+            }
+            Self::Operational(packet) => {
+                (packet.schema_version.as_str(), serde_json::to_value(packet))
+            }
+        };
+        let expected_schema_version = match self.packet_kind() {
+            BlindPacketKindV2::Content => CONTENT_BLIND_PACKET_V2,
+            BlindPacketKindV2::Evidence => EVIDENCE_BLIND_PACKET_V2,
+            BlindPacketKindV2::Operational => OPERATIONAL_BLIND_PACKET_V2,
+        };
+        if schema_version != expected_schema_version
+            || self.assignment_alias().trim().is_empty()
+            || self.candidate_alias().trim().is_empty()
+        {
+            return Err("materialized blind packet is incomplete or schema-mismatched".into());
+        }
+        if grade.packet_kind != self.packet_kind()
+            || grade.assignment_alias != self.assignment_alias()
+            || grade.packet_digest != self.payload_digest().map_err(|error| error.to_string())?
+        {
+            return Err("independent grade does not bind the exact materialized packet".into());
+        }
+        let payload = payload.map_err(|error| error.to_string())?;
+        if grade.citations.iter().any(|citation| {
+            !citation.packet_item_ref.starts_with('/')
+                || payload.pointer(&citation.packet_item_ref).is_none()
+        }) {
+            return Err(
+                "independent grade citation does not resolve in the bound materialized packet"
+                    .into(),
+            );
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GradeDimensionV2 {
@@ -2313,6 +2400,62 @@ mod tests {
             !serde_json::to_string(&content)
                 .unwrap()
                 .contains("duration_ms")
+        );
+    }
+
+    #[test]
+    fn independent_grade_resolves_citations_in_the_exact_materialized_packet() {
+        let packet = MaterializedBlindPacketV2::Content(ContentBlindPacketV2 {
+            schema_version: CONTENT_BLIND_PACKET_V2.into(),
+            assignment_alias: "assignment:red".into(),
+            candidate_alias: "participant:blue".into(),
+            task: BlindTaskBriefV2 {
+                operator_request: "Explain the decision.".into(),
+                success_definition: "The operator can act.".into(),
+            },
+            transcript: vec![BlindTranscriptTurn {
+                role: "assistant".into(),
+                message: "I checked the source and here is the decision.".into(),
+            }],
+        });
+        let mut grade = IndependentGradeReceiptV2 {
+            schema_version: INDEPENDENT_GRADE_RECEIPT_V2.into(),
+            grade_ref: "grade:one".into(),
+            suite_manifest_digest: "sha256:suite".into(),
+            assignment_alias: "assignment:red".into(),
+            packet_kind: BlindPacketKindV2::Content,
+            packet_digest: packet.payload_digest().unwrap(),
+            grader: GraderAttestationV2 {
+                principal_ref: "principal:grader".into(),
+                artifact_digest: "sha256:grader".into(),
+                rubric_digest: "sha256:rubric".into(),
+                calibration_receipt_digest: "sha256:calibration".into(),
+                calibration_passed: true,
+            },
+            scores: vec![DimensionScoreV2 {
+                dimension: GradeDimensionV2::HumanUsefulness,
+                score: 90,
+            }],
+            hard_defect_codes: Vec::new(),
+            citations: vec![GradeCitationV2 {
+                dimension: GradeDimensionV2::HumanUsefulness,
+                packet_item_ref: "/transcript/0/message".into(),
+                rationale: "The response gives the operator a decision.".into(),
+            }],
+            graded_at: "2026-08-03T00:01:00Z".into(),
+        };
+
+        assert!(packet.validate_grade_binding(&grade).is_ok());
+        grade.packet_digest = "sha256:substituted".into();
+        assert_eq!(
+            packet.validate_grade_binding(&grade).unwrap_err(),
+            "independent grade does not bind the exact materialized packet"
+        );
+        grade.packet_digest = packet.payload_digest().unwrap();
+        grade.citations[0].packet_item_ref = "/transcript/9/message".into();
+        assert_eq!(
+            packet.validate_grade_binding(&grade).unwrap_err(),
+            "independent grade citation does not resolve in the bound materialized packet"
         );
     }
 
