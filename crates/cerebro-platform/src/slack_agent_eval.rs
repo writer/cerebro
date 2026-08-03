@@ -5463,7 +5463,7 @@ fn synthetic_token_looks_external(word: &str, normalized: &str) -> bool {
         .next()
         .unwrap_or(&canonical);
     let domain_labels = endpoint.split('.').collect::<Vec<_>>();
-    let code_owned_dotted_identifier = CODE_OWNED_DOTTED_IDENTIFIERS.contains(&canonical.as_str());
+    let code_owned_dotted_identifier = CODE_OWNED_DOTTED_IDENTIFIERS.contains(&endpoint);
     let domain_like = !code_owned_dotted_identifier
         && domain_labels.len() >= 2
         && !endpoint.contains('_')
@@ -8006,6 +8006,39 @@ mod tests {
         assert!(
             code_owned_tools.is_ok(),
             "code-owned synthetic tools must pass validation: {code_owned_tools:?}"
+        );
+        let code_owned_schema_ref = validate_synthetic_holdout(
+            "synthetic://cerebro-holdouts/test-pack",
+            &provenance,
+            &json!({
+                "message": "The synthetic operator and synthetic team use schema://cerebro/mcp.cerebro.findings.search/input/v1 for the fictional connector."
+            }),
+        );
+        assert!(
+            code_owned_schema_ref.is_ok(),
+            "code-owned input schema references must pass validation: {code_owned_schema_ref:?}"
+        );
+        assert!(
+            validate_synthetic_payload_names(
+                &json!({
+                    "message": "schema://cerebro/mcp.cerebro.findings.search/input/real.example.com"
+                }),
+                &provenance.fictional_entities,
+                false,
+            )
+            .is_err(),
+            "an external domain after a code-owned schema endpoint must remain rejected"
+        );
+        assert!(
+            validate_synthetic_payload_names(
+                &json!({
+                    "message": "schema://cerebro/mcp.cerebro.findings.search/input/inc-12345678"
+                }),
+                &provenance.fictional_entities,
+                false,
+            )
+            .is_err(),
+            "an incident identifier after a code-owned schema endpoint must remain rejected"
         );
         assert!(
             validate_synthetic_holdout(
