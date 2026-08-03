@@ -6826,11 +6826,7 @@ fn rate(passed: usize, total: usize) -> f64 {
 }
 
 fn vacuous_rate(passed: usize, total: usize) -> f64 {
-    if total == 0 {
-        1.0
-    } else {
-        rate(passed, total)
-    }
+    if total == 0 { 1.0 } else { rate(passed, total) }
 }
 
 fn percentile_95(sorted: &[u128]) -> u128 {
