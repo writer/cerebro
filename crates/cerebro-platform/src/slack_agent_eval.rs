@@ -5225,7 +5225,11 @@ fn validate_synthetic_payload_names(
                 if code_owned_ranges
                     .iter()
                     .any(|(allowed_start, allowed_end)| {
-                        word_start >= *allowed_start && word_end <= *allowed_end
+                        // Every delimiter suffix is evaluated separately below. Ignore a
+                        // candidate that starts inside a code-owned identifier even when it
+                        // extends into a schema path; any external-looking path suffix still
+                        // receives its own independent check.
+                        word_start >= *allowed_start && word_start < *allowed_end
                     })
                 {
                     continue;

@@ -3174,6 +3174,7 @@ fn observation_condition_matches_selected(
     })
 }
 
+#[cfg(test)]
 fn observation_condition_transitioned(
     condition: &ObservationCondition,
     observations: &[ToolObservation],
@@ -14663,11 +14664,12 @@ mod tests {
         let mut wrong_subject_checkpoint = checkpoint;
         wrong_subject_checkpoint.observations[0].source_subject_refs =
             vec!["connector:other".into()];
+        let wrong_subject_observations = [fresh_exact];
         let wrong_subject = assess_wake_attention(
             &awakened,
             &trigger,
             Some(&wrong_subject_checkpoint),
-            &[fresh_exact],
+            &wrong_subject_observations,
             assessment_at,
         )
         .unwrap();
