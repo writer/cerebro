@@ -2497,9 +2497,6 @@ fn validate_conversational_synthesis_unit(
         "i will verify",
         "i'll ",
         "i will ",
-        "i can ",
-        "i can't ",
-        "i cannot ",
     ]
     .iter()
     .any(|marker| normalized.contains(marker));
@@ -4191,6 +4188,11 @@ mod grounding_tests {
         assert!(validate_critique_decision(&turn, &valid).is_err());
         turn.grounding_units[0].text = "I'll hold that correction for the next turn.".into();
         assert!(validate_critique_decision(&turn, &valid).is_err());
+        turn.grounding_units[0].text = "I can inspect the current deployment.".into();
+        assert!(validate_critique_decision(&turn, &valid).is_err());
+        turn.grounding_units[0].text =
+            "The earlier miss was deflecting to what I can or can't do.".into();
+        assert_eq!(validate_critique_decision(&turn, &valid), Ok(()));
 
         turn.grounding_units[0].text = turn.draft.summary.clone();
         let mut missing_source = valid;
