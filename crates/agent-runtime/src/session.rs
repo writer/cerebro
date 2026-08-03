@@ -3348,10 +3348,11 @@ fn assess_wake_attention<'a>(
                     .as_ref()
                     .zip(current_subjects.as_ref())
                     .is_some_and(|(expected, current)| {
-                        expected.iter().all(|subject_ref| current.contains(subject_ref))
+                        expected
+                            .iter()
+                            .all(|subject_ref| current.contains(subject_ref))
                     });
-                if !observation_is_complete_and_fresh(observation, assessment_at)
-                    || !scope_matches
+                if !observation_is_complete_and_fresh(observation, assessment_at) || !scope_matches
                 {
                     unhealthy_required_tool_ids.push(tool_id.clone());
                 }
@@ -3903,9 +3904,7 @@ fn observation_is_complete_and_fresh(
         })
 }
 
-fn observation_source_scope_subject_refs(
-    observation: &ToolObservation,
-) -> Option<Vec<String>> {
+fn observation_source_scope_subject_refs(observation: &ToolObservation) -> Option<Vec<String>> {
     let tool_outcome_atoms = observation
         .result
         .evidence
@@ -14661,17 +14660,19 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        prior_observation.result.evidence[0].atoms.push(EvidenceAtom {
-            atom_ref: "atom:finding:old".into(),
-            subject_ref: Some("finding:old".into()),
-            assertion: EvidenceAssertion::Value {
-                predicate: "status".into(),
-                value: json!("open"),
-            },
-            observed_at: "2026-07-31T00:00:00Z".into(),
-            fresh_until: Some("2026-08-01T00:00:00Z".into()),
-            complete: true,
-        });
+        prior_observation.result.evidence[0]
+            .atoms
+            .push(EvidenceAtom {
+                atom_ref: "atom:finding:old".into(),
+                subject_ref: Some("finding:old".into()),
+                assertion: EvidenceAssertion::Value {
+                    predicate: "status".into(),
+                    value: json!("open"),
+                },
+                observed_at: "2026-07-31T00:00:00Z".into(),
+                fresh_until: Some("2026-08-01T00:00:00Z".into()),
+                complete: true,
+            });
         let trigger = SessionTurnTrigger::Wake {
             commitment_ref: "commitment:scheduled-check".into(),
             occurrence_ref: "occurrence:changing-membership".into(),
@@ -14703,7 +14704,10 @@ mod tests {
             assessment_at,
         )
         .unwrap();
-        assert_eq!(attention.disposition, WakeAttentionDisposition::RoutineSilent);
+        assert_eq!(
+            attention.disposition,
+            WakeAttentionDisposition::RoutineSilent
+        );
         assert!(attention.unhealthy_required_tool_ids.is_empty());
     }
 
