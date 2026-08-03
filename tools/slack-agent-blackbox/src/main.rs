@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod execution_v2;
 mod promotion;
 
 use std::{env, error::Error, fs, path::Path, time::Duration};
@@ -16,7 +17,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-const USAGE: &str = "usage:\n  slack-agent-blackbox run CONFIG.json RECEIPT.json\n  slack-agent-blackbox blind RECEIPT.json ASSIGNMENT_REF CANDIDATE_ALIAS BRIEF.json PACKET.json\n  slack-agent-blackbox verify-receipt RECEIPT.json\n  slack-agent-blackbox commit-holdouts-v2 SUITE.json PRIVATE_ASSIGNMENTS.json COMMITMENT.json\n  slack-agent-blackbox verify-promotion-v2 BUNDLE.json";
+const USAGE: &str = "usage:\n  slack-agent-blackbox run CONFIG.json RECEIPT.json\n  slack-agent-blackbox run-v2 CONFIG.json RECEIPT.json\n  slack-agent-blackbox blind RECEIPT.json ASSIGNMENT_REF CANDIDATE_ALIAS BRIEF.json PACKET.json\n  slack-agent-blackbox verify-receipt RECEIPT.json\n  slack-agent-blackbox commit-holdouts-v2 SUITE.json PRIVATE_ASSIGNMENTS.json COMMITMENT.json\n  slack-agent-blackbox verify-promotion-v2 BUNDLE.json";
 const RUN_CONFIG_V1: &str = "slack-agent-blackbox-run-config/v1";
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +31,31 @@ struct RunConfig {
     candidate_ref: String,
     candidate_artifact_digest: String,
     episode: SupervisorEpisodeSpec,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RunConfigV2 {
+    execution: execution_v2::SupervisorExecutionConfigV2,
+    public_keys: Vec<promotion::Ed25519PublicKeyBinding>,
+}
+
+struct ExecutionReceiptVerifier(promotion::Ed25519KeyringVerifier);
+
+impl execution_v2::ReceiptSignatureVerifierV2 for ExecutionReceiptVerifier {
+    fn verify(
+        &self,
+        payload_digest: &str,
+        signer: &cerebro_slack_agent_eval_wire::SignerAttestationV2,
+        signature_base64: &str,
+    ) -> Result<(), String> {
+        promotion::ReceiptSignatureVerifier::verify(
+            &self.0,
+            signer,
+            payload_digest,
+            signature_base64,
+        )
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -56,6 +82,7 @@ async fn main() {
 async fn dispatch(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
     match arguments.as_slice() {
         [command, config, output] if command == "run" => run(config, output).await,
+        [command, config, output] if command == "run-v2" => run_v2(config, output).await,
         [command, receipt, assignment, alias, brief, output] if command == "blind" => {
             blind(receipt, assignment, alias, brief, output)
         }
@@ -70,6 +97,18 @@ async fn dispatch(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
         }
         _ => Err(USAGE.into()),
     }
+}
+
+async fn run_v2(config_path: &str, output_path: &str) -> Result<(), Box<dyn Error>> {
+    let config: RunConfigV2 = read_json(config_path)?;
+    let verifier =
+        ExecutionReceiptVerifier(promotion::Ed25519KeyringVerifier::new(config.public_keys)?);
+    let output = execution_v2::execute_supervisor_v2(&config.execution, &verifier).await?;
+    write_json(output_path, &output)?;
+    if !output.passed_deterministic_execution() {
+        return Err("V2 episode failed a deterministic execution gate".into());
+    }
+    Ok(())
 }
 
 async fn run(config_path: &str, output_path: &str) -> Result<(), Box<dyn Error>> {
