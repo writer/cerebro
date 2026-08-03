@@ -2,9 +2,11 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     env,
     error::Error,
-    fs,
+    fs::{self, File, OpenOptions},
+    io::Write,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use async_trait::async_trait;
@@ -25,7 +27,8 @@ use cerebro_agent_runtime::{
         run_session_turn, session_turn_request_text,
     },
 };
-use serde::{Deserialize, Serialize};
+use hmac::{Hmac, Mac, digest::KeyInit};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
@@ -63,6 +66,8 @@ const CONVERSATION_PROMOTION_HOLDOUT_SHA256: &str =
     "8ea952c9384a520d40a7b3388723170514196393734fe8320cc0f4c600d5e5d7";
 const AUTONOMY_PROMOTION_HOLDOUT_SHA256: &str =
     "37d9dae03139bf11ba720f42288f7dc7096da228c372e4a20117bc0a6d7cc284";
+const EVAL_CHECKPOINT_SCHEMA_VERSION: &str = "cerebro-slack-agent-eval-checkpoint/v1";
+const EVAL_CHECKPOINT_DIR_ENV: &str = "CEREBRO_SLACK_AGENT_EVAL_CHECKPOINT_DIR";
 const CODE_OWNED_DOTTED_IDENTIFIERS: &[&str] = &[
     "calibration.observation",
     "capability.describe",
@@ -455,7 +460,7 @@ enum OperatorInteractionKind {
     Continuation,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 struct ConversationLabTurnReceipt {
     turn_index: usize,
     trigger: LabTurnTrigger,
@@ -478,7 +483,7 @@ struct ConversationLabTurnReceipt {
     operator_decision: Option<OperatorDecision>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LabTurnTrigger {
     Operator,
@@ -493,7 +498,7 @@ fn lab_turn_latency_slo_passed(trigger: LabTurnTrigger, latency_ms: u128) -> boo
         }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct EvaluationScheduleReceipt {
     schedule_ref: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -518,7 +523,7 @@ struct EvaluationTurnEvidence {
     tool_observations: Vec<EvaluationObservationReceipt>,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 struct ConversationLabScenarioReceipt {
     scenario_ref: String,
     candidate_label: String,
@@ -569,7 +574,7 @@ struct ConversationLabReceipt {
     scenarios: Vec<ConversationLabScenarioReceipt>,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 struct AutonomyScenarioRunReceipt {
     execution_completed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -617,6 +622,311 @@ struct AutonomyLabReceipt {
     promotion_ready: bool,
     execution_suite_passed: bool,
     scenarios: Vec<AutonomyScenarioRunReceipt>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct EvalCheckpointScenarioIdentity {
+    scenario_index: usize,
+    scenario_ref: String,
+    candidate_label: String,
+    content_sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct EvalCheckpointManifest {
+    schema_version: String,
+    suite: String,
+    receipt_schema_version: String,
+    commit_sha: String,
+    provider: String,
+    model_id: String,
+    judge_model_id: String,
+    runtime_path: String,
+    pack_ref: String,
+    pack_sha256: String,
+    holdout_source_kind: String,
+    declared_scenario_count: usize,
+    selected_scenario_count: usize,
+    scenarios: Vec<EvalCheckpointScenarioIdentity>,
+    contract_sha256: String,
+    blinding_salt_sha256: String,
+    evaluated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct EvalScenarioCheckpoint<T> {
+    schema_version: String,
+    run_identity_sha256: String,
+    scenario: EvalCheckpointScenarioIdentity,
+    receipt: T,
+    integrity_sha256: String,
+}
+
+#[derive(Debug)]
+struct EvalCheckpointStore {
+    directory: PathBuf,
+    manifest: EvalCheckpointManifest,
+    run_identity_sha256: String,
+    blinding_salt: String,
+}
+
+impl EvalCheckpointStore {
+    fn open_if_configured(
+        expected: EvalCheckpointManifest,
+        blinding_salt: &str,
+    ) -> Result<Option<Self>, Box<dyn Error>> {
+        let Some(directory) = env::var_os(EVAL_CHECKPOINT_DIR_ENV).map(PathBuf::from) else {
+            return Ok(None);
+        };
+        Self::open(directory, expected, blinding_salt).map(Some)
+    }
+
+    fn open(
+        directory: PathBuf,
+        expected: EvalCheckpointManifest,
+        blinding_salt: &str,
+    ) -> Result<Self, Box<dyn Error>> {
+        fs::create_dir_all(&directory)?;
+        let manifest_path = directory.join("manifest.json");
+        let manifest = if manifest_path.exists() {
+            let existing: EvalCheckpointManifest =
+                serde_json::from_slice(&fs::read(&manifest_path)?).map_err(|error| {
+                    format!("the evaluation checkpoint manifest is invalid: {error}")
+                })?;
+            if !checkpoint_manifest_matches(&existing, &expected) {
+                return Err(
+                    "the evaluation checkpoint manifest does not match this exact run".into(),
+                );
+            }
+            existing
+        } else {
+            atomic_write(&manifest_path, &serde_json::to_vec_pretty(&expected)?)?;
+            expected
+        };
+        let run_identity_sha256 = checkpoint_run_identity_sha256(&manifest)?;
+        Ok(Self {
+            directory,
+            manifest,
+            run_identity_sha256,
+            blinding_salt: blinding_salt.to_owned(),
+        })
+    }
+
+    fn evaluated_at(&self) -> &str {
+        &self.manifest.evaluated_at
+    }
+
+    fn load<T: DeserializeOwned + Serialize>(
+        &self,
+        scenario: &EvalCheckpointScenarioIdentity,
+    ) -> Result<Option<T>, Box<dyn Error>> {
+        let path = self.scenario_path(scenario);
+        if !path.exists() {
+            return Ok(None);
+        }
+        let checkpoint: EvalScenarioCheckpoint<T> = serde_json::from_slice(&fs::read(path)?)
+            .map_err(|error| format!("an evaluation scenario checkpoint is invalid: {error}"))?;
+        if checkpoint.schema_version != EVAL_CHECKPOINT_SCHEMA_VERSION
+            || checkpoint.run_identity_sha256 != self.run_identity_sha256
+            || checkpoint.scenario != *scenario
+        {
+            return Err("an evaluation scenario checkpoint does not match this exact run".into());
+        }
+        let expected_integrity = scenario_checkpoint_integrity(
+            &self.blinding_salt,
+            &checkpoint.run_identity_sha256,
+            &checkpoint.scenario,
+            &checkpoint.receipt,
+        )?;
+        if checkpoint.integrity_sha256 != expected_integrity {
+            return Err("an evaluation scenario checkpoint failed its integrity check".into());
+        }
+        Ok(Some(checkpoint.receipt))
+    }
+
+    fn save<T: Serialize>(
+        &self,
+        scenario: &EvalCheckpointScenarioIdentity,
+        receipt: &T,
+    ) -> Result<(), Box<dyn Error>> {
+        let checkpoint = EvalScenarioCheckpoint {
+            schema_version: EVAL_CHECKPOINT_SCHEMA_VERSION.to_owned(),
+            run_identity_sha256: self.run_identity_sha256.clone(),
+            scenario: scenario.clone(),
+            integrity_sha256: scenario_checkpoint_integrity(
+                &self.blinding_salt,
+                &self.run_identity_sha256,
+                scenario,
+                receipt,
+            )?,
+            receipt,
+        };
+        atomic_write(
+            &self.scenario_path(scenario),
+            &serde_json::to_vec_pretty(&checkpoint)?,
+        )
+    }
+
+    fn scenario_path(&self, scenario: &EvalCheckpointScenarioIdentity) -> PathBuf {
+        self.directory.join(format!(
+            "scenario-{:03}-{}.json",
+            scenario.scenario_index, scenario.candidate_label
+        ))
+    }
+}
+
+fn checkpoint_manifest_matches(
+    existing: &EvalCheckpointManifest,
+    expected: &EvalCheckpointManifest,
+) -> bool {
+    let mut existing_without_time = existing.clone();
+    existing_without_time.evaluated_at.clear();
+    let mut expected_without_time = expected.clone();
+    expected_without_time.evaluated_at.clear();
+    existing_without_time == expected_without_time
+        && OffsetDateTime::parse(&existing.evaluated_at, &Rfc3339).is_ok()
+}
+
+fn checkpoint_run_identity_sha256(
+    manifest: &EvalCheckpointManifest,
+) -> Result<String, Box<dyn Error>> {
+    Ok(sha256_hex(&serde_json::to_vec(manifest)?))
+}
+
+fn scenario_checkpoint_integrity<T: Serialize>(
+    blinding_salt: &str,
+    run_identity_sha256: &str,
+    scenario: &EvalCheckpointScenarioIdentity,
+    receipt: &T,
+) -> Result<String, Box<dyn Error>> {
+    let scenario_bytes = serde_json::to_vec(scenario)?;
+    let receipt_bytes = serde_json::to_vec(receipt)?;
+    let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(blinding_salt.as_bytes())?;
+    mac.update(b"cerebro-slack-agent-eval-checkpoint-integrity-v1\0");
+    for part in [
+        run_identity_sha256.as_bytes(),
+        scenario_bytes.as_slice(),
+        receipt_bytes.as_slice(),
+    ] {
+        mac.update(&(part.len() as u64).to_be_bytes());
+        mac.update(part);
+    }
+    Ok(mac
+        .finalize()
+        .into_bytes()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+fn eval_checkpoint_contract_sha256() -> String {
+    sha256_hex(
+        serde_json::to_string(&json!({
+            "operator_turn_latency_slo_ms": LAB_MAX_OPERATOR_TURN_LATENCY_MS,
+            "scheduled_wake_latency_slo_ms": LAB_MAX_SCHEDULED_WAKE_LATENCY_MS,
+            "minimum_exchanges": LAB_MIN_EXCHANGES,
+            "maximum_turns": LAB_MAX_TURNS,
+            "autonomy_wake_count": AUTONOMY_WAKE_COUNT,
+            "autonomy_max_wake_delay_seconds": AUTONOMY_MAX_WAKE_DELAY.whole_seconds(),
+            "model_judge_independent": MODEL_JUDGE_INDEPENDENT,
+            "model_side_score_advisory": MODEL_SIDE_SCORE_ADVISORY,
+        }))
+        .expect("the checkpoint contract is serializable")
+        .as_bytes(),
+    )
+}
+
+fn checkpoint_manifest(
+    suite: &str,
+    receipt_schema_version: &str,
+    commit_sha: &str,
+    model_id: &str,
+    judge_model_id: &str,
+    runtime_path: &str,
+    holdout_source: &HoldoutSourceReceipt,
+    declared_scenario_count: usize,
+    scenarios: Vec<EvalCheckpointScenarioIdentity>,
+    blinding_salt: &str,
+    evaluated_at: &str,
+) -> EvalCheckpointManifest {
+    EvalCheckpointManifest {
+        schema_version: EVAL_CHECKPOINT_SCHEMA_VERSION.to_owned(),
+        suite: suite.to_owned(),
+        receipt_schema_version: receipt_schema_version.to_owned(),
+        commit_sha: commit_sha.to_owned(),
+        provider: "aws_bedrock".into(),
+        model_id: model_id.to_owned(),
+        judge_model_id: judge_model_id.to_owned(),
+        runtime_path: runtime_path.to_owned(),
+        pack_ref: holdout_source.pack_ref.clone(),
+        pack_sha256: holdout_source.pack_sha256.clone(),
+        holdout_source_kind: holdout_source.source_kind.to_owned(),
+        declared_scenario_count,
+        selected_scenario_count: scenarios.len(),
+        scenarios,
+        contract_sha256: eval_checkpoint_contract_sha256(),
+        blinding_salt_sha256: sha256_hex(
+            format!("cerebro-slack-agent-eval-blinding-salt-v1\0{blinding_salt}").as_bytes(),
+        ),
+        evaluated_at: evaluated_at.to_owned(),
+    }
+}
+
+fn validate_resumed_conversation_receipt(
+    receipt: &ConversationLabScenarioReceipt,
+    scenario: &EvalCheckpointScenarioIdentity,
+) -> Result<(), Box<dyn Error>> {
+    if receipt.scenario_ref != scenario.scenario_ref
+        || receipt.candidate_label != scenario.candidate_label
+    {
+        return Err(
+            "a resumed conversation receipt does not match its blinded scenario identity".into(),
+        );
+    }
+    Ok(())
+}
+
+fn validate_resumed_autonomy_receipt(
+    receipt: &AutonomyScenarioRunReceipt,
+    scenario: &EvalCheckpointScenarioIdentity,
+) -> Result<(), Box<dyn Error>> {
+    validate_resumed_conversation_receipt(&receipt.scenario, scenario)
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or("an evaluation output path must have a valid file name")?;
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let temporary = parent.join(format!(".{file_name}.tmp-{}-{nonce}", std::process::id()));
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&temporary)?;
+    if let Err(error) = (|| -> Result<(), std::io::Error> {
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        fs::rename(&temporary, path)?;
+        File::open(parent)?.sync_all()?;
+        Ok(())
+    })() {
+        let _ = fs::remove_file(&temporary);
+        return Err(error.into());
+    }
+    Ok(())
 }
 
 struct MeasuredModel {
@@ -820,7 +1130,7 @@ impl SessionAgentModel for MeasuredModel {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct EvaluationObservationReceipt {
     observation_ref: String,
     source_occurrence_ref: String,
@@ -3586,6 +3896,46 @@ async fn run_autonomy_lab(
     let selection = selected_autonomy_scenario()?;
     let declared_scenario_count = selection.declared_scenario_count;
     let holdout_source = selection.source;
+    let scenario_identities = selection
+        .scenarios
+        .iter()
+        .enumerate()
+        .map(
+            |(scenario_index, packed_scenario)| EvalCheckpointScenarioIdentity {
+                scenario_index,
+                scenario_ref: packed_scenario.scenario.scenario_ref.clone(),
+                candidate_label: blind_candidate_label(
+                    &blinding_salt,
+                    &commit_sha,
+                    &holdout_source.pack_sha256,
+                    &packed_scenario.scenario.scenario_ref,
+                ),
+                content_sha256: sha256_hex(
+                    &serde_json::to_vec(packed_scenario)
+                        .expect("the validated autonomy scenario is serializable"),
+                ),
+            },
+        )
+        .collect::<Vec<_>>();
+    let checkpoint_store = EvalCheckpointStore::open_if_configured(
+        checkpoint_manifest(
+            "autonomy_lab",
+            "cerebro-rust-slack-agent-autonomy-lab/v4",
+            &commit_sha,
+            &model_id,
+            &judge_model_id,
+            "session_v2_typed_wake",
+            &holdout_source,
+            declared_scenario_count,
+            scenario_identities.clone(),
+            &blinding_salt,
+            &evaluated_at,
+        ),
+        &blinding_salt,
+    )?;
+    let evaluated_at = checkpoint_store
+        .as_ref()
+        .map_or(evaluated_at, |store| store.evaluated_at().to_owned());
     let run_context = AutonomyRunContext {
         commit_sha: &commit_sha,
         evaluated_at: &evaluated_at,
@@ -3595,22 +3945,37 @@ async fn run_autonomy_lab(
         judge,
     };
     let mut scenario_runs = Vec::with_capacity(selection.scenarios.len());
-    for (scenario_index, packed_scenario) in selection.scenarios.iter().enumerate() {
-        let candidate_label = blind_candidate_label(
-            &blinding_salt,
-            &commit_sha,
-            &holdout_source.pack_sha256,
-            &packed_scenario.scenario.scenario_ref,
-        );
+    for ((scenario_index, packed_scenario), scenario_identity) in selection
+        .scenarios
+        .iter()
+        .enumerate()
+        .zip(&scenario_identities)
+    {
+        if let Some(receipt) = checkpoint_store
+            .as_ref()
+            .map(|store| store.load::<AutonomyScenarioRunReceipt>(scenario_identity))
+            .transpose()?
+            .flatten()
+        {
+            validate_resumed_autonomy_receipt(&receipt, scenario_identity)?;
+            scenario_runs.push(receipt);
+            continue;
+        }
+        let candidate_label = scenario_identity.candidate_label.clone();
         let run = run_autonomy_scenario(scenario_index, packed_scenario, &run_context).await;
-        scenario_runs.push(match run {
+        let receipt = match run {
             Ok(receipt) => receipt,
             Err(error) => failed_autonomy_scenario_receipt(
                 &packed_scenario.scenario,
                 candidate_label,
                 error.as_ref(),
             ),
-        });
+        };
+        validate_resumed_autonomy_receipt(&receipt, scenario_identity)?;
+        if let Some(store) = checkpoint_store.as_ref() {
+            store.save(scenario_identity, &receipt)?;
+        }
+        scenario_runs.push(receipt);
     }
 
     let attempted_scenario_count = scenario_runs.len();
@@ -3654,7 +4019,7 @@ async fn run_autonomy_lab(
     )?;
     let blind_review_bundle_sha256 = sha256_hex(&blind_review_bytes);
     if let Ok(path) = env::var("CEREBRO_SLACK_AGENT_EVAL_BLIND_OUTPUT") {
-        fs::write(path, &blind_review_bytes)?;
+        atomic_write(Path::new(&path), &blind_review_bytes)?;
     }
     let receipt = AutonomyLabReceipt {
         schema_version: "cerebro-rust-slack-agent-autonomy-lab/v4",
@@ -4145,15 +4510,65 @@ async fn run_conversation_lab(
     let declared_scenario_count = selection.declared_scenario_count;
     let selected_scenario_count = selection.scenarios.len();
     let full_suite = selected_scenario_count == declared_scenario_count;
+    let scenario_identities = selection
+        .scenarios
+        .iter()
+        .enumerate()
+        .map(
+            |(scenario_index, scenario)| EvalCheckpointScenarioIdentity {
+                scenario_index,
+                scenario_ref: scenario.scenario_ref.clone(),
+                candidate_label: blind_candidate_label(
+                    &blinding_salt,
+                    &commit_sha,
+                    &selection.source.pack_sha256,
+                    &scenario.scenario_ref,
+                ),
+                content_sha256: sha256_hex(
+                    &serde_json::to_vec(scenario)
+                        .expect("the validated conversation scenario is serializable"),
+                ),
+            },
+        )
+        .collect::<Vec<_>>();
+    let checkpoint_store = EvalCheckpointStore::open_if_configured(
+        checkpoint_manifest(
+            "conversation_lab",
+            "cerebro-rust-slack-agent-conversation-lab/v7",
+            &commit_sha,
+            &model_id,
+            &judge_model_id,
+            runtime.as_str(),
+            &selection.source,
+            declared_scenario_count,
+            scenario_identities.clone(),
+            &blinding_salt,
+            &evaluated_at,
+        ),
+        &blinding_salt,
+    )?;
+    let evaluated_at = checkpoint_store
+        .as_ref()
+        .map_or(evaluated_at, |store| store.evaluated_at().to_owned());
     let reference_secret = format!("{blinding_salt}\0{}", selection.source.pack_sha256);
     let mut receipts = Vec::new();
-    for (scenario_index, scenario) in selection.scenarios.into_iter().enumerate() {
-        let candidate_label = blind_candidate_label(
-            &blinding_salt,
-            &commit_sha,
-            &selection.source.pack_sha256,
-            &scenario.scenario_ref,
-        );
+    for ((scenario_index, scenario), scenario_identity) in selection
+        .scenarios
+        .into_iter()
+        .enumerate()
+        .zip(&scenario_identities)
+    {
+        if let Some(receipt) = checkpoint_store
+            .as_ref()
+            .map(|store| store.load::<ConversationLabScenarioReceipt>(scenario_identity))
+            .transpose()?
+            .flatten()
+        {
+            validate_resumed_conversation_receipt(&receipt, scenario_identity)?;
+            receipts.push(receipt);
+            continue;
+        }
+        let candidate_label = scenario_identity.candidate_label.clone();
         let mut transcript = scenario.seed_history.clone();
         let scenario_anchor_at = OffsetDateTime::now_utc().format(&Rfc3339)?;
         let mut current_message = scenario.initial_message.to_owned();
@@ -4482,7 +4897,7 @@ async fn run_conversation_lab(
         let internal_judge_advisory_excellent = final_judgment
             .as_ref()
             .is_some_and(ConversationQualityJudgment::is_excellent);
-        receipts.push(ConversationLabScenarioReceipt {
+        let receipt = ConversationLabScenarioReceipt {
             scenario_ref: scenario.scenario_ref,
             candidate_label,
             mission: scenario.mission,
@@ -4498,7 +4913,12 @@ async fn run_conversation_lab(
             latency_slo_passed,
             internal_judge_advisory_excellent,
             turns,
-        });
+        };
+        validate_resumed_conversation_receipt(&receipt, scenario_identity)?;
+        if let Some(store) = checkpoint_store.as_ref() {
+            store.save(scenario_identity, &receipt)?;
+        }
+        receipts.push(receipt);
     }
 
     let targeted_regression_passed = receipts.iter().all(|receipt| receipt.review_ready);
@@ -4522,7 +4942,7 @@ async fn run_conversation_lab(
     )?;
     let blind_review_bundle_sha256 = sha256_hex(&blind_review_bytes);
     if let Ok(path) = env::var("CEREBRO_SLACK_AGENT_EVAL_BLIND_OUTPUT") {
-        fs::write(path, &blind_review_bytes)?;
+        atomic_write(Path::new(&path), &blind_review_bytes)?;
     }
     let receipt = ConversationLabReceipt {
         schema_version: "cerebro-rust-slack-agent-conversation-lab/v7",
@@ -8795,5 +9215,279 @@ mod tests {
         assert!(evaluation_suite_mode("").is_err());
         assert!(evaluation_suite_mode("conversation-lab").is_err());
         assert!(evaluation_suite_mode("full").is_err());
+    }
+
+    fn checkpoint_test_directory(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "cerebro-slack-eval-checkpoint-{label}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
+    fn checkpoint_test_scenario() -> EvalCheckpointScenarioIdentity {
+        EvalCheckpointScenarioIdentity {
+            scenario_index: 0,
+            scenario_ref: "synthetic-scenario".into(),
+            candidate_label: "candidate-a1b2c3d4".into(),
+            content_sha256: "1".repeat(64),
+        }
+    }
+
+    fn checkpoint_test_manifest(
+        evaluated_at: &str,
+        scenario: EvalCheckpointScenarioIdentity,
+    ) -> EvalCheckpointManifest {
+        checkpoint_manifest(
+            "conversation_lab",
+            "cerebro-rust-slack-agent-conversation-lab/v7",
+            &"a".repeat(40),
+            "us.anthropic.claude-opus-test",
+            "us.anthropic.claude-opus-judge-test",
+            "session_v2",
+            &HoldoutSourceReceipt {
+                source_kind: "external_pinned_holdout",
+                pack_ref: "synthetic://cerebro-holdouts/test".into(),
+                pack_sha256: "b".repeat(64),
+                digest_verified: true,
+                runtime_loaded_after_exact_head_binding: true,
+                provenance: embedded_synthetic_provenance(),
+            },
+            1,
+            vec![scenario],
+            "0123456789abcdef-test-salt",
+            evaluated_at,
+        )
+    }
+
+    fn checkpoint_test_source() -> HoldoutSourceReceipt {
+        HoldoutSourceReceipt {
+            source_kind: "external_pinned_holdout",
+            pack_ref: "synthetic://cerebro-holdouts/test".into(),
+            pack_sha256: "b".repeat(64),
+            digest_verified: true,
+            runtime_loaded_after_exact_head_binding: true,
+            provenance: embedded_synthetic_provenance(),
+        }
+    }
+
+    fn checkpoint_test_receipt(
+        scenario_ref: &str,
+        candidate_label: &str,
+        mission: &str,
+    ) -> ConversationLabScenarioReceipt {
+        ConversationLabScenarioReceipt {
+            scenario_ref: scenario_ref.into(),
+            candidate_label: candidate_label.into(),
+            mission: mission.into(),
+            attempted_turn_count: 1,
+            delivered_exchange_count: 1,
+            unanswered_user_turn_count: 0,
+            maximum_turn_latency_ms: 10,
+            total_turn_latency_ms: 10,
+            transcript: vec![ConversationMessage {
+                role: ConversationRole::Assistant,
+                content: format!("Completed {mission}"),
+            }],
+            final_judgment: None,
+            final_judgment_error: None,
+            review_ready: true,
+            latency_slo_passed: true,
+            internal_judge_advisory_excellent: false,
+            turns: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn checkpoint_manifest_reuses_original_time_but_rejects_identity_changes() {
+        let scenario = checkpoint_test_scenario();
+        let original = checkpoint_test_manifest("2026-08-03T00:00:00Z", scenario.clone());
+        let later = checkpoint_test_manifest("2026-08-03T01:00:00Z", scenario);
+        assert!(checkpoint_manifest_matches(&original, &later));
+
+        for changed in [
+            {
+                let mut value = later.clone();
+                value.commit_sha = "c".repeat(40);
+                value
+            },
+            {
+                let mut value = later.clone();
+                value.model_id.push_str("-changed");
+                value
+            },
+            {
+                let mut value = later.clone();
+                value.pack_sha256 = "d".repeat(64);
+                value
+            },
+            {
+                let mut value = later.clone();
+                value.blinding_salt_sha256 = "e".repeat(64);
+                value
+            },
+            {
+                let mut value = later.clone();
+                value.scenarios[0].content_sha256 = "f".repeat(64);
+                value
+            },
+        ] {
+            assert!(!checkpoint_manifest_matches(&original, &changed));
+        }
+    }
+
+    #[test]
+    fn checkpoint_store_resumes_terminal_receipts_without_rerolling() {
+        let directory = checkpoint_test_directory("resume");
+        let scenario = checkpoint_test_scenario();
+        let manifest = checkpoint_test_manifest("2026-08-03T00:00:00Z", scenario.clone());
+        let store =
+            EvalCheckpointStore::open(directory.clone(), manifest, "0123456789abcdef-test-salt")
+                .unwrap();
+        let terminal_failure = json!({
+            "execution_completed": false,
+            "execution_failure": "provider request failed",
+        });
+        store.save(&scenario, &terminal_failure).unwrap();
+        assert_eq!(
+            store.load::<Value>(&scenario).unwrap(),
+            Some(terminal_failure)
+        );
+
+        let resumed = EvalCheckpointStore::open(
+            directory.clone(),
+            checkpoint_test_manifest("2026-08-03T01:00:00Z", scenario.clone()),
+            "0123456789abcdef-test-salt",
+        )
+        .unwrap();
+        assert_eq!(resumed.evaluated_at(), "2026-08-03T00:00:00Z");
+        assert!(resumed.load::<Value>(&scenario).unwrap().is_some());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn checkpoint_store_fails_closed_on_tampering_and_ignores_partial_temp_files() {
+        let directory = checkpoint_test_directory("tamper");
+        let scenario = checkpoint_test_scenario();
+        let store = EvalCheckpointStore::open(
+            directory.clone(),
+            checkpoint_test_manifest("2026-08-03T00:00:00Z", scenario.clone()),
+            "0123456789abcdef-test-salt",
+        )
+        .unwrap();
+        let partial_path = directory.join(format!(
+            ".scenario-{:03}-{}.json.tmp-interrupted",
+            scenario.scenario_index, scenario.candidate_label
+        ));
+        fs::write(partial_path, b"{\"receipt\":").unwrap();
+        assert_eq!(store.load::<Value>(&scenario).unwrap(), None);
+
+        store.save(&scenario, &json!({"passed": false})).unwrap();
+        let path = store.scenario_path(&scenario);
+        let mut checkpoint: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        checkpoint["receipt"]["passed"] = Value::Bool(true);
+        fs::write(&path, serde_json::to_vec_pretty(&checkpoint).unwrap()).unwrap();
+        assert!(
+            store
+                .load::<Value>(&scenario)
+                .unwrap_err()
+                .to_string()
+                .contains("integrity")
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn checkpoint_store_rejects_a_different_exact_run() {
+        let directory = checkpoint_test_directory("identity");
+        let scenario = checkpoint_test_scenario();
+        EvalCheckpointStore::open(
+            directory.clone(),
+            checkpoint_test_manifest("2026-08-03T00:00:00Z", scenario.clone()),
+            "0123456789abcdef-test-salt",
+        )
+        .unwrap();
+        let mut changed = checkpoint_test_manifest("2026-08-03T01:00:00Z", scenario);
+        changed.runtime_path = "legacy_v1".into();
+        assert!(
+            EvalCheckpointStore::open(directory.clone(), changed, "0123456789abcdef-test-salt")
+                .unwrap_err()
+                .to_string()
+                .contains("exact run")
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn checkpoint_resume_preserves_ordered_blind_bundle_bytes() {
+        let directory = checkpoint_test_directory("aggregate");
+        let first = checkpoint_test_scenario();
+        let mut second = first.clone();
+        second.scenario_index = 1;
+        second.scenario_ref = "synthetic-scenario-two".into();
+        second.content_sha256 = "2".repeat(64);
+        let source = checkpoint_test_source();
+        let manifest = checkpoint_manifest(
+            "conversation_lab",
+            "cerebro-rust-slack-agent-conversation-lab/v7",
+            &"a".repeat(40),
+            "us.anthropic.claude-opus-test",
+            "us.anthropic.claude-opus-judge-test",
+            "session_v2",
+            &source,
+            2,
+            vec![first.clone(), second.clone()],
+            "0123456789abcdef-test-salt",
+            "2026-08-03T00:00:00Z",
+        );
+        let store =
+            EvalCheckpointStore::open(directory.clone(), manifest, "0123456789abcdef-test-salt")
+                .unwrap();
+        let first_receipt =
+            checkpoint_test_receipt(&first.scenario_ref, &first.candidate_label, "first mission");
+        let second_receipt = checkpoint_test_receipt(
+            &second.scenario_ref,
+            &second.candidate_label,
+            "second mission",
+        );
+        store.save(&first, &first_receipt).unwrap();
+        let uninterrupted = serde_json::to_vec_pretty(&blind_review_bundle(
+            &source,
+            [&first_receipt, &second_receipt],
+        ))
+        .unwrap();
+
+        let resumed_first = store
+            .load::<ConversationLabScenarioReceipt>(&first)
+            .unwrap()
+            .unwrap();
+        let resumed = serde_json::to_vec_pretty(&blind_review_bundle(
+            &source,
+            [&resumed_first, &second_receipt],
+        ))
+        .unwrap();
+        assert_eq!(resumed, uninterrupted);
+        assert_eq!(sha256_hex(&resumed), sha256_hex(&uninterrupted));
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn checkpoint_atomic_final_write_replaces_complete_output_without_temp_residue() {
+        let directory = checkpoint_test_directory("atomic-final");
+        let output = directory.join("blind-review.json");
+        atomic_write(&output, b"{\"generation\":1}").unwrap();
+        atomic_write(&output, b"{\"generation\":2}").unwrap();
+        assert_eq!(fs::read(&output).unwrap(), b"{\"generation\":2}");
+        assert!(fs::read_dir(&directory).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains(".tmp-")
+        }));
+        fs::remove_dir_all(directory).unwrap();
     }
 }
