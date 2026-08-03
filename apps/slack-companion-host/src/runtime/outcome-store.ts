@@ -14,9 +14,7 @@ import {
 } from "../assistant-turn.js";
 
 export const OUTCOME_OBSERVATION_WINDOW_MS = 24 * 60 * 60 * 1_000;
-export const ADMISSION_RETENTION_MS = 24 * 60 * 60 * 1_000;
 export const TELEMETRY_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
-const MAX_ADMISSION_RECEIPTS = 50_000;
 const MAX_TELEMETRY_RECEIPTS = 100_000;
 
 export interface PendingAssistantOutcome {
@@ -60,7 +58,6 @@ export class FileOutcomeStore
       mkdir(this.directory("assessments"), { recursive: true }),
       mkdir(this.directory("delivery"), { recursive: true }),
       mkdir(this.directory("status"), { recursive: true }),
-      mkdir(this.directory("admissions"), { recursive: true }),
       mkdir(this.directory("telemetry"), { recursive: true }),
     ]);
   }
@@ -70,21 +67,6 @@ export class FileOutcomeStore
     await this.serialize(async () => {
       await this.atomicWrite(this.path("pending", outcome.request_id), outcome);
     });
-  }
-
-  async claimRequest(requestKey: string): Promise<boolean> {
-    await this.initialize();
-    try {
-      await writeFile(this.path("admissions", requestKey), "claimed\n", {
-        encoding: "utf8",
-        flag: "wx",
-        mode: 0o600,
-      });
-      return true;
-    } catch (error) {
-      if (errorCode(error) === "EEXIST") return false;
-      throw error;
-    }
   }
 
   async recordNegativeFeedback(deliveredMessageTs: string): Promise<boolean> {
@@ -108,10 +90,7 @@ export class FileOutcomeStore
     let assessed = 0;
     await this.initialize();
     await this.serialize(async () => {
-      await Promise.all([
-        this.pruneReceiptDirectory("admissions", ADMISSION_RETENTION_MS, MAX_ADMISSION_RECEIPTS),
-        this.pruneReceiptDirectory("telemetry", TELEMETRY_RETENTION_MS, MAX_TELEMETRY_RECEIPTS),
-      ]);
+      await this.pruneTelemetryReceipts();
       for (const file of await this.pendingFiles()) {
         const pending = await this.readPending(file);
         const openedAt = Date.parse(pending.opened_at);
@@ -197,12 +176,8 @@ export class FileOutcomeStore
     await rename(temporary, path);
   }
 
-  private async pruneReceiptDirectory(
-    name: "admissions" | "telemetry",
-    retentionMs: number,
-    maximumReceipts: number,
-  ): Promise<void> {
-    const directory = this.directory(name);
+  private async pruneTelemetryReceipts(): Promise<void> {
+    const directory = this.directory("telemetry");
     const receipts = await Promise.all(
       (await readdir(directory))
         .filter((file) => file.endsWith(".json"))
@@ -212,10 +187,10 @@ export class FileOutcomeStore
         }),
     );
     receipts.sort((left, right) => right.modifiedAt - left.modifiedAt);
-    const cutoff = this.clock().getTime() - retentionMs;
+    const cutoff = this.clock().getTime() - TELEMETRY_RETENTION_MS;
     const expired = receipts.filter((receipt) => receipt.modifiedAt < cutoff);
     const retained = receipts.filter((receipt) => receipt.modifiedAt >= cutoff);
-    const overLimit = retained.slice(maximumReceipts);
+    const overLimit = retained.slice(MAX_TELEMETRY_RECEIPTS);
     await Promise.all([...expired, ...overLimit].map(async ({ path }) => {
       await unlink(path).catch((error: unknown) => {
         if (errorCode(error) !== "ENOENT") throw error;

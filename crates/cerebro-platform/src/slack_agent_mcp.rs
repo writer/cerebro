@@ -1508,6 +1508,7 @@ mod tests {
             assessment_at: "2026-07-31T12:00:00Z".into(),
             message: "Continue the analysis.".into(),
             history: vec![],
+            history_metadata: vec![],
             working_state: None,
             effect_authorizations: vec![],
         }

@@ -157,9 +157,10 @@ func TestVerifiedAccessActionPostgresAppendPreservesDatabaseErrors(t *testing.T)
 	// keep reporting ErrConflict.
 	if _, err := store.db.ExecContext(ctx, `
 UPDATE verified_access_action_transitions
-SET transition_digest = $3
-WHERE tenant_id = $1 AND action_id = $2`,
-		tenantID, proposed.Record.ID, "corrupted-"+preflighted.Transition.Digest); err != nil {
+SET transition_digest = $4
+WHERE tenant_id = $1 AND action_id = $2 AND transition_id = $3`,
+		tenantID, proposed.Record.ID, preflighted.Transition.ID,
+		"corrupted-"+preflighted.Transition.Digest); err != nil {
 		t.Fatal(err)
 	}
 	applied, err := store.AppendAccessAction(ctx, preflighted)
@@ -171,7 +172,8 @@ WHERE tenant_id = $1 AND action_id = $2`,
 	// wrapped error instead of being masked as a persistence conflict.
 	if _, err := store.db.ExecContext(ctx, `
 DELETE FROM verified_access_action_transitions
-WHERE tenant_id = $1 AND action_id = $2`, tenantID, proposed.Record.ID); err != nil {
+WHERE tenant_id = $1 AND action_id = $2 AND transition_id = $3`,
+		tenantID, proposed.Record.ID, preflighted.Transition.ID); err != nil {
 		t.Fatal(err)
 	}
 	applied, err = store.AppendAccessAction(ctx, preflighted)

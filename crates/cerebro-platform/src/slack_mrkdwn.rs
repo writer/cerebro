@@ -46,7 +46,7 @@ pub(super) fn render_slack_mrkdwn(markdown: &str) -> String {
         }
 
         let normalized = if let Some(heading) = markdown_heading(trimmed) {
-            format!("*{}*", render_inline_slack_mrkdwn(heading))
+            render_structural_strong(render_inline_slack_mrkdwn(heading))
         } else if is_markdown_horizontal_rule(trimmed) {
             SLACK_HORIZONTAL_RULE.to_owned()
         } else if let Some((indent, item)) = markdown_bullet(line) {
@@ -57,16 +57,28 @@ pub(super) fn render_slack_mrkdwn(markdown: &str) -> String {
         rendered.push(normalized);
         index += 1;
     }
+    if in_code_block {
+        rendered.push("```".into());
+    }
 
     rendered.join("\n")
 }
 
 fn render_inline_slack_mrkdwn(value: &str) -> String {
     let mut output = String::with_capacity(value.len());
+    let markup_source = inline_markup_outside_code(value);
+    let close_single_asterisk = has_unclosed_single_emphasis(&markup_source, '*');
+    let close_single_underscore = has_unclosed_single_emphasis(&markup_source, '_');
+    let mut strong_asterisk_open = false;
+    let mut strong_underscore_open = false;
     let mut cursor = 0;
     while let Some(offset) = value[cursor..].find('`') {
         let open = cursor + offset;
-        output.push_str(&render_inline_markup(&value[cursor..open]));
+        output.push_str(&render_inline_markup(
+            &value[cursor..open],
+            &mut strong_asterisk_open,
+            &mut strong_underscore_open,
+        ));
         let delimiter_len = value[open..]
             .bytes()
             .take_while(|byte| *byte == b'`')
@@ -74,14 +86,57 @@ fn render_inline_slack_mrkdwn(value: &str) -> String {
         let delimiter = &value[open..open + delimiter_len];
         let content_start = open + delimiter_len;
         let Some(close_offset) = value[content_start..].find(delimiter) else {
-            output.push_str(&value[open..]);
-            return output;
+            output.push_str(&render_inline_markup(
+                &value[content_start..],
+                &mut strong_asterisk_open,
+                &mut strong_underscore_open,
+            ));
+            cursor = value.len();
+            break;
         };
         let close = content_start + close_offset + delimiter_len;
         output.push_str(&value[open..close]);
         cursor = close;
     }
-    output.push_str(&render_inline_markup(&value[cursor..]));
+    output.push_str(&render_inline_markup(
+        &value[cursor..],
+        &mut strong_asterisk_open,
+        &mut strong_underscore_open,
+    ));
+    if strong_asterisk_open {
+        output.push('*');
+    }
+    if strong_underscore_open {
+        output.push('*');
+    }
+    if close_single_asterisk {
+        output.push('*');
+    }
+    if close_single_underscore {
+        output.push('_');
+    }
+    output
+}
+
+fn inline_markup_outside_code(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut cursor = 0;
+    while let Some(offset) = value[cursor..].find('`') {
+        let open = cursor + offset;
+        output.push_str(&value[cursor..open]);
+        let delimiter_len = value[open..]
+            .bytes()
+            .take_while(|byte| *byte == b'`')
+            .count();
+        let delimiter = &value[open..open + delimiter_len];
+        let content_start = open + delimiter_len;
+        let Some(close_offset) = value[content_start..].find(delimiter) else {
+            output.push_str(&value[content_start..]);
+            return output;
+        };
+        cursor = content_start + close_offset + delimiter_len;
+    }
+    output.push_str(&value[cursor..]);
     output
 }
 
@@ -112,16 +167,43 @@ fn inert_slack_control_syntax(value: &str) -> String {
     output
 }
 
-fn render_inline_markup(value: &str) -> String {
+fn render_inline_markup(
+    value: &str,
+    strong_asterisk_open: &mut bool,
+    strong_underscore_open: &mut bool,
+) -> String {
     let mut output = String::with_capacity(value.len());
     let mut cursor = 0;
     while cursor < value.len() {
-        if value[cursor..].starts_with("**") || value[cursor..].starts_with("__") {
-            output.push('*');
-            cursor += 2;
+        if let Some(mut end) = raw_url_end(value, cursor) {
+            // A raw URL is allowed to contain `*` and `_`, but when the URL is
+            // inside an open strong span a terminal double delimiter belongs
+            // to the surrounding Markdown. Leave it for the delimiter state
+            // machine instead of swallowing it as part of the URL.
+            let strong_boundary = if *strong_asterisk_open {
+                raw_url_emphasis_boundary(value, cursor, end, b'*', &[2, 3])
+            } else if *strong_underscore_open {
+                raw_url_emphasis_boundary(value, cursor, end, b'_', &[2, 3])
+            } else {
+                None
+            };
+            let single_boundary = if has_unclosed_single_emphasis(&value[..cursor], '*') {
+                raw_url_emphasis_boundary(value, cursor, end, b'*', &[1])
+            } else if has_unclosed_single_emphasis(&value[..cursor], '_') {
+                raw_url_emphasis_boundary(value, cursor, end, b'_', &[1])
+            } else {
+                None
+            };
+            if let Some(boundary) = strong_boundary.or(single_boundary) {
+                end = boundary;
+            }
+            if end == cursor {
+                continue;
+            }
+            output.push_str(&value[cursor..end]);
+            cursor = end;
             continue;
         }
-
         let image = value[cursor..].starts_with("![");
         if (image || value[cursor..].starts_with('['))
             && let Some((end, label, url)) = markdown_link(value, cursor, image)
@@ -145,10 +227,361 @@ fn render_inline_markup(value: &str) -> String {
             .chars()
             .next()
             .expect("cursor remains on a character boundary");
+        if matches!(character, '*' | '_') {
+            let run = value[cursor..]
+                .chars()
+                .take_while(|candidate| *candidate == character)
+                .count();
+            if matches!(run, 2 | 3) {
+                let previous = value[..cursor].chars().next_back();
+                let previous_is_word = previous.is_some_and(char::is_alphanumeric);
+                let previous_can_close = previous.is_some_and(|value| !value.is_whitespace());
+                let run_bytes = run * character.len_utf8();
+                let next_is_word = value[cursor + run_bytes..]
+                    .chars()
+                    .next()
+                    .is_some_and(char::is_alphanumeric);
+                let emphasis_open = if character == '*' {
+                    &mut *strong_asterisk_open
+                } else {
+                    &mut *strong_underscore_open
+                };
+                let delimiter = character.to_string().repeat(run);
+                let clear_intraword_asterisk_open = character == '*'
+                    && previous.is_some_and(char::is_alphabetic)
+                    && value[cursor + run_bytes..]
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_alphanumeric)
+                    && value[cursor + run_bytes..].contains(&delimiter);
+                let clear_intraword_asterisk_close = character == '*'
+                    && previous_is_word
+                    && value[cursor + run_bytes..]
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_alphanumeric);
+                if !*emphasis_open
+                    && next_is_word
+                    && (!previous_is_word || clear_intraword_asterisk_open)
+                {
+                    output.push('*');
+                    *emphasis_open = true;
+                } else if *emphasis_open
+                    && previous_can_close
+                    && (!next_is_word || clear_intraword_asterisk_close)
+                {
+                    output.push('*');
+                    *emphasis_open = false;
+                } else {
+                    output.push_str(&value[cursor..cursor + run_bytes]);
+                }
+                cursor += run_bytes;
+                continue;
+            }
+        }
         output.push(character);
         cursor += character.len_utf8();
     }
     inert_slack_control_syntax(&output)
+}
+
+fn has_unclosed_single_emphasis(value: &str, delimiter: char) -> bool {
+    let mut open = false;
+    let mut cursor = 0;
+    while cursor < value.len() {
+        let image = value[cursor..].starts_with("![");
+        if (image || value[cursor..].starts_with('['))
+            && let Some((end, _, _)) = markdown_link(value, cursor, image)
+        {
+            cursor = end;
+            continue;
+        }
+        if let Some(mut end) = raw_url_end(value, cursor) {
+            if open
+                && let Some(boundary) =
+                    raw_url_emphasis_boundary(value, cursor, end, delimiter as u8, &[1])
+            {
+                end = boundary;
+            }
+            if end > cursor {
+                cursor = end;
+                continue;
+            }
+        }
+        let remainder = &value[cursor..];
+        if remainder.starts_with(delimiter) {
+            let run = remainder
+                .chars()
+                .take_while(|character| *character == delimiter)
+                .count();
+            if run == 1 {
+                let previous = value[..cursor].chars().next_back();
+                let previous_is_word = previous.is_some_and(char::is_alphanumeric);
+                let previous_can_close = previous.is_some_and(|value| !value.is_whitespace());
+                let next_is_word = remainder[delimiter.len_utf8()..]
+                    .chars()
+                    .next()
+                    .is_some_and(char::is_alphanumeric);
+                let clear_intraword_asterisk_close =
+                    delimiter == '*' && previous_is_word && next_is_word;
+                if !open && !previous_is_word && next_is_word {
+                    open = true;
+                } else if open
+                    && previous_can_close
+                    && (!next_is_word || clear_intraword_asterisk_close)
+                {
+                    open = false;
+                }
+            }
+            cursor += run;
+            continue;
+        }
+        cursor += remainder
+            .chars()
+            .next()
+            .expect("single delimiter cursor remains on a character boundary")
+            .len_utf8();
+    }
+    open
+}
+
+fn raw_url_end(value: &str, start: usize) -> Option<usize> {
+    if !value[start..].starts_with("https://") && !value[start..].starts_with("http://") {
+        return None;
+    }
+    Some(
+        value[start..]
+            .char_indices()
+            .find_map(|(offset, character)| {
+                (offset > 0 && (character.is_whitespace() || matches!(character, '<' | '>')))
+                    .then_some(start + offset)
+            })
+            .unwrap_or(value.len()),
+    )
+}
+
+fn raw_url_emphasis_boundary(
+    value: &str,
+    start: usize,
+    end: usize,
+    delimiter: u8,
+    allowed_runs: &[usize],
+) -> Option<usize> {
+    let token = &value.as_bytes()[start..end];
+    let mut index = 0;
+    while index < token.len() {
+        if token[index] != delimiter {
+            index += 1;
+            continue;
+        }
+        let run_start = index;
+        while index < token.len() && token[index] == delimiter {
+            index += 1;
+        }
+        let run_len = index - run_start;
+        let previous_can_close = value[..start + run_start]
+            .chars()
+            .next_back()
+            .is_some_and(|character| !character.is_whitespace());
+        let suffix = &value[start + index..end];
+        let has_path_context = raw_url_has_path_context(value, start, start + run_start);
+        let suffix_can_start_boundary = suffix
+            .chars()
+            .next()
+            .is_none_or(|character| !character.is_alphanumeric())
+            || !valid_percent_encoding(suffix)
+            || !has_path_context;
+        if allowed_runs.contains(&run_len)
+            && previous_can_close
+            && suffix_can_start_boundary
+            && !raw_url_suffix_continues_path(
+                value,
+                start,
+                start + run_start,
+                start + index,
+                end,
+                delimiter,
+            )
+            && emphasis_suffix_is_well_formed(value, start + index, end, delimiter, allowed_runs)
+        {
+            return Some(start + run_start);
+        }
+    }
+    None
+}
+
+fn raw_url_suffix_continues_path(
+    value: &str,
+    url_start: usize,
+    delimiter_start: usize,
+    start: usize,
+    end: usize,
+    delimiter: u8,
+) -> bool {
+    let suffix = &value[start..end];
+    if suffix.as_bytes().contains(&delimiter) {
+        return false;
+    }
+    if !valid_percent_encoding(suffix) {
+        return false;
+    }
+    let mut characters = suffix.chars();
+    let Some(first) = characters.next() else {
+        return false;
+    };
+    let has_path_context = raw_url_has_path_context(value, url_start, delimiter_start);
+    if first == '%' {
+        return has_path_context;
+    }
+    let rfc_url_continuation = matches!(
+        first,
+        '/' | '-'
+            | '.'
+            | '_'
+            | '~'
+            | '!'
+            | '$'
+            | '&'
+            | '\''
+            | '('
+            | ')'
+            | '*'
+            | '+'
+            | ','
+            | ';'
+            | '='
+            | '@'
+            | '?'
+            | '#'
+            | ':'
+    );
+    if !rfc_url_continuation {
+        return false;
+    }
+    has_path_context
+}
+
+fn raw_url_has_path_context(value: &str, url_start: usize, delimiter_start: usize) -> bool {
+    value[url_start..delimiter_start]
+        .split_once("://")
+        .is_some_and(|(_, after_scheme)| {
+            after_scheme.contains('/') || after_scheme.contains('?') || after_scheme.contains('#')
+        })
+}
+
+fn valid_percent_encoding(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            index += 1;
+            continue;
+        }
+        if index + 2 >= bytes.len()
+            || !bytes[index + 1].is_ascii_hexdigit()
+            || !bytes[index + 2].is_ascii_hexdigit()
+        {
+            return false;
+        }
+        index += 3;
+    }
+    true
+}
+
+fn emphasis_suffix_is_well_formed(
+    value: &str,
+    start: usize,
+    end: usize,
+    delimiter: u8,
+    allowed_runs: &[usize],
+) -> bool {
+    let bytes = &value.as_bytes()[start..end];
+    let mut index = 0;
+    let mut open = false;
+    let clear_prose_suffix = clear_prose_suffix(value, start, end);
+    while index < bytes.len() {
+        if bytes[index] != delimiter {
+            index += 1;
+            continue;
+        }
+        let run_start = index;
+        while index < bytes.len() && bytes[index] == delimiter {
+            index += 1;
+        }
+        let run_len = index - run_start;
+        if !allowed_runs.contains(&run_len) {
+            if clear_prose_suffix {
+                continue;
+            }
+            return false;
+        }
+        let previous = value[..start + run_start].chars().next_back();
+        let next = value[start + index..end].chars().next();
+        let previous_is_word = previous.is_some_and(char::is_alphanumeric);
+        let has_later_run = bytes[index..].contains(&delimiter);
+        let clear_intraword_asterisk_open = delimiter == b'*'
+            && previous.is_some_and(char::is_alphabetic)
+            && next.is_some_and(char::is_alphanumeric)
+            && has_later_run;
+        let can_open = next.is_some_and(char::is_alphanumeric)
+            && (!previous_is_word || clear_intraword_asterisk_open);
+        let clear_intraword_asterisk_close =
+            delimiter == b'*' && previous_is_word && next.is_some_and(char::is_alphanumeric);
+        let can_close = previous.is_some_and(|character| !character.is_whitespace())
+            && (next.is_none_or(|character| !character.is_alphanumeric())
+                || clear_intraword_asterisk_close);
+        match (open, can_open, can_close) {
+            (false, true, _) => open = true,
+            (true, _, true) => open = false,
+            (false, _, true)
+                if index == bytes.len()
+                    && clear_prose_suffix_before_stray_closer(value, start, run_start) =>
+            {
+                // Preserve a terminal stray closer after an unambiguous prose
+                // boundary. URL-shaped suffixes still reject this candidate.
+            }
+            _ if clear_prose_suffix => {}
+            _ => return false,
+        }
+    }
+    // A final unmatched opener is recoverable: the renderer closes a clear
+    // trailing emphasis span at the end of the line. Invalid transitions
+    // (including a stray closer left inside a raw URL) returned false above.
+    true
+}
+
+fn clear_prose_suffix(value: &str, start: usize, end: usize) -> bool {
+    clear_prose_suffix_before_stray_closer(value, start, end - start)
+}
+
+fn clear_prose_suffix_before_stray_closer(value: &str, start: usize, run_start: usize) -> bool {
+    let Some(first) = value[start..start + run_start].chars().next() else {
+        return false;
+    };
+    !first.is_alphanumeric()
+        && !matches!(
+            first,
+            '/' | '-'
+                | '.'
+                | '_'
+                | '~'
+                | '!'
+                | '$'
+                | '&'
+                | '\''
+                | '('
+                | ')'
+                | '*'
+                | '+'
+                | ','
+                | ';'
+                | '='
+                | '@'
+                | '%'
+                | '?'
+                | '#'
+                | ':'
+        )
 }
 
 fn markdown_link(value: &str, start: usize, image: bool) -> Option<(usize, &str, &str)> {
@@ -156,8 +589,19 @@ fn markdown_link(value: &str, start: usize, image: bool) -> Option<(usize, &str,
     let label_start = open + 1;
     let close = label_start + value[label_start..].find("](")?;
     let url_start = close + 2;
-    let end = url_start + value[url_start..].find(')')?;
-    Some((end + 1, &value[label_start..close], &value[url_start..end]))
+    let mut depth = 0;
+    for (offset, character) in value[url_start..].char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' if depth == 0 => {
+                let end = url_start + offset;
+                return Some((end + 1, &value[label_start..close], &value[url_start..end]));
+            }
+            ')' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn markdown_heading(value: &str) -> Option<&str> {
@@ -183,7 +627,8 @@ fn markdown_bullet(value: &str) -> Option<(&str, &str)> {
 }
 
 fn markdown_table_cells(value: &str) -> Option<Vec<String>> {
-    let body = value.strip_prefix('|')?.strip_suffix('|')?;
+    let body = value.strip_prefix('|').unwrap_or(value);
+    let body = body.strip_suffix('|').unwrap_or(body);
     let mut cells = Vec::new();
     let mut cell = String::new();
     let mut escaped = false;
@@ -246,13 +691,26 @@ fn render_table_row(cells: &[String], header: bool) -> String {
         .map(|cell| {
             let rendered = render_inline_slack_mrkdwn(cell);
             if header && !rendered.is_empty() {
-                format!("*{rendered}*")
+                render_structural_strong(rendered)
             } else {
                 rendered
             }
         })
         .collect::<Vec<_>>();
     format!("• {}", cells.join(" — "))
+}
+
+fn render_structural_strong(rendered: String) -> String {
+    let already_strong = rendered.len() >= 2
+        && rendered.starts_with('*')
+        && rendered.ends_with('*')
+        && !rendered.starts_with("**")
+        && !rendered.ends_with("**");
+    if already_strong {
+        rendered
+    } else {
+        format!("*{rendered}*")
+    }
 }
 
 fn is_markdown_horizontal_rule(value: &str) -> bool {
@@ -275,6 +733,15 @@ mod tests {
             ),
             "*Current state*\n\n*Healthy* — <https://example.com/run|open run>"
         );
+    }
+
+    #[test]
+    fn does_not_double_wrap_strong_headings() {
+        for input in ["## **Current state**", "## __Current state__"] {
+            let rendered = render_slack_mrkdwn(input);
+            assert_eq!(rendered, "*Current state*");
+            assert_eq!(render_slack_mrkdwn(&rendered), rendered);
+        }
     }
 
     #[test]
@@ -305,6 +772,18 @@ mod tests {
             ),
             "• *Check* — *State* — *Owner*\n• Session — *Ready* — @U123\n• Empty —  — retained"
         );
+        assert_eq!(
+            render_slack_mrkdwn("Check | State\n--- | ---\nSource | Healthy"),
+            "• *Check* — *State*\n• Source — Healthy"
+        );
+        let strong_header = render_slack_mrkdwn(
+            "| **Check** | __State__ | Owner |\n| --- | --- | --- |\n| Source | Healthy | Team |",
+        );
+        assert_eq!(
+            strong_header,
+            "• *Check* — *State* — *Owner*\n• Source — Healthy — Team"
+        );
+        assert_eq!(render_slack_mrkdwn(&strong_header), strong_header);
     }
 
     #[test]
@@ -312,5 +791,314 @@ mod tests {
         let rendered = render_slack_mrkdwn("# State\n---\n- **Ready**");
         assert_eq!(rendered, "*State*\n────────────────────────\n• *Ready*");
         assert_eq!(render_slack_mrkdwn(&rendered), rendered);
+    }
+
+    #[test]
+    fn closes_unbalanced_fences_and_strong_emphasis() {
+        assert_eq!(
+            render_slack_mrkdwn("The result is:\n```text\nhealthy"),
+            "The result is:\n```text\nhealthy\n```"
+        );
+        assert_eq!(
+            render_slack_mrkdwn("The source is **healthy."),
+            "The source is *healthy.*"
+        );
+        assert_eq!(
+            render_slack_mrkdwn("The source is __healthy."),
+            "The source is *healthy.*"
+        );
+        assert_eq!(
+            render_slack_mrkdwn("Use `literal text."),
+            "Use literal text."
+        );
+        assert_eq!(
+            render_slack_mrkdwn("The *source is healthy."),
+            "The *source is healthy.*"
+        );
+        assert_eq!(
+            render_slack_mrkdwn("The _source is healthy."),
+            "The _source is healthy._"
+        );
+        assert_eq!(
+            render_slack_mrkdwn("**Source `provider-x` is down**"),
+            "*Source `provider-x` is down*"
+        );
+        assert_eq!(render_slack_mrkdwn("source_runtime"), "source_runtime");
+        assert_eq!(render_slack_mrkdwn("2*3"), "2*3");
+        assert_eq!(render_slack_mrkdwn("source_"), "source_");
+        assert_eq!(render_slack_mrkdwn("source__runtime"), "source__runtime");
+        assert_eq!(render_slack_mrkdwn("2**3"), "2**3");
+        assert_eq!(render_slack_mrkdwn("source**"), "source**");
+        assert_eq!(render_slack_mrkdwn("source__"), "source__");
+        let triple = render_slack_mrkdwn("***source***");
+        assert_eq!(triple, "*source*");
+        assert_eq!(render_slack_mrkdwn(&triple), triple);
+    }
+
+    #[test]
+    fn preserves_balanced_parentheses_in_markdown_link_urls() {
+        assert_eq!(
+            render_slack_mrkdwn("[open run](https://example.com/run_(latest))"),
+            "<https://example.com/run_(latest)|open run>"
+        );
+    }
+
+    #[test]
+    fn preserves_emphasis_delimiters_inside_raw_and_markdown_urls() {
+        assert_eq!(
+            render_slack_mrkdwn("See https://example.com/run__alpha__latest for the receipt."),
+            "See https://example.com/run__alpha__latest for the receipt."
+        );
+        assert_eq!(
+            render_slack_mrkdwn("See https://example.com/run__alpha for the receipt."),
+            "See https://example.com/run__alpha for the receipt."
+        );
+        assert_eq!(
+            render_slack_mrkdwn("See [the latest run](https://example.com/run__alpha__(latest))."),
+            "See <https://example.com/run__alpha__(latest)|the latest run>."
+        );
+        assert_eq!(
+            render_slack_mrkdwn(
+                "The **current** receipt is https://example.com/run__alpha__latest."
+            ),
+            "The *current* receipt is https://example.com/run__alpha__latest."
+        );
+        assert_eq!(
+            render_slack_mrkdwn("**See https://example.com/run__alpha"),
+            "*See https://example.com/run__alpha*"
+        );
+        for input in [
+            "**See https://example.com**",
+            "**See https://example.com** now",
+            "__See https://example.com__",
+            "__See https://example.com__ now",
+            "***See https://example.com***",
+            "***See https://example.com*** now",
+            "**See https://example.com**.",
+            "**See https://example.com**, now",
+            "***See https://example.com***.",
+            "***See https://example.com***), now",
+            "**See https://example.com**\"",
+            "***See https://example.com***’",
+            "***See https://example.com***…",
+            "**See https://example.com/**",
+            "**See https://example.com/value=**",
+            "***See https://example.com/value&***",
+            "**See this.**",
+            "**See https://example.com**—then continue",
+            "**See https://example.com**:details",
+            "***See https://example.com***✅done",
+        ] {
+            let rendered = render_slack_mrkdwn(input);
+            assert_eq!(render_slack_mrkdwn(&rendered), rendered, "{input}");
+            assert_eq!(rendered.matches('*').count(), 2, "{input}");
+        }
+        for (input, expected) in [
+            (
+                "**See https://example.com**—**continue**",
+                "*See https://example.com*—*continue*",
+            ),
+            (
+                "__See https://example.com__—__continue__",
+                "*See https://example.com*—*continue*",
+            ),
+            (
+                "**See https://example.com/a**/b**",
+                "*See https://example.com/a**/b*",
+            ),
+            (
+                "**See https://example.com/a**-b**",
+                "*See https://example.com/a**-b*",
+            ),
+            (
+                "**See https://example.com/a**;b**",
+                "*See https://example.com/a**;b*",
+            ),
+            (
+                "**See https://example.com/a**~b**",
+                "*See https://example.com/a**~b*",
+            ),
+            (
+                "**See https://example.com/a**;**",
+                "*See https://example.com/a**;*",
+            ),
+            (
+                "**See https://example.com/a**;**—**continue**",
+                "*See https://example.com/a**;*—*continue*",
+            ),
+            (
+                "**See https://example.com**;b**continue**",
+                "*See https://example.com*;b*continue*",
+            ),
+            (
+                "**See https://example.com/a**/b**/c**",
+                "*See https://example.com/a**/b**/c*",
+            ),
+            (
+                "**See https://example.com/a**-b**-c**",
+                "*See https://example.com/a**-b**-c*",
+            ),
+            (
+                "**See https://example.com**—**continue",
+                "*See https://example.com*—*continue*",
+            ),
+            (
+                "__See https://example.com__—__continue",
+                "*See https://example.com*—*continue*",
+            ),
+            ("alpha**beta**gamma", "alpha*beta*gamma"),
+            ("alpha**beta2**gamma", "alpha*beta2*gamma"),
+            ("alpha**2beta**gamma", "alpha*2beta*gamma"),
+            ("**alpha**beta", "*alpha*beta"),
+            (
+                "**See https://example.com/a**/b",
+                "*See https://example.com/a**/b*",
+            ),
+            (
+                "__See https://example.com/a__/b",
+                "*See https://example.com/a__/b*",
+            ),
+            (
+                "**See https://example.com/a**-b",
+                "*See https://example.com/a**-b*",
+            ),
+            (
+                "**See https://example.com/a**;b",
+                "*See https://example.com/a**;b*",
+            ),
+            (
+                "**See https://example.com/a**~b",
+                "*See https://example.com/a**~b*",
+            ),
+            (
+                "**See https://example.com/a**.b",
+                "*See https://example.com/a**.b*",
+            ),
+            (
+                "**See https://example.com/a**!b",
+                "*See https://example.com/a**!b*",
+            ),
+            (
+                "**See https://example.com/a**$b",
+                "*See https://example.com/a**$b*",
+            ),
+            (
+                "**See https://example.com/a**'b",
+                "*See https://example.com/a**'b*",
+            ),
+            (
+                "**See https://example.com/a**(b",
+                "*See https://example.com/a**(b*",
+            ),
+            (
+                "**See https://example.com/a**)b",
+                "*See https://example.com/a**)b*",
+            ),
+            (
+                "**See https://example.com/a**,b",
+                "*See https://example.com/a**,b*",
+            ),
+            (
+                "**See https://example.com/a**:b",
+                "*See https://example.com/a**:b*",
+            ),
+            (
+                "**See https://example.com/a**%2Fb",
+                "*See https://example.com/a**%2Fb*",
+            ),
+            (
+                "**See https://example.com/a**_b",
+                "*See https://example.com/a**_b*",
+            ),
+            (
+                "**See https://example.com**%done",
+                "*See https://example.com*%done",
+            ),
+            (
+                "**See https://example.com**.Next",
+                "*See https://example.com*.Next",
+            ),
+            (
+                "**See https://example.com**,Next",
+                "*See https://example.com*,Next",
+            ),
+            (
+                "**See https://example.com**—oops**",
+                "*See https://example.com*—oops**",
+            ),
+            (
+                "**See https://example.com**—oops****",
+                "*See https://example.com*—oops****",
+            ),
+            (
+                "**See https://example.com**—alpha**beta**gamma",
+                "*See https://example.com*—alpha*beta*gamma",
+            ),
+            (
+                "**See https://example.com**—alpha**2beta**gamma",
+                "*See https://example.com*—alpha*2beta*gamma",
+            ),
+            (
+                "__See https://example.com__—alpha__beta__gamma",
+                "*See https://example.com*—alpha__beta__gamma",
+            ),
+            (
+                "**See https://example.com**—alpha*beta*gamma",
+                "*See https://example.com*—alpha*beta*gamma",
+            ),
+            (
+                "**See https://example.com**next",
+                "*See https://example.com*next",
+            ),
+            ("**See https://example.com**?", "*See https://example.com*?"),
+            (
+                "**See https://example.com**#details",
+                "*See https://example.com*#details",
+            ),
+            (
+                "**See https://example.com**/details",
+                "*See https://example.com*/details",
+            ),
+            (
+                "**See https://example.com/a**next",
+                "*See https://example.com/a**next*",
+            ),
+            (
+                "**See https://example.com/a**b%done",
+                "*See https://example.com/a*b%done",
+            ),
+            (
+                "**See https://example.com/a**b%2F%done",
+                "*See https://example.com/a*b%2F%done",
+            ),
+            (
+                "**See https://example.com/a**%2F%done",
+                "*See https://example.com/a*%2F%done",
+            ),
+            (
+                "**See https://example.com/a**/b%done",
+                "*See https://example.com/a*/b%done",
+            ),
+            (
+                "__See https://example.com/a__*b",
+                "*See https://example.com/a__*b*",
+            ),
+            (
+                "**See https://example.com/a**/",
+                "*See https://example.com/a**/*",
+            ),
+            (
+                "**See https://example.com/a**;",
+                "*See https://example.com/a**;*",
+            ),
+            (
+                "**See https://example.com/a**?",
+                "*See https://example.com/a**?*",
+            ),
+        ] {
+            let rendered = render_slack_mrkdwn(input);
+            assert_eq!(rendered, expected, "{input}");
+            assert_eq!(render_slack_mrkdwn(&rendered), rendered, "{input}");
+        }
     }
 }

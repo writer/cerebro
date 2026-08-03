@@ -3,10 +3,10 @@ use std::{
     error::Error,
     net::SocketAddr,
     sync::{
-        Arc,
+        Arc, OnceLock,
         atomic::{AtomicU64, Ordering},
     },
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
@@ -24,9 +24,12 @@ use cerebro_slack_authority::{
     QuestionPolicy, authorize_question, validate_answer,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::{
-    slack_agent::{AgentWakeDeliveryReceipt, AgentWakeTurn, SlackAgentService},
+    slack_agent::{
+        AgentWakeDeliveryReceipt, AgentWakeTurn, SlackAgentModelAttestation, SlackAgentService,
+    },
     slack_agent_session::AgentPendingWakeDelivery,
 };
 
@@ -64,7 +67,9 @@ struct AuthorityRuntime {
     question_rejected_total: AtomicU64,
     question_policy: QuestionPolicy,
     grounded_total: AtomicU64,
+    model_attestation: Option<SlackAgentModelAttestation>,
     rejected_total: AtomicU64,
+    runtime_instance_ref: &'static str,
     safe_refusal_total: AtomicU64,
     started_at: Instant,
 }
@@ -76,14 +81,21 @@ struct AuthorityStatus {
     agent_turn_failures_total: u64,
     agent_turns_total: u64,
     authority: &'static str,
+    build_commit_sha: &'static str,
+    build_tree_clean: bool,
     component: &'static str,
     grounded_total: u64,
+    model_config_sha256: Option<String>,
+    model_id: Option<String>,
+    model_provider: Option<&'static str>,
     question_authorized_total: u64,
     question_rejected_total: u64,
     rejected_total: u64,
     requests_total: u64,
+    runtime_instance_ref: &'static str,
     safe_refusal_total: u64,
     schema_version: &'static str,
+    session_schema_version: &'static str,
     status: &'static str,
     uptime_ms: u64,
     version: &'static str,
@@ -91,6 +103,7 @@ struct AuthorityStatus {
 
 impl AuthorityRuntime {
     fn new(question_policy: QuestionPolicy, agent: Option<SlackAgentService>) -> Self {
+        let model_attestation = agent.as_ref().map(SlackAgentService::model_attestation);
         Self {
             agent,
             agent_tool_calls_total: AtomicU64::new(0),
@@ -99,7 +112,9 @@ impl AuthorityRuntime {
             question_authorized_total: AtomicU64::new(0),
             question_rejected_total: AtomicU64::new(0),
             grounded_total: AtomicU64::new(0),
+            model_attestation,
             rejected_total: AtomicU64::new(0),
+            runtime_instance_ref: runtime_instance_ref(),
             safe_refusal_total: AtomicU64::new(0),
             started_at: Instant::now(),
             question_policy,
@@ -120,8 +135,22 @@ impl AuthorityRuntime {
             agent_turn_failures_total,
             agent_turns_total,
             authority: "rust",
+            build_commit_sha: env!("CEREBRO_GIT_COMMIT_SHA"),
+            build_tree_clean: env!("CEREBRO_GIT_TREE_CLEAN") == "1",
             component: "slack-answer-authority",
             grounded_total,
+            model_config_sha256: self
+                .model_attestation
+                .as_ref()
+                .map(|attestation| attestation.model_config_sha256.clone()),
+            model_id: self
+                .model_attestation
+                .as_ref()
+                .map(|attestation| attestation.model_id.clone()),
+            model_provider: self
+                .model_attestation
+                .as_ref()
+                .map(|attestation| attestation.model_provider),
             question_authorized_total,
             question_rejected_total,
             rejected_total,
@@ -133,7 +162,9 @@ impl AuthorityRuntime {
                 .saturating_add(agent_turns_total)
                 .saturating_add(agent_turn_failures_total),
             safe_refusal_total,
-            schema_version: "slack-answer-authority-status/v1",
+            runtime_instance_ref: self.runtime_instance_ref,
+            schema_version: "slack-answer-authority-status/v2",
+            session_schema_version: cerebro_agent_runtime::session::AGENT_SESSION_V2,
             status: "ready",
             uptime_ms: self
                 .started_at
@@ -144,6 +175,23 @@ impl AuthorityRuntime {
             version: env!("CARGO_PKG_VERSION"),
         }
     }
+}
+
+fn runtime_instance_ref() -> &'static str {
+    static RUNTIME_INSTANCE_REF: OnceLock<String> = OnceLock::new();
+
+    RUNTIME_INSTANCE_REF.get_or_init(|| {
+        let started_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let identity = format!("{}:{started_at}", std::process::id());
+        let digest = Sha256::digest(identity.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        format!("slack-authority-instance://sha256/{digest}")
+    })
 }
 
 pub async fn serve() -> Result<(), Box<dyn Error>> {
@@ -519,6 +567,56 @@ mod tests {
             QuestionPolicy::new("writer-sec-dev".to_owned()).unwrap(),
             None,
         )
+    }
+
+    #[tokio::test]
+    async fn status_route_exposes_stable_runtime_attestation() {
+        let app = test_router();
+        let first = app
+            .clone()
+            .oneshot(Request::get("/v1/status").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let second = app
+            .oneshot(Request::get("/v1/status").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(first.status(), StatusCode::OK);
+        assert_eq!(second.status(), StatusCode::OK);
+        let first: Value = serde_json::from_slice(
+            &to_bytes(first.into_body(), MAX_REQUEST_BYTES)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        let second: Value = serde_json::from_slice(
+            &to_bytes(second.into_body(), MAX_REQUEST_BYTES)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(first["schema_version"], "slack-answer-authority-status/v2");
+        assert_eq!(first["build_commit_sha"], env!("CEREBRO_GIT_COMMIT_SHA"));
+        assert_eq!(
+            first["build_tree_clean"],
+            env!("CEREBRO_GIT_TREE_CLEAN") == "1"
+        );
+        assert_eq!(first["session_schema_version"], "agent-session/v2");
+        assert_eq!(first["model_provider"], Value::Null);
+        assert_eq!(first["model_id"], Value::Null);
+        assert_eq!(first["model_config_sha256"], Value::Null);
+        let instance_ref = first["runtime_instance_ref"].as_str().unwrap();
+        assert!(instance_ref.starts_with("slack-authority-instance://sha256/"));
+        assert_eq!(
+            instance_ref.len(),
+            "slack-authority-instance://sha256/".len() + 64
+        );
+        assert_eq!(
+            first["runtime_instance_ref"],
+            second["runtime_instance_ref"]
+        );
     }
 
     #[tokio::test]

@@ -155,8 +155,14 @@ func sameGraphFixtureNodes(left, right map[string]PolicyGraphFixtureNode) bool {
 func runPolicyGraphFixture(ctx context.Context, store PolicyGraphTestStore, rule PolicyFindingRule, testCase PolicyRuleTestCase) (err error) {
 	fixture := testCase.GraphFixture
 	projectedURNs := make([]string, 0, len(fixture.Nodes))
+	projectedLinks := make([]*ports.ProjectedLink, 0, len(fixture.Edges))
 	defer func() {
 		cleanupCtx := context.WithoutCancel(ctx)
+		for index := len(projectedLinks) - 1; index >= 0; index-- {
+			if cleanupErr := store.DeleteProjectedLink(cleanupCtx, projectedLinks[index]); cleanupErr != nil && err == nil {
+				err = fmt.Errorf("delete fixture link %q -[%s]-> %q: %w", projectedLinks[index].FromURN, projectedLinks[index].Relation, projectedLinks[index].ToURN, cleanupErr)
+			}
+		}
 		for index := len(projectedURNs) - 1; index >= 0; index-- {
 			if cleanupErr := store.DeleteProjectedEntity(cleanupCtx, projectedURNs[index]); cleanupErr != nil && err == nil {
 				err = fmt.Errorf("delete fixture node %q: %w", projectedURNs[index], cleanupErr)
@@ -173,12 +179,14 @@ func runPolicyGraphFixture(ctx context.Context, store PolicyGraphTestStore, rule
 		projectedURNs = append(projectedURNs, node.URN)
 	}
 	for _, edge := range fixture.Edges {
-		if err := store.UpsertProjectedLink(ctx, &ports.ProjectedLink{
+		link := &ports.ProjectedLink{
 			TenantID: fixture.TenantID, SourceID: edge.SourceID, RuntimeID: edge.RuntimeID,
 			FromURN: edge.FromURN, ToURN: edge.ToURN, Relation: edge.Relation, Attributes: edge.Attributes,
-		}); err != nil {
+		}
+		if err := store.UpsertProjectedLink(ctx, link); err != nil {
 			return fmt.Errorf("project edge %q -[%s]-> %q: %w", edge.FromURN, edge.Relation, edge.ToURN, err)
 		}
+		projectedLinks = append(projectedLinks, link)
 	}
 	params := make(map[string]any, len(rule.Spec.Graph.Params)+2)
 	for key, value := range rule.Spec.Graph.Params {

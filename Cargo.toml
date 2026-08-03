@@ -17,6 +17,7 @@ members = [
     "crates/slack-authority",
     "crates/source-catalog",
     "crates/security-path-kernel",
+    "crates/slack-agent-eval-wire",
     "crates/source-runtime-next",
     "internal/graphagent/staticvalidator",
     "internal/mitre/evaluator",
@@ -27,6 +28,7 @@ members = [
     "internal/wasmguest",
     "tools/graphactiongen",
     "tools/policycataloggen",
+    "tools/slack-agent-blackbox",
 ]
 resolver = "2"
 
@@ -50,6 +52,7 @@ aws-smithy-runtime-api = { version = "=1.12.3", features = ["client"] }
 aws-smithy-runtime-api-macros = "=1.0.0"
 aws-smithy-types = "=1.5.0"
 base64 = "0.22.1"
+ed25519-dalek = "2.2.0"
 buffa = { version = "=0.9.1", features = ["json"] }
 buffa-types = { version = "=0.9.1", features = ["json"] }
 cerebro-agent-context = { version = "0.1.0", path = "crates/agent-context" }
@@ -66,6 +69,7 @@ cerebro-platform-sdk = { version = "0.1.0", path = "crates/platform-sdk" }
 cerebro-policy-catalog = { version = "0.1.0", path = "crates/policy-catalog" }
 cerebro-security-lifecycle = { version = "0.1.0", path = "crates/security-lifecycle" }
 cerebro-slack-authority = { version = "0.1.0", path = "crates/slack-authority" }
+cerebro-slack-agent-eval-wire = { version = "0.1.0", path = "crates/slack-agent-eval-wire" }
 cerebro-source-catalog = { version = "0.1.0", path = "crates/source-catalog" }
 cerebro-source-runtime-next = { version = "0.1.0", path = "crates/source-runtime-next" }
 cerebro-wasm-guest = { version = "0.1.0", path = "internal/wasmguest" }

@@ -10,12 +10,13 @@ import (
 )
 
 type recordingPolicyGraphStore struct {
-	entities    []*ports.ProjectedEntity
-	links       []*ports.ProjectedLink
-	deleted     []string
-	request     ports.CypherQueryRequest
-	rows        []ports.CypherRow
-	entityErrAt int
+	entities     []*ports.ProjectedEntity
+	links        []*ports.ProjectedLink
+	deletedLinks []*ports.ProjectedLink
+	deleted      []string
+	request      ports.CypherQueryRequest
+	rows         []ports.CypherRow
+	entityErrAt  int
 }
 
 var errFixtureProjection = errors.New("fixture projection failed")
@@ -49,6 +50,10 @@ func TestRunPolicyGraphFixtureCleansUpPartialProjection(t *testing.T) {
 }
 func (s *recordingPolicyGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
 	s.links = append(s.links, link)
+	return nil
+}
+func (s *recordingPolicyGraphStore) DeleteProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	s.deletedLinks = append(s.deletedLinks, link)
 	return nil
 }
 func (s *recordingPolicyGraphStore) DeleteProjectedEntity(_ context.Context, urn string) error {
@@ -119,8 +124,8 @@ func TestRunPolicyGraphFixtureProjectsTopologyAndExecutesPolicyCypher(t *testing
 	if err := runPolicyGraphFixture(context.Background(), store, rule, PolicyRuleTestCase{Name: "complete path", GraphFixture: fixture, WantEvidenceURNs: []string{"b", "c"}, WantFinding: true}); err != nil {
 		t.Fatalf("runPolicyGraphFixture() error = %v", err)
 	}
-	if len(store.entities) != 3 || len(store.links) != 2 || len(store.deleted) != 3 {
-		t.Fatalf("projection counts = nodes %d links %d deleted %d", len(store.entities), len(store.links), len(store.deleted))
+	if len(store.entities) != 3 || len(store.links) != 2 || len(store.deletedLinks) != 2 || len(store.deleted) != 3 {
+		t.Fatalf("projection counts = nodes %d links %d deleted links %d deleted nodes %d", len(store.entities), len(store.links), len(store.deletedLinks), len(store.deleted))
 	}
 	if !strings.Contains(store.request.Query, "(a)-[:RELATION]->(b)-[:RELATION]->(c)") {
 		t.Fatalf("executed query = %q, want policy Cypher", store.request.Query)

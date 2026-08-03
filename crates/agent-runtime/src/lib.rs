@@ -25,7 +25,7 @@ pub const AGENT_TURN_REQUEST_V1: &str = "agent-turn-request/v1";
 pub const AGENT_TURN_RESULT_V1: &str = "agent-turn-result/v1";
 pub const AGENT_DELIVERY_RECEIPT_V1: &str = "agent-delivery-receipt/v1";
 pub const MAX_HISTORY_ITEMS: usize = 200;
-pub const MAX_HISTORY_ITEM_BYTES: usize = 1024 * 1024;
+pub const MAX_HISTORY_ITEM_BYTES: usize = 16 * 1024;
 pub const MAX_HISTORY_TOTAL_BYTES: usize = 1024 * 1024;
 pub const MAX_MODEL_STEPS: usize = 24;
 pub const MAX_ROUTER_ATTEMPTS: usize = 4;
@@ -67,6 +67,16 @@ pub enum RouteConfidence {
     Low,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FutureObservationDisposition {
+    Delegated,
+    Refused,
+    #[default]
+    None,
+    Inherited,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RouteDecision {
@@ -74,6 +84,15 @@ pub struct RouteDecision {
     pub confidence: RouteConfidence,
     pub reason: String,
     pub requires_current_evidence: bool,
+    pub future_observation: FutureObservationDisposition,
+    pub future_observation_excerpt: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedRequestRoute {
+    pub lane: ExecutionLane,
+    pub future_observation: FutureObservationDisposition,
+    pub future_observation_excerpt: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -117,6 +136,17 @@ impl ExecutionLane {
 pub struct ConversationMessage {
     pub role: ConversationRole,
     pub content: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationMessageMetadata {
+    #[serde(default)]
+    pub actor_ref: Option<String>,
+    #[serde(default)]
+    pub message_ref: Option<String>,
+    #[serde(default)]
+    pub received_at: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -164,6 +194,8 @@ pub struct AgentTurnRequest {
     pub assessment_at: String,
     pub message: String,
     pub history: Vec<ConversationMessage>,
+    #[serde(default)]
+    pub history_metadata: Vec<ConversationMessageMetadata>,
     pub working_state: Option<WorkingState>,
     pub effect_authorizations: Vec<EffectAuthorization>,
 }
@@ -335,6 +367,7 @@ pub enum CritiqueGroundingBasis {
     DirectObservation,
     BoundedInference,
     OperatorSupplied,
+    ConversationalSynthesis,
     RetainedContext,
     ToolOutcome,
     Hypothesis,
@@ -654,8 +687,8 @@ pub async fn run_turn(
     tools: &dyn AgentTools,
     request: AgentTurnRequest,
 ) -> Result<AgentTurnOutcome, AgentRuntimeError> {
-    validate_request(&request)?;
-    let routed_lane = route_with_repair(model, request.clone()).await?;
+    validate_agent_turn_request(&request)?;
+    let routed_lane = route_request(model, request.clone()).await?;
     let resumed_mission = routed_lane == ExecutionLane::Continue;
     let lane = if resumed_mission {
         let state = request.working_state.as_ref().ok_or_else(|| {
@@ -677,7 +710,7 @@ pub async fn run_turn(
             let mut resumed = request.clone();
             resumed.message.clone_from(&state.current_request);
             resumed.working_state = None;
-            match route_with_repair(model, resumed).await? {
+            match route_request(model, resumed).await? {
                 ExecutionLane::Ignore | ExecutionLane::Converse | ExecutionLane::Continue => {
                     ExecutionLane::Investigate
                 }
@@ -1127,10 +1160,21 @@ async fn critique_with_repair(
     Err(AgentRuntimeError::CriticRepairLimit)
 }
 
-async fn route_with_repair(
+async fn route_request_decision(
     model: &dyn AgentModel,
     request: AgentTurnRequest,
-) -> Result<ExecutionLane, AgentRuntimeError> {
+) -> Result<RouteDecision, AgentRuntimeError> {
+    if request_reasons_from_supplied_operational_premises(&request.message) {
+        return Ok(RouteDecision {
+            lane: ExecutionLane::Converse,
+            confidence: RouteConfidence::High,
+            reason: "The operator asked for reasoning from attributed thread premises, not a current-system observation."
+                .into(),
+            requires_current_evidence: false,
+            future_observation: FutureObservationDisposition::None,
+            future_observation_excerpt: None,
+        });
+    }
     let mut repair_feedback = Vec::new();
     for _ in 0..MAX_ROUTER_ATTEMPTS {
         let decision = match model
@@ -1148,13 +1192,74 @@ async fn route_with_repair(
             Err(error) => return Err(error),
         };
         match validate_route(&request, &decision) {
-            Ok(()) => return Ok(decision.lane),
+            Ok(()) => return Ok(decision),
             Err(error) => repair_feedback = vec![error.to_string()],
         }
     }
     Err(AgentRuntimeError::InvalidRoute(
         "router repair attempts were exhausted".into(),
     ))
+}
+
+pub async fn route_request(
+    model: &dyn AgentModel,
+    request: AgentTurnRequest,
+) -> Result<ExecutionLane, AgentRuntimeError> {
+    Ok(route_request_decision(model, request).await?.lane)
+}
+
+pub async fn resolve_request_route(
+    model: &dyn AgentModel,
+    request: AgentTurnRequest,
+) -> Result<ResolvedRequestRoute, AgentRuntimeError> {
+    validate_agent_turn_request(&request)?;
+    let routed = route_request_decision(model, request.clone()).await?;
+    if routed.lane != ExecutionLane::Continue {
+        return Ok(ResolvedRequestRoute {
+            lane: routed.lane,
+            future_observation: routed.future_observation,
+            future_observation_excerpt: routed.future_observation_excerpt,
+        });
+    }
+    let state = request.working_state.as_ref().ok_or_else(|| {
+        AgentRuntimeError::InvalidRequest("continuation requires working state".into())
+    })?;
+    if state.mission_ref.is_none() {
+        return Err(AgentRuntimeError::InvalidRequest(
+            "continuation requires a durable mission".into(),
+        ));
+    }
+    let lane = if let Some(active_lane) = state.active_lane {
+        if matches!(active_lane, ExecutionLane::Ignore | ExecutionLane::Continue) {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "durable mission contains an invalid active lane".into(),
+            ));
+        }
+        active_lane
+    } else {
+        let current_request = state.current_request.clone();
+        let mut resumed = request;
+        resumed.message = current_request;
+        resumed.working_state = None;
+        match route_request_decision(model, resumed).await?.lane {
+            ExecutionLane::Ignore | ExecutionLane::Converse | ExecutionLane::Continue => {
+                ExecutionLane::Investigate
+            }
+            lane => lane,
+        }
+    };
+    Ok(ResolvedRequestRoute {
+        lane,
+        future_observation: FutureObservationDisposition::Inherited,
+        future_observation_excerpt: None,
+    })
+}
+
+pub async fn resolve_request_lane(
+    model: &dyn AgentModel,
+    request: AgentTurnRequest,
+) -> Result<ExecutionLane, AgentRuntimeError> {
+    Ok(resolve_request_route(model, request).await?.lane)
 }
 
 fn validate_route(
@@ -1171,13 +1276,65 @@ fn validate_route(
             "low-confidence routing cannot authorize a lane".into(),
         ));
     }
+    match (
+        decision.future_observation,
+        decision.future_observation_excerpt.as_deref(),
+    ) {
+        (
+            FutureObservationDisposition::Delegated | FutureObservationDisposition::Refused,
+            Some(excerpt),
+        ) if bounded_text(excerpt) && request.message.contains(excerpt) => {}
+        (FutureObservationDisposition::None, None) => {}
+        (FutureObservationDisposition::Inherited, _) => {
+            return Err(AgentRuntimeError::InvalidRoute(
+                "inherited future-observation intent is reserved for the runtime".into(),
+            ));
+        }
+        _ => {
+            return Err(AgentRuntimeError::InvalidRoute(
+                "future-observation intent requires an exact bounded excerpt from the newest request, or null when no delegation was made".into(),
+            ));
+        }
+    }
+    if decision.lane == ExecutionLane::Continue
+        && decision.future_observation != FutureObservationDisposition::None
+    {
+        return Err(AgentRuntimeError::InvalidRoute(
+            "continuation inherits its durable mission and cannot create a new future-observation delegation"
+                .into(),
+        ));
+    }
+    if decision.future_observation == FutureObservationDisposition::Delegated
+        && (!decision.requires_current_evidence || decision.lane == ExecutionLane::Converse)
+    {
+        return Err(AgentRuntimeError::InvalidRoute(
+            "delegated future observation requires a current-evidence operating lane".into(),
+        ));
+    }
+    if request_explicitly_requires_investigation(&request.message)
+        && matches!(
+            decision.lane,
+            ExecutionLane::Converse | ExecutionLane::Lookup
+        )
+    {
+        return Err(AgentRuntimeError::InvalidRoute(
+            "the newest request requires current multi-claim synthesis and cannot use a conversation or single-record lookup lane"
+                .into(),
+        ));
+    }
     match decision.lane {
         ExecutionLane::Ignore => Err(AgentRuntimeError::InvalidRoute(
             "transport events are ignored before semantic routing".into(),
         )),
-        ExecutionLane::Converse if decision.requires_current_evidence => Err(
-            AgentRuntimeError::InvalidRoute("conversation cannot require current evidence".into()),
-        ),
+        ExecutionLane::Converse
+            if decision.requires_current_evidence
+                || request_explicitly_requires_current_evidence(&request.message) =>
+        {
+            Err(AgentRuntimeError::InvalidRoute(
+                "the newest request explicitly requires current evidence and cannot use conversation"
+                    .into(),
+            ))
+        }
         ExecutionLane::Converse => Ok(()),
         ExecutionLane::Continue
             if request
@@ -1227,6 +1384,587 @@ fn validate_route(
     }
 }
 
+fn request_explicitly_requires_current_evidence(message: &str) -> bool {
+    !request_reasons_from_supplied_operational_premises(message)
+        && clause_explicitly_requires_current_evidence(message)
+}
+
+pub(crate) fn request_is_artifact_transformation(message: &str) -> bool {
+    let normalized = normalized_phrase_text(message);
+    let transformation = [
+        " rewrite ",
+        " draft ",
+        " summarize ",
+        " tighten ",
+        " make that ",
+        " turn this into ",
+        " less technical ",
+        " more concise ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let requests_live_check = [
+        " check ",
+        " inspect ",
+        " verify ",
+        " reconcile ",
+        " look up ",
+        " search ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    transformation && !requests_live_check
+}
+
+pub(crate) fn request_reasons_from_supplied_operational_premises(message: &str) -> bool {
+    let normalized = normalized_phrase_text(message);
+    let supplies_a_premise = [
+        " we just ",
+        " we already ",
+        " we have ",
+        " we haven t ",
+        " we have not ",
+        " you just ",
+        " you said ",
+        " that s not ",
+        " that is not ",
+        " correction ",
+        " actually went ",
+        " actually used ",
+        " went through the old ",
+        " was the old ",
+        " that was ",
+        " if the successful ",
+        " the dashboard ",
+        " the successful ",
+        " given that correction ",
+        " what does that change ",
+        " what does this change ",
+        " what follows from that ",
+        " based on what we know ",
+        " based on what we already know ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let asks_for_reasoning = [
+        " talk to me ",
+        " reason with me ",
+        " what are you confident ",
+        " what are you actually confident ",
+        " what is still unverified ",
+        " what s still unverified ",
+        " what should we do next ",
+        " what would you do next ",
+        " update your view ",
+        " update your conclusion ",
+        " does that change ",
+        " how does that change ",
+        " what does that do ",
+        " what does this do ",
+        " change your picture ",
+        " what does that change ",
+        " what follows from that ",
+        " add one implication ",
+        " add one insight ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let asks_for_live_read = [
+        " can you check ",
+        " can you inspect ",
+        " can you verify ",
+        " check the current ",
+        " inspect the current ",
+        " look up ",
+        " pull the current ",
+        " search for ",
+        " verify whether ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let delegates_future_observation = [
+        " check again ",
+        " follow up later ",
+        " keep checking ",
+        " monitor ",
+        " recheck later ",
+        " re-observe later ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    supplies_a_premise && asks_for_reasoning && !asks_for_live_read && !delegates_future_observation
+}
+
+fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
+    let normalized = normalized_phrase_text(clause);
+    let words = normalized.split_whitespace().collect::<Vec<_>>();
+    let named_operational_subject = words.iter().enumerate().any(|(index, word)| {
+        if !matches!(
+            *word,
+            "source"
+                | "sources"
+                | "connector"
+                | "connectors"
+                | "provider"
+                | "providers"
+                | "runtime"
+                | "runtimes"
+        ) {
+            return false;
+        }
+        let next = words.get(index + 1).copied();
+        !matches!(
+            next,
+            None | Some(
+                "neutral" | "architecture" | "design" | "model" | "pattern" | "concept" | "theory"
+            )
+        )
+    });
+    let explicit_named_operational_read = named_operational_subject
+        && [
+            "inspect",
+            "inspected",
+            "read",
+            "reads",
+            "search",
+            "searched",
+            "reconcile",
+            "reconciled",
+            "reconciling",
+            "recheck",
+            "rechecked",
+            "verify",
+            "verification",
+            "working",
+            "missing",
+            "enabled",
+            "healthy",
+            "connected",
+            "available",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} ")));
+    let explicit_named_current_state = named_operational_subject
+        && [
+            "current",
+            "currently",
+            "right now",
+            "today",
+            "actually have",
+            "actually available",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} ")))
+        && [
+            "status",
+            "statuses",
+            "state",
+            "states",
+            "evidence",
+            "receipt",
+            "receipts",
+            "access",
+            "visibility",
+            "field",
+            "fields",
+            "source",
+            "sources",
+            "connector",
+            "connectors",
+            "provider",
+            "providers",
+            "runtime",
+            "runtimes",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} ")));
+    let conceptual_explanation = normalized.contains(" state of the art ")
+        || (normalized.contains(" provider neutral ")
+            && ["architecture", "design", "model", "pattern", "concept"]
+                .iter()
+                .any(|marker| normalized.contains(&format!(" {marker} "))))
+        || normalized.contains(" what does current evidence state mean ")
+        || normalized.contains(" what does evidence state mean ");
+    let explicit_time_boundary = [
+        "current",
+        "currently",
+        "right now",
+        "today",
+        "actually have",
+        "actually available",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(&format!(" {marker} ")));
+    let named_operational_state = [
+        "status",
+        "statuses",
+        "state",
+        "states",
+        "evidence",
+        "receipt",
+        "receipts",
+        "access",
+        "visibility",
+        "field",
+        "fields",
+        "source",
+        "sources",
+        "connector",
+        "connectors",
+        "provider",
+        "providers",
+        "runtime",
+        "runtimes",
+        "tool",
+        "tools",
+        "capability",
+        "capabilities",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(&format!(" {marker} ")));
+    let explicit_reconciliation = [
+        "reconcile",
+        "reconciled",
+        "reconciling",
+        "correct",
+        "corrected",
+        "correction",
+        "re read",
+        "reread",
+        "recheck",
+        "rechecked",
+        "verify",
+        "verification",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(&format!(" {marker} ")))
+        && [
+            "field",
+            "fields",
+            "receipt",
+            "receipts",
+            "source",
+            "sources",
+            "connector",
+            "connectors",
+            "provider",
+            "providers",
+            "runtime",
+            "runtimes",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} ")));
+    let named_access_boundary = (normalized.contains(" visibility ")
+        || normalized.contains(" access "))
+        && [
+            "source",
+            "sources",
+            "connector",
+            "connectors",
+            "provider",
+            "providers",
+            "runtime",
+            "runtimes",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} ")));
+    let present_operational_question = ((["what", "which", "whether", "can you", "do we have"]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} "))))
+        && [
+            "evidence",
+            "collection",
+            "collections",
+            "receipt",
+            "receipts",
+            "access",
+            "visibility",
+            "runtime",
+            "runtimes",
+            "connector",
+            "connectors",
+            "source",
+            "sources",
+            "tool",
+            "tools",
+            "capability",
+            "capabilities",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} ")))
+        && [
+            "inspect",
+            "inspected",
+            "read",
+            "reads",
+            "search",
+            "searched",
+            "working",
+            "missing",
+            "enabled",
+            "healthy",
+            "connected",
+            "available",
+            "have access",
+            "can access",
+        ]
+        .iter()
+        .any(|marker| normalized.contains(&format!(" {marker} "))))
+        || (normalized.contains(" collection ")
+            && (normalized.contains(" is working ")
+                || normalized.contains(" whether collection ")));
+    let conceptual_naming = [
+        " codename ",
+        " as a name ",
+        " name choice ",
+        " as a title ",
+        " in this story ",
+        " in the story ",
+        " in this novel ",
+        " in the novel ",
+        " in this movie ",
+        " in the movie ",
+        " in this analogy ",
+        " in the analogy ",
+        " as an analogy ",
+        " in this metaphor ",
+        " in the metaphor ",
+        " as a metaphor ",
+        " as an example ",
+        " in this thought experiment ",
+        " thought experiment ",
+        " in this scenario ",
+        " scenario ",
+        " in this simulation ",
+        " simulation ",
+        " sorting algorithm ",
+        " hypothetical ",
+        " fictional ",
+        " imagine ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let generic_concept_subject = words.iter().any(|word| {
+        matches!(
+            *word,
+            "algorithm" | "argument" | "concept" | "example" | "idea" | "theory"
+        )
+    });
+    let ambiguous_demonstrative_concept = words
+        .first()
+        .is_some_and(|word| matches!(*word, "does" | "is"))
+        && words.get(1).is_some_and(|word| *word == "this")
+        && !["now", "today", "currently", "recently", "latest"]
+            .iter()
+            .any(|time| words.contains(time));
+    let generic_state_request = clause.trim_end().ends_with('?')
+        || words.first().is_some_and(|word| {
+            matches!(
+                *word,
+                "are"
+                    | "check"
+                    | "did"
+                    | "does"
+                    | "explain"
+                    | "find"
+                    | "give"
+                    | "has"
+                    | "have"
+                    | "is"
+                    | "tell"
+                    | "what"
+                    | "when"
+                    | "where"
+                    | "which"
+                    | "who"
+                    | "how"
+                    | "why"
+            )
+        });
+    let generic_live_predicate = !conceptual_naming
+        && !generic_concept_subject
+        && !ambiguous_demonstrative_concept
+        && generic_state_request
+        && words.iter().enumerate().any(|(predicate_index, word)| {
+            if !matches!(
+                *word,
+                "broken"
+                    | "crash"
+                    | "crashed"
+                    | "break"
+                    | "broke"
+                    | "degraded"
+                    | "down"
+                    | "fixed"
+                    | "flaky"
+                    | "green"
+                    | "healthy"
+                    | "offline"
+                    | "online"
+                    | "operational"
+                    | "ready"
+                    | "reachable"
+                    | "resolved"
+                    | "responsive"
+                    | "restarted"
+                    | "restored"
+                    | "running"
+                    | "stable"
+                    | "stale"
+                    | "stalled"
+                    | "synchronized"
+                    | "up"
+                    | "unavailable"
+                    | "working"
+                    | "work"
+                    | "works"
+                    | "available"
+                    | "landed"
+                    | "passed"
+                    | "failed"
+                    | "completed"
+                    | "shipped"
+            ) {
+                return false;
+            }
+            let has_subject_bound_verb =
+                words[..predicate_index]
+                    .iter()
+                    .enumerate()
+                    .any(|(verb_index, verb)| {
+                        if !matches!(*verb, "is" | "are" | "has" | "have" | "did" | "does") {
+                            return false;
+                        }
+                        let verb_has_subject_before = verb_index > 0
+                            && !matches!(
+                                words[verb_index - 1],
+                                "why" | "what" | "when" | "where" | "how" | "which"
+                            );
+                        let verb_has_subject_after = predicate_index > verb_index + 1;
+                        verb_has_subject_before || verb_has_subject_after
+                    });
+            let has_time_boundary = [
+                "now",
+                "today",
+                "yesterday",
+                "currently",
+                "recently",
+                "already",
+                "latest",
+            ]
+            .iter()
+            .any(|time| words.contains(time));
+            let question_explains_generic_subject = words[..predicate_index]
+                .iter()
+                .position(|word| matches!(*word, "how" | "when" | "why"))
+                .is_some_and(|question_index| {
+                    !has_time_boundary
+                        && (predicate_index + 1 < words.len()
+                            || words[question_index + 1..predicate_index]
+                                .iter()
+                                .any(|word| matches!(*word, "a" | "an")))
+                });
+            (has_subject_bound_verb && !question_explains_generic_subject) || has_time_boundary
+        });
+    let named_current_follow_up = !conceptual_naming
+        && !generic_concept_subject
+        && generic_state_request
+        && ((normalized.starts_with(" what about ") || normalized.starts_with(" how about "))
+            && ["now", "today", "currently", "recently", "already", "latest"]
+                .iter()
+                .any(|time| words.contains(time))
+            && words
+                .iter()
+                .position(|word| *word == "about")
+                .is_some_and(|about_index| {
+                    words[about_index + 1..].iter().any(|word| {
+                        !matches!(
+                            *word,
+                            "already" | "currently" | "latest" | "now" | "recently" | "today"
+                        )
+                    })
+                })
+            || normalized.starts_with(" any update on ")
+            || (normalized.starts_with(" how s ")
+                && ["now", "today", "currently", "recently"]
+                    .iter()
+                    .any(|time| words.contains(time))
+                && words.get(2).is_some_and(|subject| {
+                    !matches!(
+                        *subject,
+                        "everything" | "it" | "life" | "that" | "things" | "this"
+                    )
+                })));
+    let generic_live_ownership = !conceptual_naming
+        && (normalized.contains(" who handles ")
+            || normalized.contains(" who owns ")
+            || normalized.contains(" owns remediation ")
+            || normalized.contains(" handles remediation ")
+            || normalized.contains(" is owned by "));
+    let generic_live_capability = !conceptual_naming
+        && (normalized.contains(" are we able to ")
+            || normalized.contains(" can we ship ")
+            || normalized.contains(" can you execute "));
+    let generic_live_timeout = words
+        .first()
+        .is_some_and(|word| matches!(*word, "did" | "does" | "has" | "have" | "is" | "was"))
+        && (normalized.contains(" time out ") || normalized.contains(" timed out "));
+    let generic_live_read = [
+        " after you check ",
+        " and check ",
+        " then check ",
+        " can you check ",
+        " please check ",
+        " can you inspect ",
+        " please inspect ",
+        " look up ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let requires_current = (explicit_time_boundary && named_operational_state)
+        || explicit_reconciliation
+        || named_access_boundary
+        || present_operational_question
+        || generic_live_predicate
+        || named_current_follow_up
+        || generic_live_ownership
+        || generic_live_capability
+        || generic_live_timeout
+        || generic_live_read;
+    if request_is_artifact_transformation(clause) {
+        return false;
+    }
+    if conceptual_explanation
+        && !explicit_named_operational_read
+        && !explicit_named_current_state
+        && !generic_live_predicate
+        && !generic_live_ownership
+        && !generic_live_capability
+        && !generic_live_read
+    {
+        return false;
+    }
+    requires_current
+}
+
+fn normalized_phrase_text(value: &str) -> String {
+    let words = value
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    format!(" {} ", words.join(" "))
+}
+
+fn request_explicitly_requires_investigation(message: &str) -> bool {
+    let normalized = message.to_ascii_lowercase();
+    let asks_reconciliation = normalized.contains("reconcile");
+    let asks_ownership = normalized.contains("owner") || normalized.contains("who owns");
+    let asks_trigger = normalized.contains("trigger") || normalized.contains("next check");
+    let asks_closure = normalized.contains("closure") || normalized.contains("closes it");
+    asks_reconciliation && asks_ownership && asks_trigger && asks_closure
+}
+
 fn validate_critique_issues(issues: &[String]) -> Result<(), AgentRuntimeError> {
     if issues.is_empty() || issues.len() > 16 || issues.iter().any(|issue| !bounded_text(issue)) {
         return Err(AgentRuntimeError::InvalidFinal(
@@ -1259,6 +1997,11 @@ fn validate_presentation(presentation: &PresentationDecision) -> Result<String, 
             "Slack presentation exceeds the visible reply limit".into(),
         ));
     }
+    if !presentation_markup_is_balanced(&summary) {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "Slack presentation contains an unclosed code fence or emphasis span".into(),
+        ));
+    }
     if looks_like_report_copy(&summary) || looks_like_user_handback(&summary) {
         return Err(AgentRuntimeError::InvalidFinal(
             "Slack presentation reads like an internal report or hands assistant-owned work back to the user"
@@ -1266,6 +2009,207 @@ fn validate_presentation(presentation: &PresentationDecision) -> Result<String, 
         ));
     }
     Ok(summary)
+}
+
+fn presentation_markup_is_balanced(value: &str) -> bool {
+    let mut in_fence = false;
+    for line in value.lines() {
+        if line.trim().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        let mut cursor = 0;
+        let mut strong_asterisks = 0;
+        let mut strong_underscores = 0;
+        let mut single_asterisk_open = false;
+        let mut single_underscore_open = false;
+        let mut single_tilde_open = false;
+        let mut square_bracket_depth = 0usize;
+        while cursor < line.len() {
+            let remaining = &line[cursor..];
+            let image = remaining.starts_with("![");
+            if (image || remaining.starts_with('['))
+                && presentation_markdown_link_end(line, cursor, image).is_some()
+            {
+                return false;
+            }
+            if (image || remaining.starts_with('[')) && remaining.contains("](") {
+                return false;
+            }
+            if remaining.starts_with('[') {
+                square_bracket_depth += 1;
+                cursor += 1;
+                continue;
+            }
+            if remaining.starts_with(']') {
+                if square_bracket_depth == 0 {
+                    return false;
+                }
+                square_bracket_depth -= 1;
+                cursor += 1;
+                continue;
+            }
+            if let Some(end) = presentation_raw_url_end(line, cursor) {
+                cursor = end;
+                continue;
+            }
+            if remaining.starts_with('<')
+                && remaining[1..]
+                    .chars()
+                    .next()
+                    .is_some_and(|next| matches!(next, '@' | '#' | '!' | 'h' | 'm'))
+            {
+                let Some(close_offset) = remaining.find('>') else {
+                    return false;
+                };
+                cursor += close_offset + 1;
+                continue;
+            }
+            if remaining.starts_with('`') {
+                let delimiter_len = remaining.bytes().take_while(|byte| *byte == b'`').count();
+                let delimiter = &remaining[..delimiter_len];
+                let content_start = cursor + delimiter_len;
+                let Some(close_offset) = line[content_start..].find(delimiter) else {
+                    return false;
+                };
+                cursor = content_start + close_offset + delimiter_len;
+                continue;
+            }
+            if remaining.starts_with("**") {
+                if remaining.starts_with("**/") {
+                    cursor += 2;
+                    continue;
+                }
+                strong_asterisks += 1;
+                cursor += 2;
+                continue;
+            }
+            if let Some(stripped) = remaining.strip_prefix("__") {
+                let previous_is_word = line[..cursor]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_alphanumeric);
+                let next_is_word = stripped.chars().next().is_some_and(char::is_alphanumeric);
+                if previous_is_word && next_is_word {
+                    cursor += 2;
+                    continue;
+                }
+                strong_underscores += 1;
+                cursor += 2;
+                continue;
+            }
+            if remaining.starts_with("~~") {
+                return false;
+            }
+            if remaining.starts_with('~') {
+                single_tilde_open = !single_tilde_open;
+                cursor += 1;
+                continue;
+            }
+            if remaining.starts_with('*') || remaining.starts_with('_') {
+                let delimiter = remaining
+                    .chars()
+                    .next()
+                    .expect("markup cursor remains on a character boundary");
+                let open = if delimiter == '*' {
+                    &mut single_asterisk_open
+                } else {
+                    &mut single_underscore_open
+                };
+                let previous = line[..cursor].chars().next_back();
+                let previous_is_word = previous.is_some_and(char::is_alphanumeric);
+                let previous_can_close = previous.is_some_and(|value| !value.is_whitespace());
+                let next_is_word = remaining[delimiter.len_utf8()..]
+                    .chars()
+                    .next()
+                    .is_some_and(char::is_alphanumeric);
+                let clear_intraword_asterisk_close =
+                    delimiter == '*' && previous_is_word && next_is_word;
+                let previous_nonspace = line[..cursor]
+                    .chars()
+                    .rev()
+                    .find(|value| !value.is_whitespace());
+                let next_nonspace = remaining[delimiter.len_utf8()..]
+                    .chars()
+                    .find(|value| !value.is_whitespace());
+                let numeric_infix = delimiter == '*'
+                    && previous_nonspace.is_some_and(|value| value.is_ascii_digit())
+                    && next_nonspace.is_some_and(|value| value.is_ascii_digit());
+                let underscore_infix = delimiter == '_' && previous_is_word && next_is_word;
+                let glob_prefix = delimiter == '*'
+                    && remaining[delimiter.len_utf8()..].starts_with('.')
+                    && remaining[delimiter.len_utf8() + 1..]
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_alphanumeric);
+                if glob_prefix {
+                    cursor += delimiter.len_utf8();
+                    continue;
+                } else if !*open && !previous_is_word && next_is_word {
+                    *open = true;
+                } else if *open
+                    && previous_can_close
+                    && (!next_is_word || clear_intraword_asterisk_close)
+                {
+                    *open = false;
+                } else if !*open && !numeric_infix && !underscore_infix {
+                    return false;
+                }
+                cursor += delimiter.len_utf8();
+                continue;
+            }
+            cursor += remaining
+                .chars()
+                .next()
+                .expect("markup cursor remains on a character boundary")
+                .len_utf8();
+        }
+        if strong_asterisks % 2 != 0
+            || strong_underscores % 2 != 0
+            || single_asterisk_open
+            || single_underscore_open
+            || single_tilde_open
+            || square_bracket_depth != 0
+        {
+            return false;
+        }
+    }
+    !in_fence
+}
+
+fn presentation_raw_url_end(value: &str, start: usize) -> Option<usize> {
+    if !value[start..].starts_with("https://") && !value[start..].starts_with("http://") {
+        return None;
+    }
+    Some(
+        value[start..]
+            .char_indices()
+            .find_map(|(offset, character)| {
+                (offset > 0 && (character.is_whitespace() || matches!(character, '<' | '>')))
+                    .then_some(start + offset)
+            })
+            .unwrap_or(value.len()),
+    )
+}
+
+fn presentation_markdown_link_end(value: &str, start: usize, image: bool) -> Option<usize> {
+    let open = start + usize::from(image);
+    let label_start = open + 1;
+    let close = label_start + value[label_start..].find("](")?;
+    let url_start = close + 2;
+    let mut depth = 0;
+    for (offset, character) in value[url_start..].char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' if depth == 0 => return Some(url_start + offset + 1),
+            ')' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn validate_critique_decision(
@@ -1413,6 +2357,8 @@ fn validate_critique_grounding(
         }
         if check.basis == CritiqueGroundingBasis::OperatorSupplied {
             validate_operator_supplied_unit(unit_text, check, &operator_context)?;
+        } else if check.basis == CritiqueGroundingBasis::ConversationalSynthesis {
+            validate_conversational_synthesis_unit(turn, unit_text, check, &operator_context)?;
         } else if check.basis == CritiqueGroundingBasis::RetainedContext {
             validate_retained_context_unit(unit_text, check, &retained_context)?;
         } else if check.context_excerpt.is_some() {
@@ -1432,6 +2378,7 @@ fn validate_critique_grounding(
         if matches!(
             check.basis,
             CritiqueGroundingBasis::OperatorSupplied
+                | CritiqueGroundingBasis::ConversationalSynthesis
                 | CritiqueGroundingBasis::RetainedContext
                 | CritiqueGroundingBasis::ToolOutcome
                 | CritiqueGroundingBasis::StableExplanation
@@ -1594,6 +2541,123 @@ fn validate_operator_supplied_unit(
         &check.unit_id,
     )?;
     Ok(())
+}
+
+fn validate_conversational_synthesis_unit(
+    turn: &CritiqueTurn,
+    unit_text: &str,
+    check: &CritiqueGroundingCheck,
+    operator_context: &str,
+) -> Result<(), AgentRuntimeError> {
+    check
+        .context_excerpt
+        .as_deref()
+        .filter(|excerpt| {
+            bounded_text(excerpt)
+                && turn
+                    .request
+                    .history
+                    .iter()
+                    .filter(|message| message.role == ConversationRole::User)
+                    .map(|message| message.content.as_str())
+                    .chain(std::iter::once(turn.request.message.as_str()))
+                    .any(|message| message.trim() == excerpt.trim())
+        })
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal(format!(
+                "critic grounding unit {} lacks an exact operator-authored synthesis source",
+                check.unit_id
+            ))
+        })?;
+    let normalized = unit_text.to_ascii_lowercase().replace('’', "'");
+    let unsupported_self_work = [
+        "i checked",
+        "i inspected",
+        "i looked up",
+        "i queried",
+        "i ran",
+        "i deployed",
+        "i verified",
+        "i completed",
+        "i have access",
+        "i can access",
+        "i can administer",
+        "i can change",
+        "i can check",
+        "i can deploy",
+        "i can inspect",
+        "i can query",
+        "i can run",
+        "i can verify",
+        "i'll check",
+        "i will check",
+        "i'll verify",
+        "i will verify",
+        "i'll ",
+        "i will ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let operator_normalized = operator_context.to_ascii_lowercase();
+    let operational_subjects = [
+        "asset",
+        "connector",
+        "control",
+        "deployment",
+        "finding",
+        "graph",
+        "identity",
+        "provider",
+        "release",
+        "repository",
+        "runtime",
+        "source",
+        "tool",
+    ];
+    let operational_states = [
+        "authorized",
+        "connected",
+        "current",
+        "deployed",
+        "enabled",
+        "failed",
+        "failing",
+        "fixed",
+        "healthy",
+        "live",
+        "production",
+        "running",
+        "verified",
+    ];
+    let unit_words = grounding_words(unit_text);
+    let operator_words = grounding_words(&operator_normalized);
+    let introduces_operational_language = operational_subjects
+        .iter()
+        .chain(operational_states.iter())
+        .filter(|term| unit_words.contains(**term))
+        .any(|term| !operator_words.contains(*term));
+    if turn.lane != ExecutionLane::Converse
+        || request_explicitly_requires_current_evidence(&turn.request.message)
+        || introduces_operational_language
+        || unsupported_self_work
+        || unit_text.trim().is_empty()
+        || unit_text.len() > 1_200
+        || unit_text.lines().count() > 6
+        || looks_like_raw_record_dump(unit_text)
+        || looks_like_internal_query_failure(unit_text)
+    {
+        return Err(AgentRuntimeError::InvalidFinal(format!(
+            "critic grounding unit {} is not bounded conversation-only synthesis",
+            check.unit_id
+        )));
+    }
+    validate_material_literals(
+        unit_text,
+        CritiqueGroundingBasis::ConversationalSynthesis,
+        operator_context,
+        "",
+        &check.unit_id,
+    )
 }
 
 fn validate_retained_context_unit(
@@ -1794,6 +2858,9 @@ fn grounding_words(value: &str) -> BTreeSet<String> {
             "our" | "ours" | "we" | "cerebro" => "cerebro".into(),
             "owner" | "owns" | "owned" | "ownership" | "responsibility" => "own".into(),
             "checked" | "checks" | "recheck" => "check".into(),
+            "respond" | "responding" | "response" | "responses" => "respond".into(),
+            "useful" | "usefully" | "usefulness" => "useful".into(),
+            "understand" | "understood" | "understanding" => "understand".into(),
             _ => word,
         })
         .collect()
@@ -1881,7 +2948,8 @@ fn validate_material_literals(
     {
         let normalized = word.to_ascii_lowercase();
         let exact_literal = word.chars().any(|character| character.is_ascii_digit());
-        let sensitive_literal = sensitive.contains(&normalized.as_str());
+        let sensitive_literal = basis != CritiqueGroundingBasis::ConversationalSynthesis
+            && sensitive.contains(&normalized.as_str());
         let placeholder_label = basis == CritiqueGroundingBasis::Placeholder
             && normalized_unit
                 .trim_start()
@@ -1925,7 +2993,7 @@ fn grounding_scalar(value: &Value) -> Option<String> {
     }
 }
 
-fn validate_request(request: &AgentTurnRequest) -> Result<(), AgentRuntimeError> {
+pub fn validate_agent_turn_request(request: &AgentTurnRequest) -> Result<(), AgentRuntimeError> {
     if request.schema_version != AGENT_TURN_REQUEST_V1 {
         return Err(AgentRuntimeError::InvalidRequest(
             "schema version is unsupported".into(),
@@ -1960,6 +3028,26 @@ fn validate_request(request: &AgentTurnRequest) -> Result<(), AgentRuntimeError>
                 || message.content.chars().any(|character| {
                     character.is_control() && !matches!(character, '\n' | '\r' | '\t')
                 })
+        })
+    {
+        return Err(AgentRuntimeError::HistoryInvalid);
+    }
+    if (!request.history_metadata.is_empty()
+        && request.history_metadata.len() != request.history.len())
+        || request.history_metadata.iter().any(|metadata| {
+            metadata
+                .actor_ref
+                .as_ref()
+                .is_some_and(|value| !bounded_text(value))
+                || metadata.message_ref.as_ref().is_some_and(|value| {
+                    !bounded_text(value)
+                        || value.starts_with("operator:")
+                        || value.starts_with("assistant:")
+                })
+                || metadata
+                    .received_at
+                    .as_ref()
+                    .is_some_and(|value| !bounded_text(value) || parse_timestamp(value).is_err())
         })
     {
         return Err(AgentRuntimeError::HistoryInvalid);
@@ -2414,9 +3502,8 @@ fn critique_grounding_units(draft: &FinalDraft) -> Vec<CritiqueGroundingUnit> {
         let mut start = 0;
         for (index, character) in line.char_indices() {
             let end = index + character.len_utf8();
-            let boundary = character == ';'
-                || (matches!(character, '.' | '!' | '?')
-                    && line[end..].chars().next().is_none_or(char::is_whitespace));
+            let boundary = matches!(character, '.' | '!' | '?')
+                && line[end..].chars().next().is_none_or(char::is_whitespace);
             if boundary {
                 let unit = line[start..end].trim();
                 if !unit.is_empty() {
@@ -2551,6 +3638,291 @@ mod grounding_tests {
     use super::*;
     use serde_json::json;
 
+    fn route_request(message: &str) -> AgentTurnRequest {
+        AgentTurnRequest {
+            schema_version: "agent-turn/v1".into(),
+            tenant_id: "tenant:synthetic".into(),
+            request_id: "request:route".into(),
+            thread_ref: "thread:synthetic".into(),
+            context_scope_ref: None,
+            actor_ref: "operator:synthetic".into(),
+            assessment_at: "2026-07-31T00:00:00Z".into(),
+            message: message.into(),
+            history: Vec::new(),
+            history_metadata: Vec::new(),
+            working_state: None,
+            effect_authorizations: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn explicit_current_field_reconciliation_cannot_route_to_conversation() {
+        for message in [
+            "Reconcile that provider field with a current Source A receipt.",
+            "What visibility or access do we actually have for Source A?",
+        ] {
+            let decision = RouteDecision {
+                lane: ExecutionLane::Converse,
+                confidence: RouteConfidence::High,
+                reason: "This is only explanatory.".into(),
+                requires_current_evidence: false,
+                future_observation: FutureObservationDisposition::None,
+                future_observation_excerpt: None,
+            };
+            assert!(validate_route(&route_request(message), &decision).is_err());
+        }
+
+        assert!(!request_explicitly_requires_current_evidence(
+            "What does evidence freshness mean in a control program?"
+        ));
+        assert!(!request_explicitly_requires_current_evidence(
+            "What is a provider?"
+        ));
+        assert!(request_explicitly_requires_current_evidence(
+            "What Lantern Vale evidence can you actually inspect, whether collection is working, and what is missing?"
+        ));
+        assert!(request_reasons_from_supplied_operational_premises(
+            "We just changed the sync path. The dashboard is green, but we have not verified the user path. Talk to me like a teammate: what are you actually confident about, what is still unverified, and what should we do next?"
+        ));
+        assert!(request_reasons_from_supplied_operational_premises(
+            "One correction though: that one successful run actually went through the OLD route, not the new one. Does that change your picture?"
+        ));
+        assert!(request_reasons_from_supplied_operational_premises(
+            "So what does that change, exactly? Give me the decision, the next concrete check, and one insight you think I am missing. Keep it conversational."
+        ));
+        assert!(!request_explicitly_requires_current_evidence(
+            "So what does that change, exactly? Give me the decision, the next concrete check, and one insight you think I am missing. Keep it conversational."
+        ));
+        assert!(!request_reasons_from_supplied_operational_premises(
+            "We just changed the route. Tell me what follows, then monitor it and check again later."
+        ));
+        assert!(!request_reasons_from_supplied_operational_premises(
+            "Can you inspect the current sync runtime and verify whether the user path works?"
+        ));
+        assert!(!request_reasons_from_supplied_operational_premises(
+            "What do you think about the Atlas rollout?"
+        ));
+        for conversational_message in [
+            "I don't have access to that resource.",
+            "That's incorrect, the provider is fine.",
+            "What tools have we already covered in this thread?",
+            "Please read the statement correctly before replying.",
+            "What is the current state of provider-neutral architecture?",
+            "Explain the current provider-neutral capability model.",
+            "What does current evidence state mean in a provider-neutral system?",
+            "What is the current state of the art for evidence theory?",
+            "What is the current state of provider-neutral source architecture?",
+            "Explain why healthy evidence is not necessarily verified evidence.",
+            "Rewrite ‘Atlas has landed’ more concisely.",
+            "Draft a response saying the rollout is ready.",
+            "Why is Atlas Green a good codename?",
+            "Why is green a calming color?",
+            "Why is healthy conflict a useful concept?",
+            "Why is a healthy debate useful?",
+            "Why is the color green calming?",
+            "Explain why a debate is healthy.",
+            "Explain how a debate is healthy.",
+            "Tell me when a debate is healthy.",
+            "Why did Atlas fail in this story?",
+            "Why is Atlas operational in the novel?",
+            "Why is the system healthy in this analogy?",
+            "Why is “Atlas Now” a good title?",
+            "Break down this idea for me.",
+            "Why is feeling down hard?",
+            "What should I think about now?",
+            "In this movie, why is Atlas healthy?",
+            "In this novel, who owns the ring?",
+            "In this novel, can Cerebro read minds?",
+            "In this thought experiment, why is Atlas healthy?",
+            "Is this sorting algorithm stable?",
+            "Why is patience valuable?",
+            "What about the second argument now?",
+            "Does this idea work?",
+            "Does this proposal work?",
+            "In this scenario, why is Atlas healthy?",
+            "Why is Atlas healthy in this simulation?",
+            "Is Rust expressive?",
+        ] {
+            assert!(
+                !request_explicitly_requires_current_evidence(conversational_message),
+                "ordinary conversation was misclassified: {conversational_message}"
+            );
+        }
+        for current_evidence_request in [
+            "What is the current state of Source A?",
+            "Which provider receipts are currently missing?",
+            "Can you inspect the current provider runtime?",
+            "What does the current Source A state mean for today's decision?",
+            "Using the provider-neutral architecture, inspect Source A's current receipt.",
+            "What is the state of the art, and is Provider B currently healthy?",
+            "Within the provider-neutral architecture inspect Source A's current receipt.",
+            "Explain provider-neutral architecture but inspect Source A's current receipt.",
+            "In the state of the art model, what is Source A's current receipt?",
+            "Is Atlas green?",
+            "Is Atlas online?",
+            "Is Atlas operational?",
+            "Is Atlas down?",
+            "Is Atlas offline?",
+            "Is Atlas degraded?",
+            "Is Atlas broken?",
+            "Is Atlas up?",
+            "What about Atlas now?",
+            "what about atlas now?",
+            "Is Atlas fixed?",
+            "Is Atlas restored?",
+            "Is Atlas resolved?",
+            "Is Atlas running?",
+            "Is Atlas reachable?",
+            "Is Atlas responsive?",
+            "Is Atlas stable?",
+            "Is Atlas unavailable?",
+            "Did Atlas crash? Give me your take.",
+            "Does Atlas work? Give me your take.",
+            "Did Atlas break? Give me your take.",
+            "Did Atlas time out? Give me your take.",
+            "Has Atlas restarted?",
+            "Has Atlas stalled?",
+            "Is Atlas flaky?",
+            "is atlas stale?",
+            "How's Atlas now?",
+            "Any update on Atlas?",
+            "Is Story Service operational?",
+            "Has the rollout landed?",
+            "Who handles remediation for Atlas?",
+            "Are we able to ship this?",
+            "Explain provider-neutral architecture, and is Atlas green?",
+            "Draft a status after you check Atlas.",
+        ] {
+            assert!(
+                request_explicitly_requires_current_evidence(current_evidence_request),
+                "current evidence request was misclassified: {current_evidence_request}"
+            );
+        }
+
+        let synthesis = route_request(
+            "Reconcile Source A's current receipt, identify who owns the gap, state the next check trigger, and tell me what closes it.",
+        );
+        let lookup = RouteDecision {
+            lane: ExecutionLane::Lookup,
+            confidence: RouteConfidence::High,
+            reason: "One current source record should answer this.".into(),
+            requires_current_evidence: true,
+            future_observation: FutureObservationDisposition::None,
+            future_observation_excerpt: None,
+        };
+        assert!(validate_route(&synthesis, &lookup).is_err());
+
+        let mut continuation = synthesis.clone();
+        continuation.working_state = Some(WorkingState {
+            mission_ref: Some("mission:synthetic".into()),
+            current_request: synthesis.message.clone(),
+            last_outcome: WorkingOutcome::Owned,
+            last_blocker: None,
+            active_lane: Some(ExecutionLane::Investigate),
+            requires_current_evidence: Some(true),
+            open_loops: vec!["Reconcile the current state.".into()],
+        });
+        let continue_route = RouteDecision {
+            lane: ExecutionLane::Continue,
+            confidence: RouteConfidence::High,
+            reason: "Resume the exact durable investigation.".into(),
+            requires_current_evidence: true,
+            future_observation: FutureObservationDisposition::None,
+            future_observation_excerpt: None,
+        };
+        assert!(validate_route(&continuation, &continue_route).is_ok());
+
+        let ignored = RouteDecision {
+            lane: ExecutionLane::Ignore,
+            confidence: RouteConfidence::High,
+            reason: "Ignore transport metadata.".into(),
+            requires_current_evidence: false,
+            future_observation: FutureObservationDisposition::None,
+            future_observation_excerpt: None,
+        };
+        assert!(matches!(
+            validate_route(&synthesis, &ignored),
+            Err(AgentRuntimeError::InvalidRoute(reason))
+                if reason.contains("transport events")
+        ));
+    }
+
+    #[test]
+    fn slack_presentation_rejects_unbalanced_fences_and_emphasis() {
+        for message in [
+            "The result is:\n```\nhealthy",
+            "The source is **healthy.",
+            "The source is __healthy.",
+            "The source is *healthy.",
+            "The source is _healthy.",
+            "The source is healthy*.",
+            "The source is healthy_.",
+            "Read [the source](unfinished before answering.",
+            "Ask <@U123 for the source.",
+            "The source] is healthy.",
+            "My thoughts: ~the conflict is useful.",
+            "The source is `healthy.",
+        ] {
+            assert!(
+                validate_presentation(&PresentationDecision {
+                    messages: vec![message.into()],
+                })
+                .is_err(),
+                "unbalanced Slack markup was accepted: {message}"
+            );
+        }
+
+        assert!(presentation_markup_is_balanced(
+            "Use item [1] from the bounded list."
+        ));
+        for message in [
+            "snake_case remains readable.",
+            "The ratio is 2*3.",
+            "To explain multiplication: 2 * 3 = 6.",
+            "The configuration variable is FOO__BAR.",
+            "Inspect *.rs files first.",
+            "Use the recursive glob src/**/test.rs for Rust tests.",
+        ] {
+            assert!(
+                validate_presentation(&PresentationDecision {
+                    messages: vec![message.into()],
+                })
+                .is_ok(),
+                "literal infix punctuation was misclassified: {message}"
+            );
+        }
+        assert!(
+            validate_presentation(&PresentationDecision {
+                messages: vec![
+                    "The source is **healthy**.\n\n```text\nreceipt complete\n```".into(),
+                ],
+            })
+            .is_ok()
+        );
+        for message in [
+            "See https://example.com/run__alpha__latest for the receipt.",
+            "See https://example.com/run__alpha for the receipt.",
+        ] {
+            assert!(
+                validate_presentation(&PresentationDecision {
+                    messages: vec![message.into()],
+                })
+                .is_ok(),
+                "URL text was misclassified as emphasis: {message}"
+            );
+        }
+        assert!(
+            validate_presentation(&PresentationDecision {
+                messages: vec![
+                    "See [the run](https://example.com/run__alpha__(latest)) for the receipt."
+                        .into(),
+                ],
+            })
+            .is_err(),
+            "standard Markdown links must not leak into Slack mrkdwn"
+        );
+    }
+
     #[test]
     fn approval_preview_shows_targets_and_redacts_credentials() {
         let preview = approval_input_preview(&json!({
@@ -2681,6 +4053,7 @@ mod grounding_tests {
                 assessment_at: "2026-07-31T12:00:00Z".into(),
                 message: "Who owns it?".into(),
                 history: vec![],
+                history_metadata: vec![],
                 working_state: None,
                 effect_authorizations: vec![],
             },
@@ -2922,6 +4295,16 @@ mod grounding_tests {
     }
 
     #[test]
+    fn semicolon_linked_conversation_stays_one_grounding_unit() {
+        let mut draft = sample_turn().draft;
+        draft.summary =
+            "The real test isn't this one answer, though; it's whether the pattern holds.".into();
+        let units = critique_grounding_units(&draft);
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].text, draft.summary);
+    }
+
+    #[test]
     fn stable_explanations_are_converse_only_and_cannot_hide_dynamic_claims() {
         let mut turn = sample_turn();
         turn.lane = ExecutionLane::Converse;
@@ -2943,6 +4326,60 @@ mod grounding_tests {
 
         turn.grounding_units[0].text = "The connector is currently healthy.".into();
         assert!(validate_critique_decision(&turn, &valid).is_err());
+    }
+
+    #[test]
+    fn conversational_synthesis_is_thread_bound_and_cannot_hide_current_work() {
+        let mut turn = sample_turn();
+        turn.lane = ExecutionLane::Converse;
+        turn.observations.clear();
+        turn.draft.summary_evidence_refs.clear();
+        turn.request.message = "Be honest: are you responding usefully now?".into();
+        turn.draft.summary =
+            "Not consistently yet—the useful response is a direct answer, not a capability disclaimer."
+                .into();
+        turn.grounding_units = critique_grounding_units(&turn.draft);
+        let valid = CritiqueDecision::Approve {
+            checks: passing_checks(),
+            grounding: vec![CritiqueGroundingCheck {
+                unit_id: turn.grounding_units[0].unit_id.clone(),
+                basis: CritiqueGroundingBasis::ConversationalSynthesis,
+                support: vec![],
+                context_excerpt: Some(turn.request.message.clone()),
+                observation_sequence: None,
+            }],
+        };
+        assert_eq!(validate_critique_decision(&turn, &valid), Ok(()));
+
+        turn.grounding_units[0].text = "I verified that the current deployment is healthy.".into();
+        assert!(validate_critique_decision(&turn, &valid).is_err());
+        turn.grounding_units[0].text = "I'll hold that correction for the next turn.".into();
+        assert!(validate_critique_decision(&turn, &valid).is_err());
+        turn.grounding_units[0].text = "I can inspect the current deployment.".into();
+        assert!(validate_critique_decision(&turn, &valid).is_err());
+        turn.grounding_units[0].text =
+            "The earlier miss was deflecting to what I can or can't do.".into();
+        assert_eq!(validate_critique_decision(&turn, &valid), Ok(()));
+        turn.grounding_units[0].text = "Right now I'm answering the question directly.".into();
+        assert_eq!(validate_critique_decision(&turn, &valid), Ok(()));
+        turn.grounding_units[0].text =
+            "That treated the request as a scope problem instead of answering it.".into();
+        assert_eq!(validate_critique_decision(&turn, &valid), Ok(()));
+        turn.grounding_units[0].text = "The current deployment is healthy.".into();
+        assert!(validate_critique_decision(&turn, &valid).is_err());
+        turn.grounding_units[0].text = "Source A has one finding.".into();
+        assert!(validate_critique_decision(&turn, &valid).is_err());
+
+        turn.grounding_units[0].text = turn.draft.summary.clone();
+        let mut missing_source = valid;
+        if let CritiqueDecision::Approve { grounding, .. } = &mut missing_source {
+            grounding[0].context_excerpt = None;
+        }
+        assert!(validate_critique_decision(&turn, &missing_source).is_err());
+        if let CritiqueDecision::Approve { grounding, .. } = &mut missing_source {
+            grounding[0].context_excerpt = Some("Be honest:".into());
+        }
+        assert!(validate_critique_decision(&turn, &missing_source).is_err());
     }
 
     #[test]

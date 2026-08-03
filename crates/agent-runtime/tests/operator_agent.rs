@@ -213,6 +213,8 @@ fn route(lane: ExecutionLane) -> RouteDecision {
         confidence: RouteConfidence::High,
         reason: format!("The request semantically requires the {lane:?} lane."),
         requires_current_evidence: !matches!(lane, ExecutionLane::Converse),
+        future_observation: cerebro_agent_runtime::FutureObservationDisposition::None,
+        future_observation_excerpt: None,
     }
 }
 
@@ -597,6 +599,7 @@ fn request(message: &str) -> AgentTurnRequest {
             role: ConversationRole::User,
             content: "Check the current runtime before changing it.".into(),
         }],
+        history_metadata: vec![],
         working_state: None,
         effect_authorizations: vec![],
     }
@@ -1564,6 +1567,8 @@ async fn repairs_a_schema_valid_but_unsafe_route_before_operating() {
                 confidence: RouteConfidence::Low,
                 reason: "The request sounds conversational.".into(),
                 requires_current_evidence: true,
+                future_observation: cerebro_agent_runtime::FutureObservationDisposition::None,
+                future_observation_excerpt: None,
             },
             route(ExecutionLane::Investigate),
         ])),
@@ -1820,6 +1825,8 @@ async fn continuation_resumes_the_retained_conversation_lane_without_reads() {
             confidence: RouteConfidence::High,
             reason: "The user asked to resume the durable handoff draft.".into(),
             requires_current_evidence: false,
+            future_observation: cerebro_agent_runtime::FutureObservationDisposition::None,
+            future_observation_excerpt: None,
         }])),
         decisions: Mutex::new(VecDeque::from([ModelDecision::Finish {
             draft: FinalDraft {
@@ -1895,6 +1902,8 @@ async fn continuation_repairs_a_repeated_blocker_into_forward_progress() {
             confidence: RouteConfidence::High,
             reason: "Continue the retained conversational handoff.".into(),
             requires_current_evidence: false,
+            future_observation: cerebro_agent_runtime::FutureObservationDisposition::None,
+            future_observation_excerpt: None,
         }])),
         decisions: Mutex::new(VecDeque::from([
             ModelDecision::Finish {
@@ -1943,6 +1952,8 @@ async fn short_ambiguous_directive_without_authorization_resumes_the_artifact() 
                 confidence: RouteConfidence::High,
                 reason: "The directive resumes the retained approval-note artifact.".into(),
                 requires_current_evidence: false,
+                future_observation: cerebro_agent_runtime::FutureObservationDisposition::None,
+                future_observation_excerpt: None,
             },
         ])),
         decisions: Mutex::new(VecDeque::from([ModelDecision::Finish {

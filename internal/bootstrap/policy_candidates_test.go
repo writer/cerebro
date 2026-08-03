@@ -9,6 +9,7 @@ import (
 
 	"github.com/writer/cerebro/internal/agentauthoring"
 	"github.com/writer/cerebro/internal/policycandidate"
+	"github.com/writer/cerebro/internal/ports"
 	policyauthor "github.com/writer/cerebro/internal/testauthor/policy"
 )
 
@@ -35,6 +36,10 @@ type policyGraphStoreStub struct {
 }
 
 func (*policyGraphStoreStub) DeleteProjectedEntity(context.Context, string) error {
+	return nil
+}
+
+func (*policyGraphStoreStub) DeleteProjectedLink(context.Context, *ports.ProjectedLink) error {
 	return nil
 }
 

@@ -15,7 +15,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::sync::Mutex;
-use tokio_postgres::Client;
+use tokio_postgres::{Client, GenericClient};
 
 use super::slack_mrkdwn::render_slack_mrkdwn;
 
@@ -202,6 +202,24 @@ pub struct PostgresAgentSessionStore {
     client: Mutex<Client>,
 }
 
+#[derive(Clone, Copy)]
+struct OperatorTurnFence<'a> {
+    request_id: &'a str,
+    lease_owner: &'a str,
+    lease_seconds: i64,
+}
+
+#[derive(Clone, Copy, Default)]
+enum SessionAppendFence<'a> {
+    Operator(OperatorTurnFence<'a>),
+    OperatorFinal(OperatorTurnFence<'a>),
+    DeliveryCompletion(&'a str),
+    WakeClaim(&'a AgentWakeClaim),
+    WakeDelivery(&'a AgentWakeDeliveryLease),
+    #[default]
+    None,
+}
+
 impl PostgresAgentSessionStore {
     pub async fn connect(connection_string: &str) -> Result<Self, AgentRuntimeError> {
         let connector = TlsConnector::builder()
@@ -253,17 +271,23 @@ impl PostgresAgentSessionStore {
         tenant_id: &str,
         thread_ref: &str,
     ) -> Result<Option<AgentSession>, AgentRuntimeError> {
-        let row = self
-            .client
-            .lock()
-            .await
+        let client = self.client.lock().await;
+        let row = client
             .query_opt(
-                "SELECT snapshot_json FROM cerebro_agent_sessions WHERE tenant_id = $1 AND thread_ref = $2",
+                "SELECT session_ref, snapshot_json, last_sequence FROM cerebro_agent_sessions WHERE tenant_id = $1 AND thread_ref = $2",
                 &[&tenant_id, &thread_ref],
             )
             .await
             .map_err(store_unavailable)?;
-        row.map(|row| decode_session(row.get(0))).transpose()
+        match row {
+            Some(row) => {
+                let session_ref: String = row.get(0);
+                hydrate_session_events(&*client, &session_ref, row.get(1), row.get(2))
+                    .await
+                    .map(|(session, _)| Some(session))
+            }
+            None => Ok(None),
+        }
     }
 
     pub async fn read_owned_thread_transcript(
@@ -357,22 +381,40 @@ impl PostgresAgentSessionStore {
         session_ref: &str,
         context_scope_ref: &str,
     ) -> Result<(), AgentRuntimeError> {
-        let changed = self
-            .client
-            .lock()
-            .await
-            .execute(
-                "UPDATE cerebro_agent_sessions SET snapshot_json = jsonb_set(snapshot_json, '{context_scope_ref}', to_jsonb($2::text), true), updated_at = NOW() WHERE session_ref = $1 AND (snapshot_json->>'context_scope_ref' IS NULL OR snapshot_json->>'context_scope_ref' = $2)",
-                &[&session_ref, &context_scope_ref],
+        let mut client = self.client.lock().await;
+        let transaction = client.transaction().await.map_err(store_unavailable)?;
+        let row = transaction
+            .query_opt(
+                "SELECT snapshot_json, last_sequence FROM cerebro_agent_sessions WHERE session_ref = $1 FOR UPDATE",
+                &[&session_ref],
             )
             .await
-            .map_err(store_unavailable)?;
-        if changed != 1 {
+            .map_err(store_unavailable)?
+            .ok_or_else(|| AgentRuntimeError::InvalidRequest("session does not exist".into()))?;
+        let (mut session, legacy_events_need_backfill) =
+            hydrate_session_events(&transaction, session_ref, row.get(0), row.get(1)).await?;
+        if session
+            .context_scope_ref
+            .as_deref()
+            .is_some_and(|stored| stored != context_scope_ref)
+        {
             return Err(AgentRuntimeError::InvalidRequest(
                 "conversation scope does not match the stored Slack session".into(),
             ));
         }
-        Ok(())
+        if legacy_events_need_backfill {
+            backfill_legacy_events(&transaction, &session.events).await?;
+        }
+        session.context_scope_ref = Some(context_scope_ref.into());
+        let snapshot = encode_session_snapshot(&session)?;
+        transaction
+            .execute(
+                "UPDATE cerebro_agent_sessions SET snapshot_json = $2, updated_at = NOW() WHERE session_ref = $1",
+                &[&session_ref, &snapshot],
+            )
+            .await
+            .map_err(store_unavailable)?;
+        transaction.commit().await.map_err(store_unavailable)
     }
 
     pub async fn recall_thread_contexts(
@@ -454,7 +496,8 @@ impl PostgresAgentSessionStore {
         request_id: &str,
         lease_owner: &str,
     ) -> Result<(), AgentRuntimeError> {
-        self.client
+        let changed = self
+            .client
             .lock()
             .await
             .execute(
@@ -463,6 +506,11 @@ impl PostgresAgentSessionStore {
             )
             .await
             .map_err(store_unavailable)?;
+        if changed != 1 {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "turn lease release did not match the exact active request and owner".into(),
+            ));
+        }
         Ok(())
     }
 
@@ -634,8 +682,7 @@ impl PostgresAgentSessionStore {
             &claim.session_ref,
             expected_sequence,
             &events,
-            Some(claim),
-            None,
+            SessionAppendFence::WakeClaim(claim),
             true,
         )
         .await
@@ -821,7 +868,9 @@ impl PostgresAgentSessionStore {
             return Ok(AgentWakeFailureDisposition::RetryScheduled);
         }
 
-        let session = decode_session(row.get(1))?;
+        let (session, legacy_events_need_backfill) =
+            hydrate_session_events(&transaction, &claim.session_ref, row.get(1), row.get(2))
+                .await?;
         if session.pending_delivery.is_some() {
             return Err(AgentRuntimeError::InvalidRequest(
                 "exhausted wake cannot replace a pending delivery".into(),
@@ -894,7 +943,10 @@ impl PostgresAgentSessionStore {
             },
         };
         let updated = apply_session_events(&session, std::slice::from_ref(&event))?;
-        let snapshot = serde_json::to_value(&updated).map_err(invalid_snapshot)?;
+        if legacy_events_need_backfill {
+            backfill_legacy_events(&transaction, &session.events).await?;
+        }
+        let snapshot = encode_session_snapshot(&updated)?;
         let changed = transaction
             .execute(
                 "UPDATE cerebro_agent_wakes SET state = 'awaiting_delivery', lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL, pending_payload_digest = $8, delivery_ref = NULL, delivery_attempt_ref = NULL, last_error = $9, updated_at = NOW() WHERE session_ref = $1 AND commitment_ref = $2 AND schedule_generation = $3 AND fence = $4 AND lease_owner = $5 AND lease_token = $6 AND request_id = $7 AND state = 'leased' AND lease_expires_at > NOW() AND attempt_count = 5",
@@ -920,6 +972,92 @@ impl PostgresAgentSessionStore {
         Ok(AgentWakeFailureDisposition::ExhaustedAwaitingDelivery)
     }
 
+    pub async fn append_operator_fenced(
+        &self,
+        session_ref: &str,
+        request_id: &str,
+        lease_owner: &str,
+        lease_seconds: i64,
+        expected_sequence: u64,
+        events: &[SessionEventRecord],
+    ) -> Result<(), AgentRuntimeError> {
+        if request_id.trim().is_empty()
+            || lease_owner.trim().is_empty()
+            || lease_seconds <= 0
+            || lease_seconds > 3_600
+        {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "operator turn fence identity or duration is invalid".into(),
+            ));
+        }
+        self.append_checked(
+            session_ref,
+            expected_sequence,
+            events,
+            SessionAppendFence::Operator(OperatorTurnFence {
+                request_id,
+                lease_owner,
+                lease_seconds,
+            }),
+            false,
+        )
+        .await
+    }
+
+    pub async fn append_operator_finalized(
+        &self,
+        session_ref: &str,
+        request_id: &str,
+        lease_owner: &str,
+        lease_seconds: i64,
+        expected_sequence: u64,
+        events: &[SessionEventRecord],
+    ) -> Result<(), AgentRuntimeError> {
+        if request_id.trim().is_empty()
+            || lease_owner.trim().is_empty()
+            || lease_seconds <= 0
+            || lease_seconds > 3_600
+        {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "operator turn fence identity or duration is invalid".into(),
+            ));
+        }
+        self.append_checked(
+            session_ref,
+            expected_sequence,
+            events,
+            SessionAppendFence::OperatorFinal(OperatorTurnFence {
+                request_id,
+                lease_owner,
+                lease_seconds,
+            }),
+            false,
+        )
+        .await
+    }
+
+    pub async fn append_delivery_completion(
+        &self,
+        session_ref: &str,
+        request_id: &str,
+        expected_sequence: u64,
+        events: &[SessionEventRecord],
+    ) -> Result<(), AgentRuntimeError> {
+        if request_id.trim().is_empty() {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "delivery completion request identity is invalid".into(),
+            ));
+        }
+        self.append_checked(
+            session_ref,
+            expected_sequence,
+            events,
+            SessionAppendFence::DeliveryCompletion(request_id),
+            false,
+        )
+        .await
+    }
+
     pub async fn append_wake_fenced(
         &self,
         claim: &AgentWakeClaim,
@@ -930,8 +1068,7 @@ impl PostgresAgentSessionStore {
             &claim.session_ref,
             expected_sequence,
             events,
-            Some(claim),
-            None,
+            SessionAppendFence::WakeClaim(claim),
             false,
         )
         .await
@@ -947,8 +1084,7 @@ impl PostgresAgentSessionStore {
             &lease.session_ref,
             expected_sequence,
             events,
-            None,
-            Some(lease),
+            SessionAppendFence::WakeDelivery(lease),
             false,
         )
         .await
@@ -959,13 +1095,31 @@ impl PostgresAgentSessionStore {
         session_ref: &str,
         expected_sequence: u64,
         events: &[SessionEventRecord],
-        wake_claim: Option<&AgentWakeClaim>,
-        wake_delivery_lease: Option<&AgentWakeDeliveryLease>,
+        fence: SessionAppendFence<'_>,
         release_wake_turn: bool,
     ) -> Result<(), AgentRuntimeError> {
         if events.is_empty() {
             return Ok(());
         }
+        let operator_fence = match fence {
+            SessionAppendFence::Operator(fence) | SessionAppendFence::OperatorFinal(fence) => {
+                Some(fence)
+            }
+            _ => None,
+        };
+        let finalize_operator = matches!(fence, SessionAppendFence::OperatorFinal(_));
+        let delivery_completion = match fence {
+            SessionAppendFence::DeliveryCompletion(request_id) => Some(request_id),
+            _ => None,
+        };
+        let wake_claim = match fence {
+            SessionAppendFence::WakeClaim(claim) => Some(claim),
+            _ => None,
+        };
+        let wake_delivery_lease = match fence {
+            SessionAppendFence::WakeDelivery(lease) => Some(lease),
+            _ => None,
+        };
         let expected_sequence = i64::try_from(expected_sequence).map_err(|_| {
             AgentRuntimeError::InvalidRequest("session sequence exceeds storage range".into())
         })?;
@@ -1011,22 +1165,54 @@ impl PostgresAgentSessionStore {
                 ));
             }
         }
-        let row = transaction
-            .query_opt(
-                "SELECT snapshot_json, last_sequence FROM cerebro_agent_sessions WHERE session_ref = $1 FOR UPDATE",
-                &[&session_ref],
-            )
-            .await
-            .map_err(store_unavailable)?
-            .ok_or_else(|| AgentRuntimeError::InvalidRequest("session does not exist".into()))?;
+        let row = match (operator_fence, delivery_completion) {
+            (Some(fence), _) => transaction
+                .query_opt(
+                    "SELECT snapshot_json, last_sequence FROM cerebro_agent_sessions WHERE session_ref = $1 AND active_request_id = $2 AND lease_owner = $3 AND lease_expires_at > NOW() FOR UPDATE",
+                    &[&session_ref, &fence.request_id, &fence.lease_owner],
+                )
+                .await
+                .map_err(store_unavailable)?
+                .ok_or_else(|| {
+                    AgentRuntimeError::InvalidRequest(
+                        "operator turn lease is no longer current".into(),
+                    )
+                })?,
+            (None, Some(request_id)) => transaction
+                .query_opt(
+                    "SELECT snapshot_json, last_sequence FROM cerebro_agent_sessions WHERE session_ref = $1 AND (active_request_id IS NULL OR active_request_id = $2) FOR UPDATE",
+                    &[&session_ref, &request_id],
+                )
+                .await
+                .map_err(store_unavailable)?
+                .ok_or_else(|| {
+                    AgentRuntimeError::InvalidRequest(
+                        "delivery completion conflicts with another active request".into(),
+                    )
+                })?,
+            (None, None) => transaction
+                .query_opt(
+                    "SELECT snapshot_json, last_sequence FROM cerebro_agent_sessions WHERE session_ref = $1 FOR UPDATE",
+                    &[&session_ref],
+                )
+                .await
+                .map_err(store_unavailable)?
+                .ok_or_else(|| {
+                    AgentRuntimeError::InvalidRequest("session does not exist".into())
+                })?,
+        };
         let stored_sequence: i64 = row.get(1);
         if stored_sequence != expected_sequence {
             return Err(AgentRuntimeError::InvalidRequest(
                 "session changed while this turn was running".into(),
             ));
         }
-        let session = decode_session(row.get(0))?;
+        let (session, legacy_events_need_backfill) =
+            hydrate_session_events(&transaction, session_ref, row.get(0), stored_sequence).await?;
         let updated = apply_session_events(&session, events)?;
+        if legacy_events_need_backfill {
+            backfill_legacy_events(&transaction, &session.events).await?;
+        }
         for event in events {
             insert_event(&transaction, event).await?;
             if let cerebro_agent_runtime::session::SessionEvent::DeliveryRecorded {
@@ -1054,18 +1240,46 @@ impl PostgresAgentSessionStore {
                 }
             }
         }
-        let snapshot = serde_json::to_value(&updated).map_err(invalid_snapshot)?;
+        let snapshot = encode_session_snapshot(&updated)?;
         let last_sequence = updated.events.last().map_or(0, |event| event.sequence);
         let last_sequence = i64::try_from(last_sequence).map_err(|_| {
             AgentRuntimeError::InvalidRequest("session sequence exceeds storage range".into())
         })?;
-        transaction
-            .execute(
-                "UPDATE cerebro_agent_sessions SET snapshot_json = $2, last_sequence = $3, updated_at = NOW() WHERE session_ref = $1",
-                &[&session_ref, &snapshot, &last_sequence],
-            )
-            .await
-            .map_err(store_unavailable)?;
+        let session_changes = match (operator_fence, finalize_operator, delivery_completion) {
+            (Some(fence), true, _) => transaction
+                .execute(
+                    "UPDATE cerebro_agent_sessions SET snapshot_json = $4, last_sequence = $5, active_request_id = NULL, lease_owner = NULL, lease_expires_at = NULL, updated_at = NOW() WHERE session_ref = $1 AND active_request_id = $2 AND lease_owner = $3 AND lease_expires_at > NOW()",
+                    &[&session_ref, &fence.request_id, &fence.lease_owner, &snapshot, &last_sequence],
+                )
+                .await
+                .map_err(store_unavailable)?,
+            (Some(fence), false, _) => transaction
+                .execute(
+                    "UPDATE cerebro_agent_sessions SET snapshot_json = $4, last_sequence = $5, lease_expires_at = NOW() + make_interval(secs => $6::bigint), updated_at = NOW() WHERE session_ref = $1 AND active_request_id = $2 AND lease_owner = $3 AND lease_expires_at > NOW()",
+                    &[&session_ref, &fence.request_id, &fence.lease_owner, &snapshot, &last_sequence, &fence.lease_seconds],
+                )
+                .await
+                .map_err(store_unavailable)?,
+            (None, _, Some(request_id)) => transaction
+                .execute(
+                    "UPDATE cerebro_agent_sessions SET snapshot_json = $3, last_sequence = $4, active_request_id = NULL, lease_owner = NULL, lease_expires_at = NULL, updated_at = NOW() WHERE session_ref = $1 AND (active_request_id IS NULL OR active_request_id = $2)",
+                    &[&session_ref, &request_id, &snapshot, &last_sequence],
+                )
+                .await
+                .map_err(store_unavailable)?,
+            (None, _, None) => transaction
+                .execute(
+                    "UPDATE cerebro_agent_sessions SET snapshot_json = $2, last_sequence = $3, updated_at = NOW() WHERE session_ref = $1",
+                    &[&session_ref, &snapshot, &last_sequence],
+                )
+                .await
+                .map_err(store_unavailable)?,
+        };
+        if session_changes != 1 {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "session lease or sequence changed before the append committed".into(),
+            ));
+        }
         project_session_state(&transaction, &updated).await?;
         if release_wake_turn {
             let claim = wake_claim.ok_or_else(|| {
@@ -1094,6 +1308,9 @@ pub struct PostgresTurnJournal {
     store: std::sync::Arc<PostgresAgentSessionStore>,
     session_ref: String,
     sequence: Mutex<u64>,
+    operator_request_id: Option<String>,
+    operator_lease_owner: Option<String>,
+    operator_lease_seconds: Option<i64>,
     wake_claim: Option<AgentWakeClaim>,
 }
 
@@ -1101,12 +1318,18 @@ impl PostgresTurnJournal {
     pub fn new(
         store: std::sync::Arc<PostgresAgentSessionStore>,
         session_ref: String,
+        request_id: String,
+        lease_owner: String,
+        lease_seconds: i64,
         sequence: u64,
     ) -> Self {
         Self {
             store,
             session_ref,
             sequence: Mutex::new(sequence),
+            operator_request_id: Some(request_id),
+            operator_lease_owner: Some(lease_owner),
+            operator_lease_seconds: Some(lease_seconds),
             wake_claim: None,
         }
     }
@@ -1120,6 +1343,9 @@ impl PostgresTurnJournal {
             session_ref: claim.session_ref.clone(),
             store,
             sequence: Mutex::new(sequence),
+            operator_request_id: None,
+            operator_lease_owner: None,
+            operator_lease_seconds: None,
             wake_claim: Some(claim),
         }
     }
@@ -1138,12 +1364,70 @@ impl SessionJournal for PostgresTurnJournal {
             self.store
                 .append_wake_fenced(claim, *sequence, std::slice::from_ref(event))
                 .await?;
-        } else {
+        } else if let (Some(request_id), Some(lease_owner), Some(lease_seconds)) = (
+            self.operator_request_id.as_deref(),
+            self.operator_lease_owner.as_deref(),
+            self.operator_lease_seconds,
+        ) {
             self.store
-                .append(&self.session_ref, *sequence, std::slice::from_ref(event))
+                .append_operator_fenced(
+                    &self.session_ref,
+                    request_id,
+                    lease_owner,
+                    lease_seconds,
+                    *sequence,
+                    std::slice::from_ref(event),
+                )
                 .await?;
+        } else {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "turn journal has no durable lease fence".into(),
+            ));
         }
         *sequence = event.sequence;
+        Ok(())
+    }
+
+    async fn finalize(&self, events: &[SessionEventRecord]) -> Result<(), AgentRuntimeError> {
+        let mut sequence = self.sequence.lock().await;
+        if events.is_empty()
+            || events.iter().enumerate().any(|(index, event)| {
+                event.session_ref != self.session_ref
+                    || event.sequence != sequence.saturating_add(index as u64 + 1)
+            })
+        {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "turn journal received a non-contiguous final event batch".into(),
+            ));
+        }
+        if let Some(claim) = &self.wake_claim {
+            self.store
+                .append_wake_fenced(claim, *sequence, events)
+                .await?;
+        } else if let (Some(request_id), Some(lease_owner), Some(lease_seconds)) = (
+            self.operator_request_id.as_deref(),
+            self.operator_lease_owner.as_deref(),
+            self.operator_lease_seconds,
+        ) {
+            self.store
+                .append_operator_finalized(
+                    &self.session_ref,
+                    request_id,
+                    lease_owner,
+                    lease_seconds,
+                    *sequence,
+                    events,
+                )
+                .await?;
+        } else {
+            return Err(AgentRuntimeError::InvalidRequest(
+                "turn journal has no durable lease fence".into(),
+            ));
+        }
+        *sequence = events
+            .last()
+            .expect("a non-empty final batch has a last event")
+            .sequence;
         Ok(())
     }
 }
@@ -1151,8 +1435,9 @@ impl SessionJournal for PostgresTurnJournal {
 #[async_trait]
 impl SessionStore for PostgresAgentSessionStore {
     async fn create(&self, session: &AgentSession) -> Result<(), AgentRuntimeError> {
-        let snapshot = serde_json::to_value(session).map_err(invalid_snapshot)?;
+        let snapshot = encode_session_snapshot(session)?;
         let last_sequence = session.events.last().map_or(0, |event| event.sequence);
+        validate_stored_event_stream(&session.session_ref, last_sequence, &session.events)?;
         let last_sequence = i64::try_from(last_sequence).map_err(|_| {
             AgentRuntimeError::InvalidRequest("session sequence exceeds storage range".into())
         })?;
@@ -1173,17 +1458,20 @@ impl SessionStore for PostgresAgentSessionStore {
     }
 
     async fn load(&self, session_ref: &str) -> Result<Option<AgentSession>, AgentRuntimeError> {
-        let row = self
-            .client
-            .lock()
-            .await
+        let client = self.client.lock().await;
+        let row = client
             .query_opt(
-                "SELECT snapshot_json FROM cerebro_agent_sessions WHERE session_ref = $1",
+                "SELECT snapshot_json, last_sequence FROM cerebro_agent_sessions WHERE session_ref = $1",
                 &[&session_ref],
             )
             .await
             .map_err(store_unavailable)?;
-        row.map(|row| decode_session(row.get(0))).transpose()
+        match row {
+            Some(row) => hydrate_session_events(&*client, session_ref, row.get(0), row.get(1))
+                .await
+                .map(|(session, _)| Some(session)),
+            None => Ok(None),
+        }
     }
 
     async fn append(
@@ -1192,8 +1480,14 @@ impl SessionStore for PostgresAgentSessionStore {
         expected_sequence: u64,
         events: &[SessionEventRecord],
     ) -> Result<(), AgentRuntimeError> {
-        self.append_checked(session_ref, expected_sequence, events, None, None, false)
-            .await
+        self.append_checked(
+            session_ref,
+            expected_sequence,
+            events,
+            SessionAppendFence::None,
+            false,
+        )
+        .await
     }
 }
 
@@ -1369,7 +1663,7 @@ fn bounded_context_text(value: &str, maximum_bytes: usize) -> String {
     format!("{}...", &value[..boundary])
 }
 
-fn thread_transcript_page(
+pub(super) fn thread_transcript_page(
     messages: &[SessionMessage],
     cursor: Option<&str>,
     limit: usize,
@@ -1412,12 +1706,17 @@ fn thread_transcript_page(
     })
 }
 
-fn prior_thread_cursor(updated_at: &str, session_ref: &str) -> Result<String, AgentRuntimeError> {
+pub(super) fn prior_thread_cursor(
+    updated_at: &str,
+    session_ref: &str,
+) -> Result<String, AgentRuntimeError> {
     validate_prior_thread_cursor_parts(updated_at, session_ref)?;
     Ok(format!("{updated_at}|{session_ref}"))
 }
 
-fn parse_prior_thread_cursor(value: &str) -> Result<(String, String), AgentRuntimeError> {
+pub(super) fn parse_prior_thread_cursor(
+    value: &str,
+) -> Result<(String, String), AgentRuntimeError> {
     if value.len() > 256 {
         return Err(AgentRuntimeError::InvalidRequest(
             "prior Slack thread cursor is invalid".into(),
@@ -1450,7 +1749,7 @@ fn validate_prior_thread_cursor_parts(
     Ok(())
 }
 
-fn bound_prior_thread_context(context: &mut Value) {
+pub(super) fn bound_prior_thread_context(context: &mut Value) {
     let Some(source) = context.as_object() else {
         *context = serde_json::json!({"state": "invalid_stored_context"});
         return;
@@ -1524,8 +1823,146 @@ async fn insert_event(
     Ok(())
 }
 
+fn encode_session_snapshot(session: &AgentSession) -> Result<Value, AgentRuntimeError> {
+    let AgentSession {
+        schema_version,
+        session_ref,
+        tenant_id,
+        thread_ref,
+        context_scope_ref,
+        mission,
+        messages,
+        events: _,
+        effect_authorizations,
+        pending_delivery,
+        memories,
+    } = session;
+    let mut snapshot = serde_json::Map::with_capacity(11);
+    snapshot.insert(
+        "schema_version".into(),
+        Value::String(schema_version.clone()),
+    );
+    snapshot.insert("session_ref".into(), Value::String(session_ref.clone()));
+    snapshot.insert("tenant_id".into(), Value::String(tenant_id.clone()));
+    snapshot.insert("thread_ref".into(), Value::String(thread_ref.clone()));
+    snapshot.insert(
+        "context_scope_ref".into(),
+        serde_json::to_value(context_scope_ref).map_err(invalid_snapshot)?,
+    );
+    snapshot.insert(
+        "mission".into(),
+        serde_json::to_value(mission).map_err(invalid_snapshot)?,
+    );
+    snapshot.insert(
+        "messages".into(),
+        serde_json::to_value(messages).map_err(invalid_snapshot)?,
+    );
+    snapshot.insert("events".into(), Value::Array(Vec::new()));
+    snapshot.insert(
+        "effect_authorizations".into(),
+        serde_json::to_value(effect_authorizations).map_err(invalid_snapshot)?,
+    );
+    snapshot.insert(
+        "pending_delivery".into(),
+        serde_json::to_value(pending_delivery).map_err(invalid_snapshot)?,
+    );
+    snapshot.insert(
+        "memories".into(),
+        serde_json::to_value(memories).map_err(invalid_snapshot)?,
+    );
+    Ok(Value::Object(snapshot))
+}
+
+async fn hydrate_session_events<C>(
+    client: &C,
+    expected_session_ref: &str,
+    snapshot: Value,
+    last_sequence: i64,
+) -> Result<(AgentSession, bool), AgentRuntimeError>
+where
+    C: GenericClient + Sync,
+{
+    let mut session = decode_session(snapshot)?;
+    if session.session_ref != expected_session_ref {
+        return Err(invalid_stored_session(
+            "snapshot identity does not match its storage key",
+        ));
+    }
+    let stored_last_sequence = last_sequence;
+    let last_sequence = u64::try_from(last_sequence)
+        .map_err(|_| invalid_stored_session("last sequence is outside the session range"))?;
+    let rows = client
+        .query(
+            "SELECT sequence, event_json FROM cerebro_agent_session_events WHERE session_ref = $1 AND sequence <= $2 ORDER BY sequence",
+            &[&expected_session_ref, &stored_last_sequence],
+        )
+        .await
+        .map_err(store_unavailable)?;
+    let mut canonical_events = Vec::with_capacity(rows.len());
+    for row in rows {
+        let stored_sequence: i64 = row.get(0);
+        let event: SessionEventRecord =
+            serde_json::from_value(row.get(1)).map_err(invalid_snapshot)?;
+        if u64::try_from(stored_sequence).ok() != Some(event.sequence) {
+            return Err(invalid_stored_session(
+                "event row sequence does not match its payload",
+            ));
+        }
+        canonical_events.push(event);
+    }
+
+    let legacy_events = std::mem::take(&mut session.events);
+    if canonical_events.is_empty() && !legacy_events.is_empty() {
+        validate_stored_event_stream(expected_session_ref, last_sequence, &legacy_events)?;
+        session.events = legacy_events;
+        return Ok((session, true));
+    }
+    validate_stored_event_stream(expected_session_ref, last_sequence, &canonical_events)?;
+    if !legacy_events.is_empty() && legacy_events != canonical_events {
+        return Err(invalid_stored_session(
+            "legacy snapshot history disagrees with canonical event rows",
+        ));
+    }
+    session.events = canonical_events;
+    Ok((session, false))
+}
+
+fn validate_stored_event_stream(
+    session_ref: &str,
+    last_sequence: u64,
+    events: &[SessionEventRecord],
+) -> Result<(), AgentRuntimeError> {
+    if events.last().map_or(0, |event| event.sequence) != last_sequence
+        || events.iter().enumerate().any(|(index, event)| {
+            event.schema_version != AGENT_SESSION_EVENT_V2
+                || event.session_ref != session_ref
+                || event.sequence != u64::try_from(index).unwrap_or(u64::MAX).saturating_add(1)
+                || OffsetDateTime::parse(&event.occurred_at, &Rfc3339).is_err()
+        })
+    {
+        return Err(invalid_stored_session(
+            "canonical event history is not contiguous through last_sequence",
+        ));
+    }
+    Ok(())
+}
+
+async fn backfill_legacy_events(
+    transaction: &tokio_postgres::Transaction<'_>,
+    events: &[SessionEventRecord],
+) -> Result<(), AgentRuntimeError> {
+    for event in events {
+        insert_event(transaction, event).await?;
+    }
+    Ok(())
+}
+
 fn decode_session(value: Value) -> Result<AgentSession, AgentRuntimeError> {
     serde_json::from_value(value).map_err(invalid_snapshot)
+}
+
+fn invalid_stored_session(reason: &str) -> AgentRuntimeError {
+    AgentRuntimeError::InvalidRequest(format!("stored agent session is invalid: {reason}"))
 }
 
 fn invalid_snapshot(error: serde_json::Error) -> AgentRuntimeError {
@@ -1706,6 +2143,31 @@ mod tests {
         assert_eq!(context["commitments"].as_array().unwrap().len(), 2);
         assert_eq!(context["open_loops"].as_array().unwrap().len(), 2);
         assert!(serde_json::to_vec(&context).unwrap().len() < 8_000);
+    }
+
+    #[test]
+    fn session_snapshot_serializes_projection_without_event_history() {
+        let session = context_test_session(ContextTestSessionInput {
+            session_ref: "agent-session:projection-unit",
+            thread_ref: "slack-thread://projection-unit",
+            tenant_id: "tenant:projection-unit",
+            actor_ref: "slack-user:projection-unit",
+            context_scope_ref: "slack-context-scope://projection-unit",
+            request_id: "projection-unit-request",
+            user_text: "Keep the projection bounded.",
+            assistant_text: "The event table remains canonical.",
+            pending_delivery: false,
+        });
+
+        let snapshot = encode_session_snapshot(&session).unwrap();
+        assert_eq!(snapshot["events"], serde_json::json!([]));
+        let mut projection = decode_session(snapshot).unwrap();
+        assert!(projection.events.is_empty());
+        projection.events = session.events.clone();
+        assert_eq!(projection, session);
+
+        let legacy_snapshot = serde_json::to_value(&session).unwrap();
+        assert_eq!(decode_session(legacy_snapshot).unwrap(), session);
     }
 
     #[tokio::test]
@@ -1962,7 +2424,218 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires CEREBRO_TEST_POSTGRES_DSN"]
-    async fn postgres_wake_claim_is_fenced_until_exact_delivery() {
+    async fn postgres_snapshot_projection_hydrates_canonical_events_and_fences_sequence() {
+        let Ok(dsn) = std::env::var("CEREBRO_TEST_POSTGRES_DSN") else {
+            return;
+        };
+        let session_ref = "agent-session:postgres-projection-events";
+        let thread_ref = "slack-thread://postgres-projection-events";
+        let tenant_id = "tenant:postgres-projection-events";
+        let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
+        store
+            .client
+            .lock()
+            .await
+            .execute(
+                "DELETE FROM cerebro_agent_sessions WHERE session_ref = $1",
+                &[&session_ref],
+            )
+            .await
+            .unwrap();
+        let session = context_test_session(ContextTestSessionInput {
+            session_ref,
+            thread_ref,
+            tenant_id,
+            actor_ref: "slack-user:postgres-projection-events",
+            context_scope_ref: "slack-context-scope://postgres-projection-events",
+            request_id: "postgres-projection-request",
+            user_text: "Persist this turn once.",
+            assistant_text: "The canonical event row is durable.",
+            pending_delivery: false,
+        });
+        store.create(&session).await.unwrap();
+
+        let row = store
+            .client
+            .lock()
+            .await
+            .query_one(
+                "SELECT jsonb_array_length(snapshot_json->'events'), last_sequence, (SELECT COUNT(*) FROM cerebro_agent_session_events e WHERE e.session_ref = s.session_ref) FROM cerebro_agent_sessions s WHERE session_ref = $1",
+                &[&session_ref],
+            )
+            .await
+            .unwrap();
+        assert_eq!(row.get::<_, i32>(0), 0);
+        assert_eq!(row.get::<_, i64>(1), 1);
+        assert_eq!(row.get::<_, i64>(2), 1);
+        assert_eq!(
+            store.load(session_ref).await.unwrap(),
+            Some(session.clone())
+        );
+        assert_eq!(
+            store.load_by_thread(tenant_id, thread_ref).await.unwrap(),
+            Some(session.clone())
+        );
+
+        let memory = MemoryUpdate {
+            memory_ref: "memory:postgres-projection-events".into(),
+            kind: MemoryKind::Preference,
+            statement: "Keep canonical event history outside the projection snapshot.".into(),
+            evidence_atom_refs: Vec::new(),
+            promotion_requested: false,
+        };
+        let appended = SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: session_ref.into(),
+            sequence: 2,
+            occurred_at: "2026-07-31T00:00:03Z".into(),
+            event: SessionEvent::MemoryRecorded { update: memory },
+        };
+        store
+            .append(session_ref, 1, std::slice::from_ref(&appended))
+            .await
+            .unwrap();
+        let expected = apply_session_events(&session, std::slice::from_ref(&appended)).unwrap();
+
+        let stale = SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: session_ref.into(),
+            sequence: 2,
+            occurred_at: "2026-07-31T00:00:04Z".into(),
+            event: SessionEvent::TurnCompleted {
+                request_id: "stale-projection-request".into(),
+                state: FinalState::Answered,
+            },
+        };
+        assert!(
+            store
+                .append(session_ref, 1, std::slice::from_ref(&stale))
+                .await
+                .is_err()
+        );
+        let row = store
+            .client
+            .lock()
+            .await
+            .query_one(
+                "SELECT jsonb_array_length(snapshot_json->'events'), last_sequence, (SELECT COUNT(*) FROM cerebro_agent_session_events e WHERE e.session_ref = s.session_ref) FROM cerebro_agent_sessions s WHERE session_ref = $1",
+                &[&session_ref],
+            )
+            .await
+            .unwrap();
+        assert_eq!(row.get::<_, i32>(0), 0);
+        assert_eq!(row.get::<_, i64>(1), 2);
+        assert_eq!(row.get::<_, i64>(2), 2);
+        drop(store);
+
+        let restarted = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
+        assert_eq!(restarted.load(session_ref).await.unwrap(), Some(expected));
+        restarted
+            .client
+            .lock()
+            .await
+            .execute(
+                "DELETE FROM cerebro_agent_sessions WHERE session_ref = $1",
+                &[&session_ref],
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires CEREBRO_TEST_POSTGRES_DSN"]
+    async fn postgres_legacy_snapshot_history_is_read_and_backfilled_on_append() {
+        let Ok(dsn) = std::env::var("CEREBRO_TEST_POSTGRES_DSN") else {
+            return;
+        };
+        let session_ref = "agent-session:postgres-legacy-snapshot-events";
+        let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
+        store
+            .client
+            .lock()
+            .await
+            .execute(
+                "DELETE FROM cerebro_agent_sessions WHERE session_ref = $1",
+                &[&session_ref],
+            )
+            .await
+            .unwrap();
+        let legacy = context_test_session(ContextTestSessionInput {
+            session_ref,
+            thread_ref: "slack-thread://postgres-legacy-snapshot-events",
+            tenant_id: "tenant:postgres-legacy-snapshot-events",
+            actor_ref: "slack-user:postgres-legacy-snapshot-events",
+            context_scope_ref: "slack-context-scope://postgres-legacy-snapshot-events",
+            request_id: "postgres-legacy-request",
+            user_text: "Read my legacy snapshot.",
+            assistant_text: "Its event history remains available.",
+            pending_delivery: false,
+        });
+        store.create(&legacy).await.unwrap();
+        let legacy_snapshot = serde_json::to_value(&legacy).unwrap();
+        let mut client = store.client.lock().await;
+        let transaction = client.transaction().await.unwrap();
+        transaction
+            .execute(
+                "DELETE FROM cerebro_agent_session_events WHERE session_ref = $1",
+                &[&session_ref],
+            )
+            .await
+            .unwrap();
+        transaction
+            .execute(
+                "UPDATE cerebro_agent_sessions SET snapshot_json = $2 WHERE session_ref = $1",
+                &[&session_ref, &legacy_snapshot],
+            )
+            .await
+            .unwrap();
+        transaction.commit().await.unwrap();
+        drop(client);
+
+        assert_eq!(store.load(session_ref).await.unwrap(), Some(legacy.clone()));
+        let appended = SessionEventRecord {
+            schema_version: AGENT_SESSION_EVENT_V2.into(),
+            session_ref: session_ref.into(),
+            sequence: 2,
+            occurred_at: "2026-07-31T00:00:03Z".into(),
+            event: SessionEvent::TurnCompleted {
+                request_id: "postgres-legacy-follow-up".into(),
+                state: FinalState::Answered,
+            },
+        };
+        store
+            .append(session_ref, 1, std::slice::from_ref(&appended))
+            .await
+            .unwrap();
+        let expected = apply_session_events(&legacy, std::slice::from_ref(&appended)).unwrap();
+        assert_eq!(store.load(session_ref).await.unwrap(), Some(expected));
+        let row = store
+            .client
+            .lock()
+            .await
+            .query_one(
+                "SELECT jsonb_array_length(snapshot_json->'events'), (SELECT COUNT(*) FROM cerebro_agent_session_events e WHERE e.session_ref = s.session_ref) FROM cerebro_agent_sessions s WHERE session_ref = $1",
+                &[&session_ref],
+            )
+            .await
+            .unwrap();
+        assert_eq!(row.get::<_, i32>(0), 0);
+        assert_eq!(row.get::<_, i64>(1), 2);
+        store
+            .client
+            .lock()
+            .await
+            .execute(
+                "DELETE FROM cerebro_agent_sessions WHERE session_ref = $1",
+                &[&session_ref],
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires CEREBRO_TEST_POSTGRES_DSN"]
+    async fn postgres_wake_delivery_survives_store_restart_and_reconciles_retry_once() {
         let Ok(dsn) = std::env::var("CEREBRO_TEST_POSTGRES_DSN") else {
             return;
         };
@@ -2096,6 +2769,8 @@ mod tests {
             .prepare_wake_delivery(&claim, &payload_digest)
             .await
             .unwrap();
+        drop(store);
+        let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
         let pending_delivery = store
             .claim_pending_wake_delivery("delivery-worker:postgres-wake", 60)
             .await
@@ -2129,6 +2804,8 @@ mod tests {
             )
             .await
             .unwrap();
+        drop(store);
+        let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
         let recovered_delivery = store
             .claim_pending_wake_delivery("delivery-worker:competing", 60)
             .await
@@ -2192,6 +2869,8 @@ mod tests {
             .append_wake_delivery_fenced(&recovered_delivery.lease, 2, &delivery_events)
             .await
             .unwrap();
+        drop(store);
+        let store = PostgresAgentSessionStore::connect(&dsn).await.unwrap();
         let row = store
             .client
             .lock()
@@ -2207,6 +2886,58 @@ mod tests {
         assert_eq!(
             u64::try_from(row.get::<_, i64>(2)).unwrap(),
             recovered_delivery.lease.fence
+        );
+        let completed = store
+            .load(session_ref)
+            .await
+            .unwrap()
+            .expect("the completed wake session survives a fresh store connection");
+        assert!(completed.pending_delivery.is_none());
+        assert_eq!(
+            completed
+                .events
+                .iter()
+                .filter(|event| matches!(event.event, SessionEvent::WakeTriggered { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            completed
+                .events
+                .iter()
+                .filter(|event| matches!(event.event, SessionEvent::DraftProduced { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            completed
+                .events
+                .iter()
+                .filter(|event| matches!(event.event, SessionEvent::DeliveryRecorded { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            completed
+                .events
+                .iter()
+                .filter(|event| matches!(event.event, SessionEvent::TurnCompleted { .. }))
+                .count(),
+            1
+        );
+        assert!(
+            store
+                .claim_pending_wake_delivery("delivery-worker:after-completion", 60)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .claim_due_wake("worker:after-completion", 60)
+                .await
+                .unwrap()
+                .is_none()
         );
         store
             .client

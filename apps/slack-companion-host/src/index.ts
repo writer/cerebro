@@ -10,3 +10,5 @@ export * from "./tools.js";
 export * from "./types.js";
 export * from "./runtime/archetype-workspace.js";
 export * from "./runtime/computer-sandbox-gateway.js";
+export * from "./runtime/off-slack-transport.js";
+export * from "./runtime/slack-transport-v2-bridge.js";
