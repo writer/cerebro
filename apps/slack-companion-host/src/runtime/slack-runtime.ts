@@ -84,11 +84,16 @@ const MAX_THREAD_CONTEXT_BYTES = 1_048_576;
 const MAX_THREAD_MESSAGES = 200;
 const MAX_THREAD_PAGE_MESSAGES = 100;
 const MAX_THREAD_SCAN_PAGES = 20;
+const ASSISTANT_DELIVERY_METADATA_EVENT_TYPE = "cerebro_assistant_delivery";
 
 interface SlackThreadMessage {
   bot_id?: string;
   client_msg_id?: string;
   files?: ReadonlyArray<{ name?: string; title?: string }>;
+  metadata?: {
+    event_payload?: Record<string, unknown>;
+    event_type?: string;
+  };
   text?: string;
   ts?: string;
   user?: string;
@@ -106,8 +111,10 @@ interface SlackThreadRepliesClient {
     replies(input: {
       channel: string;
       cursor?: string;
+      include_all_metadata?: true;
       inclusive: boolean;
       limit: number;
+      oldest?: string;
       ts: string;
     }): Promise<{
       messages?: SlackThreadMessage[];
@@ -120,7 +127,10 @@ export interface SlackMentionClient extends SlackThreadRepliesClient {
   chat: {
     postMessage(input: {
       channel: string;
-      client_msg_id?: string;
+      metadata?: {
+        event_payload: Record<string, string>;
+        event_type: typeof ASSISTANT_DELIVERY_METADATA_EVENT_TYPE;
+      };
       text: string;
       thread_ts: string;
     }): Promise<{ ts?: string }>;
@@ -1051,6 +1061,7 @@ export class SlackCompanionRuntime {
         ingressQueue: this.ingressQueue,
         leaseGuard,
         outcomes: this.outcomes,
+        priorDeliveryAttempt: claim.attempt > 1,
         questions: this.questions,
         scratchpads: this.scratchpads,
         threadRoutes: this.threadRoutes,
@@ -1078,6 +1089,7 @@ export class SlackCompanionRuntime {
       ingressQueue: this.ingressQueue,
       leaseGuard,
       outcomes: this.outcomes,
+      priorDeliveryAttempt: claim.attempt > 1,
       questions: this.questions,
       scratchpads: this.scratchpads,
       teamId: event.teamId,
@@ -1176,6 +1188,7 @@ export async function handleSlackThreadReply(input: {
   leaseGuard?: () => Promise<void>;
   outcomes: FileOutcomeStore;
   questions: AssistantQuestionService;
+  priorDeliveryAttempt?: boolean;
   scratchpads?: SlackThreadScratchpadPort;
   teamId: string;
   threadRoutes: FileSlackThreadRouteStore;
@@ -1217,6 +1230,7 @@ export async function handleSlackThreadReply(input: {
     ingressQueue: input.ingressQueue,
     leaseGuard: input.leaseGuard,
     outcomes: input.outcomes,
+    priorDeliveryAttempt: input.priorDeliveryAttempt,
     questions: input.questions,
     scratchpads: input.scratchpads,
     threadRoutes: input.threadRoutes,
@@ -1261,6 +1275,7 @@ export async function handleSlackMention(input: {
   ingressQueue?: FileSlackIngressQueue;
   leaseGuard?: () => Promise<void>;
   outcomes: FileOutcomeStore;
+  priorDeliveryAttempt?: boolean;
   questions: AssistantQuestionService;
   scratchpads?: SlackThreadScratchpadPort;
   threadRoutes?: FileSlackThreadRouteStore;
@@ -1342,6 +1357,8 @@ export async function handleSlackMention(input: {
         channel: input.event.channel,
         clientMessageId: progressClientMessageId,
         leaseGuard: input.leaseGuard,
+        priorDeliveryAttempt: input.priorDeliveryAttempt,
+        reconciliationOldestTs: input.event.eventTs,
         requestKey,
         text: deliveredText,
         threadTs: input.event.threadTs,
@@ -1412,6 +1429,8 @@ export async function handleSlackMention(input: {
           channel: input.event.channel,
           clientMessageId: progressClientMessageId,
           leaseGuard: input.leaseGuard,
+          priorDeliveryAttempt: input.priorDeliveryAttempt,
+          reconciliationOldestTs: input.event.eventTs,
           requestKey,
           text: formatEnvironmentMessage(
             input.config,
@@ -1452,6 +1471,8 @@ export async function handleSlackMention(input: {
       channel: input.event.channel,
       clientMessageId: progressClientMessageId,
       leaseGuard: input.leaseGuard,
+      priorDeliveryAttempt: input.priorDeliveryAttempt,
+      reconciliationOldestTs: input.event.eventTs,
       requestKey,
       text: formatEnvironmentMessage(
         input.config,
@@ -1647,6 +1668,8 @@ async function postOrRecoverSlackMessage(
     channel: string;
     clientMessageId: string;
     leaseGuard?: () => Promise<void>;
+    priorDeliveryAttempt?: boolean;
+    reconciliationOldestTs: string;
     requestKey: string;
     text: string;
     threadTs: string;
@@ -1658,12 +1681,14 @@ async function postOrRecoverSlackMessage(
   );
   if (bound) return { ts: bound };
 
-  await input.leaseGuard?.();
-  const existing = await findSlackMessageByClientId(client, input);
-  if (existing) {
+  if (input.priorDeliveryAttempt) {
     await input.leaseGuard?.();
-    await input.bindings?.bindMessage(input.requestKey, input.clientMessageId, existing);
-    return { ts: existing };
+    const existing = await findSlackMessageByDeliveryMetadata(client, input);
+    if (existing) {
+      await input.leaseGuard?.();
+      await input.bindings?.bindMessage(input.requestKey, input.clientMessageId, existing);
+      return { ts: existing };
+    }
   }
 
   await input.leaseGuard?.();
@@ -1678,7 +1703,7 @@ async function postOrRecoverSlackMessage(
     await input.leaseGuard?.();
     const posted = await client.chat.postMessage({
       channel: input.channel,
-      client_msg_id: input.clientMessageId,
+      metadata: assistantDeliveryMetadata(input),
       text: input.text,
       thread_ts: input.threadTs,
     });
@@ -1692,7 +1717,7 @@ async function postOrRecoverSlackMessage(
     postError = error;
   }
 
-  const recovered = await findSlackMessageByClientId(client, input);
+  const recovered = await findSlackMessageByDeliveryMetadata(client, input);
   if (recovered) {
     await input.leaseGuard?.();
     await input.bindings?.bindMessage(input.requestKey, input.clientMessageId, recovered);
@@ -1701,35 +1726,54 @@ async function postOrRecoverSlackMessage(
   throw postError;
 }
 
-async function findSlackMessageByClientId(
+async function findSlackMessageByDeliveryMetadata(
   client: SlackThreadRepliesClient,
   input: {
     botUserId?: string;
     channel: string;
     clientMessageId: string;
     leaseGuard?: () => Promise<void>;
+    reconciliationOldestTs: string;
+    requestKey: string;
+    text: string;
     threadTs: string;
   },
 ): Promise<string | undefined> {
+  if (!input.botUserId) {
+    throw new Error("Slack delivery reconciliation requires the bound bot user identity.");
+  }
   let cursor: string | undefined;
   let matchedTs: string | undefined;
+  const expected = assistantDeliveryMetadata(input);
   for (let page = 0; page < MAX_THREAD_SCAN_PAGES; page += 1) {
     await input.leaseGuard?.();
     const response = await client.conversations.replies({
       channel: input.channel,
       cursor,
+      include_all_metadata: true,
       inclusive: true,
       limit: MAX_THREAD_PAGE_MESSAGES,
+      oldest: input.reconciliationOldestTs,
       ts: input.threadTs,
     });
     for (const message of response.messages ?? []) {
       if (
-        message.client_msg_id !== input.clientMessageId
+        message.metadata?.event_type !== expected.event_type
+        || message.metadata.event_payload?.request_digest
+          !== expected.event_payload.request_digest
+        || message.metadata.event_payload?.client_message_id
+          !== expected.event_payload.client_message_id
         || !message.ts
-        || (input.botUserId && message.user && message.user !== input.botUserId)
+        || message.user !== input.botUserId
       ) continue;
+      if (
+        message.metadata.event_payload?.payload_digest
+          !== expected.event_payload.payload_digest
+      ) {
+        throw new Error("Slack already contains this assistant delivery identity with a different payload.");
+      }
       if (matchedTs && matchedTs !== message.ts) {
-        throw new Error("Slack returned multiple messages for one deterministic client message ID.");
+        throw new Error("Slack returned multiple messages for one metadata-bound assistant delivery.");
       }
       matchedTs = message.ts;
     }
@@ -1737,7 +1781,25 @@ async function findSlackMessageByClientId(
     if (!nextCursor) return matchedTs;
     cursor = nextCursor;
   }
-  throw new Error("Slack thread exceeds the bounded delivery reconciliation scan.");
+  throw new Error("Slack delivery reconciliation exceeded the bounded post-request history.");
+}
+
+function assistantDeliveryMetadata(input: {
+  clientMessageId: string;
+  requestKey: string;
+  text: string;
+}): {
+  event_payload: Record<string, string>;
+  event_type: typeof ASSISTANT_DELIVERY_METADATA_EVENT_TYPE;
+} {
+  return {
+    event_payload: {
+      client_message_id: input.clientMessageId,
+      payload_digest: `sha256:${digest(input.text)}`,
+      request_digest: `sha256:${digest(input.requestKey)}`,
+    },
+    event_type: ASSISTANT_DELIVERY_METADATA_EVENT_TYPE,
+  };
 }
 
 export function formatEnvironmentMessage(

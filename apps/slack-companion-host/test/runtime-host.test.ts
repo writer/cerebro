@@ -2805,10 +2805,15 @@ test("question service gives a bounded recovery action after a source timeout", 
   }
 });
 
-test("an ambiguous Slack post is recovered by deterministic client message ID", async () => {
+test("an ambiguous Slack post is recovered by metadata-bound delivery identity", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
     let progressClientMessageId = "";
+    let progressMetadata: {
+      event_payload: Record<string, string>;
+      event_type: string;
+    } | undefined;
+    let postAttempted = false;
     let updates = 0;
     const store = new FileOutcomeStore(root, { log: () => undefined });
     const host = createAssistantTurnHost(store);
@@ -2834,8 +2839,15 @@ test("an ambiguous Slack post is recovered by deterministic client message ID", 
     };
     const client = {
       chat: {
-        postMessage: async (input: { client_msg_id?: string }) => {
-          progressClientMessageId = input.client_msg_id ?? "";
+        postMessage: async (input: {
+          metadata?: {
+            event_payload: Record<string, string>;
+            event_type: string;
+          };
+        }) => {
+          postAttempted = true;
+          progressClientMessageId = input.metadata?.event_payload.client_message_id ?? "";
+          progressMetadata = input.metadata;
           throw new Error("Slack accepted the message but its response was lost");
         },
         update: async (input: { ts: string }) => {
@@ -2844,14 +2856,19 @@ test("an ambiguous Slack post is recovered by deterministic client message ID", 
         },
       },
       conversations: {
-        replies: async () => ({
-          messages: [{
-            client_msg_id: progressClientMessageId,
-            text: "Working the request…",
-            ts: "1710000000.000002",
-            user: "U-BOT",
-          }],
-        }),
+        replies: async (input: { include_all_metadata?: true; oldest?: string }) => {
+          assert.equal(postAttempted, true, "a first attempt must post before reconciliation");
+          assert.equal(input.include_all_metadata, true);
+          assert.equal(input.oldest, "1710000000.000001");
+          return {
+            messages: [{
+              metadata: progressMetadata,
+              text: "Working the request…",
+              ts: "1710000000.000002",
+              user: "U-BOT",
+            }],
+          };
+        },
       },
     };
     const config = loadSlackRuntimeConfig({
@@ -2880,6 +2897,280 @@ test("an ambiguous Slack post is recovered by deterministic client message ID", 
       progressClientMessageId,
       /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-a[a-f0-9]{3}-[a-f0-9]{12}$/u,
     );
+    assert.equal(progressMetadata?.event_type, "cerebro_assistant_delivery");
+    assert.equal(progressMetadata?.event_payload.client_message_id, progressClientMessageId);
+    assert.match(progressMetadata?.event_payload.request_digest ?? "", /^sha256:[a-f0-9]{64}$/u);
+    assert.match(progressMetadata?.event_payload.payload_digest ?? "", /^sha256:[a-f0-9]{64}$/u);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a first Slack delivery posts without scanning thread history", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-first-delivery-"));
+  try {
+    const { config, event, host, outcomes, questions } = slackDeliveryTestFixture(root);
+    let posts = 0;
+    let updates = 0;
+    const client = {
+      chat: {
+        postMessage: async () => {
+          posts += 1;
+          return { ts: "1710000000.000002" };
+        },
+        update: async (input: { ts: string }) => {
+          assert.equal(input.ts, "1710000000.000002");
+          updates += 1;
+        },
+      },
+      conversations: {
+        replies: async () => {
+          throw new Error("a first successful delivery must not scan Slack history");
+        },
+      },
+    };
+
+    assert.equal(
+      await handleSlackMention({ client, config, event, host, outcomes, questions }),
+      true,
+    );
+    assert.equal(posts, 1);
+    assert.equal(updates, 1);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a retry recovers the metadata-bound Slack delivery without posting again", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-retry-recovery-"));
+  try {
+    const { config, event, host, outcomes, questions } = slackDeliveryTestFixture(root);
+    const expected = assistantDeliveryMetadataFixture(config, event);
+    let posts = 0;
+    let updates = 0;
+    const client = {
+      chat: {
+        postMessage: async () => {
+          posts += 1;
+          return { ts: "unexpected" };
+        },
+        update: async (input: { ts: string }) => {
+          assert.equal(input.ts, "1710000000.000002");
+          updates += 1;
+        },
+      },
+      conversations: {
+        replies: async (input: { include_all_metadata?: true; oldest?: string }) => {
+          assert.equal(input.include_all_metadata, true);
+          assert.equal(input.oldest, event.eventTs);
+          return {
+            messages: [{
+              metadata: expected.metadata,
+              ts: "1710000000.000002",
+              user: event.botUserId,
+            }],
+          };
+        },
+      },
+    };
+
+    assert.equal(
+      await handleSlackMention({
+        client,
+        config,
+        event,
+        host,
+        outcomes,
+        priorDeliveryAttempt: true,
+        questions,
+      }),
+      true,
+    );
+    assert.equal(posts, 0);
+    assert.equal(updates, 1);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a retry ignores copied delivery metadata from another Slack user", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-wrong-bot-"));
+  try {
+    const { config, event, host, outcomes, questions } = slackDeliveryTestFixture(root);
+    const expected = assistantDeliveryMetadataFixture(config, event);
+    let posts = 0;
+    let updatedTs = "";
+    const client = {
+      chat: {
+        postMessage: async () => {
+          posts += 1;
+          return { ts: "1710000000.000003" };
+        },
+        update: async (input: { ts: string }) => {
+          updatedTs = input.ts;
+        },
+      },
+      conversations: {
+        replies: async () => ({
+          messages: [{
+            metadata: expected.metadata,
+            ts: "1710000000.000002",
+            user: "U-OTHER",
+          }],
+        }),
+      },
+    };
+
+    assert.equal(
+      await handleSlackMention({
+        client,
+        config,
+        event,
+        host,
+        outcomes,
+        priorDeliveryAttempt: true,
+        questions,
+      }),
+      true,
+    );
+    assert.equal(posts, 1);
+    assert.equal(updatedTs, "1710000000.000003");
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a retry fails closed when the bound Slack delivery payload changed", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-payload-drift-"));
+  try {
+    const { config, event, host, outcomes, questions } = slackDeliveryTestFixture(root);
+    const expected = assistantDeliveryMetadataFixture(config, event);
+    let posts = 0;
+    const client = {
+      chat: {
+        postMessage: async () => {
+          posts += 1;
+          return { ts: "unexpected" };
+        },
+        update: async () => undefined,
+      },
+      conversations: {
+        replies: async () => ({
+          messages: [{
+            metadata: {
+              ...expected.metadata,
+              event_payload: {
+                ...expected.metadata.event_payload,
+                payload_digest: `sha256:${"f".repeat(64)}`,
+              },
+            },
+            ts: "1710000000.000002",
+            user: event.botUserId,
+          }],
+        }),
+      },
+    };
+
+    await assert.rejects(
+      handleSlackMention({
+        client,
+        config,
+        event,
+        host,
+        outcomes,
+        priorDeliveryAttempt: true,
+        questions,
+      }),
+      /different payload/u,
+    );
+    assert.equal(posts, 0);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("a retry fails closed when Slack contains duplicate delivery metadata", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-duplicate-metadata-"));
+  try {
+    const { config, event, host, outcomes, questions } = slackDeliveryTestFixture(root);
+    const expected = assistantDeliveryMetadataFixture(config, event);
+    let posts = 0;
+    const client = {
+      chat: {
+        postMessage: async () => {
+          posts += 1;
+          return { ts: "unexpected" };
+        },
+        update: async () => undefined,
+      },
+      conversations: {
+        replies: async () => ({
+          messages: ["1710000000.000002", "1710000000.000003"].map((ts) => ({
+            metadata: expected.metadata,
+            ts,
+            user: event.botUserId,
+          })),
+        }),
+      },
+    };
+
+    await assert.rejects(
+      handleSlackMention({
+        client,
+        config,
+        event,
+        host,
+        outcomes,
+        priorDeliveryAttempt: true,
+        questions,
+      }),
+      /multiple messages/u,
+    );
+    assert.equal(posts, 0);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("an incomplete retry reconciliation never posts another Slack delivery", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-incomplete-retry-"));
+  try {
+    const { config, event, host, outcomes, questions } = slackDeliveryTestFixture(root);
+    let pages = 0;
+    let posts = 0;
+    const client = {
+      chat: {
+        postMessage: async () => {
+          posts += 1;
+          return { ts: "unexpected" };
+        },
+        update: async () => undefined,
+      },
+      conversations: {
+        replies: async () => {
+          pages += 1;
+          return {
+            messages: [],
+            response_metadata: { next_cursor: `page-${pages + 1}` },
+          };
+        },
+      },
+    };
+
+    await assert.rejects(
+      handleSlackMention({
+        client,
+        config,
+        event,
+        host,
+        outcomes,
+        priorDeliveryAttempt: true,
+        questions,
+      }),
+      /bounded post-request history/u,
+    );
+    assert.equal(pages, 20);
+    assert.equal(posts, 0);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -2979,8 +3270,10 @@ test("a failed event retries across Slack hosts with one deterministic message I
     const clientMessageIds: string[] = [];
     const client = {
       chat: {
-        postMessage: async (input: { client_msg_id?: string }) => {
-          clientMessageIds.push(input.client_msg_id ?? "");
+        postMessage: async (input: {
+          metadata?: { event_payload: Record<string, string> };
+        }) => {
+          clientMessageIds.push(input.metadata?.event_payload.client_message_id ?? "");
           if (clientMessageIds.length === 1) throw new Error("Slack unavailable");
           return { ts: "1710000000.000002" };
         },
@@ -3057,6 +3350,12 @@ test("a suspended ingress owner excludes replacement until its Slack effects com
       chat: {
         postMessage: async () => {
           postCount += 1;
+          now = new Date("2026-08-02T20:21:00.000Z");
+          const replacement = await replacementQueue.tryWithExclusiveExecution(
+            "worker:replacement",
+            async (permit) => replacementQueue.claimNext(permit),
+          );
+          replacementAcquired = replacement.acquired;
           return { ts: "1710000000.000009" };
         },
         update: async () => {
@@ -3065,13 +3364,7 @@ test("a suspended ingress owner excludes replacement until its Slack effects com
       },
       conversations: {
         replies: async () => {
-          now = new Date("2026-08-02T20:21:00.000Z");
-          const replacement = await replacementQueue.tryWithExclusiveExecution(
-            "worker:replacement",
-            async (permit) => replacementQueue.claimNext(permit),
-          );
-          replacementAcquired = replacement.acquired;
-          return { messages: [] };
+          throw new Error("a first delivery must not reconcile before its Slack effect");
         },
       },
     };
@@ -3223,4 +3516,73 @@ function sseResponse(events: ReadonlyArray<readonly [string, unknown]>): Respons
     headers: { "content-type": "text/event-stream" },
     status: 200,
   });
+}
+
+function slackDeliveryTestFixture(root: string) {
+  const config = loadSlackRuntimeConfig({
+    CEREBRO_BASE_URL: "https://cerebro.example.com",
+    CEREBRO_READ_API_KEY: "bound-at-runtime",
+    CEREBRO_SLACK_APP_NAME: "Cerebro Development",
+    CEREBRO_SLACK_ENVIRONMENT_LABEL: "development",
+    CEREBRO_SLACK_PRODUCTION: "false",
+    CEREBRO_TENANT_ID: "writer",
+    SLACK_ALLOWED_TEAM_IDS: "T-ONE",
+    SLACK_APP_TOKEN: "bound-at-runtime",
+    SLACK_BOT_TOKEN: "bound-at-runtime",
+  });
+  const event = {
+    botUserId: "U-BOT",
+    channel: "C-ONE",
+    eventTs: "1710000000.000001",
+    hasThreadContext: false,
+    teamId: "T-ONE",
+    text: "<@BOT> What changed?",
+    threadTs: "1710000000.000001",
+    userId: "U-ONE",
+  };
+  const outcomes = new FileOutcomeStore(root, { log: () => undefined });
+  const host = createAssistantTurnHost(outcomes);
+  const questions = new AssistantQuestionService(
+    host,
+    new CerebroAskClient({
+      answerAuthority: testAnswerAuthority,
+      apiKey: "bound-at-runtime",
+      baseUrl: "https://cerebro.example.com",
+      fetchImpl: async () => sseResponse([]),
+      tenantId: "writer",
+    }),
+  );
+  return { config, event, host, outcomes, questions };
+}
+
+function assistantDeliveryMetadataFixture(
+  config: ReturnType<typeof loadSlackRuntimeConfig>,
+  event: ReturnType<typeof slackDeliveryTestFixture>["event"],
+): {
+  clientMessageId: string;
+  metadata: {
+    event_payload: Record<string, string>;
+    event_type: "cerebro_assistant_delivery";
+  };
+} {
+  const requestKey = [event.teamId, event.channel, event.threadTs, event.eventTs].join(":");
+  const requestDigest = createHash("sha256").update(requestKey).digest("hex");
+  const requestId = `slack-request-${requestDigest}`;
+  const clientMessageHex = createHash("sha256")
+    .update(`slack-client-message:${requestId}`)
+    .digest("hex")
+    .slice(0, 32);
+  const clientMessageId = `${clientMessageHex.slice(0, 8)}-${clientMessageHex.slice(8, 12)}-4${clientMessageHex.slice(13, 16)}-a${clientMessageHex.slice(17, 20)}-${clientMessageHex.slice(20, 32)}`;
+  const text = formatEnvironmentMessage(config, "Working the request…");
+  return {
+    clientMessageId,
+    metadata: {
+      event_payload: {
+        client_message_id: clientMessageId,
+        payload_digest: `sha256:${createHash("sha256").update(text).digest("hex")}`,
+        request_digest: `sha256:${requestDigest}`,
+      },
+      event_type: "cerebro_assistant_delivery",
+    },
+  };
 }

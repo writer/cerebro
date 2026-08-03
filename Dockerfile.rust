@@ -24,6 +24,7 @@ COPY --from=source /src/internal/sourceruntime/recordkernel ./internal/sourcerun
 COPY --from=source /src/internal/wasmguest ./internal/wasmguest
 COPY --from=source /src/tools/graphactiongen ./tools/graphactiongen
 COPY --from=source /src/tools/policycataloggen ./tools/policycataloggen
+COPY --from=source /src/tools/slack-agent-blackbox ./tools/slack-agent-blackbox
 
 RUN --mount=type=cache,id=cerebro-rust-only-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=cerebro-rust-only-cargo-git,target=/usr/local/cargo/git,sharing=locked \
