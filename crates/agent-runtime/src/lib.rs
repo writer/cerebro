@@ -2543,8 +2543,8 @@ fn validate_conversational_synthesis_unit(
     let introduces_operational_language = operational_subjects
         .iter()
         .chain(operational_states.iter())
-        .filter(|term| unit_words.contains(*term))
-        .any(|term| !operator_words.contains(term));
+        .filter(|term| unit_words.contains(**term))
+        .any(|term| !operator_words.contains(*term));
     if turn.lane != ExecutionLane::Converse
         || request_explicitly_requires_current_evidence(&turn.request.message)
         || introduces_operational_language
