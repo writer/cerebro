@@ -1390,6 +1390,7 @@ pub(crate) fn request_is_artifact_transformation(message: &str) -> bool {
         " more concise ",
     ]
     .iter()
+    .chain(["i'll ", "i will ", "i can ", "i can't ", "i cannot "].iter())
     .any(|marker| normalized.contains(marker));
     let requests_live_check = [
         " check ",
@@ -4183,6 +4184,8 @@ mod grounding_tests {
         assert_eq!(validate_critique_decision(&turn, &valid), Ok(()));
 
         turn.grounding_units[0].text = "I verified that the current deployment is healthy.".into();
+        assert!(validate_critique_decision(&turn, &valid).is_err());
+        turn.grounding_units[0].text = "I'll hold that correction for the next turn.".into();
         assert!(validate_critique_decision(&turn, &valid).is_err());
 
         turn.grounding_units[0].text = turn.draft.summary.clone();
