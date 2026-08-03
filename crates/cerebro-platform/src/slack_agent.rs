@@ -2215,78 +2215,65 @@ fn presentation_decision_schema() -> Value {
 }
 
 fn critique_decision_schema() -> Value {
+    let grounding = json!({
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 64,
+        "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "unit_id": {"type": "string", "minLength": 1},
+                "basis": {
+                    "type": "string",
+                    "enum": [
+                        "direct_observation",
+                        "bounded_inference",
+                        "operator_supplied",
+                        "retained_context",
+                        "tool_outcome",
+                        "hypothesis",
+                        "recommendation",
+                        "stable_explanation",
+                        "placeholder",
+                        "non_factual"
+                    ]
+                },
+                "support": {
+                    "type": "array",
+                    "maxItems": 8,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "evidence_ref": {"type": "string", "minLength": 1},
+                            "data_pointer": {"type": ["string", "null"]},
+                            "supporting_text": {"type": "string", "minLength": 1}
+                        },
+                        "required": ["evidence_ref", "data_pointer", "supporting_text"]
+                    }
+                },
+                "context_excerpt": {"type": ["string", "null"], "minLength": 1},
+                "observation_sequence": {"type": ["integer", "null"], "minimum": 1}
+            },
+            "required": ["unit_id", "basis", "support", "context_excerpt", "observation_sequence"]
+        }
+    });
     json!({
         "type": "object",
         "additionalProperties": false,
-        "oneOf": [
-            {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                    "decision": {"type": "string", "enum": ["approve"]},
-                    "checks": critique_checks_schema(),
-                    "grounding": {
-                        "type": "array",
-                        "minItems": 1,
-                        "maxItems": 64,
-                        "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {
-                                "unit_id": {"type": "string", "minLength": 1},
-                                "basis": {
-                                    "type": "string",
-                                    "enum": [
-                                        "direct_observation",
-                                        "bounded_inference",
-                                        "operator_supplied",
-                                        "retained_context",
-                                        "tool_outcome",
-                                        "hypothesis",
-                                        "recommendation",
-                                        "stable_explanation",
-                                        "placeholder",
-                                        "non_factual"
-                                    ]
-                                },
-                                "support": {
-                                    "type": "array",
-                                    "maxItems": 8,
-                                    "items": {
-                                        "type": "object",
-                                        "additionalProperties": false,
-                                        "properties": {
-                                            "evidence_ref": {"type": "string", "minLength": 1},
-                                            "data_pointer": {"type": ["string", "null"]},
-                                            "supporting_text": {"type": "string", "minLength": 1}
-                                        },
-                                        "required": ["evidence_ref", "data_pointer", "supporting_text"]
-                                    }
-                                },
-                                "context_excerpt": {"type": ["string", "null"], "minLength": 1},
-                                "observation_sequence": {"type": ["integer", "null"], "minimum": 1}
-                            },
-                            "required": ["unit_id", "basis", "support", "context_excerpt", "observation_sequence"]
-                        }
-                    }
-                },
-                "required": ["decision", "checks", "grounding"]
-            },
-            {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                    "decision": {"type": "string", "enum": ["revise"]},
-                    "issues": {
-                        "type": "array",
-                        "minItems": 1,
-                        "maxItems": 16,
-                        "items": {"type": "string", "minLength": 1}
-                    }
-                },
-                "required": ["decision", "issues"]
+        "properties": {
+            "decision": {"type": "string", "enum": ["approve", "revise"]},
+            "checks": critique_checks_schema(),
+            "grounding": grounding,
+            "issues": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 16,
+                "items": {"type": "string", "minLength": 1}
             }
-        ]
+        },
+        "required": ["decision"]
     })
 }
 
@@ -6431,6 +6418,19 @@ mod tests {
         );
         assert!(operating.contains("does not verify provider records, provider behavior"));
         assert!(operating.contains("does not log into or administer providers"));
+    }
+
+    #[test]
+    fn critic_tool_schema_is_bedrock_compatible_and_rust_stays_variant_strict() {
+        let schema = critique_decision_schema();
+        assert_eq!(schema.get("type"), Some(&json!("object")));
+        assert!(schema.get("oneOf").is_none());
+        assert_eq!(
+            schema.pointer("/properties/decision/enum"),
+            Some(&json!(["approve", "revise"]))
+        );
+        assert!(parse_critique_value(json!({"decision": "approve"})).is_err());
+        assert!(parse_critique_value(json!({"decision": "revise"})).is_err());
     }
 
     #[test]
