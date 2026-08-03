@@ -116,6 +116,8 @@ struct EvalCaseReceipt {
     presentation_attempt_count: usize,
     critic_attempt_count: usize,
     operating_repair_feedback: Vec<Vec<String>>,
+    presentation_repair_feedback: Vec<Vec<String>>,
+    critic_repair_feedback: Vec<Vec<String>>,
     latency_ms: u128,
     false_converse: bool,
     answer_quality_issues: Vec<String>,
@@ -2619,6 +2621,16 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
                 .lock()
                 .expect("operating repair receipt poisoned")
                 .clone(),
+            presentation_repair_feedback: measured
+                .presentation_repair_feedback
+                .lock()
+                .expect("presentation repair receipt poisoned")
+                .clone(),
+            critic_repair_feedback: measured
+                .critic_repair_feedback
+                .lock()
+                .expect("critic repair receipt poisoned")
+                .clone(),
             latency_ms,
             false_converse: eval_case.false_converse,
             passed: route_passed
@@ -2655,7 +2667,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         .iter()
         .filter(|result| result.false_converse)
         .collect::<Vec<_>>();
-    let false_converse_rate = rate(
+    let false_converse_rate = vacuous_rate(
         false_converse_cases
             .iter()
             .filter(|result| result.actual_route != Some(ExecutionLane::Converse))
@@ -6813,6 +6825,14 @@ fn rate(passed: usize, total: usize) -> f64 {
     }
 }
 
+fn vacuous_rate(passed: usize, total: usize) -> f64 {
+    if total == 0 {
+        1.0
+    } else {
+        rate(passed, total)
+    }
+}
+
 fn percentile_95(sorted: &[u128]) -> u128 {
     if sorted.is_empty() {
         return 0;
@@ -7314,6 +7334,12 @@ mod tests {
         assert!(validate_exact_head_binding(&"a".repeat(40), &"a".repeat(40), "1").is_ok());
         assert!(validate_exact_head_binding(&"a".repeat(40), &"b".repeat(40), "1").is_err());
         assert!(validate_exact_head_binding(&"a".repeat(40), &"a".repeat(40), "0").is_err());
+    }
+
+    #[test]
+    fn an_eval_without_false_converse_cases_does_not_invent_a_regression() {
+        assert_eq!(vacuous_rate(0, 0), 1.0);
+        assert_eq!(vacuous_rate(1, 2), 0.5);
     }
 
     #[test]
