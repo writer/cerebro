@@ -789,6 +789,23 @@ pub struct WakeAssessment {
     pub scalar_comparisons: Vec<WakeScalarComparison>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WakeAttentionDisposition {
+    RoutineSilent,
+    VisibleAcceptance,
+    VisibleAttention,
+    VisibleUnhealthy,
+}
+
+struct WakeAttentionDecision<'a> {
+    required_observations: Vec<&'a ToolObservation>,
+    missing_required_tool_ids: Vec<String>,
+    unhealthy_required_tool_ids: Vec<String>,
+    acceptance_met: bool,
+    matched_attention_signals: Vec<ObservationCondition>,
+    disposition: WakeAttentionDisposition,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WakeScalarComparison {
@@ -2074,6 +2091,26 @@ pub async fn run_session_turn_recorded(
                     );
                     continue;
                 }
+                let canonical_silent_wake = match canonicalize_routine_silent_wake(
+                    &session,
+                    &trigger,
+                    plan.as_ref(),
+                    &observations,
+                    assessment_at,
+                    &mut draft,
+                ) {
+                    Ok(canonicalized) => canonicalized,
+                    Err(error) => {
+                        record_draft_repair(
+                            &mut rejected_operating_drafts,
+                            &draft,
+                            &mut repairs,
+                            &mut repair_feedback,
+                            error.to_string(),
+                        );
+                        continue;
+                    }
+                };
                 if let Err(error) = validate_wake_completion(
                     &session,
                     &draft,
@@ -2146,64 +2183,68 @@ pub async fn run_session_turn_recorded(
                     );
                     continue;
                 }
-                let review = match model
-                    .review_message(ClaimReviewTurn {
-                        session: session.clone(),
-                        trigger: trigger.clone(),
-                        prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
-                        wake_assessment: build_wake_assessment(
-                            &session,
-                            &trigger,
-                            prior_commitment_checkpoint.as_ref(),
-                            &observations,
-                            assessment_at,
-                        ),
-                        draft: draft.clone(),
-                        observations: observations.clone(),
-                    })
-                    .await
-                {
-                    Ok(review) => review,
-                    Err(_) => {
-                        return repair_fallback_outcome(
-                            &session,
-                            &input,
-                            &trigger,
-                            plan.as_ref(),
-                            &observations,
-                            events,
-                            journal,
-                        )
-                        .await;
-                    }
-                };
-                let issues = match validate_message_review(&draft, &review) {
-                    Ok(issues) => issues,
-                    Err(_) => {
-                        return repair_fallback_outcome(
-                            &session,
-                            &input,
-                            &trigger,
-                            plan.as_ref(),
-                            &observations,
-                            events,
-                            journal,
-                        )
-                        .await;
-                    }
-                };
-                if !issues.is_empty() {
-                    let mut issue_signature = issues.clone();
-                    issue_signature.sort();
-                    issue_signature.dedup();
-                    if !rejected_reviews.insert((message_digest(&draft.message), issue_signature)) {
-                        critic_repairs = MAX_CRITIC_REPAIRS + 1;
+                if !canonical_silent_wake {
+                    let review = match model
+                        .review_message(ClaimReviewTurn {
+                            session: session.clone(),
+                            trigger: trigger.clone(),
+                            prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
+                            wake_assessment: build_wake_assessment(
+                                &session,
+                                &trigger,
+                                prior_commitment_checkpoint.as_ref(),
+                                &observations,
+                                assessment_at,
+                            ),
+                            draft: draft.clone(),
+                            observations: observations.clone(),
+                        })
+                        .await
+                    {
+                        Ok(review) => review,
+                        Err(_) => {
+                            return repair_fallback_outcome(
+                                &session,
+                                &input,
+                                &trigger,
+                                plan.as_ref(),
+                                &observations,
+                                events,
+                                journal,
+                            )
+                            .await;
+                        }
+                    };
+                    let issues = match validate_message_review(&draft, &review) {
+                        Ok(issues) => issues,
+                        Err(_) => {
+                            return repair_fallback_outcome(
+                                &session,
+                                &input,
+                                &trigger,
+                                plan.as_ref(),
+                                &observations,
+                                events,
+                                journal,
+                            )
+                            .await;
+                        }
+                    };
+                    if !issues.is_empty() {
+                        let mut issue_signature = issues.clone();
+                        issue_signature.sort();
+                        issue_signature.dedup();
+                        if !rejected_reviews
+                            .insert((message_digest(&draft.message), issue_signature))
+                        {
+                            critic_repairs = MAX_CRITIC_REPAIRS + 1;
+                            repair_feedback = issues;
+                            continue;
+                        }
+                        critic_repairs += 1;
                         repair_feedback = issues;
                         continue;
                     }
-                    critic_repairs += 1;
-                    repair_feedback = issues;
-                    continue;
                 }
                 let mut final_events = Vec::with_capacity(draft.memory_updates.len() + 1);
                 final_events.push(SessionEvent::DraftProduced {
@@ -2438,6 +2479,61 @@ async fn repair_fallback_outcome(
         }
         SessionTurnTrigger::Operator => None,
     };
+    let mut routine_silent_draft = GroundedDraft {
+        state: FinalState::Answered,
+        delivery: DeliveryDisposition::Silent,
+        message: String::new(),
+        claims: Vec::new(),
+        coverage_notice: None,
+        question: None,
+        mission: mission.clone(),
+        memory_updates: Vec::new(),
+        presentation_ready: true,
+    };
+    if canonicalize_routine_silent_wake(
+        session,
+        trigger,
+        plan,
+        observations,
+        assessment_at,
+        &mut routine_silent_draft,
+    )? {
+        validate_wake_completion(
+            session,
+            &routine_silent_draft,
+            trigger,
+            assessment_at,
+            observations,
+        )?;
+        validate_plan_completion(plan, &routine_silent_draft)?;
+        validate_effect_closure(observations, &routine_silent_draft, assessment_at)?;
+        if !validate_explicit_response_contract(session, trigger, &routine_silent_draft).is_empty()
+        {
+            return Err(AgentRuntimeError::PresentationRepairLimit);
+        }
+        let validated =
+            validate_grounded_draft(session, &routine_silent_draft, observations, assessment_at)?;
+        emit_final_events(
+            session,
+            &input.assessment_at,
+            &mut events,
+            [SessionEvent::DraftProduced {
+                request_id: input.request_id.clone(),
+                draft: routine_silent_draft.clone(),
+            }],
+            journal,
+        )
+        .await?;
+        return Ok(SessionTurnOutcome::PendingDelivery {
+            lane: turn_outcome_lane(input, plan),
+            delivery: DeliveryDisposition::Silent,
+            markdown: validated.markdown,
+            final_state: FinalState::Answered,
+            evidence_atom_refs: validated.evidence_atom_refs,
+            mission: routine_silent_draft.mission,
+            events,
+        });
+    }
     let coverage_boundary = if uncertain_effect.is_some() {
         mission.status = SessionStatus::Blocked;
         CoverageBoundaryKind::ExternalActionOutcomeUnknown
@@ -2931,49 +3027,30 @@ fn validate_wake_completion(
         ));
     }
     let checkpoint = prior_commitment_checkpoint(session, trigger);
-    let missing_required_tools = current
-        .required_tool_ids
-        .iter()
-        .filter(|tool_id| {
-            let expected_input_digest = checkpoint.as_ref().and_then(|checkpoint| {
-                checkpoint
-                    .observations
-                    .iter()
-                    .rev()
-                    .find(|observation| observation.tool_id.as_str() == tool_id.as_str())
-                    .map(|observation| observation.input_digest.as_str())
-            });
-            !observations.iter().any(|observation| {
-                observation.call.tool_id.as_str() == tool_id.as_str()
-                    && expected_input_digest
-                        .is_none_or(|expected| observation.call.input_digest() == expected)
-            })
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    if !missing_required_tools.is_empty() {
+    let attention = assess_wake_attention(
+        session,
+        trigger,
+        checkpoint.as_ref(),
+        observations,
+        assessment_at,
+    )
+    .ok_or_else(|| {
+        AgentRuntimeError::InvalidFinal(
+            "the wake does not have a typed attention decision for its exact commitment".into(),
+        )
+    })?;
+    if !attention.missing_required_tool_ids.is_empty() {
         return Err(AgentRuntimeError::InvalidFinal(format!(
             "scheduled wake must invoke its required tools with the exact prior completed-check input before finishing: {}. Copy the matching tool input from prior_commitment_checkpoint.observations.",
-            missing_required_tools.join(", ")
+            attention.missing_required_tool_ids.join(", ")
         )));
     }
-    let unhealthy_required_tools = current
-        .required_tool_ids
-        .iter()
-        .filter(|tool_id| {
-            !observations.iter().any(|observation| {
-                observation.call.tool_id.as_str() == tool_id.as_str()
-                    && observation_is_complete_and_fresh(observation, assessment_at)
-            })
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    if !unhealthy_required_tools.is_empty()
+    if !attention.unhealthy_required_tool_ids.is_empty()
         && (draft.delivery != DeliveryDisposition::Visible || draft.state == FinalState::Answered)
     {
         return Err(AgentRuntimeError::InvalidFinal(format!(
             "failed, incomplete, or stale required observations must produce a visible partial or blocked update: {}",
-            unhealthy_required_tools.join(", ")
+            attention.unhealthy_required_tool_ids.join(", ")
         )));
     }
     let next = draft
@@ -2997,34 +3074,12 @@ fn validate_wake_completion(
             "a scheduled wake cannot rewrite its executor contract. Copy required_tool_ids, attention_policy, acceptance_criteria, and verification exactly from this durable commitment, including when closing it: {expected}"
         )));
     }
-    let accepted = unhealthy_required_tools.is_empty()
-        && current.attention_policy.as_ref().is_some_and(|policy| {
-            !policy.acceptance_all.is_empty()
-                && policy
-                    .acceptance_all
-                    .iter()
-                    .all(|condition| observation_condition_matches(condition, observations))
-        });
-    let alert = !accepted
-        && current.attention_policy.as_ref().is_some_and(|policy| {
-            policy
-                .alert_any
-                .iter()
-                .any(|condition| observation_condition_matches(condition, observations))
-        });
-    let notify = !accepted
-        && !alert
-        && current.attention_policy.as_ref().is_some_and(|policy| {
-            policy.notify_on_change.iter().any(|condition| {
-                observation_condition_transitioned(condition, observations, checkpoint.as_ref())
-            })
-        });
     let closed = matches!(
         next.status,
         CommitmentStatus::Completed | CommitmentStatus::Cancelled
     );
     if closed {
-        if !accepted {
+        if !attention.acceptance_met {
             return Err(AgentRuntimeError::InvalidFinal(
                 "the commitment cannot close before its typed acceptance condition is satisfied"
                     .into(),
@@ -3042,11 +3097,12 @@ fn validate_wake_completion(
         }
         return Ok(());
     }
-    if unhealthy_required_tools.is_empty() {
-        let required_delivery = if accepted || alert || notify {
-            DeliveryDisposition::Visible
-        } else {
-            DeliveryDisposition::Silent
+    if attention.unhealthy_required_tool_ids.is_empty() {
+        let required_delivery = match attention.disposition {
+            WakeAttentionDisposition::RoutineSilent => DeliveryDisposition::Silent,
+            WakeAttentionDisposition::VisibleAcceptance
+            | WakeAttentionDisposition::VisibleAttention
+            | WakeAttentionDisposition::VisibleUnhealthy => DeliveryDisposition::Visible,
         };
         if draft.delivery != required_delivery {
             let exact_state = match required_delivery {
@@ -3091,9 +3147,43 @@ fn observation_condition_matches(
     })
 }
 
+fn observation_condition_matches_selected(
+    condition: &ObservationCondition,
+    observations: &[&ToolObservation],
+) -> bool {
+    observations.iter().any(|observation| {
+        observation.call.tool_id == condition.tool_id
+            && observation.result.state == ToolResultState::Succeeded
+            && observation.result.data.pointer(&condition.data_pointer) == Some(&condition.equals)
+    })
+}
+
 fn observation_condition_transitioned(
     condition: &ObservationCondition,
     observations: &[ToolObservation],
+    checkpoint: Option<&CommitmentCheckpoint>,
+) -> bool {
+    observations.iter().any(|observation| {
+        if observation.call.tool_id != condition.tool_id
+            || observation.result.state != ToolResultState::Succeeded
+            || observation.result.data.pointer(&condition.data_pointer) != Some(&condition.equals)
+        {
+            return false;
+        }
+        let input_digest = observation.call.input_digest();
+        checkpoint.is_some_and(|checkpoint| {
+            checkpoint.observations.iter().rev().any(|prior| {
+                prior.tool_id == condition.tool_id
+                    && prior.input_digest == input_digest
+                    && prior.data.pointer(&condition.data_pointer) != Some(&condition.equals)
+            })
+        })
+    })
+}
+
+fn observation_condition_transitioned_selected(
+    condition: &ObservationCondition,
+    observations: &[&ToolObservation],
     checkpoint: Option<&CommitmentCheckpoint>,
 ) -> bool {
     observations.iter().any(|observation| {
@@ -3124,55 +3214,11 @@ fn build_wake_assessment(
     let SessionTurnTrigger::Wake { commitment_ref, .. } = trigger else {
         return None;
     };
-    let commitment = session
-        .mission
-        .commitments
-        .iter()
-        .find(|commitment| commitment.commitment_ref == *commitment_ref)?;
-    let current_required = commitment
-        .required_tool_ids
-        .iter()
-        .filter_map(|tool_id| {
-            observations
-                .iter()
-                .rev()
-                .find(|observation| observation.call.tool_id == *tool_id)
-        })
-        .collect::<Vec<_>>();
-    let required_observations_present =
-        current_required.len() == commitment.required_tool_ids.len();
-    let required_observations_healthy = required_observations_present
-        && current_required
-            .iter()
-            .all(|observation| observation_is_complete_and_fresh(observation, assessment_at));
-    let acceptance_met = required_observations_healthy
-        && commitment.attention_policy.as_ref().is_some_and(|policy| {
-            !policy.acceptance_all.is_empty()
-                && policy
-                    .acceptance_all
-                    .iter()
-                    .all(|condition| observation_condition_matches(condition, observations))
-        });
-    let matched_attention_signals = commitment
-        .attention_policy
-        .as_ref()
-        .map(|policy| {
-            let alerts = policy.alert_any.iter().filter(|condition| {
-                observations.iter().any(|observation| {
-                    observation.call.tool_id == condition.tool_id
-                        && observation.result.data.pointer(&condition.data_pointer)
-                            == Some(&condition.equals)
-                })
-            });
-            let notifications = policy.notify_on_change.iter().filter(|condition| {
-                observation_condition_transitioned(condition, observations, checkpoint)
-            });
-            alerts.chain(notifications).cloned().collect()
-        })
-        .unwrap_or_default();
+    let decision =
+        assess_wake_attention(session, trigger, checkpoint, observations, assessment_at)?;
 
     let mut scalar_comparisons = Vec::new();
-    for current_observation in current_required {
+    for current_observation in &decision.required_observations {
         let input_digest = current_observation.call.input_digest();
         let prior = checkpoint.and_then(|checkpoint| {
             checkpoint.observations.iter().rev().find(|prior| {
@@ -3216,11 +3262,107 @@ fn build_wake_assessment(
 
     Some(WakeAssessment {
         commitment_ref: commitment_ref.clone(),
-        required_observations_present,
-        required_observations_healthy,
+        required_observations_present: decision.missing_required_tool_ids.is_empty(),
+        required_observations_healthy: decision.unhealthy_required_tool_ids.is_empty(),
+        acceptance_met: decision.acceptance_met,
+        matched_attention_signals: decision.matched_attention_signals,
+        scalar_comparisons,
+    })
+}
+
+fn assess_wake_attention<'a>(
+    session: &AgentSession,
+    trigger: &SessionTurnTrigger,
+    checkpoint: Option<&CommitmentCheckpoint>,
+    observations: &'a [ToolObservation],
+    assessment_at: OffsetDateTime,
+) -> Option<WakeAttentionDecision<'a>> {
+    let SessionTurnTrigger::Wake { commitment_ref, .. } = trigger else {
+        return None;
+    };
+    let commitment = session
+        .mission
+        .commitments
+        .iter()
+        .find(|commitment| commitment.commitment_ref == *commitment_ref)?;
+    let mut required_observations = Vec::new();
+    let mut missing_required_tool_ids = Vec::new();
+    let mut unhealthy_required_tool_ids = Vec::new();
+    for tool_id in &commitment.required_tool_ids {
+        let expected_input_digest = checkpoint.and_then(|checkpoint| {
+            checkpoint
+                .observations
+                .iter()
+                .rev()
+                .find(|observation| observation.tool_id == *tool_id)
+                .map(|observation| observation.input_digest.as_str())
+        });
+        let current = observations.iter().rev().find(|observation| {
+            observation.call.tool_id == *tool_id
+                && expected_input_digest
+                    .is_none_or(|expected| observation.call.input_digest() == expected)
+        });
+        match current {
+            Some(observation) => {
+                if !observation_is_complete_and_fresh(observation, assessment_at) {
+                    unhealthy_required_tool_ids.push(tool_id.clone());
+                }
+                required_observations.push(observation);
+            }
+            None => {
+                missing_required_tool_ids.push(tool_id.clone());
+                unhealthy_required_tool_ids.push(tool_id.clone());
+            }
+        }
+    }
+    let required_observations_healthy = unhealthy_required_tool_ids.is_empty();
+    let acceptance_met = required_observations_healthy
+        && commitment.attention_policy.as_ref().is_some_and(|policy| {
+            !policy.acceptance_all.is_empty()
+                && policy.acceptance_all.iter().all(|condition| {
+                    observation_condition_matches_selected(condition, &required_observations)
+                })
+        });
+    let matched_attention_signals = if required_observations_healthy && !acceptance_met {
+        commitment
+            .attention_policy
+            .as_ref()
+            .map(|policy| {
+                let alerts = policy.alert_any.iter().filter(|condition| {
+                    observation_condition_matches_selected(condition, &required_observations)
+                });
+                let notifications = policy.notify_on_change.iter().filter(|condition| {
+                    observation_condition_transitioned_selected(
+                        condition,
+                        &required_observations,
+                        checkpoint,
+                    )
+                });
+                alerts.chain(notifications).cloned().collect()
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let has_unhealthy_observation = observations
+        .iter()
+        .any(|observation| !observation_is_complete_and_fresh(observation, assessment_at));
+    let disposition = if !required_observations_healthy || has_unhealthy_observation {
+        WakeAttentionDisposition::VisibleUnhealthy
+    } else if acceptance_met {
+        WakeAttentionDisposition::VisibleAcceptance
+    } else if !matched_attention_signals.is_empty() {
+        WakeAttentionDisposition::VisibleAttention
+    } else {
+        WakeAttentionDisposition::RoutineSilent
+    };
+    Some(WakeAttentionDecision {
+        required_observations,
+        missing_required_tool_ids,
+        unhealthy_required_tool_ids,
         acceptance_met,
         matched_attention_signals,
-        scalar_comparisons,
+        disposition,
     })
 }
 
@@ -3515,6 +3657,170 @@ fn normalize_passive_wake_handback(trigger: &SessionTurnTrigger, draft: &mut Gro
         .iter()
         .map(|claim| claim.text.as_str())
         .collect();
+}
+
+fn canonicalize_routine_silent_wake(
+    session: &AgentSession,
+    trigger: &SessionTurnTrigger,
+    plan: Option<&ResearchPlan>,
+    observations: &[ToolObservation],
+    assessment_at: OffsetDateTime,
+    draft: &mut GroundedDraft,
+) -> Result<bool, AgentRuntimeError> {
+    let SessionTurnTrigger::Wake { commitment_ref, .. } = trigger else {
+        return Ok(false);
+    };
+    let checkpoint = prior_commitment_checkpoint(session, trigger);
+    let Some(attention) = assess_wake_attention(
+        session,
+        trigger,
+        checkpoint.as_ref(),
+        observations,
+        assessment_at,
+    ) else {
+        return Ok(false);
+    };
+    if attention.disposition != WakeAttentionDisposition::RoutineSilent {
+        return Ok(false);
+    }
+    let current = session
+        .mission
+        .commitments
+        .iter()
+        .find(|commitment| commitment.commitment_ref == *commitment_ref)
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal(
+                "routine wake completion requires its exact durable commitment".into(),
+            )
+        })?;
+    let next_index = draft
+        .mission
+        .commitments
+        .iter()
+        .position(|commitment| commitment.commitment_ref == *commitment_ref)
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal(
+                "routine wake completion must preserve and reschedule its exact commitment".into(),
+            )
+        })?;
+    let next_wake_at = draft.mission.commitments[next_index]
+        .wake_at
+        .clone()
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal(
+                "routine wake completion requires a replacement due time".into(),
+            )
+        })?;
+    let next_wake = OffsetDateTime::parse(&next_wake_at, &Rfc3339).map_err(|_| {
+        AgentRuntimeError::InvalidFinal(
+            "routine wake completion has an invalid replacement due time".into(),
+        )
+    })?;
+    if next_wake <= assessment_at {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "routine wake completion must move its exact commitment to a future due time".into(),
+        ));
+    }
+
+    let required_plan_claims = plan
+        .into_iter()
+        .flat_map(|plan| plan.claims.iter())
+        .filter(|claim| claim.required)
+        .collect::<Vec<_>>();
+    if required_plan_claims.len() != 1 {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "routine wake completion requires exactly one host-derived verification claim".into(),
+        ));
+    }
+    let planned_claim_ref = required_plan_claims[0].claim_ref.clone();
+    let mut claims = Vec::new();
+    let mut message = String::new();
+    for (index, observation) in attention.required_observations.iter().enumerate() {
+        let summary = observation.result.summary.trim();
+        if summary.is_empty()
+            || summary.len() > 1_500
+            || summary
+                .chars()
+                .any(|character| character.is_control() && character != '\n')
+        {
+            return Err(AgentRuntimeError::InvalidFinal(
+                "routine wake observation summary is not safe for its durable internal audit"
+                    .into(),
+            ));
+        }
+        let atom_ref = observation
+            .result
+            .evidence
+            .iter()
+            .flat_map(|evidence| &evidence.atoms)
+            .find(|atom| {
+                atom.complete
+                    && atom.fresh_until.as_deref().is_some_and(|fresh_until| {
+                        OffsetDateTime::parse(fresh_until, &Rfc3339)
+                            .is_ok_and(|fresh_until| fresh_until >= assessment_at)
+                    })
+                    && matches!(
+                        &atom.assertion,
+                        EvidenceAssertion::ToolOutcome { state, summary }
+                            if *state == observation.result.state
+                                && summary.trim() == observation.result.summary.trim()
+                    )
+            })
+            .map(|atom| atom.atom_ref.clone())
+            .ok_or_else(|| {
+                AgentRuntimeError::InvalidFinal(
+                    "routine wake completion requires a complete fresh ToolOutcome atom for every required observation"
+                        .into(),
+                )
+            })?;
+        let text = if message.is_empty() {
+            summary.to_owned()
+        } else {
+            format!("\n\n{summary}")
+        };
+        message.push_str(&text);
+        claims.push(GroundedClaim {
+            claim_ref: format!("wake-observation:{commitment_ref}:{index}"),
+            planned_claim_ref: (index == 0).then_some(planned_claim_ref.clone()),
+            text,
+            required_for_answer: true,
+            content: ClaimContent::Observation {
+                atom_refs: vec![atom_ref],
+            },
+        });
+    }
+
+    let mut canonical_commitment = current.clone();
+    canonical_commitment.status = CommitmentStatus::Waiting;
+    canonical_commitment.blocker = None;
+    canonical_commitment.wake_at = Some(next_wake_at);
+    let follow_up = render_commitment_claim(&canonical_commitment).ok_or_else(|| {
+        AgentRuntimeError::InvalidFinal(
+            "routine wake completion could not render its replacement due time".into(),
+        )
+    })?;
+    let follow_up = format!("\n\n{follow_up}");
+    message.push_str(&follow_up);
+    claims.push(GroundedClaim {
+        claim_ref: format!("wake-commitment:{commitment_ref}"),
+        planned_claim_ref: None,
+        text: follow_up,
+        required_for_answer: true,
+        content: ClaimContent::Commitment {
+            commitment_ref: commitment_ref.clone(),
+        },
+    });
+    draft.mission.commitments[next_index] = canonical_commitment;
+    draft.mission.status = SessionStatus::WaitingForExternal;
+    draft.state = FinalState::Answered;
+    draft.delivery = DeliveryDisposition::Silent;
+    draft.message = message;
+    draft.claims = claims;
+    draft.coverage_notice = None;
+    draft.question = None;
+    draft.memory_updates.clear();
+    draft.presentation_ready = true;
+    Ok(true)
 }
 
 fn collect_false_boolean_pointers(value: &Value, prefix: &str, output: &mut Vec<String>) {
@@ -9207,6 +9513,28 @@ mod tests {
         }
     }
 
+    fn recovering_observation_with_tool_outcome(fresh_until: &str) -> ToolObservation {
+        let mut current = observation(true, Some(fresh_until));
+        current.result.summary = "Connector alpha is recovering at this check.".into();
+        current.result.data = json!({"status": "recovering"});
+        current.result.evidence[0].atoms[0].assertion = EvidenceAssertion::Value {
+            predicate: "status".into(),
+            value: json!("recovering"),
+        };
+        current.result.evidence[0].atoms.push(EvidenceAtom {
+            atom_ref: "evidence:1#tool-outcome".into(),
+            subject_ref: Some("connector:alpha".into()),
+            assertion: EvidenceAssertion::ToolOutcome {
+                state: ToolResultState::Succeeded,
+                summary: current.result.summary.clone(),
+            },
+            observed_at: "2026-07-31T00:01:00Z".into(),
+            fresh_until: Some(fresh_until.into()),
+            complete: true,
+        });
+        current
+    }
+
     fn draft() -> GroundedDraft {
         GroundedDraft {
             state: FinalState::Answered,
@@ -9614,6 +9942,8 @@ mod tests {
         effects: AtomicUsize,
     }
 
+    struct RecoveringWakeTools;
+
     #[async_trait]
     impl SessionTools for WakeTools {
         fn catalog(&self) -> Vec<ToolDescriptor> {
@@ -9638,6 +9968,22 @@ mod tests {
                 ));
             }
             Ok(observation(true, Some("2026-08-01T00:00:00Z")).result)
+        }
+    }
+
+    #[async_trait]
+    impl SessionTools for RecoveringWakeTools {
+        fn catalog(&self) -> Vec<ToolDescriptor> {
+            vec![observation(true, Some("2026-08-01T00:00:00Z")).descriptor]
+        }
+
+        async fn invoke(
+            &self,
+            _session: &AgentSession,
+            _input: &SessionTurnInput,
+            _call: &ToolCall,
+        ) -> Result<ToolResult, AgentRuntimeError> {
+            Ok(recovering_observation_with_tool_outcome("2026-08-01T00:00:00Z").result)
         }
     }
 
@@ -14081,6 +14427,271 @@ mod tests {
             ..none_input
         };
         assert!(validate_explicit_follow_through(&inherited, &inherited_input, &proposed).is_ok());
+    }
+
+    #[test]
+    fn wake_attention_requires_one_fresh_observation_with_the_exact_prior_input() {
+        let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let trigger = SessionTurnTrigger::Wake {
+            commitment_ref: "commitment:scheduled-check".into(),
+            occurrence_ref: "occurrence:exact-input-health".into(),
+        };
+        let mut exact_stale = recovering_observation_with_tool_outcome("2026-07-31T00:00:30Z");
+        exact_stale.call.call_id = "call:exact-stale".into();
+        let expected_digest = exact_stale.call.input_digest();
+        let mut wrong_input_fresh =
+            recovering_observation_with_tool_outcome("2026-08-01T00:00:00Z");
+        wrong_input_fresh.call.call_id = "call:wrong-input-fresh".into();
+        wrong_input_fresh.call.input = json!({"connector_ref": "connector:other"});
+        let checkpoint = CommitmentCheckpoint {
+            commitment_ref: "commitment:scheduled-check".into(),
+            source_request_id: "request:prior".into(),
+            recorded_at: "2026-07-31T00:00:00Z".into(),
+            delivery_ref: "delivery:prior".into(),
+            payload_digest: "sha256:prior".into(),
+            trigger_occurrence_ref: None,
+            delivery: DeliveryDisposition::Visible,
+            state: FinalState::Answered,
+            summary: "Connector alpha was recovering.".into(),
+            observations: vec![CommitmentCheckpointObservation {
+                tool_id: "connector.read".into(),
+                input: exact_stale.call.input.clone(),
+                input_digest: expected_digest,
+                observed_at: Some("2026-07-31T00:00:00Z".into()),
+                state: ToolResultState::Succeeded,
+                complete: true,
+                summary: "Connector alpha was recovering.".into(),
+                data: json!({"status": "recovering"}),
+            }],
+            commitment_status: CommitmentStatus::Waiting,
+            next_wake_at: Some("2026-07-31T00:00:30Z".into()),
+        };
+        let observations = vec![exact_stale, wrong_input_fresh];
+        let attention = assess_wake_attention(
+            &awakened,
+            &trigger,
+            Some(&checkpoint),
+            &observations,
+            assessment_at,
+        )
+        .expect("a scheduled commitment must have a typed attention decision");
+
+        assert_eq!(
+            attention.disposition,
+            WakeAttentionDisposition::VisibleUnhealthy
+        );
+        assert!(attention.missing_required_tool_ids.is_empty());
+        assert_eq!(
+            attention.unhealthy_required_tool_ids,
+            vec!["connector.read"]
+        );
+        assert_eq!(attention.required_observations.len(), 1);
+        assert_eq!(
+            attention.required_observations[0].call.call_id,
+            "call:exact-stale"
+        );
+    }
+
+    #[test]
+    fn routine_wake_is_host_grounded_and_covers_the_required_wake_claim() {
+        let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let trigger = SessionTurnTrigger::Wake {
+            commitment_ref: "commitment:scheduled-check".into(),
+            occurrence_ref: "occurrence:canonical-silent".into(),
+        };
+        let plan = wake_research_plan(&awakened, &trigger).unwrap();
+        let observation = recovering_observation_with_tool_outcome("2026-08-01T00:00:00Z");
+        let mut candidate = draft();
+        candidate.state = FinalState::Partial;
+        candidate.delivery = DeliveryDisposition::Visible;
+        candidate.coverage_notice = Some(
+            render_coverage_boundary(CoverageBoundaryKind::PartialReadAcceptanceUnverified).into(),
+        );
+        candidate.mission = awakened.mission.clone();
+        candidate.mission.commitments[0].wake_at = Some("2026-07-31T00:06:00Z".into());
+
+        assert!(
+            canonicalize_routine_silent_wake(
+                &awakened,
+                &trigger,
+                Some(&plan),
+                std::slice::from_ref(&observation),
+                assessment_at,
+                &mut candidate,
+            )
+            .unwrap()
+        );
+        assert_eq!(candidate.delivery, DeliveryDisposition::Silent);
+        assert_eq!(candidate.state, FinalState::Answered);
+        assert!(candidate.coverage_notice.is_none());
+        assert!(candidate.question.is_none());
+        assert_eq!(
+            candidate.claims[0].planned_claim_ref.as_deref(),
+            Some("wake-claim:commitment:scheduled-check:verification")
+        );
+        assert!(matches!(
+            &candidate.claims[0].content,
+            ClaimContent::Observation { .. }
+        ));
+        assert!(validate_plan_completion(Some(&plan), &candidate).is_ok());
+        assert!(
+            validate_wake_completion(
+                &awakened,
+                &candidate,
+                &trigger,
+                assessment_at,
+                std::slice::from_ref(&observation),
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_grounded_draft(
+                &awakened,
+                &candidate,
+                std::slice::from_ref(&observation),
+                assessment_at,
+            )
+            .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn normal_finish_canonicalizes_routine_wake_before_model_prose_grounding() {
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        awakened.mission.status = SessionStatus::WaitingForExternal;
+        awakened = apply_session_events(
+            &awakened,
+            &[SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:01:00Z".into(),
+                event: SessionEvent::WakeTriggered {
+                    request_id: "wake-request:routine-silent".into(),
+                    commitment_ref: "commitment:scheduled-check".into(),
+                    occurrence_ref: "occurrence:routine-silent".into(),
+                    scheduled_for: "2026-07-31T00:00:30Z".into(),
+                },
+            }],
+        )
+        .unwrap();
+        let mut visible_partial = draft();
+        visible_partial.state = FinalState::Partial;
+        visible_partial.delivery = DeliveryDisposition::Visible;
+        visible_partial.coverage_notice = Some(
+            render_coverage_boundary(CoverageBoundaryKind::PartialReadAcceptanceUnverified).into(),
+        );
+        visible_partial.mission = awakened.mission.clone();
+        visible_partial.mission.commitments[0].wake_at = Some("2026-07-31T00:06:00Z".into());
+        let model = ScriptedSessionModel {
+            decisions: Mutex::new(VecDeque::from([
+                SessionModelDecision::InvokeTools {
+                    calls: vec![ToolCall {
+                        call_id: "call:routine-silent".into(),
+                        tool_id: "connector.read".into(),
+                        purpose: "Read connector alpha at the scheduled boundary.".into(),
+                        input: json!({"connector_ref": "connector:alpha"}),
+                    }],
+                },
+                SessionModelDecision::Finish {
+                    draft: visible_partial,
+                },
+            ])),
+        };
+        let outcome = run_session_turn(
+            &model,
+            &RecoveringWakeTools,
+            awakened,
+            SessionTurnInput {
+                request_id: "wake-request:routine-silent".into(),
+                actor_ref: "cerebro-scheduler".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: None,
+                trigger: SessionTurnTrigger::Wake {
+                    commitment_ref: "commitment:scheduled-check".into(),
+                    occurrence_ref: "occurrence:routine-silent".into(),
+                },
+            },
+        )
+        .await
+        .expect("routine nonterminal wake should finish silently without prose repair");
+        let SessionTurnOutcome::PendingDelivery {
+            delivery,
+            final_state,
+            markdown,
+            mission,
+            ..
+        } = outcome
+        else {
+            panic!("a routine wake cannot request approval")
+        };
+        assert_eq!(delivery, DeliveryDisposition::Silent);
+        assert_eq!(final_state, FinalState::Answered);
+        assert!(markdown.contains("recovering at this check"));
+        let commitment = mission
+            .commitments
+            .iter()
+            .find(|commitment| commitment.commitment_ref == "commitment:scheduled-check")
+            .unwrap();
+        assert_eq!(commitment.status, CommitmentStatus::Waiting);
+        assert_eq!(commitment.wake_at.as_deref(), Some("2026-07-31T00:06:00Z"));
+        assert!(commitment.blocker.is_none());
+    }
+
+    #[tokio::test]
+    async fn healthy_routine_repair_fallback_is_silent_and_answered() {
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let trigger = SessionTurnTrigger::Wake {
+            commitment_ref: "commitment:scheduled-check".into(),
+            occurrence_ref: "occurrence:routine-fallback".into(),
+        };
+        let plan = wake_research_plan(&awakened, &trigger).unwrap();
+        let observation = recovering_observation_with_tool_outcome("2026-08-01T00:00:00Z");
+        let outcome = repair_fallback_outcome(
+            &awakened,
+            &SessionTurnInput {
+                request_id: "wake-request:routine-fallback".into(),
+                actor_ref: "cerebro-scheduler".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: None,
+                trigger: trigger.clone(),
+            },
+            &trigger,
+            Some(&plan),
+            std::slice::from_ref(&observation),
+            Vec::new(),
+            &NoopSessionJournal,
+        )
+        .await
+        .expect("healthy routine repair exhaustion should remain a silent durable check");
+        let SessionTurnOutcome::PendingDelivery {
+            delivery,
+            final_state,
+            mission,
+            ..
+        } = outcome
+        else {
+            panic!("routine fallback cannot request approval")
+        };
+        assert_eq!(delivery, DeliveryDisposition::Silent);
+        assert_eq!(final_state, FinalState::Answered);
+        let commitment = mission
+            .commitments
+            .iter()
+            .find(|commitment| commitment.commitment_ref == "commitment:scheduled-check")
+            .unwrap();
+        assert_eq!(commitment.status, CommitmentStatus::Waiting);
+        assert!(commitment.blocker.is_none());
+        assert_eq!(commitment.wake_at.as_deref(), Some("2026-07-31T00:06:00Z"));
     }
 
     #[test]
