@@ -384,10 +384,10 @@ export class AssistantQuestionService {
           }),
           text: slackText,
           workingTurn: {
-            ...(answer.workingState?.active_lane === undefined
+            ...(answer.workingState?.active_lane == null
               ? {}
               : { activeLane: answer.workingState.active_lane }),
-            ...(answer.workingState?.last_blocker === undefined
+            ...(answer.workingState?.last_blocker == null
               ? answer.finalState === "blocked"
                 ? { blocker: "The Rust agent reported a blocked turn." }
                 : {}
@@ -400,7 +400,7 @@ export class AssistantQuestionService {
               answer.finalState,
               answer.workingState?.last_outcome,
             ),
-            ...(answer.workingState?.requires_current_evidence === undefined
+            ...(answer.workingState?.requires_current_evidence == null
               ? {}
               : {
                   requiresCurrentEvidence:

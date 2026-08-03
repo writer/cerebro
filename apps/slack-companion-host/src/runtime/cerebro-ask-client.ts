@@ -693,13 +693,13 @@ function safeApprovalPreview(value: string): string {
 }
 
 interface RustWorkingState {
-  active_lane?: Exclude<CerebroAskResult["executionLane"], "continue" | "ignore">;
+  active_lane?: Exclude<CerebroAskResult["executionLane"], "continue" | "ignore"> | null;
   current_request: string;
-  last_blocker?: string;
+  last_blocker?: string | null;
   last_outcome: "blocked" | "completed" | "needs_user" | "owned" | "unknown";
   mission_ref?: string;
   open_loops?: string[];
-  requires_current_evidence?: boolean;
+  requires_current_evidence?: boolean | null;
 }
 
 function unsupportedQuery(

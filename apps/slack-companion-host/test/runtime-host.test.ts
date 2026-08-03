@@ -1590,6 +1590,59 @@ test("Rust continuation preserves the durable mission across repeated nudges", a
   }
 });
 
+test("Rust working-state null options stay absent from the scratchpad turn", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
+  try {
+    const service = new AssistantQuestionService(
+      createAssistantTurnHost(new FileOutcomeStore(root)),
+      new CerebroAskClient({
+        agentRuntimeUrl: "http://127.0.0.1:8091",
+        answerAuthority: testAnswerAuthority,
+        apiKey: "unused",
+        baseUrl: "https://legacy.example.com",
+        fetchImpl: async () => Response.json({
+          evidence_refs: [],
+          final_state: "answered",
+          lane: "converse",
+          markdown: "I can help work through that with you.",
+          outcome: "delivered",
+          schema_version: "agent-turn-result/v1",
+          tool_call_count: 0,
+          working_state: {
+            active_lane: null,
+            current_request: "Talk this through with me.",
+            last_blocker: null,
+            last_outcome: "completed",
+            mission_ref: null,
+            open_loops: [],
+            requires_current_evidence: null,
+          },
+        }),
+        tenantId: "writer",
+      }),
+      {
+        clock: () => new Date("2026-07-29T20:00:00.000Z"),
+        timeoutSignal: () => new AbortController().signal,
+      },
+    );
+
+    const result = await service.answer({
+      actorRef: "slack-user:U-ONE",
+      requestKey: "T-ONE:C-ONE:thread-one:event-null-options",
+      text: "<@BOT> Talk this through with me.",
+      threadRef: "slack-thread:T-ONE:C-ONE:thread-one",
+    });
+
+    assert.deepEqual(result.workingTurn, {
+      currentRequest: "Talk this through with me.",
+      openLoops: [],
+      outcome: "completed",
+    });
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("evidence-free Rust conversation turns are not recorded as verified", async () => {
   const root = await mkdtemp(join(tmpdir(), "cerebro-slack-runtime-"));
   try {
