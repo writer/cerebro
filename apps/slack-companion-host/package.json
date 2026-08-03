@@ -34,15 +34,15 @@
     }
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "3.1098.0",
-    "@aws-sdk/lib-dynamodb": "3.1098.0",
-    "@slack/bolt": "4.7.3",
+    "@aws-sdk/client-dynamodb": "3.1101.0",
+    "@aws-sdk/lib-dynamodb": "3.1101.0",
+    "@slack/bolt": "5.0.0",
     "@writer/cerebro-sdk": "0.1.0",
     "@writer/cerebro-slack-companion": "0.1.0"
   },
   "devDependencies": {
-    "@slack/types": "2.21.1",
-    "@types/node": "^26.0.0",
-    "typescript": "^6.0.0"
+    "@slack/types": "3.0.0",
+    "@types/node": "^26.1.2",
+    "typescript": "^7.0.2"
   }
 }
