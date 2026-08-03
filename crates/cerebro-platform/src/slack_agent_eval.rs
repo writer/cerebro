@@ -560,6 +560,17 @@ fn lab_turn_latency_slo_passed(trigger: LabTurnTrigger, latency_ms: u128) -> boo
         }
 }
 
+fn lab_turn_timeout(trigger: LabTurnTrigger) -> std::time::Duration {
+    std::time::Duration::from_millis(
+        match trigger {
+            LabTurnTrigger::Operator => LAB_MAX_OPERATOR_TURN_LATENCY_MS,
+            LabTurnTrigger::ScheduledWake => LAB_MAX_SCHEDULED_WAKE_LATENCY_MS,
+        }
+        .try_into()
+        .expect("lab latency SLO fits a u64 duration"),
+    )
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct EvaluationScheduleReceipt {
     schedule_ref: String,
@@ -4206,7 +4217,7 @@ async fn run_autonomy_scenario(
     let measured = MeasuredModel::new(context.model.clone());
     let started = Instant::now();
     let outcome = tokio::time::timeout(
-        std::time::Duration::from_secs(900),
+        lab_turn_timeout(LabTurnTrigger::Operator),
         run_evaluation_session_turn(&measured, &tools, &mut session, initial_request.clone()),
     )
     .await
@@ -4316,7 +4327,7 @@ async fn run_autonomy_scenario(
         let measured = MeasuredModel::new(context.model.clone());
         let started = Instant::now();
         let outcome = tokio::time::timeout(
-            std::time::Duration::from_secs(900),
+            lab_turn_timeout(LabTurnTrigger::ScheduledWake),
             run_evaluation_session_wake(
                 &measured,
                 &tools,
@@ -4753,7 +4764,7 @@ async fn run_conversation_lab(
             let started = Instant::now();
             let outcome = if let Some(session) = durable_session.as_mut() {
                 tokio::time::timeout(
-                    std::time::Duration::from_secs(900),
+                    lab_turn_timeout(LabTurnTrigger::Operator),
                     run_evaluation_session_turn(&measured, &tools, session, request),
                 )
                 .await
@@ -7415,6 +7426,18 @@ mod tests {
     fn an_eval_without_false_converse_cases_does_not_invent_a_regression() {
         assert_eq!(vacuous_rate(0, 0), 1.0);
         assert_eq!(vacuous_rate(1, 2), 0.5);
+    }
+
+    #[test]
+    fn lab_hard_timeouts_match_the_declared_latency_slos() {
+        assert_eq!(
+            lab_turn_timeout(LabTurnTrigger::Operator).as_millis(),
+            LAB_MAX_OPERATOR_TURN_LATENCY_MS
+        );
+        assert_eq!(
+            lab_turn_timeout(LabTurnTrigger::ScheduledWake).as_millis(),
+            LAB_MAX_SCHEDULED_WAKE_LATENCY_MS
+        );
     }
 
     #[test]
