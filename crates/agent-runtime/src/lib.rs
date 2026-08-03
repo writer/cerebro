@@ -1164,6 +1164,17 @@ async fn route_request_decision(
     model: &dyn AgentModel,
     request: AgentTurnRequest,
 ) -> Result<RouteDecision, AgentRuntimeError> {
+    if request_reasons_from_supplied_operational_premises(&request.message) {
+        return Ok(RouteDecision {
+            lane: ExecutionLane::Converse,
+            confidence: RouteConfidence::High,
+            reason: "The operator asked for reasoning from attributed thread premises, not a current-system observation."
+                .into(),
+            requires_current_evidence: false,
+            future_observation: FutureObservationDisposition::None,
+            future_observation_excerpt: None,
+        });
+    }
     let mut repair_feedback = Vec::new();
     for _ in 0..MAX_ROUTER_ATTEMPTS {
         let decision = match model
@@ -1426,6 +1437,10 @@ pub(crate) fn request_reasons_from_supplied_operational_premises(message: &str) 
         " if the successful ",
         " the dashboard ",
         " the successful ",
+        " given that correction ",
+        " what does that change ",
+        " what does this change ",
+        " what follows from that ",
         " based on what we know ",
         " based on what we already know ",
     ]
@@ -1467,7 +1482,17 @@ pub(crate) fn request_reasons_from_supplied_operational_premises(message: &str) 
     ]
     .iter()
     .any(|marker| normalized.contains(marker));
-    supplies_a_premise && asks_for_reasoning && !asks_for_live_read
+    let delegates_future_observation = [
+        " check again ",
+        " follow up later ",
+        " keep checking ",
+        " monitor ",
+        " recheck later ",
+        " re-observe later ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    supplies_a_premise && asks_for_reasoning && !asks_for_live_read && !delegates_future_observation
 }
 
 fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
@@ -3661,6 +3686,15 @@ mod grounding_tests {
         ));
         assert!(request_reasons_from_supplied_operational_premises(
             "One correction though: that one successful run actually went through the OLD route, not the new one. Does that change your picture?"
+        ));
+        assert!(request_reasons_from_supplied_operational_premises(
+            "So what does that change, exactly? Give me the decision, the next concrete check, and one insight you think I am missing. Keep it conversational."
+        ));
+        assert!(!request_explicitly_requires_current_evidence(
+            "So what does that change, exactly? Give me the decision, the next concrete check, and one insight you think I am missing. Keep it conversational."
+        ));
+        assert!(!request_reasons_from_supplied_operational_premises(
+            "We just changed the route. Tell me what follows, then monitor it and check again later."
         ));
         assert!(!request_reasons_from_supplied_operational_premises(
             "Can you inspect the current sync runtime and verify whether the user path works?"
