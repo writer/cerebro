@@ -91,6 +91,10 @@ func (s *graphStore) UpsertProjectedLink(_ context.Context, link *ports.Projecte
 	s.links[link.FromURN+link.Relation+link.ToURN] = link
 	return nil
 }
+func (s *graphStore) DeleteProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	delete(s.links, link.FromURN+link.Relation+link.ToURN)
+	return nil
+}
 func (s *graphStore) DeleteProjectedEntity(_ context.Context, urn string) error {
 	delete(s.entities, urn)
 	for key, link := range s.links {
