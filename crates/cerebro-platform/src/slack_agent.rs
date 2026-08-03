@@ -24,8 +24,8 @@ use cerebro_agent_runtime::{
     AgentTurnOutcome, AgentTurnRequest, CRITIC_MAX_TOKENS, CritiqueDecision, CritiqueTurn,
     DECISION_MAX_TOKENS, EvidenceRecord, ExecutionLane, FinalState, HARD_MAX_GENERATION_TOKENS,
     ModelDecision, ModelTurn, PRESENTATION_MAX_TOKENS, PresentationDecision, PresentationTurn,
-    ROUTER_MAX_TOKENS, ResolvedRequestRoute, RouteDecision, RouteTurn, ToolAuthorityClass,
-    ToolDescriptor, ToolEffectClass, ToolResult, ToolResultState, resolve_request_route, run_turn,
+    ResolvedRequestRoute, RouteDecision, RouteTurn, ToolAuthorityClass, ToolDescriptor,
+    ToolEffectClass, ToolResult, ToolResultState, resolve_request_route, run_turn,
     session::{
         AGENT_SEMANTIC_EVIDENCE_V1, AGENT_SESSION_EVENT_V2, AGENT_SESSION_V2,
         ALL_STABLE_EXPLANATION_IDS, AgentSession, ClaimReviewTurn, DeliveryDisposition,
@@ -75,6 +75,9 @@ const STARTUP_DEPENDENCY_ATTEMPTS: usize = 5;
 const STARTUP_DEPENDENCY_RETRY_DELAY: StdDuration = StdDuration::from_millis(250);
 const OPERATOR_ROUTE_TIMEOUT: StdDuration = StdDuration::from_secs(90);
 const OPERATOR_TURN_LEASE_SECONDS: i64 = 1_000;
+const SLACK_ROUTE_MAX_TOKENS: i32 = 2_048;
+const SLACK_SESSION_DECISION_MAX_TOKENS: i32 = 12_288;
+const SLACK_CLAIM_REVIEW_MAX_TOKENS: i32 = 4_096;
 
 pub struct SlackAgentService {
     model: Arc<ConfiguredModel>,
@@ -1610,7 +1613,7 @@ impl SessionAgentModel for ConfiguredModel {
             .complete_session_structured(
                 session_instructions(),
                 session_turn_payload(&turn),
-                DECISION_MAX_TOKENS,
+                SLACK_SESSION_DECISION_MAX_TOKENS,
                 SESSION_DECISION_TOOL,
                 session_decision_schema(),
             )
@@ -1626,7 +1629,7 @@ impl SessionAgentModel for ConfiguredModel {
             .complete_session_structured(
                 claim_review_instructions(),
                 claim_review_payload(&turn),
-                CRITIC_MAX_TOKENS,
+                SLACK_CLAIM_REVIEW_MAX_TOKENS,
                 CLAIM_REVIEW_TOOL,
                 claim_review_schema(),
             )
@@ -1744,7 +1747,7 @@ impl AgentModel for BedrockModel {
             .complete_structured(
                 route_instructions(),
                 route_turn_payload(&turn),
-                ROUTER_MAX_TOKENS,
+                SLACK_ROUTE_MAX_TOKENS,
                 ROUTE_DECISION_TOOL,
                 route_decision_schema(),
             )
@@ -6277,6 +6280,9 @@ mod tests {
 
     #[test]
     fn semantic_contract_keeps_current_work_and_source_boundaries_on_evidence_lanes() {
+        assert_eq!(SLACK_ROUTE_MAX_TOKENS, 2_048);
+        assert_eq!(SLACK_SESSION_DECISION_MAX_TOKENS, 12_288);
+        assert_eq!(SLACK_CLAIM_REVIEW_MAX_TOKENS, 4_096);
         let route = route_instructions();
         assert!(route.contains(
             "which capabilities are currently connected, enabled, available, or authorized"
