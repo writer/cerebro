@@ -6396,6 +6396,11 @@ fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bo
         " you said ",
         " your correction ",
         " that correction ",
+        " that changes ",
+        " changes my read ",
+        " changes the picture ",
+        " your update ",
+        " that update ",
         " based on that ",
         " now that you re telling me ",
         " now that you are telling me ",
@@ -16124,6 +16129,10 @@ mod tests {
         ));
         assert!(premise_synthesis_is_source_bound(
             "You're right. That correction means the successful run supports only the old-route run, while there is no evidence that the new route works. The new path still needs one route-specific transaction.",
+            &source_messages,
+        ));
+        assert!(premise_synthesis_is_source_bound(
+            "Yes, that changes my read. The old route succeeded on that run, but the new route remains unverified. The next step is one transaction forced through the new route.",
             &source_messages,
         ));
     }
