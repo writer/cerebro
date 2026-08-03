@@ -1118,9 +1118,7 @@ async fn present_with_repair(
             Err(AgentRuntimeError::ModelUnavailable(_)) => return Ok(validated_fallback),
             Err(error) => return Err(error),
         };
-        match validate_presentation(&presentation)
-            .and_then(|summary| validate_presentation_continuity(&turn, summary))
-        {
+        match validate_presentation(&presentation) {
             Ok(summary) => {
                 let mut draft = turn.draft;
                 draft.summary = summary;
@@ -2011,43 +2009,6 @@ fn validate_presentation(presentation: &PresentationDecision) -> Result<String, 
         ));
     }
     Ok(summary)
-}
-
-fn validate_presentation_continuity(
-    turn: &PresentationTurn,
-    summary: String,
-) -> Result<String, AgentRuntimeError> {
-    if repeats_epistemic_footer(&summary, &turn.request.history) {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "the visible reply repeats an unchanged epistemic footer from the recent thread; keep the boundary implicit and advance the answer"
-                .into(),
-        ));
-    }
-    Ok(summary)
-}
-
-fn repeats_epistemic_footer(summary: &str, history: &[ConversationMessage]) -> bool {
-    let normalized = summary.to_ascii_lowercase().replace('’', "'");
-    let epistemic_footers = [
-        "i haven't independently observed",
-        "i have not independently observed",
-        "reasoning from the premises",
-        "reasoning from what you told me",
-    ];
-    epistemic_footers
-        .iter()
-        .any(|marker| normalized.contains(marker))
-        && history
-            .iter()
-            .rev()
-            .filter(|message| message.role == ConversationRole::Assistant)
-            .take(3)
-            .any(|message| {
-                let prior = message.content.to_ascii_lowercase().replace('’', "'");
-                epistemic_footers
-                    .iter()
-                    .any(|marker| prior.contains(marker))
-            })
 }
 
 fn presentation_markup_is_balanced(value: &str) -> bool {
@@ -3641,16 +3602,6 @@ fn looks_like_internal_query_failure(value: &str) -> bool {
 
 fn looks_like_report_copy(value: &str) -> bool {
     let normalized = value.to_ascii_lowercase();
-    if [
-        "here's how i'd frame it as a teammate",
-        "insight you didn't ask for:",
-        "the insight you might be missing:",
-    ]
-    .into_iter()
-    .any(|marker| normalized.contains(marker))
-    {
-        return true;
-    }
     normalized.lines().any(|line| {
         let line = line.trim_start();
         line.starts_with('#')
@@ -3970,37 +3921,6 @@ mod grounding_tests {
             .is_err(),
             "standard Markdown links must not leak into Slack mrkdwn"
         );
-
-        for message in [
-            "Here's how I'd frame it as a teammate: the route is unverified.",
-            "Insight you didn't ask for: the route may be dark.",
-            "The insight you might be missing: routing is not correctness.",
-        ] {
-            assert!(
-                validate_presentation(&PresentationDecision {
-                    messages: vec![message.into()],
-                })
-                .is_err(),
-                "canned Slack meta-label was accepted: {message}"
-            );
-        }
-    }
-
-    #[test]
-    fn slack_presentation_does_not_repeat_an_epistemic_footer() {
-        let history = vec![ConversationMessage {
-            role: ConversationRole::Assistant,
-            content: "The path is unverified. I haven't independently observed any of this; it's reasoning from what you told me."
-                .into(),
-        }];
-        assert!(repeats_epistemic_footer(
-            "Keep the old path available. This is reasoning from the premises you gave me.",
-            &history,
-        ));
-        assert!(!repeats_epistemic_footer(
-            "Keep the old path available until one correlation-bound request proves the new route.",
-            &history,
-        ));
     }
 
     #[test]
