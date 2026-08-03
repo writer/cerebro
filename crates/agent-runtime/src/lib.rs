@@ -2507,9 +2507,47 @@ fn validate_conversational_synthesis_unit(
     ]
     .iter()
     .any(|marker| normalized.contains(marker));
+    let operator_normalized = operator_context.to_ascii_lowercase();
+    let operational_subjects = [
+        "asset",
+        "connector",
+        "control",
+        "deployment",
+        "finding",
+        "graph",
+        "identity",
+        "provider",
+        "release",
+        "repository",
+        "runtime",
+        "source",
+        "tool",
+    ];
+    let operational_states = [
+        "authorized",
+        "connected",
+        "current",
+        "deployed",
+        "enabled",
+        "failed",
+        "failing",
+        "fixed",
+        "healthy",
+        "live",
+        "production",
+        "running",
+        "verified",
+    ];
+    let unit_words = grounding_words(unit_text);
+    let operator_words = grounding_words(&operator_normalized);
+    let introduces_operational_language = operational_subjects
+        .iter()
+        .chain(operational_states.iter())
+        .filter(|term| unit_words.contains(*term))
+        .any(|term| !operator_words.contains(term));
     if turn.lane != ExecutionLane::Converse
         || request_explicitly_requires_current_evidence(&turn.request.message)
-        || request_explicitly_requires_current_evidence(unit_text)
+        || introduces_operational_language
         || unsupported_self_work
         || unit_text.trim().is_empty()
         || unit_text.len() > 1_200
@@ -2819,7 +2857,8 @@ fn validate_material_literals(
     {
         let normalized = word.to_ascii_lowercase();
         let exact_literal = word.chars().any(|character| character.is_ascii_digit());
-        let sensitive_literal = sensitive.contains(&normalized.as_str());
+        let sensitive_literal = basis != CritiqueGroundingBasis::ConversationalSynthesis
+            && sensitive.contains(&normalized.as_str());
         let placeholder_label = basis == CritiqueGroundingBasis::Placeholder
             && normalized_unit
                 .trim_start()
@@ -4209,6 +4248,15 @@ mod grounding_tests {
         turn.grounding_units[0].text =
             "The earlier miss was deflecting to what I can or can't do.".into();
         assert_eq!(validate_critique_decision(&turn, &valid), Ok(()));
+        turn.grounding_units[0].text = "Right now I'm answering the question directly.".into();
+        assert_eq!(validate_critique_decision(&turn, &valid), Ok(()));
+        turn.grounding_units[0].text =
+            "That treated the request as a scope problem instead of answering it.".into();
+        assert_eq!(validate_critique_decision(&turn, &valid), Ok(()));
+        turn.grounding_units[0].text = "The current deployment is healthy.".into();
+        assert!(validate_critique_decision(&turn, &valid).is_err());
+        turn.grounding_units[0].text = "Source A has one finding.".into();
+        assert!(validate_critique_decision(&turn, &valid).is_err());
 
         turn.grounding_units[0].text = turn.draft.summary.clone();
         let mut missing_source = valid;
