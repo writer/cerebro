@@ -6418,6 +6418,7 @@ fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bo
         || !synthesis_is_relevant(body, source_messages)
         || contains_new_named_ownership_principal(body, source_messages)
         || introduces_unstated_change_scope(body, source_messages)
+        || overgeneralizes_successful_run(body, source_messages)
     {
         return false;
     }
@@ -6435,11 +6436,24 @@ fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bo
             .iter()
             .filter(|state| normalized_clause.contains(&format!(" {state} ")))
             .collect::<Vec<_>>();
+        let confidence_is_attributed = normalized_clause.contains(" confident ")
+            && [
+                " given ",
+                " on your premise ",
+                " you told me ",
+                " you re telling me ",
+                " you are telling me ",
+                " from what you ",
+                " from your ",
+            ]
+            .iter()
+            .any(|marker| normalized_clause.contains(marker));
         states.is_empty()
             || states.iter().all(|state| source_tokens.contains(**state))
             || (normalized_clause.contains(" given ")
                 && normalized_clause.contains(" signal ")
                 && states.iter().any(|state| source_tokens.contains(**state)))
+            || confidence_is_attributed
             || [
                 " looks ",
                 " appears ",
@@ -6459,6 +6473,37 @@ fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bo
             ]
             .iter()
             .any(|marker| normalized_clause.contains(marker))
+    })
+}
+
+fn overgeneralizes_successful_run(body: &str, source_messages: &[&str]) -> bool {
+    let normalized = |value: &str| {
+        format!(
+            " {} ",
+            value
+                .split(|character: char| !character.is_alphanumeric())
+                .filter(|token| !token.is_empty())
+                .map(str::to_ascii_lowercase)
+                .collect::<Vec<_>>()
+                .join(" ")
+        )
+    };
+    let generalized_markers = [
+        " old route works ",
+        " old path works ",
+        " route works end to end ",
+        " path works end to end ",
+        " route is working ",
+        " path is working ",
+        " route is reliable ",
+        " path is reliable ",
+    ];
+    let normalized_body = normalized(body);
+    generalized_markers.iter().any(|marker| {
+        normalized_body.contains(marker)
+            && !source_messages
+                .iter()
+                .any(|message| normalized(message).contains(marker))
     })
 }
 
@@ -16103,6 +16148,10 @@ mod tests {
         ];
         assert!(!premise_synthesis_is_source_bound(
             "You're right. I'm confident the old route works end-to-end, and the successful run exercised code we didn't touch.",
+            &source_messages,
+        ));
+        assert!(premise_synthesis_is_source_bound(
+            "Given what you told me, I'm confident the service is up and healthy from the green dashboard, but I haven't independently verified it and the user path remains unverified. The next step is one route-specific transaction.",
             &source_messages,
         ));
         assert!(premise_synthesis_is_source_bound(
