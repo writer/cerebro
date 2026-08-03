@@ -6276,9 +6276,16 @@ fn validate_conversational_synthesis(
     }
     let transforms_supplied_text =
         crate::request_is_artifact_transformation(&newest_operator_message.1.text);
-    let reasons_from_supplied_premises =
-        crate::request_reasons_from_supplied_operational_premises(&newest_operator_message.1.text)
-            && premise_synthesis_is_source_bound(body, &cited_context);
+    let premise_reasoning_request =
+        crate::request_reasons_from_supplied_operational_premises(&newest_operator_message.1.text);
+    let premise_source_bound = premise_synthesis_is_source_bound(body, &cited_context);
+    if premise_reasoning_request && !premise_source_bound {
+        return Err(AgentRuntimeError::InvalidFinal(
+            "Revise the premise-based correction from the exact cited thread: describe a reported dashboard only as suggesting or appearing healthy; treat one successful run as support only for that exact run; keep the new route unverified; remove invented claims about untouched or unchanged code, architecture, dependencies, ownership, execution, or verification; then give one prospective route-specific test in one direct paragraph."
+                .into(),
+        ));
+    }
+    let reasons_from_supplied_premises = premise_reasoning_request && premise_source_bound;
     let normalized_body = body.to_ascii_lowercase().replace('’', "'");
     let acknowledges_correction = [
         "you're right",
@@ -12749,6 +12756,16 @@ mod tests {
         candidate.claims[0].text = "Given your green-dashboard premise, the service layer looks healthy, but the user path is still unverified. The next bounded check should exercise one representative end-to-end sync and confirm that the expected record arrives before exposure widens. I can reason from that premise with you, but I have not independently inspected or verified the system.".into();
         candidate.message = candidate.claims[0].text.clone();
         validate_grounded_draft(&supplied_premise_session, &candidate, &[], assessment).unwrap();
+
+        candidate.claims[0].text = "Given your green-dashboard premise, I am confident the service is healthy and the successful run exercised code we did not touch.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&supplied_premise_session, &candidate, &[], assessment)
+                .unwrap_err()
+                .to_string()
+                .contains("treat one successful run as support only for that exact run"),
+            "premise repair feedback should name the exact overgeneralization"
+        );
 
         candidate.claims[0].text =
             "Given your green-dashboard premise, the new path is live and ready.".into();
