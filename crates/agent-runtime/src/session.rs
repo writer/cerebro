@@ -2241,7 +2241,7 @@ pub async fn run_session_turn_recorded(
                     );
                     continue;
                 }
-                if !canonical_silent_wake {
+                if !canonical_silent_wake && !canonical_premise_conversation {
                     let review = match model
                         .review_message(ClaimReviewTurn {
                             session: session.clone(),
@@ -3749,6 +3749,7 @@ fn normalize_supplied_premise_conversation(
     if !crate::request_reasons_from_supplied_operational_premises(&newest_operator_message.text) {
         return false;
     }
+    trim_passive_premise_handback(&mut draft.message);
     draft.claims = vec![GroundedClaim {
         claim_ref: "claim:premise-conversation".into(),
         planned_claim_ref: None,
@@ -3760,6 +3761,33 @@ fn normalize_supplied_premise_conversation(
         },
     }];
     true
+}
+
+fn trim_passive_premise_handback(message: &mut String) {
+    let normalized = message.to_ascii_lowercase();
+    let handback_start = [
+        " if you point me",
+        " if you want",
+        " let me know",
+        " want me to",
+        " would you like me",
+        " do you want me",
+        " say the word",
+        " tell me if you want",
+    ]
+    .iter()
+    .filter_map(|marker| normalized.find(marker))
+    .filter(|index| *index >= 120)
+    .min();
+    let Some(handback_start) = handback_start else {
+        return;
+    };
+    message.truncate(handback_start);
+    let trimmed_len = message.trim_end().len();
+    message.truncate(trimmed_len);
+    if !message.ends_with('.') && !message.ends_with('!') && !message.ends_with('?') {
+        message.push('.');
+    }
 }
 
 fn visible_coverage_boundary(message: &str, state: FinalState) -> Option<String> {
@@ -10100,6 +10128,31 @@ mod tests {
         decisions: Mutex<VecDeque<SessionModelDecision>>,
     }
 
+    struct PremiseConversationModel {
+        decisions: Mutex<VecDeque<SessionModelDecision>>,
+    }
+
+    #[async_trait]
+    impl SessionAgentModel for PremiseConversationModel {
+        async fn advance(
+            &self,
+            _turn: SessionModelTurn,
+        ) -> Result<SessionModelDecision, AgentRuntimeError> {
+            self.decisions
+                .lock()
+                .expect("decision script poisoned")
+                .pop_front()
+                .ok_or(AgentRuntimeError::ModelStepLimit)
+        }
+
+        async fn review_message(
+            &self,
+            _turn: ClaimReviewTurn,
+        ) -> Result<MessageReview, AgentRuntimeError> {
+            panic!("premise-bound conversation must not invoke the evidence critic")
+        }
+    }
+
     #[async_trait]
     impl SessionAgentModel for ScriptedSessionModel {
         async fn advance(
@@ -15901,6 +15954,59 @@ mod tests {
         assert_eq!(final_state, FinalState::Answered);
         assert_eq!(markdown, message);
         assert!(evidence_atom_refs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn premise_bound_conversation_is_canonical_and_deterministically_reviewed() {
+        let mut conversational =
+            session_for_request("request:premise-converse", ExecutionLane::Converse);
+        conversational.messages[0].text = "We just changed the sync path. The dashboard is green, but we have not verified the user path. Talk to me like a teammate: what are you actually confident about, what is still unverified, and what should we do next?".into();
+        let visible = "Given your green-dashboard premise, the service looks healthy, while the user path is still unverified. The release operator should run one representative end-to-end transaction now; acceptance is the expected record appearing downstream.";
+        let message = format!("{visible} If you point me at the flow, I'll verify it for you.");
+        let draft = GroundedDraft {
+            state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
+            message: message.clone(),
+            claims: vec![GroundedClaim {
+                claim_ref: "claim:model-selected-wrong-basis".into(),
+                planned_claim_ref: None,
+                text: message,
+                required_for_answer: true,
+                content: ClaimContent::StableExplanation {
+                    explanation_id: StableExplanationId::EvidenceAuthorityBoundary,
+                },
+            }],
+            coverage_notice: None,
+            question: None,
+            mission: MissionState {
+                status: SessionStatus::Completed,
+                ..mission()
+            },
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        };
+        let model = PremiseConversationModel {
+            decisions: Mutex::new(VecDeque::from([SessionModelDecision::Finish { draft }])),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            conversational,
+            SessionTurnInput {
+                request_id: "request:premise-converse".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Converse),
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("premise-bound conversation should pass deterministic review");
+        let SessionTurnOutcome::PendingDelivery { markdown, .. } = outcome else {
+            panic!("a premise-bound converse answer should be ready for delivery");
+        };
+        assert_eq!(markdown, visible);
     }
 
     #[tokio::test]
