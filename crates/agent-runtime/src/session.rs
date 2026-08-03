@@ -6418,7 +6418,6 @@ fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bo
         || !synthesis_is_relevant(body, source_messages)
         || contains_new_named_ownership_principal(body, source_messages)
         || introduces_unstated_change_scope(body, source_messages)
-        || overgeneralizes_successful_run(body, source_messages)
     {
         return false;
     }
@@ -6473,37 +6472,6 @@ fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bo
             ]
             .iter()
             .any(|marker| normalized_clause.contains(marker))
-    })
-}
-
-fn overgeneralizes_successful_run(body: &str, source_messages: &[&str]) -> bool {
-    let normalized = |value: &str| {
-        format!(
-            " {} ",
-            value
-                .split(|character: char| !character.is_alphanumeric())
-                .filter(|token| !token.is_empty())
-                .map(str::to_ascii_lowercase)
-                .collect::<Vec<_>>()
-                .join(" ")
-        )
-    };
-    let generalized_markers = [
-        " old route works ",
-        " old path works ",
-        " route works end to end ",
-        " path works end to end ",
-        " route is working ",
-        " path is working ",
-        " route is reliable ",
-        " path is reliable ",
-    ];
-    let normalized_body = normalized(body);
-    generalized_markers.iter().any(|marker| {
-        normalized_body.contains(marker)
-            && !source_messages
-                .iter()
-                .any(|message| normalized(message).contains(marker))
     })
 }
 
@@ -16140,7 +16108,7 @@ mod tests {
     }
 
     #[test]
-    fn premise_correction_cannot_generalize_one_run_or_invent_change_scope() {
+    fn premise_correction_rejects_invented_change_scope_but_allows_attributed_confidence() {
         let source_messages = [
             "The service dashboard is green, but we have not verified the user path.",
             "The useful next test is one transaction through the new route.",
