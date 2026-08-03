@@ -2982,7 +2982,7 @@ If repair_feedback is present, correct every item before returning. Do not repea
 Claims are ordered visible message units. Concatenating every claim.text in order must reproduce message byte-for-byte, including Markdown and whitespace; this is how the runtime proves that no visible material bypassed review. Choose one typed content basis:
 - {"basis":"observation","atom_refs":[...]} for a current fact returned by a tool.
 - {"basis":"operator_context","message_sequence":N,"exact_excerpt":"..."} for a complete user message from the current session. The excerpt must byte-preserve the whole trimmed message and render exactly as: You said: EXACT_EXCERPT.
-- {"basis":"conversational_synthesis","source_message_sequences":[...],"source_atom_refs":[]} for one tailored explanation, interpretation, comparison, rewrite, or piece of advice based only on the current thread. Cite the newest operator message sequence and up to seven earlier user or Cerebro messages needed to understand anaphora such as “why?” or “say more.” Write the answer directly and naturally; do not add a provenance disclaimer. Keep it within 1,200 bytes and six lines. This basis is conversational reasoning, not evidence: never attach atom refs or planned_claim_ref, never use it to introduce current or recent state, capability, ownership, work performed, execution, verification, or a future Cerebro promise. A requested rewrite or draft may transform operational wording the operator supplied, but must not add new operational facts. It may set required_for_answer=true for a converse request. An operating plan always has a required evidence claim backed by a selected read and same-turn evidence, and this basis can never satisfy it. Use at most one synthesis claim in a response.
+- {"basis":"conversational_synthesis","source_message_sequences":[...],"source_atom_refs":[]} for one tailored explanation, interpretation, comparison, rewrite, or piece of advice based only on the current thread. Cite the newest operator message sequence and up to seven earlier user or Cerebro messages needed to understand anaphora such as “why?” or “say more.” Write the answer directly and naturally; do not add a generic provenance disclaimer. Keep it within 1,200 bytes and six lines. This basis is conversational reasoning, not independent evidence: never attach atom refs or planned_claim_ref, and never use it to introduce an unprovided current or recent state, capability, ownership, work performed, execution, verification, or a future Cerebro promise. When the operator supplies operational premises and asks for reasoning, preserve attribution and the independent-verification boundary while giving a confidence judgment, implication, and prospective verification step. A requested rewrite or draft may transform operational wording the operator supplied, but must not add new operational facts. It may set required_for_answer=true for a converse request. An operating plan always has a required evidence claim backed by a selected read and same-turn evidence, and this basis can never satisfy it. Use exactly one synthesis claim for the complete premise-based converse answer; do not split it around rhetorical_move claims. Use at most one synthesis claim in every response.
 - {"basis":"rhetorical_move","move_id":"..."} for optional conversational connective tissue. Pick only from the schema enum and use its exact registered text: separate_evidence_from_inference => "A useful distinction here is between evidence and inference."; frame_decision_with_criteria => "A useful way to frame the decision is around explicit criteria."; compare_alternatives_consistently => "The alternatives are easiest to compare against the same criteria."; preserve_reversibility => "Another useful lens is reversibility."; identify_decision_changing_information => "The key question is which additional information would change the decision."; clarify_scope => "Clarifying the scope first keeps the reasoning focused." A rhetorical move cannot satisfy a planned claim or carry evidence. Set planned_claim_ref=null and required_for_answer=false. Use at most two distinct moves, and only alongside an answer-bearing typed claim with required_for_answer=true; operator_context, historical_context, and retained_plan do not satisfy that requirement.
 - {"basis":"historical_context","atom_ref":"...","exact_excerpt":"..."} for the complete single-line text of one typed Slack conversation-event atom returned by slack.thread.read or slack.history.search. Preserve the whole text exactly. The runtime rendering explicitly binds its actor or typed retained-context role, thread, and timestamp. This is historical context, never proof of current provider state or that a prior plan was executed.
 - {"basis":"retained_plan","open_loop_ref":"..."} for continuity only, never current evidence. text must be exactly: The recorded open question remains in context.
@@ -6457,9 +6457,11 @@ mod tests {
             critic_instructions()
                 .contains("answers a converse-lane appraisal of the exchange as a human check-in")
         );
-        assert!(critic_instructions().contains(
-            "answers a converse-lane request to reason from operator-supplied premises"
-        ));
+        assert!(
+            critic_instructions().contains(
+                "answers a converse-lane request to reason from operator-supplied premises"
+            )
+        );
         assert!(session_instructions().contains(
             "A failed or irrelevant read does not exhaust an explicitly delegated follow-through"
         ));
@@ -6481,7 +6483,10 @@ mod tests {
         assert!(decision_schema.contains("conversational_synthesis"));
         assert!(decision_schema.contains("source_message_sequences"));
         assert!(!decision_schema.contains("coverage_boundary"));
-        assert!(session_instructions().contains("do not add a provenance disclaimer"));
+        assert!(session_instructions().contains("do not add a generic provenance disclaimer"));
+        assert!(session_instructions().contains(
+            "Use exactly one synthesis claim for the complete premise-based converse answer"
+        ));
         assert!(
             claim_review_instructions()
                 .contains("compare it with current observations when reviewing attention")

@@ -2032,6 +2032,22 @@ pub async fn run_session_turn_recorded(
             }
             SessionModelDecision::Finish { mut draft } => {
                 normalize_message_from_grounded_claims(&mut draft);
+                let canonical_premise_conversation =
+                    normalize_supplied_premise_conversation(&session, &input, &trigger, &mut draft);
+                if canonical_premise_conversation
+                    && (draft.message.len() > MAX_CONVERSATIONAL_SYNTHESIS_BYTES
+                        || draft.message.lines().count() > 6)
+                {
+                    record_draft_repair(
+                        &mut rejected_operating_drafts,
+                        &draft,
+                        &mut repairs,
+                        &mut repair_feedback,
+                        "A premise-based converse answer must be one conversational_synthesis claim containing the complete natural answer, no other visible claim types, at most 1,200 bytes, and at most six lines. Preserve attribution, the independent-verification boundary, one useful implication, and one prospective next check without report scaffolding."
+                            .into(),
+                    );
+                    continue;
+                }
                 let requested_operating_lane = matches!(
                     input.requested_lane,
                     Some(ExecutionLane::Lookup | ExecutionLane::Investigate | ExecutionLane::Act)
@@ -3704,6 +3720,46 @@ fn normalize_message_from_grounded_claims(draft: &mut GroundedDraft) {
         .iter()
         .map(|claim| claim.text.as_str())
         .collect();
+}
+
+fn normalize_supplied_premise_conversation(
+    session: &AgentSession,
+    input: &SessionTurnInput,
+    trigger: &SessionTurnTrigger,
+    draft: &mut GroundedDraft,
+) -> bool {
+    if !matches!(trigger, SessionTurnTrigger::Operator)
+        || input.requested_lane != Some(ExecutionLane::Converse)
+        || draft.state != FinalState::Answered
+    {
+        return false;
+    }
+    let Some((index, newest_operator_message)) =
+        session
+            .messages
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, message)| {
+                message.role == SessionMessageRole::User && message.actor_ref == input.actor_ref
+            })
+    else {
+        return false;
+    };
+    if !crate::request_reasons_from_supplied_operational_premises(&newest_operator_message.text) {
+        return false;
+    }
+    draft.claims = vec![GroundedClaim {
+        claim_ref: "claim:premise-conversation".into(),
+        planned_claim_ref: None,
+        text: draft.message.clone(),
+        required_for_answer: true,
+        content: ClaimContent::ConversationalSynthesis {
+            source_message_sequences: vec![(index + 1) as u64],
+            source_atom_refs: Vec::new(),
+        },
+    }];
+    true
 }
 
 fn visible_coverage_boundary(message: &str, state: FinalState) -> Option<String> {
@@ -6185,6 +6241,9 @@ fn validate_conversational_synthesis(
     }
     let transforms_supplied_text =
         crate::request_is_artifact_transformation(&newest_operator_message.1.text);
+    let reasons_from_supplied_premises =
+        crate::request_reasons_from_supplied_operational_premises(&newest_operator_message.1.text)
+            && premise_synthesis_is_source_bound(body, &cited_context);
     let normalized_body = body.to_ascii_lowercase().replace('’', "'");
     let acknowledges_correction = [
         "you're right",
@@ -6203,6 +6262,7 @@ fn validate_conversational_synthesis(
     if (crate::request_explicitly_requires_current_evidence(&newest_operator_message.1.text)
         && !acknowledges_correction)
         || (body_is_operational
+            && !reasons_from_supplied_premises
             && (!transforms_supplied_text
                 || !operational_transformation_is_source_bound(body, &cited_context)))
         || body.is_empty()
@@ -6226,6 +6286,129 @@ fn validate_conversational_synthesis(
         ));
     }
     Ok(())
+}
+
+fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bool {
+    const OPERATIONAL_STATES: &[&str] = &[
+        "approved",
+        "available",
+        "broken",
+        "connected",
+        "current",
+        "degraded",
+        "deployed",
+        "disabled",
+        "down",
+        "enabled",
+        "failed",
+        "fixed",
+        "flaky",
+        "green",
+        "healthy",
+        "landed",
+        "live",
+        "offline",
+        "online",
+        "operational",
+        "passed",
+        "reachable",
+        "ready",
+        "resolved",
+        "responsive",
+        "restored",
+        "running",
+        "safe",
+        "shipped",
+        "stable",
+        "stale",
+        "stalled",
+        "synchronized",
+        "unavailable",
+        "up",
+        "verified",
+        "working",
+    ];
+    let source_tokens = source_messages
+        .iter()
+        .flat_map(|message| {
+            message
+                .split(|character: char| !character.is_alphanumeric())
+                .filter(|token| !token.is_empty())
+                .map(str::to_ascii_lowercase)
+        })
+        .collect::<BTreeSet<_>>();
+    let normalized_body = format!(
+        " {} ",
+        body.split(|character: char| !character.is_alphanumeric())
+            .filter(|token| !token.is_empty())
+            .map(str::to_ascii_lowercase)
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    let preserves_boundary = [
+        " you re telling me ",
+        " you are telling me ",
+        " you said ",
+        " given that ",
+        " given your ",
+        " your premise ",
+        " based on what you ",
+        " resting on your ",
+        " haven t independently ",
+        " have not independently ",
+        " not on my own verification ",
+        " still unverified ",
+        " not verified ",
+        " no confirmation ",
+        " still an inference ",
+    ]
+    .iter()
+    .any(|marker| normalized_body.contains(marker));
+    if !preserves_boundary
+        || !synthesis_is_relevant(body, source_messages)
+        || contains_new_named_ownership_principal(body, source_messages)
+    {
+        return false;
+    }
+    body.split(['.', ';', '!', '?', '\n']).all(|clause| {
+        let normalized_clause = format!(
+            " {} ",
+            clause
+                .split(|character: char| !character.is_alphanumeric())
+                .filter(|token| !token.is_empty())
+                .map(str::to_ascii_lowercase)
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        let states = OPERATIONAL_STATES
+            .iter()
+            .filter(|state| normalized_clause.contains(&format!(" {state} ")))
+            .collect::<Vec<_>>();
+        states.is_empty()
+            || states.iter().all(|state| source_tokens.contains(**state))
+            || (normalized_clause.contains(" given ")
+                && normalized_clause.contains(" signal ")
+                && states.iter().any(|state| source_tokens.contains(**state)))
+            || [
+                " looks ",
+                " appears ",
+                " can be ",
+                " could be ",
+                " confident ",
+                " suggests ",
+                " inference ",
+                " may be ",
+                " might be ",
+                " unverified ",
+                " not verified ",
+                " no confirmation ",
+                " haven t ",
+                " have not ",
+                " until ",
+            ]
+            .iter()
+            .any(|marker| normalized_clause.contains(marker))
+    })
 }
 
 fn operational_transformation_is_source_bound(body: &str, source_messages: &[&str]) -> bool {
@@ -8822,28 +9005,63 @@ fn bounded(value: &str, max_bytes: usize) -> bool {
 
 fn contains_unbound_future_promise(value: &str) -> bool {
     let normalized = value.to_lowercase().replace('’', "'");
-    let future_subject = [
-        "i'll ",
-        "i will ",
-        "i'm going to ",
-        "i am going to ",
-        "we'll ",
-        "we will ",
-        "cerebro will ",
-        "cerebro is going to ",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker));
-    let positive_self_capability = [
-        "i can ",
-        "i am able to ",
-        "i'm able to ",
-        "we can ",
-        "cerebro can ",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker));
-    let operational_work = [
+    let self_promises_operational_work = normalized
+        .split(['.', ';', '!', '?', '\n'])
+        .flat_map(|clause| clause.split(" but "))
+        .any(|clause| {
+            let future_subject = [
+                "i'll ",
+                "i will ",
+                "i'm going to ",
+                "i am going to ",
+                "we'll ",
+                "we will ",
+                "cerebro will ",
+                "cerebro is going to ",
+            ]
+            .iter()
+            .any(|marker| clause.contains(marker));
+            let positive_self_capability = [
+                "i can ",
+                "i am able to ",
+                "i'm able to ",
+                "we can ",
+                "cerebro can ",
+            ]
+            .iter()
+            .any(|marker| clause.contains(marker));
+            let operational_work = [
+                "check",
+                "inspect",
+                "review",
+                "investigate",
+                "monitor",
+                "report",
+                "update",
+                "follow",
+                "handle",
+                "own",
+                "run",
+                "chase",
+                "pull",
+                "drive",
+                "schedule",
+                "set up",
+                "watch",
+                "notify",
+                "send",
+                "change",
+                "fix",
+                "prepare",
+                "reconcile",
+                "verify",
+                "collect",
+            ]
+            .iter()
+            .any(|verb| clause.contains(verb));
+            (future_subject || positive_self_capability) && operational_work
+        });
+    let mentions_operational_work = [
         "check",
         "inspect",
         "review",
@@ -8894,9 +9112,8 @@ fn contains_unbound_future_promise(value: &str) -> bool {
         ]
         .iter()
         .any(|future| normalized.contains(future));
-    future_subject
-        || (positive_self_capability && operational_work)
-        || (normalized.contains("expect me to ") && operational_work)
+    self_promises_operational_work
+        || (normalized.contains("expect me to ") && mentions_operational_work)
         || subjectless_follow_through
         || ((normalized.contains("update from me")
             || normalized.contains("hear back from me")
@@ -12415,6 +12632,29 @@ mod tests {
             validate_grounded_draft(&live_request_session, &candidate, &[], assessment).is_err()
         );
 
+        let mut supplied_premise_session = synthesis_session.clone();
+        supplied_premise_session.messages[0].text = "We just changed the sync path. The service dashboard is green, but we have not verified the user path. Talk to me like a teammate: what are you actually confident about, what is still unverified, and what should we do next?".into();
+        candidate = accepted.clone();
+        candidate.claims[0].text = "Given your green-dashboard premise, the service layer looks healthy, but the user path is still unverified. The next bounded check should exercise one representative end-to-end sync and confirm that the expected record arrives before exposure widens. I can reason from that premise with you, but I have not independently inspected or verified the system.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        validate_grounded_draft(&supplied_premise_session, &candidate, &[], assessment).unwrap();
+
+        candidate.claims[0].text =
+            "Given your green-dashboard premise, the new path is live and ready.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&supplied_premise_session, &candidate, &[], assessment)
+                .is_err(),
+            "premise-based synthesis strengthened the supplied state into an unsupported live claim"
+        );
+        candidate.claims[0].text = "Given your green-dashboard premise, one successful round trip would mean the entire change is safe.".into();
+        candidate.message = candidate.claims[0].text.clone();
+        assert!(
+            validate_grounded_draft(&supplied_premise_session, &candidate, &[], assessment)
+                .is_err(),
+            "premise-based synthesis promoted one prospective check into a global safety conclusion"
+        );
+
         for (request, unsupported) in [
             (
                 "What do you think about the Atlas rollout?",
@@ -14293,6 +14533,9 @@ mod tests {
         ] {
             assert!(contains_unbound_future_promise(text), "{text}");
         }
+        assert!(!contains_unbound_future_promise(
+            "I can reason from that premise with you, but I have not independently inspected or verified the system."
+        ));
     }
 
     #[test]

@@ -1374,7 +1374,8 @@ fn validate_route(
 }
 
 fn request_explicitly_requires_current_evidence(message: &str) -> bool {
-    clause_explicitly_requires_current_evidence(message)
+    !request_reasons_from_supplied_operational_premises(message)
+        && clause_explicitly_requires_current_evidence(message)
 }
 
 pub(crate) fn request_is_artifact_transformation(message: &str) -> bool {
@@ -1402,6 +1403,59 @@ pub(crate) fn request_is_artifact_transformation(message: &str) -> bool {
     .iter()
     .any(|marker| normalized.contains(marker));
     transformation && !requests_live_check
+}
+
+pub(crate) fn request_reasons_from_supplied_operational_premises(message: &str) -> bool {
+    let normalized = normalized_phrase_text(message);
+    let supplies_a_premise = [
+        " we just ",
+        " we already ",
+        " we have ",
+        " we haven t ",
+        " we have not ",
+        " you just ",
+        " you said ",
+        " that s not ",
+        " that is not ",
+        " the dashboard ",
+        " the successful ",
+        " based on what we know ",
+        " based on what we already know ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let asks_for_reasoning = [
+        " talk to me ",
+        " reason with me ",
+        " what are you confident ",
+        " what are you actually confident ",
+        " what is still unverified ",
+        " what s still unverified ",
+        " what should we do next ",
+        " what would you do next ",
+        " update your view ",
+        " update your conclusion ",
+        " what does that change ",
+        " what follows from that ",
+        " add one implication ",
+        " add one insight ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    let asks_for_live_read = [
+        " can you check ",
+        " can you inspect ",
+        " can you verify ",
+        " check the current ",
+        " inspect the current ",
+        " look up ",
+        " pull the current ",
+        " search for ",
+        " verify whether ",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    supplies_a_premise && asks_for_reasoning && !asks_for_live_read
 }
 
 fn clause_explicitly_requires_current_evidence(clause: &str) -> bool {
@@ -3589,6 +3643,15 @@ mod grounding_tests {
         ));
         assert!(request_explicitly_requires_current_evidence(
             "What Lantern Vale evidence can you actually inspect, whether collection is working, and what is missing?"
+        ));
+        assert!(request_reasons_from_supplied_operational_premises(
+            "We just changed the sync path. The dashboard is green, but we have not verified the user path. Talk to me like a teammate: what are you actually confident about, what is still unverified, and what should we do next?"
+        ));
+        assert!(!request_reasons_from_supplied_operational_premises(
+            "Can you inspect the current sync runtime and verify whether the user path works?"
+        ));
+        assert!(!request_reasons_from_supplied_operational_premises(
+            "What do you think about the Atlas rollout?"
         ));
         for conversational_message in [
             "I don't have access to that resource.",
