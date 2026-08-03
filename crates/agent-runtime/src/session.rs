@@ -3750,13 +3750,16 @@ fn normalize_supplied_premise_conversation(
         return false;
     }
     trim_passive_premise_handback(&mut draft.message);
+    let first_source_index = (index + 1).saturating_sub(MAX_CONVERSATIONAL_SYNTHESIS_SOURCES);
     draft.claims = vec![GroundedClaim {
         claim_ref: "claim:premise-conversation".into(),
         planned_claim_ref: None,
         text: draft.message.clone(),
         required_for_answer: true,
         content: ClaimContent::ConversationalSynthesis {
-            source_message_sequences: vec![(index + 1) as u64],
+            source_message_sequences: (first_source_index..=index)
+                .map(|source_index| (source_index + 1) as u64)
+                .collect(),
             source_atom_refs: Vec::new(),
         },
     }];
@@ -6376,7 +6379,14 @@ fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bo
     let preserves_boundary = [
         " you re telling me ",
         " you are telling me ",
+        " you re right ",
+        " you are right ",
         " you said ",
+        " your correction ",
+        " that correction ",
+        " based on that ",
+        " now that you re telling me ",
+        " now that you are telling me ",
         " given that ",
         " given your ",
         " your premise ",
@@ -16007,6 +16017,116 @@ mod tests {
             panic!("a premise-bound converse answer should be ready for delivery");
         };
         assert_eq!(markdown, visible);
+    }
+
+    #[tokio::test]
+    async fn premise_correction_uses_prior_thread_context_on_the_first_attempt() {
+        let mut conversational =
+            session_for_request("request:initial-premise", ExecutionLane::Converse);
+        conversational.messages[0].text = "We just changed the sync path. The dashboard is green, but we have not verified the user path. Talk to me like a teammate: what are you actually confident about, what is still unverified, and what should we do next?".into();
+        conversational.messages.push(SessionMessage {
+            role: SessionMessageRole::Assistant,
+            message_ref: "assistant:request:initial-premise".into(),
+            actor_ref: "cerebro".into(),
+            text: "Given your dashboard premise, the service looks healthy, but the new user path is still unverified. The useful next test is one transaction through the new route.".into(),
+            received_at: "2026-07-31T00:00:40Z".into(),
+        });
+        conversational = apply_session_events(
+            &conversational,
+            &[
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: conversational.session_ref.clone(),
+                    sequence: 2,
+                    occurred_at: "2026-07-31T00:00:50Z".into(),
+                    event: SessionEvent::UserMessageQueued {
+                        message: SessionMessage {
+                            role: SessionMessageRole::User,
+                            message_ref: "operator:request:premise-correction".into(),
+                            actor_ref: "user:1".into(),
+                            text: "One correction though: that one successful run actually went through the OLD route, not the new one. Does that change your picture?".into(),
+                            received_at: "2026-07-31T00:00:50Z".into(),
+                        },
+                    },
+                },
+                SessionEventRecord {
+                    schema_version: AGENT_SESSION_EVENT_V2.into(),
+                    session_ref: conversational.session_ref.clone(),
+                    sequence: 3,
+                    occurred_at: "2026-07-31T00:00:51Z".into(),
+                    event: SessionEvent::RouteAccepted {
+                        request_id: "request:premise-correction".into(),
+                        lane: ExecutionLane::Converse,
+                        future_observation: FutureObservationDisposition::None,
+                        future_observation_excerpt: None,
+                    },
+                },
+            ],
+        )
+        .expect("the correction should be queued with a durable converse route");
+        let visible = "You're right — that correction changes the picture. The only successful run used the old route, so it provides no evidence that the new route works. My confidence in the new path is therefore low, and the useful next test is one transaction explicitly through the new route with its downstream record confirmed.";
+        let draft = GroundedDraft {
+            state: FinalState::Answered,
+            delivery: DeliveryDisposition::Visible,
+            message: visible.into(),
+            claims: vec![GroundedClaim {
+                claim_ref: "claim:model-selected-wrong-basis".into(),
+                planned_claim_ref: None,
+                text: visible.into(),
+                required_for_answer: true,
+                content: ClaimContent::StableExplanation {
+                    explanation_id: StableExplanationId::EvidenceAuthorityBoundary,
+                },
+            }],
+            coverage_notice: None,
+            question: None,
+            mission: MissionState {
+                status: SessionStatus::Completed,
+                ..mission()
+            },
+            memory_updates: Vec::new(),
+            presentation_ready: true,
+        };
+        let model = PremiseConversationModel {
+            decisions: Mutex::new(VecDeque::from([SessionModelDecision::Finish { draft }])),
+        };
+
+        let outcome = run_session_turn(
+            &model,
+            &ConnectorTools,
+            conversational,
+            SessionTurnInput {
+                request_id: "request:premise-correction".into(),
+                actor_ref: "user:1".into(),
+                assessment_at: "2026-07-31T00:01:00Z".into(),
+                requested_lane: Some(ExecutionLane::Converse),
+                trigger: SessionTurnTrigger::Operator,
+            },
+        )
+        .await
+        .expect("the first correction should pass deterministic premise review");
+        let SessionTurnOutcome::PendingDelivery {
+            markdown, events, ..
+        } = outcome
+        else {
+            panic!("the premise correction should be ready for delivery");
+        };
+        assert_eq!(markdown, visible);
+        let draft = events
+            .iter()
+            .find_map(|event| match &event.event {
+                SessionEvent::DraftProduced { draft, .. } => Some(draft),
+                _ => None,
+            })
+            .expect("the normalized correction draft should be journaled");
+        let ClaimContent::ConversationalSynthesis {
+            source_message_sequences,
+            ..
+        } = &draft.claims[0].content
+        else {
+            panic!("the correction should be normalized to conversational synthesis");
+        };
+        assert_eq!(source_message_sequences, &[1, 2, 3]);
     }
 
     #[tokio::test]

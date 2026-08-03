@@ -1417,6 +1417,13 @@ pub(crate) fn request_reasons_from_supplied_operational_premises(message: &str) 
         " you said ",
         " that s not ",
         " that is not ",
+        " correction ",
+        " actually went ",
+        " actually used ",
+        " went through the old ",
+        " was the old ",
+        " that was ",
+        " if the successful ",
         " the dashboard ",
         " the successful ",
         " based on what we know ",
@@ -1435,6 +1442,11 @@ pub(crate) fn request_reasons_from_supplied_operational_premises(message: &str) 
         " what would you do next ",
         " update your view ",
         " update your conclusion ",
+        " does that change ",
+        " how does that change ",
+        " what does that do ",
+        " what does this do ",
+        " change your picture ",
         " what does that change ",
         " what follows from that ",
         " add one implication ",
@@ -3646,6 +3658,9 @@ mod grounding_tests {
         ));
         assert!(request_reasons_from_supplied_operational_premises(
             "We just changed the sync path. The dashboard is green, but we have not verified the user path. Talk to me like a teammate: what are you actually confident about, what is still unverified, and what should we do next?"
+        ));
+        assert!(request_reasons_from_supplied_operational_premises(
+            "One correction though: that one successful run actually went through the OLD route, not the new one. Does that change your picture?"
         ));
         assert!(!request_reasons_from_supplied_operational_premises(
             "Can you inspect the current sync runtime and verify whether the user path works?"
