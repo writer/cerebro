@@ -771,6 +771,8 @@ pub struct CommitmentCheckpointObservation {
     pub tool_id: String,
     pub input: Value,
     pub input_digest: String,
+    #[serde(default)]
+    pub source_subject_refs: Vec<String>,
     pub observed_at: Option<String>,
     pub state: ToolResultState,
     pub complete: bool,
@@ -2811,6 +2813,20 @@ fn wake_research_plan(
     if commitment.required_tool_ids.is_empty() {
         return None;
     }
+    let source_subject_refs = prior_commitment_checkpoint(session, trigger)
+        .into_iter()
+        .flat_map(|checkpoint| checkpoint.observations)
+        .filter(|observation| commitment.required_tool_ids.contains(&observation.tool_id))
+        .flat_map(|observation| observation.source_subject_refs)
+        .filter(|subject_ref| !subject_ref.trim().is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let plan_subject_refs = if source_subject_refs.is_empty() {
+        vec![commitment_ref.clone()]
+    } else {
+        source_subject_refs
+    };
     let claims = vec![PlannedClaim {
         claim_ref: format!("wake-claim:{commitment_ref}:verification"),
         question: commitment
@@ -2819,7 +2835,7 @@ fn wake_research_plan(
             .or_else(|| commitment.acceptance_criteria.first().cloned())
             .unwrap_or_else(|| "Determine the current commitment state.".into()),
         required: true,
-        subject_refs: vec![commitment_ref.clone()],
+        subject_refs: plan_subject_refs.clone(),
         source_candidates: commitment.required_tool_ids.clone(),
     }];
     let mut stop_conditions = commitment.acceptance_criteria.clone();
@@ -2829,7 +2845,7 @@ fn wake_research_plan(
     Some(ResearchPlan {
         decision: format!("Execute scheduled commitment {commitment_ref}."),
         lane: ExecutionLane::Investigate,
-        resolved_entities: vec![commitment_ref.clone()],
+        resolved_entities: plan_subject_refs,
         claims,
         selected_tools: commitment.required_tool_ids.clone(),
         stop_conditions,
@@ -3289,22 +3305,50 @@ fn assess_wake_attention<'a>(
     let mut missing_required_tool_ids = Vec::new();
     let mut unhealthy_required_tool_ids = Vec::new();
     for tool_id in &commitment.required_tool_ids {
-        let expected_input_digest = checkpoint.and_then(|checkpoint| {
-            checkpoint
-                .observations
-                .iter()
-                .rev()
-                .find(|observation| observation.tool_id == *tool_id)
-                .map(|observation| observation.input_digest.as_str())
-        });
+        let checkpoint_observation = checkpoint
+            .filter(|checkpoint| checkpoint.commitment_ref == *commitment_ref)
+            .and_then(|checkpoint| {
+                checkpoint
+                    .observations
+                    .iter()
+                    .rev()
+                    .find(|observation| observation.tool_id == *tool_id)
+            });
+        let Some(checkpoint_observation) = checkpoint_observation else {
+            missing_required_tool_ids.push(tool_id.clone());
+            unhealthy_required_tool_ids.push(tool_id.clone());
+            continue;
+        };
+        if checkpoint_observation.input_digest.trim().is_empty() {
+            missing_required_tool_ids.push(tool_id.clone());
+            unhealthy_required_tool_ids.push(tool_id.clone());
+            continue;
+        }
+        let expected_subjects = checkpoint_observation
+            .source_subject_refs
+            .iter()
+            .filter(|subject_ref| !subject_ref.trim().is_empty())
+            .collect::<BTreeSet<_>>();
         let current = observations.iter().rev().find(|observation| {
             observation.call.tool_id == *tool_id
-                && expected_input_digest
-                    .is_none_or(|expected| observation.call.input_digest() == expected)
+                && observation.call.input_digest() == checkpoint_observation.input_digest
         });
         match current {
             Some(observation) => {
-                if !observation_is_complete_and_fresh(observation, assessment_at) {
+                let current_subjects = observation
+                    .result
+                    .evidence
+                    .iter()
+                    .flat_map(|evidence| &evidence.atoms)
+                    .filter_map(|atom| atom.subject_ref.as_ref())
+                    .filter(|subject_ref| !subject_ref.trim().is_empty())
+                    .collect::<BTreeSet<_>>();
+                if !observation_is_complete_and_fresh(observation, assessment_at)
+                    || expected_subjects.is_empty()
+                    || !expected_subjects
+                        .iter()
+                        .all(|subject_ref| current_subjects.contains(subject_ref))
+                {
                     unhealthy_required_tool_ids.push(tool_id.clone());
                 }
                 required_observations.push(observation);
@@ -4136,6 +4180,17 @@ fn prior_commitment_checkpoint(
                             tool_id: observation.call.tool_id.clone(),
                             input: observation.call.input.clone(),
                             input_digest: observation.call.input_digest(),
+                            source_subject_refs: observation
+                                .result
+                                .evidence
+                                .iter()
+                                .flat_map(|evidence| &evidence.atoms)
+                                .filter_map(|atom| atom.subject_ref.as_deref())
+                                .filter(|subject_ref| !subject_ref.trim().is_empty())
+                                .map(str::to_owned)
+                                .collect::<BTreeSet<_>>()
+                                .into_iter()
+                                .collect(),
                             observed_at: observation
                                 .result
                                 .evidence
@@ -9535,6 +9590,66 @@ mod tests {
         current
     }
 
+    fn awakened_session_with_checkpoint() -> AgentSession {
+        let awakened = awakened_session_with_checkpoint();
+        let mut prior_draft = draft();
+        prior_draft.mission = awakened.mission.clone();
+        let prior_observation = recovering_observation_with_tool_outcome("2026-08-01T00:00:00Z");
+        awakened.events = vec![
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 1,
+                occurred_at: "2026-07-31T00:00:00Z".into(),
+                event: SessionEvent::TurnStarted {
+                    request_id: "request:checkpoint".into(),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 2,
+                occurred_at: "2026-07-31T00:00:00Z".into(),
+                event: SessionEvent::ToolInvoked {
+                    observation: prior_observation,
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 3,
+                occurred_at: "2026-07-31T00:00:00Z".into(),
+                event: SessionEvent::DraftProduced {
+                    request_id: "request:checkpoint".into(),
+                    draft: prior_draft,
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 4,
+                occurred_at: "2026-07-31T00:00:01Z".into(),
+                event: SessionEvent::DeliveryRecorded {
+                    request_id: "request:checkpoint".into(),
+                    transport: "internal_scheduler".into(),
+                    delivery_ref: "delivery:checkpoint".into(),
+                    payload_digest: format!("sha256:{}", "c".repeat(64)),
+                },
+            },
+            SessionEventRecord {
+                schema_version: AGENT_SESSION_EVENT_V2.into(),
+                session_ref: awakened.session_ref.clone(),
+                sequence: 5,
+                occurred_at: "2026-07-31T00:00:02Z".into(),
+                event: SessionEvent::TurnCompleted {
+                    request_id: "request:checkpoint".into(),
+                    state: FinalState::Answered,
+                },
+            },
+        ];
+        awakened
+    }
+
     fn draft() -> GroundedDraft {
         GroundedDraft {
             state: FinalState::Answered,
@@ -14159,6 +14274,7 @@ mod tests {
                 tool_id: current.call.tool_id.clone(),
                 input: current.call.input.clone(),
                 input_digest: current.call.input_digest(),
+                source_subject_refs: vec!["connector:alpha".into()],
                 observed_at: Some("2026-07-31T00:00:00Z".into()),
                 state: ToolResultState::Succeeded,
                 complete: true,
@@ -14313,8 +14429,7 @@ mod tests {
 
     #[test]
     fn scheduled_wake_plan_is_derived_from_the_persisted_commitment() {
-        let mut awakened = session();
-        awakened.mission.commitments.push(scheduled_commitment());
+        let awakened = awakened_session_with_checkpoint();
         let plan = wake_research_plan(
             &awakened,
             &SessionTurnTrigger::Wake {
@@ -14325,7 +14440,9 @@ mod tests {
         .expect("a required-read wake should have an executor plan");
         assert_eq!(plan.lane, ExecutionLane::Investigate);
         assert_eq!(plan.selected_tools, vec!["connector.read"]);
+        assert_eq!(plan.resolved_entities, vec!["connector:alpha"]);
         assert_eq!(plan.claims.len(), 1);
+        assert_eq!(plan.claims[0].subject_refs, vec!["connector:alpha"]);
         assert_eq!(
             plan.claims[0].question,
             "A current connector observation closes the check."
@@ -14460,6 +14577,7 @@ mod tests {
                 tool_id: "connector.read".into(),
                 input: exact_stale.call.input.clone(),
                 input_digest: expected_digest,
+                source_subject_refs: vec!["connector:alpha".into()],
                 observed_at: Some("2026-07-31T00:00:00Z".into()),
                 state: ToolResultState::Succeeded,
                 complete: true,
@@ -14493,14 +14611,74 @@ mod tests {
             attention.required_observations[0].call.call_id,
             "call:exact-stale"
         );
+
+        let fresh_exact = recovering_observation_with_tool_outcome("2026-08-01T00:00:00Z");
+        let absent_checkpoint = assess_wake_attention(
+            &awakened,
+            &trigger,
+            None,
+            std::slice::from_ref(&fresh_exact),
+            assessment_at,
+        )
+        .unwrap();
+        assert_eq!(
+            absent_checkpoint.disposition,
+            WakeAttentionDisposition::VisibleUnhealthy
+        );
+        assert_eq!(
+            absent_checkpoint.missing_required_tool_ids,
+            vec!["connector.read"]
+        );
+
+        let mut unbound_checkpoint = checkpoint.clone();
+        unbound_checkpoint.observations[0]
+            .source_subject_refs
+            .clear();
+        let unbound = assess_wake_attention(
+            &awakened,
+            &trigger,
+            Some(&unbound_checkpoint),
+            std::slice::from_ref(&fresh_exact),
+            assessment_at,
+        )
+        .unwrap();
+        assert_eq!(
+            unbound.disposition,
+            WakeAttentionDisposition::VisibleUnhealthy
+        );
+        assert_eq!(unbound.unhealthy_required_tool_ids, vec!["connector.read"]);
+
+        let mut legacy_checkpoint_observation =
+            serde_json::to_value(&checkpoint.observations[0]).unwrap();
+        legacy_checkpoint_observation
+            .as_object_mut()
+            .unwrap()
+            .remove("source_subject_refs");
+        let legacy_checkpoint_observation: CommitmentCheckpointObservation =
+            serde_json::from_value(legacy_checkpoint_observation).unwrap();
+        assert!(legacy_checkpoint_observation.source_subject_refs.is_empty());
+
+        let mut wrong_subject_checkpoint = checkpoint;
+        wrong_subject_checkpoint.observations[0].source_subject_refs =
+            vec!["connector:other".into()];
+        let wrong_subject = assess_wake_attention(
+            &awakened,
+            &trigger,
+            Some(&wrong_subject_checkpoint),
+            &[fresh_exact],
+            assessment_at,
+        )
+        .unwrap();
+        assert_eq!(
+            wrong_subject.disposition,
+            WakeAttentionDisposition::VisibleUnhealthy
+        );
     }
 
     #[test]
     fn routine_wake_is_host_grounded_and_covers_the_required_wake_claim() {
         let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
-        let mut awakened = session();
-        awakened.mission.commitments.push(scheduled_commitment());
-        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let awakened = awakened_session_with_checkpoint();
         let trigger = SessionTurnTrigger::Wake {
             commitment_ref: "commitment:scheduled-check".into(),
             occurrence_ref: "occurrence:canonical-silent".into(),
@@ -14563,15 +14741,13 @@ mod tests {
 
     #[tokio::test]
     async fn normal_finish_canonicalizes_routine_wake_before_model_prose_grounding() {
-        let mut awakened = session();
-        awakened.mission.commitments.push(scheduled_commitment());
-        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let mut awakened = awakened_session_with_checkpoint();
         awakened = apply_session_events(
             &awakened,
             &[SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: awakened.session_ref.clone(),
-                sequence: 1,
+                sequence: 6,
                 occurred_at: "2026-07-31T00:01:00Z".into(),
                 event: SessionEvent::WakeTriggered {
                     request_id: "wake-request:routine-silent".into(),
@@ -14647,9 +14823,7 @@ mod tests {
 
     #[tokio::test]
     async fn healthy_routine_repair_fallback_is_silent_and_answered() {
-        let mut awakened = session();
-        awakened.mission.commitments.push(scheduled_commitment());
-        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let awakened = awakened_session_with_checkpoint();
         let trigger = SessionTurnTrigger::Wake {
             commitment_ref: "commitment:scheduled-check".into(),
             occurrence_ref: "occurrence:routine-fallback".into(),
@@ -14758,8 +14932,8 @@ mod tests {
     #[test]
     fn runtime_policy_forces_visible_regression_and_acceptance() {
         let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
-        let mut awakened = session();
-        let mut commitment = scheduled_commitment();
+        let mut awakened = awakened_session_with_checkpoint();
+        let commitment = &mut awakened.mission.commitments[0];
         commitment
             .attention_policy
             .as_mut()
@@ -14770,7 +14944,6 @@ mod tests {
                 data_pointer: "/regressed".into(),
                 equals: json!(true),
             });
-        awakened.mission.commitments.push(commitment);
         let trigger = SessionTurnTrigger::Wake {
             commitment_ref: "commitment:scheduled-check".into(),
             occurrence_ref: "occurrence:typed-attention".into(),
