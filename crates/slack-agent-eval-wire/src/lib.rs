@@ -162,6 +162,7 @@ pub struct CandidateDeliveryReceipt {
 pub struct EpisodeLimits {
     pub max_exchanges: usize,
     pub turn_timeout_ms: u64,
+    pub operator_timeout_ms: u64,
     pub lane_latency_limits_ms: BTreeMap<String, u64>,
     #[serde(default)]
     pub restart_after_exchange: Option<usize>,
@@ -438,6 +439,7 @@ mod tests {
             limits: EpisodeLimits {
                 max_exchanges: 4,
                 turn_timeout_ms: 60_000,
+                operator_timeout_ms: 30_000,
                 lane_latency_limits_ms: BTreeMap::from([
                     ("converse".into(), 30_000),
                     ("continue".into(), 30_000),

@@ -87,12 +87,21 @@ async fn run(config_path: &str, output_path: &str) -> Result<(), Box<dyn Error>>
     let mut concluded = false;
 
     for sequence in 1..=config.episode.limits.max_exchanges {
-        let runtime = read_status(&client, &config.candidate_base_url).await?;
+        let runtime = match read_status(&client, &config.candidate_base_url).await {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                defects.push(terminal(
+                    "candidate_status_unavailable",
+                    bounded_error(error.as_ref()),
+                ));
+                break;
+            }
+        };
         if let Err(detail) = same_candidate(&initial_runtime, &runtime) {
             defects.push(terminal("candidate_identity_changed", detail));
             break;
         }
-        let exchange = run_exchange(
+        let exchange = match run_exchange(
             &client,
             &config.candidate_base_url,
             request.clone(),
@@ -100,7 +109,17 @@ async fn run(config_path: &str, output_path: &str) -> Result<(), Box<dyn Error>>
             &runtime.runtime_instance_ref,
             config.episode.limits.turn_timeout_ms,
         )
-        .await?;
+        .await
+        {
+            Ok(exchange) => exchange,
+            Err(error) => {
+                defects.push(terminal(
+                    "candidate_turn_failed",
+                    bounded_error(error.as_ref()),
+                ));
+                break;
+            }
+        };
         if let Some(lane) = exchange.outcome.telemetry().0
             && let Some(limit_ms) = config.episode.limits.lane_latency_limits_ms.get(lane)
             && exchange.latency_ms > *limit_ms
@@ -132,7 +151,23 @@ async fn run(config_path: &str, output_path: &str) -> Result<(), Box<dyn Error>>
             break;
         }
 
-        let decision = call_operator(&client, &config.operator_url, &operator_request).await?;
+        let decision = match call_operator(
+            &client,
+            &config.operator_url,
+            &operator_request,
+            config.episode.limits.operator_timeout_ms,
+        )
+        .await
+        {
+            Ok(decision) => decision,
+            Err(error) => {
+                defects.push(terminal(
+                    "operator_turn_failed",
+                    bounded_error(error.as_ref()),
+                ));
+                break;
+            }
+        };
         match decision {
             OperatorDecision::Conclude { .. } => {
                 concluded = true;
@@ -162,9 +197,22 @@ async fn run(config_path: &str, output_path: &str) -> Result<(), Box<dyn Error>>
             match config.restart_url.as_deref() {
                 Some(url) => {
                     let restarted =
-                        restart_candidate(&client, url, &config.candidate_base_url, &runtime)
-                            .await?;
-                    same_candidate(&initial_runtime, &restarted)?;
+                        match restart_candidate(&client, url, &config.candidate_base_url, &runtime)
+                            .await
+                        {
+                            Ok(restarted) => restarted,
+                            Err(error) => {
+                                defects.push(terminal(
+                                    "candidate_restart_failed",
+                                    bounded_error(error.as_ref()),
+                                ));
+                                break;
+                            }
+                        };
+                    if let Err(detail) = same_candidate(&initial_runtime, &restarted) {
+                        defects.push(terminal("candidate_identity_changed", detail));
+                        break;
+                    }
                     if restarted.runtime_instance_ref == runtime.runtime_instance_ref {
                         defects.push(terminal(
                             "restart_not_observed",
@@ -298,14 +346,21 @@ async fn call_operator(
     client: &Client,
     operator_url: &str,
     request: &OperatorTurnRequest,
+    timeout_ms: u64,
 ) -> Result<OperatorDecision, Box<dyn Error>> {
-    let response = client.post(operator_url).json(request).send().await?;
-    let status = response.status();
-    let body = response.bytes().await?;
-    if !status.is_success() {
-        return Err(format!("operator returned {status}: {}", bounded_body(&body)).into());
+    let operation = async {
+        let response = client.post(operator_url).json(request).send().await?;
+        let status = response.status();
+        let body = response.bytes().await?;
+        if !status.is_success() {
+            return Err(format!("operator returned {status}: {}", bounded_body(&body)).into());
+        }
+        Ok(serde_json::from_slice(&body)?)
+    };
+    match tokio::time::timeout(Duration::from_millis(timeout_ms), operation).await {
+        Ok(result) => result,
+        Err(_) => Err(format!("operator turn exceeded its sealed {timeout_ms} ms timeout").into()),
     }
-    Ok(serde_json::from_slice(&body)?)
 }
 
 async fn read_status(
@@ -360,6 +415,8 @@ fn validate_config(config: &RunConfig) -> Result<(), Box<dyn Error>> {
         || config.episode.limits.max_exchanges > 24
         || config.episode.limits.turn_timeout_ms < 1_000
         || config.episode.limits.turn_timeout_ms > 600_000
+        || config.episode.limits.operator_timeout_ms < 1_000
+        || config.episode.limits.operator_timeout_ms > 180_000
         || config.episode.limits.lane_latency_limits_ms.is_empty()
         || config
             .episode
@@ -508,6 +565,10 @@ fn now() -> Result<String, time::error::Format> {
 
 fn bounded_body(body: &[u8]) -> String {
     String::from_utf8_lossy(&body[..body.len().min(512)]).into_owned()
+}
+
+fn bounded_error(error: &dyn Error) -> String {
+    error.to_string().chars().take(512).collect()
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: impl AsRef<Path>) -> Result<T, Box<dyn Error>> {
