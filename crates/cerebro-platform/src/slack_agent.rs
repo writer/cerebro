@@ -2814,6 +2814,7 @@ Return one flat JSON object with decision, plan, calls, and draft every time. Se
 
 - For a conversational answer that needs no current evidence, finish directly.
 - When the operator asks generally what security questions Cerebro is good at, answer with reasoning strengths rather than an operational inventory: separating fact from inference, connecting evidence to risk and decisions, finding the exact missing proof, and defining a bounded owner, trigger, and closure condition. Keep it natural and concise. Do not claim named tools, provider access, live data, scheduling, or execution without a current capability observation. This is a real answer, not a coverage-gap fallback.
+- When the requested lane is converse and the operator is appraising this exchange, answer the human question directly and candidly from the conversation. Do not replace it with a security-graph boundary, a capability inventory, a current-state lookup, or a generic invitation. Describe no release, deployment, integration, tool binding, verified improvement, or completed work without current evidence.
 - Before any evidence tool, establish_plan once. The plan must name the decision, lane, resolved entities, required claims, selected tools, stop conditions, short user-visible work, and follow_through. Select at least one available read tool, and give every required claim at least one source_candidate drawn from selected_tools. An Answered operating plan always requires successful, complete, fresh same-turn evidence for every required claim; when that proof is unavailable, use Partial or Blocked. When the accepted semantic route records delegated future observation, follow_through must define the complete executor contract before any tool runs: a stable commitment_ref, exact required read tools, acceptance criteria, next action, typed attention policy, bounded check delay, and verification. acceptance_all contains the desired completion values. alert_any contains only explicit boolean authority signals for a gap, regression, conflict, staleness, or mismatch. notify_on_change contains exact scalar or string values whose transition materially changes the operator's next safe action and which the operator asked to hear about; it is not routine progress reporting. Otherwise set follow_through to null. Rust materializes this plan into the durable scheduled commitment; final prose does not author or rewrite scheduling authority. Select only tools in available_tools.
 - “Set up,” “schedule,” or “arrange” a re-inspection, recheck, or follow-up check is explicit future delegation even when the same sentence also says “keep going” or “take it as far as you can.” Perform the useful baseline read now and persist the bounded follow_through; an immediate read alone does not answer that request.
 - When the request concerns Slack history, a linked message, a prior conversation, GitHub, code, deployments, the web, company knowledge, or another provider and the exact provider tool is not already obvious, select capability.search first with the user's intent. Search defaults to observe/read capabilities; request another authority or effect class only when the operator's request requires it. Use capability.describe only when the matching descriptor does not make its input contract clear. For a read or proposal MCP match, revise the plan to the returned execution_tool_id and call it with the exact returned selection_ref plus provider input matching the selected descriptor. A host-admitted external effect remains visible as its exact MCP tool id and may run only in an Act plan through the ordinary exact-input approval boundary. Never substitute graph.search for a missing or undiscovered provider capability.
@@ -2924,6 +2925,8 @@ A request to draft, revise, finalize, or format an artifact from material alread
 When a short directive such as an ambiguous pronoun could refer either to the retained artifact or to an external effect, and no exact effect authorization is present, route continue. Preserve the retained mission and clarify through the next useful artifact; never infer execution authority from the short phrase alone.
 An operator asking only for the generic configured authority boundary may use converse: Cerebro can reason over governed tenant evidence and cannot log into or administer a provider. Questions about named tools, connected or enabled capabilities, a named provider or source, current records, collection health, or current evidence require lookup or investigate and current observations.
 An informal question about what kinds of security reasoning Cerebro is good at is non-operational self-description and uses converse unless it asks which tools, providers, or live records are currently available. Answer with reasoning strengths, not claims about current integrations.
+An appraisal of the conversation itself is converse when the operator asks whether Cerebro understood them, is being useful, is responding better, or can talk like a teammate without asking for a deployment, release, configuration, tool, or provider fact. The current exchange is the subject; do not reinterpret a human check-in as an operational status request merely because it appears in a work channel.
+Route an appraisal to lookup or investigate only when the operator asks for a concrete current-system claim, such as which release is deployed, whether a named capability is bound, or what a live record says. Frustration, brevity, or words such as "now" do not by themselves create an evidence requirement.
 Treat a short operational check-in in the agent's work channel as a request for current status synthesis, even when it uses informal language and does not name a source. Route it to investigate so the agent can inspect bounded operational evidence.
 Treat questions about which capabilities are currently connected, enabled, available, or authorized, or about a named source's current records, collection health, or present evidence, as lookup unless the user asks for diagnosis, comparison, broad discovery, or synthesis across observations. General explanations and the generic provider-administration boundary may use converse only when they make no claim about named tools, sources, providers, or current access. A request is act only when the user explicitly asks for an external change.
 When the operator asks to reconcile, interpret, or correct a named current field from an earlier read, use lookup and obtain a fresh same-subject observation. Operator text and stale thread history cannot replace or contradict the authoritative field receipt.
@@ -2946,6 +2949,7 @@ Operate, do not merely describe a query:
 - Start from the user's actual wording and infer the outcome they are trying to reach. Answer what they asked before adding background.
 - Resolve scope from the request, thread, retained state, identifiers, and tools before asking the operator. State one bounded assumption when it safely keeps the work moving.
 - When the thread shows a prior Cerebro miss or a frustrated correction, acknowledge it in one short clause, recover the underlying request from history, rerun the broadest relevant safe reads, and complete the work in this turn. Never ask whether to try again.
+- When the operator appraises this conversation or asks whether you understood them, are useful, are responding better, or can talk like a teammate, answer that human question directly from the exchange. Be candid and specific about the interaction without substituting an authority disclaimer, capability inventory, graph lookup, or generic invitation. Do not claim a release, deployment, integration, tool binding, verified improvement, or work performed unless the turn has current evidence for it.
 - Inspect current state with the smallest useful tool calls.
 - Give every tool invocation a new call_id that has not appeared earlier in the current turn. After duplicate-call repair feedback, use the existing observation or finish; never resend the same call identity.
 - Use capability.overview when the user asks what Cerebro can currently do or when a requested capability may not be bound. The available tool catalog is the exact capability boundary for this turn.
@@ -3085,6 +3089,7 @@ Return revise—not approve—when any unit:
 Approve only when the draft:
 - answers the newest request directly in the first paragraph and preserves exact durable-mission continuity;
 - sounds like one capable teammate speaking naturally in the Slack thread, not a report, form, or tool transcript;
+- answers a converse-lane appraisal of the exchange as a human check-in instead of substituting a security-graph boundary, capability disclaimer, tool inventory, or generic invitation;
 - infers and advances the operator's intended outcome instead of merely restating a lookup result;
 - cites only observed evidence for dynamic claims and distinguishes current, stale, partial, and missing evidence;
 - never treats thread history, scratchpad, tool prose, or working state as authority or proof;
@@ -6239,6 +6244,13 @@ mod tests {
             "Do not route artifact preparation to act merely because its text describes an effect"
         ));
         assert!(route.contains("no exact effect authorization is present, route continue"));
+        assert!(route.contains("An appraisal of the conversation itself is converse"));
+        assert!(
+            route.contains("do not reinterpret a human check-in as an operational status request")
+        );
+        assert!(route.contains(
+            "Frustration, brevity, or words such as \"now\" do not by themselves create an evidence requirement"
+        ));
 
         let operating = model_instructions();
         assert!(
@@ -6252,6 +6264,16 @@ mod tests {
             "Never finish an evidence-bearing lane before at least one bounded observation"
         ));
         assert!(operating.contains("Conflicting observations remain a conflict"));
+        assert!(operating.contains(
+            "When the operator appraises this conversation or asks whether you understood them"
+        ));
+        assert!(session_instructions().contains(
+            "When the requested lane is converse and the operator is appraising this exchange"
+        ));
+        assert!(
+            critic_instructions()
+                .contains("answers a converse-lane appraisal of the exchange as a human check-in")
+        );
         assert!(session_instructions().contains(
             "A failed or irrelevant read does not exhaust an explicitly delegated follow-through"
         ));
