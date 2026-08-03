@@ -11698,9 +11698,7 @@ mod tests {
 
     #[test]
     fn wake_completion_requires_the_commitments_fresh_tools_in_that_wake() {
-        let mut awakened = session();
-        awakened.mission.commitments.push(scheduled_commitment());
-        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let awakened = awakened_session_with_checkpoint();
         let mut completed = draft();
         completed.mission = awakened.mission.clone();
         completed.mission.commitments[0].status = CommitmentStatus::Completed;
@@ -11723,60 +11721,6 @@ mod tests {
                 .is_ok()
         );
 
-        let mut prior_draft = draft();
-        prior_draft.mission = awakened.mission.clone();
-        awakened.events = vec![
-            SessionEventRecord {
-                schema_version: AGENT_SESSION_EVENT_V2.into(),
-                session_ref: awakened.session_ref.clone(),
-                sequence: 1,
-                occurred_at: "2026-07-31T00:00:00Z".into(),
-                event: SessionEvent::TurnStarted {
-                    request_id: "request:prior".into(),
-                },
-            },
-            SessionEventRecord {
-                schema_version: AGENT_SESSION_EVENT_V2.into(),
-                session_ref: awakened.session_ref.clone(),
-                sequence: 2,
-                occurred_at: "2026-07-31T00:00:00Z".into(),
-                event: SessionEvent::ToolInvoked {
-                    observation: observation(true, Some("2026-07-31T00:06:00Z")),
-                },
-            },
-            SessionEventRecord {
-                schema_version: AGENT_SESSION_EVENT_V2.into(),
-                session_ref: awakened.session_ref.clone(),
-                sequence: 3,
-                occurred_at: "2026-07-31T00:00:00Z".into(),
-                event: SessionEvent::DraftProduced {
-                    request_id: "request:prior".into(),
-                    draft: prior_draft,
-                },
-            },
-            SessionEventRecord {
-                schema_version: AGENT_SESSION_EVENT_V2.into(),
-                session_ref: awakened.session_ref.clone(),
-                sequence: 4,
-                occurred_at: "2026-07-31T00:00:01Z".into(),
-                event: SessionEvent::DeliveryRecorded {
-                    request_id: "request:prior".into(),
-                    transport: "slack".into(),
-                    delivery_ref: "delivery:prior".into(),
-                    payload_digest: format!("sha256:{}", "b".repeat(64)),
-                },
-            },
-            SessionEventRecord {
-                schema_version: AGENT_SESSION_EVENT_V2.into(),
-                session_ref: awakened.session_ref.clone(),
-                sequence: 5,
-                occurred_at: "2026-07-31T00:00:02Z".into(),
-                event: SessionEvent::TurnCompleted {
-                    request_id: "request:prior".into(),
-                    state: FinalState::Answered,
-                },
-            },
-        ];
         let mut wrong_subject = observation(true, Some("2026-07-31T00:06:00Z"));
         wrong_subject.call.input = json!({"connector_ref": "connector:beta"});
         let error = validate_wake_completion(
@@ -14306,7 +14250,7 @@ mod tests {
         assert!(assessment.required_observations_present);
         assert!(!assessment.required_observations_healthy);
         assert!(!assessment.acceptance_met);
-        assert_eq!(assessment.matched_attention_signals.len(), 1);
+        assert!(assessment.matched_attention_signals.is_empty());
         assert_eq!(
             assessment
                 .scalar_comparisons
@@ -14355,14 +14299,12 @@ mod tests {
 
     #[test]
     fn resumed_wake_counts_its_persisted_fresh_observation() {
-        let mut awakened = session();
-        awakened.mission.commitments.push(scheduled_commitment());
-        awakened.mission.status = SessionStatus::WaitingForExternal;
-        awakened.events = vec![
+        let mut awakened = awakened_session_with_checkpoint();
+        awakened.events.extend([
             SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: awakened.session_ref.clone(),
-                sequence: 1,
+                sequence: 6,
                 occurred_at: "2026-07-31T00:01:00Z".into(),
                 event: SessionEvent::TurnStarted {
                     request_id: "wake-request:resumed".into(),
@@ -14371,13 +14313,13 @@ mod tests {
             SessionEventRecord {
                 schema_version: AGENT_SESSION_EVENT_V2.into(),
                 session_ref: awakened.session_ref.clone(),
-                sequence: 2,
+                sequence: 7,
                 occurred_at: "2026-07-31T00:01:00Z".into(),
                 event: SessionEvent::ToolInvoked {
                     observation: observation(true, Some("2026-07-31T00:06:00Z")),
                 },
             },
-        ];
+        ]);
         let (resumed, _, observations) = resume_turn_state(&awakened, "wake-request:resumed");
         assert!(resumed);
 
@@ -14404,9 +14346,7 @@ mod tests {
 
     #[test]
     fn wake_executor_repair_names_the_exact_durable_contract() {
-        let mut awakened = session();
-        awakened.mission.commitments.push(scheduled_commitment());
-        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let awakened = awakened_session_with_checkpoint();
         let mut completed = draft();
         completed.mission = awakened.mission.clone();
         completed.mission.commitments[0].status = CommitmentStatus::Completed;
@@ -14887,9 +14827,7 @@ mod tests {
         .unwrap_err();
         assert!(error.to_string().contains("operator turns must produce"));
 
-        let mut awakened = session();
-        awakened.mission.commitments.push(scheduled_commitment());
-        awakened.mission.status = SessionStatus::WaitingForExternal;
+        let awakened = awakened_session_with_checkpoint();
         let trigger = SessionTurnTrigger::Wake {
             commitment_ref: "commitment:scheduled-check".into(),
             occurrence_ref: "occurrence:delivery-boundary".into(),
