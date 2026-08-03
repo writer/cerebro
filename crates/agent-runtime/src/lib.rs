@@ -4146,8 +4146,8 @@ mod grounding_tests {
     #[test]
     fn semicolon_linked_conversation_stays_one_grounding_unit() {
         let mut draft = sample_turn().draft;
-        draft.summary = "The real test isn't this one answer, though; it's whether the pattern holds."
-            .into();
+        draft.summary =
+            "The real test isn't this one answer, though; it's whether the pattern holds.".into();
         let units = critique_grounding_units(&draft);
         assert_eq!(units.len(), 1);
         assert_eq!(units[0].text, draft.summary);
