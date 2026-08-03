@@ -6767,10 +6767,9 @@ fn quality_contract(case_ref: &str) -> &'static str {
         "Identify the supported cursor-format mismatch after the configuration revision as the cause, preserve that authentication and prior evidence remain healthy, and own the bounded corrective next step without claiming it was executed."
     } else if case_ref.contains("finding") || case_ref.contains("asset") {
         "Synthesize the single high-risk finding, exposed production asset, complete evidence chain, remediation owner, and bounded restrict-then-reobserve recommendation. A row list or generic risk description fails."
-    } else if case_ref.contains("pure-conversation")
-        || case_ref.contains("concept-chat")
-        || case_ref.contains("conversation-appraisal")
-    {
+    } else if case_ref.contains("conversation-appraisal") {
+        "Answer in one short conversational paragraph. Name the exact prior miss or correction from the invented thread, answer the appraisal directly, and add one useful implication. Advertising, capability disclaimers, asking for another task as proof, making the operator repeat context, or ending with a generic offer fails."
+    } else if case_ref.contains("pure-conversation") || case_ref.contains("concept-chat") {
         "Answer naturally and proportionally without pretending to inspect current systems, advertising, or ending with a generic offer."
     } else {
         "Answer the requested outcome directly, use only supplied observations for current facts, preserve authority and coverage boundaries, make a supported recommendation, and own safe follow-through."
@@ -7022,7 +7021,7 @@ fn eval_cases() -> Vec<EvalCase> {
             case_ref: "case://held-out/conversation-appraisal",
             partition: "held_out",
             message: "Be honest: are you responding usefully now?",
-            history: "The operator is appraising this exchange, not asking which release is deployed or which live capability is bound.",
+            history: "You keep answering with capability disclaimers when I ask a human question. I need you to answer directly, remember what I corrected, take initiative, and add one useful implication instead of asking me to prompt you again.",
             working_request: None,
             expected_route: ExecutionLane::Converse,
             expected_lane: ExecutionLane::Converse,
@@ -7192,7 +7191,7 @@ fn eval_cases() -> Vec<EvalCase> {
             case_ref: "case://shadow/conversation-appraisal",
             partition: "shadow",
             message: "Did you actually understand what I wanted from this conversation?",
-            history: "The operator wants a candid conversational answer about the exchange, not current system status.",
+            history: "I asked for a conversational teammate who carries context across turns and offers its own judgment without inventing facts. You responded with a security-graph limitation and a generic invitation instead.",
             working_request: None,
             expected_route: ExecutionLane::Converse,
             expected_lane: ExecutionLane::Converse,
@@ -7330,6 +7329,10 @@ mod tests {
             .iter()
             .find(|case| case.case_ref == "case://held-out/conversation-appraisal")
             .expect("conversation appraisal regression exists");
+        assert!(appraisal.history.contains("capability disclaimers"));
+        assert!(appraisal.history.contains("one useful implication"));
+        assert!(quality_contract(appraisal.case_ref).contains("exact prior miss"));
+        assert!(quality_contract(appraisal.case_ref).contains("another task as proof"));
         validate_candidate_payload(&eval_request(0, appraisal, "2026-08-03T03:00:00Z"))
             .expect("embedded regression requests remain production-shaped");
         assert!(
