@@ -47,7 +47,7 @@ use super::slack_agent_session::{
 };
 
 const SCHEMA_VERSION: &str = "cerebro-rust-slack-agent-conversation-harness/v2";
-const EXPECTED_CASES_PER_PARTITION: usize = 16;
+const EXPECTED_CASES_PER_PARTITION: usize = 17;
 const MAX_P95_CASE_LATENCY_MS: u128 = 60_000;
 const QUALITY_JUDGE_MAX_TOKENS: i32 = 2_048;
 const QUALITY_JUDGMENT_TOOL: &str = "submit_conversation_quality_judgment";
@@ -6738,7 +6738,10 @@ fn quality_contract(case_ref: &str) -> &'static str {
         "Identify the supported cursor-format mismatch after the configuration revision as the cause, preserve that authentication and prior evidence remain healthy, and own the bounded corrective next step without claiming it was executed."
     } else if case_ref.contains("finding") || case_ref.contains("asset") {
         "Synthesize the single high-risk finding, exposed production asset, complete evidence chain, remediation owner, and bounded restrict-then-reobserve recommendation. A row list or generic risk description fails."
-    } else if case_ref.contains("pure-conversation") || case_ref.contains("concept-chat") {
+    } else if case_ref.contains("pure-conversation")
+        || case_ref.contains("concept-chat")
+        || case_ref.contains("conversation-appraisal")
+    {
         "Answer naturally and proportionally without pretending to inspect current systems, advertising, or ending with a generic offer."
     } else {
         "Answer the requested outcome directly, use only supplied observations for current facts, preserve authority and coverage boundaries, make a supported recommendation, and own safe follow-through."
@@ -6983,6 +6986,16 @@ fn eval_cases() -> Vec<EvalCase> {
             false_converse: false,
         },
         EvalCase {
+            case_ref: "case://held-out/conversation-appraisal",
+            partition: "held_out",
+            message: "Be honest: are you responding usefully now?",
+            history: "The operator is appraising this exchange, not asking which release is deployed or which live capability is bound.",
+            working_request: None,
+            expected_route: ExecutionLane::Converse,
+            expected_lane: ExecutionLane::Converse,
+            false_converse: false,
+        },
+        EvalCase {
             case_ref: "case://shadow/verified-day-log",
             partition: "shadow",
             message: "Describe your role, then list only the work from today you can verify.",
@@ -7142,6 +7155,16 @@ fn eval_cases() -> Vec<EvalCase> {
             expected_lane: ExecutionLane::Converse,
             false_converse: false,
         },
+        EvalCase {
+            case_ref: "case://shadow/conversation-appraisal",
+            partition: "shadow",
+            message: "Did you actually understand what I wanted from this conversation?",
+            history: "The operator wants a candid conversational answer about the exchange, not current system status.",
+            working_request: None,
+            expected_route: ExecutionLane::Converse,
+            expected_lane: ExecutionLane::Converse,
+            false_converse: false,
+        },
     ]
 }
 
@@ -7264,6 +7287,12 @@ mod tests {
                 .any(|case| case.message
                     == "what can you tell me about yourself and your work today?")
         );
+        assert!(cases.iter().any(|case| {
+            case.case_ref == "case://held-out/conversation-appraisal"
+                && case.expected_route == ExecutionLane::Converse
+                && case.expected_lane == ExecutionLane::Converse
+                && !case.false_converse
+        }));
         assert!(
             cases
                 .iter()
