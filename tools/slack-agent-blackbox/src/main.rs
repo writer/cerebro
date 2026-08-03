@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod promotion;
+
 use std::{env, error::Error, fs, path::Path, time::Duration};
 
 use cerebro_slack_agent_eval_wire::{
@@ -14,7 +16,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-const USAGE: &str = "usage:\n  slack-agent-blackbox run CONFIG.json RECEIPT.json\n  slack-agent-blackbox blind RECEIPT.json ASSIGNMENT_REF CANDIDATE_ALIAS BRIEF.json PACKET.json\n  slack-agent-blackbox verify-receipt RECEIPT.json";
+const USAGE: &str = "usage:\n  slack-agent-blackbox run CONFIG.json RECEIPT.json\n  slack-agent-blackbox blind RECEIPT.json ASSIGNMENT_REF CANDIDATE_ALIAS BRIEF.json PACKET.json\n  slack-agent-blackbox verify-receipt RECEIPT.json\n  slack-agent-blackbox commit-holdouts-v2 SUITE.json PRIVATE_ASSIGNMENTS.json COMMITMENT.json\n  slack-agent-blackbox verify-promotion-v2 BUNDLE.json";
 const RUN_CONFIG_V1: &str = "slack-agent-blackbox-run-config/v1";
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +60,14 @@ async fn dispatch(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
             blind(receipt, assignment, alias, brief, output)
         }
         [command, receipt] if command == "verify-receipt" => verify_receipt(receipt),
+        [command, suite, assignments, output] if command == "commit-holdouts-v2" => {
+            promotion::validate_suite_files_and_write_commitment(suite, assignments, output)?;
+            Ok(())
+        }
+        [command, bundle] if command == "verify-promotion-v2" => {
+            promotion::verify_promotion_file(bundle)?;
+            Ok(())
+        }
         _ => Err(USAGE.into()),
     }
 }
@@ -427,7 +437,39 @@ fn validate_config(config: &RunConfig) -> Result<(), Box<dyn Error>> {
     {
         return Err("invalid bounded episode configuration".into());
     }
+    let initial = &config.episode.initial_turn;
+    for value in [
+        initial.tenant_id.as_str(),
+        initial.request_id.as_str(),
+        initial.thread_ref.as_str(),
+        initial.actor_ref.as_str(),
+    ] {
+        if discloses_evaluation(value) {
+            return Err("candidate-visible identifiers disclose evaluation context".into());
+        }
+    }
+    if initial
+        .context_scope_ref
+        .as_deref()
+        .is_some_and(discloses_evaluation)
+    {
+        return Err("candidate-visible identifiers disclose evaluation context".into());
+    }
     Ok(())
+}
+
+fn discloses_evaluation(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    [
+        "blackbox",
+        "holdout",
+        "episode",
+        "grader",
+        "candidate",
+        "eval-",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
 }
 
 fn validate_runtime(runtime: &CandidateRuntimeAttestation) -> Result<(), Box<dyn Error>> {
@@ -483,7 +525,7 @@ fn next_request(
 
 fn opaque_request_ref(episode_ref: &str, sequence: usize) -> String {
     let digest = sha256_text(&format!("blackbox-request/v1\n{episode_ref}\n{sequence}"));
-    format!("blackbox-request:{}", &digest[7..31])
+    format!("slack-request-{}", &digest[7..])
 }
 
 fn blind(
@@ -590,6 +632,9 @@ mod tests {
     fn request_alias_does_not_disclose_episode_ref() {
         let alias = opaque_request_ref("private-episode-name", 2);
         assert!(!alias.contains("private-episode-name"));
+        assert!(!alias.contains("blackbox"));
+        assert!(!alias.contains("eval"));
+        assert!(alias.starts_with("slack-request-"));
         assert_eq!(alias, opaque_request_ref("private-episode-name", 2));
     }
 
@@ -611,5 +656,27 @@ mod tests {
         assert!(same_candidate(&first, &restarted).is_ok());
         restarted.model_id = Some("different".into());
         assert!(same_candidate(&first, &restarted).is_err());
+    }
+
+    #[test]
+    fn candidate_visible_identifiers_cannot_disclose_the_experiment() {
+        for value in [
+            "blackbox-request:one",
+            "holdout-thread",
+            "private-episode-7",
+            "grader-actor",
+            "candidate-a",
+            "eval-thread",
+        ] {
+            assert!(discloses_evaluation(value), "{value}");
+        }
+        for value in [
+            "writer",
+            "slack-request-0123456789abcdef",
+            "slack-thread:T01:C01:1710000000.000001",
+            "slack-user:U01",
+        ] {
+            assert!(!discloses_evaluation(value), "{value}");
+        }
     }
 }
