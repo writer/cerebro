@@ -6542,6 +6542,8 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "please"
                         | "reversibility"
                         | "story"
+                        | "that"
+                        | "this"
                         | "think"
                         | "thoughts"
                         | "title"
@@ -6550,6 +6552,7 @@ fn contains_unverified_named_operational_assertion(body: &str, source_messages: 
                         | "where"
                         | "which"
                         | "would"
+                        | "you"
                 )
         };
         let is_named_source_subject = |token: &str| {
