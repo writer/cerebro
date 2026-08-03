@@ -13,7 +13,8 @@ use std::{
 };
 
 use cerebro_slack_agent_eval_wire::{
-    AUTHORITATIVE_ACTION_RECEIPT_V2, AUTHORITATIVE_FACT_RECEIPT_V2, AuthoritativeActionReceiptV2,
+    ASSIGNMENT_EXECUTION_BINDING_V2, AUTHORITATIVE_ACTION_RECEIPT_V2,
+    AUTHORITATIVE_FACT_RECEIPT_V2, AssignmentExecutionBindingV2, AuthoritativeActionReceiptV2,
     AuthoritativeEvidenceStateV2, AuthoritativeFactReceiptV2, CandidateVisibleAliasesV2,
     CriterionStatusV2, DeterministicCriteriaReceiptV2, DeterministicDefect,
     ExchangePhaseTelemetryV2, ExecutionPhaseV2, ExecutionPrincipalsV2,
@@ -65,10 +66,25 @@ pub struct CandidateEventAliasBindingV2 {
 pub struct SupervisorExecutionConfigV2 {
     pub manifest: SealedEpisodeManifestV2,
     pub candidate_attestation_digest: String,
+    pub assignment: SupervisorAssignmentContextV2,
     pub principals: ExecutionPrincipalsV2,
     pub endpoints: TrustedExecutionEndpointsV2,
     pub candidate_aliases: Vec<CandidateEventAliasBindingV2>,
     pub initial_criteria: Vec<OperatorCriterionStateV2>,
+}
+
+/// Private assignment metadata supplied by the sealed supervisor. Promotion
+/// re-validates these fields against the committed private assignment manifest
+/// and suite before accepting the resulting signed binding.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SupervisorAssignmentContextV2 {
+    pub holdout_assignment_commitment_digest: String,
+    pub assignment_alias: String,
+    pub comparison_pair_ref: String,
+    pub sample_index: usize,
+    pub run_index: usize,
+    pub presentation_order: usize,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -91,6 +107,7 @@ pub struct EndpointPhaseTelemetryV2 {
 #[serde(deny_unknown_fields)]
 pub struct SupervisorExecutionOutputV2 {
     pub receipt: SupervisorExecutionReceiptV2,
+    pub assignment_execution_binding: AssignmentExecutionBindingV2,
     pub phase_telemetry: Vec<EndpointPhaseTelemetryV2>,
     pub fact_receipts: Vec<SignedReceiptEnvelopeV2<AuthoritativeFactReceiptV2>>,
     pub action_receipts: Vec<SignedReceiptEnvelopeV2<AuthoritativeActionReceiptV2>>,
@@ -516,8 +533,25 @@ pub async fn execute_supervisor_v2(
         promotion_disposition: ExecutionPromotionDispositionV2::IneligiblePendingIndependentGrades,
         completed_at: now().map_err(SupervisorConfigurationErrorV2)?,
     };
+    let assignment_execution_binding = AssignmentExecutionBindingV2 {
+        schema_version: ASSIGNMENT_EXECUTION_BINDING_V2.into(),
+        holdout_assignment_commitment_digest: config
+            .assignment
+            .holdout_assignment_commitment_digest
+            .clone(),
+        assignment_alias: config.assignment.assignment_alias.clone(),
+        episode_manifest_digest: receipt.episode_manifest_digest.clone(),
+        candidate_attestation_digest: receipt.candidate_attestation_digest.clone(),
+        execution_receipt_digest: sha256_json(&receipt)
+            .map_err(|error| SupervisorConfigurationErrorV2(error.to_string()))?,
+        comparison_pair_ref: config.assignment.comparison_pair_ref.clone(),
+        sample_index: config.assignment.sample_index,
+        run_index: config.assignment.run_index,
+        presentation_order: config.assignment.presentation_order,
+    };
     Ok(SupervisorExecutionOutputV2 {
         receipt,
+        assignment_execution_binding,
         phase_telemetry: telemetry,
         fact_receipts: facts,
         action_receipts: actions,
@@ -989,6 +1023,15 @@ fn validate_config(config: &SupervisorExecutionConfigV2) -> Result<ValidatedConf
         &config.candidate_attestation_digest,
         "candidate attestation",
     )?;
+    require_sha256(
+        &config.assignment.holdout_assignment_commitment_digest,
+        "holdout assignment commitment",
+    )?;
+    if config.assignment.assignment_alias.trim().is_empty()
+        || config.assignment.comparison_pair_ref.trim().is_empty()
+    {
+        return Err("sealed supervisor assignment context is incomplete".into());
+    }
     config.principals.validate_separation()?;
     if config.manifest.operator_controller.principal_ref != config.principals.operator.principal_ref
     {

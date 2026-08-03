@@ -9,11 +9,11 @@ use std::{
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use cerebro_slack_agent_eval_wire::{
-    BlindPacketKindV2, ExactHeadBindingV2, ExecutionPrincipalsV2, HoldoutAssignmentCommitmentV2,
-    IndependentGradeReceiptV2, MaterializedBlindPacketV2, PromotionAggregationReceiptV2,
-    PromotionPolicyV2, SealedHoldoutAssignmentsV2, SealedSuiteManifestV2, SignatureAlgorithmV2,
-    SignedReceiptEnvelopeV2, SignerAttestationV2, SlackCanaryReceiptV2,
-    SupervisorExecutionReceiptV2, sha256_json,
+    AssignmentExecutionBindingV2, BlindPacketKindV2, ExactHeadBindingV2, ExecutionPrincipalsV2,
+    HoldoutAssignmentCommitmentV2, IndependentGradeReceiptV2, MaterializedBlindPacketV2,
+    PromotionAggregationReceiptV2, PromotionPolicyV2, SealedHoldoutAssignmentsV2,
+    SealedSuiteManifestV2, SignatureAlgorithmV2, SignedReceiptEnvelopeV2, SignerAttestationV2,
+    SlackCanaryReceiptV2, SupervisorExecutionReceiptV2, sha256_json,
 };
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -145,6 +145,9 @@ impl ReceiptSignatureVerifier for Ed25519KeyringVerifier {
 
 pub struct RequiredPromotionArtifacts<'a> {
     pub assignment_commitment: &'a HoldoutAssignmentCommitmentV2,
+    pub sealed_assignments: &'a SealedHoldoutAssignmentsV2,
+    pub assignment_execution_bindings:
+        &'a [SignedReceiptEnvelopeV2<AssignmentExecutionBindingV2>],
     pub exact_head: &'a SignedReceiptEnvelopeV2<ExactHeadBindingV2>,
     pub slack_canary: &'a SignedReceiptEnvelopeV2<SlackCanaryReceiptV2>,
     pub execution_receipts: &'a [SignedReceiptEnvelopeV2<SupervisorExecutionReceiptV2>],
@@ -157,6 +160,8 @@ pub struct RequiredPromotionArtifacts<'a> {
 struct PromotionVerificationBundle {
     aggregate: SignedReceiptEnvelopeV2<PromotionAggregationReceiptV2>,
     assignment_commitment: HoldoutAssignmentCommitmentV2,
+    sealed_assignments: SealedHoldoutAssignmentsV2,
+    assignment_execution_bindings: Vec<SignedReceiptEnvelopeV2<AssignmentExecutionBindingV2>>,
     exact_head: SignedReceiptEnvelopeV2<ExactHeadBindingV2>,
     execution_receipts: Vec<SignedReceiptEnvelopeV2<SupervisorExecutionReceiptV2>>,
     independent_grades: Vec<SignedReceiptEnvelopeV2<IndependentGradeReceiptV2>>,
@@ -180,6 +185,8 @@ pub fn verify_promotion_file(
         &bundle.principals,
         RequiredPromotionArtifacts {
             assignment_commitment: &bundle.assignment_commitment,
+            sealed_assignments: &bundle.sealed_assignments,
+            assignment_execution_bindings: &bundle.assignment_execution_bindings,
             exact_head: &bundle.exact_head,
             slack_canary: &bundle.slack_canary,
             execution_receipts: &bundle.execution_receipts,
@@ -271,7 +278,10 @@ pub fn validate_promotion_aggregate<V: ReceiptSignatureVerifier>(
         ));
     }
     let suite_digest = suite.digest()?;
-    if artifacts.assignment_commitment.suite_manifest_digest != suite_digest
+    let recommitted_assignments =
+        validate_sealed_suite_and_assignments(suite, artifacts.sealed_assignments)?;
+    if &recommitted_assignments != artifacts.assignment_commitment
+        || artifacts.assignment_commitment.suite_manifest_digest != suite_digest
         || aggregate
             .payload
             .randomized_baseline
@@ -280,6 +290,10 @@ pub fn validate_promotion_aggregate<V: ReceiptSignatureVerifier>(
         || aggregate.payload.assignment_results.len()
             != artifacts.assignment_commitment.assignment_count
         || artifacts.execution_receipts.len() != artifacts.assignment_commitment.assignment_count
+        || artifacts.assignment_execution_bindings.len()
+            != artifacts.assignment_commitment.assignment_count
+        || aggregate.payload.assignment_execution_binding_digests.len()
+            != artifacts.assignment_commitment.assignment_count
     {
         return Err(PromotionValidationError::Contract(
             "promotion artifacts do not cover the committed holdout assignments exactly once"
@@ -356,6 +370,32 @@ pub fn validate_promotion_aggregate<V: ReceiptSignatureVerifier>(
             "promotion aggregate omitted, substituted, or miscounted execution receipts".into(),
         ));
     }
+    validate_assignment_execution_bindings(
+        suite,
+        artifacts.sealed_assignments,
+        artifacts.assignment_commitment,
+        artifacts.assignment_execution_bindings,
+        artifacts.execution_receipts,
+        principals,
+        verifier,
+    )?;
+    if artifacts
+        .assignment_execution_bindings
+        .iter()
+        .map(|binding| binding.payload_digest.clone())
+        .collect::<BTreeSet<_>>()
+        != aggregate
+            .payload
+            .assignment_execution_binding_digests
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>()
+    {
+        return Err(PromotionValidationError::Contract(
+            "promotion aggregate omitted or substituted a signed assignment execution binding"
+                .into(),
+        ));
+    }
 
     let mut grades = Vec::with_capacity(artifacts.independent_grades.len());
     for grade in artifacts.independent_grades {
@@ -375,6 +415,127 @@ pub fn validate_promotion_aggregate<V: ReceiptSignatureVerifier>(
         .payload
         .validate_against(suite, policy, principals, &grades)
         .map_err(PromotionValidationError::Contract)
+}
+
+fn validate_assignment_execution_bindings<V: ReceiptSignatureVerifier>(
+    suite: &SealedSuiteManifestV2,
+    assignments: &SealedHoldoutAssignmentsV2,
+    commitment: &HoldoutAssignmentCommitmentV2,
+    bindings: &[SignedReceiptEnvelopeV2<AssignmentExecutionBindingV2>],
+    executions: &[SignedReceiptEnvelopeV2<SupervisorExecutionReceiptV2>],
+    principals: &ExecutionPrincipalsV2,
+    verifier: &V,
+) -> Result<(), PromotionValidationError> {
+    let commitment_digest = sha256_json(commitment)?;
+    let suite_by_episode = suite
+        .episode_bindings
+        .iter()
+        .map(|binding| (binding.episode_manifest_digest.as_str(), binding))
+        .collect::<BTreeMap<_, _>>();
+    let assignments_by_alias = assignments
+        .assignments
+        .iter()
+        .map(|assignment| (assignment.assignment_alias.as_str(), assignment))
+        .collect::<BTreeMap<_, _>>();
+    let executions_by_digest = executions
+        .iter()
+        .map(|execution| (execution.payload_digest.as_str(), execution))
+        .collect::<BTreeMap<_, _>>();
+    if assignments_by_alias.len() != assignments.assignments.len()
+        || executions_by_digest.len() != executions.len()
+    {
+        return Err(PromotionValidationError::Contract(
+            "committed assignments and signed executions must be unique".into(),
+        ));
+    }
+
+    let mut bound_assignments = BTreeSet::new();
+    let mut bound_executions = BTreeSet::new();
+    for envelope in bindings {
+        verify_signed(envelope, verifier)?;
+        if envelope.signer.principal_ref != principals.supervisor.principal_ref {
+            return Err(PromotionValidationError::Contract(
+                "assignment execution binding was not signed by the sealed supervisor principal"
+                    .into(),
+            ));
+        }
+        let binding = &envelope.payload;
+        binding
+            .validate_shape(&commitment_digest)
+            .map_err(PromotionValidationError::Contract)?;
+        if !bound_assignments.insert(binding.assignment_alias.as_str())
+            || !bound_executions.insert(binding.execution_receipt_digest.as_str())
+        {
+            return Err(PromotionValidationError::Contract(
+                "assignment execution bindings must be one-to-one".into(),
+            ));
+        }
+        let assignment = assignments_by_alias
+            .get(binding.assignment_alias.as_str())
+            .ok_or_else(|| {
+                PromotionValidationError::Contract(
+                    "assignment execution binding is not in the committed private manifest".into(),
+                )
+            })?;
+        if binding.episode_manifest_digest != assignment.episode_manifest_digest
+            || binding.candidate_attestation_digest != assignment.candidate_attestation_digest
+            || binding.run_index != assignment.run_index
+            || binding.presentation_order != assignment.presentation_order
+        {
+            return Err(PromotionValidationError::Contract(
+                "assignment execution binding substituted the committed candidate, run, or order"
+                    .into(),
+            ));
+        }
+        let suite_binding = suite_by_episode
+            .get(binding.episode_manifest_digest.as_str())
+            .ok_or_else(|| {
+                PromotionValidationError::Contract(
+                    "assignment execution binding references an episode outside the sealed suite"
+                        .into(),
+                )
+            })?;
+        if binding.comparison_pair_ref != suite_binding.comparison_pair_ref
+            || binding.sample_index != suite_binding.sample_index
+        {
+            return Err(PromotionValidationError::Contract(
+                "assignment execution binding substituted the sealed pair or sample index".into(),
+            ));
+        }
+        let execution = executions_by_digest
+            .get(binding.execution_receipt_digest.as_str())
+            .ok_or_else(|| {
+                PromotionValidationError::Contract(
+                    "assignment execution binding references an unsubmitted execution receipt"
+                        .into(),
+                )
+            })?;
+        if execution.payload.episode_manifest_digest != binding.episode_manifest_digest
+            || execution.payload.candidate_attestation_digest
+                != binding.candidate_attestation_digest
+        {
+            return Err(PromotionValidationError::Contract(
+                "assignment execution binding substituted a candidate execution".into(),
+            ));
+        }
+    }
+    if bound_assignments
+        != assignments_by_alias
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>()
+        || bound_executions
+            != executions_by_digest
+                .keys()
+                .copied()
+                .collect::<BTreeSet<_>>()
+    {
+        return Err(PromotionValidationError::Contract(
+            "signed assignment bindings do not cover each committed assignment and execution exactly once"
+                .into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_independent_grade_packet_bindings(
@@ -486,12 +647,161 @@ fn write_new_json(
 mod tests {
     use super::*;
     use cerebro_slack_agent_eval_wire::{
-        CONTENT_BLIND_PACKET_V2, ContentBlindPacketV2, DimensionScoreV2, EPISODE_EVENT_PROGRAM_V2,
-        EpisodeEventProgramV2, EpisodeLimitsV2, GradeCitationV2, GradeDimensionV2,
+        ASSIGNMENT_EXECUTION_BINDING_V2, CONTENT_BLIND_PACKET_V2, ContentBlindPacketV2,
+        DimensionScoreV2, EPISODE_EVENT_PROGRAM_V2, EXECUTION_PRINCIPALS_V2, EpisodeEventProgramV2,
+        EpisodeLimitsV2, ExecutionPromotionDispositionV2, GradeCitationV2, GradeDimensionV2,
         GraderAttestationV2, INDEPENDENT_GRADE_RECEIPT_V2, OperatorControllerAttestationV2,
-        SEALED_EPISODE_MANIFEST_V2, SEALED_SUITE_MANIFEST_V2, SealedEpisodeManifestV2,
+        RuntimePrincipalAttestationV2, SEALED_EPISODE_MANIFEST_V2, SEALED_SUITE_MANIFEST_V2,
+        SIGNED_RECEIPT_ENVELOPE_V2, SUPERVISOR_EXECUTION_RECEIPT_V2, SealedEpisodeManifestV2,
         SuiteEpisodeBindingV2, SuiteFamilyRequirementV2, SurfaceGeneratorAttestationV2,
     };
+
+    struct AcceptSignatures;
+
+    impl ReceiptSignatureVerifier for AcceptSignatures {
+        fn verify(
+            &self,
+            _signer: &SignerAttestationV2,
+            _payload_digest: &str,
+            _signature_base64: &str,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    fn signed<T: Serialize>(payload: T) -> SignedReceiptEnvelopeV2<T> {
+        SignedReceiptEnvelopeV2 {
+            schema_version: SIGNED_RECEIPT_ENVELOPE_V2.into(),
+            payload_digest: sha256_json(&payload).unwrap(),
+            payload,
+            signer: SignerAttestationV2 {
+                principal_ref: "principal:supervisor".into(),
+                algorithm: SignatureAlgorithmV2::Ed25519,
+                key_ref: "key:supervisor".into(),
+            },
+            signature_base64: "c2lnbmF0dXJl".into(),
+        }
+    }
+
+    fn execution(
+        episode_manifest_digest: &str,
+        candidate_attestation_digest: &str,
+        completed_at: &str,
+    ) -> SignedReceiptEnvelopeV2<SupervisorExecutionReceiptV2> {
+        signed(SupervisorExecutionReceiptV2 {
+            schema_version: SUPERVISOR_EXECUTION_RECEIPT_V2.into(),
+            episode_manifest_digest: episode_manifest_digest.into(),
+            candidate_attestation_digest: candidate_attestation_digest.into(),
+            operator_decisions: Vec::new(),
+            fact_receipt_digests: Vec::new(),
+            action_receipt_digests: Vec::new(),
+            transcript_digest: format!("sha256:transcript-{completed_at}"),
+            deterministic_defects: Vec::new(),
+            promotion_disposition:
+                ExecutionPromotionDispositionV2::IneligiblePendingIndependentGrades,
+            completed_at: completed_at.into(),
+        })
+    }
+
+    fn principals() -> ExecutionPrincipalsV2 {
+        let principal = |name: &str| RuntimePrincipalAttestationV2 {
+            principal_ref: format!("principal:{name}"),
+            artifact_digest: format!("sha256:{name}-artifact"),
+            endpoint_identity_digest: format!("sha256:{name}-endpoint"),
+        };
+        ExecutionPrincipalsV2 {
+            schema_version: EXECUTION_PRINCIPALS_V2.into(),
+            supervisor: principal("supervisor"),
+            candidate: principal("candidate"),
+            operator: principal("operator"),
+            world_controller: principal("world"),
+        }
+    }
+
+    type AssignmentExecutionFixture = (
+        SealedSuiteManifestV2,
+        SealedHoldoutAssignmentsV2,
+        HoldoutAssignmentCommitmentV2,
+        Vec<SignedReceiptEnvelopeV2<SupervisorExecutionReceiptV2>>,
+        Vec<SignedReceiptEnvelopeV2<AssignmentExecutionBindingV2>>,
+    );
+
+    fn assignment_execution_fixture() -> AssignmentExecutionFixture {
+        let episode = episode_digest("binding");
+        let suite = SealedSuiteManifestV2 {
+            schema_version: SEALED_SUITE_MANIFEST_V2.into(),
+            suite_ref: "suite:binding".into(),
+            corpus_digest: "sha256:corpus".into(),
+            suite_generator_digest: "sha256:generator".into(),
+            episode_bindings: vec![SuiteEpisodeBindingV2 {
+                episode_manifest_digest: episode.clone(),
+                family_ref: "family:binding".into(),
+                semantic_template_ref: "template:binding".into(),
+                surface_variant_ref: "surface:binding".into(),
+                sample_index: 7,
+                comparison_pair_ref: "pair:binding".into(),
+            }],
+            family_requirements: vec![SuiteFamilyRequirementV2 {
+                family_ref: "family:binding".into(),
+                minimum_episode_count: 1,
+                minimum_surface_variant_count: 1,
+                minimum_sample_count_per_variant: 1,
+            }],
+            assignment_policy_digest: "sha256:assignment-policy".into(),
+            promotion_policy_digest: "sha256:promotion-policy".into(),
+        };
+        let assignments = SealedHoldoutAssignmentsV2 {
+            schema_version: cerebro_slack_agent_eval_wire::SEALED_HOLDOUT_ASSIGNMENTS_V2.into(),
+            suite_manifest_digest: suite.digest().unwrap(),
+            blinding_nonce: "private-nonce-with-more-than-thirty-two-bytes".into(),
+            assignments: vec![
+                cerebro_slack_agent_eval_wire::PrivateHoldoutAssignmentV2 {
+                    assignment_ref: "private:candidate".into(),
+                    assignment_alias: "assignment:red".into(),
+                    episode_manifest_digest: episode.clone(),
+                    candidate_attestation_digest: "sha256:candidate".into(),
+                    candidate_alias: "participant:red".into(),
+                    run_index: 40,
+                    presentation_order: 1,
+                },
+                cerebro_slack_agent_eval_wire::PrivateHoldoutAssignmentV2 {
+                    assignment_ref: "private:baseline".into(),
+                    assignment_alias: "assignment:blue".into(),
+                    episode_manifest_digest: episode.clone(),
+                    candidate_attestation_digest: "sha256:baseline".into(),
+                    candidate_alias: "participant:blue".into(),
+                    run_index: 40,
+                    presentation_order: 0,
+                },
+            ],
+        };
+        let commitment = assignments.validate_and_commit().unwrap();
+        let commitment_digest = sha256_json(&commitment).unwrap();
+        let executions = vec![
+            execution(&episode, "sha256:candidate", "2026-08-03T00:01:00Z"),
+            execution(&episode, "sha256:baseline", "2026-08-03T00:02:00Z"),
+        ];
+        let bindings = assignments
+            .assignments
+            .iter()
+            .zip(&executions)
+            .map(|(assignment, execution)| {
+                signed(AssignmentExecutionBindingV2 {
+                    schema_version: ASSIGNMENT_EXECUTION_BINDING_V2.into(),
+                    holdout_assignment_commitment_digest: commitment_digest.clone(),
+                    assignment_alias: assignment.assignment_alias.clone(),
+                    episode_manifest_digest: episode.clone(),
+                    candidate_attestation_digest: assignment.candidate_attestation_digest.clone(),
+                    execution_receipt_digest: execution.payload_digest.clone(),
+                    comparison_pair_ref: "pair:binding".into(),
+                    sample_index: 7,
+                    run_index: assignment.run_index,
+                    presentation_order: assignment.presentation_order,
+                })
+            })
+            .collect();
+        (suite, assignments, commitment, executions, bindings)
+    }
 
     fn episode_digest(label: &str) -> String {
         SealedEpisodeManifestV2 {
@@ -561,6 +871,7 @@ mod tests {
             episode_manifest_digest: episode.clone(),
             candidate_attestation_digest: format!("sha256:artifact-{suffix}"),
             candidate_alias: format!("participant:{suffix}"),
+            run_index: usize::from(suffix == "baseline"),
             presentation_order: usize::from(suffix == "baseline"),
         };
         let mut assignments = SealedHoldoutAssignmentsV2 {
@@ -586,6 +897,99 @@ mod tests {
         assert!(!encoded.contains("candidate_attestation_digest"));
         assert!(!encoded.contains("blinding_nonce"));
         assert!(!encoded.contains("presentation_order"));
+    }
+
+    #[test]
+    fn promotion_rejects_candidate_execution_substitution() {
+        let (suite, assignments, commitment, executions, mut bindings) =
+            assignment_execution_fixture();
+        let first_execution = bindings[0].payload.execution_receipt_digest.clone();
+        bindings[0].payload.execution_receipt_digest =
+            bindings[1].payload.execution_receipt_digest.clone();
+        bindings[1].payload.execution_receipt_digest = first_execution;
+        bindings = bindings
+            .into_iter()
+            .map(|binding| signed(binding.payload))
+            .collect();
+
+        let error = validate_assignment_execution_bindings(
+            &suite,
+            &assignments,
+            &commitment,
+            &bindings,
+            &executions,
+            &principals(),
+            &AcceptSignatures,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("substituted a candidate execution")
+        );
+    }
+
+    #[test]
+    fn promotion_rejects_duplicate_and_missing_assignment_bindings() {
+        let (suite, assignments, commitment, executions, bindings) = assignment_execution_fixture();
+        let duplicate = vec![bindings[0].clone(), bindings[0].clone()];
+        let duplicate_error = validate_assignment_execution_bindings(
+            &suite,
+            &assignments,
+            &commitment,
+            &duplicate,
+            &executions,
+            &principals(),
+            &AcceptSignatures,
+        )
+        .unwrap_err();
+        assert!(duplicate_error.to_string().contains("one-to-one"));
+
+        let missing_error = validate_assignment_execution_bindings(
+            &suite,
+            &assignments,
+            &commitment,
+            &bindings[..1],
+            &executions,
+            &principals(),
+            &AcceptSignatures,
+        )
+        .unwrap_err();
+        assert!(missing_error.to_string().contains("exactly once"));
+    }
+
+    #[test]
+    fn promotion_rejects_mismatched_run_and_presentation_order() {
+        let (suite, assignments, commitment, executions, bindings) = assignment_execution_fixture();
+        let mut wrong_run = bindings.clone();
+        wrong_run[0].payload.run_index += 1;
+        wrong_run[0] = signed(wrong_run[0].payload.clone());
+        let run_error = validate_assignment_execution_bindings(
+            &suite,
+            &assignments,
+            &commitment,
+            &wrong_run,
+            &executions,
+            &principals(),
+            &AcceptSignatures,
+        )
+        .unwrap_err();
+        assert!(run_error.to_string().contains("run, or order"));
+
+        let mut wrong_order = bindings;
+        wrong_order[0].payload.presentation_order = 0;
+        wrong_order[0] = signed(wrong_order[0].payload.clone());
+        let order_error = validate_assignment_execution_bindings(
+            &suite,
+            &assignments,
+            &commitment,
+            &wrong_order,
+            &executions,
+            &principals(),
+            &AcceptSignatures,
+        )
+        .unwrap_err();
+        assert!(order_error.to_string().contains("run, or order"));
     }
 
     fn packet_and_grade() -> (MaterializedBlindPacketV2, IndependentGradeReceiptV2) {

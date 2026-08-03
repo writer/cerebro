@@ -32,6 +32,7 @@ pub const OPERATIONAL_BLIND_PACKET_V2: &str = "slack-agent-operational-blind-pac
 pub const SEALED_SUITE_MANIFEST_V2: &str = "slack-agent-sealed-suite-manifest/v2";
 pub const SEALED_HOLDOUT_ASSIGNMENTS_V2: &str = "slack-agent-sealed-holdout-assignments/v2";
 pub const HOLDOUT_ASSIGNMENT_COMMITMENT_V2: &str = "slack-agent-holdout-assignment-commitment/v2";
+pub const ASSIGNMENT_EXECUTION_BINDING_V2: &str = "slack-agent-assignment-execution-binding/v2";
 pub const EXECUTION_PRINCIPALS_V2: &str = "slack-agent-execution-principals/v2";
 pub const DETERMINISTIC_CRITERIA_RECEIPT_V2: &str = "slack-agent-deterministic-criteria-receipt/v2";
 pub const INDEPENDENT_GRADE_RECEIPT_V2: &str = "slack-agent-independent-grade-receipt/v2";
@@ -592,6 +593,7 @@ pub struct PrivateHoldoutAssignmentV2 {
     pub episode_manifest_digest: String,
     pub candidate_attestation_digest: String,
     pub candidate_alias: String,
+    pub run_index: usize,
     pub presentation_order: usize,
 }
 
@@ -642,6 +644,41 @@ impl SealedHoldoutAssignmentsV2 {
             assignment_count: self.assignments.len(),
             sealed_assignment_manifest_digest,
         })
+    }
+}
+
+/// Evaluator-private, supervisor-signed join between one committed holdout
+/// assignment and the exact execution receipt produced for it.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssignmentExecutionBindingV2 {
+    pub schema_version: String,
+    pub holdout_assignment_commitment_digest: String,
+    pub assignment_alias: String,
+    pub episode_manifest_digest: String,
+    pub candidate_attestation_digest: String,
+    pub execution_receipt_digest: String,
+    pub comparison_pair_ref: String,
+    pub sample_index: usize,
+    pub run_index: usize,
+    pub presentation_order: usize,
+}
+
+impl AssignmentExecutionBindingV2 {
+    pub fn validate_shape(&self, commitment_digest: &str) -> Result<(), String> {
+        if self.schema_version != ASSIGNMENT_EXECUTION_BINDING_V2
+            || self.holdout_assignment_commitment_digest != commitment_digest
+            || self.assignment_alias.trim().is_empty()
+            || self.episode_manifest_digest.trim().is_empty()
+            || self.candidate_attestation_digest.trim().is_empty()
+            || self.execution_receipt_digest.trim().is_empty()
+            || self.comparison_pair_ref.trim().is_empty()
+        {
+            return Err(
+                "assignment execution binding is incomplete or commitment-mismatched".into(),
+            );
+        }
+        Ok(())
     }
 }
 
@@ -1705,6 +1742,7 @@ pub struct PromotionAggregationReceiptV2 {
     pub exact_head: ExactHeadBindingV2,
     pub randomized_baseline: RandomizedBaselineAssignmentV2,
     pub slack_canary: SlackCanaryReceiptV2,
+    pub assignment_execution_binding_digests: Vec<String>,
     pub execution_receipt_digests: Vec<String>,
     pub execution_terminal_defect_count: usize,
     pub independent_grade_digests: Vec<String>,
@@ -1736,6 +1774,20 @@ impl PromotionAggregationReceiptV2 {
         self.exact_head.validate(&self.suite_manifest_digest)?;
         self.randomized_baseline.validate()?;
         self.slack_canary.validate(&self.exact_head)?;
+        if self.assignment_execution_binding_digests.is_empty()
+            || self
+                .assignment_execution_binding_digests
+                .iter()
+                .any(String::is_empty)
+            || self
+                .assignment_execution_binding_digests
+                .iter()
+                .collect::<BTreeSet<_>>()
+                .len()
+                != self.assignment_execution_binding_digests.len()
+        {
+            return Err("promotion aggregation has no unique assignment execution bindings".into());
+        }
         if self.execution_receipt_digests.is_empty()
             || self.execution_receipt_digests.iter().any(String::is_empty)
             || self
@@ -2204,6 +2256,7 @@ mod tests {
                 episode_manifest_digest: v2_manifest().digest().unwrap(),
                 candidate_attestation_digest: "sha256:private-candidate".into(),
                 candidate_alias: "participant:blue".into(),
+                run_index: 0,
                 presentation_order: 0,
             }],
         };
