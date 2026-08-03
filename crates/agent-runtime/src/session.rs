@@ -3786,7 +3786,11 @@ fn trim_passive_premise_handback(message: &mut String) {
         return;
     };
     message.truncate(handback_start);
-    let trimmed_len = message.trim_end().len();
+    let trimmed_len = message
+        .trim_end_matches(|character: char| {
+            character.is_whitespace() || matches!(character, '-' | '–' | '—' | ',' | ';' | ':')
+        })
+        .len();
     message.truncate(trimmed_len);
     if !message.ends_with('.') && !message.ends_with('!') && !message.ends_with('?') {
         message.push('.');
@@ -6358,6 +6362,7 @@ fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bo
         "up",
         "verified",
         "working",
+        "works",
     ];
     let source_tokens = source_messages
         .iter()
@@ -6405,6 +6410,7 @@ fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bo
     if !preserves_boundary
         || !synthesis_is_relevant(body, source_messages)
         || contains_new_named_ownership_principal(body, source_messages)
+        || introduces_unstated_change_scope(body, source_messages)
     {
         return false;
     }
@@ -6432,7 +6438,6 @@ fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bo
                 " appears ",
                 " can be ",
                 " could be ",
-                " confident ",
                 " suggests ",
                 " inference ",
                 " may be ",
@@ -6440,12 +6445,55 @@ fn premise_synthesis_is_source_bound(body: &str, source_messages: &[&str]) -> bo
                 " unverified ",
                 " not verified ",
                 " no confirmation ",
+                " no evidence ",
                 " haven t ",
                 " have not ",
                 " until ",
             ]
             .iter()
             .any(|marker| normalized_clause.contains(marker))
+    })
+}
+
+fn introduces_unstated_change_scope(body: &str, source_messages: &[&str]) -> bool {
+    let normalized = |value: &str| {
+        format!(
+            " {} ",
+            value
+                .split(|character: char| !character.is_alphanumeric())
+                .filter(|token| !token.is_empty())
+                .map(str::to_ascii_lowercase)
+                .collect::<Vec<_>>()
+                .join(" ")
+        )
+    };
+    let normalized_body = normalized(body);
+    let asserts_change_scope = [
+        " code we didn t touch ",
+        " code we did not touch ",
+        " code we didn t change ",
+        " code we did not change ",
+        " untouched code ",
+        " unchanged code ",
+        " nothing changed ",
+    ]
+    .iter()
+    .any(|marker| normalized_body.contains(marker));
+    if !asserts_change_scope {
+        return false;
+    }
+    !source_messages.iter().any(|message| {
+        let normalized_source = normalized(message);
+        normalized_source.contains(" code ")
+            && [
+                " touch ",
+                " touched ",
+                " change ",
+                " changed ",
+                " unchanged ",
+            ]
+            .iter()
+            .any(|marker| normalized_source.contains(marker))
     })
 }
 
@@ -16017,6 +16065,33 @@ mod tests {
             panic!("a premise-bound converse answer should be ready for delivery");
         };
         assert_eq!(markdown, visible);
+    }
+
+    #[test]
+    fn premise_cleanup_removes_a_dangling_handback_separator() {
+        let mut message = "Given the dashboard you reported, the service appears up, but the user path remains unverified. Run one transaction through the new route and inspect the returned result — if you want, I can help with that.".to_owned();
+        trim_passive_premise_handback(&mut message);
+        assert_eq!(
+            message,
+            "Given the dashboard you reported, the service appears up, but the user path remains unverified. Run one transaction through the new route and inspect the returned result."
+        );
+    }
+
+    #[test]
+    fn premise_correction_cannot_generalize_one_run_or_invent_change_scope() {
+        let source_messages = [
+            "The service dashboard is green, but we have not verified the user path.",
+            "The useful next test is one transaction through the new route.",
+            "That clean end-to-end run actually went through the OLD route, not the new sync path. Does that change your read?",
+        ];
+        assert!(!premise_synthesis_is_source_bound(
+            "You're right. I'm confident the old route works end-to-end, and the successful run exercised code we didn't touch.",
+            &source_messages,
+        ));
+        assert!(premise_synthesis_is_source_bound(
+            "You're right. That correction means the successful run supports only the old-route run, while there is no evidence that the new route works. The new path still needs one route-specific transaction.",
+            &source_messages,
+        ));
     }
 
     #[tokio::test]
