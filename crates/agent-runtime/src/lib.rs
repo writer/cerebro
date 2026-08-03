@@ -1390,7 +1390,6 @@ pub(crate) fn request_is_artifact_transformation(message: &str) -> bool {
         " more concise ",
     ]
     .iter()
-    .chain(["i'll ", "i will ", "i can ", "i can't ", "i cannot "].iter())
     .any(|marker| normalized.contains(marker));
     let requests_live_check = [
         " check ",
@@ -2496,6 +2495,11 @@ fn validate_conversational_synthesis_unit(
         "i will check",
         "i'll verify",
         "i will verify",
+        "i'll ",
+        "i will ",
+        "i can ",
+        "i can't ",
+        "i cannot ",
     ]
     .iter()
     .any(|marker| normalized.contains(marker));
