@@ -37,6 +37,7 @@ func dropTombstoneSchema(t *testing.T, ctx context.Context, store *Store) {
 	for _, stmt := range []string{
 		`DROP TABLE IF EXISTS finding_tombstone_events`,
 		`DROP TABLE IF EXISTS closeout_run`,
+		`DROP TABLE IF EXISTS finding_control_refs`,
 		`DROP TABLE IF EXISTS findings`,
 	} {
 		if _, err := store.db.ExecContext(ctx, stmt); err != nil {

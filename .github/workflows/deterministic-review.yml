@@ -31,7 +31,7 @@ jobs:
           cache: true
 
       - name: Set up Rust
-        run: rustup toolchain install 1.93.1 --profile minimal
+        run: rustup toolchain install 1.93.1 --profile minimal --component llvm-tools-preview --target wasm32-unknown-unknown
 
       - name: Install Rust policy checker
         shell: bash
@@ -39,6 +39,14 @@ jobs:
           set -euo pipefail
           if ! cargo deny --version 2>/dev/null | grep -Fxq 'cargo-deny 0.20.2'; then
             cargo install cargo-deny --version 0.20.2 --locked
+          fi
+
+      - name: Install Rust coverage tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! cargo llvm-cov --version 2>/dev/null | grep -Fxq 'cargo-llvm-cov 0.8.7'; then
+            cargo install cargo-llvm-cov --version 0.8.7 --locked
           fi
 
       - name: Verify the exact review range

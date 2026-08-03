@@ -4,7 +4,8 @@ import {
   sign,
   type KeyObject,
 } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open, readFile } from "node:fs/promises";
 import type { CerebroAskClient, RustPendingWakeDelivery } from "./cerebro-ask-client.js";
 import type { OffSlackTransportAdapter } from "./off-slack-transport.js";
 import type { FileSlackThreadRouteStore } from "./slack-thread-route-store.js";
@@ -118,11 +119,18 @@ export async function loadEd25519TransportSigner(input: {
     || !input.keyRef.trim()
     || input.principalRef === input.candidatePrincipalRef
   ) throw new Error("The transport signer identity is not separate from the candidate runtime.");
-  const metadata = await stat(input.keyPath);
-  if (!metadata.isFile() || (metadata.mode & 0o077) !== 0) {
-    throw new Error("The transport signing key must be a private regular file.");
+  const keyFile = await open(input.keyPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  let encodedKey: Buffer;
+  try {
+    const metadata = await keyFile.stat();
+    if (!metadata.isFile() || (metadata.mode & 0o077) !== 0) {
+      throw new Error("The transport signing key must be a private regular file.");
+    }
+    encodedKey = await keyFile.readFile();
+  } finally {
+    await keyFile.close();
   }
-  const key = createPrivateKey(await readFile(input.keyPath));
+  const key = createPrivateKey(encodedKey);
   if (key.asymmetricKeyType !== "ed25519") {
     throw new Error("The transport signing key must be Ed25519.");
   }
