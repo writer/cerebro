@@ -2317,6 +2317,9 @@ pub async fn run_session_turn_recorded(
                     events,
                 });
             }
+            SessionModelDecision::EstablishPlanAndInvoke { .. } => {
+                unreachable!("coissued plan calls are normalized before decision execution")
+            }
         }
     }
     repair_fallback_outcome(
