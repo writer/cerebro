@@ -6751,11 +6751,11 @@ fn quality_contract(case_ref: &str) -> &'static str {
 fn eval_request(index: usize, eval_case: EvalCase, assessment_at: &str) -> AgentTurnRequest {
     AgentTurnRequest {
         schema_version: AGENT_TURN_REQUEST_V1.into(),
-        tenant_id: "rust-hillclimb-tenant".into(),
-        request_id: format!("rust-hillclimb-{index:02}"),
-        thread_ref: format!("slack-thread://rust-hillclimb/{index:02}"),
+        tenant_id: "tenant:security-operations".into(),
+        request_id: format!("slack-event-{index:02}"),
+        thread_ref: format!("slack-thread://security-operations/{index:02}"),
         context_scope_ref: None,
-        actor_ref: "slack-user://rust-hillclimb".into(),
+        actor_ref: "slack-user://security-operator".into(),
         assessment_at: assessment_at.into(),
         message: eval_case.message.into(),
         history: vec![ConversationMessage {
@@ -7293,6 +7293,12 @@ mod tests {
                 && case.expected_lane == ExecutionLane::Converse
                 && !case.false_converse
         }));
+        let appraisal = *cases
+            .iter()
+            .find(|case| case.case_ref == "case://held-out/conversation-appraisal")
+            .expect("conversation appraisal regression exists");
+        validate_candidate_payload(&eval_request(0, appraisal, "2026-08-03T03:00:00Z"))
+            .expect("embedded regression requests remain production-shaped");
         assert!(
             cases
                 .iter()
