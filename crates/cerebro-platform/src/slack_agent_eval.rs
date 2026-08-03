@@ -118,6 +118,7 @@ struct EvalCaseReceipt {
     operating_repair_feedback: Vec<Vec<String>>,
     presentation_repair_feedback: Vec<Vec<String>>,
     critic_repair_feedback: Vec<Vec<String>>,
+    critic_candidate_units: Vec<Vec<String>>,
     latency_ms: u128,
     false_converse: bool,
     answer_quality_issues: Vec<String>,
@@ -941,6 +942,7 @@ struct MeasuredModel {
     operating_repair_feedback: Mutex<Vec<Vec<String>>>,
     presentation_repair_feedback: Mutex<Vec<Vec<String>>>,
     critic_repair_feedback: Mutex<Vec<Vec<String>>>,
+    critic_candidate_units: Mutex<Vec<Vec<String>>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -984,6 +986,7 @@ impl MeasuredModel {
             operating_repair_feedback: Mutex::new(Vec::new()),
             presentation_repair_feedback: Mutex::new(Vec::new()),
             critic_repair_feedback: Mutex::new(Vec::new()),
+            critic_candidate_units: Mutex::new(Vec::new()),
         }
     }
 }
@@ -1089,6 +1092,15 @@ impl AgentModel for MeasuredModel {
             .critic_attempts
             .lock()
             .expect("critic counter poisoned") += 1;
+        self.critic_candidate_units
+            .lock()
+            .expect("critic candidate receipt poisoned")
+            .push(
+                turn.grounding_units
+                    .iter()
+                    .map(|unit| unit.text.clone())
+                    .collect(),
+            );
         if !turn.repair_feedback.is_empty() {
             self.critic_repair_feedback
                 .lock()
@@ -2630,6 +2642,11 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
                 .critic_repair_feedback
                 .lock()
                 .expect("critic repair receipt poisoned")
+                .clone(),
+            critic_candidate_units: measured
+                .critic_candidate_units
+                .lock()
+                .expect("critic candidate receipt poisoned")
                 .clone(),
             latency_ms,
             false_converse: eval_case.false_converse,

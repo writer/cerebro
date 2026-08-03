@@ -2458,10 +2458,20 @@ fn validate_conversational_synthesis_unit(
     check: &CritiqueGroundingCheck,
     operator_context: &str,
 ) -> Result<(), AgentRuntimeError> {
-    let excerpt = check
+    check
         .context_excerpt
         .as_deref()
-        .filter(|excerpt| bounded_text(excerpt) && operator_context.contains(excerpt))
+        .filter(|excerpt| {
+            bounded_text(excerpt)
+                && turn
+                    .request
+                    .history
+                    .iter()
+                    .filter(|message| message.role == ConversationRole::User)
+                    .map(|message| message.content.as_str())
+                    .chain(std::iter::once(turn.request.message.as_str()))
+                    .any(|message| message.trim() == excerpt.trim())
+        })
         .ok_or_else(|| {
             AgentRuntimeError::InvalidFinal(format!(
                 "critic grounding unit {} lacks an exact operator-authored synthesis source",
@@ -2503,7 +2513,6 @@ fn validate_conversational_synthesis_unit(
             check.unit_id
         )));
     }
-    require_grounding_vocabulary_overlap(unit_text, excerpt, &check.unit_id)?;
     validate_material_literals(
         unit_text,
         CritiqueGroundingBasis::ConversationalSynthesis,
@@ -4178,10 +4187,13 @@ mod grounding_tests {
 
         turn.grounding_units[0].text = turn.draft.summary.clone();
         let mut missing_source = valid;
-        let CritiqueDecision::Approve { grounding, .. } = &mut missing_source else {
-            unreachable!()
-        };
-        grounding[0].context_excerpt = None;
+        if let CritiqueDecision::Approve { grounding, .. } = &mut missing_source {
+            grounding[0].context_excerpt = None;
+        }
+        assert!(validate_critique_decision(&turn, &missing_source).is_err());
+        if let CritiqueDecision::Approve { grounding, .. } = &mut missing_source {
+            grounding[0].context_excerpt = Some("Be honest:".into());
+        }
         assert!(validate_critique_decision(&turn, &missing_source).is_err());
     }
 
