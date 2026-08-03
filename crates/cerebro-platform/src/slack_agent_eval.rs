@@ -57,6 +57,7 @@ const LAB_MIN_EXCHANGES: usize = 4;
 const LAB_MAX_TURNS: usize = 12;
 const LAB_MAX_OPERATOR_TURN_LATENCY_MS: u128 = 300_000;
 const LAB_MAX_SCHEDULED_WAKE_LATENCY_MS: u128 = 300_000;
+const LAB_JUDGE_CALL_TIMEOUT_SECS: u64 = 120;
 const AUTONOMY_WAKE_COUNT: usize = 2;
 const AUTONOMY_MAX_WAKE_DELAY: Duration = Duration::hours(24);
 const MODEL_JUDGE_INDEPENDENT: bool = false;
@@ -237,6 +238,30 @@ impl From<ConversationQualityJudgmentWire> for ConversationQualityJudgment {
             rationale: value.rationale,
         }
     }
+}
+
+fn parse_conversation_quality_judgment(
+    value: Value,
+    context: &str,
+) -> Result<ConversationQualityJudgment, AgentRuntimeError> {
+    let judgment = serde_json::from_value::<ConversationQualityJudgmentWire>(value)
+        .map(ConversationQualityJudgment::from)
+        .map_err(|error| AgentRuntimeError::InvalidFinal(format!("{context}: {error}")))?;
+    let scores = [
+        judgment.scores.task_completion,
+        judgment.scores.factual_grounding,
+        judgment.scores.conversational_quality,
+        judgment.scores.initiative,
+        judgment.scores.judgment,
+        judgment.scores.continuity,
+        judgment.scores.burden_reduction,
+    ];
+    if scores.iter().any(|score| !(1..=5).contains(score)) {
+        return Err(AgentRuntimeError::InvalidFinal(format!(
+            "{context}: quality scores must be between one and five"
+        )));
+    }
+    Ok(judgment)
 }
 
 impl ConversationQualityJudgment {
@@ -5141,8 +5166,9 @@ fn conversation_behavior_runtime_passed(
 }
 
 async fn preflight_judge(model: &ConfiguredModel) -> Result<(), AgentRuntimeError> {
-    let value = model
-        .complete_evaluation_judgment(
+    let value = tokio::time::timeout(
+        std::time::Duration::from_secs(LAB_JUDGE_CALL_TIMEOUT_SECS),
+        model.complete_evaluation_judgment(
             "Return the one schema-constrained readiness probe with ready set to true. This request contains no system evidence to judge.",
             json!({"probe": "conversation-lab-judge"}),
             64,
@@ -5153,8 +5179,12 @@ async fn preflight_judge(model: &ConfiguredModel) -> Result<(), AgentRuntimeErro
                 "properties": {"ready": {"type": "boolean"}},
                 "required": ["ready"]
             }),
-        )
-        .await?;
+        ),
+    )
+    .await
+    .map_err(|_| {
+        AgentRuntimeError::ModelUnavailable("the conversation quality judge readiness probe timed out".into())
+    })??;
     if value.get("ready").and_then(serde_json::Value::as_bool) == Some(true) {
         Ok(())
     } else {
@@ -5247,8 +5277,9 @@ async fn blind_calibration_judgment(
 ) -> Result<ConversationQualityJudgment, AgentRuntimeError> {
     let evidence_gold_rubric =
         slack_agent_evidence_gold::judge_rubric().map_err(AgentRuntimeError::InvalidFinal)?;
-    let value = model
-        .complete_evaluation_judgment(
+    let value = tokio::time::timeout(
+        std::time::Duration::from_secs(LAB_JUDGE_CALL_TIMEOUT_SECS),
+        model.complete_evaluation_judgment(
             trajectory_judge_instructions(),
             json!({
                 "candidate_label": "candidate-r7k2",
@@ -5262,10 +5293,13 @@ async fn blind_calibration_judgment(
             QUALITY_JUDGE_MAX_TOKENS,
             QUALITY_JUDGMENT_TOOL,
             quality_judgment_schema(),
-        )
-        .await?;
-    serde_json::from_value(value)
-        .map_err(|error| AgentRuntimeError::InvalidFinal(format!("judge calibration: {error}")))
+        ),
+    )
+    .await
+    .map_err(|_| {
+        AgentRuntimeError::ModelUnavailable("the blind judge calibration timed out".into())
+    })??;
+    parse_conversation_quality_judgment(value, "judge calibration")
 }
 
 #[allow(dead_code)]
@@ -5404,8 +5438,9 @@ async fn judge_conversation_trajectory(
         "typed_turn_receipts": &judge_turns,
     }))?;
     for _ in 0..4 {
-        let value = model
-            .complete_evaluation_judgment(
+        let value = tokio::time::timeout(
+            std::time::Duration::from_secs(LAB_JUDGE_CALL_TIMEOUT_SECS),
+            model.complete_evaluation_judgment(
                 trajectory_judge_instructions(),
                 json!({
                     "candidate_label": candidate_label,
@@ -5419,9 +5454,15 @@ async fn judge_conversation_trajectory(
                 QUALITY_JUDGE_MAX_TOKENS,
                 QUALITY_JUDGMENT_TOOL,
                 quality_judgment_schema(),
+            ),
+        )
+        .await
+        .map_err(|_| {
+            AgentRuntimeError::ModelUnavailable(
+                "the conversation trajectory judge timed out".into(),
             )
-            .await?;
-        match serde_json::from_value::<ConversationQualityJudgment>(value) {
+        })??;
+        match parse_conversation_quality_judgment(value, "trajectory judgment") {
             Ok(judgment) => {
                 let scores = [
                     judgment.scores.task_completion,
@@ -6710,8 +6751,9 @@ async fn judge_conversation_quality(
 ) -> Result<ConversationQualityJudgment, AgentRuntimeError> {
     let evidence_gold_rubric =
         slack_agent_evidence_gold::judge_rubric().map_err(AgentRuntimeError::InvalidFinal)?;
-    let value = model
-        .complete_evaluation_judgment(
+    let value = tokio::time::timeout(
+        std::time::Duration::from_secs(LAB_JUDGE_CALL_TIMEOUT_SECS),
+        model.complete_evaluation_judgment(
             quality_judge_instructions(),
             json!({
                 "user_message": request.message,
@@ -6725,26 +6767,13 @@ async fn judge_conversation_quality(
             QUALITY_JUDGE_MAX_TOKENS,
             QUALITY_JUDGMENT_TOOL,
             quality_judgment_schema(),
-        )
-        .await?;
-    let judgment = serde_json::from_value::<ConversationQualityJudgmentWire>(value)
-        .map(ConversationQualityJudgment::from)
-        .map_err(|error| AgentRuntimeError::InvalidFinal(format!("quality judgment: {error}")))?;
-    let scores = [
-        judgment.scores.task_completion,
-        judgment.scores.factual_grounding,
-        judgment.scores.conversational_quality,
-        judgment.scores.initiative,
-        judgment.scores.judgment,
-        judgment.scores.continuity,
-        judgment.scores.burden_reduction,
-    ];
-    if scores.iter().any(|score| !(1..=5).contains(score)) {
-        return Err(AgentRuntimeError::InvalidFinal(
-            "quality judgment scores must be between one and five".into(),
-        ));
-    }
-    Ok(judgment)
+        ),
+    )
+    .await
+    .map_err(|_| {
+        AgentRuntimeError::ModelUnavailable("the conversation quality judge timed out".into())
+    })??;
+    parse_conversation_quality_judgment(value, "quality judgment")
 }
 
 fn quality_judge_instructions() -> &'static str {
@@ -7396,7 +7425,7 @@ mod tests {
             schema.pointer("/properties/burden_reduction/type"),
             Some(&json!("integer"))
         );
-        let wire: ConversationQualityJudgmentWire = serde_json::from_value(json!({
+        let judgment = parse_conversation_quality_judgment(json!({
             "verdict": "excellent",
             "task_completion": 5,
             "factual_grounding": 5,
@@ -7407,9 +7436,16 @@ mod tests {
             "burden_reduction": 4,
             "issues": [],
             "rationale": "The reply answers the invented conversation directly."
-        }))
+        }), "test quality judgment")
         .unwrap();
-        assert!(ConversationQualityJudgment::from(wire).is_excellent());
+        assert!(judgment.is_excellent());
+        assert!(parse_conversation_quality_judgment(json!({
+            "verdict": "excellent",
+            "scores": {},
+            "issues": [],
+            "rationale": "Old nested wire shape."
+        }), "test quality judgment")
+        .is_err());
     }
 
     #[test]
