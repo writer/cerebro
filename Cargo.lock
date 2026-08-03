@@ -1091,6 +1091,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "cerebro-slack-agent-blackbox"
+version = "0.1.0"
+dependencies = [
+ "cerebro-slack-agent-eval-wire",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+]
+
+[[package]]
+name = "cerebro-slack-agent-eval-wire"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+]
+
+[[package]]
 name = "cerebro-slack-authority"
 version = "0.1.0"
 dependencies = [

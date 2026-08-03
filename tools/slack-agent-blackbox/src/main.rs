@@ -1,0 +1,554 @@
+#![forbid(unsafe_code)]
+
+use std::{env, error::Error, fs, path::Path, time::Duration};
+
+use cerebro_slack_agent_eval_wire::{
+    AGENT_DELIVERY_RECEIPT_V1, BLACKBOX_RECEIPT_V1, BLIND_PACKET_V1, BlackboxReceipt, BlindPacket,
+    BlindTranscriptTurn, CandidateAttestation, CandidateDeliveryReceipt,
+    CandidateRuntimeAttestation, CandidateTurnOutcome, DeterministicDefect, DigestEnvelope,
+    ExchangeReceipt, HarnessTelemetry, OPERATOR_TURN_V1, OperatorDecision, OperatorTurnRequest,
+    SupervisorEpisodeSpec, TranscriptTurn, sha256_json, sha256_text,
+};
+use reqwest::{Client, StatusCode};
+use serde::Deserialize;
+use serde_json::Value;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
+const USAGE: &str = "usage:\n  slack-agent-blackbox run CONFIG.json RECEIPT.json\n  slack-agent-blackbox blind RECEIPT.json ASSIGNMENT_REF CANDIDATE_ALIAS BRIEF.json PACKET.json\n  slack-agent-blackbox verify-receipt RECEIPT.json";
+const RUN_CONFIG_V1: &str = "slack-agent-blackbox-run-config/v1";
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RunConfig {
+    schema_version: String,
+    candidate_base_url: String,
+    operator_url: String,
+    #[serde(default)]
+    restart_url: Option<String>,
+    candidate_ref: String,
+    candidate_artifact_digest: String,
+    episode: SupervisorEpisodeSpec,
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthorityStatusWire {
+    schema_version: String,
+    agent_ready: bool,
+    build_commit_sha: String,
+    build_tree_clean: bool,
+    runtime_instance_ref: String,
+    model_provider: Option<String>,
+    model_id: Option<String>,
+    model_config_sha256: Option<String>,
+    session_schema_version: String,
+}
+
+#[tokio::main]
+async fn main() {
+    if let Err(error) = dispatch(env::args().skip(1).collect()).await {
+        eprintln!("slack-agent-blackbox: {error}");
+        std::process::exit(1);
+    }
+}
+
+async fn dispatch(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
+    match arguments.as_slice() {
+        [command, config, output] if command == "run" => run(config, output).await,
+        [command, receipt, assignment, alias, brief, output] if command == "blind" => {
+            blind(receipt, assignment, alias, brief, output)
+        }
+        [command, receipt] if command == "verify-receipt" => verify_receipt(receipt),
+        _ => Err(USAGE.into()),
+    }
+}
+
+async fn run(config_path: &str, output_path: &str) -> Result<(), Box<dyn Error>> {
+    let config: RunConfig = read_json(config_path)?;
+    validate_config(&config)?;
+    let client = Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .build()?;
+    let initial_runtime = read_status(&client, &config.candidate_base_url).await?;
+    validate_runtime(&initial_runtime)?;
+    let candidate = CandidateAttestation {
+        candidate_ref: config.candidate_ref.clone(),
+        artifact_digest: config.candidate_artifact_digest.clone(),
+        runtime: initial_runtime.clone(),
+    };
+    let private_context_digest = sha256_json(&config.episode.private_context)?;
+    let mut request = config.episode.initial_turn.clone();
+    let mut transcript = vec![TranscriptTurn {
+        role: "operator".into(),
+        message: request.message.clone(),
+    }];
+    let mut exchanges = Vec::new();
+    let mut defects = Vec::new();
+    let mut restart_observed = false;
+    let mut concluded = false;
+
+    for sequence in 1..=config.episode.limits.max_exchanges {
+        let runtime = read_status(&client, &config.candidate_base_url).await?;
+        if let Err(detail) = same_candidate(&initial_runtime, &runtime) {
+            defects.push(terminal("candidate_identity_changed", detail));
+            break;
+        }
+        let exchange = run_exchange(
+            &client,
+            &config.candidate_base_url,
+            request.clone(),
+            sequence,
+            &runtime.runtime_instance_ref,
+            config.episode.limits.turn_timeout_ms,
+        )
+        .await?;
+        if let Some(lane) = exchange.outcome.telemetry().0
+            && let Some(limit_ms) = config.episode.limits.lane_latency_limits_ms.get(lane)
+            && exchange.latency_ms > *limit_ms
+        {
+            defects.push(terminal(
+                "lane_latency_exceeded",
+                format!(
+                    "The {lane} turn took {} ms; the sealed episode limit is {limit_ms} ms.",
+                    exchange.latency_ms
+                ),
+            ));
+        }
+        if let Some(markdown) = exchange.outcome.markdown() {
+            transcript.push(TranscriptTurn {
+                role: "assistant".into(),
+                message: markdown.into(),
+            });
+        }
+        let operator_request = OperatorTurnRequest {
+            schema_version: OPERATOR_TURN_V1.into(),
+            episode_ref: config.episode.episode_ref.clone(),
+            private_context: config.episode.private_context.clone(),
+            transcript: transcript.clone(),
+            latest_exchange: exchange.clone(),
+        };
+        exchanges.push(exchange);
+
+        if defects.iter().any(|defect| defect.terminal) {
+            break;
+        }
+
+        let decision = call_operator(&client, &config.operator_url, &operator_request).await?;
+        match decision {
+            OperatorDecision::Conclude { .. } => {
+                concluded = true;
+                break;
+            }
+            OperatorDecision::Abort { reason } => {
+                defects.push(terminal("operator_aborted", reason));
+                break;
+            }
+            OperatorDecision::Continue { message, .. } => {
+                if sequence == config.episode.limits.max_exchanges {
+                    defects.push(terminal(
+                        "operator_unsatisfied_at_limit",
+                        "The independent operator requested another exchange after the episode limit.",
+                    ));
+                    break;
+                }
+                transcript.push(TranscriptTurn {
+                    role: "operator".into(),
+                    message: message.clone(),
+                });
+                request = next_request(&config.episode, &request, sequence + 1, message)?;
+            }
+        }
+
+        if config.episode.limits.restart_after_exchange == Some(sequence) {
+            match config.restart_url.as_deref() {
+                Some(url) => {
+                    let restarted =
+                        restart_candidate(&client, url, &config.candidate_base_url, &runtime)
+                            .await?;
+                    same_candidate(&initial_runtime, &restarted)?;
+                    if restarted.runtime_instance_ref == runtime.runtime_instance_ref {
+                        defects.push(terminal(
+                            "restart_not_observed",
+                            "The lifecycle controller returned without a new runtime instance.",
+                        ));
+                        break;
+                    }
+                    restart_observed = true;
+                }
+                None => {
+                    defects.push(terminal(
+                        "restart_controller_missing",
+                        "The episode requires a restart but no lifecycle controller was configured.",
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+
+    if !concluded && defects.is_empty() {
+        defects.push(terminal(
+            "episode_not_concluded",
+            "The episode ended without independent operator acceptance.",
+        ));
+    }
+    if config.episode.limits.restart_after_exchange.is_some() && !restart_observed {
+        defects.push(terminal(
+            "persistence_not_exercised",
+            "The required runtime restart did not occur.",
+        ));
+    }
+
+    let telemetry = HarnessTelemetry {
+        exchange_count: exchanges.len(),
+        total_latency_ms: exchanges.iter().map(|exchange| exchange.latency_ms).sum(),
+        tool_call_count: exchanges
+            .iter()
+            .map(|exchange| exchange.outcome.telemetry().2)
+            .sum(),
+        restart_observed,
+    };
+    let receipt = DigestEnvelope::new(BlackboxReceipt {
+        schema_version: BLACKBOX_RECEIPT_V1.into(),
+        episode_ref: config.episode.episode_ref,
+        candidate,
+        private_context_digest,
+        transcript,
+        exchanges,
+        telemetry,
+        deterministic_defects: defects,
+        completed_at: now()?,
+    })?;
+    write_json(output_path, &receipt)?;
+    if receipt
+        .payload
+        .deterministic_defects
+        .iter()
+        .any(|defect| defect.terminal)
+    {
+        return Err("episode failed a deterministic gate".into());
+    }
+    Ok(())
+}
+
+async fn run_exchange(
+    client: &Client,
+    candidate_base_url: &str,
+    request: cerebro_slack_agent_eval_wire::CandidateTurnRequest,
+    sequence: usize,
+    runtime_instance_ref: &str,
+    timeout_ms: u64,
+) -> Result<ExchangeReceipt, Box<dyn Error>> {
+    let request_digest = sha256_json(&request)?;
+    let started_at = now()?;
+    let started = tokio::time::Instant::now();
+    let response = client
+        .post(endpoint(candidate_base_url, "/v1/turns/run"))
+        .timeout(Duration::from_millis(timeout_ms))
+        .json(&request)
+        .send()
+        .await?;
+    let status = response.status();
+    let body = response.bytes().await?;
+    if !status.is_success() {
+        return Err(format!("candidate turn returned {status}: {}", bounded_body(&body)).into());
+    }
+    let outcome: CandidateTurnOutcome = serde_json::from_slice(&body)?;
+    let response_digest = sha256_json(&outcome)?;
+    let delivery = if outcome.needs_delivery() {
+        let markdown = outcome
+            .markdown()
+            .ok_or("pending delivery omitted markdown")?;
+        let receipt = CandidateDeliveryReceipt {
+            schema_version: AGENT_DELIVERY_RECEIPT_V1.into(),
+            tenant_id: request.tenant_id.clone(),
+            thread_ref: request.thread_ref.clone(),
+            request_id: request.request_id.clone(),
+            transport: "slack-blackbox".into(),
+            delivery_ref: format!("blackbox-delivery:{sequence}"),
+            payload_digest: sha256_text(markdown),
+            delivered_at: now()?,
+        };
+        let response = client
+            .post(endpoint(candidate_base_url, "/v1/turns/deliveries"))
+            .json(&receipt)
+            .send()
+            .await?;
+        if response.status() != StatusCode::NO_CONTENT {
+            return Err(format!("delivery receipt returned {}", response.status()).into());
+        }
+        Some(receipt)
+    } else {
+        None
+    };
+    Ok(ExchangeReceipt {
+        sequence,
+        request_digest,
+        response_digest,
+        runtime_instance_ref: runtime_instance_ref.into(),
+        started_at,
+        completed_at: now()?,
+        latency_ms: started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
+        request,
+        outcome,
+        delivery,
+    })
+}
+
+async fn call_operator(
+    client: &Client,
+    operator_url: &str,
+    request: &OperatorTurnRequest,
+) -> Result<OperatorDecision, Box<dyn Error>> {
+    let response = client.post(operator_url).json(request).send().await?;
+    let status = response.status();
+    let body = response.bytes().await?;
+    if !status.is_success() {
+        return Err(format!("operator returned {status}: {}", bounded_body(&body)).into());
+    }
+    Ok(serde_json::from_slice(&body)?)
+}
+
+async fn read_status(
+    client: &Client,
+    candidate_base_url: &str,
+) -> Result<CandidateRuntimeAttestation, Box<dyn Error>> {
+    let response = client
+        .get(endpoint(candidate_base_url, "/v1/status"))
+        .send()
+        .await?
+        .error_for_status()?;
+    let status: AuthorityStatusWire = response.json().await?;
+    Ok(CandidateRuntimeAttestation {
+        schema_version: status.schema_version,
+        agent_ready: status.agent_ready,
+        build_commit_sha: status.build_commit_sha,
+        build_tree_clean: status.build_tree_clean,
+        runtime_instance_ref: status.runtime_instance_ref,
+        model_provider: status.model_provider,
+        model_id: status.model_id,
+        model_config_sha256: status.model_config_sha256,
+        session_schema_version: status.session_schema_version,
+    })
+}
+
+async fn restart_candidate(
+    client: &Client,
+    restart_url: &str,
+    candidate_base_url: &str,
+    previous: &CandidateRuntimeAttestation,
+) -> Result<CandidateRuntimeAttestation, Box<dyn Error>> {
+    client.post(restart_url).send().await?.error_for_status()?;
+    for _ in 0..90 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        if let Ok(status) = read_status(client, candidate_base_url).await
+            && status.runtime_instance_ref != previous.runtime_instance_ref
+        {
+            return Ok(status);
+        }
+    }
+    Err("candidate did not return with a new runtime instance within 90 seconds".into())
+}
+
+fn validate_config(config: &RunConfig) -> Result<(), Box<dyn Error>> {
+    if config.schema_version != RUN_CONFIG_V1 {
+        return Err("unsupported run config schema".into());
+    }
+    if config.episode.schema_version != cerebro_slack_agent_eval_wire::SUPERVISOR_EPISODE_V1
+        || config.episode.initial_turn.schema_version
+            != cerebro_slack_agent_eval_wire::AGENT_TURN_REQUEST_V1
+        || config.episode.limits.max_exchanges == 0
+        || config.episode.limits.max_exchanges > 24
+        || config.episode.limits.turn_timeout_ms < 1_000
+        || config.episode.limits.turn_timeout_ms > 600_000
+        || config.episode.limits.lane_latency_limits_ms.is_empty()
+        || config
+            .episode
+            .limits
+            .lane_latency_limits_ms
+            .values()
+            .any(|limit| *limit < 1_000 || *limit > config.episode.limits.turn_timeout_ms)
+    {
+        return Err("invalid bounded episode configuration".into());
+    }
+    Ok(())
+}
+
+fn validate_runtime(runtime: &CandidateRuntimeAttestation) -> Result<(), Box<dyn Error>> {
+    if !runtime.agent_ready
+        || !runtime.build_tree_clean
+        || runtime.build_commit_sha.len() != 40
+        || runtime.model_id.as_deref().is_none_or(str::is_empty)
+        || runtime
+            .model_config_sha256
+            .as_deref()
+            .is_none_or(|digest| !valid_sha256(digest))
+        || runtime.runtime_instance_ref.is_empty()
+    {
+        return Err("candidate runtime attestation is incomplete or dirty".into());
+    }
+    Ok(())
+}
+
+fn same_candidate(
+    expected: &CandidateRuntimeAttestation,
+    actual: &CandidateRuntimeAttestation,
+) -> Result<(), String> {
+    if expected.build_commit_sha != actual.build_commit_sha
+        || expected.build_tree_clean != actual.build_tree_clean
+        || expected.model_provider != actual.model_provider
+        || expected.model_id != actual.model_id
+        || expected.model_config_sha256 != actual.model_config_sha256
+        || expected.session_schema_version != actual.session_schema_version
+    {
+        return Err(
+            "commit, model configuration, or session schema changed during the episode".into(),
+        );
+    }
+    Ok(())
+}
+
+fn next_request(
+    episode: &SupervisorEpisodeSpec,
+    previous: &cerebro_slack_agent_eval_wire::CandidateTurnRequest,
+    sequence: usize,
+    message: String,
+) -> Result<cerebro_slack_agent_eval_wire::CandidateTurnRequest, Box<dyn Error>> {
+    let mut request = previous.clone();
+    request.request_id = opaque_request_ref(&episode.episode_ref, sequence);
+    request.assessment_at = now()?;
+    request.message = message;
+    request.history.clear();
+    request.history_metadata.clear();
+    request.working_state = None;
+    request.effect_authorizations.clear();
+    Ok(request)
+}
+
+fn opaque_request_ref(episode_ref: &str, sequence: usize) -> String {
+    let digest = sha256_text(&format!("blackbox-request/v1\n{episode_ref}\n{sequence}"));
+    format!("blackbox-request:{}", &digest[7..31])
+}
+
+fn blind(
+    receipt_path: &str,
+    assignment_ref: &str,
+    candidate_alias: &str,
+    brief_path: &str,
+    output_path: &str,
+) -> Result<(), Box<dyn Error>> {
+    let receipt: DigestEnvelope<BlackboxReceipt> = read_json(receipt_path)?;
+    if !receipt.verify_digest()? {
+        return Err("black-box receipt digest does not verify".into());
+    }
+    let evaluation_brief: Value = read_json(brief_path)?;
+    let packet = DigestEnvelope::new(BlindPacket {
+        schema_version: BLIND_PACKET_V1.into(),
+        assignment_ref: assignment_ref.into(),
+        candidate_alias: candidate_alias.into(),
+        evaluation_brief,
+        transcript: receipt
+            .payload
+            .transcript
+            .iter()
+            .map(|turn| BlindTranscriptTurn {
+                role: turn.role.clone(),
+                message: turn.message.clone(),
+            })
+            .collect(),
+        telemetry: receipt.payload.telemetry.clone(),
+        deterministic_defects: receipt.payload.deterministic_defects.clone(),
+    })?;
+    write_json(output_path, &packet)
+}
+
+fn verify_receipt(receipt_path: &str) -> Result<(), Box<dyn Error>> {
+    let receipt: DigestEnvelope<BlackboxReceipt> = read_json(receipt_path)?;
+    if receipt.payload.schema_version != BLACKBOX_RECEIPT_V1 || !receipt.verify_digest()? {
+        return Err("black-box receipt is invalid".into());
+    }
+    for exchange in &receipt.payload.exchanges {
+        if exchange.request_digest != sha256_json(&exchange.request)?
+            || exchange.response_digest != sha256_json(&exchange.outcome)?
+        {
+            return Err(format!("exchange {} digest is invalid", exchange.sequence).into());
+        }
+        if let Some(delivery) = &exchange.delivery
+            && exchange.outcome.markdown().map(sha256_text).as_deref()
+                != Some(delivery.payload_digest.as_str())
+        {
+            return Err(
+                format!("exchange {} delivery digest is invalid", exchange.sequence).into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn terminal(code: &str, detail: impl Into<String>) -> DeterministicDefect {
+    DeterministicDefect {
+        code: code.into(),
+        detail: detail.into(),
+        terminal: true,
+    }
+}
+
+fn endpoint(base: &str, path: &str) -> String {
+    format!("{}{}", base.trim_end_matches('/'), path)
+}
+
+fn valid_sha256(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
+}
+
+fn now() -> Result<String, time::error::Format> {
+    OffsetDateTime::now_utc().format(&Rfc3339)
+}
+
+fn bounded_body(body: &[u8]) -> String {
+    String::from_utf8_lossy(&body[..body.len().min(512)]).into_owned()
+}
+
+fn read_json<T: serde::de::DeserializeOwned>(path: impl AsRef<Path>) -> Result<T, Box<dyn Error>> {
+    Ok(serde_json::from_slice(&fs::read(path)?)?)
+}
+
+fn write_json(path: impl AsRef<Path>, value: &impl serde::Serialize) -> Result<(), Box<dyn Error>> {
+    let mut bytes = serde_json::to_vec_pretty(value)?;
+    bytes.push(b'\n');
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_alias_does_not_disclose_episode_ref() {
+        let alias = opaque_request_ref("private-episode-name", 2);
+        assert!(!alias.contains("private-episode-name"));
+        assert_eq!(alias, opaque_request_ref("private-episode-name", 2));
+    }
+
+    #[test]
+    fn exact_candidate_allows_only_instance_change() {
+        let first = CandidateRuntimeAttestation {
+            schema_version: "status/v2".into(),
+            agent_ready: true,
+            build_commit_sha: "a".repeat(40),
+            build_tree_clean: true,
+            runtime_instance_ref: "instance:one".into(),
+            model_provider: Some("provider".into()),
+            model_id: Some("model".into()),
+            model_config_sha256: Some(format!("sha256:{}", "b".repeat(64))),
+            session_schema_version: "session/v2".into(),
+        };
+        let mut restarted = first.clone();
+        restarted.runtime_instance_ref = "instance:two".into();
+        assert!(same_candidate(&first, &restarted).is_ok());
+        restarted.model_id = Some("different".into());
+        assert!(same_candidate(&first, &restarted).is_err());
+    }
+}

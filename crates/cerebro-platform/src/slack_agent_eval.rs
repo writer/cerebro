@@ -912,19 +912,34 @@ fn eval_checkpoint_contract_sha256() -> String {
     )
 }
 
-fn checkpoint_manifest(
-    suite: &str,
-    receipt_schema_version: &str,
-    commit_sha: &str,
-    model_id: &str,
-    judge_model_id: &str,
-    runtime_path: &str,
-    holdout_source: &HoldoutSourceReceipt,
+struct EvalCheckpointManifestInput<'a> {
+    suite: &'a str,
+    receipt_schema_version: &'a str,
+    commit_sha: &'a str,
+    model_id: &'a str,
+    judge_model_id: &'a str,
+    runtime_path: &'a str,
+    holdout_source: &'a HoldoutSourceReceipt,
     declared_scenario_count: usize,
     scenarios: Vec<EvalCheckpointScenarioIdentity>,
-    blinding_salt: &str,
-    evaluated_at: &str,
-) -> EvalCheckpointManifest {
+    blinding_salt: &'a str,
+    evaluated_at: &'a str,
+}
+
+fn checkpoint_manifest(input: EvalCheckpointManifestInput<'_>) -> EvalCheckpointManifest {
+    let EvalCheckpointManifestInput {
+        suite,
+        receipt_schema_version,
+        commit_sha,
+        model_id,
+        judge_model_id,
+        runtime_path,
+        holdout_source,
+        declared_scenario_count,
+        scenarios,
+        blinding_salt,
+        evaluated_at,
+    } = input;
     EvalCheckpointManifest {
         schema_version: EVAL_CHECKPOINT_SCHEMA_VERSION.to_owned(),
         suite: suite.to_owned(),
@@ -4032,19 +4047,19 @@ async fn run_autonomy_lab(
         )
         .collect::<Vec<_>>();
     let checkpoint_store = EvalCheckpointStore::open_if_configured(
-        checkpoint_manifest(
-            "autonomy_lab",
-            "cerebro-rust-slack-agent-autonomy-lab/v4",
-            &commit_sha,
-            &model_id,
-            &judge_model_id,
-            "session_v2_typed_wake",
-            &holdout_source,
+        checkpoint_manifest(EvalCheckpointManifestInput {
+            suite: "autonomy_lab",
+            receipt_schema_version: "cerebro-rust-slack-agent-autonomy-lab/v4",
+            commit_sha: &commit_sha,
+            model_id: &model_id,
+            judge_model_id: &judge_model_id,
+            runtime_path: "session_v2_typed_wake",
+            holdout_source: &holdout_source,
             declared_scenario_count,
-            scenario_identities.clone(),
-            &blinding_salt,
-            &evaluated_at,
-        ),
+            scenarios: scenario_identities.clone(),
+            blinding_salt: &blinding_salt,
+            evaluated_at: &evaluated_at,
+        }),
         &blinding_salt,
     )?;
     let evaluated_at = checkpoint_store
@@ -4646,19 +4661,19 @@ async fn run_conversation_lab(
         )
         .collect::<Vec<_>>();
     let checkpoint_store = EvalCheckpointStore::open_if_configured(
-        checkpoint_manifest(
-            "conversation_lab",
-            "cerebro-rust-slack-agent-conversation-lab/v7",
-            &commit_sha,
-            &model_id,
-            &judge_model_id,
-            runtime.as_str(),
-            &selection.source,
+        checkpoint_manifest(EvalCheckpointManifestInput {
+            suite: "conversation_lab",
+            receipt_schema_version: "cerebro-rust-slack-agent-conversation-lab/v7",
+            commit_sha: &commit_sha,
+            model_id: &model_id,
+            judge_model_id: &judge_model_id,
+            runtime_path: runtime.as_str(),
+            holdout_source: &selection.source,
             declared_scenario_count,
-            scenario_identities.clone(),
-            &blinding_salt,
-            &evaluated_at,
-        ),
+            scenarios: scenario_identities.clone(),
+            blinding_salt: &blinding_salt,
+            evaluated_at: &evaluated_at,
+        }),
         &blinding_salt,
     )?;
     let evaluated_at = checkpoint_store
@@ -9462,14 +9477,14 @@ mod tests {
         evaluated_at: &str,
         scenario: EvalCheckpointScenarioIdentity,
     ) -> EvalCheckpointManifest {
-        checkpoint_manifest(
-            "conversation_lab",
-            "cerebro-rust-slack-agent-conversation-lab/v7",
-            &"a".repeat(40),
-            "us.anthropic.claude-opus-test",
-            "us.anthropic.claude-opus-judge-test",
-            "session_v2",
-            &HoldoutSourceReceipt {
+        checkpoint_manifest(EvalCheckpointManifestInput {
+            suite: "conversation_lab",
+            receipt_schema_version: "cerebro-rust-slack-agent-conversation-lab/v7",
+            commit_sha: &"a".repeat(40),
+            model_id: "us.anthropic.claude-opus-test",
+            judge_model_id: "us.anthropic.claude-opus-judge-test",
+            runtime_path: "session_v2",
+            holdout_source: &HoldoutSourceReceipt {
                 source_kind: "external_pinned_holdout",
                 pack_ref: "synthetic://cerebro-holdouts/test".into(),
                 pack_sha256: "b".repeat(64),
@@ -9477,11 +9492,11 @@ mod tests {
                 runtime_loaded_after_exact_head_binding: true,
                 provenance: embedded_synthetic_provenance(),
             },
-            1,
-            vec![scenario],
-            "0123456789abcdef-test-salt",
+            declared_scenario_count: 1,
+            scenarios: vec![scenario],
+            blinding_salt: "0123456789abcdef-test-salt",
             evaluated_at,
-        )
+        })
     }
 
     fn checkpoint_test_source() -> HoldoutSourceReceipt {
@@ -9651,19 +9666,19 @@ mod tests {
         second.scenario_ref = "synthetic-scenario-two".into();
         second.content_sha256 = "2".repeat(64);
         let source = checkpoint_test_source();
-        let manifest = checkpoint_manifest(
-            "conversation_lab",
-            "cerebro-rust-slack-agent-conversation-lab/v7",
-            &"a".repeat(40),
-            "us.anthropic.claude-opus-test",
-            "us.anthropic.claude-opus-judge-test",
-            "session_v2",
-            &source,
-            2,
-            vec![first.clone(), second.clone()],
-            "0123456789abcdef-test-salt",
-            "2026-08-03T00:00:00Z",
-        );
+        let manifest = checkpoint_manifest(EvalCheckpointManifestInput {
+            suite: "conversation_lab",
+            receipt_schema_version: "cerebro-rust-slack-agent-conversation-lab/v7",
+            commit_sha: &"a".repeat(40),
+            model_id: "us.anthropic.claude-opus-test",
+            judge_model_id: "us.anthropic.claude-opus-judge-test",
+            runtime_path: "session_v2",
+            holdout_source: &source,
+            declared_scenario_count: 2,
+            scenarios: vec![first.clone(), second.clone()],
+            blinding_salt: "0123456789abcdef-test-salt",
+            evaluated_at: "2026-08-03T00:00:00Z",
+        });
         let store =
             EvalCheckpointStore::open(directory.clone(), manifest, "0123456789abcdef-test-salt")
                 .unwrap();

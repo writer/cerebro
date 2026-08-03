@@ -86,6 +86,13 @@ pub struct SlackAgentService {
     tenant_id: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct SlackAgentModelAttestation {
+    pub(super) model_config_sha256: String,
+    pub(super) model_id: String,
+    pub(super) model_provider: &'static str,
+}
+
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct AgentWakeTurn {
     pub commitment_ref: String,
@@ -118,6 +125,10 @@ impl SlackAgentService {
         }
         let service = Self::initialize(tenant_id).await?;
         Ok(Some(service))
+    }
+
+    pub(super) fn model_attestation(&self) -> SlackAgentModelAttestation {
+        self.model.attestation()
     }
 
     async fn initialize(tenant_id: String) -> Result<Self, Box<dyn Error>> {
@@ -1535,6 +1546,16 @@ pub(super) enum ConfiguredModel {
 }
 
 impl ConfiguredModel {
+    fn attestation(&self) -> SlackAgentModelAttestation {
+        match self {
+            Self::AmazonBedrock(model) => SlackAgentModelAttestation {
+                model_config_sha256: model_config_sha256("amazon-bedrock", &model.model),
+                model_id: model.model.clone(),
+                model_provider: "amazon-bedrock",
+            },
+        }
+    }
+
     pub(super) async fn amazon_bedrock(model: String) -> Result<Self, Box<dyn Error>> {
         if !is_bedrock_opus_model(&model) {
             return Err("the Rust Slack agent requires an Amazon Bedrock Claude Opus model".into());
@@ -1601,6 +1622,76 @@ impl ConfiguredModel {
             }
         }
     }
+}
+
+fn model_config_sha256(provider: &str, model_id: &str) -> String {
+    let public_config = json!({
+        "config_schema_version": "slack-agent-model-config/v1",
+        "model": {
+            "id": model_id,
+            "provider": provider,
+        },
+        "runtime_limits": {
+            "hard_max_generation_tokens": HARD_MAX_GENERATION_TOKENS,
+            "max_history_item_bytes": MAX_MODEL_HISTORY_ITEM_BYTES,
+            "max_history_items": MAX_MODEL_HISTORY_ITEMS,
+            "max_history_total_bytes": MAX_MODEL_HISTORY_TOTAL_BYTES,
+            "max_response_bytes": MAX_MODEL_RESPONSE_BYTES,
+        },
+        "schemas": {
+            "delivery_receipt": AGENT_DELIVERY_RECEIPT_V1,
+            "semantic_evidence": AGENT_SEMANTIC_EVIDENCE_V1,
+            "session": AGENT_SESSION_V2,
+            "session_event": AGENT_SESSION_EVENT_V2,
+            "turn_request": cerebro_agent_runtime::AGENT_TURN_REQUEST_V1,
+            "turn_result": cerebro_agent_runtime::AGENT_TURN_RESULT_V1,
+        },
+        "stages": [
+            {
+                "decision_schema": route_decision_schema(),
+                "decision_tool": ROUTE_DECISION_TOOL,
+                "instructions": route_instructions(),
+                "max_tokens": SLACK_ROUTE_MAX_TOKENS,
+                "stage": "route",
+            },
+            {
+                "decision_schema": model_decision_schema(),
+                "decision_tool": OPERATING_DECISION_TOOL,
+                "instructions": model_instructions(),
+                "max_tokens": DECISION_MAX_TOKENS,
+                "stage": "operate",
+            },
+            {
+                "decision_schema": presentation_decision_schema(),
+                "decision_tool": PRESENTATION_DECISION_TOOL,
+                "instructions": presentation_instructions(),
+                "max_tokens": PRESENTATION_MAX_TOKENS,
+                "stage": "present",
+            },
+            {
+                "decision_schema": critique_decision_schema(),
+                "decision_tool": CRITIQUE_DECISION_TOOL,
+                "instructions": critic_instructions(),
+                "max_tokens": CRITIC_MAX_TOKENS,
+                "stage": "critique",
+            },
+            {
+                "decision_schema": session_decision_schema(),
+                "decision_tool": SESSION_DECISION_TOOL,
+                "instructions": session_instructions(),
+                "max_tokens": SLACK_SESSION_DECISION_MAX_TOKENS,
+                "stage": "session",
+            },
+            {
+                "decision_schema": claim_review_schema(),
+                "decision_tool": CLAIM_REVIEW_TOOL,
+                "instructions": claim_review_instructions(),
+                "max_tokens": SLACK_CLAIM_REVIEW_MAX_TOKENS,
+                "stage": "claim_review",
+            },
+        ],
+    });
+    sha256_digest(&public_config.to_string())
 }
 
 #[async_trait]
@@ -6275,6 +6366,26 @@ mod tests {
                 StdDuration::from_secs(5),
                 StdDuration::from_secs(5),
             ]
+        );
+    }
+
+    #[test]
+    fn model_attestation_binds_public_behavior_config_without_secrets() {
+        let digest = model_config_sha256("amazon-bedrock", "global.anthropic.claude-opus-4-1-v1:0");
+
+        assert!(digest.starts_with("sha256:"));
+        assert_eq!(digest.len(), "sha256:".len() + 64);
+        assert_eq!(
+            digest,
+            model_config_sha256("amazon-bedrock", "global.anthropic.claude-opus-4-1-v1:0")
+        );
+        assert_ne!(
+            digest,
+            model_config_sha256("amazon-bedrock", "global.anthropic.claude-opus-4-5-v1:0")
+        );
+        assert_ne!(
+            digest,
+            model_config_sha256("another-provider", "global.anthropic.claude-opus-4-1-v1:0")
         );
     }
 
