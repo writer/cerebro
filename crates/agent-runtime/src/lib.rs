@@ -367,6 +367,7 @@ pub enum CritiqueGroundingBasis {
     DirectObservation,
     BoundedInference,
     OperatorSupplied,
+    ConversationalSynthesis,
     RetainedContext,
     ToolOutcome,
     Hypothesis,
@@ -2265,6 +2266,8 @@ fn validate_critique_grounding(
         }
         if check.basis == CritiqueGroundingBasis::OperatorSupplied {
             validate_operator_supplied_unit(unit_text, check, &operator_context)?;
+        } else if check.basis == CritiqueGroundingBasis::ConversationalSynthesis {
+            validate_conversational_synthesis_unit(turn, unit_text, check, &operator_context)?;
         } else if check.basis == CritiqueGroundingBasis::RetainedContext {
             validate_retained_context_unit(unit_text, check, &retained_context)?;
         } else if check.context_excerpt.is_some() {
@@ -2284,6 +2287,7 @@ fn validate_critique_grounding(
         if matches!(
             check.basis,
             CritiqueGroundingBasis::OperatorSupplied
+                | CritiqueGroundingBasis::ConversationalSynthesis
                 | CritiqueGroundingBasis::RetainedContext
                 | CritiqueGroundingBasis::ToolOutcome
                 | CritiqueGroundingBasis::StableExplanation
@@ -2446,6 +2450,67 @@ fn validate_operator_supplied_unit(
         &check.unit_id,
     )?;
     Ok(())
+}
+
+fn validate_conversational_synthesis_unit(
+    turn: &CritiqueTurn,
+    unit_text: &str,
+    check: &CritiqueGroundingCheck,
+    operator_context: &str,
+) -> Result<(), AgentRuntimeError> {
+    let excerpt = check
+        .context_excerpt
+        .as_deref()
+        .filter(|excerpt| bounded_text(excerpt) && operator_context.contains(excerpt))
+        .ok_or_else(|| {
+            AgentRuntimeError::InvalidFinal(format!(
+                "critic grounding unit {} lacks an exact operator-authored synthesis source",
+                check.unit_id
+            ))
+        })?;
+    let normalized = unit_text.to_ascii_lowercase().replace('’', "'");
+    let unsupported_self_work = [
+        "i checked",
+        "i inspected",
+        "i looked up",
+        "i queried",
+        "i ran",
+        "i deployed",
+        "i verified",
+        "i completed",
+        "i have access",
+        "i can access",
+        "i can query",
+        "i'll check",
+        "i will check",
+        "i'll verify",
+        "i will verify",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    if turn.lane != ExecutionLane::Converse
+        || request_explicitly_requires_current_evidence(&turn.request.message)
+        || request_explicitly_requires_current_evidence(unit_text)
+        || unsupported_self_work
+        || unit_text.trim().is_empty()
+        || unit_text.len() > 1_200
+        || unit_text.lines().count() > 6
+        || looks_like_raw_record_dump(unit_text)
+        || looks_like_internal_query_failure(unit_text)
+    {
+        return Err(AgentRuntimeError::InvalidFinal(format!(
+            "critic grounding unit {} is not bounded conversation-only synthesis",
+            check.unit_id
+        )));
+    }
+    require_grounding_vocabulary_overlap(unit_text, excerpt, &check.unit_id)?;
+    validate_material_literals(
+        unit_text,
+        CritiqueGroundingBasis::ConversationalSynthesis,
+        operator_context,
+        "",
+        &check.unit_id,
+    )
 }
 
 fn validate_retained_context_unit(
@@ -2646,6 +2711,9 @@ fn grounding_words(value: &str) -> BTreeSet<String> {
             "our" | "ours" | "we" | "cerebro" => "cerebro".into(),
             "owner" | "owns" | "owned" | "ownership" | "responsibility" => "own".into(),
             "checked" | "checks" | "recheck" => "check".into(),
+            "respond" | "responding" | "response" | "responses" => "respond".into(),
+            "useful" | "usefully" | "usefulness" => "useful".into(),
+            "understand" | "understood" | "understanding" => "understand".into(),
             _ => word,
         })
         .collect()
@@ -4080,6 +4148,41 @@ mod grounding_tests {
 
         turn.grounding_units[0].text = "The connector is currently healthy.".into();
         assert!(validate_critique_decision(&turn, &valid).is_err());
+    }
+
+    #[test]
+    fn conversational_synthesis_is_thread_bound_and_cannot_hide_current_work() {
+        let mut turn = sample_turn();
+        turn.lane = ExecutionLane::Converse;
+        turn.observations.clear();
+        turn.draft.summary_evidence_refs.clear();
+        turn.request.message = "Be honest: are you responding usefully now?".into();
+        turn.draft.summary =
+            "Not consistently yet—the useful response is a direct answer, not a capability disclaimer."
+                .into();
+        turn.grounding_units = critique_grounding_units(&turn.draft);
+        let valid = CritiqueDecision::Approve {
+            checks: passing_checks(),
+            grounding: vec![CritiqueGroundingCheck {
+                unit_id: turn.grounding_units[0].unit_id.clone(),
+                basis: CritiqueGroundingBasis::ConversationalSynthesis,
+                support: vec![],
+                context_excerpt: Some(turn.request.message.clone()),
+                observation_sequence: None,
+            }],
+        };
+        assert_eq!(validate_critique_decision(&turn, &valid), Ok(()));
+
+        turn.grounding_units[0].text = "I verified that the current deployment is healthy.".into();
+        assert!(validate_critique_decision(&turn, &valid).is_err());
+
+        turn.grounding_units[0].text = turn.draft.summary.clone();
+        let mut missing_source = valid;
+        let CritiqueDecision::Approve { grounding, .. } = &mut missing_source else {
+            unreachable!()
+        };
+        grounding[0].context_excerpt = None;
+        assert!(validate_critique_decision(&turn, &missing_source).is_err());
     }
 
     #[test]
