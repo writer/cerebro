@@ -3372,9 +3372,8 @@ fn critique_grounding_units(draft: &FinalDraft) -> Vec<CritiqueGroundingUnit> {
         let mut start = 0;
         for (index, character) in line.char_indices() {
             let end = index + character.len_utf8();
-            let boundary = character == ';'
-                || (matches!(character, '.' | '!' | '?')
-                    && line[end..].chars().next().is_none_or(char::is_whitespace));
+            let boundary = matches!(character, '.' | '!' | '?')
+                && line[end..].chars().next().is_none_or(char::is_whitespace);
             if boundary {
                 let unit = line[start..end].trim();
                 if !unit.is_empty() {
@@ -4142,6 +4141,16 @@ mod grounding_tests {
             ),
             Err(AgentRuntimeError::InvalidFinal(reason)) if reason.contains("grounding limit")
         ));
+    }
+
+    #[test]
+    fn semicolon_linked_conversation_stays_one_grounding_unit() {
+        let mut draft = sample_turn().draft;
+        draft.summary = "The real test isn't this one answer, though; it's whether the pattern holds."
+            .into();
+        let units = critique_grounding_units(&draft);
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].text, draft.summary);
     }
 
     #[test]
