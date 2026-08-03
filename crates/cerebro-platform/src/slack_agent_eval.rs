@@ -7425,27 +7425,35 @@ mod tests {
             schema.pointer("/properties/burden_reduction/type"),
             Some(&json!("integer"))
         );
-        let judgment = parse_conversation_quality_judgment(json!({
-            "verdict": "excellent",
-            "task_completion": 5,
-            "factual_grounding": 5,
-            "conversational_quality": 5,
-            "initiative": 4,
-            "judgment": 4,
-            "continuity": 5,
-            "burden_reduction": 4,
-            "issues": [],
-            "rationale": "The reply answers the invented conversation directly."
-        }), "test quality judgment")
+        let judgment = parse_conversation_quality_judgment(
+            json!({
+                "verdict": "excellent",
+                "task_completion": 5,
+                "factual_grounding": 5,
+                "conversational_quality": 5,
+                "initiative": 4,
+                "judgment": 4,
+                "continuity": 5,
+                "burden_reduction": 4,
+                "issues": [],
+                "rationale": "The reply answers the invented conversation directly."
+            }),
+            "test quality judgment",
+        )
         .unwrap();
         assert!(judgment.is_excellent());
-        assert!(parse_conversation_quality_judgment(json!({
-            "verdict": "excellent",
-            "scores": {},
-            "issues": [],
-            "rationale": "Old nested wire shape."
-        }), "test quality judgment")
-        .is_err());
+        assert!(
+            parse_conversation_quality_judgment(
+                json!({
+                    "verdict": "excellent",
+                    "scores": {},
+                    "issues": [],
+                    "rationale": "Old nested wire shape."
+                }),
+                "test quality judgment"
+            )
+            .is_err()
+        );
     }
 
     #[test]
