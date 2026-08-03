@@ -33,6 +33,19 @@ export interface TransportSequencePortV2 {
   sequenceForRequest(requestDigest: `sha256:${string}`): Promise<number> | number;
 }
 
+export interface TransportAuthorityTelemetrySnapshotV2 {
+  completed_turn_count: number;
+  model_call_count?: number;
+  repair_count?: number;
+  runtime_instance_ref: string;
+  tool_call_count: number;
+}
+
+/** A fresh supervisor-side status read before and after each candidate event. */
+export interface TransportAuthorityTelemetryPortV2 {
+  snapshot(): Promise<TransportAuthorityTelemetrySnapshotV2>;
+}
+
 export interface TransportWakeClaimV2 {
   claim_ref: string;
   commitment_ref: string;
@@ -75,6 +88,7 @@ export interface SlackTransportV2BridgeOptions {
   phase?: "deliver" | "route";
   sequencePort?: TransportSequencePortV2;
   signer?: TransportReceiptSignerV2;
+  telemetryPort?: TransportAuthorityTelemetryPortV2;
   wakePort?: TransportWakePortV2;
 }
 
@@ -158,6 +172,7 @@ export class SlackTransportV2Bridge {
     if (request.method !== "POST") return errorResponse(405, "method_not_allowed");
     if (!this.options.signer) return errorResponse(503, "receipt_signer_unavailable");
     if (!this.options.sequencePort) return errorResponse(503, "sequence_binding_unavailable");
+    if (!this.options.telemetryPort) return errorResponse(503, "authority_telemetry_unavailable");
 
     const body = new Uint8Array(await request.arrayBuffer());
     if (body.byteLength === 0 || body.byteLength > MAX_REQUEST_BYTES) {
@@ -192,11 +207,15 @@ export class SlackTransportV2Bridge {
 
     const startedAt = new Date();
     const started = process.hrtime.bigint();
+    let telemetryBefore: TransportAuthorityTelemetrySnapshotV2;
     let delivery: CandidateDeliveryV2;
+    let telemetryAfter: TransportAuthorityTelemetrySnapshotV2;
     try {
+      telemetryBefore = await this.options.telemetryPort.snapshot();
       delivery = dispatch.candidate_event.event === "wake"
         ? await this.dispatchWake(dispatch, aliases)
         : await this.dispatchSlack(dispatch, aliases);
+      telemetryAfter = await this.options.telemetryPort.snapshot();
     } catch {
       return errorResponse(502, "candidate_transport_failed");
     }
@@ -208,6 +227,34 @@ export class SlackTransportV2Bridge {
 
     const finalText = delivery.message;
     const outputDigest = digestJson(delivery.output);
+    let telemetry: CandidateTelemetryDeltaV2;
+    try {
+      telemetry = telemetryDelta(telemetryBefore, telemetryAfter);
+    } catch {
+      return errorResponse(502, "candidate_telemetry_invalid");
+    }
+    const deterministicDefects: TrustedEventReceiptV2["deterministic_defects"] = [];
+    if (!delivery.handled || finalText === undefined) {
+      deterministicDefects.push({
+        code: "candidate_delivery_missing",
+        detail: "The candidate did not produce a terminal Slack delivery for this event.",
+        terminal: true,
+      });
+    }
+    if (telemetry.modelCallCount === undefined) {
+      deterministicDefects.push({
+        code: "candidate_model_call_telemetry_unavailable",
+        detail: "The authority did not expose an exact per-event model call count.",
+        terminal: true,
+      });
+    }
+    if (telemetry.repairCount === undefined) {
+      deterministicDefects.push({
+        code: "candidate_repair_telemetry_unavailable",
+        detail: "The authority did not expose an exact per-event repair count.",
+        terminal: true,
+      });
+    }
     const receipt: TrustedEventReceiptV2 = {
       schema_version: RECEIPT_SCHEMA_VERSION,
       sequence,
@@ -229,20 +276,14 @@ export class SlackTransportV2Bridge {
           input_digest: requestDigest,
           output_digest: outputDigest,
           outcome: "completed",
-          model_call_count: 0,
-          tool_call_count: 0,
-          repair_count: 0,
+          model_call_count: telemetry.modelCallCount ?? 0,
+          tool_call_count: telemetry.toolCallCount,
+          repair_count: telemetry.repairCount ?? 0,
         }],
       },
       fact_receipts: [],
       action_receipts: [],
-      deterministic_defects: delivery.handled && finalText !== undefined
-        ? []
-        : [{
-          code: "candidate_delivery_missing",
-          detail: "The candidate did not produce a terminal Slack delivery for this event.",
-          terminal: true,
-        }],
+      deterministic_defects: deterministicDefects,
     };
     const payloadDigest = digestJson(receipt);
     let signatureBase64: string;
@@ -313,6 +354,47 @@ interface CandidateDeliveryV2 {
   handled: boolean;
   message?: string;
   output: unknown;
+}
+
+interface CandidateTelemetryDeltaV2 {
+  modelCallCount?: number;
+  repairCount?: number;
+  toolCallCount: number;
+}
+
+function telemetryDelta(
+  before: TransportAuthorityTelemetrySnapshotV2,
+  after: TransportAuthorityTelemetrySnapshotV2,
+): CandidateTelemetryDeltaV2 {
+  if (
+    !before.runtime_instance_ref.trim()
+    || before.runtime_instance_ref !== after.runtime_instance_ref
+    || !validCounter(before.completed_turn_count)
+    || !validCounter(after.completed_turn_count)
+    || !validCounter(before.tool_call_count)
+    || !validCounter(after.tool_call_count)
+    || after.completed_turn_count < before.completed_turn_count
+    || after.tool_call_count < before.tool_call_count
+  ) throw new Error("candidate_telemetry_invalid");
+  const modelCallCount = counterDelta(before.model_call_count, after.model_call_count);
+  const repairCount = counterDelta(before.repair_count, after.repair_count);
+  return {
+    ...(modelCallCount === undefined ? {} : { modelCallCount }),
+    ...(repairCount === undefined ? {} : { repairCount }),
+    toolCallCount: after.tool_call_count - before.tool_call_count,
+  };
+}
+
+function counterDelta(before: number | undefined, after: number | undefined): number | undefined {
+  if (before === undefined && after === undefined) return undefined;
+  if (!validCounter(before) || !validCounter(after) || after < before) {
+    throw new Error("candidate_telemetry_invalid");
+  }
+  return after - before;
+}
+
+function validCounter(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
 }
 
 function parseDispatch(input: unknown): CandidateTransportDispatchV2 {

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import {
   SlackTransportV2Bridge,
+  type TransportAuthorityTelemetryPortV2,
   type TransportReceiptSignerV2,
   type TransportSequencePortV2,
   type TransportWakePortV2,
@@ -51,6 +52,7 @@ test("bridge projects an exact open-thread dispatch and signs the Rust receipt s
     phaseBudgetMs: 20_000,
     sequencePort,
     signer,
+    telemetryPort: fakeTelemetryPort(),
   });
 
   const response = await bridge.handle(new Request("http://transport.test/v2", {
@@ -90,7 +92,12 @@ test("bridge projects an exact open-thread dispatch and signs the Rust receipt s
 
 test("bridge fails closed without signer or private sequence binding", async () => {
   const adapter = { dispatch: async () => { throw new Error("must not dispatch"); } } as unknown as OffSlackTransportAdapter;
-  const unsigned = new SlackTransportV2Bridge({ adapter, botUserId: "U00000009", phaseBudgetMs: 20_000 });
+  const unsigned = new SlackTransportV2Bridge({
+    adapter,
+    botUserId: "U00000009",
+    phaseBudgetMs: 20_000,
+    telemetryPort: fakeTelemetryPort(),
+  });
   const unsignedResponse = await unsigned.handle(requestFor(dispatch(
     "open_thread",
     "2026-08-03T00:00:00Z",
@@ -104,6 +111,7 @@ test("bridge fails closed without signer or private sequence binding", async () 
     botUserId: "U00000009",
     phaseBudgetMs: 20_000,
     signer: fakeSigner(),
+    telemetryPort: fakeTelemetryPort(),
   });
   const unboundResponse = await unbound.handle(requestFor(dispatch(
     "open_thread",
@@ -122,6 +130,7 @@ test("bridge rejects alias drift and unknown fields", async () => {
     phaseBudgetMs: 20_000,
     sequencePort: { sequenceForRequest: () => 1 },
     signer: fakeSigner(),
+    telemetryPort: fakeTelemetryPort(),
   });
   const mismatched = dispatch("open_thread", "2026-08-03T00:00:00Z", "1785715200.000000");
   mismatched.candidate_event.aliases.context_scope_ref = "slack-context-scope://T00000001/C00000002";
@@ -171,6 +180,7 @@ test("bridge runs wake claim, validates its binding, posts, and acknowledges", a
     phaseBudgetMs: 20_000,
     sequencePort: { sequenceForRequest: () => 4 },
     signer: fakeSigner(),
+    telemetryPort: fakeTelemetryPort(),
     wakePort,
   });
 
@@ -198,6 +208,7 @@ test("bridge refuses to post a wake whose trusted claim does not bind the event"
     phaseBudgetMs: 20_000,
     sequencePort: { sequenceForRequest: () => 4 },
     signer: fakeSigner(),
+    telemetryPort: fakeTelemetryPort(),
     wakePort: {
       async claim(input) {
         return {
@@ -262,6 +273,22 @@ function fakeSigner(): TransportReceiptSignerV2 {
     },
     async signPayloadDigest(payloadDigest) {
       return Buffer.from(payloadDigest).toString("base64");
+    },
+  };
+}
+
+function fakeTelemetryPort(): TransportAuthorityTelemetryPortV2 {
+  let calls = 0;
+  return {
+    async snapshot() {
+      calls += 1;
+      return {
+        completed_turn_count: calls > 1 ? 1 : 0,
+        model_call_count: calls > 1 ? 2 : 0,
+        repair_count: calls > 1 ? 1 : 0,
+        runtime_instance_ref: "slack-authority-instance://sha256/test",
+        tool_call_count: calls > 1 ? 3 : 0,
+      };
     },
   };
 }

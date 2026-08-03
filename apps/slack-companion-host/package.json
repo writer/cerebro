@@ -24,6 +24,7 @@
     "check:compat": "tsc -p tsconfig.public-compat.json --noEmit && tsc -p tsconfig.evidence-recheck.json && node --test compat/public-evidence-recheck-compatibility.test.mjs",
     "start": "node dist/src/main.js",
     "start:off-slack": "node dist/src/off-slack-main.js",
+    "start:off-slack-v2": "node dist/src/off-slack-v2-main.js",
     "test": "npm run build && node --test dist/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
