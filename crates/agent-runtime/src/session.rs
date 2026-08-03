@@ -771,8 +771,8 @@ pub struct CommitmentCheckpointObservation {
     pub tool_id: String,
     pub input: Value,
     pub input_digest: String,
-    #[serde(default)]
-    pub source_subject_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_subject_refs: Option<Vec<String>>,
     pub observed_at: Option<String>,
     pub state: ToolResultState,
     pub complete: bool,
@@ -2813,15 +2813,26 @@ fn wake_research_plan(
     if commitment.required_tool_ids.is_empty() {
         return None;
     }
-    let source_subject_refs = prior_commitment_checkpoint(session, trigger)
-        .into_iter()
-        .flat_map(|checkpoint| checkpoint.observations)
-        .filter(|observation| commitment.required_tool_ids.contains(&observation.tool_id))
-        .flat_map(|observation| observation.source_subject_refs)
-        .filter(|subject_ref| !subject_ref.trim().is_empty())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
+    let mut source_subject_refs = BTreeSet::new();
+    if let Some(checkpoint) = prior_commitment_checkpoint(session, trigger) {
+        for tool_id in &commitment.required_tool_ids {
+            if let Some(subject_refs) = checkpoint
+                .observations
+                .iter()
+                .rev()
+                .find(|observation| observation.tool_id == *tool_id)
+                .and_then(|observation| observation.source_subject_refs.as_ref())
+            {
+                source_subject_refs.extend(
+                    subject_refs
+                        .iter()
+                        .filter(|subject_ref| !subject_ref.trim().is_empty())
+                        .cloned(),
+                );
+            }
+        }
+    }
+    let source_subject_refs = source_subject_refs.into_iter().collect::<Vec<_>>();
     let plan_subject_refs = if source_subject_refs.is_empty() {
         vec![commitment_ref.clone()]
     } else {
@@ -3325,30 +3336,22 @@ fn assess_wake_attention<'a>(
             unhealthy_required_tool_ids.push(tool_id.clone());
             continue;
         }
-        let expected_subjects = checkpoint_observation
-            .source_subject_refs
-            .iter()
-            .filter(|subject_ref| !subject_ref.trim().is_empty())
-            .collect::<BTreeSet<_>>();
         let current = observations.iter().rev().find(|observation| {
             observation.call.tool_id == *tool_id
                 && observation.call.input_digest() == checkpoint_observation.input_digest
         });
         match current {
             Some(observation) => {
-                let current_subjects = observation
-                    .result
-                    .evidence
-                    .iter()
-                    .flat_map(|evidence| &evidence.atoms)
-                    .filter_map(|atom| atom.subject_ref.as_ref())
-                    .filter(|subject_ref| !subject_ref.trim().is_empty())
-                    .collect::<BTreeSet<_>>();
+                let current_subjects = observation_source_scope_subject_refs(observation);
+                let scope_matches = checkpoint_observation
+                    .source_subject_refs
+                    .as_ref()
+                    .zip(current_subjects.as_ref())
+                    .is_some_and(|(expected, current)| {
+                        expected.iter().all(|subject_ref| current.contains(subject_ref))
+                    });
                 if !observation_is_complete_and_fresh(observation, assessment_at)
-                    || expected_subjects.is_empty()
-                    || !expected_subjects
-                        .iter()
-                        .all(|subject_ref| current_subjects.contains(subject_ref))
+                    || !scope_matches
                 {
                     unhealthy_required_tool_ids.push(tool_id.clone());
                 }
@@ -3900,6 +3903,31 @@ fn observation_is_complete_and_fresh(
         })
 }
 
+fn observation_source_scope_subject_refs(
+    observation: &ToolObservation,
+) -> Option<Vec<String>> {
+    let tool_outcome_atoms = observation
+        .result
+        .evidence
+        .iter()
+        .flat_map(|evidence| &evidence.atoms)
+        .filter(|atom| matches!(&atom.assertion, EvidenceAssertion::ToolOutcome { .. }))
+        .collect::<Vec<_>>();
+    if tool_outcome_atoms.is_empty() {
+        return None;
+    }
+    Some(
+        tool_outcome_atoms
+            .into_iter()
+            .filter_map(|atom| atom.subject_ref.as_deref())
+            .filter(|subject_ref| !subject_ref.trim().is_empty())
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect(),
+    )
+}
+
 fn current_required_claims_have_same_turn_evidence(
     plan: &ResearchPlan,
     draft: &GroundedDraft,
@@ -4181,17 +4209,7 @@ fn prior_commitment_checkpoint(
                             tool_id: observation.call.tool_id.clone(),
                             input: observation.call.input.clone(),
                             input_digest: observation.call.input_digest(),
-                            source_subject_refs: observation
-                                .result
-                                .evidence
-                                .iter()
-                                .flat_map(|evidence| &evidence.atoms)
-                                .filter_map(|atom| atom.subject_ref.as_deref())
-                                .filter(|subject_ref| !subject_ref.trim().is_empty())
-                                .map(str::to_owned)
-                                .collect::<BTreeSet<_>>()
-                                .into_iter()
-                                .collect(),
+                            source_subject_refs: observation_source_scope_subject_refs(observation),
                             observed_at: observation
                                 .result
                                 .evidence
@@ -14221,7 +14239,7 @@ mod tests {
                 tool_id: current.call.tool_id.clone(),
                 input: current.call.input.clone(),
                 input_digest: current.call.input_digest(),
-                source_subject_refs: vec!["connector:alpha".into()],
+                source_subject_refs: Some(vec!["connector:alpha".into()]),
                 observed_at: Some("2026-07-31T00:00:00Z".into()),
                 state: ToolResultState::Succeeded,
                 complete: true,
@@ -14520,7 +14538,7 @@ mod tests {
                 tool_id: "connector.read".into(),
                 input: exact_stale.call.input.clone(),
                 input_digest: expected_digest,
-                source_subject_refs: vec!["connector:alpha".into()],
+                source_subject_refs: Some(vec!["connector:alpha".into()]),
                 observed_at: Some("2026-07-31T00:00:00Z".into()),
                 state: ToolResultState::Succeeded,
                 complete: true,
@@ -14573,23 +14591,21 @@ mod tests {
             vec!["connector.read"]
         );
 
-        let mut unbound_checkpoint = checkpoint.clone();
-        unbound_checkpoint.observations[0]
-            .source_subject_refs
-            .clear();
-        let unbound = assess_wake_attention(
+        let mut unscoped_checkpoint = checkpoint.clone();
+        unscoped_checkpoint.observations[0].source_subject_refs = Some(Vec::new());
+        let unscoped = assess_wake_attention(
             &awakened,
             &trigger,
-            Some(&unbound_checkpoint),
+            Some(&unscoped_checkpoint),
             std::slice::from_ref(&fresh_exact),
             assessment_at,
         )
         .unwrap();
         assert_eq!(
-            unbound.disposition,
-            WakeAttentionDisposition::VisibleUnhealthy
+            unscoped.disposition,
+            WakeAttentionDisposition::RoutineSilent
         );
-        assert_eq!(unbound.unhealthy_required_tool_ids, vec!["connector.read"]);
+        assert!(unscoped.unhealthy_required_tool_ids.is_empty());
 
         let mut legacy_checkpoint_observation =
             serde_json::to_value(&checkpoint.observations[0]).unwrap();
@@ -14599,11 +14615,25 @@ mod tests {
             .remove("source_subject_refs");
         let legacy_checkpoint_observation: CommitmentCheckpointObservation =
             serde_json::from_value(legacy_checkpoint_observation).unwrap();
-        assert!(legacy_checkpoint_observation.source_subject_refs.is_empty());
+        assert!(legacy_checkpoint_observation.source_subject_refs.is_none());
+        let mut legacy_checkpoint = checkpoint.clone();
+        legacy_checkpoint.observations[0] = legacy_checkpoint_observation;
+        let legacy = assess_wake_attention(
+            &awakened,
+            &trigger,
+            Some(&legacy_checkpoint),
+            std::slice::from_ref(&fresh_exact),
+            assessment_at,
+        )
+        .unwrap();
+        assert_eq!(
+            legacy.disposition,
+            WakeAttentionDisposition::VisibleUnhealthy
+        );
 
         let mut wrong_subject_checkpoint = checkpoint;
         wrong_subject_checkpoint.observations[0].source_subject_refs =
-            vec!["connector:other".into()];
+            Some(vec!["connector:other".into()]);
         let wrong_subject_observations = [fresh_exact];
         let wrong_subject = assess_wake_attention(
             &awakened,
@@ -14617,6 +14647,64 @@ mod tests {
             wrong_subject.disposition,
             WakeAttentionDisposition::VisibleUnhealthy
         );
+    }
+
+    #[test]
+    fn wake_scope_identity_ignores_changing_nested_result_membership() {
+        let assessment_at = OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap();
+        let mut awakened = awakened_session_with_checkpoint();
+        let prior_observation = awakened
+            .events
+            .iter_mut()
+            .find_map(|event| match &mut event.event {
+                SessionEvent::ToolInvoked { observation } => Some(observation),
+                _ => None,
+            })
+            .unwrap();
+        prior_observation.result.evidence[0].atoms.push(EvidenceAtom {
+            atom_ref: "atom:finding:old".into(),
+            subject_ref: Some("finding:old".into()),
+            assertion: EvidenceAssertion::Value {
+                predicate: "status".into(),
+                value: json!("open"),
+            },
+            observed_at: "2026-07-31T00:00:00Z".into(),
+            fresh_until: Some("2026-08-01T00:00:00Z".into()),
+            complete: true,
+        });
+        let trigger = SessionTurnTrigger::Wake {
+            commitment_ref: "commitment:scheduled-check".into(),
+            occurrence_ref: "occurrence:changing-membership".into(),
+        };
+        let checkpoint = prior_commitment_checkpoint(&awakened, &trigger).unwrap();
+        assert_eq!(
+            checkpoint.observations[0].source_subject_refs,
+            Some(vec!["connector:alpha".into()])
+        );
+
+        let mut current = recovering_observation_with_tool_outcome("2026-08-01T00:00:00Z");
+        current.result.evidence[0].atoms.push(EvidenceAtom {
+            atom_ref: "atom:finding:new".into(),
+            subject_ref: Some("finding:new".into()),
+            assertion: EvidenceAssertion::Value {
+                predicate: "status".into(),
+                value: json!("open"),
+            },
+            observed_at: "2026-07-31T00:01:00Z".into(),
+            fresh_until: Some("2026-08-01T00:00:00Z".into()),
+            complete: true,
+        });
+        let observations = [current];
+        let attention = assess_wake_attention(
+            &awakened,
+            &trigger,
+            Some(&checkpoint),
+            &observations,
+            assessment_at,
+        )
+        .unwrap();
+        assert_eq!(attention.disposition, WakeAttentionDisposition::RoutineSilent);
+        assert!(attention.unhealthy_required_tool_ids.is_empty());
     }
 
     #[test]

@@ -5221,7 +5221,6 @@ fn validate_synthetic_payload_names(
                 let candidate = &raw_word[start..end];
                 let word = candidate.trim_matches(|character: char| !character.is_alphanumeric());
                 let word_start = start + candidate.find(word).unwrap_or(0);
-                let word_end = word_start + word.len();
                 if code_owned_ranges
                     .iter()
                     .any(|(allowed_start, allowed_end)| {
