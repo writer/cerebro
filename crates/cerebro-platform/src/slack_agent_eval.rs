@@ -2308,8 +2308,23 @@ fn evaluation_fixture(
                 data: json!({"declared_families": 5, "families": ["controls", "tests", "evidence", "people", "audit activity"], "provider_admin_access": false}),
             },
             "source_runtime.inspect" | "source_runtime.overview" => EvaluationFixture {
-                summary: "The source runtime is enabled. Its last collection completed eight minutes ago with four of five expected families. The per-family receipt marks audit activity not_observed with no explicit error code; this remains partial, does not rule out an empty family, missing per-family scope, provider failure, or connector defect, and provides no evidence for ranking those causes.".into(),
-                data: json!({"enabled": true, "last_collection_minutes_ago": 8, "expected_families": 5, "observed_families": 4, "family_receipts": [{"family": "audit activity", "status": "not_observed", "explicit_error_code": null}], "coverage": "partial", "excluded_causes": [], "cause_ranking_supported": false}),
+                summary: "The source runtime is enabled. Its last collection completed eight minutes ago. Per-family receipts mark controls, tests, evidence, and people observed; audit activity is not_observed with no explicit error code. Coverage is four of five and partial. The receipt does not distinguish an empty family, missing per-family scope, provider failure, or connector defect, and supports no cause ranking.".into(),
+                data: json!({
+                    "enabled": true,
+                    "last_collection_minutes_ago": 8,
+                    "expected_families": 5,
+                    "observed_families": 4,
+                    "family_receipts": [
+                        {"family": "controls", "status": "observed", "explicit_error_code": null},
+                        {"family": "tests", "status": "observed", "explicit_error_code": null},
+                        {"family": "evidence", "status": "observed", "explicit_error_code": null},
+                        {"family": "people", "status": "observed", "explicit_error_code": null},
+                        {"family": "audit activity", "status": "not_observed", "explicit_error_code": null}
+                    ],
+                    "coverage": "partial",
+                    "excluded_causes": [],
+                    "cause_ranking_supported": false
+                }),
             },
             "graph.search" | "graph.expand" => EvaluationFixture {
                 summary: "The current bounded graph search found source-backed controls, tests, evidence, and people, but no audit-activity records or mappings in the searched scope. This does not establish that no independent configuration mapping exists.".into(),
@@ -5101,6 +5116,16 @@ fn conversation_behavior_runtime_passed(
         })
     };
     let succeeded_any = |tool_ids: &[&str]| tool_ids.iter().any(|tool_id| succeeded(tool_id));
+    let usable = |tool_id: &str| {
+        observations.iter().any(|observation| {
+            observation.tool_id == tool_id
+                && observation.complete
+                && matches!(
+                    observation.state,
+                    ToolResultState::Succeeded | ToolResultState::Partial
+                )
+        })
+    };
     match scenario.behavior {
         ConversationBehavior::NaturalOperationalSynthesis => succeeded_any(&[
             "source_runtime.inspect",
@@ -5112,11 +5137,9 @@ fn conversation_behavior_runtime_passed(
                 .seed_history
                 .iter()
                 .any(|message| message.role == ConversationRole::Assistant)
-                && succeeded_any(&[
-                    "source_catalog.inspect",
-                    "source_runtime.inspect",
-                    "source_runtime.overview",
-                ])
+                && succeeded("source_catalog.inspect")
+                && (usable("source_runtime.inspect") || usable("source_runtime.overview"))
+                && succeeded("graph.search")
         }
         ConversationBehavior::RetainedContextContinuation => {
             succeeded("slack.thread.read") || succeeded("slack.history.search")

@@ -2037,15 +2037,29 @@ pub async fn run_session_turn_recorded(
                         )
                     })
                 {
-                    record_draft_repair(
-                        &mut rejected_operating_drafts,
-                        &draft,
-                        &mut repairs,
-                        &mut repair_feedback,
-                        "Every answered operating plan requires at least one selected read and successful, complete, fresh same-turn evidence for every required planned claim. Use partial or blocked when that evidence is unavailable."
-                            .into(),
-                    );
-                    continue;
+                    let partial_evidence_covers_every_required_claim =
+                        plan.as_ref().is_some_and(|plan| {
+                            current_required_claims_have_same_turn_evidence_for_state(
+                                plan,
+                                &draft,
+                                &observations[current_turn_observation_start..],
+                                assessment_at,
+                                FinalState::Partial,
+                            )
+                        });
+                    if partial_evidence_covers_every_required_claim {
+                        draft.state = FinalState::Partial;
+                    } else {
+                        record_draft_repair(
+                            &mut rejected_operating_drafts,
+                            &draft,
+                            &mut repairs,
+                            &mut repair_feedback,
+                            "Every answered operating plan requires at least one selected read and successful, complete, fresh same-turn evidence for every required planned claim. Use partial or blocked when that evidence is unavailable."
+                                .into(),
+                        );
+                        continue;
+                    }
                 }
                 materialize_planned_follow_through(
                     &session,
@@ -3935,6 +3949,22 @@ fn current_required_claims_have_same_turn_evidence(
     observations: &[ToolObservation],
     assessment_at: OffsetDateTime,
 ) -> bool {
+    current_required_claims_have_same_turn_evidence_for_state(
+        plan,
+        draft,
+        observations,
+        assessment_at,
+        draft.state,
+    )
+}
+
+fn current_required_claims_have_same_turn_evidence_for_state(
+    plan: &ResearchPlan,
+    draft: &GroundedDraft,
+    observations: &[ToolObservation],
+    assessment_at: OffsetDateTime,
+    final_state: FinalState,
+) -> bool {
     let required = plan
         .claims
         .iter()
@@ -3965,7 +3995,7 @@ fn current_required_claims_have_same_turn_evidence(
                                                 evidence_record_supports_current_draft(
                                                     evidence,
                                                     observation.result.state,
-                                                    draft.state,
+                                                    final_state,
                                                     assessment_at,
                                                 ) && evidence.atoms.iter().any(|atom| {
                                                     atom.atom_ref == *atom_ref
@@ -13708,6 +13738,13 @@ mod tests {
             &expected_draft,
             std::slice::from_ref(&partial_observation),
             assessment,
+        ));
+        assert!(current_required_claims_have_same_turn_evidence_for_state(
+            &expected_plan,
+            &expected_draft,
+            std::slice::from_ref(&partial_observation),
+            assessment,
+            FinalState::Partial,
         ));
         let mut partial_draft = expected_draft.clone();
         partial_draft.state = FinalState::Partial;
