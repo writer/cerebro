@@ -9591,7 +9591,9 @@ mod tests {
     }
 
     fn awakened_session_with_checkpoint() -> AgentSession {
-        let awakened = awakened_session_with_checkpoint();
+        let mut awakened = session();
+        awakened.mission.commitments.push(scheduled_commitment());
+        awakened.mission.status = SessionStatus::WaitingForExternal;
         let mut prior_draft = draft();
         prior_draft.mission = awakened.mission.clone();
         let prior_observation = recovering_observation_with_tool_outcome("2026-08-01T00:00:00Z");
