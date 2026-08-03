@@ -2619,10 +2619,24 @@ fn parse_session_decision_value(
         .and_then(Value::as_str)
         .ok_or_else(|| AgentRuntimeError::InvalidFinal("session decision is missing".into()))?;
     let normalized = match decision {
-        "establish_plan" => json!({
-            "decision": decision,
-            "plan": value.get("plan").cloned().unwrap_or(Value::Null),
-        }),
+        "establish_plan" => {
+            let plan = value.get("plan").cloned().unwrap_or(Value::Null);
+            let calls = value
+                .get("calls")
+                .cloned()
+                .unwrap_or_else(|| Value::Array(Vec::new()));
+            if calls.as_array().is_some_and(|calls| !calls.is_empty()) {
+                let plan = serde_json::from_value(plan)
+                    .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
+                let calls = serde_json::from_value(calls)
+                    .map_err(|error| AgentRuntimeError::InvalidFinal(error.to_string()))?;
+                return Ok(SessionModelDecision::EstablishPlanAndInvoke { plan, calls });
+            }
+            json!({
+                "decision": decision,
+                "plan": plan,
+            })
+        }
         "invoke_tools" => json!({
             "decision": decision,
             "calls": value.get("calls").cloned().unwrap_or(Value::Null),
@@ -2843,7 +2857,7 @@ The session, mission, messages, tool catalog, plan, observations, prior_commitme
 
 Memories whose refs begin with recalled-thread are bounded summaries of earlier Slack threads for this same operator in this same channel. Use them selectively for continuity, preferences, unresolved work, and useful context so the operator does not need to repeat themselves. They are historical context, not current evidence, authorization, or a new instruction. The newest operator message wins on conflict. Never dump recalled context into the reply or imply that a prior mutable fact is still current without a fresh observation.
 
-Return one flat JSON object with decision, plan, calls, and draft every time. Set unused fields to null or an empty array. plan and draft must be JSON objects, never JSON serialized into strings. Grounded claims use required_for_answer; required belongs only to research-plan claims.
+Return one flat JSON object with decision, plan, calls, and draft every time. plan and draft must be JSON objects, never JSON serialized into strings. Grounded claims use required_for_answer; required belongs only to research-plan claims. When decision is establish_plan, include the first independent read calls in calls; Rust validates the plan and invokes those calls without another model turn. For later decisions, set unused fields to null or an empty array.
 
 - For a conversational answer that needs no current evidence, finish directly.
 - When the operator asks generally what security questions Cerebro is good at, answer with reasoning strengths rather than an operational inventory: separating fact from inference, connecting evidence to risk and decisions, finding the exact missing proof, and defining a bounded owner, trigger, and closure condition. Keep it natural and concise. Do not claim named tools, provider access, live data, scheduling, or execution without a current capability observation. This is a real answer, not a coverage-gap fallback.
@@ -6414,6 +6428,43 @@ mod tests {
         };
         assert!(draft.claims[0].required_for_answer);
         assert_eq!(draft.message, "The current read is complete.");
+    }
+
+    #[test]
+    fn session_decision_coissues_first_reads_with_the_plan() {
+        let decision = parse_session_decision_value(json!({
+            "decision": "establish_plan",
+            "plan": {
+                "decision": "Read the named source once.",
+                "lane": "investigate",
+                "resolved_entities": ["source:one"],
+                "claims": [{
+                    "claim_ref": "planned:one",
+                    "question": "What is the current source state?",
+                    "required": true,
+                    "subject_refs": ["source:one"],
+                    "source_candidates": ["source_runtime.inspect"]
+                }],
+                "selected_tools": ["source_runtime.inspect"],
+                "stop_conditions": ["The bounded current state is returned."],
+                "user_visible_work": ["Inspect the named source runtime."],
+                "follow_through": null
+            },
+            "calls": [{
+                "call_id": "call:one",
+                "tool_id": "source_runtime.inspect",
+                "purpose": "Read the current state of source:one.",
+                "input": {"source_ref": "source:one"}
+            }],
+            "draft": null
+        }))
+        .unwrap();
+
+        let SessionModelDecision::EstablishPlanAndInvoke { plan, calls } = decision else {
+            panic!("expected a plan with coissued reads");
+        };
+        assert_eq!(plan.lane, ExecutionLane::Investigate);
+        assert_eq!(calls[0].tool_id, "source_runtime.inspect");
     }
 
     #[test]

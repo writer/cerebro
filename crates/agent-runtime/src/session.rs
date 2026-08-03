@@ -599,9 +599,19 @@ pub struct MemoryUpdate {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
 pub enum SessionModelDecision {
-    EstablishPlan { plan: ResearchPlan },
-    InvokeTools { calls: Vec<ToolCall> },
-    Finish { draft: GroundedDraft },
+    EstablishPlan {
+        plan: ResearchPlan,
+    },
+    EstablishPlanAndInvoke {
+        plan: ResearchPlan,
+        calls: Vec<ToolCall>,
+    },
+    InvokeTools {
+        calls: Vec<ToolCall>,
+    },
+    Finish {
+        draft: GroundedDraft,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1706,6 +1716,7 @@ pub async fn run_session_turn_recorded(
     let mut critic_repairs = 0;
     let mut rejected_reviews = BTreeSet::new();
     let mut rejected_operating_drafts = BTreeSet::new();
+    let mut coissued_plan_calls = None;
 
     for _ in 0..MAX_SESSION_STEPS {
         if repairs > MAX_MODEL_REPAIRS {
@@ -1732,47 +1743,58 @@ pub async fn run_session_turn_recorded(
             )
             .await;
         }
-        let decision = match model
-            .advance(SessionModelTurn {
-                session: session.clone(),
-                trigger: trigger.clone(),
-                assessment_at: input.assessment_at.clone(),
-                requested_lane: input.requested_lane,
-                prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
-                wake_assessment: build_wake_assessment(
-                    &session,
-                    &trigger,
-                    prior_commitment_checkpoint.as_ref(),
-                    &observations,
-                    assessment_at,
-                ),
-                plan: plan.clone(),
-                available_tools: available_tools.clone(),
-                observations: observations.clone(),
-                repair_feedback: repair_feedback.clone(),
-            })
-            .await
-        {
-            Ok(decision) => decision,
-            Err(AgentRuntimeError::InvalidFinal(reason)) => {
-                repairs += 1;
-                repair_feedback = vec![format!(
-                    "The prior decision did not match the session contract: {reason}"
-                )];
-                continue;
+        let decision = if let Some(calls) = coissued_plan_calls.take() {
+            SessionModelDecision::InvokeTools { calls }
+        } else {
+            match model
+                .advance(SessionModelTurn {
+                    session: session.clone(),
+                    trigger: trigger.clone(),
+                    assessment_at: input.assessment_at.clone(),
+                    requested_lane: input.requested_lane,
+                    prior_commitment_checkpoint: prior_commitment_checkpoint.clone(),
+                    wake_assessment: build_wake_assessment(
+                        &session,
+                        &trigger,
+                        prior_commitment_checkpoint.as_ref(),
+                        &observations,
+                        assessment_at,
+                    ),
+                    plan: plan.clone(),
+                    available_tools: available_tools.clone(),
+                    observations: observations.clone(),
+                    repair_feedback: repair_feedback.clone(),
+                })
+                .await
+            {
+                Ok(decision) => decision,
+                Err(AgentRuntimeError::InvalidFinal(reason)) => {
+                    repairs += 1;
+                    repair_feedback = vec![format!(
+                        "The prior decision did not match the session contract: {reason}"
+                    )];
+                    continue;
+                }
+                Err(_) => {
+                    return repair_fallback_outcome(
+                        &session,
+                        &input,
+                        &trigger,
+                        plan.as_ref(),
+                        &observations,
+                        events,
+                        journal,
+                    )
+                    .await;
+                }
             }
-            Err(_) => {
-                return repair_fallback_outcome(
-                    &session,
-                    &input,
-                    &trigger,
-                    plan.as_ref(),
-                    &observations,
-                    events,
-                    journal,
-                )
-                .await;
+        };
+
+        let (decision, plan_calls) = match decision {
+            SessionModelDecision::EstablishPlanAndInvoke { plan, calls } => {
+                (SessionModelDecision::EstablishPlan { plan }, Some(calls))
             }
+            decision => (decision, None),
         };
 
         match decision {
@@ -1828,6 +1850,9 @@ pub async fn run_session_turn_recorded(
                 plan = Some(proposed);
                 repairs = 0;
                 repair_feedback.clear();
+                if let Some(calls) = plan_calls.filter(|calls| !calls.is_empty()) {
+                    coissued_plan_calls = Some(calls);
+                }
             }
             SessionModelDecision::InvokeTools { calls } => {
                 if critic_repairs > 0 {
@@ -11486,8 +11511,8 @@ mod tests {
     async fn one_loop_plans_reads_reviews_and_prepares_delivery() {
         let model = ScriptedSessionModel {
             decisions: Mutex::new(VecDeque::from([
-                SessionModelDecision::EstablishPlan { plan: plan() },
-                SessionModelDecision::InvokeTools {
+                SessionModelDecision::EstablishPlanAndInvoke {
+                    plan: plan(),
                     calls: vec![ToolCall {
                         call_id: "call:1".into(),
                         tool_id: "connector.read".into(),
