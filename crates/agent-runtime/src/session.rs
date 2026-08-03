@@ -3348,9 +3348,11 @@ fn assess_wake_attention<'a>(
                     .as_ref()
                     .zip(current_subjects.as_ref())
                     .is_some_and(|(expected, current)| {
-                        expected
+                        !expected
                             .iter()
-                            .all(|subject_ref| current.contains(subject_ref))
+                            .any(|subject_ref| subject_ref.trim().is_empty())
+                            && expected.iter().collect::<BTreeSet<_>>()
+                                == current.iter().collect::<BTreeSet<_>>()
                     });
                 if !observation_is_complete_and_fresh(observation, assessment_at) || !scope_matches
                 {
@@ -9608,6 +9610,22 @@ mod tests {
         current
     }
 
+    fn healthy_observation_with_tool_outcome(fresh_until: &str) -> ToolObservation {
+        let mut current = observation(true, Some(fresh_until));
+        current.result.evidence[0].atoms.push(EvidenceAtom {
+            atom_ref: "evidence:1#tool-outcome".into(),
+            subject_ref: Some("connector:alpha".into()),
+            assertion: EvidenceAssertion::ToolOutcome {
+                state: current.result.state,
+                summary: current.result.summary.clone(),
+            },
+            observed_at: "2026-07-31T00:01:00Z".into(),
+            fresh_until: Some(fresh_until.into()),
+            complete: true,
+        });
+        current
+    }
+
     fn awakened_session_with_checkpoint() -> AgentSession {
         let mut awakened = session();
         awakened.mission.commitments.push(scheduled_commitment());
@@ -11732,7 +11750,7 @@ mod tests {
             .unwrap_err();
         assert!(error.to_string().contains("connector.read"));
 
-        let current = observation(true, Some("2026-07-31T00:06:00Z"));
+        let current = healthy_observation_with_tool_outcome("2026-07-31T00:06:00Z");
         assert!(
             validate_wake_completion(&awakened, &completed, &trigger, assessment_at, &[current],)
                 .is_ok()
@@ -14333,7 +14351,7 @@ mod tests {
                 sequence: 7,
                 occurred_at: "2026-07-31T00:01:00Z".into(),
                 event: SessionEvent::ToolInvoked {
-                    observation: observation(true, Some("2026-07-31T00:06:00Z")),
+                    observation: healthy_observation_with_tool_outcome("2026-07-31T00:06:00Z"),
                 },
             },
         ]);
@@ -14379,7 +14397,9 @@ mod tests {
             &completed,
             &trigger,
             OffsetDateTime::parse("2026-07-31T00:01:00Z", &Rfc3339).unwrap(),
-            &[observation(true, Some("2026-07-31T00:06:00Z"))],
+            &[healthy_observation_with_tool_outcome(
+                "2026-07-31T00:06:00Z",
+            )],
         )
         .unwrap_err();
         assert!(error.to_string().contains("connector.read"));
@@ -14592,7 +14612,7 @@ mod tests {
 
         let mut unscoped_checkpoint = checkpoint.clone();
         unscoped_checkpoint.observations[0].source_subject_refs = Some(Vec::new());
-        let unscoped = assess_wake_attention(
+        let scoped_current_for_unscoped_checkpoint = assess_wake_attention(
             &awakened,
             &trigger,
             Some(&unscoped_checkpoint),
@@ -14601,10 +14621,57 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
+            scoped_current_for_unscoped_checkpoint.disposition,
+            WakeAttentionDisposition::VisibleUnhealthy
+        );
+        let mut fresh_unscoped = fresh_exact.clone();
+        for atom in fresh_unscoped
+            .result
+            .evidence
+            .iter_mut()
+            .flat_map(|evidence| &mut evidence.atoms)
+            .filter(|atom| matches!(&atom.assertion, EvidenceAssertion::ToolOutcome { .. }))
+        {
+            atom.subject_ref = None;
+        }
+        let unscoped = assess_wake_attention(
+            &awakened,
+            &trigger,
+            Some(&unscoped_checkpoint),
+            std::slice::from_ref(&fresh_unscoped),
+            assessment_at,
+        )
+        .unwrap();
+        assert_eq!(
             unscoped.disposition,
             WakeAttentionDisposition::RoutineSilent
         );
         assert!(unscoped.unhealthy_required_tool_ids.is_empty());
+
+        let mut widened_scope = fresh_exact.clone();
+        let mut additional_scope = widened_scope.result.evidence[0]
+            .atoms
+            .iter()
+            .find(|atom| matches!(&atom.assertion, EvidenceAssertion::ToolOutcome { .. }))
+            .unwrap()
+            .clone();
+        additional_scope.atom_ref = "atom:additional-scope".into();
+        additional_scope.subject_ref = Some("connector:beta".into());
+        widened_scope.result.evidence[0]
+            .atoms
+            .push(additional_scope);
+        let widened = assess_wake_attention(
+            &awakened,
+            &trigger,
+            Some(&checkpoint),
+            std::slice::from_ref(&widened_scope),
+            assessment_at,
+        )
+        .unwrap();
+        assert_eq!(
+            widened.disposition,
+            WakeAttentionDisposition::VisibleUnhealthy
+        );
 
         let mut legacy_checkpoint_observation =
             serde_json::to_value(&checkpoint.observations[0]).unwrap();
@@ -14924,8 +14991,7 @@ mod tests {
             commitment_ref: "commitment:scheduled-check".into(),
             occurrence_ref: "occurrence:delivery-boundary".into(),
         };
-        let mut current = observation(true, Some("2026-07-31T00:06:00Z"));
-        current.result.data = json!({"status": "recovering"});
+        let current = recovering_observation_with_tool_outcome("2026-07-31T00:06:00Z");
 
         let mut rescheduled = draft();
         rescheduled.delivery = DeliveryDisposition::Silent;
@@ -14983,7 +15049,7 @@ mod tests {
             occurrence_ref: "occurrence:typed-attention".into(),
         };
 
-        let mut regression = observation(true, Some("2026-07-31T00:06:00Z"));
+        let mut regression = recovering_observation_with_tool_outcome("2026-07-31T00:06:00Z");
         regression.result.data = json!({"status": "recovering", "regressed": true});
         let mut rescheduled = draft();
         rescheduled.mission = awakened.mission.clone();
@@ -15010,7 +15076,7 @@ mod tests {
             .is_ok()
         );
 
-        let accepted = observation(true, Some("2026-07-31T00:06:00Z"));
+        let accepted = healthy_observation_with_tool_outcome("2026-07-31T00:06:00Z");
         let mut accepted_but_still_open = draft();
         accepted_but_still_open.mission = awakened.mission.clone();
         accepted_but_still_open.mission.commitments[0].wake_at =
