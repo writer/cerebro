@@ -2031,6 +2031,7 @@ pub async fn run_session_turn_recorded(
                 repair_feedback.clear();
             }
             SessionModelDecision::Finish { mut draft } => {
+                normalize_message_from_grounded_claims(&mut draft);
                 let requested_operating_lane = matches!(
                     input.requested_lane,
                     Some(ExecutionLane::Lookup | ExecutionLane::Investigate | ExecutionLane::Act)
@@ -3692,6 +3693,17 @@ fn normalize_coverage_notice(draft: &mut GroundedDraft, _observations: &[ToolObs
             content: ClaimContent::CoverageBoundary { boundary },
         });
     }
+}
+
+fn normalize_message_from_grounded_claims(draft: &mut GroundedDraft) {
+    if draft.claims.is_empty() {
+        return;
+    }
+    draft.message = draft
+        .claims
+        .iter()
+        .map(|claim| claim.text.as_str())
+        .collect();
 }
 
 fn visible_coverage_boundary(message: &str, state: FinalState) -> Option<String> {
@@ -6179,10 +6191,9 @@ fn validate_conversational_synthesis(
         || contains_nominal_operational_assertion(body)
         || contains_new_named_ownership_principal(body, &cited_context)
         || contains_unverified_named_operational_assertion(body, &cited_context);
-    if crate::request_explicitly_requires_current_evidence(&newest_operator_message.1.text)
-        || (body_is_operational
-            && (!transforms_supplied_text
-                || !operational_transformation_is_source_bound(body, &cited_context)))
+    if (body_is_operational
+        && (!transforms_supplied_text
+            || !operational_transformation_is_source_bound(body, &cited_context)))
         || body.is_empty()
         || body.len() > MAX_CONVERSATIONAL_SYNTHESIS_BYTES
         || body.lines().count() > 6
@@ -11512,6 +11523,8 @@ mod tests {
 
     #[tokio::test]
     async fn one_loop_plans_reads_reviews_and_prepares_delivery() {
+        let mut candidate = draft();
+        candidate.message = format!("Unreviewed prefix. {}", candidate.message);
         let model = ScriptedSessionModel {
             decisions: Mutex::new(VecDeque::from([
                 SessionModelDecision::EstablishPlanAndInvoke {
@@ -11523,7 +11536,7 @@ mod tests {
                         input: json!({"connector_ref": "connector:alpha"}),
                     }],
                 },
-                SessionModelDecision::Finish { draft: draft() },
+                SessionModelDecision::Finish { draft: candidate },
             ])),
         };
         let outcome = run_session_turn(
@@ -12352,8 +12365,20 @@ mod tests {
         candidate.claims[0].required_for_answer = true;
         candidate.message = candidate.claims[0].text.clone();
         validate_grounded_draft(&synthesis_session, &candidate, &[], assessment).unwrap();
-
         let accepted = candidate.clone();
+
+        let mut correction_session = synthesis_session.clone();
+        correction_session.messages[0].text =
+            "No. That is another object list. Inspect the current source receipt instead.".into();
+        candidate.claims[0].text = "You're right—that was another object list.".into();
+        candidate.claims[0].content = ClaimContent::ConversationalSynthesis {
+            source_message_sequences: vec![1],
+            source_atom_refs: Vec::new(),
+        };
+        candidate.message = candidate.claims[0].text.clone();
+        validate_grounded_draft(&correction_session, &candidate, &[], assessment).unwrap();
+
+        candidate = accepted.clone();
         candidate.claims[0].planned_claim_ref = Some("claim:state".into());
         candidate.message = candidate.claims[0].text.clone();
         assert!(validate_grounded_draft(&synthesis_session, &candidate, &[], assessment).is_err());
