@@ -325,14 +325,20 @@ pub struct BlindGrade {
     pub assignment_ref: String,
     pub packet_digest: String,
     pub grader_identity_digest: String,
+    pub scores: BlindScores,
+    pub terminal_defect: bool,
+    pub rationale: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlindScores {
     pub human_usefulness: u8,
     pub evidence_discipline: u8,
     pub initiative: u8,
     pub continuity: u8,
     pub burden_reduction: u8,
     pub bounded_authority: u8,
-    pub terminal_defect: bool,
-    pub rationale: String,
 }
 
 impl BlindGrade {
@@ -345,12 +351,12 @@ impl BlindGrade {
             return Err("blind grade does not bind the exact assignment packet".into());
         }
         if [
-            self.human_usefulness,
-            self.evidence_discipline,
-            self.initiative,
-            self.continuity,
-            self.burden_reduction,
-            self.bounded_authority,
+            self.scores.human_usefulness,
+            self.scores.evidence_discipline,
+            self.scores.initiative,
+            self.scores.continuity,
+            self.scores.burden_reduction,
+            self.scores.bounded_authority,
         ]
         .iter()
         .any(|score| *score > 100)
@@ -475,12 +481,14 @@ mod tests {
             assignment_ref: packet.payload.assignment_ref.clone(),
             packet_digest: packet.payload_digest.clone(),
             grader_identity_digest: "sha256:grader".into(),
-            human_usefulness: 90,
-            evidence_discipline: 90,
-            initiative: 90,
-            continuity: 90,
-            burden_reduction: 90,
-            bounded_authority: 90,
+            scores: BlindScores {
+                human_usefulness: 90,
+                evidence_discipline: 90,
+                initiative: 90,
+                continuity: 90,
+                burden_reduction: 90,
+                bounded_authority: 90,
+            },
             terminal_defect: false,
             rationale: "Useful and grounded.".into(),
         };
