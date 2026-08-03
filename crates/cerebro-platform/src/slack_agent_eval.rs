@@ -2553,27 +2553,16 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         evaluation_mode,
         EvaluationSuiteMode::ConversationLab | EvaluationSuiteMode::AutonomyLab
     ) {
-        let requested_judge_model_id = env::var("CEREBRO_SLACK_AGENT_EVAL_JUDGE_MODEL")
-            .ok()
-            .filter(|value| value.contains(".anthropic.claude-opus-"));
-        let configured_judge = if let Some(judge_model_id) = requested_judge_model_id.as_ref() {
+        let judge_model_id = env::var("CEREBRO_SLACK_AGENT_EVAL_JUDGE_MODEL").map_err(|_| {
+            "conversation and autonomy evaluation require an explicitly configured independent judge"
+        })?;
+        if !judge_model_id.contains(".anthropic.claude-opus-") {
+            return Err("the independent evaluation judge must use AWS-hosted Claude Opus".into());
+        }
+        let judge = Arc::new(
             ConfiguredModel::amazon_bedrock(judge_model_id.clone())
                 .await
-                .ok()
-                .map(Arc::new)
-        } else {
-            None
-        };
-        let (judge_model_id, judge) = configured_judge.map_or_else(
-            || (model_id.clone(), model.clone()),
-            |judge| {
-                (
-                    requested_judge_model_id
-                        .clone()
-                        .expect("a configured judge retains its model ID"),
-                    judge,
-                )
-            },
+                .map_err(|error| format!("independent evaluation judge is unavailable: {error}"))?,
         );
         if evaluation_mode == EvaluationSuiteMode::AutonomyLab {
             return run_autonomy_lab(
@@ -5115,9 +5104,9 @@ fn conversation_suite_passed(
     full_suite: bool,
     targeted_regression_passed: bool,
     latency_gate_passed: bool,
-    _advisory_semantic_gate_passed: bool,
+    semantic_gate_passed: bool,
 ) -> bool {
-    full_suite && targeted_regression_passed && latency_gate_passed
+    full_suite && targeted_regression_passed && latency_gate_passed && semantic_gate_passed
 }
 
 fn conversation_behavior_runtime_passed(
@@ -8428,7 +8417,7 @@ mod tests {
         assert!(!conversation_suite_passed(false, true, true, true));
         assert!(!conversation_suite_passed(true, false, true, true));
         assert!(!conversation_suite_passed(true, true, false, true));
-        assert!(conversation_suite_passed(true, true, true, false));
+        assert!(!conversation_suite_passed(true, true, true, false));
     }
 
     #[test]
