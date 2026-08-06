@@ -72,7 +72,7 @@ use cerebro_security_lifecycle::{
     decode_protobuf_observation, finalize_indexed_query, prepare_indexed_query,
     project_observation, query_records_with_source,
 };
-use cerebro_source_catalog::{AuthModel, CatalogSummary, SourceCatalog};
+use cerebro_source_catalog::{AuthModel, CatalogSummary, ProjectionClass, SourceCatalog};
 use cerebro_source_runtime_next::{
     AwsSecretReadError, AwsSecretReader, AwsSecretValue, CatalogGraphMapper, CollectionRequest,
     CommittedSourceEvent, GraphMapper, GraphSink, HttpSourceConnector, ResolvedAuth, SourceRuntime,
@@ -1443,13 +1443,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("rebuild-lifecycle-projection") => rebuild_lifecycle_projection().await,
         Some("sync-source") => sync_source().await,
         Some("catalog-summary") => catalog_summary(),
+        Some("list-catalog-families") => list_catalog_families(),
         Some("compare-projection") => parity_command::compare_projection().await,
         Some("evaluate-family") => cutover_command::evaluate_family().await,
         Some("promote-family") => cutover_command::promote_family().await,
         Some("show-authority") => cutover_command::show_authority().await,
         Some("--help" | "-h") => {
             println!(
-                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-slack-authority|eval-slack-agent|serve-neo4j|serve-neo4j-consumer|consume-append-log|inspect-append-log|inspect-consumer-run|migrate-stores|rebuild-lifecycle-projection|sync-source|catalog-summary|compare-projection|evaluate-family|promote-family|show-authority>"
+                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-slack-authority|eval-slack-agent|serve-neo4j|serve-neo4j-consumer|consume-append-log|inspect-append-log|inspect-consumer-run|migrate-stores|rebuild-lifecycle-projection|sync-source|catalog-summary|list-catalog-families|compare-projection|evaluate-family|promote-family|show-authority>"
             );
             Ok(())
         }
@@ -3533,6 +3534,53 @@ fn catalog_summary() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// One catalog family rendered by `list-catalog-families`. The fields are the
+/// minimum an operator needs to drive per-family cutover over the existing
+/// `evaluate-family`, `promote-family`, and `show-authority` commands: the
+/// family address, its closed projection class, and whether the catalog marked
+/// it collection- and projection-authoritative.
+#[derive(Debug, Serialize)]
+struct CatalogFamilyRecord<'a> {
+    source_id: &'a str,
+    family_id: &'a str,
+    projection_class: ProjectionClass,
+    authoritative: bool,
+    projection_authoritative: bool,
+    can_be_authoritative: bool,
+}
+
+fn catalog_family_records(catalog: &SourceCatalog) -> Vec<CatalogFamilyRecord<'_>> {
+    let mut records = Vec::new();
+    for source in catalog.sources() {
+        let source_id = source.id();
+        for family in source.families() {
+            let class = family.projection().class();
+            records.push(CatalogFamilyRecord {
+                source_id,
+                family_id: family.id(),
+                projection_class: class,
+                authoritative: family.is_authoritative(),
+                projection_authoritative: family.is_projection_authoritative(),
+                can_be_authoritative: class.can_be_authoritative(),
+            });
+        }
+    }
+    records
+}
+
+fn list_catalog_families() -> Result<(), Box<dyn Error>> {
+    use std::io::Write;
+
+    let catalog = load_catalog()?;
+    let stdout = std::io::stdout();
+    let mut writer = std::io::BufWriter::new(stdout.lock());
+    for record in catalog_family_records(&catalog) {
+        serde_json::to_writer(&mut writer, &record)?;
+        writeln!(&mut writer)?;
+    }
+    Ok(())
+}
+
 fn load_catalog_summary() -> Result<CatalogSummary, Box<dyn Error>> {
     Ok(load_catalog()?.summary())
 }
@@ -3797,6 +3845,28 @@ mod tests {
     use super::*;
 
     const TEST_SHARED_SECRET: &str = "test-organizational-graph-secret-32-bytes";
+
+    #[test]
+    fn catalog_family_records_cover_every_compiled_family() {
+        let catalog = load_catalog().expect("checked-in catalog must load");
+        let records = catalog_family_records(&catalog);
+        assert!(
+            !records.is_empty(),
+            "catalog must compile at least one family"
+        );
+        for record in &records {
+            assert!(!record.source_id.is_empty(), "family missing source id");
+            assert!(!record.family_id.is_empty(), "family missing family id");
+            // `can_be_authoritative` is false only for the bespoke class.
+            assert_eq!(
+                record.can_be_authoritative,
+                !matches!(record.projection_class, ProjectionClass::Bespoke),
+                "can_be_authoritative must track the bespoke class for {}/{}",
+                record.source_id,
+                record.family_id,
+            );
+        }
+    }
 
     #[test]
     fn startup_installs_a_tls_crypto_provider() {
