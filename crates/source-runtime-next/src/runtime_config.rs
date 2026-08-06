@@ -10,7 +10,11 @@ const MAX_CONFIG_ENTRIES: usize = 256;
 const MAX_CONFIG_KEY_BYTES: usize = 128;
 const MAX_CONFIG_VALUE_BYTES: usize = 64 * 1024;
 const ENV_PREFIX: &str = "env:";
-const UNSUPPORTED_REFERENCE_PREFIXES: [&str; 4] = ["gsm:", "azkv:", "vault:", "infisical:"];
+/// Store-native reference prefixes that the compatibility runtime recognizes
+/// (`parseOpaqueReference`) but does not resolve natively. They have no Rust
+/// backend resolver and must be projected into `env:` references by deployment
+/// automation, matching the Go credential-store contract.
+const OPAQUE_REFERENCE_PREFIXES: [&str; 4] = ["gsm:", "azkv:", "vault:", "infisical:"];
 const CREDENTIAL_PREFIX: &str = "credential:";
 const AWS_SECRET_PREFIX: &str = "aws-sm:";
 
@@ -25,7 +29,8 @@ pub enum RuntimeConfigError {
     EmptySensitiveEnvironmentValue(String),
     InvalidCredentialReference(String),
     InvalidAwsSecretReference(String),
-    UnsupportedReference { key: String, prefix: &'static str },
+    NativeReferenceRequiresEnvProjection { key: String, prefix: &'static str },
+    InvalidOpaqueReference { key: String, prefix: &'static str },
 }
 
 impl fmt::Display for RuntimeConfigError {
@@ -65,9 +70,13 @@ impl fmt::Display for RuntimeConfigError {
                 formatter,
                 "stored source runtime config {key:?} has an invalid aws-sm reference"
             ),
-            Self::UnsupportedReference { key, prefix } => write!(
+            Self::NativeReferenceRequiresEnvProjection { key, prefix } => write!(
                 formatter,
-                "stored source runtime config {key:?} uses unsupported {prefix} reference"
+                "stored source runtime config {key:?} uses a native {prefix} reference with no Rust resolver; project it into an env: reference"
+            ),
+            Self::InvalidOpaqueReference { key, prefix } => write!(
+                formatter,
+                "stored source runtime config {key:?} has an invalid {prefix} reference"
             ),
         }
     }
@@ -80,8 +89,10 @@ impl Error for RuntimeConfigError {}
 /// Only the canonical `CEREBRO_SOURCE_<SOURCE>_<KEY>` name or an explicitly
 /// allowlisted name may be read. Query-like values such as `phrase=env:prod`
 /// remain literal unless their environment name is explicitly authorized.
-/// Other secret-store reference kinds fail closed until their Rust resolver is
-/// configured; callers cannot silently hand them to another runtime.
+/// Other secret-store reference kinds (`gsm:`, `azkv:`, `vault:`, `infisical:`)
+/// are recognized as native opaque references but have no Rust backend resolver;
+/// they fail closed with an env-projection requirement so callers cannot
+/// silently hand them to another runtime.
 pub fn resolve_environment_references(
     source_id: &str,
     values: &BTreeMap<String, String>,
@@ -142,11 +153,14 @@ pub fn resolve_environment_references(
             resolved.insert(key.clone(), value.clone());
             continue;
         }
-        if let Some(prefix) = UNSUPPORTED_REFERENCE_PREFIXES
-            .into_iter()
-            .find(|prefix| trimmed.starts_with(prefix))
-        {
-            return Err(RuntimeConfigError::UnsupportedReference {
+        if let Some((prefix, secret_id, _field)) = parse_opaque_reference(trimmed) {
+            if secret_id.is_empty() {
+                return Err(RuntimeConfigError::InvalidOpaqueReference {
+                    key: key.clone(),
+                    prefix,
+                });
+            }
+            return Err(RuntimeConfigError::NativeReferenceRequiresEnvProjection {
                 key: key.clone(),
                 prefix,
             });
@@ -177,6 +191,31 @@ pub fn parse_credential_reference(value: &str) -> Option<(&str, &str)> {
         return None;
     }
     Some((id, field))
+}
+
+/// Parse a store-native opaque reference (`gsm:`, `azkv:`, `vault:`,
+/// `infisical:`) the same way the compatibility runtime's `parseOpaqueReference`
+/// does: split the body into a secret id and an optional `#field`. These stores
+/// have no native Rust resolver; the caller must project them into `env:`
+/// references. The secret id is not character-validated here, matching the Go
+/// opaque parser, and is already bounded by the per-value length check. Returns
+/// `None` for values that are not one of the recognized opaque native prefixes.
+fn parse_opaque_reference(value: &str) -> Option<(&'static str, &str, Option<&str>)> {
+    let trimmed = value.trim();
+    let mut matched: Option<&'static str> = None;
+    for candidate in OPAQUE_REFERENCE_PREFIXES {
+        if trimmed.starts_with(candidate) {
+            matched = Some(candidate);
+            break;
+        }
+    }
+    let prefix = matched?;
+    let body = trimmed[prefix.len()..].trim();
+    let (secret_id, field) = match body.split_once('#') {
+        Some((secret_id, field)) => (secret_id.trim(), Some(field.trim())),
+        None => (body, None),
+    };
+    Some((prefix, secret_id, field))
 }
 
 fn validate_entry(key: &str, value: &str) -> Result<(), RuntimeConfigError> {
@@ -275,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn disallowed_and_unsupported_references_fail_without_exposing_values() {
+    fn disallowed_and_native_references_fail_without_exposing_values() {
         let disallowed = resolve_environment_references(
             "github",
             &BTreeMap::from([("token".to_owned(), "env:OTHER_TOKEN".to_owned())]),
@@ -304,7 +343,10 @@ mod tests {
             Some("credential:credential-id:token")
         );
 
-        let unsupported = resolve_environment_references(
+        // A well-formed native gsm: reference is recognized as a known opaque
+        // reference kind but has no Rust resolver; it fails closed with an
+        // env-projection requirement and never echoes the secret address.
+        let native = resolve_environment_references(
             "github",
             &BTreeMap::from([("token".to_owned(), "gsm:project/secret#token".to_owned())]),
             &BTreeSet::new(),
@@ -312,10 +354,86 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(
-            unsupported,
-            RuntimeConfigError::UnsupportedReference { prefix: "gsm:", .. }
+            native,
+            RuntimeConfigError::NativeReferenceRequiresEnvProjection { prefix: "gsm:", .. }
         ));
-        assert!(!unsupported.to_string().contains("project/secret#token"));
+        assert!(!native.to_string().contains("project/secret#token"));
+    }
+
+    #[test]
+    fn opaque_native_references_require_env_projection_without_exposing_values() {
+        for (prefix, reference) in [
+            ("gsm:", "gsm:projects/p/secrets/s/versions/latest#token"),
+            (
+                "azkv:",
+                "azkv:https://vault.vault.azure.net/secrets/token/value",
+            ),
+            ("vault:", "vault:secret/data/github#token"),
+            (
+                "infisical:",
+                "infisical://app.env.dev/PROJECT_NAME/github/TOKEN",
+            ),
+        ] {
+            let error = resolve_environment_references(
+                "github",
+                &BTreeMap::from([("token".to_owned(), reference.to_owned())]),
+                &BTreeSet::new(),
+                |_| None,
+            )
+            .unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    RuntimeConfigError::NativeReferenceRequiresEnvProjection { prefix: p, .. } if p == prefix
+                ),
+                "{reference} should require env projection"
+            );
+            // The secret address and field must never appear in operator output.
+            assert!(!error.to_string().contains(reference));
+            let without_field = reference
+                .split_once('#')
+                .map_or(reference, |(left, _)| left);
+            assert!(!error.to_string().contains(without_field));
+        }
+    }
+
+    #[test]
+    fn malformed_opaque_native_references_fail_with_distinct_error() {
+        for (prefix, reference) in [
+            ("gsm:", "gsm:"),
+            ("gsm:", "gsm:#token"),
+            ("azkv:", " azkv: "),
+            ("vault:", "vault:#password"),
+            ("infisical:", "infisical:"),
+        ] {
+            let error = resolve_environment_references(
+                "github",
+                &BTreeMap::from([("api_key".to_owned(), reference.to_owned())]),
+                &BTreeSet::new(),
+                |_| None,
+            )
+            .unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    RuntimeConfigError::InvalidOpaqueReference { prefix: p, .. } if p == prefix
+                ),
+                "{reference:?} should be an invalid opaque reference"
+            );
+            // A non-empty field after `#` is the only potentially sensitive
+            // fragment in a malformed reference; it must not appear in operator
+            // output. The prefix itself is not secret and is intentionally
+            // reported alongside the config key.
+            if let Some((_, field)) = reference.trim().split_once('#') {
+                let field = field.trim();
+                if !field.is_empty() {
+                    assert!(
+                        !error.to_string().contains(field),
+                        "field {field:?} leaked from {reference:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
