@@ -1448,9 +1448,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some("evaluate-family") => cutover_command::evaluate_family().await,
         Some("promote-family") => cutover_command::promote_family().await,
         Some("show-authority") => cutover_command::show_authority().await,
+        Some("evaluate-all-families") => cutover_command::evaluate_all_families().await,
         Some("--help" | "-h") => {
             println!(
-                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-slack-authority|eval-slack-agent|serve-neo4j|serve-neo4j-consumer|consume-append-log|inspect-append-log|inspect-consumer-run|migrate-stores|rebuild-lifecycle-projection|sync-source|catalog-summary|list-catalog-families|compare-projection|evaluate-family|promote-family|show-authority>"
+                "cerebro-platform <demo|serve|serve-demo|serve-neo4j-readonly|serve-slack-authority|eval-slack-agent|serve-neo4j|serve-neo4j-consumer|consume-append-log|inspect-append-log|inspect-consumer-run|migrate-stores|rebuild-lifecycle-projection|sync-source|catalog-summary|list-catalog-families|compare-projection|evaluate-family|promote-family|show-authority|evaluate-all-families>"
             );
             Ok(())
         }
