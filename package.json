@@ -19,8 +19,8 @@
     "typecheck:workspaces": "npm run typecheck --workspaces --if-present"
   },
   "overrides": {
-    "@hono/node-server": "2.0.11",
-    "fast-uri": "4.1.1",
+    "@hono/node-server": "2.1.0",
+    "fast-uri": "4.1.2",
     "postcss": "8.5.25",
     "sharp": "0.35.3"
   }
