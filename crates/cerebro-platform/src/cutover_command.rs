@@ -5,8 +5,10 @@ use std::{
 };
 
 use cerebro_organizational_store::{CutoverPolicy, PostgresLedger, ProjectionPromotionRequest};
+use cerebro_source_catalog::SourceCatalog;
+use serde::Serialize;
 
-use crate::{load_catalog, required_env};
+use crate::{CatalogFamilyFilter, catalog_family_records, load_catalog, required_env};
 
 fn promotion_request(
     tenant_id: String,
@@ -122,6 +124,186 @@ pub(crate) async fn show_authority() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Filtered catalog family scopes (`(source_id, family_id)`) for batch cutover.
+/// The tenant is supplied separately because the checked-in catalog is
+/// tenant-agnostic; it is not part of the family address.
+fn catalog_family_scopes(
+    catalog: &SourceCatalog,
+    filter: &CatalogFamilyFilter,
+) -> Vec<(String, String)> {
+    catalog_family_records(catalog)
+        .into_iter()
+        .filter(|record| filter.matches(record))
+        .map(|record| (record.source_id.to_owned(), record.family_id.to_owned()))
+        .collect()
+}
+
+/// Parsed arguments for `evaluate-all-families`: the catalog cohort filter plus
+/// the `--promote-ready` switch. `--promote-ready` is separated before the
+/// filter parse so the filter stays strict about unknown flags.
+struct EvaluateAllFamiliesArgs {
+    filter: CatalogFamilyFilter,
+    promote_ready: bool,
+}
+
+fn parse_evaluate_all_families_args(
+    arguments: impl Iterator<Item = String>,
+) -> Result<EvaluateAllFamiliesArgs, Box<dyn Error>> {
+    let mut filter_args = Vec::new();
+    let mut promote_ready = false;
+    for argument in arguments {
+        if argument == "--promote-ready" {
+            promote_ready = true;
+        } else {
+            filter_args.push(argument);
+        }
+    }
+    Ok(EvaluateAllFamiliesArgs {
+        filter: CatalogFamilyFilter::parse(filter_args.into_iter())?,
+        promote_ready,
+    })
+}
+
+/// One family's cutover outcome, serialized as one JSONL record. `allowed` is
+/// `None` when evaluation itself failed; `promoted` is true only when
+/// `--promote-ready` promoted an allowed family.
+#[derive(Debug, Serialize)]
+struct FamilyCutoverOutcome {
+    source_id: String,
+    family_id: String,
+    allowed: Option<bool>,
+    promoted: bool,
+    reasons: Vec<String>,
+    evidence_digest: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Default, Serialize)]
+struct CutoverBatchSummary {
+    tenant_id: String,
+    evaluated: usize,
+    ready: usize,
+    not_ready: usize,
+    errors: usize,
+    promoted: usize,
+}
+
+impl CutoverBatchSummary {
+    fn new(tenant_id: String) -> Self {
+        Self {
+            tenant_id,
+            ..Default::default()
+        }
+    }
+
+    fn record(&mut self, outcome: &FamilyCutoverOutcome) {
+        self.evaluated += 1;
+        match outcome.allowed {
+            Some(true) => self.ready += 1,
+            Some(false) => self.not_ready += 1,
+            None => self.errors += 1,
+        }
+        if outcome.promoted {
+            self.promoted += 1;
+        }
+    }
+}
+
+async fn evaluate_one_family(
+    ledger: &PostgresLedger,
+    catalog: &SourceCatalog,
+    tenant_id: &str,
+    source_id: &str,
+    family_id: &str,
+    evaluated_at_unix_ms: i64,
+    promote_ready: bool,
+) -> FamilyCutoverOutcome {
+    let mut outcome = FamilyCutoverOutcome {
+        source_id: source_id.to_owned(),
+        family_id: family_id.to_owned(),
+        allowed: None,
+        promoted: false,
+        reasons: Vec::new(),
+        evidence_digest: None,
+        error: None,
+    };
+    let request = match promotion_request(
+        tenant_id.to_owned(),
+        source_id.to_owned(),
+        family_id.to_owned(),
+        evaluated_at_unix_ms,
+    ) {
+        Ok(request) => request,
+        Err(error) => {
+            outcome.error = Some(error.to_string());
+            return outcome;
+        }
+    };
+    match ledger
+        .evaluate_projection_authority(catalog, &request)
+        .await
+    {
+        Ok(decision) => {
+            outcome.allowed = Some(decision.is_allowed());
+            outcome.reasons = decision.reasons().to_vec();
+            outcome.evidence_digest = Some(decision.evidence_digest().to_owned());
+            if promote_ready && decision.is_allowed() {
+                match ledger
+                    .evaluate_and_promote_projection_authority(catalog, &request)
+                    .await
+                {
+                    Ok(_) => outcome.promoted = true,
+                    Err(error) => outcome.error = Some(error.to_string()),
+                }
+            }
+        }
+        Err(error) => outcome.error = Some(error.to_string()),
+    }
+    outcome
+}
+
+/// Evaluate projection cutover authority for every family in a filtered catalog
+/// cohort for one tenant, emitting one JSONL outcome per family and a summary
+/// on stderr. With `--promote-ready`, families that pass the gate are promoted
+/// in the same pass. The tenant (`CEREBRO_TENANT_ID`) and ledger
+/// (`CEREBRO_POSTGRES_DSN`) come from the environment; the source/family cohort
+/// comes from the checked-in catalog, optionally narrowed by the same filters as
+/// `list-catalog-families`.
+pub(crate) async fn evaluate_all_families() -> Result<(), Box<dyn Error>> {
+    use std::io::Write;
+
+    let args = parse_evaluate_all_families_args(env::args().skip(2))?;
+    let tenant_id = required_env("CEREBRO_TENANT_ID")?;
+    let connection_string = required_env("CEREBRO_POSTGRES_DSN")?;
+    let catalog = load_catalog()?;
+    let ledger = PostgresLedger::connect_tls(&connection_string).await?;
+    ledger.migrate().await?;
+    let evaluated_at_unix_ms =
+        i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())?;
+
+    let scopes = catalog_family_scopes(&catalog, &args.filter);
+    let stdout = std::io::stdout();
+    let mut writer = std::io::BufWriter::new(stdout.lock());
+    let mut summary = CutoverBatchSummary::new(tenant_id);
+    for (source_id, family_id) in scopes {
+        let outcome = evaluate_one_family(
+            &ledger,
+            &catalog,
+            &summary.tenant_id,
+            &source_id,
+            &family_id,
+            evaluated_at_unix_ms,
+            args.promote_ready,
+        )
+        .await;
+        summary.record(&outcome);
+        serde_json::to_writer(&mut writer, &outcome)?;
+        writeln!(&mut writer)?;
+    }
+    eprintln!("{}", serde_json::to_string_pretty(&summary)?);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,5 +373,94 @@ mod tests {
         let missing =
             family_scope_identifier(None, None, "CEREBRO_TENANT_ID", "tenant").unwrap_err();
         assert!(missing.to_string().contains("CEREBRO_TENANT_ID"));
+    }
+
+    #[test]
+    fn catalog_family_scopes_applies_the_filter() {
+        let catalog = crate::load_catalog().expect("checked-in catalog must load");
+        let all = catalog_family_scopes(&catalog, &CatalogFamilyFilter::default());
+        assert!(!all.is_empty(), "catalog must compile at least one family");
+        assert!(
+            all.iter()
+                .all(|(source, family)| !source.is_empty() && !family.is_empty())
+        );
+        let filtered = catalog_family_scopes(
+            &catalog,
+            &CatalogFamilyFilter::parse(["--can-be-authoritative=false".to_owned()].into_iter())
+                .unwrap(),
+        );
+        assert!(
+            filtered.len() < all.len(),
+            "can_be_authoritative=false must narrow the cohort"
+        );
+    }
+
+    #[test]
+    fn parse_evaluate_all_families_args_separates_promote_ready() {
+        let args = parse_evaluate_all_families_args(
+            [
+                "--promote-ready".to_owned(),
+                "--authoritative=false".to_owned(),
+                "--projection-class=identity".to_owned(),
+            ]
+            .into_iter(),
+        )
+        .unwrap();
+        assert!(args.promote_ready);
+        assert_eq!(args.filter.authoritative, Some(false));
+        // --promote-ready with no filters is valid.
+        let bare =
+            parse_evaluate_all_families_args(["--promote-ready".to_owned()].into_iter()).unwrap();
+        assert!(bare.promote_ready);
+        assert_eq!(bare.filter, CatalogFamilyFilter::default());
+        // Unknown filter flags still fail closed (delegated to CatalogFamilyFilter::parse).
+        assert!(parse_evaluate_all_families_args(["--bogus".to_owned()].into_iter()).is_err());
+    }
+
+    #[test]
+    fn cutover_batch_summary_classifies_outcomes() {
+        let mut summary = CutoverBatchSummary::new("tenant-a".to_owned());
+        summary.record(&FamilyCutoverOutcome {
+            source_id: "s1".to_owned(),
+            family_id: "f1".to_owned(),
+            allowed: Some(true),
+            promoted: false,
+            reasons: Vec::new(),
+            evidence_digest: Some("sha256:1".to_owned()),
+            error: None,
+        });
+        summary.record(&FamilyCutoverOutcome {
+            source_id: "s2".to_owned(),
+            family_id: "f2".to_owned(),
+            allowed: Some(false),
+            promoted: false,
+            reasons: Vec::new(),
+            evidence_digest: Some("sha256:2".to_owned()),
+            error: None,
+        });
+        summary.record(&FamilyCutoverOutcome {
+            source_id: "s3".to_owned(),
+            family_id: "f3".to_owned(),
+            allowed: Some(true),
+            promoted: true,
+            reasons: Vec::new(),
+            evidence_digest: Some("sha256:3".to_owned()),
+            error: None,
+        });
+        summary.record(&FamilyCutoverOutcome {
+            source_id: "s4".to_owned(),
+            family_id: "f4".to_owned(),
+            allowed: None,
+            promoted: false,
+            reasons: Vec::new(),
+            evidence_digest: None,
+            error: Some("ledger unavailable".to_owned()),
+        });
+        assert_eq!(summary.tenant_id, "tenant-a");
+        assert_eq!(summary.evaluated, 4);
+        assert_eq!(summary.ready, 2);
+        assert_eq!(summary.not_ready, 1);
+        assert_eq!(summary.errors, 1);
+        assert_eq!(summary.promoted, 1);
     }
 }
