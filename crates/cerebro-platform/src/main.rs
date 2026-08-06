@@ -3539,7 +3539,7 @@ fn catalog_summary() -> Result<(), Box<dyn Error>> {
 /// `evaluate-family`, `promote-family`, and `show-authority` commands: the
 /// family address, its closed projection class, and whether the catalog marked
 /// it collection- and projection-authoritative.
-#[derive(Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize)]
 struct CatalogFamilyRecord<'a> {
     source_id: &'a str,
     family_id: &'a str,
@@ -3568,15 +3568,100 @@ fn catalog_family_records(catalog: &SourceCatalog) -> Vec<CatalogFamilyRecord<'_
     records
 }
 
+/// Operator-selected filters for `list-catalog-families`. Each field is
+/// optional; `None` means the field does not restrict the output. This lets an
+/// operator target a cutover cohort (for example only not-yet-authoritative
+/// identity/resource families) instead of enumerating every compiled family.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct CatalogFamilyFilter {
+    projection_classes: Option<BTreeSet<ProjectionClass>>,
+    authoritative: Option<bool>,
+    can_be_authoritative: Option<bool>,
+}
+
+impl CatalogFamilyFilter {
+    /// Parse `--projection-class=<class>`, `--authoritative=<bool>`, and
+    /// `--can-be-authoritative=<bool>` flags from the arguments after the
+    /// subcommand. `--projection-class` may repeat to select multiple classes.
+    /// Unknown flags or missing values fail closed.
+    fn parse(arguments: impl Iterator<Item = String>) -> Result<Self, Box<dyn Error>> {
+        let mut filter = Self::default();
+        for argument in arguments {
+            let (flag, value) = match argument.split_once('=') {
+                Some((flag, value)) => (flag, Some(value)),
+                None => (argument.as_str(), None),
+            };
+            match flag {
+                "--projection-class" => {
+                    let value = value.ok_or("--projection-class requires =<class>")?;
+                    let class = parse_projection_class(value)?;
+                    filter
+                        .projection_classes
+                        .get_or_insert_with(BTreeSet::new)
+                        .insert(class);
+                }
+                "--authoritative" => {
+                    let value = value.ok_or("--authoritative requires =<bool>")?;
+                    filter.authoritative = Some(parse_bool(value, "--authoritative")?);
+                }
+                "--can-be-authoritative" => {
+                    let value = value.ok_or("--can-be-authoritative requires =<bool>")?;
+                    filter.can_be_authoritative =
+                        Some(parse_bool(value, "--can-be-authoritative")?);
+                }
+                other => {
+                    return Err(format!("unknown list-catalog-families flag {other:?}").into());
+                }
+            }
+        }
+        Ok(filter)
+    }
+
+    fn matches(&self, record: &CatalogFamilyRecord<'_>) -> bool {
+        self.projection_classes
+            .as_ref()
+            .is_none_or(|classes| classes.contains(&record.projection_class))
+            && self
+                .authoritative
+                .is_none_or(|required| record.authoritative == required)
+            && self
+                .can_be_authoritative
+                .is_none_or(|required| record.can_be_authoritative == required)
+    }
+}
+
+fn parse_projection_class(value: &str) -> Result<ProjectionClass, Box<dyn Error>> {
+    match value.trim() {
+        "identity" => Ok(ProjectionClass::Identity),
+        "access" => Ok(ProjectionClass::Access),
+        "resource" => Ok(ProjectionClass::Resource),
+        "finding" => Ok(ProjectionClass::Finding),
+        "activity" => Ok(ProjectionClass::Activity),
+        "bespoke" => Ok(ProjectionClass::Bespoke),
+        other => Err(format!("unknown projection class {other:?}").into()),
+    }
+}
+
+fn parse_bool(value: &str, flag: &str) -> Result<bool, Box<dyn Error>> {
+    match value.trim() {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => Err(format!("{flag} requires =true or =false").into()),
+    }
+}
+
 fn list_catalog_families() -> Result<(), Box<dyn Error>> {
     use std::io::Write;
 
+    let filter = CatalogFamilyFilter::parse(env::args().skip(2))?;
     let catalog = load_catalog()?;
     let stdout = std::io::stdout();
     let mut writer = std::io::BufWriter::new(stdout.lock());
     for record in catalog_family_records(&catalog) {
-        serde_json::to_writer(&mut writer, &record)?;
-        writeln!(&mut writer)?;
+        if filter.matches(&record) {
+            serde_json::to_writer(&mut writer, &record)?;
+            writeln!(&mut writer)?;
+        }
     }
     Ok(())
 }
@@ -3866,6 +3951,127 @@ mod tests {
                 record.family_id,
             );
         }
+    }
+
+    #[test]
+    fn catalog_family_filter_parses_and_matches() {
+        let filter = CatalogFamilyFilter::parse(
+            [
+                "--projection-class=identity",
+                "--projection-class=access",
+                "--authoritative=false",
+            ]
+            .into_iter()
+            .map(String::from),
+        )
+        .unwrap();
+        assert_eq!(
+            filter.projection_classes,
+            Some(BTreeSet::from([
+                ProjectionClass::Identity,
+                ProjectionClass::Access
+            ])),
+        );
+        assert_eq!(filter.authoritative, Some(false));
+        assert!(filter.can_be_authoritative.is_none());
+
+        let matching = CatalogFamilyRecord {
+            source_id: "s",
+            family_id: "f",
+            projection_class: ProjectionClass::Identity,
+            authoritative: false,
+            projection_authoritative: false,
+            can_be_authoritative: true,
+        };
+        assert!(
+            filter.matches(&matching),
+            "identity non-authoritative matches"
+        );
+
+        let wrong_class = CatalogFamilyRecord {
+            projection_class: ProjectionClass::Resource,
+            ..matching
+        };
+        assert!(
+            !filter.matches(&wrong_class),
+            "resource is filtered out by class"
+        );
+
+        let wrong_authority = CatalogFamilyRecord {
+            authoritative: true,
+            ..matching
+        };
+        assert!(
+            !filter.matches(&wrong_authority),
+            "authoritative is filtered out"
+        );
+
+        // Unknown flags and bad values fail closed.
+        assert!(CatalogFamilyFilter::parse(["--bogus"].into_iter().map(String::from)).is_err());
+        assert!(
+            CatalogFamilyFilter::parse(["--projection-class=bogus".to_owned()].into_iter())
+                .is_err()
+        );
+        assert!(
+            CatalogFamilyFilter::parse(["--authoritative=maybe".to_owned()].into_iter()).is_err()
+        );
+        assert!(CatalogFamilyFilter::parse(["--projection-class".to_owned()].into_iter()).is_err());
+    }
+
+    #[test]
+    fn catalog_family_filter_authoritative_partitions_the_catalog() {
+        let catalog = load_catalog().expect("checked-in catalog must load");
+        let records = catalog_family_records(&catalog);
+        let authoritative =
+            CatalogFamilyFilter::parse(["--authoritative=true".to_owned()].into_iter()).unwrap();
+        let non_authoritative =
+            CatalogFamilyFilter::parse(["--authoritative=false".to_owned()].into_iter()).unwrap();
+        let yes: Vec<_> = records
+            .iter()
+            .filter(|r| authoritative.matches(r))
+            .collect();
+        let no: Vec<_> = records
+            .iter()
+            .filter(|r| non_authoritative.matches(r))
+            .collect();
+        assert!(
+            yes.iter().all(|r| r.authoritative),
+            "authoritative=true keeps only authoritative"
+        );
+        assert!(
+            no.iter().all(|r| !r.authoritative),
+            "authoritative=false keeps only non-authoritative"
+        );
+        assert_eq!(
+            yes.len() + no.len(),
+            records.len(),
+            "authoritative filter must partition the catalog"
+        );
+    }
+
+    #[test]
+    fn catalog_family_filter_can_be_authoritative_false_selects_only_bespoke() {
+        let catalog = load_catalog().expect("checked-in catalog must load");
+        let records = catalog_family_records(&catalog);
+        let filter =
+            CatalogFamilyFilter::parse(["--can-be-authoritative=false".to_owned()].into_iter())
+                .unwrap();
+        let matching: Vec<_> = records.iter().filter(|r| filter.matches(r)).collect();
+        let bespoke: Vec<_> = records
+            .iter()
+            .filter(|r| matches!(r.projection_class, ProjectionClass::Bespoke))
+            .collect();
+        assert_eq!(
+            matching.len(),
+            bespoke.len(),
+            "can_be_authoritative=false selects exactly the bespoke families"
+        );
+        assert!(
+            matching
+                .iter()
+                .all(|r| matches!(r.projection_class, ProjectionClass::Bespoke)),
+            "can_be_authoritative=false selects only bespoke families"
+        );
     }
 
     #[test]
