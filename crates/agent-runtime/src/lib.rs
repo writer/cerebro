@@ -497,9 +497,15 @@ pub struct FinalDraft {
 /// Next operating action selected by the model.
 pub enum ModelDecision {
     /// Invoke one cataloged tool and return its observation to the model.
-    InvokeTool { call: ToolCall },
+    InvokeTool {
+        /// Exact call the runtime must validate before dispatch.
+        call: ToolCall,
+    },
     /// Stop operating and submit a structured final draft for critique.
-    Finish { draft: FinalDraft },
+    Finish {
+        /// Candidate response subject to grounding and presentation validation.
+        draft: FinalDraft,
+    },
 }
 
 #[derive(Clone, Debug, Serialize)]

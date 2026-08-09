@@ -18,9 +18,13 @@ use crate::{
     ToolEffectClass, ToolObservation, ToolResult, ToolResultState,
 };
 
+/// Schema discriminator for a persisted [`AgentSession`].
 pub const AGENT_SESSION_V2: &str = "agent-session/v2";
+/// Schema discriminator for an append-only [`SessionEventRecord`].
 pub const AGENT_SESSION_EVENT_V2: &str = "agent-session-event/v2";
+/// Schema discriminator for structured evidence supplied by an authoritative tool.
 pub const AGENT_SEMANTIC_EVIDENCE_V1: &str = "agent-semantic-evidence/v1";
+/// Maximum number of durable memories retained in a session snapshot.
 pub const MAX_SESSION_MEMORIES: usize = 128;
 
 const MAX_PLAN_CLAIMS: usize = 16;
@@ -48,277 +52,468 @@ const MAX_SEMANTIC_SEARCH_LIMIT: u32 = 10_000;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Lifecycle state of the session's mission as a whole.
 pub enum SessionStatus {
+    /// Work can continue without a new prerequisite.
     Active,
+    /// Progress requires new information or a decision from the operator.
     WaitingForUser,
+    /// Progress depends on a system, person, or scheduled observation outside Cerebro.
     WaitingForExternal,
+    /// Every accepted mission criterion has been satisfied or explicitly closed.
     Completed,
+    /// A known impediment prevents progress and no safe next action is available.
     Blocked,
+    /// The operator or owning workflow intentionally ended the mission.
     Cancelled,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Lifecycle state of one durable commitment.
 pub enum CommitmentStatus {
+    /// The commitment is accepted but execution has not begun.
     Planned,
+    /// Cerebro is actively working on the commitment.
     InProgress,
+    /// A recorded prerequisite or future observation must arrive before proceeding.
     Waiting,
+    /// The commitment's acceptance criteria have been verified.
     Completed,
+    /// A recorded impediment prevents the next action.
     Blocked,
+    /// The commitment was intentionally withdrawn.
     Cancelled,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Party responsible for advancing a commitment or open loop.
 pub enum WorkOwner {
+    /// Cerebro owns the next action and must preserve follow-through.
     Cerebro,
+    /// The operator owns the next action or decision.
     User,
+    /// A named external actor or system owns the next action.
     External,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Durable statement of the session's objective, scope, obligations, and open work.
 pub struct MissionState {
+    /// Stable identifier used to correlate mission revisions and events.
     pub mission_ref: String,
+    /// Concrete task Cerebro is currently responsible for performing.
     pub objective: String,
+    /// Observable end state that distinguishes success from activity.
     pub desired_outcome: String,
+    /// Entities, systems, repositories, or time windows included in the mission.
     pub resolved_scope: Vec<String>,
+    /// Assumptions used to resolve ambiguity; these remain visible for correction.
     pub scope_assumptions: Vec<String>,
+    /// Conditions that must be evidenced before the mission can be completed.
     pub acceptance_criteria: Vec<String>,
+    /// Explicit promises whose lifecycle Cerebro must continue to own.
     pub commitments: Vec<Commitment>,
+    /// Unresolved work that matters but has not become a Cerebro commitment.
     pub open_loops: Vec<OpenLoop>,
+    /// Current lifecycle state of the mission as a whole.
     pub status: SessionStatus,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// A durable, owned promise to perform work and verify a concrete outcome.
 pub struct Commitment {
+    /// Stable identifier referenced by wake events, claims, and checkpoints.
     pub commitment_ref: String,
+    /// Operator-readable description of the promised result.
     pub summary: String,
+    /// Party responsible for the next action.
     pub owner: WorkOwner,
+    /// Current lifecycle state of the promise.
     pub status: CommitmentStatus,
+    /// Smallest concrete action that advances the commitment, when known.
     pub next_action: Option<String>,
+    /// Recorded reason progress cannot continue, present when blocked or waiting.
     pub blocker: Option<String>,
+    /// Conditions that must be independently observed before completion.
     pub acceptance_criteria: Vec<String>,
+    /// Durable identifiers for outputs, receipts, or external records produced so far.
     pub artifact_refs: Vec<String>,
+    /// Tool identifiers whose fresh observations are required at the next checkpoint.
     #[serde(default)]
     pub required_tool_ids: Vec<String>,
+    /// Machine-checkable rules deciding whether a wake is silent or user-visible.
     #[serde(default)]
     pub attention_policy: Option<CommitmentAttentionPolicy>,
+    /// RFC 3339 time for the next scheduled assessment, if one is required.
     pub wake_at: Option<String>,
+    /// Description of the observation that will prove completion.
     pub verification: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Observation rules that turn a scheduled checkpoint into a delivery decision.
 pub struct CommitmentAttentionPolicy {
+    /// Conditions that must all match before the commitment is accepted as complete.
     pub acceptance_all: Vec<ObservationCondition>,
+    /// Conditions where any match warrants an immediate visible alert.
     pub alert_any: Vec<ObservationCondition>,
+    /// Fields whose scalar change since the prior checkpoint warrants visibility.
     #[serde(default)]
     pub notify_on_change: Vec<ObservationCondition>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Exact comparison against a value returned by a particular tool.
 pub struct ObservationCondition {
+    /// Identifier of the tool observation to inspect.
     pub tool_id: String,
+    /// JSON Pointer selecting the value within the observation data.
     pub data_pointer: String,
+    /// Value that must compare equal after JSON Pointer resolution.
     pub equals: Value,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Unresolved mission work tracked without implying that Cerebro owns execution.
 pub struct OpenLoop {
+    /// Stable identifier used by retained-plan grounded claims.
     pub open_loop_ref: String,
+    /// Operator-readable description of the unresolved matter.
     pub summary: String,
+    /// Party responsible for moving the loop forward.
     pub owner: WorkOwner,
+    /// Concrete next action, if it is currently known.
     pub next_action: Option<String>,
+    /// Dependency preventing progress, if any.
     pub blocked_by: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Question the plan must answer with an explicitly grounded claim.
 pub struct PlannedClaim {
+    /// Stable identifier that finished claims use to prove plan coverage.
     pub claim_ref: String,
+    /// Factual or decision question to resolve.
     pub question: String,
+    /// Whether the turn may finish without resolving this claim.
     pub required: bool,
+    /// Canonical subjects whose evidence can answer the question.
     #[serde(default)]
     pub subject_refs: Vec<String>,
+    /// Candidate authoritative sources the model expects to consult.
     pub source_candidates: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Bounded execution plan established before tool use or final synthesis.
 pub struct ResearchPlan {
+    /// Concise explanation of why this plan and lane fit the request.
     pub decision: String,
+    /// Maximum authority/effect lane the planned work requires.
     pub lane: ExecutionLane,
+    /// Canonical entities resolved from operator language.
     pub resolved_entities: Vec<String>,
+    /// Evidence questions that bound the investigation.
     pub claims: Vec<PlannedClaim>,
+    /// Tool identifiers selected from the supplied catalog.
     pub selected_tools: Vec<String>,
+    /// Conditions that end collection before unnecessary calls are made.
     pub stop_conditions: Vec<String>,
+    /// Work descriptions safe to expose as progress to the operator.
     pub user_visible_work: Vec<String>,
+    /// Durable follow-through to create when this turn cannot complete the outcome.
     #[serde(default)]
     pub follow_through: Option<PlannedFollowThrough>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Model-proposed future observation contract validated before it is persisted.
 pub struct PlannedFollowThrough {
+    /// Stable commitment identifier to create or update.
     pub commitment_ref: String,
+    /// Tools that must return observations at every scheduled checkpoint.
     pub required_tool_ids: Vec<String>,
+    /// Human-readable conditions for verified completion.
     pub acceptance_criteria: Vec<String>,
+    /// Action Cerebro will take after the next observation.
     pub next_action: String,
+    /// Machine-readable rules controlling completion and user notification.
     pub attention_policy: CommitmentAttentionPolicy,
+    /// Delay from turn completion to the next scheduled assessment.
     pub check_after_seconds: u32,
+    /// Description of how fresh observations establish the outcome.
     pub verification: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Source coverage state for a field that may be absent from a receipt.
 pub enum CoverageState {
+    /// The source returned a value for the field in the bounded observation.
     Observed,
+    /// The source response was valid and specifically omitted or withheld the field.
     ExplicitlyNotReturned,
+    /// The field does not apply to the observed subject or operation.
     NotApplicable,
+    /// The available evidence cannot establish whether the field has a value.
     Unknown,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Segregated responsibility that may be bound to a principal by source evidence.
 pub enum AuthorityDuty {
+    /// Owns changes that correct an identified condition.
     Remediation,
+    /// May authorize a proposed effect or state transition.
     Approval,
+    /// May perform the authorized effect.
     Execution,
+    /// Independently establishes whether the expected result occurred.
     Verification,
+    /// Administers the external provider where the resource lives.
     ProviderAdministration,
+    /// Owns collection or publication of authoritative evidence.
     Evidence,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Kind of identity named by an authority binding.
 pub enum AuthorityPrincipalKind {
+    /// An individual human identity.
     Person,
+    /// A group with shared responsibility.
     Team,
+    /// A workload or automation identity.
     Service,
+    /// An assumable organizational or provider role.
     Role,
+    /// A party outside the tenant's directly managed identity system.
     External,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Canonical identity that may hold one authority duty for a subject.
 pub struct AuthorityPrincipal {
+    /// Stable provider or tenant identifier; never infer this from display text.
     pub principal_ref: String,
+    /// Human-readable name supplied by the source, when available.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// Identity category needed to interpret the reference correctly.
     pub kind: AuthorityPrincipalKind,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, tag = "state", rename_all = "snake_case")]
+/// Evidence-backed state of one duty-to-principal binding.
 pub enum AuthorityBindingState {
-    Bound { principal: AuthorityPrincipal },
+    /// Exactly one authoritative binding was observed.
+    Bound {
+        /// Canonical identity observed in the binding.
+        principal: AuthorityPrincipal,
+    },
+    /// The source says a binding exists but did not return its stable identity.
     PresentIdentityNotReturned,
+    /// No authoritative observation of the binding was available.
     NotObserved,
-    Conflicting { principals: Vec<AuthorityPrincipal> },
+    /// The source returned incompatible or multiple bindings that cannot be collapsed.
+    Conflicting {
+        /// Distinct canonical identities returned by the source.
+        principals: Vec<AuthorityPrincipal>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Strength and direction of evidence relating a candidate to an outcome.
 pub enum CausalCandidateState {
+    /// Evidence establishes the candidate as causal under the source's standard.
     Established,
+    /// Evidence materially supports the candidate but does not establish causality.
     Supported,
+    /// Observations do not contradict the candidate but provide weak discrimination.
     ConsistentWith,
+    /// Evidence is sufficient to reject the candidate for this outcome.
     RuledOut,
+    /// Available evidence cannot distinguish this candidate from alternatives.
     Undistinguished,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// One explicit explanation evaluated in a causal assessment.
 pub struct CausalCandidate {
+    /// Stable identifier referenced by [`CausalRanking`].
     pub candidate_ref: String,
+    /// Operator-readable description of the candidate explanation.
     pub label: String,
+    /// Evidence-supported assessment state.
     pub state: CausalCandidateState,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, tag = "state", rename_all = "snake_case")]
+/// Whether causal candidates can be ordered by the available evidence.
 pub enum CausalRanking {
+    /// The evidence does not support an ordering.
     Unranked,
-    Ranked { ordered_candidate_refs: Vec<String> },
+    /// Strongest-to-weakest candidate references, each naming a supplied candidate.
+    Ranked {
+        /// Every candidate reference exactly once, strongest evidence first.
+        ordered_candidate_refs: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, tag = "scope", rename_all = "snake_case")]
+/// Boundary against which a search result's completeness must be interpreted.
 pub enum SearchScope {
+    /// Direct lookup of one canonical subject.
     ExactSubject {
+        /// Canonical subject requested from the source.
         subject_ref: String,
     },
+    /// Query whose limit or truncation may prevent a complete negative conclusion.
     BoundedQuery {
+        /// Digest of the normalized query input, excluding secret values.
         input_digest: String,
+        /// Maximum number of results requested.
         limit: u32,
+        /// Number of results actually returned.
         returned: u32,
+        /// Whether the source reported additional unreturned results.
         truncated: bool,
     },
+    /// Exhaustive enumeration of a named finite source scope.
     CompleteSet {
+        /// Stable identifier for the enumerated collection boundary.
         scope_ref: String,
+        /// Number of members returned by the complete enumeration.
         returned: u32,
     },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, tag = "result", rename_all = "snake_case")]
+/// Outcome of searching within an explicitly described [`SearchScope`].
 pub enum SearchCoverageResult {
-    Found { count: u32 },
+    /// Matching records were returned.
+    Found {
+        /// Positive number of matching records within the declared scope.
+        count: u32,
+    },
+    /// No match was returned; meaningful only with a sufficiently complete scope.
     NoMatch,
+    /// Some results were obtained but coverage is insufficient for a complete conclusion.
     Partial,
-    Failed { error_kind: String },
+    /// The source could not complete the search.
+    Failed {
+        /// Bounded machine-readable source failure category.
+        error_kind: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Whether a concrete provider event is mapped into a normalized event family.
 pub enum EventFamilyMembershipState {
+    /// A configured or authoritative mapping includes the event.
     Mapped,
+    /// A complete mapping explicitly excludes the event.
     NotMapped,
+    /// Mapping coverage was not observed well enough to decide.
     Unverified,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, tag = "state", rename_all = "snake_case")]
+/// Whether a collection pipeline can currently see a typed event in a window.
 pub enum CollectionVisibilityState {
-    Observed { count: u32 },
-    LegitimatelyEmpty { complete_scope_ref: String },
+    /// Events were observed, with the source-reported count.
+    Observed {
+        /// Positive number of matching events observed in the window.
+        count: u32,
+    },
+    /// A complete collection scope was observed and contained no matching events.
+    LegitimatelyEmpty {
+        /// Complete collection boundary that proves the zero result.
+        complete_scope_ref: String,
+    },
+    /// Collection coverage was not sufficient to distinguish empty from missing.
     Unverified,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, tag = "kind", rename_all = "snake_case")]
+/// Provider-neutral assertion whose semantics are stricter than free-form tool data.
+///
+/// Each variant preserves the difference between an observed negative, missing
+/// coverage, and conflicting evidence so downstream claims cannot silently turn
+/// absence into proof.
 pub enum SemanticEvidenceAssertion {
+    /// Binds one segregated duty to an observed identity state.
     AuthorityBinding {
+        /// Canonical resource or work item whose authority is described.
         subject_ref: String,
+        /// Responsibility being bound; duties are intentionally not interchangeable.
         duty: AuthorityDuty,
+        /// Observed identity state, including explicit uncertainty or conflict.
         state: AuthorityBindingState,
     },
+    /// Records an evidence-bounded comparison of alternative causes.
     CausalAssessment {
+        /// Canonical subject being investigated.
         subject_ref: String,
+        /// Outcome the candidates attempt to explain.
         outcome_ref: String,
+        /// Explicit candidate set, including ruled-out alternatives.
         candidates: Vec<CausalCandidate>,
+        /// Ordering supported by the evidence, or an explicit lack of ranking.
         ranking: CausalRanking,
     },
+    /// Describes both the search boundary and what the search returned.
     SearchCoverage {
+        /// Canonical subject, omitted only for searches spanning a broader scope.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         subject_ref: Option<String>,
+        /// Boundary required to interpret a negative or partial result.
         scope: SearchScope,
+        /// Result observed within that boundary.
         result: SearchCoverageResult,
     },
+    /// States whether one provider event participates in a normalized family.
     EventFamilyMembership {
+        /// Canonical source, connector, or collection subject.
         subject_ref: String,
+        /// Concrete event type as named by the provider.
         event_type: String,
+        /// Normalized family used by cross-provider policy and analysis.
         family: String,
+        /// Observed mapping state.
         state: EventFamilyMembershipState,
     },
+    /// States whether the collection path observed events in a bounded window.
     CollectionVisibility {
+        /// Canonical source or collector subject.
         subject_ref: String,
+        /// Concrete provider event type being checked.
         event_type: String,
+        /// Stable identifier for the assessed time window.
         window_ref: String,
+        /// Observed, proven-empty, or unverified collection state.
         state: CollectionVisibilityState,
     },
 }
@@ -337,120 +532,197 @@ impl SemanticEvidenceAssertion {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Versioned batch of validated semantic assertions from one tool receipt.
 pub struct SemanticEvidenceEnvelope {
+    /// Must equal [`AGENT_SEMANTIC_EVIDENCE_V1`].
     pub schema_version: String,
+    /// Non-empty bounded assertions sharing the receipt's freshness and completeness.
     pub assertions: Vec<SemanticEvidenceAssertion>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+/// Typed content of one immutable [`EvidenceAtom`].
 pub enum EvidenceAssertion {
+    /// Scalar or structured value asserted for the atom's subject.
     Value {
+        /// Provider-neutral name of the observed property.
         predicate: String,
+        /// Exact JSON value returned or normalized by the tool.
         value: Value,
     },
+    /// Directed relationship from the atom's subject to another canonical subject.
     Relation {
+        /// Provider-neutral relationship name.
         predicate: String,
+        /// Canonical object of the relationship.
         object_ref: String,
     },
+    /// Conversation input represented as evidence with actor and time provenance.
     ConversationEvent {
+        /// Durable thread containing the event.
         thread_ref: String,
+        /// Canonical identity of the speaker.
         actor_ref: String,
+        /// Source role label preserved from the conversation record.
         role: String,
+        /// RFC 3339 timestamp reported for the event.
         occurred_at: String,
+        /// Exact bounded message text used as evidence.
         text: String,
     },
+    /// Explicit source coverage state for a field that may be absent.
     FieldCoverage {
+        /// Field or JSON path whose coverage was assessed.
         field: String,
+        /// Why a value is present, absent, inapplicable, or unknown.
         state: CoverageState,
     },
+    /// Overall result state and source-authored summary of a tool invocation.
     ToolOutcome {
+        /// Machine-readable success, partial, or failure state.
         state: ToolResultState,
+        /// Bounded factual summary returned with the result.
         summary: String,
     },
+    /// Validated provider-neutral assertion with explicit uncertainty semantics.
     Semantic {
+        /// Structured semantic assertion.
         assertion: SemanticEvidenceAssertion,
     },
+    /// Compatibility form for older evidence that lacks a typed assertion.
     LegacyStatement {
+        /// Bounded source statement; consumers should prefer typed variants.
         statement: String,
     },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Smallest immutable unit that a grounded claim may cite.
 pub struct EvidenceAtom {
+    /// Stable receipt-derived identifier unique within the turn evidence set.
     pub atom_ref: String,
+    /// Canonical subject described by the assertion, when one exists.
     pub subject_ref: Option<String>,
+    /// Typed fact, relationship, coverage statement, or source outcome.
     pub assertion: EvidenceAssertion,
+    /// RFC 3339 time at which the source observation was made.
     pub observed_at: String,
+    /// RFC 3339 time after which current-state claims must refresh this atom.
     pub fresh_until: Option<String>,
+    /// Whether the producing read covered its declared scope completely.
     pub complete: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Allowlisted deterministic operation used to derive a claim from cited atoms.
 pub enum DerivationRule {
+    /// Count the members represented by the cited evidence.
     Count,
+    /// Compute items in one cited set that are absent from another.
     SetDifference,
+    /// Add a fixed number of seconds to an evidenced deadline or timestamp.
     DeadlineOffsetSeconds,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Concrete action named by a recommendation without authorizing its execution.
 pub struct ActionSpec {
+    /// Tool capable of the action, if known from the catalog.
     pub tool_id: Option<String>,
+    /// Canonical target the action would affect, if resolved.
     pub target_ref: Option<String>,
+    /// Proposed structured input; this is descriptive, not an effect authorization.
     pub input: Value,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Closed vocabulary for the operator action expressed by a recommendation.
 pub enum RecommendationDirective {
+    /// Preserve the current state because evidence does not justify a change.
     LeaveUnchanged,
+    /// Perform a specifically scoped read or validation.
     PerformBoundedCheck,
+    /// Defer a conclusion until a new authoritative observation is available.
     WaitForFreshObservation,
+    /// Inspect the named target without changing it.
     InspectTarget,
+    /// Independently verify the target's resulting state.
     VerifyTarget,
+    /// Repair disagreement between Cerebro and provider-authoritative state.
     ReconcileProviderState,
+    /// Obtain authorization before an effectful action.
     RequestApproval,
+    /// Correct the named target through an authorized effect path.
     RemediateTarget,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Closed vocabulary for the missing fact a grounded question requests.
 pub enum QuestionDirective {
+    /// Ask the operator to identify the intended target.
     WhichTarget,
+    /// Ask which source should govern the answer.
     WhichSource,
+    /// Ask what decision the work should support.
     WhatDecision,
+    /// Ask what observable result defines success.
     WhatOutcome,
+    /// Ask who can supply a missing stable identifier.
     WhoCanProvideIdentifier,
+    /// Ask for the relevant deadline or time boundary.
     WhenDue,
+    /// Ask where the authoritative evidence can be observed.
     WhereEvidence,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Identifier for fixed explanatory text whose wording is owned by the runtime.
+///
+/// Models select an identifier instead of inventing policy or evidence-boundary
+/// language, and [`render_stable_explanation`] supplies the reviewed text.
 pub enum StableExplanationId {
+    /// Defines when an observation is fresh enough for a current-state claim.
     EvidenceFreshnessDefinition,
+    /// Separates provider fact authority from Cerebro's interpretation.
     EvidenceAuthorityBoundary,
+    /// Separates recommending an action from authorizing or executing it.
     RecommendationExecutionBoundary,
+    /// Requires a hypothesis to preserve viable alternative explanations.
     HypothesisAlternativesBoundary,
+    /// Requires a new observation before claiming a mutable current state.
     CurrentStateFreshObservationBoundary,
+    /// Separates a declared source from a usable runtime capability binding.
     CapabilityBindingBoundary,
+    /// Separates source declaration from provider-side permission.
     SourceDeclarationProviderPermissionBoundary,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Allowlisted presentation move that adds structure without adding new facts.
 pub enum RhetoricalMoveId {
+    /// Label what is directly observed and what is inferred.
     SeparateEvidenceFromInference,
+    /// Organize a choice around explicit decision criteria.
     FrameDecisionWithCriteria,
+    /// Apply the same comparison dimensions to each alternative.
     CompareAlternativesConsistently,
+    /// Prefer or identify steps that can be safely undone.
     PreserveReversibility,
+    /// Identify the missing observation most likely to change the decision.
     IdentifyDecisionChangingInformation,
+    /// State the concrete boundary of the answer or proposed work.
     ClarifyScope,
 }
 
+/// Exhaustive stable-explanation variants, used for validation and coverage tests.
 pub const ALL_STABLE_EXPLANATIONS: &[StableExplanationId] = &[
     StableExplanationId::EvidenceFreshnessDefinition,
     StableExplanationId::EvidenceAuthorityBoundary,
@@ -461,6 +733,7 @@ pub const ALL_STABLE_EXPLANATIONS: &[StableExplanationId] = &[
     StableExplanationId::SourceDeclarationProviderPermissionBoundary,
 ];
 
+/// Serialized identifiers corresponding positionally to [`ALL_STABLE_EXPLANATIONS`].
 pub const ALL_STABLE_EXPLANATION_IDS: &[&str] = &[
     "evidence_freshness_definition",
     "evidence_authority_boundary",
@@ -473,331 +746,555 @@ pub const ALL_STABLE_EXPLANATION_IDS: &[&str] = &[
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Standard reason a draft must qualify or withhold a material conclusion.
 pub enum CoverageBoundaryKind {
+    /// An effect started but no authoritative outcome receipt is available.
     ExternalActionOutcomeUnknown,
+    /// The external effect returned a failure rather than the requested state.
     ExternalActionFailed,
+    /// A required source read failed, so acceptance cannot be verified.
     SourceReadFailedAcceptanceUnverified,
+    /// A source returned partial data insufficient to verify acceptance.
     PartialReadAcceptanceUnverified,
+    /// A required observation was absent from the current evidence set.
     MissingObservationAcceptanceUnverified,
+    /// One or more bounded reads could not enumerate the full relevant set.
     BoundedReadsIncomplete,
+    /// One or more bounded source reads failed entirely.
     BoundedSourceReadsFailed,
+    /// The available evidence is incomplete for the requested conclusion.
     AvailableEvidenceIncomplete,
+    /// No fresh authoritative observation supports a current-state statement.
     NoCurrentAuthoritativeObservation,
+    /// The available partial evidence does not support a partial conclusion either.
     PartialConclusionUnsupported,
+    /// Work cannot continue without evidence from a named authoritative source.
     BlockedMissingAuthoritativeEvidence,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "basis", rename_all = "snake_case")]
+/// Provenance basis that determines how a [`GroundedClaim`] is validated.
 pub enum ClaimContent {
+    /// Direct statement of one or more cited evidence atoms.
     Observation {
+        /// Atoms whose contents support the visible claim text.
         atom_refs: Vec<String>,
     },
+    /// Result of an allowlisted deterministic operation over cited atoms.
     Derivation {
+        /// Operation used to produce `result`.
         rule: DerivationRule,
+        /// Complete set of inputs to the operation.
         atom_refs: Vec<String>,
+        /// Structured result that must agree with the visible text.
         result: Value,
     },
+    /// Exact statement supplied by the operator in this session.
     OperatorContext {
+        /// Event sequence containing the source message.
         message_sequence: u64,
+        /// Exact contiguous excerpt used by the claim.
         exact_excerpt: String,
     },
+    /// Conversational connective synthesized only from declared prior messages or atoms.
     ConversationalSynthesis {
+        /// Event sequences of source messages used by the synthesis.
         source_message_sequences: Vec<u64>,
+        /// Optional evidence atoms used alongside conversation context.
         #[serde(default)]
         source_atom_refs: Vec<String>,
     },
+    /// Non-factual structure selected from reviewed runtime text.
     RhetoricalMove {
+        /// Move rendered by [`render_rhetorical_move`].
         move_id: RhetoricalMoveId,
     },
+    /// Exact excerpt from a historical evidence atom.
     HistoricalContext {
+        /// Historical atom containing the excerpt.
         atom_ref: String,
+        /// Exact contiguous source text, not a current-state assertion.
         exact_excerpt: String,
     },
+    /// Reminder of an unresolved loop already recorded in mission state.
     RetainedPlan {
+        /// Existing loop that authorizes mentioning the retained work.
         open_loop_ref: String,
     },
+    /// Statement of a commitment already represented in mission state.
     Commitment {
+        /// Existing commitment that authorizes the promise language.
         commitment_ref: String,
     },
+    /// Suggested action backed by evidence but not executed by the claim.
     Recommendation {
+        /// Bounded target, tool, and proposed input.
         action: ActionSpec,
+        /// Closed-vocabulary operator action.
         directive: RecommendationDirective,
+        /// Evidence establishing why the action is appropriate.
         rationale_atom_refs: Vec<String>,
     },
+    /// Explicitly uncertain explanation that preserves alternatives.
     Hypothesis {
+        /// Evidence consistent with the proposed explanation.
         supporting_atom_refs: Vec<String>,
+        /// Plausible alternatives the draft must not conceal.
         alternatives: Vec<String>,
     },
+    /// Reviewed runtime-owned explanation of a stable boundary.
     StableExplanation {
+        /// Identifier rendered by [`render_stable_explanation`].
         explanation_id: StableExplanationId,
     },
+    /// Explicit disclosure that available evidence cannot support a stronger conclusion.
     CoverageBoundary {
+        /// Standardized reason for the limitation.
         boundary: CoverageBoundaryKind,
     },
+    /// Necessary request for information, expressed with a bounded purpose.
     Question {
+        /// Category of missing information requested from the operator.
         directive: QuestionDirective,
     },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// One visible statement paired with the provenance basis that permits it.
 pub struct GroundedClaim {
+    /// Identifier unique within the draft.
     pub claim_ref: String,
+    /// Planned question this claim resolves, when it was anticipated by the plan.
     #[serde(default)]
     pub planned_claim_ref: Option<String>,
+    /// Exact text expected to appear in the delivered message.
     pub text: String,
+    /// Whether removing this claim would leave the operator's request unanswered.
     pub required_for_answer: bool,
+    /// Typed grounding contract validated against session state and observations.
     pub content: ClaimContent,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Model-produced response candidate that must pass deterministic and critic review.
 pub struct GroundedDraft {
+    /// Claimed terminal or non-terminal state of this turn.
     pub state: FinalState,
+    /// Whether the validated message should be shown to the operator.
     #[serde(default)]
     pub delivery: DeliveryDisposition,
+    /// Candidate Markdown; every material statement must be declared in `claims`.
     pub message: String,
+    /// Grounding declarations for material statements in `message`.
     pub claims: Vec<GroundedClaim>,
+    /// Plain-language disclosure of incomplete evidence, when required.
     pub coverage_notice: Option<String>,
+    /// Focused operator question when progress needs new input.
     pub question: Option<String>,
+    /// Complete next mission snapshot proposed by the model.
     pub mission: MissionState,
+    /// Evidence-linked durable memories proposed for retention.
     pub memory_updates: Vec<MemoryUpdate>,
+    /// Model assertion that the message is final-form rather than notes or scaffolding.
     pub presentation_ready: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Whether a completed turn produces operator-visible transport output.
 pub enum DeliveryDisposition {
     #[default]
+    /// Deliver the validated message through the caller's transport.
     Visible,
+    /// Persist the turn and follow-through state without sending a message.
     Silent,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Operational category of a durable session memory.
 pub enum MemoryKind {
+    /// Evidence-backed fact likely to matter in later turns.
     Fact,
+    /// Decision made by an authorized actor or completed workflow.
     Decision,
+    /// Material uncertainty or adverse outcome to preserve.
     Risk,
+    /// Condition currently preventing progress.
     Blocker,
+    /// Responsibility or context that must survive transfer to another actor.
     Handoff,
+    /// Reliability, freshness, or coverage property of an evidence source.
     SourceHealth,
+    /// Operator preference evidenced by conversation context.
     Preference,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Candidate durable memory linked to the evidence that supports retention.
 pub struct MemoryUpdate {
+    /// Stable identifier used to replace or deduplicate the memory.
     pub memory_ref: String,
+    /// Operational category controlling later recall and interpretation.
     pub kind: MemoryKind,
+    /// Bounded proposition to retain; it must not exceed its cited evidence.
     pub statement: String,
+    /// Current evidence atoms supporting the statement.
     pub evidence_atom_refs: Vec<String>,
+    /// Whether a higher-level memory system should consider durable promotion.
     pub promotion_requested: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
+/// Next step selected by the model for one bounded session-loop iteration.
 pub enum SessionModelDecision {
+    /// Persist a plan before any tool calls or final synthesis.
     EstablishPlan {
+        /// Proposed bounded research and follow-through plan.
         plan: ResearchPlan,
     },
+    /// Persist a plan and immediately invoke its first independent calls.
     EstablishPlanAndInvoke {
+        /// Proposed plan governing the calls.
         plan: ResearchPlan,
+        /// Calls to validate and execute under runtime authority checks.
         calls: Vec<ToolCall>,
     },
+    /// Continue an established plan with additional tool observations.
     InvokeTools {
+        /// Calls to validate and execute under runtime authority checks.
         calls: Vec<ToolCall>,
     },
+    /// Stop model iteration and submit a draft for validation and review.
     Finish {
+        /// Candidate grounded response and next mission state.
         draft: GroundedDraft,
     },
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Participant role retained in durable conversation history.
 pub enum SessionMessageRole {
+    /// Message previously delivered by the agent.
     Assistant,
+    /// Message supplied by the operator.
     User,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Durable conversation message used as context and operator evidence.
 pub struct SessionMessage {
+    /// Speaker role used by model reconstruction.
     pub role: SessionMessageRole,
+    /// Stable transport or runtime message identifier.
     pub message_ref: String,
+    /// Canonical identity of the speaker or agent.
     pub actor_ref: String,
+    /// Exact bounded message text.
     pub text: String,
+    /// RFC 3339 time at which the runtime accepted the message.
     pub received_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
+/// Append-only fact used to reconstruct and audit [`AgentSession`] state.
+///
+/// Event application is sequence-checked by [`apply_session_events`]. An event
+/// records what the runtime accepted or observed; it is not a command to repeat
+/// an external effect.
 pub enum SessionEvent {
+    /// Adds an accepted operator message to durable conversation history.
     UserMessageQueued {
+        /// Message accepted from the transport boundary.
         message: SessionMessage,
     },
+    /// Records the authority lane selected for an accepted request.
     RouteAccepted {
+        /// Idempotency and correlation identifier for the turn.
         request_id: String,
+        /// Runtime-authorized execution lane.
         lane: ExecutionLane,
+        /// Whether the request creates a future-observation obligation.
         #[serde(default)]
         future_observation: FutureObservationDisposition,
+        /// Bounded operator text supporting that classification.
         #[serde(default)]
         future_observation_excerpt: Option<String>,
     },
+    /// Records delivery of one scheduled commitment occurrence to the runtime.
     WakeTriggered {
+        /// Turn request created for the occurrence.
         request_id: String,
+        /// Commitment selected by the scheduler record.
         commitment_ref: String,
+        /// Unique occurrence identifier used to prevent duplicate consumption.
         occurrence_ref: String,
+        /// RFC 3339 time at which the occurrence was scheduled.
         scheduled_for: String,
     },
+    /// Records terminal retry exhaustion for a scheduled occurrence.
     WakeExhausted {
+        /// Turn request that recorded terminal exhaustion.
         request_id: String,
+        /// Commitment moved to its exhausted state.
         commitment_ref: String,
+        /// Unique occurrence whose retries were exhausted.
         occurrence_ref: String,
+        /// Scheduler generation used to reject stale retry records.
         schedule_generation: u64,
+        /// Bounded machine-readable category for the terminal failure.
         failure_class: String,
+        /// Visible, grounded draft explaining the failed follow-through.
         draft: GroundedDraft,
     },
+    /// Marks the beginning of processing for one request identifier.
     TurnStarted {
+        /// Request entering the model loop.
         request_id: String,
     },
+    /// Persists the validated plan governing subsequent calls and claims.
     PlanEstablished {
+        /// Exact validated plan accepted by the runtime.
         plan: ResearchPlan,
     },
+    /// Records operator-safe progress without implying completion.
     Progressed {
+        /// Bounded machine-readable or display-safe phase name.
         phase: String,
+        /// Bounded factual description of current work state.
         status: String,
     },
+    /// Captures the receipt returned by a completed read-only tool invocation.
     ToolInvoked {
+        /// Validated tool receipt and its atomized evidence.
         observation: ToolObservation,
     },
+    /// Records an effect boundary before external execution begins.
     EffectStarted {
+        /// Exact authorized call sent to the effect executor.
         call: ToolCall,
+        /// Descriptor whose authority and effect policy governed the call.
         descriptor: ToolDescriptor,
     },
+    /// Stores a validated candidate awaiting transport delivery confirmation.
     DraftProduced {
+        /// Request that produced the draft.
         request_id: String,
+        /// Exact grounded draft held in `pending_delivery`.
         draft: GroundedDraft,
     },
+    /// Records that an effect cannot proceed without an authorization.
     ApprovalRequested {
+        /// Effectful tool awaiting authorization.
         tool_id: String,
+        /// Digest binding approval to the exact proposed input.
         input_digest: String,
     },
+    /// Marks successful termination of request processing at a final state.
     TurnCompleted {
+        /// Request whose model loop completed.
         request_id: String,
+        /// Validated state returned by the draft.
         state: FinalState,
     },
+    /// Marks a request that ended because runtime processing failed.
     TurnFailed {
+        /// Request that could not produce a valid outcome.
         request_id: String,
+        /// Bounded reason suitable for audit and operator diagnosis.
         reason: String,
     },
+    /// Marks deliberate interruption without representing the mission as complete.
     Interrupted {
+        /// Request stopped before completion.
         request_id: String,
+        /// Bounded reason for the interruption.
         reason: String,
     },
+    /// Confirms that a pending draft was sent by a named transport.
     DeliveryRecorded {
+        /// Request whose pending draft was delivered.
         request_id: String,
+        /// Transport implementation that accepted the payload.
         transport: String,
+        /// Durable receipt identifier returned by the transport.
         delivery_ref: String,
+        /// Digest binding the receipt to the exact delivered payload.
         payload_digest: String,
     },
+    /// Confirms acceptance of an evidence-linked memory into session state.
     MemoryRecorded {
+        /// Exact validated memory update added or replaced.
         update: MemoryUpdate,
     },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Sequenced, versioned envelope for one durable [`SessionEvent`].
 pub struct SessionEventRecord {
+    /// Must equal [`AGENT_SESSION_EVENT_V2`].
     pub schema_version: String,
+    /// Session receiving the event.
     pub session_ref: String,
+    /// Contiguous one-based sequence assigned by the session writer.
     pub sequence: u64,
+    /// RFC 3339 time at which the runtime recorded the event.
     pub occurred_at: String,
+    /// Immutable state transition or audit fact.
     pub event: SessionEvent,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Materialized durable state for one tenant-scoped agent conversation.
+///
+/// `events` is the auditable transition history, while the other fields are the
+/// validated snapshot produced by applying those events. Callers must use a
+/// [`SessionStore`] append with the expected sequence to serialize writers.
 pub struct AgentSession {
+    /// Must equal [`AGENT_SESSION_V2`].
     pub schema_version: String,
+    /// Stable identifier for this unit of work.
     pub session_ref: String,
+    /// Tenant boundary that all tools, storage, and effects must preserve.
     pub tenant_id: String,
+    /// Durable conversation thread associated with the session.
     pub thread_ref: String,
+    /// Optional source-defined scope shared by messages and tool calls.
     #[serde(default)]
     pub context_scope_ref: Option<String>,
+    /// Current objective, ownership, and lifecycle snapshot.
     pub mission: MissionState,
+    /// Bounded conversation context retained for subsequent turns.
     pub messages: Vec<SessionMessage>,
+    /// Contiguous event history retained by this snapshot.
     pub events: Vec<SessionEventRecord>,
+    /// Effect grants already issued within this session's authority boundary.
     pub effect_authorizations: Vec<EffectAuthorization>,
+    /// Validated draft awaiting a separate transport delivery receipt.
     #[serde(default)]
     pub pending_delivery: Option<PendingDelivery>,
+    /// Bounded evidence-linked facts retained for later turns.
     #[serde(default)]
     pub memories: Vec<MemoryUpdate>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Validated response held until the caller durably confirms transport delivery.
 pub struct PendingDelivery {
+    /// Request that produced the draft.
     pub request_id: String,
+    /// Exact validated draft to deliver; callers must not regenerate it.
     pub draft: GroundedDraft,
+    /// RFC 3339 time at which validation completed.
     pub produced_at: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
+/// Complete bounded context supplied to the model for one loop iteration.
 pub struct SessionModelTurn {
+    /// Current validated session snapshot.
     pub session: AgentSession,
+    /// Operator or scheduled-wake cause of this turn.
     pub trigger: SessionTurnTrigger,
+    /// RFC 3339 time used consistently for freshness and deadline decisions.
     pub assessment_at: String,
+    /// Caller-requested lane, subject to runtime policy and tool authority.
     pub requested_lane: Option<ExecutionLane>,
+    /// Last durable checkpoint for the waking commitment, when available.
     pub prior_commitment_checkpoint: Option<CommitmentCheckpoint>,
+    /// Deterministic comparison of current wake observations with policy.
     pub wake_assessment: Option<WakeAssessment>,
+    /// Previously established plan, absent only before plan establishment.
     pub plan: Option<ResearchPlan>,
+    /// Tool catalog filtered to capabilities available for this session.
     pub available_tools: Vec<ToolDescriptor>,
+    /// Validated receipts collected during the current turn.
     pub observations: Vec<ToolObservation>,
+    /// Deterministic or critic issues the next model attempt must repair.
     pub repair_feedback: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Durable result of assessing one scheduled commitment occurrence.
 pub struct CommitmentCheckpoint {
+    /// Commitment whose future-observation contract was assessed.
     pub commitment_ref: String,
+    /// Turn request that performed the assessment.
     pub source_request_id: String,
+    /// RFC 3339 checkpoint creation time.
     pub recorded_at: String,
+    /// Transport receipt identifier for the checkpoint delivery.
     pub delivery_ref: String,
+    /// Digest binding the receipt to the exact delivered payload.
     pub payload_digest: String,
+    /// Scheduler occurrence consumed by this checkpoint, when wake-triggered.
     pub trigger_occurrence_ref: Option<String>,
+    /// Whether the checkpoint was visible or intentionally silent.
     pub delivery: DeliveryDisposition,
+    /// Turn state reported by the validated draft.
     pub state: FinalState,
+    /// Bounded operator-readable result summary.
     pub summary: String,
+    /// Exact tool receipts used for this assessment.
     pub observations: Vec<CommitmentCheckpointObservation>,
+    /// Commitment lifecycle state after applying the checkpoint.
     pub commitment_status: CommitmentStatus,
+    /// RFC 3339 next assessment time, absent when no further wake is required.
     pub next_wake_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Replay-safe projection of a tool receipt retained with a commitment checkpoint.
 pub struct CommitmentCheckpointObservation {
+    /// Tool that produced the observation.
     pub tool_id: String,
+    /// Exact normalized input used for the read.
     pub input: Value,
+    /// Digest binding the observation to `input`.
     pub input_digest: String,
+    /// Canonical subjects covered by the source read, when declared.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_subject_refs: Option<Vec<String>>,
+    /// RFC 3339 source observation time, absent only when the source omitted it.
     pub observed_at: Option<String>,
+    /// Machine-readable receipt health.
     pub state: ToolResultState,
+    /// Whether the read covered its declared source scope.
     pub complete: bool,
+    /// Bounded factual receipt summary.
     pub summary: String,
+    /// Structured receipt data used by attention policy and comparison.
     pub data: Value,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Deterministic attention and acceptance facts computed for a scheduled wake.
 pub struct WakeAssessment {
+    /// Commitment whose policy was evaluated.
     pub commitment_ref: String,
+    /// Whether every `required_tool_id` produced an observation.
     pub required_observations_present: bool,
+    /// Whether all present required observations reported healthy states.
     pub required_observations_healthy: bool,
+    /// Whether every `acceptance_all` condition matched current observations.
     pub acceptance_met: bool,
+    /// Alert or change conditions that justify a visible checkpoint.
     pub matched_attention_signals: Vec<ObservationCondition>,
+    /// Field-level changes from the prior checkpoint to the current read.
     pub scalar_comparisons: Vec<WakeScalarComparison>,
 }
 
@@ -820,83 +1317,127 @@ struct WakeAttentionDecision<'a> {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Comparison of one watched scalar across consecutive commitment checkpoints.
 pub struct WakeScalarComparison {
+    /// Tool whose observation contains the watched value.
     pub tool_id: String,
+    /// Digest identifying the current invocation input.
     pub input_digest: String,
+    /// JSON Pointer used to resolve both previous and current values.
     pub data_pointer: String,
+    /// Value retained by the prior checkpoint, if returned then.
     pub previous: Option<Value>,
+    /// Value returned by the current observation, if returned now.
     pub current: Option<Value>,
+    /// Explicit interpretation of presence and equality across reads.
     pub relation: WakeScalarRelation,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Presence and equality relationship between two checkpoint values.
 pub enum WakeScalarRelation {
+    /// Current read introduced a value not retained by the prior checkpoint.
     AddedToCurrentRead,
+    /// Both reads returned values and they differ.
     Changed,
+    /// Both reads returned equal values.
     Unchanged,
+    /// The prior checkpoint had a value that the current read omitted.
     NotReturnedByCurrentRead,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Critic judgment for one declared claim.
 pub enum ClaimReviewVerdict {
+    /// The claim text and provenance basis are supported by supplied context.
     Supported,
+    /// The claim exceeds, contradicts, or fails to match its declared basis.
     Unsupported,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Critic result for one [`GroundedClaim`].
 pub struct ClaimReview {
+    /// Claim identifier copied from the reviewed draft.
     pub claim_ref: String,
+    /// Support judgment.
     pub verdict: ClaimReviewVerdict,
+    /// Concrete repair guidance, required for unsupported claims.
     pub issue: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Critic checks for response quality that deterministic provenance cannot establish.
 pub struct BehavioralReview {
+    /// Whether the draft directly addresses the newest operator request.
     pub answers_newest_request: bool,
+    /// Whether the message reads as a coherent response rather than model scaffolding.
     pub conversational: bool,
+    /// Whether Cerebro preserves responsibility for promised future work.
     pub owns_follow_through: bool,
+    /// Whether detail and length fit the request and evidence available.
     pub right_sized: bool,
+    /// Whether observations, inferences, and unknowns remain correctly separated.
     pub evidence_boundary_correct: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Critic judgment of whether a wake result warrants operator interruption.
 pub struct AttentionReview {
+    /// Recommended visible or silent delivery disposition.
     pub delivery: DeliveryDisposition,
+    /// Concrete reason tied to acceptance, health, or matched attention policy.
     pub reason: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Complete critic response bound to the exact candidate message.
 pub struct MessageReview {
+    /// SHA-256 digest that prevents applying review to a different message.
     pub message_digest: String,
+    /// One result for every declared grounded claim.
     pub claim_reviews: Vec<ClaimReview>,
+    /// Material statements in the message that lack claim declarations.
     pub undeclared_material: Vec<String>,
+    /// Wake-delivery judgment.
     pub attention: AttentionReview,
+    /// Non-provenance response-quality checks.
     pub behavioral: BehavioralReview,
 }
 
 #[derive(Clone, Debug, Serialize)]
+/// Exact evidence and state supplied to the model critic.
 pub struct ClaimReviewTurn {
+    /// Current validated session snapshot.
     pub session: AgentSession,
+    /// Cause of the turn whose draft is under review.
     pub trigger: SessionTurnTrigger,
+    /// Prior checkpoint used for wake comparisons, when applicable.
     pub prior_commitment_checkpoint: Option<CommitmentCheckpoint>,
+    /// Runtime-computed wake policy assessment, when applicable.
     pub wake_assessment: Option<WakeAssessment>,
+    /// Candidate draft to review.
     pub draft: GroundedDraft,
+    /// Tool receipts available to support its claims.
     pub observations: Vec<ToolObservation>,
 }
 
 #[async_trait]
+/// Model boundary for planning, tool selection, drafting, and independent critique.
 pub trait SessionAgentModel: Send + Sync {
+    /// Advances one bounded loop iteration without directly executing effects.
     async fn advance(
         &self,
         turn: SessionModelTurn,
     ) -> Result<SessionModelDecision, AgentRuntimeError>;
 
+    /// Reviews an exact candidate against its declared claims and supplied evidence.
     async fn review_message(
         &self,
         turn: ClaimReviewTurn,
@@ -904,9 +1445,12 @@ pub trait SessionAgentModel: Send + Sync {
 }
 
 #[async_trait]
+/// Tenant-aware tool catalog and invocation boundary used by the session runtime.
 pub trait SessionTools: Send + Sync {
+    /// Returns descriptors used for plan validation and authority enforcement.
     fn catalog(&self) -> Vec<ToolDescriptor>;
 
+    /// Invokes one already-validated call and returns a receipt, not a bare value.
     async fn invoke(
         &self,
         session: &AgentSession,
@@ -916,11 +1460,15 @@ pub trait SessionTools: Send + Sync {
 }
 
 #[async_trait]
+/// Optimistically serialized persistence boundary for session snapshots and events.
 pub trait SessionStore: Send + Sync {
+    /// Creates a new validated session and fails if the identifier already exists.
     async fn create(&self, session: &AgentSession) -> Result<(), AgentRuntimeError>;
 
+    /// Loads the latest materialized session, or `None` when it does not exist.
     async fn load(&self, session_ref: &str) -> Result<Option<AgentSession>, AgentRuntimeError>;
 
+    /// Atomically appends events when the current sequence equals `expected_sequence`.
     async fn append(
         &self,
         session_ref: &str,
@@ -930,8 +1478,11 @@ pub trait SessionStore: Send + Sync {
 }
 
 #[async_trait]
+/// External audit sink coordinated with session-event persistence.
 pub trait SessionJournal: Send + Sync {
+    /// Records an event before the store append is finalized.
     async fn record(&self, event: &SessionEventRecord) -> Result<(), AgentRuntimeError>;
+    /// Confirms that a previously recorded batch was durably appended.
     async fn finalize(&self, events: &[SessionEventRecord]) -> Result<(), AgentRuntimeError>;
 }
 
@@ -950,67 +1501,114 @@ impl SessionJournal for NoopSessionJournal {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Caller-supplied, validated identity and timing context for one session turn.
 pub struct SessionTurnInput {
+    /// Idempotency and correlation identifier for the turn.
     pub request_id: String,
+    /// Canonical identity of the operator or scheduler initiating the turn.
     pub actor_ref: String,
+    /// RFC 3339 time used for all turn freshness decisions.
     pub assessment_at: String,
+    /// Requested authority lane; runtime validation may reject incompatible tools.
     pub requested_lane: Option<ExecutionLane>,
+    /// Operator or scheduled-wake cause of the turn.
     pub trigger: SessionTurnTrigger,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+/// Source of work that determines conversation and attention behavior.
 pub enum SessionTurnTrigger {
+    /// A new operator request or continuation.
     Operator,
+    /// A scheduled future observation for an existing commitment.
     Wake {
+        /// Commitment whose acceptance and attention policy must be assessed.
         commitment_ref: String,
+        /// Unique scheduler occurrence consumed by this turn.
         occurrence_ref: String,
     },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
+/// Durable handoff returned after the runtime stops session-loop execution.
 pub enum SessionTurnOutcome {
+    /// Validated draft persisted for a separate transport delivery step.
     PendingDelivery {
+        /// Execution lane accepted for the completed turn.
         lane: ExecutionLane,
+        /// Whether the transport should emit the message.
         delivery: DeliveryDisposition,
+        /// Exact validated Markdown to deliver without regeneration.
         markdown: String,
+        /// Validated final or non-terminal state.
         final_state: FinalState,
+        /// Evidence atoms cited by the delivered claims.
         evidence_atom_refs: Vec<String>,
+        /// Next durable mission state.
         mission: MissionState,
+        /// Events that were atomically appended for this outcome.
         events: Vec<SessionEventRecord>,
     },
+    /// Effectful work stopped at the authorization boundary.
     ApprovalRequired {
+        /// Approval request binding tool, input digest, and authority context.
         request: ApprovalRequest,
+        /// Events persisted before returning control to the caller.
         events: Vec<SessionEventRecord>,
     },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Minimal transport payload produced after deterministic and critic validation.
 pub struct ValidatedDraft {
+    /// Exact approved Markdown.
     pub markdown: String,
+    /// Deduplicated evidence atoms cited by its claims.
     pub evidence_atom_refs: Vec<String>,
 }
 
+/// Inputs for converting generic JSON tool data into typed evidence atoms.
 pub struct EvidenceAtomization<'a> {
+    /// Stable receipt identifier used as the prefix for generated atom references.
     pub evidence_ref: &'a str,
+    /// Canonical subject shared by generated value and coverage atoms.
     pub subject_ref: Option<&'a str>,
+    /// Structured source data to flatten into independently citable fields.
     pub data: &'a Value,
+    /// Overall result state represented by the generated tool-outcome atom.
     pub state: ToolResultState,
+    /// Bounded source summary represented by the tool-outcome atom.
     pub summary: &'a str,
+    /// RFC 3339 source observation time copied to every generated atom.
     pub observed_at: &'a str,
+    /// Optional RFC 3339 freshness limit copied to every generated atom.
     pub fresh_until: Option<&'a str>,
+    /// Whether the source read covered its declared scope.
     pub complete: bool,
 }
 
+/// Inputs for converting a validated semantic envelope into citable atoms.
 pub struct SemanticEvidenceAtomization<'a> {
+    /// Stable receipt identifier used as the generated atom-reference prefix.
     pub evidence_ref: &'a str,
+    /// Versioned semantic assertions to validate and atomize.
     pub envelope: SemanticEvidenceEnvelope,
+    /// RFC 3339 source observation time copied to every assertion.
     pub observed_at: &'a str,
+    /// Optional RFC 3339 freshness limit copied to every assertion.
     pub fresh_until: Option<&'a str>,
+    /// Whether the source read covered its declared scope.
     pub complete: bool,
 }
 
+/// Validates and converts semantic assertions into independently citable atoms.
+///
+/// Atom identifiers are deterministic (`{evidence_ref}#semantic:{index}`), so
+/// a claim can cite a precise assertion while preserving the producing receipt's
+/// observation time, freshness boundary, and completeness. Invalid schemas,
+/// timestamps, identifiers, or semantic invariants fail closed.
 pub fn semantic_evidence_atoms(
     input: SemanticEvidenceAtomization<'_>,
 ) -> Result<Vec<EvidenceAtom>, AgentRuntimeError> {
@@ -1296,6 +1894,13 @@ fn invalid_semantic_evidence(reason: &str) -> AgentRuntimeError {
     AgentRuntimeError::InvalidToolCall(format!("semantic evidence is invalid: {reason}"))
 }
 
+/// Flattens bounded JSON receipt data into independently citable evidence atoms.
+///
+/// The first atom always records the overall tool outcome. Leaf values receive
+/// deterministic JSON-Pointer-derived identifiers, and incomplete or truncated
+/// traversal emits an explicit field-coverage atom so absence cannot be read as
+/// a negative fact. This function assumes the receipt envelope already validated
+/// its identifiers and timestamps.
 pub fn evidence_atoms_from_json(input: EvidenceAtomization<'_>) -> Vec<EvidenceAtom> {
     let EvidenceAtomization {
         evidence_ref,
@@ -1427,6 +2032,11 @@ fn append_value_atoms(
     }
 }
 
+/// Applies a contiguous event batch to a validated session snapshot.
+///
+/// The reducer rejects schema, session, timestamp, or sequence mismatches before
+/// returning the next snapshot. Effect events are treated as audit facts and are
+/// never re-executed. The resulting snapshot is compacted and fully revalidated.
 pub fn apply_session_events(
     session: &AgentSession,
     new_events: &[SessionEventRecord],
@@ -1588,6 +2198,11 @@ pub fn apply_session_events(
     Ok(next)
 }
 
+/// Drops the oldest conversation messages until count and byte limits are met.
+///
+/// At least the newest message is retained. The function operates only on model
+/// context; it does not alter the append-only event history that preserves audit
+/// provenance for removed messages.
 pub fn compact_session_messages(messages: &mut Vec<SessionMessage>) {
     let mut retained_bytes = messages
         .iter()
@@ -1621,6 +2236,11 @@ pub fn compact_session_messages(messages: &mut Vec<SessionMessage>) {
     }
 }
 
+/// Runs one session turn using the no-op external journal.
+///
+/// Use [`run_session_turn_recorded`] when the caller requires an audit sink in
+/// addition to the returned event batch. External effects still pass through the
+/// same tool descriptors, authorization gates, and receipt validation.
 pub async fn run_session_turn(
     model: &dyn SessionAgentModel,
     tools: &dyn SessionTools,
@@ -1630,6 +2250,13 @@ pub async fn run_session_turn(
     run_session_turn_recorded(model, tools, &NoopSessionJournal, session, input).await
 }
 
+/// Runs the bounded plan–observe–draft–review loop and records every accepted event.
+///
+/// The runtime validates the session and trigger, enforces lane and tool authority,
+/// bounds model repair attempts and tool steps, atomizes receipts, and validates
+/// every visible claim. It returns either an exact pending-delivery payload or an
+/// approval request; transport delivery and session-store append remain caller
+/// responsibilities.
 pub async fn run_session_turn_recorded(
     model: &dyn SessionAgentModel,
     tools: &dyn SessionTools,
@@ -3016,6 +3643,11 @@ fn validate_turn_input(
     Ok(())
 }
 
+/// Resolves the request text the model should answer for the current trigger.
+///
+/// Operator turns use the newest queued user message. Wake turns synthesize a
+/// bounded instruction from the matching durable commitment rather than treating
+/// scheduler metadata as new operator text.
 pub fn session_turn_request_text(
     session: &AgentSession,
     input: &SessionTurnInput,
@@ -5129,6 +5761,7 @@ fn visible_prose_lines(message: &str) -> Vec<&str> {
         .collect()
 }
 
+/// Returns the lowercase `sha256:` digest used to bind critic and delivery receipts.
 pub fn message_digest(message: &str) -> String {
     let digest = Sha256::digest(message.as_bytes())
         .iter()
@@ -5137,6 +5770,11 @@ pub fn message_digest(message: &str) -> String {
     format!("sha256:{digest}")
 }
 
+/// Validates that a research plan is bounded, executable, and internally referential.
+///
+/// Selected tools must exist in the supplied catalog and fit the lane budget;
+/// claim identifiers, scope, stop conditions, and optional follow-through must
+/// satisfy their size and uniqueness invariants. Validation does not invoke tools.
 pub fn validate_plan(
     plan: &ResearchPlan,
     available_tools: &[String],
@@ -5571,6 +6209,12 @@ fn validate_planned_follow_through_viability(
     Ok(())
 }
 
+/// Validates a candidate draft against session state and current tool observations.
+///
+/// Every material span must map to a declared [`GroundedClaim`], every citation
+/// must resolve to compatible evidence, current-state claims must respect freshness
+/// and completeness, and mission/memory transitions must remain valid. The returned
+/// Markdown is safe to hand to a transport but is not itself a delivery receipt.
 pub fn validate_grounded_draft(
     session: &AgentSession,
     draft: &GroundedDraft,
@@ -5820,6 +6464,7 @@ struct ClaimValidationContext<'a, 'b> {
     final_state: FinalState,
 }
 
+/// Renders reviewed, invariant wording for a stable evidence or authority boundary.
 pub fn render_stable_explanation(explanation_id: StableExplanationId) -> &'static str {
     match explanation_id {
         StableExplanationId::EvidenceFreshnessDefinition => {
@@ -7028,6 +7673,7 @@ fn synthesis_term_sequence(value: &str) -> Vec<String> {
         .collect()
 }
 
+/// Renders an allowlisted structural phrase that contributes no factual content.
 pub fn render_rhetorical_move(move_id: RhetoricalMoveId) -> &'static str {
     match move_id {
         RhetoricalMoveId::SeparateEvidenceFromInference => {
@@ -8951,6 +9597,12 @@ fn evidence_atoms(
     Ok(atoms)
 }
 
+/// Validates a complete materialized session and its cross-record invariants.
+///
+/// Validation covers schema and tenant identity, bounded messages and memories,
+/// mission state, event sequence and ownership, pending delivery, effect grants,
+/// timestamps, and unique stable references. A valid snapshot is safe to supply
+/// to the turn runtime; validation does not prove that external effects occurred.
 pub fn validate_session(session: &AgentSession) -> Result<(), AgentRuntimeError> {
     if session.schema_version != AGENT_SESSION_V2
         || !bounded(&session.session_ref, MAX_TEXT_BYTES)
