@@ -59,7 +59,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "${HEAD_SHA}"
           git cat-file -e "${BASE_SHA}^{commit}"
           git cat-file -e "${HEAD_SHA}^{commit}"
-          review_base="$(git merge-base "${BASE_SHA}" "${HEAD_SHA}")"
+          review_base="$(git merge-base --octopus "${BASE_SHA}" "${HEAD_SHA}")"
           test -n "${review_base}"
           git merge-base --is-ancestor "${review_base}" "${HEAD_SHA}"
           {
