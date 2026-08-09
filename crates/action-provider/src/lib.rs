@@ -1,9 +1,15 @@
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 //! Bounded provider clients for durable Rust Action dispatches.
 //!
 //! A provider response is execution evidence, not finding closure. This crate
 //! never retries a mutation and never manufactures an observed-effect digest.
+//! Dispatch validates a durable [`ActionDispatch`], sends one bounded mutation,
+//! and classifies any uncertain outcome as [`ProviderError::DispatchAmbiguous`]
+//! so an upstream coordinator reconciles instead of replaying the mutation.
+//! Observation is read-only and binds the returned receipt to the original
+//! tenant, finding, target, idempotency key, and external identifier.
 
 mod cerebro_device;
 
@@ -29,13 +35,18 @@ const MAX_SUCCESS_BODY_BYTES: usize = 1 << 20;
 const MAX_ERROR_BODY_BYTES: usize = 4 << 10;
 
 #[derive(Clone)]
+/// Configuration for the access-approvals HTTP adapter.
 pub struct AccessApprovalsConfig {
+    /// Absolute HTTPS endpoint, with loopback HTTP permitted for local tests.
     pub base_url: String,
+    /// Bearer credential sent to the provider; it must never be logged.
     pub bearer_token: String,
+    /// End-to-end request timeout, constrained to 100 milliseconds through 60 seconds.
     pub timeout: Duration,
 }
 
 impl AccessApprovalsConfig {
+    /// Creates configuration with the default ten-second timeout.
     pub fn new(base_url: impl Into<String>, bearer_token: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into(),
@@ -46,6 +57,10 @@ impl AccessApprovalsConfig {
 }
 
 #[derive(Clone)]
+/// Bounded HTTP client for access-approval user lifecycle actions.
+///
+/// The client rejects redirects, bounds response bodies, and performs no
+/// automatic mutation retry. Clone shares the underlying connection pool.
 pub struct AccessApprovalsClient {
     base_url: Url,
     bearer_token: String,
@@ -53,17 +68,26 @@ pub struct AccessApprovalsClient {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Normalized asynchronous state reported by an action provider.
 pub enum ProviderStatus {
+    /// The provider accepted the operation but has not queued it.
     Pending,
+    /// The operation is waiting for provider execution.
     Queued,
+    /// The provider is actively executing the operation.
     Running,
+    /// The provider reports successful execution.
     Succeeded,
+    /// The provider reports terminal failure.
     Failed,
+    /// The provider reports terminal cancellation.
     Cancelled,
+    /// Automation must stop and hand the operation to a human.
     NeedsAttention,
 }
 
 impl ProviderStatus {
+    /// Returns the stable wire value stored in action state.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Pending => "pending",
@@ -76,6 +100,10 @@ impl ProviderStatus {
         }
     }
 
+    /// Reports whether automated provider polling should stop.
+    ///
+    /// `NeedsAttention` is terminal for automation even though human work may
+    /// continue outside the provider loop.
     pub const fn is_terminal(self) -> bool {
         matches!(
             self,
@@ -102,16 +130,28 @@ impl TryFrom<&str> for ProviderStatus {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Validated execution evidence returned by a provider adapter.
+///
+/// A receipt can advance action state but cannot prove that the intended effect
+/// remains true. Independent observation supplies that later evidence.
 pub struct ProviderReceipt {
+    /// Provider-owned identifier used for later observation.
     pub external_id: OpaqueId,
+    /// Normalized provider lifecycle state.
     pub status: ProviderStatus,
+    /// Digest of the exact mutation request, present only for dispatch receipts.
     pub request_digest: Option<ContentDigest>,
+    /// Digest of the bounded provider response used to build this receipt.
     pub response_digest: ContentDigest,
+    /// Provider-reported last update time in Unix seconds, when available.
     pub updated_at_unix_s: Option<u64>,
+    /// Provider-reported completion time in Unix seconds, when available.
     pub completed_at_unix_s: Option<u64>,
 }
 
 impl ProviderReceipt {
+    /// Converts an initial dispatch receipt into the engine command that records
+    /// provider acceptance without asserting independent verification.
     pub fn record_command(
         &self,
         executor_actor_id: ActorId,
@@ -126,6 +166,7 @@ impl ProviderReceipt {
         }
     }
 
+    /// Converts a later read-only observation into a reconciliation command.
     pub fn observation_command(
         &self,
         reconciler_actor_id: ActorId,
@@ -141,14 +182,26 @@ impl ProviderReceipt {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Fail-closed provider boundary errors.
 pub enum ProviderError {
+    /// Static client configuration is malformed or unsafe.
     InvalidConfiguration(&'static str),
+    /// A durable dispatch does not match the adapter's provider contract.
     InvalidDispatch(&'static str),
-    DispatchRejected { status: u16 },
+    /// The provider definitively rejected the mutation.
+    DispatchRejected {
+        /// HTTP status returned by the provider.
+        status: u16,
+    },
+    /// The mutation may have reached the provider, so automatic retry is unsafe.
     DispatchAmbiguous,
+    /// A read-only receipt lookup could not produce usable evidence.
     ObservationUnavailable,
+    /// A provider attempted to redirect a bounded request.
     RedirectRejected,
+    /// A provider body exceeded the configured evidence limit.
     ResponseTooLarge,
+    /// A provider response violated a field or binding invariant.
     InvalidResponse(&'static str),
 }
 
@@ -214,6 +267,7 @@ struct UserActionResponse {
 }
 
 impl AccessApprovalsClient {
+    /// Validates configuration and builds a redirect-free bounded HTTP client.
     pub fn new(config: AccessApprovalsConfig) -> Result<Self, ProviderError> {
         let base_url = validate_base_url(&config.base_url)?;
         let bearer_token = validate_bearer_token(config.bearer_token)?;
@@ -232,6 +286,12 @@ impl AccessApprovalsClient {
         })
     }
 
+    /// Sends one mutation for a validated durable dispatch.
+    ///
+    /// Transport failure, redirect, an ambiguous HTTP status, an oversized
+    /// success body, or a malformed success receipt all return
+    /// [`ProviderError::DispatchAmbiguous`]. The caller must reconcile by the
+    /// idempotency key rather than blindly retrying.
     pub async fn dispatch(
         &self,
         dispatch: &ActionDispatch,
@@ -266,6 +326,8 @@ impl AccessApprovalsClient {
             .await
     }
 
+    /// Reads the provider receipt linked to `external_id` and revalidates its
+    /// tenant, finding, target, action, and idempotency bindings.
     pub async fn observe(
         &self,
         dispatch: &ActionDispatch,
@@ -291,6 +353,9 @@ impl AccessApprovalsClient {
         dispatch: &ActionDispatch,
         request_digest: ContentDigest,
     ) -> Result<ProviderReceipt, ProviderError> {
+        // A redirect after a mutation does not prove whether the original
+        // endpoint committed the action. Preserve that uncertainty for the
+        // coordinator instead of following or classifying it as rejection.
         if response.status().is_redirection() {
             return Err(ProviderError::DispatchAmbiguous);
         }

@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 //! Authoritative, tenant-scoped persistence for Action operations.
 //!
@@ -21,6 +22,8 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_postgres::{Client, Row, Transaction};
 
+/// PostgreSQL schema for tenant-isolated current operations, immutable event
+/// history, provider dispatches, and reconciliation leases.
 pub const POSTGRES_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS finding_validation_receipts (
   tenant_id TEXT NOT NULL CHECK (char_length(tenant_id) BETWEEN 1 AND 256),
@@ -355,16 +358,27 @@ END $$;
 "#;
 
 #[derive(Debug)]
+/// Durable action-ledger failures.
 pub enum ActionStoreError {
+    /// PostgreSQL rejected or could not complete an operation.
     Postgres(tokio_postgres::Error),
+    /// A durable record could not be encoded or decoded.
     Serialization(serde_json::Error),
+    /// A platform SDK value failed validation.
     Invalid(SdkError),
+    /// A proposal violated the closed action catalog.
     Catalog(ActionCatalogError),
+    /// A finding validation receipt violated the policy catalog.
     PolicyCatalog(PolicyCatalogError),
+    /// Current state, optimistic version, authority time, or identity conflicts.
     Conflict(String),
+    /// The requested tenant-scoped record does not exist.
     NotFound(String),
+    /// Stored content, history, or a cross-record binding failed validation.
     Corrupt(String),
+    /// A pagination cursor could not be decoded or validated.
     InvalidPageToken,
+    /// A numeric request cannot be represented within the storage contract.
     OutOfRange(&'static str),
 }
 
@@ -433,18 +447,28 @@ impl From<PolicyCatalogError> for ActionStoreError {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// One immutable version in an action operation's append-only history.
 pub struct ActionEvent {
+    /// Authenticated actor responsible for the version transition.
     pub actor_id: ActorId,
+    /// Stable command name, or `proposed` for the initial version.
     pub event_kind: String,
+    /// Digest of the transition command, absent for the initial proposal.
     pub command_digest: Option<ContentDigest>,
+    /// Digest of the complete resulting operation state.
     pub operation_digest: ContentDigest,
+    /// Authority commit time in Unix milliseconds.
     pub committed_at_unix_ms: u64,
+    /// Validated operation snapshot at this version.
     pub operation: ActionOperation,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Stable page of current action operations.
 pub struct ActionPage {
+    /// Operations in descending update-time and ascending operation-ID order.
     pub actions: Vec<ActionOperation>,
+    /// Opaque continuation token for the next page, when more records exist.
     pub next_page_token: Option<String>,
 }
 
@@ -452,25 +476,49 @@ const ACTION_DISPATCH_DIGEST_SCHEMA: &str = "cerebro.action-dispatch.v1";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Immutable provider request derived from a start-execution transition.
+///
+/// Every authority and routing field is copied from the validated proposal and
+/// closed catalog definition. Providers receive this record rather than raw
+/// caller input so a later adapter cannot widen the authorized target or effect.
 pub struct ActionDispatch {
+    /// Tenant authority inherited from the proposal.
     pub tenant_id: String,
+    /// Durable operation identifier.
     pub operation_id: String,
+    /// Operation version that created this dispatch.
     pub operation_version: u64,
+    /// Digest of the admitted proposal.
     pub proposal_digest: String,
+    /// Finding that authorized the operation.
     pub finding_id: String,
+    /// Exact finding revision considered during authorization.
     pub finding_revision_digest: String,
+    /// Committed validation receipt used to admit the proposal.
     pub finding_validation_receipt_digest: String,
+    /// Graph revision against which authorization was evaluated.
     pub graph_revision: u64,
+    /// Catalog action kind.
     pub action_kind: String,
+    /// Exact catalog definition digest bound by the proposal.
     pub action_definition_digest: String,
+    /// Registered provider adapter.
     pub provider: String,
+    /// Provider-native mutation name.
     pub provider_action: String,
+    /// Registered target identifier kind.
     pub target_kind: String,
+    /// Finding-authorized provider target.
     pub target_id: String,
+    /// Expected effect kind.
     pub effect: String,
+    /// Stable provider idempotency key.
     pub idempotency_key: String,
+    /// Authenticated execution claimant.
     pub requested_by: String,
+    /// Authority time at which execution began, in Unix milliseconds.
     pub requested_at_unix_ms: u64,
+    /// Digest binding every preceding dispatch field.
     pub dispatch_digest: String,
 }
 
@@ -520,6 +568,7 @@ impl ActionDispatch {
         Ok(dispatch)
     }
 
+    /// Recomputes the content digest that seals every routing and authority field.
     pub fn computed_digest(&self) -> Result<ContentDigest, ActionStoreError> {
         #[derive(Serialize)]
         struct DigestMaterial<'a> {
@@ -568,6 +617,7 @@ impl ActionDispatch {
         Ok(ContentDigest::of_bytes(serde_json::to_vec(&material)?))
     }
 
+    /// Validates field shapes, the closed catalog binding, and the content digest.
     pub fn validate(&self) -> Result<(), ActionStoreError> {
         if self.operation_version <= 1
             || self.requested_at_unix_ms == 0
@@ -642,26 +692,47 @@ impl ActionDispatch {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Bounded set of provider dispatches that still require work.
 pub struct ActionDispatchPage {
+    /// Validated dispatch records.
     pub dispatches: Vec<ActionDispatch>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// One exclusively leased provider-reconciliation unit.
 pub struct ActionReconciliationJob {
+    /// Current durable operation state.
     pub operation: ActionOperation,
+    /// Immutable dispatch whose receipt must be observed.
     pub dispatch: ActionDispatch,
+    /// Number of times this job has been leased, including the current lease.
     pub attempt_count: u64,
+    /// Exclusive lease deadline in Unix milliseconds.
     pub lease_expires_at_unix_ms: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Scheduler decision recorded after one reconciliation attempt.
 pub enum ActionReconciliationDisposition {
-    PollAgain { next_attempt_at_unix_ms: u64 },
-    Terminal { provider_status: String },
+    /// Release the lease and make the job eligible at a future authority time.
+    PollAgain {
+        /// Earliest next claim time in Unix milliseconds.
+        next_attempt_at_unix_ms: u64,
+    },
+    /// Stop polling because the provider reached a terminal status.
+    Terminal {
+        /// Normalized provider status already recorded on the operation.
+        provider_status: String,
+    },
 }
 
 const MAX_RECONCILIATION_LEASE_MS: u64 = 5 * 60 * 1_000;
 
+/// PostgreSQL authority for validated action state, history, and reconciliation.
+///
+/// Every public operation opens a tenant-scoped transaction. Mutations lock the
+/// current operation, apply optimistic-version and authority-time checks, append
+/// immutable history, and update current state in the same commit.
 pub struct PostgresActionLedger {
     client: Mutex<Client>,
 }
@@ -679,6 +750,7 @@ impl PostgresActionLedger {
         }
     }
 
+    /// Connects with native TLS and starts the PostgreSQL connection driver.
     pub async fn connect_tls(connection_string: &str) -> Result<Self, ActionStoreError> {
         let tls = native_tls::TlsConnector::builder()
             .build()
@@ -695,6 +767,7 @@ impl PostgresActionLedger {
         Ok(Self::from_client(client))
     }
 
+    /// Applies the idempotent action-ledger schema and tenant-isolation policies.
     pub async fn migrate(&self) -> Result<(), ActionStoreError> {
         self.client
             .lock()
@@ -704,11 +777,14 @@ impl PostgresActionLedger {
         Ok(())
     }
 
+    /// Verifies that the configured PostgreSQL connection can execute a query.
     pub async fn health(&self) -> Result<(), ActionStoreError> {
         self.client.lock().await.simple_query("SELECT 1").await?;
         Ok(())
     }
 
+    /// Commits an immutable finding-validation receipt while it is current at
+    /// authority commit time. A reused digest must contain identical content.
     pub async fn record_finding_validation(
         &self,
         receipt: FindingValidationReceipt,
@@ -769,6 +845,7 @@ impl PostgresActionLedger {
         Ok(stored)
     }
 
+    /// Reads one tenant-scoped finding-validation receipt by content digest.
     pub async fn get_finding_validation(
         &self,
         tenant_id: &TenantId,
@@ -785,6 +862,10 @@ impl PostgresActionLedger {
         Ok(receipt)
     }
 
+    /// Admits a catalog-bound action proposal as version one.
+    ///
+    /// The referenced finding-validation receipt must already be committed,
+    /// match the proposal, and remain valid at `committed_at_unix_ms`.
     pub async fn propose(
         &self,
         proposal: ActionProposal,
@@ -897,6 +978,7 @@ impl PostgresActionLedger {
         Ok(operation)
     }
 
+    /// Reads and validates the current version of one action operation.
     pub async fn get(
         &self,
         tenant_id: &TenantId,
@@ -920,6 +1002,7 @@ impl PostgresActionLedger {
         Ok(operation.operation)
     }
 
+    /// Lists current operations using a stable keyset cursor.
     pub async fn list(
         &self,
         tenant_id: &TenantId,
@@ -973,6 +1056,10 @@ impl PostgresActionLedger {
         })
     }
 
+    /// Applies one authenticated, optimistic state transition atomically.
+    ///
+    /// Starting execution also seals the provider dispatch. Recording the first
+    /// provider receipt schedules reconciliation in the same transaction.
     pub async fn transition(
         &self,
         tenant_id: &TenantId,
@@ -1136,6 +1223,7 @@ impl PostgresActionLedger {
         Ok(next)
     }
 
+    /// Reads a dispatch and revalidates it against the start-execution event.
     pub async fn get_dispatch(
         &self,
         tenant_id: &TenantId,
@@ -1158,6 +1246,7 @@ impl PostgresActionLedger {
         Ok(dispatch)
     }
 
+    /// Lists dispatches whose operations may still require provider work.
     pub async fn list_open_dispatches(
         &self,
         tenant_id: &TenantId,
@@ -1185,6 +1274,10 @@ impl PostgresActionLedger {
         Ok(ActionDispatchPage { dispatches })
     }
 
+    /// Exclusively leases the next due reconciliation job.
+    ///
+    /// PostgreSQL `SKIP LOCKED` lets concurrent workers claim different jobs.
+    /// Expired leases may be reclaimed; a lease may not exceed five minutes.
     pub async fn claim_due_reconciliation(
         &self,
         tenant_id: &TenantId,
@@ -1264,6 +1357,8 @@ impl PostgresActionLedger {
         }))
     }
 
+    /// Completes a reconciliation lease if worker, lease, operation version,
+    /// and terminal provider status still match current durable state.
     pub async fn finish_reconciliation(
         &self,
         tenant_id: &TenantId,
@@ -1336,6 +1431,10 @@ impl PostgresActionLedger {
         Ok(())
     }
 
+    /// Returns the complete validated operation history in version order.
+    ///
+    /// Gaps, non-monotonic commit times, digest mismatches, or a final event that
+    /// differs from current state are reported as corruption.
     pub async fn history(
         &self,
         tenant_id: &TenantId,
