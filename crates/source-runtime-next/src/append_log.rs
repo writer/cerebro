@@ -1,3 +1,9 @@
+//! Decoding and projection helpers for committed source append-log events.
+//!
+//! The decoder authenticates the envelope shape before exposing a source
+//! event, preserves portable lifecycle payloads as protobuf bytes, and derives
+//! deterministic digests and incremental collection identities for storage.
+
 use std::{
     collections::{BTreeMap, HashMap},
     error::Error,
@@ -40,11 +46,17 @@ struct CommittedSourceWire {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// A committed append-log envelope could not cross the source-runtime boundary.
 pub enum AppendLogDecodeError {
+    /// The bytes are not a valid committed-source protobuf message.
     Protobuf(String),
+    /// A required field or cross-field invariant is absent.
     Missing(&'static str),
+    /// The event timestamp is invalid or outside the supported representation.
     InvalidTimestamp,
+    /// A catalog event payload is not valid JSON.
     InvalidPayload(String),
+    /// A decoded identifier violates an organizational-model invariant.
     InvalidModel(String),
 }
 
@@ -97,20 +109,32 @@ pub struct CommittedSourceEvent {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+/// Validated fields for constructing a committed source event without protobuf.
 pub struct CommittedSourceInput {
+    /// Tenant that owns the source observation.
     pub tenant_id: TenantId,
+    /// Concrete connector runtime that produced the observation.
     pub source_runtime_id: SourceRuntimeId,
+    /// Globally stable identifier for this observation.
     pub observation_id: ObservationId,
+    /// Catalog source identifier, such as `github` or `okta`.
     pub source_id: String,
+    /// Source-owned family identifier within the catalog.
     pub family_id: String,
+    /// Fully qualified event kind, normally `source.family`.
     pub event_kind: String,
+    /// Schema that gives the payload its portable meaning.
     pub schema_ref: String,
+    /// Authoritative observation time as Unix milliseconds.
     pub observed_at_unix_ms: i64,
+    /// Bounded envelope metadata carried into the source record.
     pub attributes: BTreeMap<String, String>,
+    /// Decoded catalog payload used by ordinary graph mappers.
     pub payload: serde_json::Value,
 }
 
 impl CommittedSourceEvent {
+    /// Validate already decoded fields and construct a committed event.
     pub fn from_input(input: CommittedSourceInput) -> Result<Self, AppendLogDecodeError> {
         let source_id = required(&input.source_id, "source_id")?.to_owned();
         let family_id = required(&input.family_id, "family_id")?.to_owned();
@@ -209,46 +233,60 @@ impl CommittedSourceEvent {
         }))
     }
 
+    /// Return the tenant that owns this observation.
     pub fn tenant_id(&self) -> &TenantId {
         &self.tenant_id
     }
 
+    /// Return the connector runtime that produced this observation.
     pub fn source_runtime_id(&self) -> &SourceRuntimeId {
         &self.source_runtime_id
     }
 
+    /// Return the stable observation identifier from the append log.
     pub fn observation_id(&self) -> &ObservationId {
         &self.observation_id
     }
 
+    /// Return the catalog source identifier.
     pub fn source_id(&self) -> &str {
         &self.source_id
     }
 
+    /// Return the source-owned family or portable lifecycle event kind.
     pub fn family_id(&self) -> &str {
         &self.family_id
     }
 
+    /// Return the fully qualified event kind from the envelope.
     pub fn event_kind(&self) -> &str {
         &self.event_kind
     }
 
+    /// Return the payload schema reference supplied by the producer.
     pub fn schema_ref(&self) -> &str {
         &self.schema_ref
     }
 
+    /// Return the authoritative observation time as Unix milliseconds.
     pub fn observed_at_unix_ms(&self) -> i64 {
         self.observed_at_unix_ms
     }
 
+    /// Return the sorted source-event attributes.
     pub fn attributes(&self) -> &BTreeMap<String, String> {
         &self.attributes
     }
 
+    /// Return the decoded JSON payload used by catalog mappers.
     pub fn payload(&self) -> &serde_json::Value {
         &self.payload
     }
 
+    /// Hash all identity, time, metadata, and canonical payload fields.
+    ///
+    /// Length-prefixing each field prevents concatenation ambiguity. The
+    /// resulting lowercase SHA-256 digest is stable across map insertion order.
     pub fn record_digest(&self) -> String {
         let mut hasher = Sha256::new();
         hash_field(&mut hasher, self.tenant_id.as_str().as_bytes());
@@ -268,6 +306,7 @@ impl CommittedSourceEvent {
         finish_digest(hasher)
     }
 
+    /// Hash only the sorted event attributes.
     pub fn attributes_digest(&self) -> String {
         let mut hasher = Sha256::new();
         for (key, value) in &self.attributes {
@@ -277,6 +316,7 @@ impl CommittedSourceEvent {
         finish_digest(hasher)
     }
 
+    /// Hash only the canonical JSON payload.
     pub fn payload_digest(&self) -> String {
         let mut hasher = Sha256::new();
         let payload = canonical_payload_bytes(&self.payload);
@@ -284,10 +324,15 @@ impl CommittedSourceEvent {
         finish_digest(hasher)
     }
 
+    /// Return the original protobuf payload bytes.
+    ///
+    /// Ordinary catalog events expose their JSON through [`Self::payload`];
+    /// portable lifecycle projectors consume these preserved bytes instead.
     pub fn raw_payload(&self) -> &[u8] {
         &self.raw_payload
     }
 
+    /// Return whether this event is an accepted portable security lifecycle event.
     pub fn is_portable_security_lifecycle(&self) -> bool {
         matches!(
             (self.event_kind.as_str(), self.schema_ref.as_str()),
@@ -296,10 +341,15 @@ impl CommittedSourceEvent {
         )
     }
 
+    /// Derive the incremental collection identity for this observation.
     pub fn collection_id(&self) -> Result<CollectionId, AppendLogDecodeError> {
         CollectionId::parse(format!("event:{}", self.observation_id)).map_err(model_error)
     }
 
+    /// Convert this event into a one-record, non-authoritative collection batch.
+    ///
+    /// Provider kind and ID are supplied by the family-specific caller because
+    /// the generic append-log envelope does not own that interpretation.
     pub fn into_batch(
         self,
         provider_kind: String,

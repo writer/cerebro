@@ -1,3 +1,9 @@
+//! Metadata-bounded AWS Secrets Manager references for source runtimes.
+//!
+//! Resolution authorizes every reference against the tenant/source/runtime
+//! naming scope, groups backend reads, redacts backend failures, and zeroizes
+//! owned secret material when it leaves scope.
+
 use std::collections::{BTreeMap, btree_map::Entry};
 
 use async_trait::async_trait;
@@ -36,6 +42,7 @@ impl Drop for SensitiveValues {
     }
 }
 
+/// Parsed `aws-sm:` address with an optional region and JSON field selector.
 pub struct AwsSecretReference {
     region: Option<String>,
     secret_id: String,
@@ -43,26 +50,36 @@ pub struct AwsSecretReference {
 }
 
 impl AwsSecretReference {
+    /// Return the explicit AWS region, when the reference includes one.
     pub fn region(&self) -> Option<&str> {
         self.region.as_deref()
     }
 
+    /// Return the secret name or full Secrets Manager ARN.
     pub fn secret_id(&self) -> &str {
         &self.secret_id
     }
 
+    /// Return the selected JSON object field, when present.
     pub fn field(&self) -> Option<&str> {
         self.field.as_deref()
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// A secret reference failed validation, authorization, reading, or extraction.
 pub enum AwsSecretResolutionError {
+    /// The named configuration key contains a malformed `aws-sm:` reference.
     InvalidReference(String),
+    /// Tenant, source, or runtime IDs cannot form an authorized secret scope.
     InvalidRuntimeScope,
+    /// The named key addresses a secret outside its runtime-owned prefix.
     ReferenceOutsideRuntime(String),
+    /// The backend read failed; the error deliberately omits the secret address.
     BackendUnavailable(String),
+    /// The backend returned an empty, oversized, or undecodable secret value.
     InvalidSecretValue(String),
+    /// The requested field is absent from the secret JSON object.
     MissingSecretField(String),
 }
 
@@ -103,7 +120,9 @@ impl std::error::Error for AwsSecretResolutionError {}
 /// A secret value returned by the backend. This type deliberately does not
 /// implement `Debug` or `Clone`, and clears its owned bytes when dropped.
 pub enum AwsSecretValue {
+    /// UTF-8 secret text owned and zeroized by this value.
     String(String),
+    /// Binary secret bytes owned and zeroized by this value.
     Binary(Vec<u8>),
 }
 
@@ -117,10 +136,13 @@ impl Drop for AwsSecretValue {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Redacted backend read failure with no secret identifier or provider detail.
 pub struct AwsSecretReadError;
 
 #[async_trait]
+/// Minimal Secrets Manager boundary supplied by the host runtime.
 pub trait AwsSecretReader: Send + Sync {
+    /// Read one authorized secret without interpreting its optional JSON field.
     async fn read_secret(
         &self,
         region: Option<&str>,
@@ -128,12 +150,18 @@ pub trait AwsSecretReader: Send + Sync {
     ) -> Result<AwsSecretValue, AwsSecretReadError>;
 }
 
+/// Return whether any stored value begins with the exact `aws-sm:` scheme.
 pub fn contains_aws_secret_references(values: &BTreeMap<String, String>) -> bool {
     values
         .values()
         .any(|value| value.trim().starts_with(AWS_SECRET_PREFIX))
 }
 
+/// Parse a bounded AWS secret reference without performing a backend read.
+///
+/// Returns `Ok(None)` for values outside the `aws-sm:` scheme. Accepted forms
+/// include a name, `region:name`, or Secrets Manager ARN, plus optional
+/// `#field` selection.
 pub fn parse_aws_secret_reference(
     value: &str,
 ) -> Result<Option<AwsSecretReference>, AwsSecretResolutionError> {
@@ -211,6 +239,11 @@ fn parse_secrets_manager_arn_region(secret_id: &str) -> Option<&str> {
     .then_some(region)
 }
 
+/// Resolve and replace authorized `aws-sm:` values for one source runtime.
+///
+/// References may address only the runtime secret or a hyphen-suffixed child.
+/// Reads are grouped by region and secret ID, and all owned values are zeroized
+/// on failure or after transfer to the returned configuration map.
 pub async fn resolve_aws_secret_references<Reader>(
     tenant_id: &str,
     source_id: &str,

@@ -1,3 +1,10 @@
+//! Validation and resolution for persisted connector runtime configuration.
+//!
+//! Stored values are treated as untrusted control-plane input. This module
+//! bounds their size, resolves only explicitly authorized environment
+//! references, validates portable credential references, and fails closed for
+//! secret-store schemes without a native Rust resolver.
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
@@ -19,18 +26,50 @@ const CREDENTIAL_PREFIX: &str = "credential:";
 const AWS_SECRET_PREFIX: &str = "aws-sm:";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// A fail-closed reason that stored runtime configuration could not be used.
 pub enum RuntimeConfigError {
+    /// The source supplied more entries than the bounded runtime accepts.
     TooManyEntries,
+    /// A configuration key is empty, untrimmed, oversized, or contains controls.
     InvalidKey,
+    /// The named configuration value exceeds the per-value byte limit.
     ValueTooLong(String),
+    /// The named key contains `env:` without an environment-variable name.
     EmptyEnvironmentReference(String),
-    DisallowedEnvironmentReference { key: String, name: String },
-    MissingEnvironmentReference { key: String, name: String },
+    /// The key references an environment variable outside its allowlist.
+    DisallowedEnvironmentReference {
+        /// Stored configuration key containing the reference.
+        key: String,
+        /// Environment-variable name that was not authorized.
+        name: String,
+    },
+    /// An authorized environment variable is not set.
+    MissingEnvironmentReference {
+        /// Stored configuration key containing the reference.
+        key: String,
+        /// Authorized environment-variable name that was not set.
+        name: String,
+    },
+    /// A sensitive key resolved to an empty value.
     EmptySensitiveEnvironmentValue(String),
+    /// A `credential:` reference does not have the closed ID-and-field shape.
     InvalidCredentialReference(String),
+    /// An `aws-sm:` reference is malformed.
     InvalidAwsSecretReference(String),
-    NativeReferenceRequiresEnvProjection { key: String, prefix: &'static str },
-    InvalidOpaqueReference { key: String, prefix: &'static str },
+    /// A recognized secret-store scheme requires deployment-time env projection.
+    NativeReferenceRequiresEnvProjection {
+        /// Stored configuration key containing the reference.
+        key: String,
+        /// Recognized secret-store prefix without a Rust resolver.
+        prefix: &'static str,
+    },
+    /// A recognized opaque reference has no secret identifier.
+    InvalidOpaqueReference {
+        /// Stored configuration key containing the malformed reference.
+        key: String,
+        /// Recognized opaque secret-store prefix.
+        prefix: &'static str,
+    },
 }
 
 impl fmt::Display for RuntimeConfigError {
