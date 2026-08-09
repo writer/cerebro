@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 //! Rust-native source collection and graph admission boundary.
 
@@ -31,9 +32,13 @@ use cerebro_organizational_model::{
 use serde::Serialize;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Tenant-scoped instruction passed to a source connector for one collection.
 pub struct CollectionRequest {
+    /// Tenant whose provider data may be returned.
     pub tenant_id: TenantId,
+    /// Durable source-runtime instance executing the collection.
     pub source_runtime_id: SourceRuntimeId,
+    /// Provider cursor from the preceding batch, when collection is paginated.
     pub cursor: Option<String>,
 }
 
@@ -52,6 +57,7 @@ pub struct SourceRuntimeLeaseFence {
 }
 
 impl SourceRuntimeLeaseFence {
+    /// Construct a positive-generation fence for one tenant and runtime owner.
     pub fn new(
         tenant_id: TenantId,
         source_runtime_id: SourceRuntimeId,
@@ -77,41 +83,56 @@ impl SourceRuntimeLeaseFence {
         })
     }
 
+    /// Return the tenant protected by this fence.
     pub fn tenant_id(&self) -> &TenantId {
         &self.tenant_id
     }
 
+    /// Return the source-runtime instance protected by this fence.
     pub fn source_runtime_id(&self) -> &SourceRuntimeId {
         &self.source_runtime_id
     }
 
+    /// Return the validated lease-owner identity.
     pub fn owner(&self) -> &str {
         &self.owner
     }
 
+    /// Return the database generation that must still own the runtime row.
     pub fn generation(&self) -> u64 {
         self.generation
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// One normalized provider record emitted by a source connector.
 pub struct SourceRecord {
+    /// Stable source observation that supports this record.
     pub observation_id: ObservationId,
+    /// Catalog family that determines projection behavior.
     pub family: String,
+    /// Provider-specific resource kind.
     pub provider_kind: String,
+    /// Provider-owned identifier within that kind.
     pub provider_id: String,
+    /// Sorted scalar fields selected by the source catalog.
     pub fields: BTreeMap<String, String>,
+    /// Structured provider payload retained for family-specific mapping.
     pub payload: serde_json::Value,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "collection_mode", rename_all = "snake_case")]
+/// Authority carried by a collected batch.
 pub enum CollectedScope {
+    /// A complete authoritative collection may close absent provider facts.
     Complete(CompleteCollection),
+    /// An incremental collection may add observations but cannot prove absence.
     NonAuthoritative(CollectionReceipt),
 }
 
 impl CollectedScope {
+    /// Return the collection receipt shared by either authority mode.
     pub fn receipt(&self) -> &CollectionReceipt {
         match self {
             Self::Complete(value) => value.receipt(),
@@ -121,20 +142,29 @@ impl CollectedScope {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// A bounded connector result and the cursor for its next provider page.
 pub struct CollectedBatch {
+    /// Completeness authority for every record in this batch.
     pub scope: CollectedScope,
+    /// Normalized source records collected under the receipt.
     pub records: Vec<SourceRecord>,
+    /// Cursor to resume provider collection, or `None` at the terminal page.
     pub next_cursor: Option<String>,
 }
 
 #[async_trait]
+/// Provider adapter that collects one tenant-scoped batch.
 pub trait SourceConnector: Send {
+    /// Connector-specific collection failure.
     type Error: Error + Send + Sync + 'static;
 
+    /// Collect the requested page without widening its tenant or runtime scope.
     async fn collect(&mut self, request: CollectionRequest) -> Result<CollectedBatch, Self::Error>;
 }
 
+/// Deterministic projection from validated source records into graph mutations.
 pub trait GraphMapper {
+    /// Mapper-specific projection or domain-validation failure.
     type Error: Error + Send + Sync + 'static;
 
     /// Mapping returns a domain-validated `GraphDelta`. No unvalidated entity
@@ -143,9 +173,12 @@ pub trait GraphMapper {
 }
 
 #[async_trait]
+/// Durable graph commit boundary for a collected batch.
 pub trait GraphSink: Send {
+    /// Storage-specific commit failure.
     type Error: Error + Send + Sync + 'static;
 
+    /// Atomically apply a validated graph delta for `batch`.
     async fn apply(
         &mut self,
         batch: &CollectedBatch,
@@ -154,6 +187,7 @@ pub trait GraphSink: Send {
 }
 
 #[async_trait]
+/// Graph sink that verifies durable lease ownership inside the commit path.
 pub trait FencedGraphSink: GraphSink {
     /// Commit only while the exact durable source-runtime lease still exists.
     async fn apply_fenced(
@@ -178,13 +212,19 @@ impl GraphSink for OrganizationalGraph {
 }
 
 #[derive(Debug)]
+/// Failure stage for one source-runtime synchronization.
 pub enum RuntimeError<CollectError, MapError, StoreError> {
+    /// Provider collection failed before mapping.
     Collect(CollectError),
+    /// Connector, mapper, request, or fence tenant/runtime scopes disagree.
     ScopeMismatch,
+    /// Source records could not be projected into a valid graph delta.
     Map(MapError),
+    /// Durable graph commit failed.
     Store(StoreError),
 }
 
+/// Concrete synchronization error derived from a connector, mapper, and sink.
 pub type SyncError<Connector, Mapper, Store> = RuntimeError<
     <Connector as SourceConnector>::Error,
     <Mapper as GraphMapper>::Error,
@@ -218,6 +258,7 @@ where
 {
 }
 
+/// Executes collect, scope validation, mapping, and durable graph commit.
 pub struct SourceRuntime<Connector, Mapper, Store> {
     connector: Connector,
     mapper: Mapper,
@@ -230,6 +271,7 @@ where
     Mapper: GraphMapper,
     Store: GraphSink,
 {
+    /// Assemble a runtime from its provider connector, mapper, and graph sink.
     pub fn new(connector: Connector, mapper: Mapper, store: Store) -> Self {
         Self {
             connector,
@@ -238,6 +280,7 @@ where
         }
     }
 
+    /// Collect and commit one batch after checking every tenant/runtime boundary.
     pub async fn sync(
         &mut self,
         request: CollectionRequest,
@@ -307,6 +350,7 @@ where
             .map_err(RuntimeError::Store)
     }
 
+    /// Consume the runtime and return its graph sink.
     pub fn into_store(self) -> Store {
         self.store
     }

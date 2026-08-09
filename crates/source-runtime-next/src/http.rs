@@ -1,3 +1,10 @@
+//! Bounded HTTP execution for compiled source-catalog families.
+//!
+//! The connector owns URL construction, authentication, pagination, fanout,
+//! response-size limits, and conversion into tenant-scoped source records.
+//! Secret-bearing authentication values are redacted in diagnostics and
+//! zeroized when the connector is dropped.
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
@@ -41,37 +48,65 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Eq, PartialEq)]
+/// Fully resolved authentication material for one source connector.
+///
+/// This type redacts [`Debug`](fmt::Debug) output and zeroizes every owned
+/// credential value on drop.
 pub enum ResolvedAuth {
+    /// Send no provider authentication.
     None,
+    /// Send an OAuth-style bearer token.
     Bearer {
+        /// Token placed in the `Authorization` header.
         token: String,
     },
+    /// Send HTTP Basic credentials.
     Basic {
+        /// Basic-auth username.
         username: String,
+        /// Basic-auth password.
         password: String,
     },
+    /// Send one source-defined sensitive header.
     Header {
+        /// Validated HTTP header name.
         name: String,
+        /// Sensitive header value.
         value: String,
     },
+    /// Send multiple sensitive source-defined headers.
     HeaderParameters {
+        /// Header names and their sensitive values.
         parameters: BTreeMap<String, String>,
     },
+    /// Add sensitive authentication parameters to the request query.
     QueryParameters {
+        /// Query names and their sensitive values.
         parameters: BTreeMap<String, String>,
     },
+    /// Add sensitive authentication parameters to a JSON request body.
     JsonBodyParameters {
+        /// JSON property names and their sensitive values.
         parameters: BTreeMap<String, String>,
     },
+    /// Sign each request with AWS Signature Version 4.
     AwsSigV4 {
+        /// AWS access-key identifier.
         access_key_id: String,
+        /// AWS secret access key.
         secret_access_key: String,
+        /// Optional temporary-credential session token.
         session_token: Option<String>,
+        /// AWS signing region.
         region: String,
+        /// AWS signing service name.
         service: String,
     },
+    /// Sign each request with the Duo Admin API HMAC v5 contract.
     DuoHmacV5 {
+        /// Duo integration key used as the request identity.
         integration_key: String,
+        /// Duo secret key used for HMAC signing.
         secret_key: String,
     },
 }
@@ -171,14 +206,23 @@ impl Drop for ResolvedAuth {
 }
 
 #[derive(Debug)]
+/// The generic HTTP connector could not safely complete collection.
 pub enum HttpConnectorError {
+    /// Compiled catalog, runtime config, or authentication is inconsistent.
     InvalidConfiguration(String),
+    /// A configured or provider-supplied URL is invalid.
     InvalidUrl(String),
+    /// A request failed without containing sensitive request material.
     Request(reqwest::Error),
+    /// A sensitive request failed and only a redacted error may cross the boundary.
     RedactedRequest,
+    /// The provider returned a non-success HTTP status.
     ProviderStatus(StatusCode),
+    /// Provider bytes violate the family response contract.
     InvalidResponse(String),
+    /// Collection receipt or identifier construction violates the domain model.
     Domain(ModelError),
+    /// Pagination exceeded the runtime page limit.
     PageLimit,
 }
 
@@ -239,6 +283,10 @@ enum RequestParameterTarget {
 }
 
 impl HttpSourceConnector {
+    /// Build a connector for one compiled source family and provider base URL.
+    ///
+    /// Construction verifies family existence, authentication-model parity,
+    /// HTTPS transport outside loopback tests, and bounded client timeouts.
     pub fn new(
         source: CompiledSource,
         family_id: &str,

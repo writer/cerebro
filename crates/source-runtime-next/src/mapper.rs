@@ -1,3 +1,9 @@
+//! Catalog-driven projection from connector records into the sealed graph model.
+//!
+//! Mapping is tenant scoped and deterministic. Catalog templates select the
+//! permitted graph shape, while identity bindings can resolve only against a
+//! caller-supplied snapshot of already accepted canonical claims.
+
 use std::{collections::BTreeMap, error::Error, fmt};
 
 use cerebro_organizational_model::{
@@ -12,11 +18,22 @@ use serde_json::Value;
 use crate::{CollectedBatch, CollectedScope, GraphMapper, SourceRecord};
 
 #[derive(Debug)]
+/// A catalog record could not be projected into a valid graph delta.
 pub enum CatalogMapperError {
+    /// The batch names a family absent from the compiled source catalog.
     UnknownFamily(String),
-    MissingField { family: String, field: String },
+    /// A projection requires a field that the source record did not provide.
+    MissingField {
+        /// Catalog family being projected.
+        family: String,
+        /// Required projected field that was absent.
+        field: String,
+    },
+    /// The catalog selected a template without a generic Rust mapper.
     UnsupportedTemplate(String),
+    /// The projected value violates an organizational-model invariant.
     Domain(ModelError),
+    /// One verified claim points at two different canonical identities.
     IdentityConflict(String),
 }
 
@@ -72,6 +89,7 @@ pub struct IdentityResolutionSnapshot {
 }
 
 impl IdentityResolutionSnapshot {
+    /// Create an empty snapshot restricted to `tenant_id`.
     pub fn new(tenant_id: TenantId) -> Self {
         Self {
             tenant_id: Some(tenant_id),
@@ -79,6 +97,10 @@ impl IdentityResolutionSnapshot {
         }
     }
 
+    /// Add a verified email claim and its previously accepted canonical identity.
+    ///
+    /// Repeating the same binding is idempotent. A conflicting binding fails
+    /// rather than letting connector order choose the canonical person.
     pub fn add_verified_email(
         &mut self,
         email: impl Into<String>,
@@ -139,6 +161,10 @@ struct FamilyPlan {
 }
 
 impl CatalogGraphMapper {
+    /// Compile the catalog families and provider kinds used for projection.
+    ///
+    /// `producer_version` becomes assertion provenance and must be a stable,
+    /// non-empty version owned by the mapper deployment.
     pub fn new(
         source: CompiledSource,
         producer_version: impl Into<String>,
@@ -207,6 +233,7 @@ impl CatalogGraphMapper {
         })
     }
 
+    /// Attach the durable identity snapshot used to resolve verified claims.
     pub fn with_identity_resolution(
         mut self,
         identity_resolution: IdentityResolutionSnapshot,
