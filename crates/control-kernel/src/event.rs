@@ -17,91 +17,160 @@ use crate::{
 const MAX_IDEMPOTENCY_KEY_BYTES: usize = 512;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Sequenced, tenant-bound envelope for one immutable mission aggregate event.
 pub struct MissionEventEnvelope {
+    /// Must equal the crate's [`crate::SCHEMA_VERSION`].
     pub schema_version: String,
+    /// Tenant boundary shared by the complete stream.
     pub tenant_id: TenantId,
+    /// Mission identity shared by the complete stream.
     pub mission_id: MissionId,
+    /// Contiguous one-based stream position.
     pub sequence: u64,
+    /// Non-zero Unix-millisecond time at which the event was observed.
     pub observed_at_unix_ms: u64,
+    /// Actor responsible for the recorded transition or input.
     pub actor_id: ActorId,
+    /// Stream-unique key used to reject duplicate application.
     pub idempotency_key: String,
+    /// Domain fact to apply to the aggregate.
     pub event: MissionEvent,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+/// Immutable domain fact accepted into a mission event stream.
 pub enum MissionEvent {
+    /// Creates revision one and must be the first stream event.
     Opened {
+        /// Exact validated mission creation input.
         input: MissionInput,
     },
+    /// Applies a legal non-verification mission lifecycle edge.
     Transitioned {
+        /// State expected before the transition.
         from: MissionState,
+        /// Requested next state.
         to: MissionState,
+        /// Bounded reason recorded on the mission revision.
         reason: String,
     },
+    /// Moves a verifying mission to verified using independent evidence.
     Verified {
+        /// State expected before verification.
         from: MissionState,
+        /// Bounded verification conclusion.
         reason: String,
+        /// Independent post-effect observation.
         receipt: VerificationReceipt,
     },
+    /// Creates one evidence-bounded belief.
     BeliefRecorded {
+        /// Exact initial belief input whose actor must match the envelope.
         input: BeliefInput,
     },
+    /// Replaces the evidence judgment for an existing belief.
     BeliefRevised {
+        /// Existing belief to revise.
         belief_id: BeliefId,
+        /// Optimistic replacement snapshot.
         revision: BeliefRevision,
     },
+    /// Appends a validated contiguous plan revision.
     PlanRevised {
+        /// Plan revision whose beliefs must already exist in the aggregate.
         revision: PlanRevision,
     },
+    /// Creates a commitment bound to an existing plan step.
     CommitmentProposed {
+        /// Exact immutable commitment bindings.
         input: CommitmentInput,
     },
+    /// Applies a legal transition to an existing commitment.
     CommitmentTransitioned {
+        /// Existing commitment to update.
         commitment_id: CommitmentId,
+        /// Optimistic authority- and receipt-bearing transition.
         transition: CommitmentTransition,
     },
+    /// Creates a future-observation condition in the armed state.
     WakeConditionArmed {
+        /// Stable wake-condition identity.
         wake_condition_id: WakeConditionId,
+        /// Exact signal predicate.
         kind: WakeConditionKind,
+        /// Bounded reason for waiting.
         reason: String,
     },
+    /// Records the exact signal that satisfied an armed wake condition.
     WakeConditionSatisfied {
+        /// Existing armed condition.
         wake_condition_id: WakeConditionId,
+        /// Signal evaluated by the condition predicate.
         signal: WakeSignal,
     },
+    /// Terminally cancels an armed wake condition.
     WakeConditionCancelled {
+        /// Existing armed condition.
         wake_condition_id: WakeConditionId,
+        /// Bounded cancellation reason.
         reason: String,
     },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Materialized mission state reconstructed from a validated event prefix.
 pub struct MissionAggregate {
+    /// Current mission revision and lifecycle state.
     pub mission: Mission,
+    /// Sequence of the last applied event.
     pub last_sequence: u64,
+    /// Current belief revisions keyed by stable identity.
     pub beliefs: BTreeMap<BeliefId, Belief>,
+    /// Ordered plan history retained for lineage and commitment lookup.
     pub plan_revisions: Vec<PlanRevision>,
+    /// Current commitment revisions keyed by stable identity.
     pub commitments: BTreeMap<CommitmentId, Commitment>,
+    /// Current wake-condition revisions keyed by stable identity.
     pub wake_conditions: BTreeMap<WakeConditionId, WakeCondition>,
     seen_idempotency_keys: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Reason deterministic mission event replay stopped.
 pub enum ReplayError {
+    /// A mission cannot be reconstructed from an empty stream.
     Empty,
-    InvalidSequence { expected: u64, actual: u64 },
+    /// Event sequence was not contiguous.
+    InvalidSequence {
+        /// Next required sequence.
+        expected: u64,
+        /// Sequence supplied by the envelope.
+        actual: u64,
+    },
+    /// Schema, timestamp, or idempotency key was malformed.
     InvalidEnvelope,
+    /// An idempotency key already appeared in the stream.
     DuplicateIdempotencyKey,
+    /// Tenant, mission, or actor identity disagreed with its bound record.
     IdentityMismatch,
+    /// Event's declared prior state disagreed with the materialized aggregate.
     StateMismatch,
+    /// Event attempted to create an already-existing child record.
     DuplicateRecord,
+    /// Event referenced a belief, plan, commitment, or wake condition not yet recorded.
     MissingRecord,
+    /// Verification was attempted while commitments or wake conditions remained active.
     ClosureBlocked,
+    /// Mission lifecycle validation failed.
     Mission(MissionError),
+    /// Belief validation failed.
     Belief(BeliefError),
+    /// Plan validation failed.
     Plan(PlanError),
+    /// Commitment validation failed.
     Commitment(CommitmentError),
+    /// Wake-condition validation failed.
     WakeCondition(WakeConditionError),
 }
 
@@ -174,6 +243,11 @@ impl From<WakeConditionError> for ReplayError {
 }
 
 impl MissionAggregate {
+    /// Reconstructs an aggregate from a complete contiguous event prefix.
+    ///
+    /// The first event must be `Opened` at sequence one. Every later event is
+    /// applied through [`Self::apply`], so replay and live append share identical
+    /// identity, lineage, lifecycle, and closure invariants.
     pub fn replay(events: &[MissionEventEnvelope]) -> Result<Self, ReplayError> {
         let first = events.first().ok_or(ReplayError::Empty)?;
         validate_envelope(first, 1)?;
@@ -202,6 +276,12 @@ impl MissionAggregate {
         Ok(aggregate)
     }
 
+    /// Applies one next event after validating all cross-record invariants.
+    ///
+    /// Application requires the next contiguous sequence and a new idempotency key.
+    /// Child records must already exist when referenced, plans must cite recorded
+    /// beliefs, and commitments must name real plan steps. Verification fails while
+    /// any commitment is unresolved or any wake condition remains armed.
     pub fn apply(&mut self, envelope: &MissionEventEnvelope) -> Result<(), ReplayError> {
         let expected_sequence = self.last_sequence + 1;
         validate_envelope(envelope, expected_sequence)?;
