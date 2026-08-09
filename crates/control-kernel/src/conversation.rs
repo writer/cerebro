@@ -6,44 +6,73 @@ use crate::{MissionId, MissionState};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Bounded evidence-collection effort selected for one encounter.
 pub enum ExecutionDepth {
+    /// Reuse an available fresh observation without launching new research.
     ReadCurrentState,
+    /// Perform focused reads needed to refresh or verify the requested fact.
     TargetedVerification,
+    /// Investigate broadly because the request is explicit or error cost is high.
     DeepInvestigation,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Deterministic facts used to choose encounter execution depth.
 pub struct EncounterProfile {
+    /// Whether the encounter continues recent conversation rather than starting work.
     pub is_follow_up: bool,
+    /// Whether the operator explicitly requested deep or exhaustive investigation.
     pub explicit_deep_request: bool,
+    /// Whether the requested outcome can materially change external state.
     pub consequential_action_requested: bool,
+    /// Whether a current-state observation is already available.
     pub current_state_available: bool,
+    /// Whether that observation remains within its declared freshness window.
     pub current_state_fresh: bool,
+    /// Whether a known evidence gap could change the answer or safe action.
     pub material_evidence_gap: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Minimal mission projection used to route a conversation encounter.
 pub struct MissionReference {
+    /// Stable mission identity returned by a continuation resolution.
     pub mission_id: MissionId,
+    /// Current lifecycle state used to exclude closed work from implicit matching.
     pub state: MissionState,
+    /// Canonical subjects used for exact-overlap matching.
     pub subject_urns: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "resolution", rename_all = "snake_case")]
+/// Deterministic decision connecting an encounter to durable mission state.
 pub enum ConversationResolution {
+    /// Exactly one usable mission was selected.
     ContinueMission {
+        /// Existing mission that should receive the encounter.
         mission_id: MissionId,
     },
+    /// No active mission matched, so the caller should open new work.
     OpenMission,
+    /// Multiple active missions matched and require an explicit operator choice.
     NeedsMissionChoice {
+        /// Sorted, deduplicated candidate mission identifiers.
         candidate_mission_ids: Vec<MissionId>,
     },
+    /// An explicit mission identifier was supplied but is absent from the candidates.
     UnknownMissionReference {
+        /// Unresolved identifier supplied by the operator or transport.
         mission_id: MissionId,
     },
 }
 
+/// Selects the smallest safe evidence-collection depth for an encounter.
+///
+/// Explicit deep requests always win. Consequential actions with material evidence
+/// gaps also require deep investigation. Only a follow-up with available, fresh,
+/// complete-enough current state may reuse that state directly; every other case
+/// receives targeted verification.
 pub fn route_execution_depth(profile: &EncounterProfile) -> ExecutionDepth {
     if profile.explicit_deep_request
         || (profile.consequential_action_requested && profile.material_evidence_gap)
@@ -60,6 +89,12 @@ pub fn route_execution_depth(profile: &EncounterProfile) -> ExecutionDepth {
     ExecutionDepth::TargetedVerification
 }
 
+/// Resolves an encounter to an existing mission, new mission, or explicit choice.
+///
+/// An explicit mission reference is authoritative and never falls back to subject
+/// matching. Without one, only non-closed missions sharing at least one exact
+/// canonical subject URN are candidates. Candidate identifiers are sorted and
+/// deduplicated so resolution is independent of storage order.
 pub fn resolve_conversation(
     explicit_mission_id: Option<&MissionId>,
     subject_urns: &[String],
