@@ -8,8 +8,11 @@ import (
 	"strings"
 )
 
+// Prefix identifies URNs owned by Cerebro's canonical namespace.
 const Prefix = "urn:cerebro:"
 
+// URN is the parsed representation of a canonical Cerebro resource name.
+// Parts excludes the fixed urn:cerebro prefix, tenant, and kind segments.
 type URN struct {
 	Raw      string
 	TenantID string
@@ -17,10 +20,14 @@ type URN struct {
 	Parts    []string
 }
 
+// String returns the validated URN without decoding or reformatting segments.
 func (u URN) String() string {
 	return u.Raw
 }
 
+// Parse validates raw as a Cerebro URN and separates its authority fields.
+// It preserves encoded path segments exactly; callers decode provider values
+// only when their domain contract explicitly requires it.
 func Parse(raw string) (URN, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
@@ -53,6 +60,9 @@ func Parse(raw string) (URN, error) {
 	return parsed, nil
 }
 
+// Mint builds and validates a tenant-scoped Cerebro URN. Empty optional parts
+// are omitted. Callers must EncodeSegment for provider-controlled values before
+// passing them to Mint so delimiters cannot change the URN structure.
 func Mint(tenantID string, kind string, parts ...string) (string, error) {
 	tenant := strings.TrimSpace(tenantID)
 	entityKind := strings.TrimSpace(kind)
@@ -77,6 +87,8 @@ func Mint(tenantID string, kind string, parts ...string) (string, error) {
 	return raw, nil
 }
 
+// TenantID returns the tenant authority in raw, or an empty string when raw is
+// not a valid Cerebro URN.
 func TenantID(raw string) string {
 	parsed, err := Parse(raw)
 	if err != nil {
@@ -85,6 +97,7 @@ func TenantID(raw string) string {
 	return parsed.TenantID
 }
 
+// SameTenant reports whether raw is valid and belongs to the non-empty tenant.
 func SameTenant(raw string, tenantID string) bool {
 	tenant := strings.TrimSpace(tenantID)
 	return tenant != "" && TenantID(raw) == tenant
@@ -96,6 +109,9 @@ func EncodeSegment(value string) string {
 	return strings.ReplaceAll(escaped, ":", "%3A")
 }
 
+// StableExternalID returns a deterministic, opaque identifier derived from a
+// provider value. Only the first 128 digest bits are exposed. If value is empty,
+// emptyFallback is returned unchanged so the caller controls missing-ID policy.
 func StableExternalID(value string, emptyFallback string) string {
 	normalized := strings.TrimSpace(value)
 	if normalized == "" {

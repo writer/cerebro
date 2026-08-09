@@ -18,24 +18,36 @@ import (
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
+// ErrInvalidEvidence identifies malformed requests and unavailable ledger
+// capabilities. Store conflicts and access denials use the typed port errors.
 var ErrInvalidEvidence = errors.New("invalid evidence ledger request")
 
+// Service coordinates append-only evidence events with their query projection.
 type Service struct {
 	store ports.EvidenceLedgerStore
 	log   ports.AppendLog
 	now   func() time.Time
 }
 
+// New constructs an evidence ledger. Writes require both store and log; read
+// methods require the store. The service owns its UTC clock for deterministic
+// tests and consistent millisecond timestamps.
 func New(store ports.EvidenceLedgerStore, log ports.AppendLog) *Service {
 	return &Service{store: store, log: log, now: func() time.Time { return time.Now().UTC() }}
 }
 
+// RegisterVersionRequest supplies the logical artifact, one immutable version,
+// and the actor responsible for registering it.
 type RegisterVersionRequest struct {
 	Artifact ports.EvidenceArtifact
 	Version  ports.EvidenceVersion
 	ActorID  string
 }
 
+// RegisterVersion normalizes and validates an immutable evidence version,
+// appends its aggregate event, and projects that event into the ledger store.
+// A missing source-proof revision does not discard the record: it quarantines
+// the version in validation_failed so provenance gaps remain observable.
 func (s *Service) RegisterVersion(ctx context.Context, request RegisterVersionRequest) (ports.EvidenceVersion, error) {
 	if s == nil || s.store == nil || s.log == nil {
 		return ports.EvidenceVersion{}, fmt.Errorf("%w: ledger capability unavailable", ErrInvalidEvidence)
@@ -73,6 +85,8 @@ func (s *Service) RegisterVersion(ctx context.Context, request RegisterVersionRe
 	}
 	version = normalizeVersion(version)
 	artifact = normalizeArtifact(artifact)
+	// Provenance failure is recorded as ledger state instead of rejected before
+	// append. This preserves the submitted evidence and makes repair auditable.
 	if strings.TrimSpace(version.Provenance.SourceProofRevisionID) == "" {
 		version.State = ports.EvidenceStateValidationFailed
 		version.QuarantineReason = "source_proof_unverified"
@@ -114,6 +128,8 @@ func (s *Service) RegisterVersion(ctx context.Context, request RegisterVersionRe
 	if err != nil {
 		return ports.EvidenceVersion{}, err
 	}
+	// The append log is authoritative. Projection happens second and must be
+	// replayable from this event if the materialized store is unavailable.
 	if err := s.log.Append(ctx, event); err != nil {
 		return ports.EvidenceVersion{}, fmt.Errorf("append evidence version: %w", err)
 	}
@@ -123,11 +139,16 @@ func (s *Service) RegisterVersion(ctx context.Context, request RegisterVersionRe
 	return version, nil
 }
 
+// CreateClaimRequest supplies a scoped assertion over an existing evidence
+// version and the actor creating it.
 type CreateClaimRequest struct {
 	Claim   ports.EvidenceClaim
 	ActorID string
 }
 
+// CreateClaim records a new pending-review claim over an existing immutable
+// evidence version. Approval fields supplied by a caller are intentionally
+// discarded; only ReviewClaim may produce an approved or rejected decision.
 func (s *Service) CreateClaim(ctx context.Context, request CreateClaimRequest) (ports.EvidenceClaim, error) {
 	if s == nil || s.store == nil || s.log == nil {
 		return ports.EvidenceClaim{}, fmt.Errorf("%w: ledger capability unavailable", ErrInvalidEvidence)
@@ -165,6 +186,9 @@ func (s *Service) CreateClaim(ctx context.Context, request CreateClaimRequest) (
 	return s.appendClaim(ctx, workflowevents.EventKindComplianceEvidenceClaimRecorded, "claim_recorded", claim, 0, actorID)
 }
 
+// ReviewClaim approves or rejects a claim using optimistic concurrency.
+// expectedVersion must equal the current aggregate version, and every decision
+// requires both an identified reviewer and a non-empty reason.
 func (s *Service) ReviewClaim(ctx context.Context, tenantID, claimID, reviewerID, state, reason string, expectedVersion uint64) (ports.EvidenceClaim, error) {
 	claim, err := s.store.GetEvidenceClaim(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(claimID))
 	if err != nil {
@@ -188,6 +212,9 @@ func (s *Service) ReviewClaim(ctx context.Context, tenantID, claimID, reviewerID
 	return s.appendClaim(ctx, workflowevents.EventKindComplianceEvidenceClaimReviewed, "claim_reviewed", claim, expectedVersion, reviewerID)
 }
 
+// InvalidateClaim makes a reviewed or pending claim unusable without deleting
+// its history. expectedVersion prevents a stale actor from overwriting a newer
+// review or invalidation decision.
 func (s *Service) InvalidateClaim(ctx context.Context, tenantID, claimID, actorID, reason string, expectedVersion uint64) (ports.EvidenceClaim, error) {
 	claim, err := s.store.GetEvidenceClaim(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(claimID))
 	if err != nil {

@@ -20,6 +20,8 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
+// ErrInvalidLegacyEvidenceBinding means a legacy record or its caller-supplied
+// canonical scope is insufficient to create ledger records without guessing.
 var ErrInvalidLegacyEvidenceBinding = errors.New("invalid legacy finding evidence binding")
 
 // LegacyFindingEvidenceBinding supplies the canonical scope that the legacy
@@ -50,10 +52,17 @@ type LegacyFindingEvidenceProjection struct {
 	Claim   CreateClaimRequest
 }
 
+// AdaptLegacyFindingEvidence deterministically converts a legacy protobuf into
+// an immutable version plus a pending-review claim. The binding must supply all
+// canonical scope, proof, governance, and actor fields absent from the legacy
+// record. Repeating the conversion with semantically identical input yields the
+// same artifact, version, and claim identifiers.
 func AdaptLegacyFindingEvidence(source *cerebrov1.FindingEvidence, binding LegacyFindingEvidenceBinding) (LegacyFindingEvidenceProjection, error) {
 	if err := validateLegacyBinding(source, binding); err != nil {
 		return LegacyFindingEvidenceProjection{}, err
 	}
+	// Normalize unordered repeated data before deterministic protobuf encoding;
+	// otherwise equivalent legacy records could mint different version IDs.
 	normalized := normalizeLegacyFindingEvidence(source)
 	payload, err := proto.MarshalOptions{Deterministic: true}.Marshal(normalized)
 	if err != nil {

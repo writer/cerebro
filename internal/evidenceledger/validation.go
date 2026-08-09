@@ -23,6 +23,8 @@ const (
 	reasonSubjectMismatch    = "evidence_subject_mismatch"
 )
 
+// ValidateClaimRequest describes the subject set, period, and evaluation time
+// for which a caller wants to rely on an evidence claim.
 type ValidateClaimRequest struct {
 	TenantID    string
 	ClaimID     string
@@ -32,6 +34,8 @@ type ValidateClaimRequest struct {
 	At          time.Time
 }
 
+// CompatibilityRequest asks whether one claim may satisfy a target proof
+// obligation as well as the source obligation for which it was collected.
 type CompatibilityRequest struct {
 	TenantID string
 	ClaimID  string
@@ -40,6 +44,8 @@ type CompatibilityRequest struct {
 	At       time.Time
 }
 
+// CompatibilityDecision combines structural proof reuse with current ledger
+// validity. Reusable is true only when neither side fails closed.
 type CompatibilityDecision struct {
 	Reusable        bool                          `json:"reusable"`
 	Reuse           compliance.ReuseDecision      `json:"reuse"`
@@ -47,6 +53,7 @@ type CompatibilityDecision struct {
 	ReasonCodes     []string                      `json:"reason_codes"`
 }
 
+// ReadClaim returns the current projection of a claim aggregate.
 func (s *Service) ReadClaim(ctx context.Context, tenantID, claimID string) (ports.EvidenceClaim, error) {
 	if s == nil || s.store == nil {
 		return ports.EvidenceClaim{}, ErrInvalidEvidence
@@ -54,6 +61,7 @@ func (s *Service) ReadClaim(ctx context.Context, tenantID, claimID string) (port
 	return s.store.GetEvidenceClaim(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(claimID))
 }
 
+// ReadArtifact returns the logical artifact metadata, not a version's content.
 func (s *Service) ReadArtifact(ctx context.Context, tenantID, artifactID string) (ports.EvidenceArtifact, error) {
 	if s == nil || s.store == nil {
 		return ports.EvidenceArtifact{}, ErrInvalidEvidence
@@ -61,6 +69,9 @@ func (s *Service) ReadArtifact(ctx context.Context, tenantID, artifactID string)
 	return s.store.GetEvidenceArtifact(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(artifactID))
 }
 
+// EvaluateCompatibility checks proof-obligation reuse and then validates the
+// claim for the target period. ReasonCodes include both ledger validity failures
+// and individual failed reuse predicates.
 func (s *Service) EvaluateCompatibility(ctx context.Context, request CompatibilityRequest) (CompatibilityDecision, error) {
 	tenantID := strings.TrimSpace(request.TenantID)
 	claim, err := s.ReadClaim(ctx, tenantID, request.ClaimID)
@@ -94,6 +105,9 @@ func (s *Service) EvaluateCompatibility(ctx context.Context, request Compatibili
 	}, nil
 }
 
+// ValidateClaim evaluates whether a claim is safe to rely on now. Validation is
+// cumulative: every failed predicate contributes a reason and next action so a
+// caller can repair all known gaps in one pass.
 func (s *Service) ValidateClaim(ctx context.Context, request ValidateClaimRequest) (ports.EvidenceClaimValidation, error) {
 	claim, err := s.store.GetEvidenceClaim(ctx, strings.TrimSpace(request.TenantID), strings.TrimSpace(request.ClaimID))
 	if err != nil {
@@ -104,6 +118,8 @@ func (s *Service) ValidateClaim(ctx context.Context, request ValidateClaimReques
 		return ports.EvidenceClaimValidation{}, err
 	}
 	result := ports.EvidenceClaimValidation{Valid: true, ReasonCodes: []string{reasonApproved}, NextActions: []string{"none"}}
+	// The first failure removes the optimistic approved/none pair. Later
+	// failures accumulate and are normalized before returning.
 	addInvalid := func(reason, action string) {
 		if result.Valid {
 			result.ReasonCodes = nil
@@ -149,6 +165,8 @@ func (s *Service) ValidateClaim(ctx context.Context, request ValidateClaimReques
 	if !subjectsCover(claim.Scope.Subjects, normalizeSubjects(request.Subjects)) || !subjectsCover(version.Subjects, normalizeSubjects(request.Subjects)) {
 		addInvalid(reasonSubjectMismatch, "collect_evidence")
 	}
+	// Conflicts are evaluated last because they depend on sibling claims over the
+	// same immutable version, not only the selected claim and version.
 	claims, err := s.store.ListEvidenceClaimsByVersion(ctx, claim.TenantID, claim.ArtifactVersionID)
 	if err != nil {
 		return ports.EvidenceClaimValidation{}, err
@@ -192,6 +210,9 @@ func sameEvidenceClaimScope(left, right ports.EvidenceClaimScope) bool {
 	return true
 }
 
+// ReadVersion enforces actor, purpose, and maximum-sensitivity checks before
+// returning immutable content metadata. Unknown purposes and sensitivity labels
+// fail closed with ErrEvidenceAccessDenied.
 func (s *Service) ReadVersion(ctx context.Context, access ports.EvidenceAccessRequest, versionID string) (ports.EvidenceVersion, error) {
 	version, err := s.store.GetEvidenceVersion(ctx, strings.TrimSpace(access.TenantID), strings.TrimSpace(versionID))
 	if err != nil {

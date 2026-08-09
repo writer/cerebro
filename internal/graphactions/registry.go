@@ -7,9 +7,15 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+// TargetResolver derives an authorized provider target from a finding and an
+// optional caller selector. Implementations must reject selectors not evidenced
+// by the finding.
 type TargetResolver func(*ports.FindingRecord, string) (string, error)
+
+// EligibilityChecker enforces action-specific finding preconditions.
 type EligibilityChecker func(string, *ports.FindingRecord) error
 
+// ActionSpec is the executable policy for one registered graph action.
 type ActionSpec struct {
 	ID               string
 	DefinitionDigest string
@@ -23,10 +29,13 @@ type ActionSpec struct {
 	CheckEligibility EligibilityChecker
 }
 
+// Registry indexes immutable action specifications by canonical action ID.
 type Registry struct {
 	actions map[string]ActionSpec
 }
 
+// Lookup returns the immutable specification for action after normalizing its
+// identifier. Unknown actions fail closed with ErrInvalidRequest.
 func (r Registry) Lookup(action string) (ActionSpec, error) {
 	action = strings.TrimSpace(action)
 	if len(r.actions) == 0 {
@@ -39,6 +48,7 @@ func (r Registry) Lookup(action string) (ActionSpec, error) {
 	return spec, nil
 }
 
+// TargetForAction resolves and authorizes a target using the default catalog.
 func TargetForAction(action string, finding *ports.FindingRecord, explicit string) (string, error) {
 	spec, err := DefaultRegistry().Lookup(action)
 	if err != nil {
@@ -47,6 +57,9 @@ func TargetForAction(action string, finding *ports.FindingRecord, explicit strin
 	return TargetForActionSpec(spec, finding, explicit)
 }
 
+// TargetForActionSpec resolves and authorizes a target using spec. A missing
+// resolver is an invalid action contract, not permission to accept the caller's
+// target directly.
 func TargetForActionSpec(spec ActionSpec, finding *ports.FindingRecord, explicit string) (string, error) {
 	if spec.ResolveTarget == nil {
 		return "", fmt.Errorf("%w: action %q has no target resolver", ErrInvalidRequest, spec.ID)
@@ -54,6 +67,8 @@ func TargetForActionSpec(spec ActionSpec, finding *ports.FindingRecord, explicit
 	return spec.ResolveTarget(finding, explicit)
 }
 
+// ValidateActionForFinding returns the default spec only when the finding
+// satisfies its eligibility policy.
 func ValidateActionForFinding(action string, finding *ports.FindingRecord) (ActionSpec, error) {
 	spec, err := DefaultRegistry().Lookup(action)
 	if err != nil {
@@ -68,6 +83,8 @@ func ValidateActionForFinding(action string, finding *ports.FindingRecord) (Acti
 	return spec, nil
 }
 
+// FindingAllowsAction checks whether finding advertises action and whether the
+// action's generated eligibility policy accepts its current attributes.
 func FindingAllowsAction(action string, finding *ports.FindingRecord) error {
 	action = strings.TrimSpace(action)
 	if action == "" {

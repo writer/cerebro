@@ -19,15 +19,22 @@ const (
 )
 
 var (
+	// ErrRuntimeUnavailable means the service has no claim-store capability.
 	ErrRuntimeUnavailable = errors.New("graph facts runtime is unavailable")
-	ErrInvalidRequest     = errors.New("invalid graph facts request")
-	ErrFactNotFound       = errors.New("graph fact not found")
+	// ErrInvalidRequest means a selector, cursor, or limit is malformed.
+	ErrInvalidRequest = errors.New("invalid graph facts request")
+	// ErrFactNotFound means no claim matched an otherwise valid selector.
+	ErrFactNotFound = errors.New("graph fact not found")
 )
 
+// Service provides read-only fact views over a ClaimStore.
 type Service struct {
 	store ports.ClaimStore
 }
 
+// ListRequest selects a page of facts. TenantID or RuntimeID is required.
+// Filters are combined, not unioned. Compact and OmitAttributes only change
+// response shape; IncludeEvidence adds evidence parsed from claim attributes.
 type ListRequest struct {
 	TenantID        string
 	RuntimeID       string
@@ -47,6 +54,8 @@ type ListRequest struct {
 	Compact         bool
 }
 
+// ExplainRequest identifies exactly one fact by FactID or by a complete edge
+// selector consisting of subject, predicate, and object URN or scalar value.
 type ExplainRequest struct {
 	TenantID    string
 	RuntimeID   string
@@ -57,6 +66,8 @@ type ExplainRequest struct {
 	ObjectValue string
 }
 
+// TraceRequest selects an anchor fact and controls the bounded set of sibling
+// facts returned for the same subject. Trace is not a recursive graph walk.
 type TraceRequest struct {
 	TenantID        string
 	RuntimeID       string
@@ -71,12 +82,17 @@ type TraceRequest struct {
 	EvidenceLimit   uint32
 }
 
+// ListResponse contains one stable page of facts and an opaque continuation
+// cursor. NextCursor is set only when HasMore is true.
 type ListResponse struct {
 	Facts      []Fact `json:"facts"`
 	NextCursor string `json:"next_cursor,omitempty"`
 	HasMore    bool   `json:"has_more"`
 }
 
+// ExplainResponse combines the stored fact with views derived from it. Edge is
+// present only for object-URN facts; scalar facts still include freshness,
+// evidence, and a textual explanation.
 type ExplainResponse struct {
 	Fact        Fact       `json:"fact"`
 	Edge        *FactEdge  `json:"edge,omitempty"`
@@ -85,6 +101,8 @@ type ExplainResponse struct {
 	Explanation string     `json:"explanation"`
 }
 
+// TraceResponse contains the explained anchor and other facts that share its
+// subject. RelatedMore reflects truncation of that sibling set.
 type TraceResponse struct {
 	Anchor       ExplainResponse `json:"anchor"`
 	RelatedFacts []Fact          `json:"related_facts,omitempty"`
@@ -92,12 +110,16 @@ type TraceResponse struct {
 	RelatedMore  bool            `json:"related_more"`
 }
 
+// TraceStep is a presentation-ready statement in the explanation sequence.
 type TraceStep struct {
 	Kind        string `json:"kind"`
 	Description string `json:"description"`
 	FactID      string `json:"fact_id,omitempty"`
 }
 
+// Fact is the API representation of a stored claim. ObjectURN and ObjectValue
+// are distinct because a relationship and a scalar assertion have different
+// graph semantics even when their serialized text happens to match.
 type Fact struct {
 	ID            string            `json:"id"`
 	RuntimeID     string            `json:"runtime_id,omitempty"`
@@ -117,6 +139,7 @@ type Fact struct {
 	Evidence      []Evidence        `json:"evidence,omitempty"`
 }
 
+// FactEdge is the relationship view derived from a fact with an ObjectURN.
 type FactEdge struct {
 	FromURN  string            `json:"from_urn"`
 	Relation string            `json:"relation"`
@@ -125,12 +148,14 @@ type FactEdge struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
+// Evidence identifies a source record cited by a fact.
 type Evidence struct {
 	URN    string `json:"urn"`
 	Kind   string `json:"kind"`
 	Source string `json:"source,omitempty"`
 }
 
+// Freshness summarizes the observation and validity window of a fact.
 type Freshness struct {
 	ObservedAt string `json:"observed_at,omitempty"`
 	ValidFrom  string `json:"valid_from,omitempty"`
@@ -138,10 +163,15 @@ type Freshness struct {
 	Status     string `json:"status"`
 }
 
+// New constructs a read-only graph-facts service over store. A nil store is
+// accepted at construction time and reported as ErrRuntimeUnavailable on use.
 func New(store ports.ClaimStore) *Service {
 	return &Service{store: store}
 }
 
+// List returns a stable, bounded page of facts matching request. It does not
+// guarantee a snapshot across pages; records created between calls can appear
+// according to the ClaimStore ordering contract.
 func (s *Service) List(ctx context.Context, request ListRequest) (ListResponse, error) {
 	if s == nil || s.store == nil {
 		return ListResponse{}, ErrRuntimeUnavailable
@@ -154,6 +184,8 @@ func (s *Service) List(ctx context.Context, request ListRequest) (ListResponse, 
 	if err != nil {
 		return ListResponse{}, err
 	}
+	// Ask the store for one extra row. This proves whether another page exists
+	// without issuing a count query against a potentially changing claim set.
 	records, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
 		RuntimeID:       strings.TrimSpace(request.RuntimeID),
 		TenantID:        strings.TrimSpace(request.TenantID),
@@ -188,11 +220,16 @@ func (s *Service) List(ctx context.Context, request ListRequest) (ListResponse, 
 	}
 	nextCursor := ""
 	if hasMore && len(records) != 0 {
+		// The cursor captures the final store record rather than the shaped API
+		// fact because UpdatedAt is intentionally not exposed in the response.
 		nextCursor = encodeCursor(records[len(records)-1])
 	}
 	return ListResponse{Facts: facts, NextCursor: nextCursor, HasMore: hasMore}, nil
 }
 
+// Explain resolves one fact and derives its edge, evidence, freshness, and
+// human-readable statement. If a broad selector matches multiple records, the
+// first record in stable store order is returned.
 func (s *Service) Explain(ctx context.Context, request ExplainRequest) (ExplainResponse, error) {
 	if strings.TrimSpace(request.FactID) == "" &&
 		(strings.TrimSpace(request.SubjectURN) == "" || strings.TrimSpace(request.Predicate) == "" ||
@@ -225,6 +262,8 @@ func (s *Service) Explain(ctx context.Context, request ExplainRequest) (ExplainR
 	}, nil
 }
 
+// Trace explains one anchor and returns other facts for the same subject. It is
+// intended to show local provenance context, not to replace graph path queries.
 func (s *Service) Trace(ctx context.Context, request TraceRequest) (TraceResponse, error) {
 	anchor, err := s.Explain(ctx, ExplainRequest{
 		TenantID:    request.TenantID,

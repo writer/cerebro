@@ -6,10 +6,14 @@ import (
 	"strings"
 )
 
+// AccessApprovalsProvider adapts the access-approvals user lifecycle API to the
+// provider-neutral graph-action interface.
 type AccessApprovalsProvider struct {
 	Client AccessApprovalsClient
 }
 
+// ExecuteGraphAction dispatches a registered suspend or unsuspend operation and
+// maps the resulting access-approvals receipt into GraphAction.
 func (p AccessApprovalsProvider) ExecuteGraphAction(ctx context.Context, spec ActionSpec, request ProviderActionRequest) (*GraphAction, error) {
 	if p.Client == nil {
 		return nil, ErrNotConfigured
@@ -47,6 +51,7 @@ func (p AccessApprovalsProvider) ExecuteGraphAction(ctx context.Context, spec Ac
 	return GraphActionFromAccessApprovals(spec.ID, externalAction, p.Client.ActionURL(externalAction.ID), request.Target), nil
 }
 
+// GetGraphAction retrieves and normalizes the current access-approvals receipt.
 func (p AccessApprovalsProvider) GetGraphAction(ctx context.Context, externalID string) (*GraphAction, error) {
 	if p.Client == nil {
 		return nil, ErrNotConfigured

@@ -35,11 +35,17 @@ const (
 )
 
 var (
-	ErrNotConfigured  = errors.New("graph action executor is not configured")
+	// ErrNotConfigured means an execution dependency or provider is unavailable.
+	ErrNotConfigured = errors.New("graph action executor is not configured")
+	// ErrInvalidRequest means the request failed local authorization or shape validation.
 	ErrInvalidRequest = errors.New("invalid graph action request")
-	ErrRemote         = errors.New("graph action remote error")
+	// ErrRemote means a provider response violated the registered action contract.
+	ErrRemote = errors.New("graph action remote error")
 )
 
+// AccessApprovalsUserActionRequest is the legacy access-approvals provider
+// request. Finding and URN fields preserve the authorization evidence used to
+// choose the target.
 type AccessApprovalsUserActionRequest struct {
 	EmailOrUserID  string `json:"email_or_user_id"`
 	Reason         string `json:"reason,omitempty"`
@@ -53,6 +59,8 @@ type AccessApprovalsUserActionRequest struct {
 	SubjectURN     string `json:"subject_urn,omitempty"`
 }
 
+// AccessApprovalsUserAction is the provider receipt for a user suspension state
+// change. ID is the provider-owned identifier used for later reconciliation.
 type AccessApprovalsUserAction struct {
 	ID              string `json:"id"`
 	Action          string `json:"action"`
@@ -77,6 +85,9 @@ type AccessApprovalsUserAction struct {
 	LastError       string `json:"last_error,omitempty"`
 }
 
+// GraphAction is Cerebro's provider-neutral execution receipt. External fields
+// preserve provider identity and status while Metadata carries bounded context
+// needed for reconciliation and finding linkage.
 type GraphAction struct {
 	ID                   string            `json:"id"`
 	Action               string            `json:"action"`
@@ -100,6 +111,8 @@ type GraphAction struct {
 	Metadata             map[string]string `json:"metadata,omitempty"`
 }
 
+// AccessApprovalsClient is the legacy provider client adapted by
+// AccessApprovalsProvider.
 type AccessApprovalsClient interface {
 	SuspendOktaUser(context.Context, AccessApprovalsUserActionRequest) (*AccessApprovalsUserAction, error)
 	UnsuspendOktaUser(context.Context, AccessApprovalsUserActionRequest) (*AccessApprovalsUserAction, error)
@@ -107,6 +120,8 @@ type AccessApprovalsClient interface {
 	ActionURL(string) string
 }
 
+// ProviderActionRequest is the normalized, authorized request passed to an
+// ActionProvider. Target has already been proven against the finding.
 type ProviderActionRequest struct {
 	Target         string
 	Reason         string
@@ -120,16 +135,21 @@ type ProviderActionRequest struct {
 	SubjectURN     string
 }
 
+// ActionProvider executes registered action specifications and reads their
+// asynchronous provider receipts.
 type ActionProvider interface {
 	ExecuteGraphAction(context.Context, ActionSpec, ProviderActionRequest) (*GraphAction, error)
 	GetGraphAction(context.Context, string) (*GraphAction, error)
 }
 
+// FindingWorkflow supplies the finding authority used to plan an action and to
+// attach the resulting external receipt.
 type FindingWorkflow interface {
 	GetFinding(context.Context, string) (*ports.FindingRecord, error)
 	LinkFindingExternalRef(context.Context, string, ports.FindingExternalRef) (*ports.FindingRecord, error)
 }
 
+// Service plans, executes, and reconciles graph actions.
 type Service struct {
 	Findings   FindingWorkflow
 	Client     AccessApprovalsClient
@@ -138,6 +158,8 @@ type Service struct {
 	BeforeLink func(context.Context, *ports.FindingRecord, *GraphAction, string) error
 }
 
+// Input requests an action for one finding. Approved gates only live mutation;
+// DryRun always takes precedence and never calls the provider.
 type Input struct {
 	FindingID      string
 	Action         string
@@ -151,11 +173,14 @@ type Input struct {
 	Approved       bool
 }
 
+// ReconcileInput identifies a finding and one provider action already linked to it.
 type ReconcileInput struct {
 	FindingID  string
 	ExternalID string
 }
 
+// Result returns the normalized provider action and the finding projection
+// after linkage. ExternalRef is empty for dry runs.
 type Result struct {
 	Finding     *ports.FindingRecord
 	Action      *GraphAction
@@ -171,6 +196,8 @@ type executionPlan struct {
 	Target  string
 }
 
+// Execute plans an authorized action, optionally returns a dry run, or performs
+// the approved provider mutation and links its receipt to the finding.
 func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 	findingID := strings.TrimSpace(input.FindingID)
 	if findingID == "" {
@@ -191,6 +218,8 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Dry-run exits with the fully resolved target and request metadata before
+	// the approval gate or any provider call.
 	if input.DryRun {
 		return &Result{
 			Finding: plan.Finding,
@@ -215,6 +244,9 @@ func (s Service) Execute(ctx context.Context, input Input) (*Result, error) {
 	if strings.TrimSpace(graphAction.ExternalID) == "" {
 		return nil, fmt.Errorf("%w: response missing action external_id", ErrRemote)
 	}
+	// A successful remote mutation is not considered linked until the finding
+	// projection records the provider receipt. BeforeLink supports an owning
+	// runtime's durable handoff immediately before that projection.
 	var ref ports.FindingExternalRef
 	updated := plan.Finding
 	if plan.Finding != nil {
@@ -282,6 +314,9 @@ func (s Service) plan(ctx context.Context, input Input, spec ActionSpec, finding
 	}, nil
 }
 
+// Reconcile refreshes one provider receipt already linked to a finding. It
+// rechecks provider ownership, tenant binding, action eligibility, and target
+// authorization before updating the link.
 func (s Service) Reconcile(ctx context.Context, input ReconcileInput) (*Result, error) {
 	if s.Findings == nil {
 		return nil, ErrNotConfigured
@@ -531,6 +566,9 @@ func graphActionIDFromAccessApprovals(action string) (string, error) {
 	}
 }
 
+// OktaUserTargetForFinding derives an Okta user ID or email from verified
+// finding fields. An explicit selector is accepted only when the same normalized
+// identity is present in the finding.
 func OktaUserTargetForFinding(finding *ports.FindingRecord, explicit string) (string, error) {
 	explicit = strings.TrimSpace(explicit)
 	if explicit != "" {
@@ -552,6 +590,8 @@ func OktaUserTargetForFinding(finding *ports.FindingRecord, explicit string) (st
 	return "", fmt.Errorf("%w: email_or_user_id is required or no Okta user target could be derived from finding", ErrInvalidRequest)
 }
 
+// CerebroDeviceTargetForFinding derives a device ID from verified finding
+// fields. An explicit selector cannot introduce a device absent from the finding.
 func CerebroDeviceTargetForFinding(finding *ports.FindingRecord, explicit string) (string, error) {
 	explicit = strings.TrimSpace(explicit)
 	if explicit != "" {
@@ -573,6 +613,8 @@ func CerebroDeviceTargetForFinding(finding *ports.FindingRecord, explicit string
 	return "", fmt.Errorf("%w: device_id is required or no Cerebro device target could be derived from finding", ErrInvalidRequest)
 }
 
+// NormalizeDeviceTarget validates an opaque device identifier without changing
+// its case. Delimiters and whitespace that could alter routing are rejected.
 func NormalizeDeviceTarget(target string) (string, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
@@ -778,6 +820,8 @@ func stringFromNestedMap(values map[string]any, parent string, key string) strin
 	return stringFromMap(value, key)
 }
 
+// NormalizeTarget validates a user target as either a provider user ID or an
+// email address. Parsed email display names are discarded.
 func NormalizeTarget(target string) (string, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
@@ -798,6 +842,8 @@ func NormalizeTarget(target string) (string, error) {
 	return target, nil
 }
 
+// Reason returns a bounded provider audit reason. When explicit is empty, it
+// derives a stable explanation from the finding ID and title.
 func Reason(finding *ports.FindingRecord, explicit string) (string, error) {
 	reason := strings.TrimSpace(explicit)
 	if reason == "" && finding != nil {
@@ -812,6 +858,7 @@ func Reason(finding *ports.FindingRecord, explicit string) (string, error) {
 	return reason, nil
 }
 
+// TicketURL validates an optional absolute HTTP(S) audit link.
 func TicketURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -827,11 +874,15 @@ func TicketURL(raw string) (string, error) {
 	return raw, nil
 }
 
+// IdempotencyKey binds a retry key to the normalized action, finding, and
+// target. NUL separators prevent ambiguous concatenations.
 func IdempotencyKey(action string, findingID string, target string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(action) + "\x00" + strings.TrimSpace(findingID) + "\x00" + strings.ToLower(strings.TrimSpace(target))))
 	return "cerebro:graph-action:" + strings.TrimSpace(action) + ":" + hex.EncodeToString(sum[:])
 }
 
+// GraphActionFromAccessApprovals maps a legacy provider receipt into the
+// provider-neutral GraphAction contract.
 func GraphActionFromAccessApprovals(action string, external *AccessApprovalsUserAction, actionURL string, fallbackTarget string) *GraphAction {
 	if external == nil {
 		return nil
@@ -888,6 +939,7 @@ func GraphActionFromAccessApprovals(action string, external *AccessApprovalsUser
 	}
 }
 
+// ExternalRef creates the finding linkage for a provider action receipt.
 func ExternalRef(action *GraphAction) ports.FindingExternalRef {
 	if action == nil {
 		return ports.FindingExternalRef{}
