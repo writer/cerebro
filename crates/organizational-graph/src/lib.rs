@@ -1,6 +1,14 @@
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 //! Rust-owned admission and current-state graph engine.
+//!
+//! The graph accepts only [`GraphDelta`] values that have already crossed the
+//! sealed model's admission boundary. [`OrganizationalGraph::apply`] validates
+//! the complete candidate tenant state before replacing current state, so a
+//! failed entity, identity, claim, or retraction check cannot partially mutate
+//! the graph. The graph is a current-state projection; durable replay and
+//! persistence belong to the organizational-store crate.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -15,26 +23,44 @@ use cerebro_organizational_model::{
 use serde::Serialize;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// A candidate graph delta violated an identity or ownership invariant.
 pub enum GraphError {
+    /// An incoming entity reused an ID with different stable identity fields.
     EntityConflict(EntityId),
+    /// An assertion references an entity absent from both current and incoming state.
     MissingEntity(EntityId),
+    /// A provider identity is already confirmed against another canonical identity.
     IdentityAlreadyBound {
+        /// The provider-owned identity being rebound.
         provider_identity: EntityId,
+        /// The canonical identity already confirmed for the provider identity.
         existing_canonical_identity: EntityId,
+        /// The different canonical identity requested by the candidate delta.
         requested_canonical_identity: EntityId,
     },
+    /// A normalized identity claim is already confirmed against another identity.
     IdentityClaimAlreadyBound {
+        /// The namespace of the conflicting claim.
         claim_kind: IdentityClaimKind,
+        /// The normalized claim value.
         claim_value: String,
+        /// The canonical identity already confirmed for the claim.
         existing_canonical_identity: EntityId,
+        /// The different canonical identity requested by the candidate delta.
         requested_canonical_identity: EntityId,
     },
+    /// A canonical identity lacks the authoritative employee anchor required for binding.
     CanonicalIdentityUnanchored(EntityId),
+    /// A proposed binding cites no confirmed claim for the requested identity.
     IdentityClaimNotFound {
+        /// The namespace of the missing claim.
         claim_kind: IdentityClaimKind,
+        /// The normalized claim value.
         claim_value: String,
+        /// The canonical identity the claim was expected to anchor.
         requested_canonical_identity: EntityId,
     },
+    /// A collection attempted to retract an assertion owned by another runtime.
     RetractionSourceMismatch(AssertionId),
 }
 
@@ -87,12 +113,22 @@ impl fmt::Display for GraphError {
 impl Error for GraphError {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Receipt for one atomically accepted graph delta.
+///
+/// Counts describe writes in the submitted delta, while `graph_revision`
+/// identifies the resulting tenant projection revision.
 pub struct GraphWriteReceipt {
+    /// Tenant whose projection changed.
     pub tenant_id: TenantId,
+    /// Monotonic in-memory revision after the accepted write.
     pub graph_revision: u64,
+    /// Content digest committed by the validated delta.
     pub delta_digest: String,
+    /// Number of entities inserted or refreshed.
     pub entities_upserted: usize,
+    /// Number of assertions inserted or refreshed.
     pub assertions_upserted: usize,
+    /// Number of existing assertions removed by owned retractions.
     pub assertions_retracted: usize,
 }
 
@@ -107,11 +143,17 @@ struct TenantGraph {
 }
 
 #[derive(Clone, Debug, Default)]
+/// Tenant-partitioned current-state organizational graph.
+///
+/// This type is an in-process projection engine, not a durable store. Clone-on-
+/// validate admission preserves atomicity before the accepted candidate state
+/// replaces a tenant's current assertion and identity indexes.
 pub struct OrganizationalGraph {
     tenants: BTreeMap<TenantId, TenantGraph>,
 }
 
 impl OrganizationalGraph {
+    /// Creates an empty graph with no tenant projections.
     pub fn new() -> Self {
         Self::default()
     }
@@ -171,6 +213,9 @@ impl OrganizationalGraph {
             }
         }
 
+        // Rebuild every identity index from the complete candidate assertion
+        // set. Incremental index mutation could leave stale bindings when the
+        // same delta retracts and replaces identity evidence.
         let mut identity_candidate = TenantGraph {
             assertions: candidate_assertions,
             ..TenantGraph::default()
@@ -332,10 +377,18 @@ impl TenantGraph {
     }
 }
 
+/// Read-only organizational graph capability used by agents and product views.
+///
+/// Implementations return owned values so callers cannot mutate projection
+/// state through a read handle.
 pub trait GraphRead {
+    /// Returns the current tenant revision, or zero when no tenant graph exists.
     fn graph_revision(&self, tenant_id: &TenantId) -> u64;
+    /// Returns one entity from the tenant projection.
     fn entity(&self, tenant_id: &TenantId, entity_id: &EntityId) -> Option<Entity>;
+    /// Returns all tenant entities in stable ID order.
     fn entities(&self, tenant_id: &TenantId) -> Vec<Entity>;
+    /// Returns all tenant assertions in stable assertion-ID order.
     fn assertions(&self, tenant_id: &TenantId) -> Vec<GraphAssertion>;
 }
 

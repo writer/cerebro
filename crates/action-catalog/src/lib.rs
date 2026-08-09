@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 //! Closed, content-addressed Action definitions.
 //!
@@ -6,6 +7,11 @@
 //! is generated as a compatibility consumer. New Action proposals must bind one
 //! exact generated definition; stored historical operations retain their
 //! original digest.
+//!
+//! [`validate_proposal`] is the admission boundary between caller-authored
+//! intent and executable action policy. It rejects unknown action kinds,
+//! definition drift, effect drift, and effects aimed at any target other than
+//! the proposal's authorized target.
 
 mod generated;
 
@@ -18,18 +24,31 @@ use sha2::{Digest, Sha256};
 const ACTION_DEFINITION_DIGEST_SCHEMA: &str = "cerebro.action-definition.v1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+/// Immutable generated policy for one executable action kind.
 pub struct ActionDefinition<'a> {
+    /// Stable action kind used by proposals and durable operations.
     pub id: &'a str,
+    /// Provider adapter responsible for executing the action.
     pub provider: &'a str,
+    /// Provider-native operation selected by the adapter.
     pub provider_action: &'a str,
+    /// Kind of identifier the target resolver must authorize.
     pub target_kind: &'a str,
+    /// Effect kind every proposal effect must declare.
     pub effect: &'a str,
+    /// Whether execution changes provider state.
     pub destructive: bool,
+    /// Registered action kind that reverses this action, or an empty string.
     pub reversible_by: &'a str,
+    /// Content digest of every executable policy field in this definition.
     pub definition_digest: &'a str,
 }
 
 impl ActionDefinition<'_> {
+    /// Recomputes the canonical definition digest for drift detection.
+    ///
+    /// `definition_digest` itself is excluded from the digest material so the
+    /// generated value can be independently verified.
     pub fn computed_digest(&self) -> Result<String, serde_json::Error> {
         #[derive(Serialize)]
         struct DigestMaterial<'a> {
@@ -64,12 +83,27 @@ impl ActionDefinition<'_> {
 }
 
 #[derive(Debug)]
+/// A proposal cannot be bound to the closed action catalog.
 pub enum ActionCatalogError {
+    /// The proposal failed its transport-neutral structural validation.
     InvalidProposal(SdkError),
+    /// No generated definition exists for the requested action kind.
     UnknownActionKind(String),
-    DefinitionDigestMismatch { action_kind: String },
-    EffectMismatch { action_kind: String },
-    EffectTargetMismatch { action_kind: String },
+    /// The proposal was authored against different executable policy.
+    DefinitionDigestMismatch {
+        /// Action kind whose bound digest drifted.
+        action_kind: String,
+    },
+    /// A proposed expected effect differs from the registered effect kind.
+    EffectMismatch {
+        /// Action kind whose effect contract was violated.
+        action_kind: String,
+    },
+    /// A proposed expected effect points at a different target.
+    EffectTargetMismatch {
+        /// Action kind whose target binding was violated.
+        action_kind: String,
+    },
 }
 
 impl fmt::Display for ActionCatalogError {
@@ -109,10 +143,12 @@ impl From<SdkError> for ActionCatalogError {
     }
 }
 
+/// Returns the complete generated catalog in deterministic order.
 pub fn definitions() -> &'static [ActionDefinition<'static>] {
     generated::ACTION_DEFINITIONS
 }
 
+/// Resolves one exact action kind without aliases or fallback matching.
 pub fn lookup(action_kind: &str) -> Result<&'static ActionDefinition<'static>, ActionCatalogError> {
     definitions()
         .iter()
@@ -120,6 +156,11 @@ pub fn lookup(action_kind: &str) -> Result<&'static ActionDefinition<'static>, A
         .ok_or_else(|| ActionCatalogError::UnknownActionKind(action_kind.to_owned()))
 }
 
+/// Binds a proposal to its exact catalog definition.
+///
+/// Successful validation proves that the proposal's definition digest, every
+/// expected effect kind, and every effect target match current generated policy.
+/// It does not confer approval or execute the action.
 pub fn validate_proposal(
     proposal: &ActionProposal,
 ) -> Result<&'static ActionDefinition<'static>, ActionCatalogError> {

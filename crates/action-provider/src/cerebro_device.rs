@@ -16,6 +16,11 @@ const RECEIPT_SCHEMA: &str = "cerebro.device-action-receipt.v1";
 const EXTERNAL_PREFIX: &str = "cerebro-device:revoke:";
 
 #[derive(Clone)]
+/// PostgreSQL-backed adapter for first-party Cerebro device revocation.
+///
+/// The device record is both the mutation target and the source for later
+/// observation. Tenant binding comes from the durable [`ActionDispatch`]; an
+/// external receipt identifier cannot select a different device.
 pub struct CerebroDeviceClient {
     store: Arc<dyn CerebroDeviceStore>,
 }
@@ -39,6 +44,7 @@ struct PostgresCerebroDeviceStore {
 }
 
 impl CerebroDeviceClient {
+    /// Connects to the device store using native TLS and starts the connection driver.
     pub async fn connect_tls(connection_string: &str) -> Result<Self, ProviderError> {
         if connection_string.trim().is_empty() || connection_string.trim() != connection_string {
             return Err(ProviderError::InvalidConfiguration(
@@ -69,6 +75,10 @@ impl CerebroDeviceClient {
         Self { store }
     }
 
+    /// Idempotently revokes the tenant-bound device selected by `dispatch`.
+    ///
+    /// A database error is ambiguous because the update may have committed
+    /// before the connection failed; callers reconcile instead of retrying.
     pub async fn dispatch(
         &self,
         dispatch: &ActionDispatch,
@@ -78,6 +88,8 @@ impl CerebroDeviceClient {
         receipt(dispatch, state, None)
     }
 
+    /// Reads the device's current state after proving `expected_external_id`
+    /// names the same target as the durable dispatch.
     pub async fn observe(
         &self,
         dispatch: &ActionDispatch,
