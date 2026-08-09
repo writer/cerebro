@@ -9,66 +9,118 @@ const MAX_REASON_BYTES: usize = 4_096;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Durable operating phase of a mission derived from one mandate revision.
 pub enum MissionState {
+    /// Mission exists but scope resolution has not begun.
     Open,
+    /// Subjects and evidence boundaries are being resolved.
     ResolvingScope,
+    /// Work steps, authority, and verification are being planned.
     Planning,
+    /// Planning or verification requires an additional source observation.
     WaitingOnEvidence,
+    /// A proposed effect is waiting for an authorization decision.
     WaitingOnApproval,
+    /// Required evidence and approval are present; execution may be scheduled.
     ReadyToAct,
+    /// An authorized executor is performing an external effect.
     Acting,
+    /// Execution is complete enough for an independent source observation.
     Verifying,
+    /// Independent evidence confirms the intended effect.
     Verified,
+    /// A recorded impediment prevents a legal forward transition.
     Blocked,
+    /// Verified mission is terminal for its current scope snapshot.
     Closed,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Validated inputs for opening a mission against an immutable mandate revision.
 pub struct MissionInput {
+    /// Tenant containing both the mandate and all mission subjects.
     pub tenant_id: TenantId,
+    /// Stable identifier for the new mission.
     pub mission_id: MissionId,
+    /// Mandate whose desired condition originated this work.
     pub mandate_id: MandateId,
+    /// Non-zero immutable mandate revision governing the mission.
     pub mandate_revision: u64,
+    /// Bounded observable outcome the mission must achieve.
     pub objective: String,
+    /// Non-empty canonical subject URNs included in the mission.
     pub subject_urns: Vec<String>,
+    /// Actor opening revision one.
     pub actor_id: ActorId,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Versioned aggregate governing scope, action, verification, and closure.
+///
+/// The mission remains bound to the mandate revision that originated it. Legal
+/// transitions are enforced by [`Self::transition`], while the `Verifying` to
+/// `Verified` edge is reserved for [`Self::verify`] and an independent receipt.
 pub struct Mission {
+    /// Tenant boundary inherited from the originating mandate.
     pub tenant_id: TenantId,
+    /// Stable identity preserved across all mission revisions.
     pub mission_id: MissionId,
+    /// Originating mandate identity.
     pub mandate_id: MandateId,
+    /// Immutable mandate revision governing objective and scope.
     pub mandate_revision: u64,
+    /// Optimistic-concurrency revision, starting at one.
     pub revision: u64,
+    /// Current operating phase.
     pub state: MissionState,
+    /// Source-observable result the mission is responsible for achieving.
     pub objective: String,
+    /// Sorted, deduplicated canonical subjects included in the work.
     pub subject_urns: Vec<String>,
+    /// Actor responsible for the latest accepted transition.
     pub changed_by: ActorId,
+    /// Bounded reason recorded with the latest transition.
     pub last_reason: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Optimistic request to move a mission across one legal lifecycle edge.
 pub struct MissionTransition {
+    /// Revision the caller observed before requesting the transition.
     pub expected_revision: u64,
+    /// Requested next operating phase.
     pub to: MissionState,
+    /// Actor responsible for the phase change.
     pub actor_id: ActorId,
+    /// Bounded factual explanation for the transition.
     pub reason: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Reason a mission open, transition, or verification was rejected.
 pub enum MissionError {
+    /// Objective was empty, unbounded, padded, or contained control text.
     InvalidObjective,
+    /// Subject collection was empty, oversized, or contained an invalid URN.
     InvalidSubjects,
+    /// Originating mandate revision was zero.
     InvalidMandateRevision,
+    /// Transition reason violated the bounded text contract.
     InvalidReason,
+    /// Receipt did not independently confirm a changed, effective source state.
     InvalidVerification,
+    /// Caller attempted to update a stale aggregate revision.
     RevisionConflict {
+        /// Revision supplied by the caller.
         expected: u64,
+        /// Current mission revision.
         actual: u64,
     },
+    /// Requested edge is absent from the mission lifecycle graph.
     InvalidTransition {
+        /// Current mission state.
         from: MissionState,
+        /// Requested mission state.
         to: MissionState,
     },
 }
@@ -99,6 +151,11 @@ impl fmt::Display for MissionError {
 impl Error for MissionError {}
 
 impl Mission {
+    /// Opens a revision-one mission bound to a non-zero mandate revision.
+    ///
+    /// Subject URNs are validated, sorted, and deduplicated. The mission begins
+    /// `Open`; creation does not imply that scope, evidence, authority, or an
+    /// executable plan has already been resolved.
     pub fn open(input: MissionInput) -> Result<Self, MissionError> {
         validate_text(&input.objective).map_err(|_| MissionError::InvalidObjective)?;
         if input.mandate_revision == 0 {
@@ -119,6 +176,11 @@ impl Mission {
         })
     }
 
+    /// Applies one legal non-verification state transition to a new revision.
+    ///
+    /// Stale revisions, invalid reasons, and unlisted edges fail without changing
+    /// the original aggregate. `Verified` cannot be reached here because callers
+    /// must use [`Self::verify`] with independent evidence.
     pub fn transition(&self, transition: MissionTransition) -> Result<Self, MissionError> {
         if transition.expected_revision != self.revision {
             return Err(MissionError::RevisionConflict {
@@ -141,6 +203,13 @@ impl Mission {
         Ok(next)
     }
 
+    /// Moves a `Verifying` mission to `Verified` using an independent receipt.
+    ///
+    /// The receipt must satisfy [`VerificationReceipt::independently_confirms_effect`].
+    /// On success, `changed_by` becomes the verifier rather than the executor.
+    /// Verification does not close the mission; closure is a separate transition,
+    /// preserving an auditable distinction between observed outcome and lifecycle
+    /// completion.
     pub fn verify(
         &self,
         expected_revision: u64,
