@@ -19,7 +19,7 @@ func TestDeterministicReviewIsExactShaScopedAndReadOnly(t *testing.T) {
 		"name: Deterministic Review",
 		"permissions:\n  contents: read",
 		`ref: ${{ github.event.pull_request.head.sha }}`,
-		`review_base="$(git merge-base "${BASE_SHA}" "${HEAD_SHA}")"`,
+		`review_base="$(git merge-base --octopus "${BASE_SHA}" "${HEAD_SHA}")"`,
 		`git merge-base --is-ancestor "${review_base}" "${HEAD_SHA}"`,
 		`echo "REVIEW_BASE=${review_base}"`,
 		`echo "REVIEW_HEAD=${HEAD_SHA}"`,
