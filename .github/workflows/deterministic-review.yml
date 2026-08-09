@@ -59,8 +59,14 @@ jobs:
           test "$(git rev-parse HEAD)" = "${HEAD_SHA}"
           git cat-file -e "${BASE_SHA}^{commit}"
           git cat-file -e "${HEAD_SHA}^{commit}"
-          git merge-base --is-ancestor "${BASE_SHA}" "${HEAD_SHA}"
-          echo "review range: ${BASE_SHA}...${HEAD_SHA}"
+          review_base="$(git merge-base "${BASE_SHA}" "${HEAD_SHA}")"
+          test -n "${review_base}"
+          git merge-base --is-ancestor "${review_base}" "${HEAD_SHA}"
+          {
+            echo "REVIEW_BASE=${review_base}"
+            echo "REVIEW_HEAD=${HEAD_SHA}"
+          } >> "${GITHUB_ENV}"
+          echo "review range: ${review_base}...${HEAD_SHA}"
 
       - name: Install workflow linters
         shell: bash
@@ -89,8 +95,6 @@ jobs:
       - name: Run deterministic repository review
         shell: bash
         env:
-          REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
-          REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
           REVIEW_INVARIANTS_JSON_OUT: tmp/review-invariants.json
         run: make deterministic-review
 
@@ -109,16 +113,10 @@ jobs:
 
       - name: Run changed-range leak scan
         shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: ./scripts/leak_check.sh range "${BASE_SHA}...${HEAD_SHA}"
+        run: ./scripts/leak_check.sh range "${REVIEW_BASE}...${REVIEW_HEAD}"
 
       - name: Run ShellCheck on changed shell scripts
         shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           shell_files=()
@@ -126,7 +124,7 @@ jobs:
             if [ -f "$path" ]; then
               shell_files+=("$path")
             fi
-          done < <(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...${HEAD_SHA}" -- '*.sh')
+          done < <(git diff --name-only --diff-filter=ACMR "${REVIEW_BASE}...${REVIEW_HEAD}" -- '*.sh')
           if [ "${#shell_files[@]}" -gt 0 ]; then
             command -v shellcheck >/dev/null
             shellcheck "${shell_files[@]}"
