@@ -12,16 +12,21 @@ import (
 
 const cerebroDeviceRevokeExternalPrefix = "cerebro-device:revoke:"
 
+// CerebroDeviceService is the narrow device-auth capability required to revoke
+// a device and retrieve its current state.
 type CerebroDeviceService interface {
 	LookupDevice(context.Context, string) (deviceauth.DeviceRecord, error)
 	Revoke(context.Context, string, string) error
 }
 
+// CerebroDeviceProvider adapts Cerebro device revocation to graph actions.
 type CerebroDeviceProvider struct {
 	Service CerebroDeviceService
 	Now     func() time.Time
 }
 
+// ExecuteGraphAction revokes the finding-authorized device and returns a
+// provider-neutral receipt. Other device mutations are rejected by the spec.
 func (p CerebroDeviceProvider) ExecuteGraphAction(ctx context.Context, spec ActionSpec, request ProviderActionRequest) (*GraphAction, error) {
 	if p.Service == nil {
 		return nil, ErrNotConfigured
@@ -48,6 +53,8 @@ func (p CerebroDeviceProvider) ExecuteGraphAction(ctx context.Context, spec Acti
 	return GraphActionFromCerebroDevice(spec.ID, device, request, ActionStatusSucceeded, "revoked", ""), nil
 }
 
+// GetGraphAction reconstructs the current receipt from the device record named
+// by externalID.
 func (p CerebroDeviceProvider) GetGraphAction(ctx context.Context, externalID string) (*GraphAction, error) {
 	if p.Service == nil {
 		return nil, ErrNotConfigured
@@ -97,10 +104,14 @@ func (p CerebroDeviceProvider) now() time.Time {
 	return time.Now().UTC()
 }
 
+// CerebroDeviceExternalID creates the provider receipt identifier used for
+// reconciliation without introducing a separate remote action record.
 func CerebroDeviceExternalID(deviceID string) string {
 	return cerebroDeviceRevokeExternalPrefix + strings.TrimSpace(deviceID)
 }
 
+// CerebroDeviceTargetFromExternalID extracts a validated device ID from a
+// Cerebro device receipt identifier.
 func CerebroDeviceTargetFromExternalID(externalID string) (string, bool) {
 	externalID = strings.TrimSpace(externalID)
 	if !strings.HasPrefix(externalID, cerebroDeviceRevokeExternalPrefix) {
@@ -113,6 +124,8 @@ func CerebroDeviceTargetFromExternalID(externalID string) (string, bool) {
 	return target, true
 }
 
+// GraphActionFromCerebroDevice maps a device record and operation outcome into
+// the provider-neutral receipt contract.
 func GraphActionFromCerebroDevice(action string, device deviceauth.DeviceRecord, request ProviderActionRequest, status string, externalStatus string, statusReason string) *GraphAction {
 	target := strings.TrimSpace(device.DeviceID)
 	updatedAt := time.Now().UTC()

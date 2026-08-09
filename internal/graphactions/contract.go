@@ -12,6 +12,8 @@ const (
 	ActionStatusNeedsAttention = "needs_attention"
 )
 
+// ActionMetadata is the serializable, behavior-free description of an action.
+// DefinitionDigest binds callers to the exact generated catalog definition.
 type ActionMetadata struct {
 	ID               string `json:"id"`
 	Provider         string `json:"provider"`
@@ -23,6 +25,7 @@ type ActionMetadata struct {
 	DefinitionDigest string `json:"definition_digest"`
 }
 
+// Metadata returns the normalized public metadata for an action specification.
 func (s ActionSpec) Metadata() ActionMetadata {
 	return ActionMetadata{
 		ID:               strings.TrimSpace(s.ID),
@@ -36,10 +39,14 @@ func (s ActionSpec) Metadata() ActionMetadata {
 	}
 }
 
+// NormalizeActionStatus converts provider status text to Cerebro's comparison
+// form without deciding whether the result is supported.
 func NormalizeActionStatus(status string) string {
 	return strings.ToLower(strings.TrimSpace(status))
 }
 
+// KnownActionStatuses returns a new slice containing every asynchronous status
+// accepted from providers. Dry-run is local planning state and is not included.
 func KnownActionStatuses() []string {
 	return []string{
 		ActionStatusPending,
@@ -52,6 +59,7 @@ func KnownActionStatuses() []string {
 	}
 }
 
+// ActionStatusKnown reports whether status is in the provider lifecycle.
 func ActionStatusKnown(status string) bool {
 	switch NormalizeActionStatus(status) {
 	case ActionStatusPending,
@@ -67,6 +75,9 @@ func ActionStatusKnown(status string) bool {
 	}
 }
 
+// ActionStatusTerminal reports whether provider polling can stop. The
+// needs_attention state is terminal for automation even though a human may
+// perform follow-up work.
 func ActionStatusTerminal(status string) bool {
 	switch NormalizeActionStatus(status) {
 	case ActionStatusSucceeded, ActionStatusFailed, ActionStatusCancelled, ActionStatusNeedsAttention:

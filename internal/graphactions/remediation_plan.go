@@ -6,6 +6,9 @@ import (
 	"strings"
 )
 
+// ReversibleRemediationPlan is a non-executable review packet for a mutating
+// action and its registered reversal. CanExecute remains false because planning
+// never confers approval.
 type ReversibleRemediationPlan struct {
 	Action            ActionMetadata `json:"action"`
 	Reversal          ActionMetadata `json:"reversal"`
@@ -18,6 +21,8 @@ type ReversibleRemediationPlan struct {
 	VerificationSteps []string       `json:"verification_steps,omitempty"`
 }
 
+// PlanReversibleRemediation performs the same eligibility and target resolution
+// as Execute but forces dry-run mode and requires a registered reversal.
 func (s Service) PlanReversibleRemediation(ctx context.Context, input Input) (*ReversibleRemediationPlan, error) {
 	input.DryRun = true
 	input.Approved = false
