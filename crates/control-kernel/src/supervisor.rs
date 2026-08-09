@@ -2,42 +2,81 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Commitment, CommitmentId, CommitmentState, MissionState, WakeConditionId};
 
+/// Minimal durable projection required to choose the mission's next action.
+///
+/// The supervisor is intentionally pure: callers assemble this snapshot from
+/// the authoritative mission, plan, commitment, and wake-condition records,
+/// then persist any resulting transition outside this module.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SupervisorSnapshot {
+    /// Current state of the mission lifecycle.
     pub mission_state: MissionState,
+    /// Whether the mission has a current plan revision eligible for execution.
     pub has_current_plan: bool,
+    /// Commitments in their deterministic plan order. When several records
+    /// share a state, the first record wins.
     pub commitments: Vec<Commitment>,
+    /// Wake conditions that remain armed for the mission.
     pub armed_wake_condition_ids: Vec<WakeConditionId>,
+    /// Wake conditions whose predicates have been durably satisfied.
     pub satisfied_wake_condition_ids: Vec<WakeConditionId>,
 }
 
+/// One bounded instruction emitted by the pure mission supervisor.
+///
+/// A directive describes the next control-plane action; it is not proof that
+/// the action ran. Hosts must still apply authorization, fencing, execution,
+/// persistence, and verification at their owning boundaries.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "directive", rename_all = "snake_case")]
 pub enum MissionDirective {
+    /// Resolve the mandate and subject before planning.
     ResolveScope,
+    /// Produce or revise the current plan.
     RevisePlan,
+    /// Obtain a durable decision for the named commitment.
     RequestDecision {
+        /// Commitment whose authority is incomplete.
         commitment_id: CommitmentId,
     },
+    /// Execute the named ready commitment.
     Execute {
+        /// Commitment selected for bounded execution.
         commitment_id: CommitmentId,
     },
+    /// Verify the named executing or verification-pending commitment.
     Verify {
+        /// Commitment whose expected effect requires fresh evidence.
         commitment_id: CommitmentId,
     },
+    /// Remain idle until at least one named armed condition is satisfied.
     Wait {
+        /// Exact conditions the host should continue observing.
         wake_condition_ids: Vec<WakeConditionId>,
     },
+    /// Re-enter planning using newly satisfied wake evidence.
     ReplanFromWake {
+        /// Conditions whose satisfaction triggered reconsideration.
         wake_condition_ids: Vec<WakeConditionId>,
     },
+    /// Stop automatic progress because the snapshot violates a supervisor
+    /// invariant or lacks the record required by its mission state.
     Blocked {
+        /// Stable machine-readable reason code.
         code: String,
     },
+    /// Close a verified mission.
     Close,
+    /// Perform no work for an already closed mission.
     NoAction,
 }
 
+/// Selects exactly one next directive from a mission projection.
+///
+/// Selection is deterministic. Satisfied wake conditions take precedence over
+/// armed conditions, and commitment work is ordered as approval, execution,
+/// then verification. Missing records fail closed through a stable `Blocked`
+/// code instead of guessing a recovery action.
 pub fn next_directive(snapshot: &SupervisorSnapshot) -> MissionDirective {
     match snapshot.mission_state {
         MissionState::Open | MissionState::ResolvingScope => MissionDirective::ResolveScope,
@@ -95,6 +134,9 @@ fn blocked(code: &str) -> MissionDirective {
 }
 
 fn next_commitment_directive(commitments: &[Commitment]) -> Option<MissionDirective> {
+    // Approval always wins so an executable sibling cannot let the mission
+    // run past an unresolved authority boundary. Ready work precedes
+    // verification only after no pending decision remains.
     commitments
         .iter()
         .find(|commitment| commitment.state == CommitmentState::WaitingOnApproval)

@@ -6,74 +6,135 @@ use crate::{ConversationId, DecisionId, WakeConditionId};
 
 const MAX_TEXT_BYTES: usize = 4_096;
 
+/// A durable predicate that can make a waiting mission eligible for replanning.
+///
+/// Each variant names both the authority surface to observe and the exact
+/// baseline that must change. The kernel stores the predicate; a host adapter
+/// remains responsible for observing sources, clocks, conversations, and
+/// decisions and for presenting the corresponding [`WakeSignal`].
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WakeConditionKind {
+    /// Wake after one authoritative source reports a revision other than the
+    /// revision recorded when the condition was armed.
     SourceRevisionChanged {
+        /// Stable URN of the source whose revision is authoritative.
         source_urn: String,
+        /// Exact revision already incorporated into the mission.
         baseline_revision: String,
     },
+    /// Wake after a specific event type is observed for a specific subject.
     EventObserved {
+        /// Canonical event type, such as `identity.offboarded`.
         event_type: String,
+        /// Stable URN of the subject to which the event must apply.
         subject_urn: String,
     },
+    /// Wake no earlier than an absolute Unix timestamp.
     DeadlineReached {
+        /// Inclusive lower bound, in Unix epoch milliseconds.
         not_before_unix_ms: u64,
     },
+    /// Wake after a durable conversation advances beyond a known sequence.
     ConversationAdvanced {
+        /// Conversation whose ordered record is being observed.
         conversation_id: ConversationId,
+        /// Last sequence already incorporated into the mission; a signal must
+        /// carry a strictly greater sequence.
         after_sequence: u64,
     },
+    /// Wake after the exact requested decision has been recorded.
     DecisionRecorded {
+        /// Decision identity bound to the pending authorization question.
         decision_id: DecisionId,
     },
 }
 
+/// One observation offered to an armed [`WakeCondition`].
+///
+/// Signals are facts, not commands: presenting one cannot mutate a condition
+/// unless its variant and bound identifiers satisfy the stored predicate.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "signal", rename_all = "snake_case")]
 pub enum WakeSignal {
+    /// Current revision reported by an authoritative source.
     SourceRevision {
+        /// Stable URN of the reporting source.
         source_urn: String,
+        /// Revision observed at evaluation time.
         revision: String,
     },
+    /// Event observed for a subject.
     Event {
+        /// Canonical observed event type.
         event_type: String,
+        /// Stable URN of the observed subject.
         subject_urn: String,
     },
+    /// Trusted clock observation.
     Clock {
+        /// Time observed by the host, in Unix epoch milliseconds.
         observed_at_unix_ms: u64,
     },
+    /// Durable conversation sequence observation.
     Conversation {
+        /// Conversation that advanced.
         conversation_id: ConversationId,
+        /// Latest durably recorded sequence.
         sequence: u64,
     },
+    /// Durable authorization-decision observation.
     Decision {
+        /// Decision that was recorded.
         decision_id: DecisionId,
     },
 }
 
+/// Lifecycle state of a wake condition.
+///
+/// `Satisfied` and `Cancelled` are terminal. A terminal condition must never
+/// be rearmed or reinterpreted in place; create a new condition identity for a
+/// new wait.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WakeConditionState {
+    /// The condition may accept one matching signal or be cancelled.
     Armed,
+    /// A matching signal was observed after the condition was armed.
     Satisfied,
+    /// The wait was explicitly retired without a matching signal.
     Cancelled,
 }
 
+/// Durable record of one bounded reason for resuming a waiting mission.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WakeCondition {
+    /// Stable identity used by mission events and supervisor directives.
     pub wake_condition_id: WakeConditionId,
+    /// Predicate that a host observation must satisfy.
     pub kind: WakeConditionKind,
+    /// Current lifecycle state.
     pub state: WakeConditionState,
+    /// Trusted creation time, in Unix epoch milliseconds.
     pub armed_at_unix_ms: u64,
+    /// Trusted matching-observation time. Present exactly when `state` is
+    /// [`WakeConditionState::Satisfied`].
     pub satisfied_at_unix_ms: Option<u64>,
+    /// Bounded operator-readable reason for arming or cancelling the wait.
     pub reason: String,
 }
 
+/// Rejection returned when a wake-condition transition would violate its
+/// durable predicate or lifecycle.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WakeConditionError {
+    /// The condition contains a zero timestamp, empty or ambiguous text, an
+    /// invalid predicate bound, or another malformed input.
     InvalidCondition,
+    /// A caller attempted to satisfy or cancel a terminal condition.
     AlreadyTerminal,
+    /// The signal does not match the stored predicate, or its observation time
+    /// predates the condition.
     SignalMismatch,
 }
 
@@ -90,6 +151,11 @@ impl fmt::Display for WakeConditionError {
 impl Error for WakeConditionError {}
 
 impl WakeCondition {
+    /// Creates an armed condition after validating all predicate bounds.
+    ///
+    /// `armed_at_unix_ms` must be non-zero. Text fields are trimmed, bounded,
+    /// and free of control characters. Construction performs no observation;
+    /// only [`Self::satisfy`] can move the condition to `Satisfied`.
     pub fn arm(
         wake_condition_id: WakeConditionId,
         kind: WakeConditionKind,
@@ -109,6 +175,12 @@ impl WakeCondition {
         })
     }
 
+    /// Returns a satisfied copy when `signal` matches this armed condition.
+    ///
+    /// The original value is unchanged. `observed_at_unix_ms` is the durable
+    /// transition time and cannot precede `armed_at_unix_ms`. For deadline
+    /// conditions the clock carried inside the signal must also meet the
+    /// stored deadline.
     pub fn satisfy(
         &self,
         signal: &WakeSignal,
@@ -126,6 +198,11 @@ impl WakeCondition {
         Ok(next)
     }
 
+    /// Returns a cancelled copy with a replacement operator-readable reason.
+    ///
+    /// Cancellation is available only while armed and deliberately leaves
+    /// `satisfied_at_unix_ms` empty so cancellation cannot masquerade as
+    /// evidence that the predicate became true.
     pub fn cancel(&self, reason: String) -> Result<Self, WakeConditionError> {
         if self.state != WakeConditionState::Armed {
             return Err(WakeConditionError::AlreadyTerminal);
@@ -139,6 +216,7 @@ impl WakeCondition {
 }
 
 impl WakeConditionKind {
+    /// Validates bounds that are specific to each predicate variant.
     fn is_valid(&self) -> bool {
         match self {
             Self::SourceRevisionChanged {
@@ -155,6 +233,7 @@ impl WakeConditionKind {
         }
     }
 
+    /// Applies the stored identity and monotonicity constraints to one signal.
     fn matches(&self, signal: &WakeSignal) -> bool {
         match (self, signal) {
             (
