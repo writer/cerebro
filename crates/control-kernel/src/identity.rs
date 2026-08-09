@@ -4,19 +4,34 @@ use serde::{Deserialize, Serialize};
 
 const MAX_IDENTIFIER_BYTES: usize = 256;
 
+/// Reason a control-kernel identifier was rejected at its construction
+/// boundary.
+///
+/// Identifiers remain opaque strings after validation: the kernel enforces a
+/// bounded, unambiguous wire representation without imposing provider- or
+/// deployment-specific syntax.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IdentifierError {
+    /// No identifier bytes were supplied.
     Empty {
+        /// Human-readable identifier class used in the error message.
         kind: &'static str,
     },
+    /// The UTF-8 representation exceeds the kernel's wire-size bound.
     TooLong {
+        /// Human-readable identifier class used in the error message.
         kind: &'static str,
+        /// Maximum accepted UTF-8 byte length.
         max_bytes: usize,
     },
+    /// The value would change if leading or trailing whitespace were removed.
     SurroundingWhitespace {
+        /// Human-readable identifier class used in the error message.
         kind: &'static str,
     },
+    /// The value contains a Unicode control character.
     ControlCharacter {
+        /// Human-readable identifier class used in the error message.
         kind: &'static str,
     },
 }
@@ -41,16 +56,23 @@ impl fmt::Display for IdentifierError {
 impl Error for IdentifierError {}
 
 macro_rules! identifier {
-    ($name:ident, $kind:literal) => {
+    ($name:ident, $kind:literal, $doc:literal) => {
+        #[doc = $doc]
+        ///
+        /// The value is serialized transparently as its validated string and
+        /// must be created through [`Self::parse`] or [`std::str::FromStr`].
         #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
         #[serde(transparent)]
         pub struct $name(String);
 
         impl $name {
+            /// Validates and constructs this identifier without normalizing
+            /// the caller's bytes.
             pub fn parse(value: impl Into<String>) -> Result<Self, IdentifierError> {
                 validate_identifier(value.into(), $kind).map(Self)
             }
 
+            /// Returns the exact validated wire value.
             pub fn as_str(&self) -> &str {
                 &self.0
             }
@@ -72,19 +94,71 @@ macro_rules! identifier {
     };
 }
 
-identifier!(TenantId, "tenant id");
-identifier!(MandateId, "mandate id");
-identifier!(MissionId, "mission id");
-identifier!(BeliefId, "belief id");
-identifier!(PlanId, "plan id");
-identifier!(CommitmentId, "commitment id");
-identifier!(WakeConditionId, "wake condition id");
-identifier!(ConversationId, "conversation id");
-identifier!(ActorId, "actor id");
-identifier!(GrantId, "grant id");
-identifier!(DecisionId, "decision id");
-identifier!(VerificationId, "verification id");
-identifier!(RequestId, "request id");
+identifier!(
+    TenantId,
+    "tenant id",
+    "Stable tenant boundary for every control-kernel record."
+);
+identifier!(
+    MandateId,
+    "mandate id",
+    "Stable identity of an operator-approved mandate."
+);
+identifier!(
+    MissionId,
+    "mission id",
+    "Stable identity of one durable mission lifecycle."
+);
+identifier!(
+    BeliefId,
+    "belief id",
+    "Stable identity of one revisable belief record."
+);
+identifier!(
+    PlanId,
+    "plan id",
+    "Stable identity shared by all revisions of one plan."
+);
+identifier!(
+    CommitmentId,
+    "commitment id",
+    "Stable identity of one plan-bound commitment."
+);
+identifier!(
+    WakeConditionId,
+    "wake condition id",
+    "Stable identity of one durable wake predicate."
+);
+identifier!(
+    ConversationId,
+    "conversation id",
+    "Stable identity of one ordered conversation."
+);
+identifier!(
+    ActorId,
+    "actor id",
+    "Stable identity of a human or machine actor."
+);
+identifier!(
+    GrantId,
+    "grant id",
+    "Stable identity of a bounded capability grant."
+);
+identifier!(
+    DecisionId,
+    "decision id",
+    "Stable identity of an authorization decision."
+);
+identifier!(
+    VerificationId,
+    "verification id",
+    "Stable identity of an independent verification receipt."
+);
+identifier!(
+    RequestId,
+    "request id",
+    "Stable identity of an idempotent protocol request."
+);
 
 fn validate_identifier(value: String, kind: &'static str) -> Result<String, IdentifierError> {
     if value.is_empty() {

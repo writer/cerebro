@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![deny(missing_docs)]
 
 //! Durable control-plane primitives for Cerebro mandates and missions.
 //!
