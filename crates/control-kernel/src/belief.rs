@@ -9,75 +9,137 @@ const MAX_REFERENCES: usize = 256;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Provenance class describing how a belief statement was produced.
 pub enum BeliefBasis {
+    /// Statement directly reflects an authoritative observation.
     Observed,
+    /// Statement is the reproducible output of a deterministic rule over evidence.
     DeterministicallyDerived,
+    /// Statement was supplied by an actor and has not been independently established.
     Asserted,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Evidence judgment for a belief at one source and aggregate revision.
 pub enum BeliefVerdict {
+    /// Proposition is under consideration but has not met a support threshold.
     Candidate,
+    /// Complete supporting evidence exists with no counterevidence or known gaps.
     Supported,
+    /// Some evidence supports the proposition, but material limits remain.
     WeaklySupported,
+    /// At least one recorded counterevidence item contradicts the proposition.
     Contradicted,
+    /// Available evidence cannot currently establish direction or support.
     Unknown,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Inputs for recording revision one of an evidence-bounded belief.
 pub struct BeliefInput {
+    /// Stable identity preserved across belief revisions.
     pub belief_id: BeliefId,
+    /// Exact bounded proposition being evaluated.
     pub statement: String,
+    /// Method by which the proposition was produced.
     pub basis: BeliefBasis,
+    /// Evidence judgment that must agree with the supplied references.
     pub verdict: BeliefVerdict,
+    /// Non-empty canonical subjects described by the proposition.
     pub subject_urns: Vec<String>,
+    /// Evidence records supporting the proposition.
     pub supporting_evidence_urns: Vec<String>,
+    /// Evidence records contradicting the proposition.
     pub counterevidence_urns: Vec<String>,
+    /// Named observations still required for a complete conclusion.
     pub missing_evidence: Vec<String>,
+    /// Non-empty conditions that require reevaluation of the belief.
     pub invalidation_conditions: Vec<String>,
+    /// Confidence from zero through 10,000 basis points.
     pub confidence_basis_points: u16,
+    /// Authoritative source revision to which current-state evidence is bound.
     pub source_revision: Option<String>,
+    /// Actor creating the initial belief record.
     pub actor_id: ActorId,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Versioned proposition with explicit support, conflict, gaps, and invalidation.
+///
+/// A belief never turns confidence into evidence. [`BeliefVerdict::Supported`]
+/// requires positive supporting references and forbids both counterevidence and
+/// declared gaps, regardless of `confidence_basis_points`.
 pub struct Belief {
+    /// Stable identity preserved across every revision.
     pub belief_id: BeliefId,
+    /// Optimistic-concurrency revision, starting at one.
     pub revision: u64,
+    /// Immutable proposition evaluated by this belief history.
     pub statement: String,
+    /// Immutable provenance class of the proposition.
     pub basis: BeliefBasis,
+    /// Current evidence judgment.
     pub verdict: BeliefVerdict,
+    /// Sorted, deduplicated canonical subjects.
     pub subject_urns: Vec<String>,
+    /// Sorted, deduplicated evidence supporting the proposition.
     pub supporting_evidence_urns: Vec<String>,
+    /// Sorted, deduplicated evidence contradicting the proposition.
     pub counterevidence_urns: Vec<String>,
+    /// Sorted, deduplicated known evidence gaps.
     pub missing_evidence: Vec<String>,
+    /// Conditions requiring a new revision rather than silent reuse.
     pub invalidation_conditions: Vec<String>,
+    /// Current confidence from zero through 10,000 basis points.
     pub confidence_basis_points: u16,
+    /// Source revision governing the current evidence snapshot, when supplied.
     pub source_revision: Option<String>,
+    /// Actor responsible for the latest revision.
     pub changed_by: ActorId,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Optimistic evidence update for an existing [`Belief`].
 pub struct BeliefRevision {
+    /// Revision observed by the caller; stale updates fail closed.
     pub expected_revision: u64,
+    /// New evidence judgment.
     pub verdict: BeliefVerdict,
+    /// Complete supporting evidence set for the new revision.
     pub supporting_evidence_urns: Vec<String>,
+    /// Complete counterevidence set for the new revision.
     pub counterevidence_urns: Vec<String>,
+    /// Complete known-gap set for the new revision.
     pub missing_evidence: Vec<String>,
+    /// Non-empty invalidation conditions for future reuse.
     pub invalidation_conditions: Vec<String>,
+    /// New confidence from zero through 10,000 basis points.
     pub confidence_basis_points: u16,
+    /// Source revision governing the new evidence set.
     pub source_revision: Option<String>,
+    /// Actor responsible for the evidence judgment.
     pub actor_id: ActorId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Reason a belief record or revision was rejected.
 pub enum BeliefError {
+    /// Proposition violated the bounded text contract.
     InvalidStatement,
+    /// A required collection was empty or a reference was invalid or excessive.
     InvalidReferences,
+    /// Confidence exceeded 10,000 basis points.
     InvalidConfidence,
+    /// Verdict conflicts with supporting, contrary, or missing evidence.
     InvalidVerdict,
-    RevisionConflict { expected: u64, actual: u64 },
+    /// Caller attempted to revise a stale aggregate.
+    RevisionConflict {
+        /// Revision supplied by the caller.
+        expected: u64,
+        /// Current belief revision.
+        actual: u64,
+    },
 }
 
 impl fmt::Display for BeliefError {
@@ -100,6 +162,11 @@ impl fmt::Display for BeliefError {
 impl Error for BeliefError {}
 
 impl Belief {
+    /// Records revision one after normalizing references and checking the verdict.
+    ///
+    /// Reference collections are sorted and deduplicated. The statement, basis,
+    /// and subjects become immutable; changing the proposition requires a new
+    /// belief identity rather than rewriting its evidence history.
     pub fn record(input: BeliefInput) -> Result<Self, BeliefError> {
         validate_text(&input.statement).map_err(|_| BeliefError::InvalidStatement)?;
         validate_confidence(input.confidence_basis_points)?;
@@ -122,6 +189,11 @@ impl Belief {
         Ok(belief)
     }
 
+    /// Replaces the complete evidence judgment and returns a new belief revision.
+    ///
+    /// Updates are optimistic. Evidence collections are replacement snapshots,
+    /// not deltas, preventing removed counterevidence or gaps from surviving by
+    /// accident. The result is revalidated before it is returned.
     pub fn revise(&self, revision: BeliefRevision) -> Result<Self, BeliefError> {
         if revision.expected_revision != self.revision {
             return Err(BeliefError::RevisionConflict {

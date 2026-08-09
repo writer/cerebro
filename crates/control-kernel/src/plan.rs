@@ -8,34 +8,61 @@ const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_STEPS: usize = 128;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// One capability-bound effect or observation in a plan dependency graph.
 pub struct PlanStep {
+    /// Stable identifier unique within the plan revision.
     pub step_id: String,
+    /// Exact capability an executor must possess for this step.
     pub capability: String,
+    /// Canonical subject the step reads or changes.
     pub subject_urn: String,
+    /// Observable result later receipts and verification should establish.
     pub expected_effect: String,
+    /// Step identifiers in this same revision that must complete first.
     pub depends_on: Vec<String>,
+    /// Whether execution requires a separate approval decision.
     pub requires_decision: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Immutable, validated revision of an evidence-backed execution plan.
+///
+/// Steps form a directed acyclic graph. A new revision may replace the graph but
+/// must point to the immediately previous revision and explicitly name removed
+/// prior steps in `superseded_step_ids`.
 pub struct PlanRevision {
+    /// Stable identity shared by all revisions of the plan.
     pub plan_id: PlanId,
+    /// Positive, contiguous revision number.
     pub revision: u64,
+    /// Immediately preceding revision, absent only for revision one.
     pub previous_revision: Option<u64>,
+    /// Bounded explanation connecting current beliefs to the proposed steps.
     pub rationale: String,
+    /// Non-empty, unique beliefs or hypotheses motivating this revision.
     pub hypothesis_ids: Vec<BeliefId>,
+    /// Non-empty bounded dependency graph for the current revision.
     pub steps: Vec<PlanStep>,
+    /// Unique step identifiers removed from the immediately previous revision.
     pub superseded_step_ids: Vec<String>,
+    /// Actor that produced this immutable revision.
     pub created_by: ActorId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Reason a plan revision failed structural validation.
 pub enum PlanError {
+    /// Revision numbering or previous-plan identity was not contiguous.
     InvalidRevision,
+    /// Rationale violated the bounded text contract.
     InvalidRationale,
+    /// Hypothesis set was empty or contained duplicates.
     InvalidHypotheses,
+    /// Step collection or supersession record was malformed.
     InvalidSteps,
+    /// Two current steps used the same identifier.
     DuplicateStep,
+    /// Dependency referenced itself, a missing step, or participated in a cycle.
     InvalidDependency,
 }
 
@@ -55,6 +82,13 @@ impl fmt::Display for PlanError {
 impl Error for PlanError {}
 
 impl PlanRevision {
+    /// Validates revision lineage, evidence references, and the complete step graph.
+    ///
+    /// Revision one must not name a predecessor. Later revisions must follow the
+    /// supplied plan exactly, including plan identity and contiguous numbering.
+    /// Every dependency must name a current step, and iterative graph completion
+    /// rejects cycles. Superseded identifiers must exist in the supplied previous
+    /// revision. Validation does not authorize or execute any step.
     pub fn validate(&self, previous: Option<&Self>) -> Result<(), PlanError> {
         if self.revision == 0
             || (self.revision == 1 && self.previous_revision.is_some())
