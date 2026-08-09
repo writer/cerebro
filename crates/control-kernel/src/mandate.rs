@@ -9,45 +9,79 @@ const MAX_SCOPE_URNS: usize = 256;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Lifecycle state controlling whether a mandate can originate new work.
 pub enum MandateStatus {
+    /// The desired condition is in force and may originate missions.
     Active,
+    /// Enforcement is paused without discarding the mandate definition.
     Suspended,
+    /// The mandate is terminal and cannot be revised or reactivated.
     Retired,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Validated inputs for creating the first revision of a mandate.
 pub struct MandateInput {
+    /// Tenant whose policy boundary owns the mandate.
     pub tenant_id: TenantId,
+    /// Stable mandate identifier preserved across revisions.
     pub mandate_id: MandateId,
+    /// Bounded statement of the source-observable state to maintain.
     pub desired_condition: String,
+    /// Non-empty resource scopes to which the desired condition applies.
     pub scope_urns: Vec<String>,
+    /// Maximum tolerated duration of a detected violation, in seconds.
     pub maximum_violation_age_seconds: u64,
+    /// Actor creating revision one.
     pub actor_id: ActorId,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Versioned tenant policy defining a desired condition over resource scopes.
+///
+/// Revisions are immutable snapshots. Callers use [`Self::revise`] or
+/// [`Self::transition`] with an expected revision and persist the returned value;
+/// mutating deserialized fields directly bypasses the kernel's invariants.
 pub struct Mandate {
+    /// Tenant whose policy domain owns the mandate.
     pub tenant_id: TenantId,
+    /// Stable identity shared by every revision.
     pub mandate_id: MandateId,
+    /// Optimistic-concurrency revision, starting at one.
     pub revision: u64,
+    /// Current enforcement lifecycle state.
     pub status: MandateStatus,
+    /// Source-observable state that compliant subjects must satisfy.
     pub desired_condition: String,
+    /// Sorted, deduplicated resource URNs included in the mandate.
     pub scope_urns: Vec<String>,
+    /// Positive violation age after which remediation is required.
     pub maximum_violation_age_seconds: u64,
+    /// Actor responsible for the latest revision or status change.
     pub changed_by: ActorId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Reason a mandate could not be created, revised, or transitioned.
 pub enum MandateError {
+    /// Desired condition was empty, unbounded, padded, or contained control text.
     InvalidCondition,
+    /// Scope was empty, oversized, or contained an invalid URN.
     InvalidScope,
+    /// Maximum tolerated violation age was zero.
     InvalidMaximumViolationAge,
+    /// Caller attempted to update a stale mandate revision.
     RevisionConflict {
+        /// Revision supplied by the caller.
         expected: u64,
+        /// Current stored revision.
         actual: u64,
     },
+    /// Requested lifecycle edge is not permitted, including changes after retirement.
     InvalidTransition {
+        /// Current lifecycle state.
         from: MandateStatus,
+        /// Requested lifecycle state.
         to: MandateStatus,
     },
 }
@@ -74,6 +108,11 @@ impl fmt::Display for MandateError {
 impl Error for MandateError {}
 
 impl Mandate {
+    /// Creates an active revision-one mandate after normalizing its scope.
+    ///
+    /// Scope URNs are sorted and deduplicated so equivalent inputs produce the
+    /// same durable representation. Creation records policy intent only; it does
+    /// not inspect sources, detect violations, or originate a mission.
     pub fn create(input: MandateInput) -> Result<Self, MandateError> {
         validate_condition(&input.desired_condition)?;
         let scope_urns = normalize_scope(input.scope_urns)?;
@@ -92,6 +131,11 @@ impl Mandate {
         })
     }
 
+    /// Returns a new definition revision while preserving identity and status.
+    ///
+    /// Revision is optimistic and fails on a stale caller. Retired mandates are
+    /// immutable; replacing one requires a distinct mandate identity so historical
+    /// missions remain bound to the policy revision that created them.
     pub fn revise(
         &self,
         expected_revision: u64,
@@ -124,6 +168,10 @@ impl Mandate {
         })
     }
 
+    /// Returns a new revision with a legal lifecycle status change.
+    ///
+    /// Active and suspended mandates may toggle or retire. Retirement is terminal,
+    /// and same-state transitions are rejected rather than generating audit noise.
     pub fn transition(
         &self,
         expected_revision: u64,
