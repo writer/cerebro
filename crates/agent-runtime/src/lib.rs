@@ -19,24 +19,42 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+/// Durable session state, evidence semantics, wake conditions, and delivery validation.
 pub mod session;
 
+/// Schema identifier required on every [`AgentTurnRequest`].
 pub const AGENT_TURN_REQUEST_V1: &str = "agent-turn-request/v1";
+/// Schema identifier emitted with each [`AgentTurnOutcome`].
 pub const AGENT_TURN_RESULT_V1: &str = "agent-turn-result/v1";
+/// Schema identifier required on acknowledged delivery receipts.
 pub const AGENT_DELIVERY_RECEIPT_V1: &str = "agent-delivery-receipt/v1";
+/// Maximum number of prior conversation messages accepted in one turn.
 pub const MAX_HISTORY_ITEMS: usize = 200;
+/// Maximum UTF-8 byte length of one prior conversation message.
 pub const MAX_HISTORY_ITEM_BYTES: usize = 16 * 1024;
+/// Maximum combined UTF-8 byte length of all prior conversation messages.
 pub const MAX_HISTORY_TOTAL_BYTES: usize = 1024 * 1024;
+/// Maximum model decisions allowed before the operating loop fails closed.
 pub const MAX_MODEL_STEPS: usize = 24;
+/// Maximum routing attempts, including repairs of invalid model output.
 pub const MAX_ROUTER_ATTEMPTS: usize = 4;
+/// Maximum repairs requested for invalid operating decisions.
 pub const MAX_OPERATING_REPAIRS: usize = 8;
+/// Maximum repairs requested for invalid presentation output.
 pub const MAX_PRESENTATION_REPAIRS: usize = 4;
+/// Maximum repairs requested for invalid critic output.
 pub const MAX_CRITIC_REPAIRS: usize = 4;
+/// Maximum critic-requested revisions of an otherwise valid draft.
 pub const MAX_CRITIC_REVISIONS: usize = 4;
+/// Model output-token ceiling for routing decisions.
 pub const ROUTER_MAX_TOKENS: i32 = 32_768;
+/// Model output-token ceiling for tool and finish decisions.
 pub const DECISION_MAX_TOKENS: i32 = 63_999;
+/// Model output-token ceiling for operator-facing presentation.
 pub const PRESENTATION_MAX_TOKENS: i32 = 16_384;
+/// Model output-token ceiling for independent critique.
 pub const CRITIC_MAX_TOKENS: i32 = 16_384;
+/// Absolute token ceiling accepted from any configured model stage.
 pub const HARD_MAX_GENERATION_TOKENS: i32 = 131_072;
 const MAX_TEXT_BYTES: usize = 16 * 1024;
 const MAX_TOOL_DATA_BYTES: usize = 64 * 1024;
@@ -50,64 +68,101 @@ const MAX_GROUNDING_UNITS: usize = 64;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Operating mode selected for the current request.
+///
+/// The lane determines whether tools may run and applies the capability and
+/// call limits returned by [`ExecutionLane::budget`].
 pub enum ExecutionLane {
+    /// Produce no response and perform no work.
     Ignore,
+    /// Answer from supplied conversational context without tools.
     Converse,
+    /// Resume a durable mission recorded in [`WorkingState`].
     Continue,
+    /// Perform a small, bounded current-state lookup.
     Lookup,
+    /// Gather and reconcile evidence across a broader investigation.
     Investigate,
+    /// Perform an authorized state-changing operation and verify its outcome.
     Act,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Model-reported confidence in a routing decision.
 pub enum RouteConfidence {
+    /// The request clearly maps to the selected lane.
     High,
+    /// The selected lane is plausible but the request retains some ambiguity.
     Medium,
+    /// The route is uncertain and must pass the runtime's stricter validation.
     Low,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// How a request for future observation is owned after the current turn.
 pub enum FutureObservationDisposition {
+    /// Another concrete worker or system owns the observation.
     Delegated,
+    /// The runtime explicitly declines unsupported future monitoring.
     Refused,
+    /// The request contains no future-observation obligation.
     #[default]
     None,
+    /// An existing durable mission already owns the obligation.
     Inherited,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Raw routing output returned by [`AgentModel::route`].
 pub struct RouteDecision {
+    /// Proposed operating lane.
     pub lane: ExecutionLane,
+    /// Model confidence used by route validation.
     pub confidence: RouteConfidence,
+    /// Short request-specific justification for the lane.
     pub reason: String,
+    /// Whether the answer depends on a fresh external observation.
     pub requires_current_evidence: bool,
+    /// Ownership decision for any future-observation language in the request.
     pub future_observation: FutureObservationDisposition,
+    /// Exact request excerpt that created the future-observation obligation.
     pub future_observation_excerpt: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Validated route used by the operating loop.
 pub struct ResolvedRequestRoute {
+    /// Lane that survived deterministic route validation.
     pub lane: ExecutionLane,
+    /// Validated ownership of any future observation.
     pub future_observation: FutureObservationDisposition,
+    /// Validated source excerpt for that obligation, when present.
     pub future_observation_excerpt: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
+/// Input supplied to the model router for one attempt.
 pub struct RouteTurn {
+    /// Complete validated request being routed.
     pub request: AgentTurnRequest,
+    /// Deterministic validation failures from prior routing attempts.
     pub repair_feedback: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+/// Hard capability-selection and tool-call limits for one lane.
 pub struct TurnBudget {
+    /// Maximum tool descriptors the model may receive.
     pub max_selected_capabilities: usize,
+    /// Maximum tool invocations the operating loop may execute.
     pub max_tool_calls: usize,
 }
 
 impl ExecutionLane {
+    /// Returns the hard operating budget enforced for this lane.
     #[must_use]
     pub const fn budget(self) -> TurnBudget {
         match self {
@@ -133,123 +188,190 @@ impl ExecutionLane {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// One historical message supplied as routing and response context.
 pub struct ConversationMessage {
+    /// Speaker that produced the message.
     pub role: ConversationRole,
+    /// UTF-8 message body, subject to the history byte limits.
     pub content: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Transport provenance aligned by index with a [`ConversationMessage`].
 pub struct ConversationMessageMetadata {
     #[serde(default)]
+    /// Stable identity of the actor that authored the message.
     pub actor_ref: Option<String>,
     #[serde(default)]
+    /// Transport-owned immutable message identifier.
     pub message_ref: Option<String>,
     #[serde(default)]
+    /// RFC 3339 time at which the transport received the message.
     pub received_at: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Allowed speaker roles in conversation history.
 pub enum ConversationRole {
+    /// A prior response produced by the agent.
     Assistant,
+    /// A request or follow-up supplied by the user.
     User,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Durable handoff state for continuing work across turns.
 pub struct WorkingState {
+    /// Durable mission identity; required when routing to [`ExecutionLane::Continue`].
     pub mission_ref: Option<String>,
+    /// Most recent concrete request owned by the mission.
     pub current_request: String,
+    /// Terminal or non-terminal outcome of the prior turn.
     pub last_outcome: WorkingOutcome,
+    /// Concrete unresolved blocker from the prior turn.
     pub last_blocker: Option<String>,
     #[serde(default)]
+    /// Lane in which the mission was operating.
     pub active_lane: Option<ExecutionLane>,
     #[serde(default)]
+    /// Whether completing the mission still requires fresh evidence.
     pub requires_current_evidence: Option<bool>,
     #[serde(default)]
+    /// Explicit unfinished obligations retained by the mission.
     pub open_loops: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Prior-turn ownership state carried in [`WorkingState`].
 pub enum WorkingOutcome {
+    /// Work cannot continue until a named dependency changes.
     Blocked,
+    /// All owned obligations were completed.
     Completed,
+    /// A material user decision or authority grant is required.
     NeedsUser,
+    /// The mission still owns follow-through and should continue.
     Owned,
+    /// No reliable prior outcome is available.
     Unknown,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Provider-neutral input contract for one agent turn.
 pub struct AgentTurnRequest {
+    /// Must equal [`AGENT_TURN_REQUEST_V1`].
     pub schema_version: String,
+    /// Tenant boundary within which tools and evidence are resolved.
     pub tenant_id: String,
+    /// Immutable idempotency and authorization identity for this request.
     pub request_id: String,
+    /// Durable conversation identity.
     pub thread_ref: String,
     #[serde(default)]
+    /// Optional narrower context boundary within the tenant.
     pub context_scope_ref: Option<String>,
+    /// Immutable identity of the requesting actor.
     pub actor_ref: String,
+    /// RFC 3339 time at which the turn's truth is assessed.
     pub assessment_at: String,
+    /// Newest user request that the turn must answer.
     pub message: String,
+    /// Ordered prior conversation messages, oldest first.
     pub history: Vec<ConversationMessage>,
     #[serde(default)]
+    /// Optional provenance entries aligned one-for-one with `history`.
     pub history_metadata: Vec<ConversationMessageMetadata>,
+    /// Durable mission state when this turn can continue earlier work.
     pub working_state: Option<WorkingState>,
+    /// Exact pre-authorizations available for state-changing tool calls.
     pub effect_authorizations: Vec<EffectAuthorization>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Immutable approval binding for one exact tool input.
 pub struct EffectAuthorization {
+    /// Approval record identity supplied by the authorization system.
     pub approval_ref: String,
+    /// Tenant identity that must match the turn request.
     pub tenant_id: String,
+    /// Request identity that must match the turn request.
     pub request_id: String,
+    /// Thread identity that must match the turn request.
     pub thread_ref: String,
+    /// Actor identity that must match the turn request.
     pub actor_ref: String,
+    /// Exact tool authorized to execute.
     pub tool_id: String,
+    /// SHA-256 digest of the canonical JSON input authorized to execute.
     pub input_digest: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Maximum authority embodied by a tool adapter.
 pub enum ToolAuthorityClass {
+    /// Read or measure existing state.
     Observe,
+    /// Produce a candidate change without applying it.
     Propose,
+    /// Apply a state change in an owning system.
     Actuate,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Material effect produced by invoking a tool.
 pub enum ToolEffectClass {
+    /// No state outside the turn is changed.
     Read,
+    /// Durable state is created or modified.
     Write,
+    /// A consequential action reaches another system or person.
     ExternalEffect,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Catalog entry describing one callable tool and its authority boundary.
 pub struct ToolDescriptor {
+    /// Stable tool identity used by calls and authorizations.
     pub tool_id: String,
+    /// Short operator-readable name.
     pub title: String,
+    /// Concrete behavior and scope presented to the model.
     pub summary: String,
+    /// Maximum authority delegated to the adapter.
     pub authority_class: ToolAuthorityClass,
+    /// Effect category used to require exact authorization and verification.
     pub effect_class: ToolEffectClass,
+    /// Versioned schema reference for accepted input.
     pub input_schema_ref: String,
+    /// Versioned schema reference for returned data.
     pub result_schema_ref: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// One model-requested invocation of a cataloged tool.
 pub struct ToolCall {
+    /// Turn-local idempotency identity; it must not repeat within a turn.
     pub call_id: String,
+    /// Catalog identity of the tool to invoke.
     pub tool_id: String,
+    /// Request-specific reason the invocation is needed.
     pub purpose: String,
+    /// Schema-bound JSON input sent to the adapter.
     pub input: Value,
 }
 
 impl ToolCall {
+    /// Returns the SHA-256 digest used to bind authorization to this exact input.
     #[must_use]
     pub fn input_digest(&self) -> String {
         digest_json(&self.input)
@@ -258,179 +380,286 @@ impl ToolCall {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Adapter-reported completion state for a tool call.
 pub enum ToolResultState {
+    /// The requested operation completed with a known successful outcome.
     Succeeded,
+    /// Some requested scope completed and the missing scope is identified.
     Partial,
+    /// The operation failed with no claimed successful outcome.
     Failed,
+    /// Dispatch occurred but the resulting external state is not known.
     OutcomeUnknown,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Bounded evidence produced by a tool observation.
 pub struct EvidenceRecord {
+    /// Turn-unique reference used by grounded final claims.
     pub evidence_ref: String,
+    /// Human-readable statement the observation directly supports.
     pub statement: String,
+    /// RFC 3339 time at which the source state was observed.
     pub observed_at: String,
+    /// RFC 3339 expiry after which the record is not current evidence.
     pub fresh_until: Option<String>,
+    /// Whether the observation covered its claimed source scope completely.
     pub complete: bool,
     #[serde(default)]
+    /// Structured semantic atoms extracted from the observation.
     pub atoms: Vec<session::EvidenceAtom>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Provider-neutral result returned by a tool adapter.
 pub struct ToolResult {
+    /// Known completion state of the attempted operation.
     pub state: ToolResultState,
+    /// Bounded operator-readable result summary.
     pub summary: String,
+    /// Schema-specific structured result data.
     pub data: Value,
+    /// Evidence records made available for final-answer grounding.
     pub evidence: Vec<EvidenceRecord>,
+    /// Concrete reason full completion or verification was prevented.
     pub blocker: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+/// Executed call, descriptor, and result retained in turn order.
 pub struct ToolObservation {
+    /// Zero-based execution order within the turn.
     pub sequence: usize,
+    /// Exact call requested by the model.
     pub call: ToolCall,
+    /// Descriptor that governed execution of the call.
     pub descriptor: ToolDescriptor,
+    /// Adapter result observed by the runtime.
     pub result: ToolResult,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// One final-answer claim and the evidence records that support it.
 pub struct EvidenceClaim {
+    /// Operator-facing factual claim.
     pub text: String,
+    /// References to evidence observed during this turn.
     pub evidence_refs: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// User-visible completion state of a final draft.
 pub enum FinalState {
+    /// The newest request was fully answered.
     Answered,
+    /// Useful scope completed, with remaining coverage named.
     Partial,
+    /// A material user choice is required before work can continue.
     NeedsInput,
+    /// A concrete dependency prevents further progress.
     Blocked,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Structured, evidence-bound content proposed for final presentation.
 pub struct FinalDraft {
+    /// Honest completion state for the newest request.
     pub state: FinalState,
+    /// Short outcome-first statement.
     pub headline: String,
+    /// Primary operator-facing explanation.
     pub summary: String,
+    /// Evidence supporting factual statements in `summary`.
     pub summary_evidence_refs: Vec<String>,
+    /// Facts inspected without changing source state.
     pub checked: Vec<EvidenceClaim>,
+    /// State changes performed during the turn.
     pub changed: Vec<EvidenceClaim>,
+    /// Post-change observations that independently verify outcomes.
     pub verified: Vec<EvidenceClaim>,
+    /// Material source state that remains after the turn.
     pub current_state: Vec<EvidenceClaim>,
+    /// Concrete remaining actions, ordered by usefulness.
     pub next_actions: Vec<String>,
+    /// Explicit limitation on evidence or scope coverage.
     pub coverage_notice: Option<String>,
+    /// Single decision question when `state` is [`FinalState::NeedsInput`].
     pub question: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
+/// Next operating action selected by the model.
 pub enum ModelDecision {
+    /// Invoke one cataloged tool and return its observation to the model.
     InvokeTool { call: ToolCall },
+    /// Stop operating and submit a structured final draft for critique.
     Finish { draft: FinalDraft },
 }
 
 #[derive(Clone, Debug, Serialize)]
+/// Complete operating context supplied to [`AgentModel::next`].
 pub struct ModelTurn {
+    /// Original validated request.
     pub request: AgentTurnRequest,
+    /// Validated operating lane.
     pub lane: ExecutionLane,
+    /// Hard limits enforced for the lane.
     pub budget: TurnBudget,
+    /// Bounded tool catalog available to this turn.
     pub available_tools: Vec<ToolDescriptor>,
+    /// Tool observations accumulated in execution order.
     pub observations: Vec<ToolObservation>,
+    /// Validation failures that the next decision must repair.
     pub revision_feedback: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
+/// Independent review context supplied to [`AgentModel::critique`].
 pub struct CritiqueTurn {
+    /// Original validated request.
     pub request: AgentTurnRequest,
+    /// Lane under which the draft was produced.
     pub lane: ExecutionLane,
+    /// Structured draft being reviewed.
     pub draft: FinalDraft,
+    /// Exact tool observations available for verification.
     pub observations: Vec<ToolObservation>,
+    /// Atomic factual units that require grounding classifications.
     pub grounding_units: Vec<CritiqueGroundingUnit>,
+    /// Validation failures from prior critique attempts.
     pub repair_feedback: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Atomic factual text unit extracted for critic grounding.
 pub struct CritiqueGroundingUnit {
+    /// Stable turn-local identity referenced by the critic.
     pub unit_id: String,
+    /// Exact draft text whose grounding must be classified.
     pub text: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Permitted source basis for one factual grounding unit.
 pub enum CritiqueGroundingBasis {
+    /// Directly supported by a current tool evidence record.
     DirectObservation,
+    /// Narrow inference whose supporting observations are identified.
     BoundedInference,
+    /// Premise explicitly supplied by the operator in the request.
     OperatorSupplied,
+    /// Synthesis of statements already present in conversation history.
     ConversationalSynthesis,
+    /// Fact carried by validated durable working state.
     RetainedContext,
+    /// Statement about whether a tool call succeeded, failed, or remains unknown.
     ToolOutcome,
+    /// Unverified explanation presented explicitly as a hypothesis.
     Hypothesis,
+    /// Proposed action rather than a claim about observed state.
     Recommendation,
+    /// Deterministic explanation rendered by the runtime.
     StableExplanation,
+    /// Non-substantive placeholder awaiting concrete evidence or input.
     Placeholder,
+    /// Text with no factual assertion requiring evidence.
     NonFactual,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Exact support cited for a critic grounding decision.
 pub struct CritiqueGroundingSupport {
+    /// Evidence record reference from a tool observation.
     pub evidence_ref: String,
+    /// Optional JSON Pointer into the evidence-producing result data.
     pub data_pointer: Option<String>,
+    /// Minimal source text that supports the grounding unit.
     pub supporting_text: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Critic classification and support for one grounding unit.
 pub struct CritiqueGroundingCheck {
+    /// Identity of the reviewed [`CritiqueGroundingUnit`].
     pub unit_id: String,
+    /// Source category that justifies the unit.
     pub basis: CritiqueGroundingBasis,
+    /// Direct evidence support; required for evidence-derived bases.
     pub support: Vec<CritiqueGroundingSupport>,
+    /// Exact request or history excerpt for operator/context-derived bases.
     pub context_excerpt: Option<String>,
+    /// Tool observation sequence for tool-outcome claims.
     pub observation_sequence: Option<usize>,
 }
 
 #[derive(Clone, Debug, Serialize)]
+/// Validated draft context supplied to the presentation stage.
 pub struct PresentationTurn {
+    /// Original validated request.
     pub request: AgentTurnRequest,
+    /// Lane under which the draft was produced.
     pub lane: ExecutionLane,
+    /// Structured draft to render conversationally.
     pub draft: FinalDraft,
+    /// Observations available to prevent presentation-time embellishment.
     pub observations: Vec<ToolObservation>,
+    /// Validation failures from prior presentation attempts.
     pub repair_feedback: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Ordered transport messages produced by the presentation stage.
 pub struct PresentationDecision {
+    /// Non-empty message bodies to deliver in order.
     pub messages: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
+/// Independent critic verdict for a proposed final draft.
 pub enum CritiqueDecision {
+    /// Accept the draft with all deterministic checks and grounding units supplied.
     Approve {
+        /// Required quality and authority checks.
         checks: CritiqueChecks,
+        /// One grounding decision for every requested unit.
         grounding: Vec<CritiqueGroundingCheck>,
     },
+    /// Reject the draft with concrete repair instructions.
     Revise {
+        /// Bounded, actionable defects the next draft must correct.
         issues: Vec<String>,
     },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Boolean acceptance criteria that every critic approval must satisfy.
 pub struct CritiqueChecks {
+    /// The draft directly resolves the newest user request.
     pub answers_newest_request: bool,
+    /// The response reads as a coherent operator conversation.
     pub conversational: bool,
+    /// Factual certainty does not exceed the available evidence.
     pub evidence_boundary_correct: bool,
+    /// The response summarizes records instead of dumping raw payloads.
     pub no_raw_record_dump: bool,
+    /// Content names real state and actions useful to an operator.
     pub operator_facing: bool,
+    /// Remaining owned work is retained rather than prematurely abandoned.
     pub owns_follow_through: bool,
+    /// Detail and structure are proportional to the request.
     pub right_sized: bool,
 }
 
@@ -465,10 +694,15 @@ pub struct CritiqueChecks {
 /// }
 /// ```
 pub trait AgentModel: Send + Sync {
+    /// Selects a lane and future-observation disposition for the request.
     async fn route(&self, turn: RouteTurn) -> Result<RouteDecision, AgentRuntimeError>;
 
+    /// Selects the next tool call or submits a final draft.
     async fn next(&self, turn: ModelTurn) -> Result<ModelDecision, AgentRuntimeError>;
 
+    /// Renders a validated draft into ordered transport messages.
+    ///
+    /// The default emits the draft summary as a single message.
     async fn present(
         &self,
         turn: PresentationTurn,
@@ -478,13 +712,17 @@ pub trait AgentModel: Send + Sync {
         })
     }
 
+    /// Independently evaluates draft quality and factual grounding.
     async fn critique(&self, turn: CritiqueTurn) -> Result<CritiqueDecision, AgentRuntimeError>;
 }
 
 #[async_trait]
+/// Tool catalog and invocation port implemented by the host environment.
 pub trait AgentTools: Send + Sync {
+    /// Returns all descriptors visible to the current runtime instance.
     fn catalog(&self) -> Vec<ToolDescriptor>;
 
+    /// Executes one validated call under the authority of `request`.
     async fn invoke(
         &self,
         request: &AgentTurnRequest,
@@ -493,11 +731,17 @@ pub trait AgentTools: Send + Sync {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// User-facing approval request for one exact state-changing tool input.
 pub struct ApprovalRequest {
+    /// Identity to bind into the eventual [`EffectAuthorization`].
     pub approval_ref: String,
+    /// Tool awaiting authorization.
     pub tool_id: String,
+    /// Canonical input digest that prevents approval reuse with changed input.
     pub input_digest: String,
+    /// Redacted and size-bounded input shown to the approver.
     pub input_preview: String,
+    /// Request-specific reason the effect is needed.
     pub purpose: String,
 }
 
@@ -566,66 +810,116 @@ fn approval_input_preview(input: &Value) -> String {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+/// Transport acknowledgement proving delivery of one exact response payload.
 pub struct AgentDeliveryReceipt {
+    /// Must equal [`AGENT_DELIVERY_RECEIPT_V1`].
     pub schema_version: String,
+    /// Tenant boundary copied from the delivered turn.
     pub tenant_id: String,
+    /// Thread that received the response.
     pub thread_ref: String,
+    /// Request whose response was delivered.
     pub request_id: String,
+    /// Concrete delivery transport, such as Slack or an API channel.
     pub transport: String,
+    /// Immutable transport-owned delivery identity.
     pub delivery_ref: String,
+    /// SHA-256 digest of the exact delivered bytes.
     pub payload_digest: String,
+    /// RFC 3339 time at which the transport acknowledged delivery.
     pub delivered_at: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
+/// Terminal result of the portable operating loop.
 pub enum AgentTurnOutcome {
+    /// Validated content exists but no transport receipt proves delivery yet.
     PendingDelivery {
+        /// Always [`AGENT_TURN_RESULT_V1`].
         schema_version: &'static str,
+        /// Lane used to produce the response.
         lane: ExecutionLane,
+        /// Exact response payload awaiting delivery.
         markdown: String,
+        /// User-visible completion state.
         final_state: FinalState,
+        /// Evidence records cited by the response.
         evidence_refs: Vec<String>,
+        /// Number of tools invoked during the turn.
         tool_call_count: usize,
+        /// Durable continuation state retained after this response.
         working_state: Option<WorkingState>,
     },
+    /// Exact response payload has a validated transport receipt.
     Delivered {
+        /// Always [`AGENT_TURN_RESULT_V1`].
         schema_version: &'static str,
+        /// Lane used to produce the response.
         lane: ExecutionLane,
+        /// Exact delivered response payload.
         markdown: String,
+        /// User-visible completion state.
         final_state: FinalState,
+        /// Evidence records cited by the response.
         evidence_refs: Vec<String>,
+        /// Number of tools invoked during the turn.
         tool_call_count: usize,
+        /// Durable continuation state retained after delivery.
         working_state: Option<WorkingState>,
     },
+    /// An exact state-changing call cannot run without user authorization.
     ApprovalRequired {
+        /// Always [`AGENT_TURN_RESULT_V1`].
         schema_version: &'static str,
+        /// Lane that selected the effect.
         lane: ExecutionLane,
+        /// Redacted, digest-bound approval request.
         request: ApprovalRequest,
+        /// Number of tools already invoked before approval became necessary.
         tool_call_count: usize,
     },
+    /// Routing selected [`ExecutionLane::Ignore`], so no payload was produced.
     Ignored {
+        /// Always [`AGENT_TURN_RESULT_V1`].
         schema_version: &'static str,
     },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Fail-closed validation or execution error returned by the runtime.
 pub enum AgentRuntimeError {
+    /// A model reused a turn-local tool call identity.
     DuplicateCallId,
+    /// A final claim cited an evidence reference not observed this turn.
     EvidenceNotObserved(String),
+    /// A final claim overstated stale or incomplete evidence.
     EvidenceNotAuthoritative(String),
+    /// Conversation history violated ordering, role, or size constraints.
     HistoryInvalid,
+    /// A final draft or presentation violated the response contract.
     InvalidFinal(String),
+    /// The input request violated its schema or invariant checks.
     InvalidRequest(String),
+    /// The proposed route conflicted with deterministic request semantics.
     InvalidRoute(String),
+    /// A tool call violated catalog, schema, authority, or size constraints.
     InvalidToolCall(String),
+    /// A required model stage could not produce a decision.
     ModelUnavailable(String),
+    /// The operating loop exhausted [`MAX_MODEL_STEPS`].
     ModelStepLimit,
+    /// Invalid operating decisions exhausted [`MAX_OPERATING_REPAIRS`].
     OperatingRepairLimit,
+    /// Invalid presentations exhausted [`MAX_PRESENTATION_REPAIRS`].
     PresentationRepairLimit,
+    /// Invalid critic decisions exhausted [`MAX_CRITIC_REPAIRS`].
     CriticRepairLimit,
+    /// Tool execution exceeded the selected lane's [`TurnBudget`].
     ToolBudgetExceeded,
+    /// A model selected a tool absent from the bounded catalog.
     ToolUnavailable(String),
+    /// A claimed completed effect lacks a later independent observation.
     UnverifiedEffect,
 }
 
@@ -682,6 +976,18 @@ impl fmt::Display for AgentRuntimeError {
 
 impl Error for AgentRuntimeError {}
 
+/// Executes one validated request through routing, bounded tools, critique, and presentation.
+///
+/// State-changing tools require an [`EffectAuthorization`] bound to the exact
+/// call input. A successful effect cannot support a completed claim until a
+/// later read observation verifies the resulting state. The returned content
+/// remains [`AgentTurnOutcome::PendingDelivery`] until the host separately
+/// supplies and validates an [`AgentDeliveryReceipt`].
+///
+/// # Errors
+///
+/// Returns [`AgentRuntimeError`] when any model output, tool call, evidence
+/// claim, authority binding, or bounded repair loop fails validation.
 pub async fn run_turn(
     model: &dyn AgentModel,
     tools: &dyn AgentTools,
@@ -1201,6 +1507,16 @@ async fn route_request_decision(
     ))
 }
 
+/// Returns the model-selected lane after deterministic route validation.
+///
+/// Unlike [`resolve_request_lane`], this function preserves
+/// [`ExecutionLane::Continue`] instead of resolving it to the mission's active
+/// operating lane.
+///
+/// # Errors
+///
+/// Returns [`AgentRuntimeError`] when the request is invalid or all routing
+/// attempts fail the bounded route contract.
 pub async fn route_request(
     model: &dyn AgentModel,
     request: AgentTurnRequest,
@@ -1208,6 +1524,15 @@ pub async fn route_request(
     Ok(route_request_decision(model, request).await?.lane)
 }
 
+/// Resolves a validated route into an executable lane and observation disposition.
+///
+/// A continuation route inherits the durable mission's active lane and rejects
+/// missing or already-completed mission state.
+///
+/// # Errors
+///
+/// Returns [`AgentRuntimeError`] for invalid requests, invalid routes, or
+/// continuation state that cannot safely resume.
 pub async fn resolve_request_route(
     model: &dyn AgentModel,
     request: AgentTurnRequest,
@@ -1255,6 +1580,12 @@ pub async fn resolve_request_route(
     })
 }
 
+/// Returns only the executable lane from [`resolve_request_route`].
+///
+/// # Errors
+///
+/// Returns [`AgentRuntimeError`] under the same conditions as
+/// [`resolve_request_route`].
 pub async fn resolve_request_lane(
     model: &dyn AgentModel,
     request: AgentTurnRequest,
@@ -2993,6 +3324,15 @@ fn grounding_scalar(value: &Value) -> Option<String> {
     }
 }
 
+/// Validates schema, identity, timestamp, history, working-state, and authorization invariants.
+///
+/// This check is deterministic and performs no I/O. Hosts may call it before
+/// selecting a model or tool implementation.
+///
+/// # Errors
+///
+/// Returns [`AgentRuntimeError::InvalidRequest`] or
+/// [`AgentRuntimeError::HistoryInvalid`] with the violated invariant.
 pub fn validate_agent_turn_request(request: &AgentTurnRequest) -> Result<(), AgentRuntimeError> {
     if request.schema_version != AGENT_TURN_REQUEST_V1 {
         return Err(AgentRuntimeError::InvalidRequest(
