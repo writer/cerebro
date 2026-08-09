@@ -8,67 +8,126 @@ const MAX_TEXT_BYTES: usize = 4_096;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Lifecycle state of one planned, authorized, executed, and verified effect.
 pub enum CommitmentState {
+    /// Proposed from a plan but not yet accepted for execution.
     Proposed,
+    /// An exact approval decision is required before the effect can become ready.
     WaitingOnApproval,
+    /// Preconditions are satisfied and an execution grant may be attached.
     Ready,
+    /// An authorized executor has begun the external effect.
     Executing,
+    /// Execution produced receipts but independent outcome verification is pending.
     WaitingOnVerification,
+    /// Independent evidence establishes the expected effect.
     Fulfilled,
+    /// Execution or verification established a terminal unsuccessful attempt.
     Failed,
+    /// Work was intentionally ended before fulfillment.
     Cancelled,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Validated inputs for proposing a commitment from one immutable plan revision.
 pub struct CommitmentInput {
+    /// Stable identifier for the new commitment.
     pub commitment_id: CommitmentId,
+    /// Plan that owns the proposed effect.
     pub plan_id: PlanId,
+    /// Non-zero immutable revision of that plan.
     pub plan_revision: u64,
+    /// Stable plan-local step identifier producing the commitment.
     pub step_id: String,
+    /// Actor expected to execute the effect.
     pub actor_id: ActorId,
+    /// Exact capability required for execution.
     pub capability: String,
+    /// Canonical resource the effect targets.
     pub resource_urn: String,
+    /// Observable source-state change expected after execution.
     pub expected_effect: String,
+    /// Runbook or action reference for reversing the effect, when available.
     pub rollback_reference: Option<String>,
+    /// Whether readiness requires a separately recorded approval decision.
     pub requires_decision: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Durable state machine for one concrete external-effect obligation.
+///
+/// A commitment binds an immutable plan revision, executor, capability, target,
+/// and expected result. State changes must go through [`Self::transition`] so
+/// approval, execution authority, receipts, and optimistic revision checks cannot
+/// be skipped by callers.
 pub struct Commitment {
+    /// Stable identity preserved across every revision.
     pub commitment_id: CommitmentId,
+    /// Current optimistic-concurrency revision, starting at one.
     pub revision: u64,
+    /// Plan that created this commitment.
     pub plan_id: PlanId,
+    /// Immutable plan revision whose step and expected effect are being executed.
     pub plan_revision: u64,
+    /// Stable step identifier within the owning plan revision.
     pub step_id: String,
+    /// Actor designated to perform the effect.
     pub actor_id: ActorId,
+    /// Exact capability the executor must be granted.
     pub capability: String,
+    /// Canonical resource targeted by the effect.
     pub resource_urn: String,
+    /// Observable result that later verification must establish.
     pub expected_effect: String,
+    /// Recovery reference retained with the effect record.
     pub rollback_reference: Option<String>,
+    /// Current lifecycle state.
     pub state: CommitmentState,
+    /// Capability grant used to enter execution, once attached.
     pub grant_id: Option<GrantId>,
+    /// Approval decision used to leave `WaitingOnApproval`, once attached.
     pub decision_id: Option<DecisionId>,
+    /// Deduplicated execution and verification receipt references accumulated so far.
     pub receipt_urns: Vec<String>,
+    /// Bounded explanation supplied with the most recent transition.
     pub last_reason: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Requested optimistic transition for an existing [`Commitment`].
 pub struct CommitmentTransition {
+    /// Revision the caller read; stale values fail without mutating state.
     pub expected_revision: u64,
+    /// Requested next lifecycle state.
     pub to: CommitmentState,
+    /// Execution grant to attach when entering `Executing`.
     pub grant_id: Option<GrantId>,
+    /// Approval receipt to attach when leaving `WaitingOnApproval`.
     pub decision_id: Option<DecisionId>,
+    /// Execution or verification receipts required by evidence-bearing states.
     pub receipt_urns: Vec<String>,
+    /// Bounded factual reason for the transition.
     pub reason: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Reason a commitment proposal or transition was rejected.
 pub enum CommitmentError {
+    /// Text, revision, or receipt input violates the bounded contract.
     InvalidInput,
+    /// The requested state edge is absent from the lifecycle graph.
     InvalidTransition,
+    /// A required approval decision or capability grant was not supplied.
     MissingAuthority,
+    /// A state claiming execution or verification did not supply evidence receipts.
     MissingReceipt,
-    RevisionConflict { expected: u64, actual: u64 },
+    /// The caller attempted a transition from a stale aggregate revision.
+    RevisionConflict {
+        /// Revision supplied by the caller.
+        expected: u64,
+        /// Current commitment revision.
+        actual: u64,
+    },
 }
 
 impl fmt::Display for CommitmentError {
@@ -89,6 +148,11 @@ impl fmt::Display for CommitmentError {
 impl Error for CommitmentError {}
 
 impl Commitment {
+    /// Creates revision one of a commitment after validating its immutable bindings.
+    ///
+    /// Decision-gated commitments begin in `WaitingOnApproval`; all others begin
+    /// `Ready`. Proposal does not authorize execution, attach receipts, or validate
+    /// that the named actor currently owns the requested capability.
     pub fn propose(input: CommitmentInput) -> Result<Self, CommitmentError> {
         if input.plan_revision == 0 {
             return Err(CommitmentError::InvalidInput);
@@ -128,6 +192,13 @@ impl Commitment {
         })
     }
 
+    /// Applies one legal state transition and returns a new aggregate revision.
+    ///
+    /// The transition fails closed on stale revisions, illegal edges, missing
+    /// decisions or grants, and missing receipts. New receipt URNs are validated,
+    /// sorted, and deduplicated with prior receipts. This method validates structural
+    /// evidence presence; adapters must separately authenticate the referenced
+    /// approval, grant, execution, and verification records.
     pub fn transition(&self, transition: CommitmentTransition) -> Result<Self, CommitmentError> {
         if transition.expected_revision != self.revision {
             return Err(CommitmentError::RevisionConflict {
