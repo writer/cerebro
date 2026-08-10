@@ -177,11 +177,11 @@ entries:
               families:
                 - group_membership
               high_value: true
-              id: group_memberships
+              id: group_membership_projection
               notes:
                 - The hand-written Okta runtime supplies the group identifier while reading each group's members.
               support: supported
-              title: Group memberships
+              title: Group membership event projection
               type: relationship
           default_enabled: false
           event:
@@ -337,11 +337,11 @@ entries:
               families:
                 - application
               high_value: true
-              id: applications
+              id: application_projection
               notes:
                 - The hand-written Okta runtime emits one okta.application event per application; this exact family keeps durable events projectable during replay and forwarding.
               support: supported
-              title: Applications
+              title: Application event projection
               type: entity_family
           default_enabled: false
           event:
