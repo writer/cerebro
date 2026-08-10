@@ -1,6 +1,22 @@
 #![forbid(unsafe_code)]
+#![deny(missing_docs)]
 
-//! Bounded graph operations presented to agents and product surfaces.
+//! Bounded, tenant-scoped graph operations for agents and product surfaces.
+//!
+//! This crate translates the organizational graph into stable context records
+//! and exposes two read paths:
+//!
+//! - [`AgentContext`] provides synchronous operations over an in-process
+//!   [`GraphRead`] implementation;
+//! - [`AgentGraph`] defines the asynchronous backend contract used by hosts,
+//!   with [`MemoryAgentGraph`] as the in-memory implementation.
+//!
+//! All traversal, search, and typed-query operations require an explicit tenant
+//! and enforce hard depth, result, root, node, edge, and absence-check bounds.
+//! Query construction is typed and validated; this crate does not accept Cypher,
+//! execute arbitrary procedures, cross tenant boundaries, mutate the graph, or
+//! claim that a truncated result is complete. Backends own durable availability
+//! and revision truth, while callers own authorization to expose returned facts.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -27,13 +43,21 @@ const MAX_QUERY_KEYS_PER_NODE: usize = 100;
 const MAX_QUERY_KINDS: usize = 29;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Rejection produced by the bounded context or backend contract.
 pub enum ContextError {
+    /// Requested result limit is outside the inclusive range `1..=500`.
     InvalidLimit,
+    /// Requested traversal depth is outside the inclusive range `1..=6`.
     InvalidDepth,
+    /// A batched root key is empty or not already whitespace-normalized.
     InvalidRootKey,
+    /// Batched root count is outside the inclusive range `1..=100`.
     InvalidRootCount,
+    /// Requested entity, assertion, or stable key is absent in the tenant graph.
     EntityNotFound,
+    /// Typed fact query violates a structural, schema, or semantic constraint.
     InvalidQuery(String),
+    /// Backend could not provide an authoritative read.
     BackendUnavailable(String),
 }
 
@@ -60,26 +84,46 @@ impl fmt::Display for ContextError {
 impl Error for ContextError {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Source-attributed directed assertion exposed to an agent.
 pub struct ContextEdge {
+    /// Stable assertion identity used for explanation and deterministic ordering.
     pub assertion_id: AssertionId,
+    /// Source entity of the directed assertion.
     pub from: EntityId,
+    /// Organizational relation wire name, or `represents` for identity bindings.
     pub relation: String,
+    /// Destination entity of the directed assertion.
     pub to: EntityId,
+    /// Collector runtime whose evidence supports the assertion.
     pub source_runtime_id: String,
+    /// Whether this edge projects an identity-binding assertion.
     pub identity_binding: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Agent-facing projection of one tenant-scoped domain entity.
 pub struct ContextEntity {
+    /// Native graph identity, scoped by the enclosing tenant operation.
     pub entity_id: EntityId,
+    /// Stable provider-facing or canonical key suitable for later resolution.
     pub agent_key: String,
+    /// Organizational entity-kind wire name.
     pub entity_kind: String,
+    /// Structured authority that owns the entity's identity namespace.
     pub authority: serde_json::Value,
+    /// Human-readable label; never used as stable identity.
     pub label: String,
+    /// Deterministically ordered source properties plus the stable `entity_urn`.
     pub properties: std::collections::BTreeMap<String, String>,
 }
 
 impl ContextEntity {
+    /// Projects a domain entity into the bounded agent-facing representation.
+    ///
+    /// The stable agent key is also inserted as the `entity_urn` property. A
+    /// serialization failure for a domain kind or authority degrades only that
+    /// display projection to `provider` or JSON `null`; it does not change the
+    /// native entity identity.
     pub fn from_domain(entity: &Entity) -> Self {
         let agent_key = entity.agent_key();
         let mut properties = entity.properties().clone();
@@ -99,52 +143,85 @@ impl ContextEntity {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Bounded neighborhood around one root entity at one graph revision.
 pub struct Neighborhood {
+    /// Tenant from which every entity and edge was read.
     pub tenant_id: TenantId,
+    /// Backend graph revision observed for this response.
     pub graph_revision: u64,
+    /// Requested root, returned separately even when no edges are reachable.
     pub root: ContextEntity,
+    /// Non-root endpoints required to interpret the retained edges.
     pub entities: Vec<ContextEntity>,
+    /// Retained reachable assertions, ordered by assertion identity.
     pub edges: Vec<ContextEdge>,
+    /// Whether at least one additional reachable edge existed beyond the limit.
     pub truncated: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// One directed, simple path through the tenant graph.
 pub struct GraphPath {
+    /// Ordered path entities from source through destination.
     pub entities: Vec<ContextEntity>,
+    /// Ordered directed assertions connecting adjacent entities.
     pub edges: Vec<ContextEdge>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Direction in which an absent-edge constraint is evaluated.
 pub enum QueryDirection {
+    /// Reject a match when the bound node has a matching outgoing assertion.
     Outgoing,
+    /// Reject a match when the bound node has a matching incoming assertion.
     Incoming,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Entity pattern bound to one variable in a typed fact query.
 pub struct QueryNode {
+    /// Unique lower-snake-case variable used by edges and result bindings.
     pub variable: String,
+    /// Allowed entity-kind wire names; empty means any kind.
     pub kinds: Vec<String>,
+    /// Allowed native IDs or stable agent keys; empty means any key.
     pub keys: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Required directed assertion pattern in a typed fact query.
 pub struct QueryEdge {
+    /// Unique lower-snake-case variable for the matched assertion.
     pub variable: String,
+    /// Previously declared source-node variable.
     pub from_variable: String,
+    /// Organizational relation wire name, including `represents`.
     pub relation: String,
+    /// Previously declared destination-node variable.
     pub to_variable: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Negative assertion constraint applied after positive bindings are complete.
 pub struct QueryAbsentEdge {
+    /// Declared node variable from which absence is evaluated.
     pub bound_variable: String,
+    /// Incoming or outgoing direction relative to the bound node.
     pub direction: QueryDirection,
+    /// Organizational relation whose presence would reject the match.
     pub relation: String,
+    /// Allowed kind of the unbound endpoint; empty means any kind.
     pub other_kinds: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Validated, bounded graph-pattern query.
+///
+/// Queries contain at most eight nodes, twelve required edges, eight absence
+/// checks, and 500 results. A query without edges must have exactly one node;
+/// otherwise its positive edge graph must connect every declared node. Fields
+/// are private so a validated query cannot be mutated into an invalid shape.
 pub struct FactQuery {
     nodes: Vec<QueryNode>,
     edges: Vec<QueryEdge>,
@@ -153,6 +230,17 @@ pub struct FactQuery {
 }
 
 impl FactQuery {
+    /// Validates and constructs a typed fact query.
+    ///
+    /// Node and edge variables must be unique lower snake case. Kinds and
+    /// relations must be known organizational-model wire names, required edges
+    /// must be type-compatible, node keys must be unique and normalized, and
+    /// the positive pattern must be connected.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContextError::InvalidLimit`] for a result bound outside
+    /// `1..=500`, or [`ContextError::InvalidQuery`] for any invalid query shape.
     pub fn new(
         nodes: Vec<QueryNode>,
         edges: Vec<QueryEdge>,
@@ -168,46 +256,72 @@ impl FactQuery {
         })
     }
 
+    /// Returns the validated node patterns in caller-supplied order.
     pub fn nodes(&self) -> &[QueryNode] {
         &self.nodes
     }
 
+    /// Returns the validated required-edge patterns in caller-supplied order.
     pub fn edges(&self) -> &[QueryEdge] {
         &self.edges
     }
 
+    /// Returns the validated negative-edge constraints in caller-supplied order.
     pub fn absent_edges(&self) -> &[QueryAbsentEdge] {
         &self.absent_edges
     }
 
+    /// Returns the maximum number of matches that execution may return.
     pub fn limit(&self) -> usize {
         self.limit
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// One complete variable binding produced by a typed fact query.
 pub struct QueryMatch {
+    /// Node variables mapped to their tenant-scoped entities.
     pub entities: BTreeMap<String, ContextEntity>,
+    /// Edge variables mapped to their source-attributed assertions.
     pub edges: BTreeMap<String, ContextEdge>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Bounded, deterministic result of executing a [`FactQuery`].
 pub struct QueryResult {
+    /// Tenant from which every binding was read.
     pub tenant_id: TenantId,
+    /// Backend graph revision observed for this query.
     pub graph_revision: u64,
+    /// Deterministically ordered, deduplicated variable bindings.
     pub matches: Vec<QueryMatch>,
+    /// Whether at least one additional distinct match existed beyond the limit.
     pub truncated: bool,
 }
 
+/// Synchronous bounded-context facade over one borrowed graph reader.
+///
+/// Every operation receives an explicit tenant. The facade performs no caching
+/// or authorization and never reads across tenants.
 pub struct AgentContext<'a, Reader: GraphRead> {
     reader: &'a Reader,
 }
 
 impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
+    /// Borrows a graph reader for bounded synchronous operations.
     pub fn new(reader: &'a Reader) -> Self {
         Self { reader }
     }
 
+    /// Searches entity label and native identity within one tenant.
+    ///
+    /// Matching is case-insensitive. An empty query matches all entities, and an
+    /// empty `kinds` slice disables kind filtering. Results follow the reader's
+    /// deterministic entity order and stop at `limit`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContextError::InvalidLimit`] unless `limit` is in `1..=500`.
     pub fn search(
         &self,
         tenant_id: &TenantId,
@@ -235,6 +349,12 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
         Ok(result)
     }
 
+    /// Returns one entity by native identity within the supplied tenant.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContextError::EntityNotFound`] when that tenant does not contain
+    /// the entity.
     pub fn get(
         &self,
         tenant_id: &TenantId,
@@ -246,6 +366,18 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
             .ok_or(ContextError::EntityNotFound)
     }
 
+    /// Expands an undirected neighborhood around one root entity.
+    ///
+    /// Traversal treats assertions as adjacent in either direction, while the
+    /// returned edges preserve their source direction. Edges are deduplicated
+    /// and ordered by assertion identity before the result bound is applied.
+    /// Only non-root endpoints needed to interpret retained edges are returned.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContextError::InvalidDepth`] or [`ContextError::InvalidLimit`]
+    /// for bounds outside `1..=6` and `1..=500`, respectively, or
+    /// [`ContextError::EntityNotFound`] when the root is absent.
     pub fn expand(
         &self,
         tenant_id: &TenantId,
@@ -308,6 +440,17 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
         })
     }
 
+    /// Finds bounded directed simple paths from one entity to another.
+    ///
+    /// Paths are considered by increasing edge count and then by assertion
+    /// identity. Cycles are excluded within each candidate path. Both endpoints
+    /// must exist before traversal begins.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContextError::InvalidDepth`] or [`ContextError::InvalidLimit`]
+    /// for invalid bounds, or [`ContextError::EntityNotFound`] when either
+    /// endpoint is absent.
     pub fn find_paths(
         &self,
         tenant_id: &TenantId,
@@ -409,6 +552,10 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
         }
     }
 
+    /// Returns the source-attributed edge for one assertion in the tenant graph.
+    ///
+    /// Returns `None` when the assertion is absent; it never searches another
+    /// tenant for a matching identifier.
     pub fn explain(&self, tenant_id: &TenantId, assertion_id: &AssertionId) -> Option<ContextEdge> {
         self.reader
             .assertions(tenant_id)
@@ -417,6 +564,15 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
             .map(context_edge)
     }
 
+    /// Executes a previously validated typed fact query against one tenant.
+    ///
+    /// Matches are sorted and deduplicated before the query limit is applied.
+    /// Negative constraints test absence only against the same tenant snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContextError`] if query execution encounters an invalid binding
+    /// state. Query construction errors are normally rejected by [`FactQuery::new`].
     pub fn query(
         &self,
         tenant_id: &TenantId,
@@ -449,12 +605,37 @@ impl<'a, Reader: GraphRead> AgentContext<'a, Reader> {
 }
 
 #[async_trait]
+/// Asynchronous backend contract for bounded, tenant-scoped agent graph reads.
+///
+/// Implementations must preserve tenant isolation, enforce the documented hard
+/// bounds, return the durable revision they actually observed, and use
+/// [`ContextError::BackendUnavailable`] rather than returning partial success as
+/// authoritative data. Methods never grant a caller permission to expose facts.
 pub trait AgentGraph: Send + Sync {
+    /// Verifies that the backend can serve authoritative reads.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContextError::BackendUnavailable`] or another backend-specific
+    /// context error when reads should not proceed.
     async fn health(&self) -> Result<(), ContextError>;
 
     /// Returns the durable tenant graph revision observed by the backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns a backend error when the revision cannot be read authoritatively.
     async fn revision(&self, tenant_id: &TenantId) -> Result<u64, ContextError>;
 
+    /// Searches bounded entity labels and stable identities within one tenant.
+    ///
+    /// An empty `kinds` slice disables kind filtering. Implementations must apply
+    /// filters before the result bound and return deterministic ordering.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContextError::InvalidLimit`] for an invalid bound or a backend
+    /// error when the search cannot be completed authoritatively.
     async fn search(
         &self,
         tenant_id: &TenantId,
@@ -463,6 +644,11 @@ pub trait AgentGraph: Send + Sync {
         limit: usize,
     ) -> Result<Vec<ContextEntity>, ContextError>;
 
+    /// Returns one entity by native identity within the supplied tenant.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContextError::EntityNotFound`] when absent, or a backend error.
     async fn get(
         &self,
         tenant_id: &TenantId,
@@ -470,12 +656,26 @@ pub trait AgentGraph: Send + Sync {
     ) -> Result<ContextEntity, ContextError>;
 
     /// Resolves either a native entity ID or a stable provider-facing key.
+    ///
+    /// Arbitrary property values are not resolution keys. Implementations must
+    /// reject ambiguous external keys rather than selecting one match.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContextError::EntityNotFound`] when no stable key matches,
+    /// [`ContextError::BackendUnavailable`] when a key is ambiguous, or another
+    /// backend error.
     async fn resolve(&self, tenant_id: &TenantId, key: &str)
     -> Result<ContextEntity, ContextError>;
 
     /// Returns at most `limit` assertion edges and only the entity endpoints
     /// needed to interpret those edges. `truncated` is true only when another
     /// reachable edge exists beyond that bound.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-bound error, [`ContextError::EntityNotFound`] for an
+    /// absent root, or a backend error.
     async fn expand(
         &self,
         tenant_id: &TenantId,
@@ -484,6 +684,17 @@ pub trait AgentGraph: Send + Sync {
         limit: usize,
     ) -> Result<Neighborhood, ContextError>;
 
+    /// Expands multiple normalized root keys under one tenant and shared bounds.
+    ///
+    /// Missing roots are omitted from the returned map. Any other root error
+    /// aborts the batch, preventing a mixed authoritative/failed result. Keys in
+    /// the map are the exact validated request keys.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContextError::InvalidRootCount`],
+    /// [`ContextError::InvalidRootKey`], an invalid depth/limit error, or the
+    /// first non-absence error returned by resolution or expansion.
     async fn expand_many(
         &self,
         tenant_id: &TenantId,
@@ -510,6 +721,11 @@ pub trait AgentGraph: Send + Sync {
         Ok(neighborhoods)
     }
 
+    /// Finds bounded directed simple paths between two tenant entities.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-bound or missing-entity error, or a backend error.
     async fn find_paths(
         &self,
         tenant_id: &TenantId,
@@ -519,12 +735,23 @@ pub trait AgentGraph: Send + Sync {
         limit: usize,
     ) -> Result<Vec<GraphPath>, ContextError>;
 
+    /// Resolves one assertion into its source-attributed context edge.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContextError::EntityNotFound`] when absent, or a backend error.
     async fn explain(
         &self,
         tenant_id: &TenantId,
         assertion_id: &AssertionId,
     ) -> Result<ContextEdge, ContextError>;
 
+    /// Executes one validated typed fact query against one tenant revision.
+    ///
+    /// # Errors
+    ///
+    /// Returns a query or backend error when no authoritative result can be
+    /// produced.
     async fn query(
         &self,
         tenant_id: &TenantId,
@@ -533,11 +760,17 @@ pub trait AgentGraph: Send + Sync {
 }
 
 #[derive(Clone)]
+/// Concurrent in-memory [`AgentGraph`] backed by an organizational graph.
+///
+/// This implementation is useful for embedded runtimes and deterministic tests.
+/// Its health check confirms only in-process availability; it is not proof of
+/// external source freshness or durable persistence.
 pub struct MemoryAgentGraph {
     graph: Arc<RwLock<cerebro_organizational_graph::OrganizationalGraph>>,
 }
 
 impl MemoryAgentGraph {
+    /// Wraps an organizational graph in an asynchronous read/write lock.
     pub fn new(graph: cerebro_organizational_graph::OrganizationalGraph) -> Self {
         Self {
             graph: Arc::new(RwLock::new(graph)),
@@ -1161,6 +1394,16 @@ fn validate_depth(depth: usize) -> Result<(), ContextError> {
     Ok(())
 }
 
+/// Validates the closed root-key boundary used by batched expansion.
+///
+/// A batch must contain between one and 100 keys. Every key must be non-empty
+/// and already trimmed so that the response map preserves an unambiguous exact
+/// request key.
+///
+/// # Errors
+///
+/// Returns [`ContextError::InvalidRootCount`] for an invalid batch size or
+/// [`ContextError::InvalidRootKey`] for an empty or non-normalized key.
 pub fn validate_root_keys(root_keys: &[String]) -> Result<(), ContextError> {
     if !(1..=MAX_ROOTS).contains(&root_keys.len()) {
         return Err(ContextError::InvalidRootCount);
@@ -1174,6 +1417,12 @@ pub fn validate_root_keys(root_keys: &[String]) -> Result<(), ContextError> {
     Ok(())
 }
 
+/// Validates shared traversal depth and result limits.
+///
+/// # Errors
+///
+/// Returns [`ContextError::InvalidDepth`] unless depth is in `1..=6`, then
+/// [`ContextError::InvalidLimit`] unless limit is in `1..=500`.
 pub fn validate_bounds(depth: usize, limit: usize) -> Result<(), ContextError> {
     validate_depth(depth)?;
     validate_limit(limit)
