@@ -1679,7 +1679,7 @@ mod tests {
         .unwrap();
         let summary = catalog.summary();
         assert_eq!(summary.sources, 794);
-        assert_eq!(summary.families, 3_891);
+        assert_eq!(summary.families, 3_892);
         assert_eq!(
             summary.projection_classes.values().sum::<usize>(),
             summary.families
@@ -1736,6 +1736,33 @@ mod tests {
         );
         assert_eq!(catalog.get("snyk").unwrap().token_header(), "Authorization");
         assert_eq!(catalog.get("snyk").unwrap().token_scheme(), "Token");
+        let okta_group_membership = catalog
+            .get("okta")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "group_membership")
+            .unwrap();
+        assert_eq!(
+            okta_group_membership.projection().template(),
+            "group_membership"
+        );
+        assert_eq!(
+            okta_group_membership
+                .projection()
+                .fields()
+                .get("group_id")
+                .map(String::as_str),
+            Some("group_id")
+        );
+        assert_eq!(
+            okta_group_membership
+                .projection()
+                .fields()
+                .get("member_id")
+                .map(String::as_str),
+            Some("member_id|member_user_id|user_id|id")
+        );
         assert_eq!(
             catalog.get("airbrake").unwrap().auth_query_parameters(),
             &BTreeMap::from([("key".to_owned(), "token".to_owned())])

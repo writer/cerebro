@@ -170,6 +170,53 @@ entries:
           record_selector: $.data[*]
         - coverage:
             - control_domains:
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+              families:
+                - group_membership
+              high_value: true
+              id: group_memberships
+              notes:
+                - The hand-written Okta runtime supplies the group identifier while reading each group's members.
+              support: supported
+              title: Group memberships
+              type: relationship
+          default_enabled: false
+          event:
+            kind: okta.group_membership
+            required_payload_fields:
+              - id
+              - group_id
+            schema_ref: okta/group_membership/v1
+            urn_kind: okta_group_membership
+          id: group_membership
+          id_field: id
+          label: Group memberships
+          method: GET
+          name_field: profile.login
+          pagination:
+            link_header: Link
+            type: link
+          path: /api/v1/groups/{group_id}/users
+          projection:
+            fields:
+              group_id: group_id
+              member_email: member_email|profile.email
+              member_id: member_id|member_user_id|user_id|id
+              member_name: member_name|profile.login
+              member_status: member_status|status
+              member_type: member_type
+              member_user_id: member_user_id|user_id|id
+              user_id: user_id|id
+            template: group_membership
+          read:
+            path_params:
+              - group_id
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
                 - access_review
               evidence_types:
                 - source_snapshot
