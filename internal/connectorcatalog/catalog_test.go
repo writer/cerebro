@@ -253,7 +253,7 @@ func TestBuiltinOktaCatalogDeclaresComplianceIdentityEvidenceDepth(t *testing.T)
 		{id: "user_lifecycle", dimensionType: "lifecycle_state", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "dormant_user"},
 		{id: "mfa_posture", dimensionType: "app_entitlement", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "mfa"},
 		{id: "external_accounts", dimensionType: "entity_family", support: "partial", evidenceType: "access_review", controlDomain: "identity_access", requiredFamily: "external_user"},
-		{id: "group_memberships", dimensionType: "relationship", support: "supported", evidenceType: "access_review", controlDomain: "identity_access", requiredFamily: "group_membership"},
+		{id: "group_membership_projection", dimensionType: "relationship", support: "supported", evidenceType: "access_review", controlDomain: "identity_access", requiredFamily: "group_membership"},
 		{id: "admin_membership", dimensionType: "relationship", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "privileged_role"},
 		{id: "app_access", dimensionType: "app_entitlement", support: "partial", evidenceType: "identity_configuration", controlDomain: "identity_access", requiredFamily: "app_assignment"},
 		{id: "identity_audit_events", dimensionType: "audit_event", support: "partial", evidenceType: "logging_configuration", controlDomain: "logging_monitoring", requiredFamily: "session"},
@@ -275,7 +275,7 @@ func TestBuiltinOktaCatalogDeclaresComplianceIdentityEvidenceDepth(t *testing.T)
 			t.Fatalf("dimension %s families = %#v, want %q", want.id, dimension.Families, want.requiredFamily)
 		}
 	}
-	groupMemberships := dimensions["group_memberships"]
+	groupMemberships := dimensions["group_membership_projection"]
 	if !hasString(groupMemberships.Notes, "The hand-written Okta runtime supplies the group identifier while reading each group's members.") {
 		t.Fatalf("group_memberships notes = %#v, want source projection support note", groupMemberships.Notes)
 	}
@@ -298,6 +298,15 @@ func TestBuiltinOktaCatalogDeclaresComplianceIdentityEvidenceDepth(t *testing.T)
 	}
 	if application.Projection == nil || application.Projection.Template != "identity_application" {
 		t.Fatalf("okta application projection = %#v, want native application entity", application.Projection)
+	}
+	seenDimensionIDs := map[string]string{}
+	for _, family := range okta.Definition.ResourceFamilies {
+		for _, dimension := range family.Coverage {
+			if owner, exists := seenDimensionIDs[dimension.ID]; exists {
+				t.Fatalf("okta coverage dimension %q is shared by families %q and %q", dimension.ID, owner, family.ID)
+			}
+			seenDimensionIDs[dimension.ID] = family.ID
+		}
 	}
 }
 
