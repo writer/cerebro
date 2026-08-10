@@ -78,12 +78,39 @@ skips: the legacy `asset.data_sensitivity` kind, invalid historical observation
 IDs for `gcp.iam_role_assignment`, `gcp.effective_permission`, and
 `aws.public_endpoint`, the catalog-owned `cerebro.health.jetstream_canary`
 without a source envelope, and permanent projection failures for the retired
-`okta.threat_insight` family. The active `okta.group_membership` family is not a
-compatibility skip: its hand-written collector events project through the
-compiled native relationship template. Replay compatibility applies only in
-replay mode. The forward consumer continues to reject every legacy shape.
+`okta.threat_insight` family. The active `okta.group_membership` and
+`okta.application` families are not compatibility skips: their hand-written
+collector events project through exact compiled native relationship and
+application templates. Replay compatibility applies only in replay mode. The
+forward consumer continues to reject every legacy shape.
 Inspect the completed run and review the per-source-family skipped counters as
 the durable evidence for these records.
+
+## Repair an active-family rejection
+
+An active source-family rejection is a contract failure, not historical noise.
+Do not add the family to the replay skip list and do not reset the run. Preserve
+the failed consumer, its run row, its end-sequence fence, and its per-family
+rejection counters.
+
+If the error says a family is absent from the compiled catalog:
+
+1. Compare the committed event's exact `source_id`, family, kind, schema, and
+   required fields with the hand-written source contract.
+2. Add the exact durable family ID to the connector catalog. Keep the family
+   disabled for collection when the hand-written collector remains its owner;
+   the entry exists to make committed events projectable, not to start a second
+   collector.
+3. Map the family to a native graph template and test the entity or relationship
+   shape in every runtime that claims the template is executable.
+4. Build a new candidate and verify its compiled catalog summary and exact
+   source-family projection locally and in the Rust-only candidate workflow.
+5. Start a new replay consumer and run ID at the failed run's original
+   `first_sequence`, using the same immutable `end_sequence` fence.
+
+The replacement replay must independently reach `completed` with zero rejected
+messages. A successful new run does not erase or supersede the failed receipt;
+operators retain both records to show the failure, repair, and fresh proof.
 
 ## Start the forward durable after replay
 

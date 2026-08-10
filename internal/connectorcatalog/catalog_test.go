@@ -279,6 +279,26 @@ func TestBuiltinOktaCatalogDeclaresComplianceIdentityEvidenceDepth(t *testing.T)
 	if !hasString(groupMemberships.Notes, "The hand-written Okta runtime supplies the group identifier while reading each group's members.") {
 		t.Fatalf("group_memberships notes = %#v, want source projection support note", groupMemberships.Notes)
 	}
+	var application *connectordefinitions.ResourceFamily
+	for index := range okta.Definition.ResourceFamilies {
+		family := &okta.Definition.ResourceFamilies[index]
+		if family.ID == "application" {
+			application = family
+			break
+		}
+	}
+	if application == nil {
+		t.Fatal("okta application compatibility family not found")
+	}
+	if application.DefaultEnabled {
+		t.Fatal("okta application compatibility family must not start a second collector")
+	}
+	if application.Event.Kind != "okta.application" || application.Event.SchemaRef != "okta/application/v1" {
+		t.Fatalf("okta application event = %#v, want durable hand-written runtime contract", application.Event)
+	}
+	if application.Projection == nil || application.Projection.Template != "identity_application" {
+		t.Fatalf("okta application projection = %#v, want native application entity", application.Projection)
+	}
 }
 
 func TestBuiltinOneLoginCatalogUsesVerifiedProviderAPI(t *testing.T) {

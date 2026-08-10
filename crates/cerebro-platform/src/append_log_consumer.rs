@@ -1373,6 +1373,15 @@ mod tests {
             ),
             None
         );
+        assert_eq!(
+            replay_legacy_projection_skip(
+                ConsumerMode::Replay,
+                "okta",
+                "application",
+                &missing_catalog,
+            ),
+            None
+        );
     }
 
     #[test]

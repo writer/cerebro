@@ -328,6 +328,63 @@ entries:
           record_selector: $.data[*]
         - coverage:
             - control_domains:
+                - asset_inventory
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+                - source_snapshot
+              families:
+                - application
+              high_value: true
+              id: applications
+              notes:
+                - The hand-written Okta runtime emits one okta.application event per application; this exact family keeps durable events projectable during replay and forwarding.
+              support: supported
+              title: Applications
+              type: entity_family
+          default_enabled: false
+          event:
+            kind: okta.application
+            required_payload_fields:
+              - id
+            schema_ref: okta/application/v1
+            urn_kind: okta_application
+          id: application
+          id_field: id
+          label: Application
+          method: GET
+          name_field: label
+          pagination:
+            link_header: Link
+            type: link
+          path: /api/v1/apps
+          projection:
+            fields:
+              app_id: app_id|id
+              app_label: app_label|label
+              app_name: app_name|label|name
+              application_type: application_type
+              client_id: client_id
+              grant_types: grant_types
+              name: name
+              oauth2: oauth2
+              oauth_client_type: oauth_client_type
+              oauth_public_client: oauth_public_client
+              post_logout_redirect_uri_count: post_logout_redirect_uri_count
+              post_logout_redirect_uri_hosts: post_logout_redirect_uri_hosts
+              redirect_uri_count: redirect_uri_count
+              redirect_uri_hosts: redirect_uri_hosts
+              response_types: response_types
+              saml: saml
+              sign_on_mode: sign_on_mode
+              status: status
+              token_endpoint_auth_method: token_endpoint_auth_method
+              wildcard_redirect: wildcard_redirect
+            template: identity_application
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
                 - logging_monitoring
               evidence_types:
                 - logging_configuration

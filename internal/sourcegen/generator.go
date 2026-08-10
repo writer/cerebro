@@ -1576,6 +1576,8 @@ func idKeysForFamily(family familyData) []string {
 		base = append(base, "user_id", "id", "email", "primary_email", "login")
 	case "identity_group":
 		base = append(base, "group_id", "id", "group_email", "email")
+	case "identity_application":
+		base = append(base, "app_id", "application_id", "client_id", "id")
 	case "group_membership":
 		base = append(base, "membership_id", "id", "group_id", "member_id", "user_id", "email")
 	case "audit_event":
@@ -1635,6 +1637,13 @@ func attributePathsForFamily(family familyData) map[string]string {
 		base["group_name"] = "group_name|name|display_name"
 		base["domain"] = "domain|tenant_domain|organization_domain"
 		base["description"] = "description|summary"
+	case "identity_application":
+		base["app_id"] = "app_id|application_id|client_id|id"
+		base["app_name"] = "app_name|app_label|label|name"
+		base["application_type"] = "application_type|app_type|type"
+		base["client_id"] = "client_id|credentials.oauthClient.client_id"
+		base["domain"] = "domain|tenant_domain|organization_domain"
+		base["status"] = "status|state|lifecycle_state"
 	case "group_membership":
 		base["group_id"] = "group_id|group.id|groupId"
 		base["group_email"] = "group_email|group.email"
@@ -2139,6 +2148,10 @@ func fixturePayload(request normalizedRequest, family familyData) map[string]any
 		payload["group_id"] = recordID
 		payload["group_email"] = fixtureEmail(request, "group")
 		payload["group_name"] = displayName
+	case "identity_application":
+		payload["app_id"] = recordID
+		payload["app_name"] = displayName
+		payload["status"] = "ACTIVE"
 	case "group_membership":
 		payload["group_id"] = fixtureRelatedRecordID(request, "groups")
 		payload["member_id"] = fixtureRelatedRecordID(request, "users")
@@ -2214,6 +2227,10 @@ func fixtureAttributes(request normalizedRequest, family familyData) map[string]
 		attributes["group_id"] = recordID
 		attributes["group_email"] = fixtureEmail(request, "group")
 		attributes["group_name"] = displayName
+	case "identity_application":
+		attributes["app_id"] = recordID
+		attributes["app_name"] = displayName
+		attributes["status"] = "ACTIVE"
 	case "group_membership":
 		attributes["group_id"] = fixtureRelatedRecordID(request, "groups")
 		attributes["member_id"] = fixtureRelatedRecordID(request, "users")
@@ -2587,6 +2604,14 @@ func renderProjectionGo(request normalizedRequest) string {
 				fmt.Fprintf(&b, "\treturn identityGroupProjections(event, identityProjectionProfile{Provider: %s})\n", strconv.Quote(request.SourceID))
 			}
 			fmt.Fprintf(&b, "}\n\n")
+		case "identity_application":
+			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
+			if projectionFamilyNeedsAugmentation(family) {
+				fmt.Fprintf(&b, "\treturn projectCatalogRuntimeWithRelationships(%s, %sProjectionResource, func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n\t\treturn identityApplicationProjections(event, identityProjectionProfile{Provider: %s})\n\t}, event)\n", strconv.Quote(request.SourceID), family.ProjectorName, strconv.Quote(request.SourceID))
+			} else {
+				fmt.Fprintf(&b, "\treturn identityApplicationProjections(event, identityProjectionProfile{Provider: %s})\n", strconv.Quote(request.SourceID))
+			}
+			fmt.Fprintf(&b, "}\n\n")
 		case "group_membership":
 			fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {\n", family.ProjectorName)
 			if projectionFamilyNeedsAugmentation(family) {
@@ -2762,6 +2787,8 @@ func projectionTestName(sourceID string, family familyData, classOrdinal int, us
 			suffix = "IdentityUser"
 		case "identity_group":
 			suffix = "IdentityGroup"
+		case "identity_application":
+			suffix = "IdentityApplication"
 		case "group_membership":
 			suffix = "GroupMembership"
 		case "audit_event":
@@ -2813,6 +2840,10 @@ func renderProjectionFamilyTest(b *strings.Builder, sourceID string, family fami
 		fmt.Fprintf(b, "func %s(t *testing.T) {\n", testName)
 		fmt.Fprintf(b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"group_id\": \"group-1\", \"group_email\": \"group@example.test\", \"group_name\": \"Group One\"}}\n", strconv.Quote(sourceID), strconv.Quote(family.EventKind))
 		fmt.Fprintf(b, "\tentities, _, err := %s(event)\n\tif err != nil {\n\t\tt.Fatalf(\"projection error = %%v\", err)\n\t}\n\tif len(entities) == 0 {\n\t\tt.Fatal(\"expected projected identity group\")\n\t}\n}\n\n", family.ProjectorName)
+	case "identity_application":
+		fmt.Fprintf(b, "func %s(t *testing.T) {\n", testName)
+		fmt.Fprintf(b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"app_id\": \"app-1\", \"app_name\": \"Payroll\", \"status\": \"ACTIVE\"}}\n", strconv.Quote(sourceID), strconv.Quote(family.EventKind))
+		fmt.Fprintf(b, "\tentities, _, err := %s(event)\n\tif err != nil {\n\t\tt.Fatalf(\"projection error = %%v\", err)\n\t}\n\tif len(entities) == 0 {\n\t\tt.Fatal(\"expected projected identity application\")\n\t}\n}\n\n", family.ProjectorName)
 	case "group_membership":
 		fmt.Fprintf(b, "func %s(t *testing.T) {\n", testName)
 		fmt.Fprintf(b, "\tevent := &cerebrov1.EventEnvelope{Id: \"event-1\", TenantId: \"tenant\", SourceId: %s, Kind: %s, Attributes: map[string]string{\"group_id\": \"group-1\", \"group_email\": \"group@example.test\", \"member_id\": \"user-1\", \"member_email\": \"user@example.test\"}}\n", strconv.Quote(sourceID), strconv.Quote(family.EventKind))

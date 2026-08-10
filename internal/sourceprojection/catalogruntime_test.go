@@ -142,6 +142,11 @@ func TestCatalogRuntimeProjectorsCoverGeneratedTemplates(t *testing.T) {
 					Projection: &connectordefinitions.ProjectionSpec{Template: "identity_user"},
 				},
 				{
+					ID:         "applications",
+					Event:      connectordefinitions.EventMappingSpec{Kind: "example_catalog.application"},
+					Projection: &connectordefinitions.ProjectionSpec{Template: "identity_application"},
+				},
+				{
 					ID:         "findings",
 					Event:      connectordefinitions.EventMappingSpec{Kind: "example_catalog.finding"},
 					Projection: &connectordefinitions.ProjectionSpec{Template: "finding"},
@@ -171,6 +176,12 @@ func TestCatalogRuntimeProjectorsCoverGeneratedTemplates(t *testing.T) {
 			kind:           "example_catalog.user",
 			attributes:     map[string]string{"user_id": "user-1", "email": "user@example.test", "display_name": "User One"},
 			wantEntityType: "example_catalog.user",
+		},
+		{
+			name:           "identity application",
+			kind:           "example_catalog.application",
+			attributes:     map[string]string{"app_id": "app-1", "app_name": "Payroll", "status": "ACTIVE"},
+			wantEntityType: "example_catalog.application",
 		},
 		{
 			name:           "finding",

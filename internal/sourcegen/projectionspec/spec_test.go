@@ -57,6 +57,7 @@ func TestClassForReturnsExpectedMappings(t *testing.T) {
 		{"alert", "alert"},
 		{"identity_user", "identity_user"},
 		{"identity_group", "identity_group"},
+		{"identity_application", "identity_application"},
 		{"group_membership", "group_membership"},
 		{"audit_event", "audit_event"},
 		{"evidence_cas_reference", "evidence_cas_reference"},
