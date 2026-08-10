@@ -424,7 +424,10 @@ pub struct EvaluationResponse {
     pub schema_version: String,
     /// Digest copied from the successfully verified request envelope.
     pub input_digest: String,
-    /// Sorted snapshot digests on which the decision depends.
+    /// Snapshot digests in operation order: earlier/reference first, then later.
+    ///
+    /// Candidate-cut ranking has no source snapshot and therefore returns an
+    /// empty list.
     pub source_snapshot_digests: Vec<String>,
     /// Operation-specific decision.
     pub response: DecisionResponse,
