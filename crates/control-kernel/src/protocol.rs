@@ -217,19 +217,42 @@ impl ControlCommand {
 /// Provider-neutral result returned by a control-kernel host adapter.
 pub enum ControlResponse {
     /// Returns the latest mission snapshot.
-    Mission { mission: Mission },
+    Mission {
+        /// Mission after the requested transition or read.
+        mission: Mission,
+    },
     /// Returns a fail-closed capability decision.
-    Authorization { decision: AuthorizationDecision },
+    Authorization {
+        /// Decision bound to the exact authorization request.
+        decision: AuthorizationDecision,
+    },
     /// Returns deterministic encounter execution depth.
-    ExecutionDepth { depth: ExecutionDepth },
+    ExecutionDepth {
+        /// Maximum execution depth selected for the encounter.
+        depth: ExecutionDepth,
+    },
     /// Returns deterministic conversation-to-mission resolution.
-    Conversation { resolution: ConversationResolution },
+    Conversation {
+        /// Resolution describing whether to continue, open, or avoid a mission.
+        resolution: ConversationResolution,
+    },
     /// Returns the supervisor's next bounded mission action.
-    Directive { directive: MissionDirective },
+    Directive {
+        /// Pure directive selected from the supplied supervisor snapshot.
+        directive: MissionDirective,
+    },
     /// Confirms asynchronous acceptance under the supplied request identity.
-    Accepted { request_id: RequestId },
+    Accepted {
+        /// Idempotency identity under which the host accepted the command.
+        request_id: RequestId,
+    },
     /// Returns a bounded machine code and operator-readable failure.
-    Rejected { code: String, message: String },
+    Rejected {
+        /// Stable machine-readable rejection code.
+        code: String,
+        /// Bounded operator-readable explanation.
+        message: String,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
