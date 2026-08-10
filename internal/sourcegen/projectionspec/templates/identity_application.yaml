@@ -1,0 +1,10 @@
+id: identity_application
+class: identity_application
+graph_label: IdentityApplication
+urn_kind_prefix: "runtime_"
+event_kind_prefix: true
+description: Application identity from an identity or access provider.
+required_attributes:
+  - tenant_id
+  - source_event_id
+  - app_id

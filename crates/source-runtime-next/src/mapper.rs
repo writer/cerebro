@@ -649,6 +649,10 @@ fn label_for(
     let keys: &[&str] = match template {
         "identity_user" => &["display_name", "email", "user_id"],
         "identity_group" => &["group_name", "group_email", "group_id"],
+        // Application events commonly expose both a provider-internal name and
+        // a human-facing label. Prefer the normalized application name so graph
+        // readers see the same label that the source runtime selected.
+        "identity_application" => &["app_name", "app_label", "name", "app_id"],
         "repository" => &["repository_name", "resource_name", "name"],
         "deployment" => &["deployment_name", "resource_name", "name"],
         "policy" => &["policy_name", "resource_name", "name"],
@@ -799,6 +803,69 @@ mod tests {
             panic!("expected relationship")
         };
         assert_eq!(assertion.relation(), RelationKind::MemberOf);
+    }
+
+    #[test]
+    fn okta_runtime_application_becomes_a_native_application_entity() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("okta").unwrap().clone();
+        let collection = CompleteCollection::new(
+            TenantId::parse("tenant-a").unwrap(),
+            SourceRuntimeId::parse("okta-prod").unwrap(),
+            CollectionId::parse("collection-okta-application-1").unwrap(),
+            "okta.application",
+            10,
+        )
+        .unwrap();
+        let batch = CollectedBatch {
+            scope: CollectedScope::Complete(collection),
+            records: vec![SourceRecord {
+                observation_id: ObservationId::parse("observation-okta-application-1").unwrap(),
+                family: "application".to_owned(),
+                provider_kind: "okta.application".to_owned(),
+                provider_id: "app-1".to_owned(),
+                fields: BTreeMap::from([
+                    ("app_id".to_owned(), "app-1".to_owned()),
+                    ("app_name".to_owned(), "Payroll".to_owned()),
+                    ("oauth_public_client".to_owned(), "false".to_owned()),
+                    ("status".to_owned(), "ACTIVE".to_owned()),
+                ]),
+                payload: serde_json::json!({
+                    "id": "app-1",
+                    "label": "Payroll",
+                    "name": "payroll_oidc",
+                    "status": "ACTIVE"
+                }),
+            }],
+            next_cursor: None,
+        };
+
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+
+        assert_eq!(delta.entities().len(), 1);
+        assert!(delta.assertions().is_empty());
+        let application = &delta.entities()[0];
+        assert_eq!(application.kind(), &EntityKind::Application);
+        assert_eq!(application.label(), "Payroll");
+        assert_eq!(
+            application.properties().get("status").map(String::as_str),
+            Some("ACTIVE")
+        );
+        assert_eq!(
+            application
+                .properties()
+                .get("oauth_public_client")
+                .map(String::as_str),
+            Some("false")
+        );
     }
 
     #[test]

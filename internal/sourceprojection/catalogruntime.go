@@ -102,6 +102,13 @@ func catalogRuntimeProjectorFor(sourceID string, resource connectordefinitions.R
 		base = func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 			return identityGroupProjections(event, identityProjectionProfile{Provider: sourceID})
 		}
+	case "identity_application":
+		// Application is an identity-owned graph entity, not a generic asset.
+		// Keeping this dispatch explicit makes the classifier's support claim and
+		// the generated Go projector describe the same graph semantics as Rust.
+		base = func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return identityApplicationProjections(event, identityProjectionProfile{Provider: sourceID})
+		}
 	case "group_membership":
 		base = func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 			return identityGroupMembershipProjections(event, identityProjectionProfile{Provider: sourceID})

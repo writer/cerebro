@@ -111,6 +111,7 @@ func DefaultGrammar() Grammar {
 			"evidence_cas_reference",
 			"finding",
 			"group_membership",
+			"identity_application",
 			"identity_group",
 			"identity_user",
 			"policy",

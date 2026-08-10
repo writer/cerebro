@@ -1679,7 +1679,7 @@ mod tests {
         .unwrap();
         let summary = catalog.summary();
         assert_eq!(summary.sources, 794);
-        assert_eq!(summary.families, 3_892);
+        assert_eq!(summary.families, 3_893);
         assert_eq!(
             summary.projection_classes.values().sum::<usize>(),
             summary.families
@@ -1762,6 +1762,29 @@ mod tests {
                 .get("member_id")
                 .map(String::as_str),
             Some("member_id|member_user_id|user_id|id")
+        );
+        // The checked-in catalog also describes events produced by hand-written
+        // connectors. Those exact, singular family IDs are durable protocol
+        // names: replay must not guess that `application` means the separate
+        // declarative `applications` endpoint.
+        let okta_application = catalog
+            .get("okta")
+            .unwrap()
+            .families()
+            .iter()
+            .find(|family| family.id() == "application")
+            .unwrap();
+        assert_eq!(
+            okta_application.projection().template(),
+            "identity_application"
+        );
+        assert_eq!(
+            okta_application
+                .projection()
+                .fields()
+                .get("app_id")
+                .map(String::as_str),
+            Some("app_id|id")
         );
         assert_eq!(
             catalog.get("airbrake").unwrap().auth_query_parameters(),
