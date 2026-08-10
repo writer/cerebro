@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+
 use std::{collections::BTreeMap, time::Duration};
 
 use async_trait::async_trait;
@@ -320,29 +322,52 @@ const NEO4J_SCHEMA: &[&str] = &[
 ];
 
 #[derive(Clone)]
+/// Rebuildable Neo4j projection and tenant-consistent graph reader.
+///
+/// This type never owns graph truth. Writes must already have a durable ledger
+/// receipt, and lifecycle reads fail closed unless the projection is ready at
+/// the current authoritative graph revision.
 pub struct Neo4jProjector {
     graph: Graph,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// A lifecycle finding resolved to its affected resource and source coordinates.
 pub struct ResolvedLifecycleFinding {
+    /// Affected lifecycle resource reconstructed from the projection.
     pub resource: ProjectedResource,
+    /// Graph revision at which the finding and resource were resolved.
     pub graph_revision: u64,
+    /// Runtime that supplied the finding relationship and lifecycle entity.
     pub source_runtime_id: String,
+    /// Source collection that supplied the projected lifecycle records.
     pub source_collection_id: String,
 }
 
 impl Neo4jProjector {
+    /// Wraps an existing Neo4j client graph.
     pub fn from_graph(graph: Graph) -> Self {
         Self { graph }
     }
 
+    /// Connects to a Neo4j endpoint with the supplied database credentials.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Neo4j`] when the client cannot connect.
     pub async fn connect(uri: &str, username: &str, password: &str) -> Result<Self, StoreError> {
         Ok(Self {
             graph: Graph::new(uri, username, password).await?,
         })
     }
 
+    /// Idempotently creates the projection constraints and indexes.
+    ///
+    /// This does not rebuild data or mark a lifecycle projection ready.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Neo4j`] when any schema statement fails.
     pub async fn migrate(&self) -> Result<(), StoreError> {
         for statement in NEO4J_SCHEMA {
             self.graph.run(query(statement)).await?;
@@ -350,6 +375,18 @@ impl Neo4jProjector {
         Ok(())
     }
 
+    /// Executes a prepared lifecycle query against a current tenant projection.
+    ///
+    /// Before reading, the method requires a ready schema-v1 lifecycle projection
+    /// at the current graph revision. It checks the revision again before return;
+    /// [`IndexedLifecyclePage::graph_changed`] reports a concurrent revision so
+    /// clients can discard or restart pagination.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::LifecycleProjectionUnavailable`] for absent, stale,
+    /// or rebuilding projection state. Backend failures and malformed projected
+    /// records are returned as other [`StoreError`] variants.
     pub async fn query_lifecycle(
         &self,
         tenant_id: &TenantId,
@@ -700,6 +737,17 @@ LIMIT $row_limit
         })
     }
 
+    /// Rebuilds one tenant's lifecycle read model from organizational entities.
+    ///
+    /// The projection is marked unavailable before batches are rebuilt and ready
+    /// only after the starting graph revision is rechecked. `batch_size` is
+    /// clamped to `1..=1_000`. The return value is the number of entities rebuilt.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Conflict`] if the graph revision changes before,
+    /// during, or while publishing rebuild readiness. Neo4j failures are returned
+    /// as [`StoreError::Neo4j`]. A failed rebuild remains unavailable to readers.
     pub async fn rebuild_lifecycle_projection(
         &self,
         tenant_id: &TenantId,
@@ -874,6 +922,17 @@ LIMIT $row_limit
         Ok(rebuilt)
     }
 
+    /// Resolves a tenant-scoped lifecycle finding to exactly one affected resource.
+    ///
+    /// The finding URN must use the tenant's canonical lifecycle prefix. The
+    /// projection must remain ready at one graph revision for the entire read;
+    /// no match returns `Ok(None)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::LifecycleProjectionUnavailable`] for stale or
+    /// rebuilding state, [`StoreError::Conflict`] for invalid or ambiguous
+    /// projected data, and [`StoreError::Neo4j`] for backend failures.
     pub async fn resolve_lifecycle_finding(
         &self,
         tenant_id: &TenantId,
@@ -1065,6 +1124,16 @@ LIMIT $row_limit
             ))
     }
 
+    /// Projects an admitted delta under its matching durable write receipt.
+    ///
+    /// Tenant identity and delta digest must match the receipt before any Neo4j
+    /// mutation begins. Projection is idempotent at graph revision boundaries.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Conflict`] when the receipt does not identify the
+    /// delta or projected provenance is ambiguous, and [`StoreError::Neo4j`] for
+    /// transaction failures.
     pub async fn project(
         &self,
         delta: &GraphDelta,
