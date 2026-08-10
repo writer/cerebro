@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -58,6 +60,11 @@ impl Drop for SensitiveValues {
     }
 }
 
+/// Idempotent PostgreSQL schema for the authoritative organizational ledger.
+///
+/// The schema includes tenant row-level security, graph revisions, projection
+/// outbox state, source event and collection receipts, consumer run evidence,
+/// parity receipts, and irreversible family authority records.
 pub const POSTGRES_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS source_runtimes (
   id TEXT PRIMARY KEY,
@@ -612,73 +619,120 @@ pub(crate) struct CommittedCollection {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Idempotency receipt for one committed append-log source event.
 pub struct SourceEventReceipt {
+    /// Tenant that owns the event.
     pub tenant_id: String,
+    /// Source event's stable identifier.
     pub event_id: String,
+    /// Digest binding the event metadata and payload.
     pub record_digest: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Durable disposition of one append-log message.
 pub enum ConsumerMessageOutcome {
+    /// Rust materialized the message into a graph revision.
     Projected,
+    /// The message was intentionally outside the admitted projection contract.
     Skipped,
+    /// The message could not be admitted and blocks promotion of this run.
     Rejected,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Immutable sequence boundary assigned when a consumer run starts.
 pub struct ConsumerRunFence {
+    /// First stream sequence the run is allowed to consume.
     pub start_sequence: u64,
+    /// Inclusive replay fence, or `None` for a forward consumer.
     pub end_sequence: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Cumulative, durable counters for one append-log consumer run.
 pub struct ConsumerRunProgress {
+    /// Highest sequence delivered to the consumer.
     pub last_delivered_sequence: u64,
+    /// Highest contiguous sequence whose outcome is durably recorded.
     pub covered_sequence: u64,
+    /// Total messages assigned an outcome.
     pub messages_seen: u64,
+    /// Messages that produced Rust graph revisions.
     pub messages_projected: u64,
+    /// Messages intentionally excluded by the bounded projection contract.
     pub messages_skipped: u64,
+    /// Messages rejected by decoding, admission, or projection.
     pub messages_rejected: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Consumer progress attributed to one catalog source family.
 pub struct ConsumerFamilyProgress {
+    /// Catalog source identifier.
     pub source_id: String,
+    /// Source family identifier.
     pub family_id: String,
+    /// Messages observed for this family.
     pub messages_seen: u64,
+    /// Messages projected for this family.
     pub messages_projected: u64,
+    /// Messages explicitly skipped for this family.
     pub messages_skipped: u64,
+    /// Messages rejected for this family.
     pub messages_rejected: u64,
+    /// Highest stream sequence recorded for this family.
     pub last_sequence: u64,
+    /// Latest Rust graph revision produced for this family, if any.
     pub latest_graph_revision: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Complete durable inspection of a replay or forward consumer run.
 pub struct ConsumerRunInspection {
+    /// JetStream durable consumer name.
     pub consumer_name: String,
+    /// Stable run identity paired with the consumer.
     pub run_id: String,
+    /// Validated run mode, such as `replay` or `forward`.
     pub mode: String,
+    /// Persisted first sequence.
     pub start_sequence: u64,
+    /// Persisted inclusive replay fence, if this is a replay.
     pub end_sequence: Option<u64>,
+    /// Durable lifecycle state of the run.
     pub status: String,
+    /// Positive Unix milliseconds when the run was created.
     pub started_at_unix_ms: u64,
+    /// Unix milliseconds of the latest durable progress update.
     pub updated_at_unix_ms: u64,
+    /// Unix milliseconds when the run completed, if terminally complete.
     pub completed_at_unix_ms: Option<u64>,
+    /// Aggregate durable counters.
     pub progress: ConsumerRunProgress,
+    /// Deterministically ordered per-family counters.
     pub families: Vec<ConsumerFamilyProgress>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Idempotency receipt for a compatibility Go projection record.
 pub struct LegacyProjectionReceipt {
+    /// Tenant that owns the compatibility record.
     pub tenant_id: String,
+    /// Source event represented by the record.
     pub event_id: String,
+    /// Digest of normalized compatibility projection semantics.
     pub delta_digest: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Idempotency receipt for a source collection coverage manifest.
 pub struct SourceCollectionReceipt {
+    /// Tenant that owns the collection.
     pub tenant_id: String,
+    /// Stable source collection identifier.
     pub collection_id: String,
+    /// Digest binding the exact manifest content.
     pub manifest_digest: String,
 }
 
@@ -689,25 +743,42 @@ pub struct SourceCollectionReceipt {
 /// fields that are safe for an agent tool result.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceRuntimeObservation {
+    /// Stable runtime instance identifier.
     pub runtime_id: String,
+    /// Catalog source executed by the runtime.
     pub source_id: String,
+    /// Operator-visible enabled or disabled state.
     pub enabled_state: String,
+    /// Bounded category for the latest failure, if present.
     pub last_failure_category: Option<String>,
+    /// Source-runtime timestamp for its latest successful sync.
     pub last_synced_at: Option<String>,
+    /// Whether an uncommitted next-page cursor exists.
     pub cursor_pending: bool,
+    /// Whether a durable checkpoint cursor exists.
     pub checkpoint_cursor_present: bool,
+    /// Configured freshness threshold in seconds, when present.
     pub stale_after_seconds: Option<u64>,
+    /// Latest completed collection observation, when available.
     pub latest_collection: Option<SourceRuntimeCollectionObservation>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Secret-free progress summary for a source runtime's latest collection.
 pub struct SourceRuntimeCollectionObservation {
+    /// Stable source collection identifier.
     pub collection_id: String,
+    /// Durable collection completion state.
     pub status: String,
+    /// Positive Unix milliseconds when collection completed.
     pub completed_at_unix_ms: u64,
+    /// Provider pages read.
     pub pages_read: u64,
+    /// Provider records examined.
     pub records_scanned: u64,
+    /// Records admitted by normalization.
     pub records_accepted: u64,
+    /// Records rejected by normalization.
     pub records_rejected: u64,
 }
 
@@ -734,22 +805,29 @@ fn sequence_i64(sequence: u64) -> Result<i64, StoreError> {
 }
 
 impl StoredSourceRuntime {
+    /// Returns the validated runtime instance ID.
     pub fn runtime_id(&self) -> &SourceRuntimeId {
         &self.runtime_id
     }
 
+    /// Returns the tenant that owns the runtime.
     pub fn tenant_id(&self) -> &TenantId {
         &self.tenant_id
     }
 
+    /// Returns the compiled catalog source ID.
     pub fn source_id(&self) -> &str {
         &self.source_id
     }
 
+    /// Returns connector configuration and unresolved secret references.
+    ///
+    /// Callers must not serialize or log this map.
     pub fn config(&self) -> &BTreeMap<String, String> {
         &self.config
     }
 
+    /// Returns the next durable provider cursor, when present.
     pub fn cursor(&self) -> Option<&str> {
         self.cursor.as_deref()
     }
@@ -776,6 +854,10 @@ struct StoredSourceCheckpointWire {
     cursor_opaque: String,
 }
 
+/// Tenant-scoped PostgreSQL authority for graph and migration evidence.
+///
+/// A mutex serializes use of the underlying client so transactions cannot
+/// accidentally interleave tenant session state.
 pub struct PostgresLedger {
     client: Mutex<Client>,
 }
@@ -789,6 +871,12 @@ impl PostgresLedger {
         }
     }
 
+    /// Opens a TLS PostgreSQL connection and supervises its background driver.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict when TLS construction fails or [`StoreError::Postgres`]
+    /// when the database connection cannot be established.
     pub async fn connect_tls(connection_string: &str) -> Result<Self, StoreError> {
         let tls = native_tls::TlsConnector::builder()
             .build()
@@ -803,6 +891,11 @@ impl PostgresLedger {
         Ok(Self::from_client(client))
     }
 
+    /// Idempotently installs the authoritative ledger schema.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Postgres`] when schema application fails.
     pub async fn migrate(&self) -> Result<(), StoreError> {
         self.client
             .lock()
@@ -812,6 +905,15 @@ impl PostgresLedger {
         Ok(())
     }
 
+    /// Creates or resumes a consumer run under an immutable sequence fence.
+    ///
+    /// Existing identities must match mode and fence exactly; a stopped run may
+    /// resume, but completed or failed audit evidence cannot be rewritten.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict for invalid identifiers, sequences, or an incompatible
+    /// existing run, and a backend error when the transaction fails.
     pub async fn start_consumer_run(
         &self,
         consumer_name: &str,
@@ -854,6 +956,15 @@ impl PostgresLedger {
         })
     }
 
+    /// Atomically advances aggregate and per-family consumer progress.
+    ///
+    /// Coverage and counters are monotonic. A rejected outcome remains durable
+    /// evidence and cannot later be converted into a clean run.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict for an unknown run or non-monotonic sequence and a
+    /// backend error when the update cannot commit.
     pub async fn record_consumer_progress(
         &self,
         consumer_name: &str,
@@ -920,6 +1031,15 @@ impl PostgresLedger {
         Ok(())
     }
 
+    /// Records a terminal or resumable consumer-run status.
+    ///
+    /// Completion requires exact replay-fence coverage; stopped runs retain all
+    /// counters and may resume with the same identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict for an invalid transition or coverage claim and a
+    /// backend error when persistence fails.
     pub async fn finish_consumer_run(
         &self,
         consumer_name: &str,
@@ -950,6 +1070,12 @@ impl PostgresLedger {
         Ok(())
     }
 
+    /// Returns aggregate durable counters for one consumer/run identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict when the run does not exist and a backend error when
+    /// it cannot be read.
     pub async fn consumer_run_progress(
         &self,
         consumer_name: &str,
@@ -975,6 +1101,12 @@ impl PostgresLedger {
         })
     }
 
+    /// Returns the immutable fence, lifecycle state, and per-family progress.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict for an unknown or malformed stored run and a backend
+    /// error when inspection queries fail.
     pub async fn inspect_consumer_run(
         &self,
         consumer_name: &str,
@@ -1336,6 +1468,15 @@ WHERE id = $1
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// Persists an idempotent, content-bound compatibility projection record.
+    ///
+    /// Compatibility records are parity input only; they do not grant Rust
+    /// authority or become graph-write receipts.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict if an event ID is reused with different content and a
+    /// serialization or database error when the record cannot be committed.
     pub async fn record_legacy_projection(
         &self,
         tenant_id: &str,
@@ -1402,6 +1543,15 @@ WHERE id = $1
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// Persists an idempotent source collection coverage manifest.
+    ///
+    /// The manifest is coverage evidence, not a model capability authorizing
+    /// missing-record retractions.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict if collection identity is reused with different
+    /// content and a serialization or database error on persistence failure.
     pub async fn record_source_collection(
         &self,
         tenant_id: &str,
@@ -1464,6 +1614,12 @@ WHERE id = $1
         })
     }
 
+    /// Loads a manifest only for the exact tenant/runtime/collection tuple.
+    ///
+    /// # Errors
+    ///
+    /// Returns a serialization or database error when the stored manifest
+    /// cannot be loaded.
     pub async fn source_collection_manifest(
         &self,
         tenant_id: &str,
@@ -1592,6 +1748,12 @@ LIMIT $3
             .collect()
     }
 
+    /// Persists a content-bound projector parity receipt idempotently.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict when a digest is reused for different content, or a
+    /// serialization/database error when persistence fails.
     pub async fn record_parity(&self, receipt: &ParityReceipt) -> Result<(), StoreError> {
         let mismatch_count = i64::try_from(receipt.mismatch_count())
             .map_err(|_| StoreError::Conflict("parity mismatch count overflow".to_owned()))?;
@@ -1634,6 +1796,11 @@ LIMIT $3
         Ok(())
     }
 
+    /// Counts persisted parity receipts for one tenant/source/family scope.
+    ///
+    /// # Errors
+    ///
+    /// Returns a database error when the count cannot be read.
     pub async fn parity_receipt_count(
         &self,
         tenant_id: &str,
@@ -1655,6 +1822,11 @@ LIMIT $3
             .map_err(|_| StoreError::Conflict("parity receipt count is negative".to_owned()))
     }
 
+    /// Returns scoped parity receipts in comparison-time order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a serialization or database error when receipts cannot be read.
     pub async fn parity_receipts(
         &self,
         tenant_id: &str,
@@ -1676,6 +1848,14 @@ LIMIT $3
             .collect()
     }
 
+    /// Returns effective writer authority for one tenant/source/family scope.
+    ///
+    /// Absence means [`ProjectionAuthority::Legacy`]; catalog eligibility or
+    /// service health never implies Rust authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict for an unknown stored value or a database error.
     pub async fn projection_authority(
         &self,
         tenant_id: &str,
@@ -1721,6 +1901,15 @@ LIMIT $3
         })
     }
 
+    /// Evaluates persisted evidence and irreversibly records Rust authority.
+    ///
+    /// The caller cannot supply an approval decision. Repeating the exact
+    /// evidence is idempotent; changed evidence cannot overwrite a Rust record.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict when gates fail or existing evidence differs, plus
+    /// catalog, serialization, or database failures.
     pub async fn evaluate_and_promote_projection_authority(
         &self,
         catalog: &SourceCatalog,
@@ -1811,6 +2000,12 @@ LIMIT $3
         })
     }
 
+    /// Reconstructs verified-email identity claims from authoritative state.
+    ///
+    /// # Errors
+    ///
+    /// Returns a conflict for malformed stored canonical identities and a
+    /// database error when the snapshot cannot be read.
     pub async fn identity_resolution_snapshot(
         &self,
         tenant_id: &TenantId,

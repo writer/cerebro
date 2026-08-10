@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
@@ -15,17 +17,30 @@ const MAX_MISMATCHES_IN_RECEIPT: usize = 100;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Semantic unit compared across legacy and Rust projectors.
 pub enum SemanticFactKind {
+    /// A general organizational entity and its stable meaning.
     Entity,
+    /// An externally owned identity record.
     ProviderIdentity,
+    /// A Cerebro-owned canonical person identity.
     CanonicalIdentity,
+    /// A typed directed relationship.
     Relationship,
+    /// A provider-to-canonical identity decision.
     IdentityBinding,
+    /// Observation identity supporting an assertion.
     Provenance,
+    /// Removal of a previously admitted assertion.
     Retraction,
 }
 
 impl SemanticFactKind {
+    /// Parses a stable snake-case fact-kind name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParityError::Invalid`] for an unknown name.
     pub fn parse(value: &str) -> Result<Self, ParityError> {
         match value {
             "entity" => Ok(Self::Entity),
@@ -61,6 +76,12 @@ pub struct SemanticFact {
 }
 
 impl SemanticFact {
+    /// Constructs one comparison fact from ordered semantic parts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParityError::Invalid`] when there are no parts, a part exceeds
+    /// 4,096 bytes, or a part contains a control character.
     pub fn new(
         kind: SemanticFactKind,
         parts: impl IntoIterator<Item = impl Into<String>>,
@@ -76,10 +97,12 @@ impl SemanticFact {
         Ok(Self { kind, parts })
     }
 
+    /// Returns the semantic category being compared.
     pub fn kind(&self) -> SemanticFactKind {
         self.kind
     }
 
+    /// Returns the ordered values defining the fact's meaning.
     pub fn parts(&self) -> &[String] {
         &self.parts
     }
@@ -97,6 +120,10 @@ impl SemanticFact {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Canonical semantic output for one exact projector input corpus.
+///
+/// Facts are deduplicated and sorted before hashing, so insertion order and
+/// duplicate emission cannot create false parity differences.
 pub struct SemanticSnapshot {
     tenant_id: String,
     source_runtime_id: String,
@@ -111,6 +138,12 @@ pub struct SemanticSnapshot {
 }
 
 impl SemanticSnapshot {
+    /// Constructs a snapshot from explicitly normalized semantic facts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParityError::Invalid`] when a scope, digest, or revision value
+    /// is empty, untrimmed, or exceeds 4,096 bytes.
     #[allow(clippy::too_many_arguments)]
     pub fn from_facts(
         tenant_id: impl Into<String>,
@@ -150,6 +183,12 @@ impl SemanticSnapshot {
         })
     }
 
+    /// Converts a sealed Rust graph delta into its storage-neutral semantics.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParityError::Invalid`] when assertion endpoints are absent
+    /// from the delta or a generated semantic part violates the fact contract.
     pub fn from_delta(
         source_id: impl Into<String>,
         family_id: impl Into<String>,
@@ -270,42 +309,52 @@ impl SemanticSnapshot {
         )
     }
 
+    /// Returns the compared tenant.
     pub fn tenant_id(&self) -> &str {
         &self.tenant_id
     }
 
+    /// Returns the runtime that collected the input.
     pub fn source_runtime_id(&self) -> &str {
         &self.source_runtime_id
     }
 
+    /// Returns the catalog source.
     pub fn source_id(&self) -> &str {
         &self.source_id
     }
 
+    /// Returns the catalog source family.
     pub fn family_id(&self) -> &str {
         &self.family_id
     }
 
+    /// Returns the exact collection or corpus identifier.
     pub fn collection_id(&self) -> &str {
         &self.collection_id
     }
 
+    /// Returns the digest of the projector input corpus.
     pub fn input_digest(&self) -> &str {
         &self.input_digest
     }
 
+    /// Returns the implementation revision that produced this snapshot.
     pub fn projector_revision(&self) -> &str {
         &self.projector_revision
     }
 
+    /// Returns whether the projector covered the complete declared corpus.
     pub fn is_complete(&self) -> bool {
         self.complete
     }
 
+    /// Returns the sorted, deduplicated semantic facts.
     pub fn facts(&self) -> &[SemanticFact] {
         &self.facts
     }
 
+    /// Returns the deterministic digest of semantic fact membership.
     pub fn digest(&self) -> &str {
         &self.digest
     }
@@ -313,22 +362,28 @@ impl SemanticSnapshot {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Which projector emitted a semantic fact missing from the other snapshot.
 pub enum MismatchSide {
+    /// The fact exists only in the legacy projector output.
     LegacyOnly,
+    /// The fact exists only in the Rust projector output.
     RustOnly,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// One bounded semantic difference between projector outputs.
 pub struct SemanticMismatch {
     side: MismatchSide,
     fact: SemanticFact,
 }
 
 impl SemanticMismatch {
+    /// Returns which projector exclusively emitted the fact.
     pub fn side(&self) -> MismatchSide {
         self.side
     }
 
+    /// Returns the differing semantic fact.
     pub fn fact(&self) -> &SemanticFact {
         &self.fact
     }
@@ -336,13 +391,23 @@ impl SemanticMismatch {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Completeness and equality outcome for one projector comparison.
 pub enum ParityStatus {
+    /// Both complete snapshots contain identical semantic facts.
     Match,
+    /// Complete snapshots differ semantically.
     Mismatch,
+    /// At least one snapshot did not cover the complete corpus.
     Incomplete,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Content-bound evidence comparing legacy and Rust projector semantics.
+///
+/// The receipt records the total mismatch count but retains at most 100 sample
+/// differences. A zero sampled difference is therefore meaningful only when
+/// [`ParityReceipt::status`] is [`ParityStatus::Match`] and the denominator is
+/// known to be nonzero outside this record.
 pub struct ParityReceipt {
     tenant_id: String,
     source_runtime_id: String,
@@ -364,6 +429,13 @@ pub struct ParityReceipt {
 }
 
 impl ParityReceipt {
+    /// Compares two complete, identically scoped semantic snapshots.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParityError::ScopeMismatch`] when tenant, runtime, source,
+    /// family, collection, or input digest differs, and [`ParityError::Invalid`]
+    /// for a non-positive comparison time.
     pub fn compare_snapshots(
         legacy: &SemanticSnapshot,
         rust: &SemanticSnapshot,
@@ -449,6 +521,13 @@ impl ParityReceipt {
     }
 
     /// Compatibility constructor for existing digest-only shadow callers.
+    ///
+    /// This form uses synthetic legacy scope and cannot substitute for the
+    /// fully bound snapshots required by an authority decision.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParityError::Invalid`] for invalid scope, digest, or time.
     #[allow(clippy::too_many_arguments)]
     pub fn compare(
         source_id: impl Into<String>,
@@ -472,6 +551,12 @@ impl ParityReceipt {
         )
     }
 
+    /// Constructs a scoped digest-only compatibility comparison.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParityError::Invalid`] for empty, untrimmed, oversized fields
+    /// or a non-positive comparison time.
     #[allow(clippy::too_many_arguments)]
     pub fn compare_scoped(
         tenant_id: impl Into<String>,
@@ -525,50 +610,63 @@ impl ParityReceipt {
         Ok(receipt)
     }
 
+    /// Returns the compared tenant.
     pub fn tenant_id(&self) -> &str {
         &self.tenant_id
     }
 
+    /// Returns the source runtime that collected the corpus.
     pub fn source_runtime_id(&self) -> &str {
         &self.source_runtime_id
     }
 
+    /// Returns the catalog source.
     pub fn source_id(&self) -> &str {
         &self.source_id
     }
 
+    /// Returns the catalog source family.
     pub fn family_id(&self) -> &str {
         &self.family_id
     }
 
+    /// Returns the compared collection or corpus ID.
     pub fn collection_id(&self) -> &str {
         &self.collection_id
     }
 
+    /// Returns the comparison outcome.
     pub fn status(&self) -> ParityStatus {
         self.status
     }
 
+    /// Returns the total number of semantic differences before sample truncation.
     pub fn mismatch_count(&self) -> usize {
         self.mismatch_count
     }
 
+    /// Returns the observed projection lag associated with the comparison.
     pub fn projection_lag(&self) -> u64 {
         self.projection_lag
     }
 
+    /// Returns when comparison occurred, as positive Unix milliseconds.
     pub fn compared_at_unix_ms(&self) -> i64 {
         self.compared_at_unix_ms
     }
 
+    /// Returns the digest binding all receipt fields and sampled differences.
     pub fn receipt_digest(&self) -> &str {
         &self.receipt_digest
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Invalid parity input or snapshots that describe different corpora.
 pub enum ParityError {
+    /// A named field violated its validation contract.
     Invalid(&'static str),
+    /// Legacy and Rust snapshots disagreed on a named scope coordinate.
     ScopeMismatch(&'static str),
 }
 

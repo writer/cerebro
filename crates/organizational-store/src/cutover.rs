@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+
 use std::{collections::BTreeMap, error::Error, fmt};
 
 use cerebro_source_catalog::SourceCatalog;
@@ -7,12 +9,19 @@ use sha2::{Digest, Sha256};
 use crate::{ParityReceipt, ParityStatus};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Minimum evidence required before one source family may move to Rust authority.
 pub struct CutoverPolicy {
     min_consecutive_matches: usize,
     max_projection_lag: u64,
 }
 
 impl CutoverPolicy {
+    /// Creates a policy requiring consecutive matches and bounded projection lag.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CutoverError::UnsafePolicy` when fewer than three consecutive
+    /// matching receipts would be sufficient.
     pub fn new(
         min_consecutive_matches: usize,
         max_projection_lag: u64,
@@ -28,6 +37,10 @@ impl CutoverPolicy {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Exact tenant, source, family, policy, and observation time to evaluate.
+///
+/// This is an evaluation request, not an operator-supplied approval. The ledger
+/// derives the decision from its own persisted parity receipts.
 pub struct ProjectionPromotionRequest {
     tenant_id: String,
     source_id: String,
@@ -38,6 +51,12 @@ pub struct ProjectionPromotionRequest {
 }
 
 impl ProjectionPromotionRequest {
+    /// Constructs a tenant- and family-scoped promotion evaluation request.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CutoverError::Invalid` for empty or untrimmed scope values or
+    /// a non-positive promotion timestamp.
     pub fn new(
         tenant_id: impl Into<String>,
         source_id: impl Into<String>,
@@ -62,14 +81,17 @@ impl ProjectionPromotionRequest {
         })
     }
 
+    /// Returns the tenant whose projection authority may change.
     pub fn tenant_id(&self) -> &str {
         &self.tenant_id
     }
 
+    /// Returns the catalog source under evaluation.
     pub fn source_id(&self) -> &str {
         &self.source_id
     }
 
+    /// Returns the source family under evaluation.
     pub fn family_id(&self) -> &str {
         &self.family_id
     }
@@ -78,6 +100,7 @@ impl ProjectionPromotionRequest {
         self.policy
     }
 
+    /// Returns the current forward projection lag supplied to the gate.
     pub fn projection_lag(&self) -> u64 {
         self.projection_lag
     }
@@ -95,6 +118,7 @@ fn checked_text(value: String, field: &'static str) -> Result<String, CutoverErr
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Reproducible outcome of evaluating persisted cutover evidence.
 pub struct CutoverDecision {
     source_id: String,
     family_id: String,
@@ -105,47 +129,66 @@ pub struct CutoverDecision {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// The runtime allowed to materialize one tenant/source/family projection.
 pub enum ProjectionAuthority {
+    /// The compatibility Go projector remains the only authoritative writer.
     Legacy,
+    /// The Rust append-log consumer is the only authoritative writer.
     Rust,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Durable effective authority and the evidence that authorized promotion.
 pub struct ProjectionAuthorityRecord {
+    /// Tenant boundary for the authority decision.
     pub tenant_id: String,
+    /// Catalog source governed by the record.
     pub source_id: String,
+    /// Source family governed by the record.
     pub family_id: String,
+    /// Runtime currently allowed to write the family projection.
     pub authority: ProjectionAuthority,
+    /// Digest of the evaluated catalog and parity evidence.
     pub evidence_digest: String,
+    /// Positive Unix milliseconds when Rust authority was recorded, if promoted.
     pub promoted_at_unix_ms: Option<i64>,
 }
 
 impl CutoverDecision {
+    /// Returns the evaluated catalog source.
     pub fn source_id(&self) -> &str {
         &self.source_id
     }
 
+    /// Returns the evaluated source family.
     pub fn family_id(&self) -> &str {
         &self.family_id
     }
 
+    /// Returns whether every configured authority gate passed.
     pub fn is_allowed(&self) -> bool {
         self.allowed
     }
 
+    /// Returns every failed gate rather than only the first failure.
     pub fn reasons(&self) -> &[String] {
         &self.reasons
     }
 
+    /// Returns the digest binding the decision to its evaluated evidence.
     pub fn evidence_digest(&self) -> &str {
         &self.evidence_digest
     }
 }
 
 #[derive(Debug, Eq, PartialEq)]
+/// Invalid cutover input or missing catalog proof.
 pub enum CutoverError {
+    /// A named request field was empty, untrimmed, or otherwise invalid.
     Invalid(&'static str),
+    /// The requested policy would permit fewer than three matching runs.
     UnsafePolicy,
+    /// The source or source-family pair is absent from the compiled catalog.
     UnknownSource(String),
 }
 
@@ -165,15 +208,29 @@ impl fmt::Display for CutoverError {
 
 impl Error for CutoverError {}
 
+/// Deterministic evaluator for family-scoped projection authority.
+///
+/// The gate checks catalog method/path proof, native Rust projection support,
+/// current lag, consecutive matches, and the latest receipt for every corpus.
 pub struct CutoverGate {
     policy: CutoverPolicy,
 }
 
 impl CutoverGate {
+    /// Creates a gate using the supplied minimum evidence policy.
     pub fn new(policy: CutoverPolicy) -> Self {
         Self { policy }
     }
 
+    /// Evaluates one source family without mutating durable authority.
+    ///
+    /// All applicable failures are returned in [`CutoverDecision::reasons`].
+    /// The evidence digest binds matching receipts in deterministic order.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CutoverError::UnknownSource` when the source or family is not
+    /// in the compiled catalog.
     pub fn evaluate(
         &self,
         catalog: &SourceCatalog,
