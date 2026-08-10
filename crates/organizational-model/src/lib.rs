@@ -1,9 +1,35 @@
 #![forbid(unsafe_code)]
+#![deny(missing_docs)]
 
-//! The sealed domain model for Cerebro's organizational graph.
+//! Sealed admission model for Cerebro's organizational graph.
 //!
-//! Validated values deliberately do not implement `Deserialize`. External data
-//! must cross an admission boundary and use the constructors in this crate.
+//! This crate owns the values that may cross from a source adapter into the
+//! graph engine: tenant-scoped entities, evidence-backed assertions, collection
+//! receipts, and deterministic deltas. Constructors validate identifiers,
+//! tenant boundaries, evidence collection consistency, relationship endpoints,
+//! identity-binding authority, and collection completeness before a value can
+//! be serialized.
+//!
+//! # Authority boundary
+//!
+//! Validated values deliberately do not implement `serde::Deserialize`.
+//! External records are observations, not graph facts, and must cross an
+//! explicit constructor in this crate. This prevents a provider payload or a
+//! persisted JSON document from bypassing the model's admission checks.
+//!
+//! Partial and incremental receipts create [`NonAuthoritative`] delta builders.
+//! Only a [`CompleteCollection`] creates an [`Authoritative`] builder capable of
+//! retracting assertions that are absent from a complete source snapshot. A
+//! complete receipt is therefore a source-coverage claim, not merely a batch
+//! label.
+//!
+//! # Stable output
+//!
+//! Provider entity and assertion identifiers are derived deterministically from
+//! their sealed identity fields. [`GraphDeltaBuilder::build`] sorts admitted
+//! values before computing a digest, so input order does not change the emitted
+//! delta. Labels and properties remain mutable presentation data and do not
+//! participate in entity identity.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -18,16 +44,27 @@ const MAX_ID_BYTES: usize = 256;
 const MAX_TEXT_BYTES: usize = 1_024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// A rejected organizational-model value or operation.
 pub enum ModelError {
+    /// A required field was empty.
     Empty(&'static str),
+    /// A field failed its syntax or semantic validation.
     Invalid(&'static str),
+    /// A field exceeded the model's encoded-size limit.
     TooLong(&'static str),
+    /// Values from different tenants were combined.
     TenantMismatch,
+    /// Evidence references did not belong to one collection.
     CollectionMismatch,
+    /// A relationship used invalid endpoint kinds or observation time.
     InvalidRelationship,
+    /// An identity binding violated its authority, claim, or state rules.
     InvalidIdentityBinding,
+    /// An assertion was created without an observation.
     EvidenceRequired,
+    /// One delta assigned conflicting representations to the same entity ID.
     DuplicateEntity,
+    /// One delta assigned conflicting representations to the same assertion ID.
     DuplicateAssertion,
 }
 
@@ -64,13 +101,25 @@ macro_rules! id_type {
     ($name:ident, $field:literal) => {
         #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
         #[serde(transparent)]
+        #[doc = concat!("A validated ", $field, ".")]
+        ///
+        /// Identifiers are non-empty, have no surrounding whitespace, contain
+        /// at most 256 bytes, and use only ASCII letters, digits, `-`, `_`, `.`,
+        /// `:`, or `/`.
         pub struct $name(String);
 
         impl $name {
+            #[doc = concat!("Validates and constructs a ", $field, ".")]
+            ///
+            /// # Errors
+            ///
+            /// Returns [`ModelError::Empty`] or [`ModelError::Invalid`] when
+            /// the value violates the identifier contract.
             pub fn parse(value: impl Into<String>) -> Result<Self, ModelError> {
                 Ok(Self(validate_identifier(value.into(), $field)?))
             }
 
+            #[doc = concat!("Returns the validated ", $field, " as text.")]
             pub fn as_str(&self) -> &str {
                 &self.0
             }
@@ -122,9 +171,19 @@ fn validate_text(value: String, field: &'static str) -> Result<String, ModelErro
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
+/// A provider-specific entity kind such as `okta.user`.
+///
+/// Provider kinds require a dotted namespace so they cannot be confused with
+/// the fixed kinds in [`EntityKind`].
 pub struct ProviderKind(String);
 
 impl ProviderKind {
+    /// Validates a provider-specific kind.
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error unless the value is a valid identifier containing
+    /// at least one `.` separator.
     pub fn parse(value: impl Into<String>) -> Result<Self, ModelError> {
         let value = validate_identifier(value.into(), "provider entity kind")?;
         if !value.contains('.') {
@@ -133,6 +192,7 @@ impl ProviderKind {
         Ok(Self(value))
     }
 
+    /// Returns the provider kind's wire value.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -140,37 +200,69 @@ impl ProviderKind {
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// The semantic role of an entity in the organizational graph.
 pub enum EntityKind {
+    /// A canonical human identity.
     Person,
+    /// An identity projected from an external provider.
     Identity,
+    /// A working team.
     Team,
+    /// An organization or company boundary.
     Organization,
+    /// A source-code repository.
     Repository,
+    /// A deployed or deployable service.
     Service,
+    /// A user-facing or internal application.
     Application,
+    /// A deployment environment.
     Environment,
+    /// A provider or cloud account.
     Account,
+    /// A provider-managed resource.
     Resource,
+    /// A provider or directory group.
     Group,
+    /// An assumable or assignable role.
     Role,
+    /// A policy statement or document.
     Policy,
+    /// A security or compliance control.
     Control,
+    /// A detected security or compliance finding.
     Finding,
+    /// A control framework.
     Framework,
+    /// A governed assessment or assurance program.
     Program,
+    /// An assessment objective.
     Objective,
+    /// An executable or declarative assessment rule.
     Rule,
+    /// Evidence supporting an assessment or finding.
     Evidence,
+    /// One execution of an assessment program.
     AssessmentRun,
+    /// The result of evaluating one assessment target.
     AssessmentResult,
+    /// An immutable snapshot committed by an assessment.
     AssessmentSnapshot,
+    /// A remediation that addresses a finding.
     Remediation,
+    /// Independent evidence that a remediation or finding was checked.
     Verification,
+    /// A tracked unit of remediation work.
     WorkItem,
+    /// A namespaced provider extension not represented by a fixed kind.
     Provider(ProviderKind),
 }
 
 impl EntityKind {
+    /// Returns the stable wire category for this kind.
+    ///
+    /// All [`EntityKind::Provider`] values return `provider`; use the nested
+    /// [`ProviderKind`] to distinguish provider extensions.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Person => "person",
@@ -203,6 +295,7 @@ impl EntityKind {
         }
     }
 
+    /// Returns whether `value` is a recognized top-level entity-kind wire name.
     pub fn is_wire_name(value: &str) -> bool {
         matches!(
             value,
@@ -239,16 +332,26 @@ impl EntityKind {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "authority", rename_all = "snake_case")]
+/// The system allowed to define an entity's stable identity.
 pub enum EntityAuthority {
+    /// Cerebro owns the stable identity directly.
     Canonical,
+    /// An external runtime owns the stable identity.
     Provider {
+        /// Runtime instance that observed the provider record.
         source_runtime_id: SourceRuntimeId,
+        /// Provider-specific record kind.
         provider_kind: ProviderKind,
+        /// Provider's native stable identifier.
         provider_id: String,
     },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// A validated, tenant-scoped organizational graph entity.
+///
+/// Stable identity consists of the ID, tenant, kind, and authority. The label
+/// and properties may change when a source refreshes presentation data.
 pub struct Entity {
     id: EntityId,
     tenant_id: TenantId,
@@ -259,6 +362,12 @@ pub struct Entity {
 }
 
 impl Entity {
+    /// Constructs an entity whose stable identity Cerebro owns.
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error when `label` is empty, untrimmed, contains a
+    /// control character, or exceeds 1,024 bytes.
     pub fn canonical(
         tenant_id: TenantId,
         id: EntityId,
@@ -275,6 +384,15 @@ impl Entity {
         })
     }
 
+    /// Constructs an entity whose stable identity an external provider owns.
+    ///
+    /// The entity ID is derived from the tenant, runtime, provider kind, and
+    /// native provider ID; mutable labels and properties do not affect it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error when the provider ID or label violates the text
+    /// contract, or when the derived ID cannot be admitted.
     pub fn provider(
         tenant_id: TenantId,
         source_runtime_id: SourceRuntimeId,
@@ -307,6 +425,12 @@ impl Entity {
         })
     }
 
+    /// Adds or replaces one validated presentation property.
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error when the key is not a valid identifier or the
+    /// value violates the model's text contract.
     pub fn with_property(
         mut self,
         key: impl Into<String>,
@@ -318,18 +442,22 @@ impl Entity {
         Ok(self)
     }
 
+    /// Returns the entity's tenant-local stable ID.
     pub fn id(&self) -> &EntityId {
         &self.id
     }
 
+    /// Returns the tenant that owns this entity.
     pub fn tenant_id(&self) -> &TenantId {
         &self.tenant_id
     }
 
+    /// Returns the entity's semantic graph kind.
     pub fn kind(&self) -> &EntityKind {
         &self.kind
     }
 
+    /// Returns the authority that owns the entity's stable identity.
     pub fn authority(&self) -> &EntityAuthority {
         &self.authority
     }
@@ -343,10 +471,12 @@ impl Entity {
             && self.authority == other.authority
     }
 
+    /// Returns the mutable display label.
     pub fn label(&self) -> &str {
         &self.label
     }
 
+    /// Returns the validated presentation properties in deterministic key order.
     pub fn properties(&self) -> &BTreeMap<String, String> {
         &self.properties
     }
@@ -378,9 +508,18 @@ impl Entity {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// A Cerebro-owned person identity.
+///
+/// The wrapper prevents a general canonical entity from being used where an
+/// identity-binding constructor requires a canonical person endpoint.
 pub struct CanonicalIdentity(Entity);
 
 impl CanonicalIdentity {
+    /// Constructs a canonical person from an explicit canonical identity ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error when the derived entity ID or label is invalid.
     pub fn new(
         tenant_id: TenantId,
         id: CanonicalIdentityId,
@@ -395,6 +534,13 @@ impl CanonicalIdentity {
         )?))
     }
 
+    /// Constructs the deterministic canonical person for a verified claim.
+    ///
+    /// Claim kind and normalized value participate in the ID, scoped by tenant.
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error when the derived identifiers or label are invalid.
     pub fn for_claim(
         tenant_id: TenantId,
         claim: &IdentityClaim,
@@ -407,19 +553,31 @@ impl CanonicalIdentity {
         Self::new(tenant_id, id, label)
     }
 
+    /// Borrows the sealed person entity.
     pub fn entity(&self) -> &Entity {
         &self.0
     }
 
+    /// Consumes the identity wrapper and returns its sealed entity.
     pub fn into_entity(self) -> Entity {
         self.0
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// An identity record owned by an external provider runtime.
+///
+/// The wrapper proves that an identity-binding endpoint was constructed as a
+/// provider-owned [`EntityKind::Identity`].
 pub struct ProviderIdentity(Entity);
 
 impl ProviderIdentity {
+    /// Constructs a provider-owned identity record.
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error when the provider ID, label, or derived entity ID
+    /// violates the model contract.
     pub fn new(
         tenant_id: TenantId,
         source_runtime_id: SourceRuntimeId,
@@ -437,10 +595,12 @@ impl ProviderIdentity {
         )?))
     }
 
+    /// Borrows the sealed provider identity entity.
     pub fn entity(&self) -> &Entity {
         &self.0
     }
 
+    /// Consumes the identity wrapper and returns its sealed entity.
     pub fn into_entity(self) -> Entity {
         self.0
     }
@@ -448,13 +608,21 @@ impl ProviderIdentity {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// How much of a declared source scope a collection receipt observed.
 pub enum CollectionCompleteness {
+    /// The collection covers an explicitly incomplete subset of its scope.
     Partial,
+    /// The collection contains changes since an earlier source position.
     Incremental,
+    /// The collection covers the entire declared scope at its observation time.
     Complete,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Evidence that one source runtime collected a declared tenant scope.
+///
+/// Partial and incremental receipts can add or refresh facts but cannot prove
+/// that a missing fact was removed at the source.
 pub struct CollectionReceipt {
     tenant_id: TenantId,
     source_runtime_id: SourceRuntimeId,
@@ -465,6 +633,12 @@ pub struct CollectionReceipt {
 }
 
 impl CollectionReceipt {
+    /// Creates a receipt for an incomplete observation of the declared scope.
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error when the scope is invalid or the observation time
+    /// is not a positive Unix timestamp in milliseconds.
     pub fn partial(
         tenant_id: TenantId,
         source_runtime_id: SourceRuntimeId,
@@ -482,6 +656,12 @@ impl CollectionReceipt {
         )
     }
 
+    /// Creates a receipt containing changes since an earlier source position.
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error when the scope is invalid or the observation time
+    /// is not a positive Unix timestamp in milliseconds.
     pub fn incremental(
         tenant_id: TenantId,
         source_runtime_id: SourceRuntimeId,
@@ -520,39 +700,56 @@ impl CollectionReceipt {
         })
     }
 
+    /// Returns the tenant whose source scope was collected.
     pub fn tenant_id(&self) -> &TenantId {
         &self.tenant_id
     }
 
+    /// Returns the runtime instance that performed the collection.
     pub fn source_runtime_id(&self) -> &SourceRuntimeId {
         &self.source_runtime_id
     }
 
+    /// Returns the collection attempt's stable ID.
     pub fn collection_id(&self) -> &CollectionId {
         &self.collection_id
     }
 
+    /// Returns the source's coverage claim for this collection.
     pub fn completeness(&self) -> &CollectionCompleteness {
         &self.completeness
     }
 
+    /// Returns the source-defined scope covered by this receipt.
     pub fn scope(&self) -> &str {
         &self.scope
     }
 
+    /// Returns when the source scope was observed, as Unix milliseconds.
     pub fn observed_at_unix_ms(&self) -> i64 {
         self.observed_at_unix_ms
     }
 
+    /// Starts a delta that may add facts but cannot retract missing assertions.
     pub fn begin_delta(self) -> GraphDeltaBuilder<NonAuthoritative> {
         GraphDeltaBuilder::new(self)
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// A receipt proving complete coverage of its declared source scope.
+///
+/// This separate type is the capability required to construct an
+/// [`Authoritative`] delta builder and express source-authoritative removals.
 pub struct CompleteCollection(CollectionReceipt);
 
 impl CompleteCollection {
+    /// Creates a receipt for complete coverage of the declared source scope.
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error when the scope is invalid or the observation time
+    /// is not a positive Unix timestamp in milliseconds.
     pub fn new(
         tenant_id: TenantId,
         source_runtime_id: SourceRuntimeId,
@@ -570,16 +767,22 @@ impl CompleteCollection {
         )?))
     }
 
+    /// Borrows the underlying collection receipt.
     pub fn receipt(&self) -> &CollectionReceipt {
         &self.0
     }
 
+    /// Starts a delta authorized to retract assertions missing from the scope.
     pub fn begin_delta(self) -> GraphDeltaBuilder<Authoritative> {
         GraphDeltaBuilder::new(self.0)
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// A source record that directly supports an assertion.
+///
+/// Observation references inherit tenant, runtime, and collection identity
+/// from a receipt so callers cannot independently combine those coordinates.
 pub struct ObservationRef {
     observation_id: ObservationId,
     tenant_id: TenantId,
@@ -589,6 +792,11 @@ pub struct ObservationRef {
 }
 
 impl ObservationRef {
+    /// Attaches one source record to a collection receipt.
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error when `source_record` violates the text contract.
     pub fn new(
         receipt: &CollectionReceipt,
         observation_id: ObservationId,
@@ -603,28 +811,36 @@ impl ObservationRef {
         })
     }
 
+    /// Returns the tenant inherited from the collection receipt.
     pub fn tenant_id(&self) -> &TenantId {
         &self.tenant_id
     }
 
+    /// Returns the stable ID of this observation.
     pub fn observation_id(&self) -> &ObservationId {
         &self.observation_id
     }
 
+    /// Returns the runtime inherited from the collection receipt.
     pub fn source_runtime_id(&self) -> &SourceRuntimeId {
         &self.source_runtime_id
     }
 
+    /// Returns the collection inherited from the collection receipt.
     pub fn collection_id(&self) -> &CollectionId {
         &self.collection_id
     }
 
+    /// Returns the source-native record locator or identifier.
     pub fn source_record(&self) -> &str {
         &self.source_record
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// Direct evidence and producer identity for one admitted assertion.
+///
+/// Every observation must come from the same tenant, runtime, and collection.
 pub struct AssertionProvenance {
     observations: Vec<ObservationRef>,
     producer: String,
@@ -632,6 +848,13 @@ pub struct AssertionProvenance {
 }
 
 impl AssertionProvenance {
+    /// Constructs provenance from one or more direct source observations.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ModelError::EvidenceRequired`] for an empty observation set,
+    /// [`ModelError::CollectionMismatch`] when observations cross collection
+    /// coordinates, or a validation error for either producer identifier.
     pub fn direct(
         observations: Vec<ObservationRef>,
         producer: impl Into<String>,
@@ -655,22 +878,27 @@ impl AssertionProvenance {
         })
     }
 
+    /// Returns the tenant shared by all observations.
     pub fn tenant_id(&self) -> &TenantId {
         &self.observations[0].tenant_id
     }
 
+    /// Returns the source runtime shared by all observations.
     pub fn source_runtime_id(&self) -> &SourceRuntimeId {
         &self.observations[0].source_runtime_id
     }
 
+    /// Returns the direct observations supporting the assertion.
     pub fn observations(&self) -> &[ObservationRef] {
         &self.observations
     }
 
+    /// Returns the component that produced the assertion.
     pub fn producer(&self) -> &str {
         &self.producer
     }
 
+    /// Returns the producing component's version.
     pub fn producer_version(&self) -> &str {
         &self.producer_version
     }
@@ -678,41 +906,77 @@ impl AssertionProvenance {
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// A validated semantic edge between two organizational entities.
+///
+/// Each relation admits a bounded set of endpoint kinds through
+/// [`RelationKind::accepts`].
 pub enum RelationKind {
+    /// A person or identity belongs to a group or team.
     MemberOf,
+    /// A person, team, or organization owns an operational object.
     Owns,
+    /// A person, team, or organization maintains an operational object.
     Maintains,
+    /// One non-finding object depends on another.
     DependsOn,
+    /// A repository builds a service or application.
     Builds,
+    /// A repository or service deploys into an environment.
     Deploys,
+    /// A service, application, or resource runs in an environment or account.
     RunsIn,
+    /// An organization, account, environment, or group contains another object.
     Contains,
+    /// An identity or role can assume a role.
     CanAssume,
+    /// An identity, principal, application, or service can access an asset.
     CanAccess,
+    /// A group, team, role, or policy grants access to an object.
     Grants,
+    /// A provider group is provisioned as a team, role, or group.
     ProvisionedAs,
+    /// A policy or control governs an object.
     Governs,
+    /// A finding affects an object.
     Affects,
+    /// An object supports a service, application, or control.
     Supports,
+    /// An object supplies evidence for a finding or control.
     EvidenceFor,
+    /// A finding or policy maps to a control.
     MappedToControl,
+    /// An object is tracked by a provider-specific record.
     TrackedBy,
+    /// A policy implements a control.
     Implements,
+    /// A rule tests an assessment objective.
     Tests,
+    /// A framework or program includes a governed definition.
     Includes,
+    /// A program scopes an assessable organizational object.
     Scopes,
+    /// An assessment run uses a program, policy, rule, or snapshot.
     Uses,
+    /// An assessment result evaluates an objective or control.
     Evaluates,
+    /// An assessment result assesses an operational target.
     Assesses,
+    /// A finding or assessment artifact cites evidence.
     Cites,
+    /// A rule detected a finding.
     DetectedBy,
+    /// A remediation or work item addresses a finding.
     Addresses,
+    /// A verification checks a remediation or finding.
     Verifies,
+    /// An assessment snapshot commits to an assessment result.
     Commits,
+    /// A finding, assessment result, or verification derives from another object.
     DerivedFrom,
 }
 
 impl RelationKind {
+    /// Returns the stable snake-case wire name.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::MemberOf => "member_of",
@@ -749,6 +1013,10 @@ impl RelationKind {
         }
     }
 
+    /// Parses a stable snake-case wire name.
+    ///
+    /// Returns `None` for unknown names so callers must reject or explicitly
+    /// map provider extensions rather than silently creating a relation.
     pub fn from_wire(value: &str) -> Option<Self> {
         Some(match value {
             "member_of" => Self::MemberOf,
@@ -786,6 +1054,7 @@ impl RelationKind {
         })
     }
 
+    /// Returns whether this relation admits the supplied endpoint kinds.
     pub fn accepts(self, from: &EntityKind, to: &EntityKind) -> bool {
         use EntityKind::*;
         match self {
@@ -901,6 +1170,7 @@ impl RelationKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// An evidence-backed, directed relationship between two sealed entities.
 pub struct RelationshipAssertion {
     id: AssertionId,
     tenant_id: TenantId,
@@ -914,6 +1184,17 @@ pub struct RelationshipAssertion {
 }
 
 impl RelationshipAssertion {
+    /// Constructs a relationship assertion from sealed endpoints and evidence.
+    ///
+    /// The ID is deterministic across tenant, endpoints, relation, and source
+    /// runtime. Observation time must be a positive Unix timestamp in
+    /// milliseconds.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ModelError::TenantMismatch`] when endpoints or evidence cross
+    /// tenants, or [`ModelError::InvalidRelationship`] when endpoint kinds are
+    /// not admitted or the observation time is invalid.
     pub fn new(
         from: &Entity,
         relation: RelationKind,
@@ -950,30 +1231,37 @@ impl RelationshipAssertion {
         })
     }
 
+    /// Returns the assertion's deterministic stable ID.
     pub fn id(&self) -> &AssertionId {
         &self.id
     }
 
+    /// Returns the tenant shared by both endpoints and the evidence.
     pub fn tenant_id(&self) -> &TenantId {
         &self.tenant_id
     }
 
+    /// Returns the source endpoint entity ID.
     pub fn from(&self) -> &EntityId {
         &self.from
     }
 
+    /// Returns the destination endpoint entity ID.
     pub fn to(&self) -> &EntityId {
         &self.to
     }
 
+    /// Returns the admitted relationship kind.
     pub fn relation(&self) -> RelationKind {
         self.relation
     }
 
+    /// Returns the direct source provenance.
     pub fn provenance(&self) -> &AssertionProvenance {
         &self.provenance
     }
 
+    /// Returns when the relationship was observed, as Unix milliseconds.
     pub fn observed_at_unix_ms(&self) -> i64 {
         self.observed_at_unix_ms
     }
@@ -981,22 +1269,32 @@ impl RelationshipAssertion {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// The authority or workflow used to resolve a provider identity.
 pub enum IdentityResolutionMethod {
+    /// An authoritative employee identifier produced the match.
     AuthoritativeEmployeeId,
+    /// A verified email address produced the match.
     VerifiedEmail,
+    /// A previously established claim produced the match.
     ExistingClaimMatch,
+    /// A human explicitly decided the match.
     HumanDecision,
+    /// An agent proposed a match that still requires another authority.
     AgentProposal,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// The normalized claim used to correlate identities.
 pub enum IdentityClaimKind {
+    /// An employee identifier from an authoritative workforce source.
     EmployeeId,
+    /// An email address whose ownership was verified.
     VerifiedEmail,
 }
 
 impl IdentityClaimKind {
+    /// Returns the stable snake-case wire name.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::EmployeeId => "employee_id",
@@ -1006,12 +1304,18 @@ impl IdentityClaimKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// A validated identity-correlation claim.
 pub struct IdentityClaim {
     kind: IdentityClaimKind,
     value: String,
 }
 
 impl IdentityClaim {
+    /// Constructs an employee-ID claim.
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error when the value violates the text contract.
     pub fn employee_id(value: impl Into<String>) -> Result<Self, ModelError> {
         Ok(Self {
             kind: IdentityClaimKind::EmployeeId,
@@ -1019,6 +1323,12 @@ impl IdentityClaim {
         })
     }
 
+    /// Constructs and lowercases a minimally valid verified-email claim.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ModelError::Invalid`] unless the value contains non-empty
+    /// local and dotted-domain parts, or another text-validation error.
     pub fn verified_email(value: impl Into<String>) -> Result<Self, ModelError> {
         let value = validate_text(value.into(), "verified email")?.to_lowercase();
         let (local, domain) = value
@@ -1033,10 +1343,12 @@ impl IdentityClaim {
         })
     }
 
+    /// Returns the claim's correlation kind.
     pub fn kind(&self) -> IdentityClaimKind {
         self.kind
     }
 
+    /// Returns the normalized claim value.
     pub fn value(&self) -> &str {
         &self.value
     }
@@ -1044,13 +1356,22 @@ impl IdentityClaim {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// The decision state of a provider-to-canonical identity binding.
 pub enum IdentityBindingState {
+    /// A candidate match awaiting an authoritative decision.
     Proposed,
+    /// A match admitted under the method-specific authority rules.
     Confirmed,
+    /// A candidate explicitly determined not to match.
     Rejected,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// An evidence-backed decision relating one provider identity to one person.
+///
+/// Agent proposals cannot be confirmed. Confirmed employee-ID and verified-email
+/// decisions are restricted to approved Okta identity provider kinds; confirmed
+/// claims must also match the selected resolution method.
 pub struct IdentityBindingAssertion {
     id: AssertionId,
     tenant_id: TenantId,
@@ -1065,6 +1386,14 @@ pub struct IdentityBindingAssertion {
 }
 
 impl IdentityBindingAssertion {
+    /// Constructs and validates an identity-binding decision.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ModelError::InvalidIdentityBinding`] when tenant identity,
+    /// observation time, endpoint authority, provider authority, claim kind, or
+    /// decision state violates the binding rules. Derived ID failures are also
+    /// returned as model errors.
     pub fn new(
         provider: &ProviderIdentity,
         canonical: &CanonicalIdentity,
@@ -1155,42 +1484,52 @@ impl IdentityBindingAssertion {
         })
     }
 
+    /// Returns the binding assertion's deterministic ID.
     pub fn id(&self) -> &AssertionId {
         &self.id
     }
 
+    /// Returns the tenant shared by both identity endpoints and the evidence.
     pub fn tenant_id(&self) -> &TenantId {
         &self.tenant_id
     }
 
+    /// Returns the provider-owned identity endpoint.
     pub fn provider_identity(&self) -> &EntityId {
         &self.provider_identity
     }
 
+    /// Returns the Cerebro-owned canonical person endpoint.
     pub fn canonical_identity(&self) -> &EntityId {
         &self.canonical_identity
     }
 
+    /// Returns the current decision state.
     pub fn state(&self) -> IdentityBindingState {
         self.state
     }
 
+    /// Returns the authority or workflow used for the decision.
     pub fn method(&self) -> IdentityResolutionMethod {
         self.method
     }
 
+    /// Returns the provider kind owning the provider identity.
     pub fn provider_kind(&self) -> &ProviderKind {
         &self.provider_kind
     }
 
+    /// Returns the normalized correlation claim, when the decision has one.
     pub fn claim(&self) -> Option<&IdentityClaim> {
         self.claim.as_ref()
     }
 
+    /// Returns the direct source provenance for this decision.
     pub fn provenance(&self) -> &AssertionProvenance {
         &self.provenance
     }
 
+    /// Returns when the decision was observed, as Unix milliseconds.
     pub fn observed_at_unix_ms(&self) -> i64 {
         self.observed_at_unix_ms
     }
@@ -1198,12 +1537,16 @@ impl IdentityBindingAssertion {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "assertion_type", rename_all = "snake_case")]
+/// A validated assertion admitted into an organizational graph delta.
 pub enum GraphAssertion {
+    /// A directed semantic edge between organizational entities.
     Relationship(RelationshipAssertion),
+    /// A decision relating a provider identity to a canonical person.
     IdentityBinding(IdentityBindingAssertion),
 }
 
 impl GraphAssertion {
+    /// Returns the assertion's deterministic ID.
     pub fn id(&self) -> &AssertionId {
         match self {
             Self::Relationship(value) => value.id(),
@@ -1211,6 +1554,7 @@ impl GraphAssertion {
         }
     }
 
+    /// Returns the tenant that owns the assertion.
     pub fn tenant_id(&self) -> &TenantId {
         match self {
             Self::Relationship(value) => value.tenant_id(),
@@ -1218,6 +1562,7 @@ impl GraphAssertion {
         }
     }
 
+    /// Returns the direct evidence and producer identity.
     pub fn provenance(&self) -> &AssertionProvenance {
         match self {
             Self::Relationship(value) => value.provenance(),
@@ -1227,25 +1572,42 @@ impl GraphAssertion {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// An authoritative instruction to remove a previously admitted assertion.
+///
+/// Retractions have no public constructor and can only be created through
+/// [`GraphDeltaBuilder<Authoritative>::retract_missing`].
 pub struct Retraction {
     assertion_id: AssertionId,
     reason: String,
 }
 
 impl Retraction {
+    /// Returns the stable ID of the assertion to remove.
     pub fn assertion_id(&self) -> &AssertionId {
         &self.assertion_id
     }
 
+    /// Returns the source-authoritative reason the assertion is absent.
     pub fn reason(&self) -> &str {
         &self.reason
     }
 }
 
+/// Marker proving a delta's collection did not cover its complete source scope.
+///
+/// Builders in this mode cannot create retractions.
 pub struct NonAuthoritative;
+/// Marker proving a delta's collection covered its complete declared scope.
+///
+/// Only builders in this mode can create source-authoritative retractions.
 pub struct Authoritative;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// A deterministic batch of admitted graph changes from one collection.
+///
+/// Entities, assertions, and retractions are sorted by stable ID before the
+/// digest is computed. The digest identifies model membership and collection
+/// coordinates; it is not a signature or an authorization decision.
 pub struct GraphDelta {
     collection: CollectionReceipt,
     entities: Vec<Entity>,
@@ -1255,22 +1617,27 @@ pub struct GraphDelta {
 }
 
 impl GraphDelta {
+    /// Returns the collection receipt authorizing this delta.
     pub fn collection(&self) -> &CollectionReceipt {
         &self.collection
     }
 
+    /// Returns the entities added or refreshed by this delta.
     pub fn entities(&self) -> &[Entity] {
         &self.entities
     }
 
+    /// Returns the assertions added or refreshed by this delta.
     pub fn assertions(&self) -> &[GraphAssertion] {
         &self.assertions
     }
 
+    /// Returns authoritative assertion removals in this delta.
     pub fn retractions(&self) -> &[Retraction] {
         &self.retractions
     }
 
+    /// Returns the deterministic membership digest.
     pub fn digest(&self) -> &str {
         &self.digest
     }
@@ -1296,6 +1663,12 @@ impl GraphDelta {
     }
 }
 
+/// Builds one tenant- and runtime-scoped graph delta.
+///
+/// The `Mode` is supplied only by a collection receipt: partial and incremental
+/// receipts yield [`NonAuthoritative`], while [`CompleteCollection`] yields
+/// [`Authoritative`]. Duplicate identical values are idempotent; conflicting
+/// values with the same stable ID are rejected.
 pub struct GraphDeltaBuilder<Mode> {
     collection: CollectionReceipt,
     entities: Vec<Entity>,
@@ -1321,6 +1694,14 @@ impl<Mode> GraphDeltaBuilder<Mode> {
         }
     }
 
+    /// Adds an entity to the collection's tenant.
+    ///
+    /// Adding the same entity twice is idempotent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ModelError::TenantMismatch`] for a different tenant or
+    /// [`ModelError::DuplicateEntity`] when the same ID has conflicting data.
     pub fn add_entity(&mut self, entity: Entity) -> Result<(), ModelError> {
         if entity.tenant_id != self.collection.tenant_id {
             return Err(ModelError::TenantMismatch);
@@ -1337,6 +1718,15 @@ impl<Mode> GraphDeltaBuilder<Mode> {
         Ok(())
     }
 
+    /// Adds an assertion from the collection's tenant and source runtime.
+    ///
+    /// Adding the same assertion twice is idempotent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ModelError::TenantMismatch`] for different tenant or runtime
+    /// coordinates, or [`ModelError::DuplicateAssertion`] when the same ID has
+    /// conflicting data.
     pub fn add_assertion(&mut self, assertion: GraphAssertion) -> Result<(), ModelError> {
         if assertion.tenant_id() != &self.collection.tenant_id
             || assertion.provenance().source_runtime_id() != &self.collection.source_runtime_id
@@ -1355,6 +1745,7 @@ impl<Mode> GraphDeltaBuilder<Mode> {
         Ok(())
     }
 
+    /// Sorts admitted values and returns a delta with a deterministic digest.
     pub fn build(mut self) -> GraphDelta {
         self.entities
             .sort_unstable_by(|left, right| left.id.cmp(&right.id));
@@ -1379,6 +1770,14 @@ impl<Mode> GraphDeltaBuilder<Mode> {
 }
 
 impl GraphDeltaBuilder<Authoritative> {
+    /// Records that a previously admitted assertion is absent from a complete scope.
+    ///
+    /// Repeating an assertion ID replaces its reason. The capability is
+    /// unavailable on [`GraphDeltaBuilder<NonAuthoritative>`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a model error when `reason` violates the text contract.
     pub fn retract_missing(
         &mut self,
         assertion_id: AssertionId,
