@@ -77,10 +77,13 @@ Replay recognizes a bounded set of pre-canonical historical records as explicit
 skips: the legacy `asset.data_sensitivity` kind, invalid historical observation
 IDs for `gcp.iam_role_assignment`, `gcp.effective_permission`, and
 `aws.public_endpoint`, the catalog-owned `cerebro.health.jetstream_canary`
-without a source envelope, and the retired `okta.threat_insight` family. This
-compatibility applies only in replay mode. The forward consumer continues to
-reject every one of these shapes. Inspect the completed run and review the
-per-source-family skipped counters as the durable evidence for these records.
+without a source envelope, and permanent projection failures for the retired
+`okta.threat_insight` family. The active `okta.group_membership` family is not a
+compatibility skip: its hand-written collector events project through the
+compiled native relationship template. Replay compatibility applies only in
+replay mode. The forward consumer continues to reject every legacy shape.
+Inspect the completed run and review the per-source-family skipped counters as
+the durable evidence for these records.
 
 ## Start the forward durable after replay
 

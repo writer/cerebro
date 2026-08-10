@@ -752,6 +752,56 @@ mod tests {
     }
 
     #[test]
+    fn okta_runtime_membership_becomes_a_native_typed_edge() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("okta").unwrap().clone();
+        let collection = CompleteCollection::new(
+            TenantId::parse("tenant-a").unwrap(),
+            SourceRuntimeId::parse("okta-prod").unwrap(),
+            CollectionId::parse("collection-okta-membership-1").unwrap(),
+            "okta.group_membership",
+            10,
+        )
+        .unwrap();
+        let batch = CollectedBatch {
+            scope: CollectedScope::Complete(collection),
+            records: vec![SourceRecord {
+                observation_id: ObservationId::parse("observation-okta-membership-1").unwrap(),
+                family: "group_membership".to_owned(),
+                provider_kind: "okta.group_membership".to_owned(),
+                provider_id: "membership-1".to_owned(),
+                fields: BTreeMap::from([
+                    ("group_id".to_owned(), "group-1".to_owned()),
+                    ("member_email".to_owned(), "user@example.test".to_owned()),
+                    ("member_id".to_owned(), "user-1".to_owned()),
+                    ("member_name".to_owned(), "User One".to_owned()),
+                    ("member_status".to_owned(), "ACTIVE".to_owned()),
+                    ("member_type".to_owned(), "user".to_owned()),
+                    ("member_user_id".to_owned(), "user-1".to_owned()),
+                    ("user_id".to_owned(), "user-1".to_owned()),
+                ]),
+                payload: serde_json::json!({"id": "user-1"}),
+            }],
+            next_cursor: None,
+        };
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+        assert_eq!(delta.entities().len(), 2);
+        assert_eq!(delta.assertions().len(), 1);
+        let GraphAssertion::Relationship(assertion) = &delta.assertions()[0] else {
+            panic!("expected relationship")
+        };
+        assert_eq!(assertion.relation(), RelationKind::MemberOf);
+    }
+
+    #[test]
     fn application_grant_becomes_an_application_to_resource_access_edge() {
         let root = repository_root();
         let catalog = SourceCatalog::load(

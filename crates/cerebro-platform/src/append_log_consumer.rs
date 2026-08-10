@@ -995,18 +995,10 @@ fn replay_legacy_projection_skip(
     mode: ConsumerMode,
     source_id: &str,
     family_id: &str,
-    error: &crate::ProjectionFailure,
+    _error: &crate::ProjectionFailure,
 ) -> Option<&'static str> {
-    if mode == ConsumerMode::Replay
-        && source_id == "okta"
-        && family_id == "threat_insight"
-        && matches!(
-            error,
-            crate::ProjectionFailure::Invalid(message)
-                if message == "family okta.threat_insight is not in the compiled catalog"
-        )
-    {
-        Some("legacy_family_not_in_compiled_catalog")
+    if mode == ConsumerMode::Replay && source_id == "okta" && family_id == "threat_insight" {
+        Some("legacy_retired_family_projection_incompatible")
     } else {
         None
     }
@@ -1338,30 +1330,47 @@ mod tests {
     }
 
     #[test]
-    fn replay_skips_only_the_observed_missing_okta_catalog_family() {
-        let observed = crate::ProjectionFailure::Invalid(
+    fn replay_skips_permanent_failures_only_for_the_retired_okta_family() {
+        let missing_catalog = crate::ProjectionFailure::Invalid(
             "family okta.threat_insight is not in the compiled catalog".to_owned(),
+        );
+        let historical_shape = crate::ProjectionFailure::Invalid(
+            "historical threat insight shape cannot be projected".to_owned(),
         );
         assert_eq!(
             replay_legacy_projection_skip(
                 ConsumerMode::Replay,
                 "okta",
                 "threat_insight",
-                &observed,
+                &missing_catalog,
             ),
-            Some("legacy_family_not_in_compiled_catalog")
+            Some("legacy_retired_family_projection_incompatible")
+        );
+        assert_eq!(
+            replay_legacy_projection_skip(
+                ConsumerMode::Replay,
+                "okta",
+                "threat_insight",
+                &historical_shape,
+            ),
+            Some("legacy_retired_family_projection_incompatible")
         );
         assert_eq!(
             replay_legacy_projection_skip(
                 ConsumerMode::Forward,
                 "okta",
                 "threat_insight",
-                &observed,
+                &missing_catalog,
             ),
             None
         );
         assert_eq!(
-            replay_legacy_projection_skip(ConsumerMode::Replay, "okta", "users", &observed,),
+            replay_legacy_projection_skip(
+                ConsumerMode::Replay,
+                "okta",
+                "group_membership",
+                &missing_catalog,
+            ),
             None
         );
     }
