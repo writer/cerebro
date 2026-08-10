@@ -10,6 +10,10 @@ use crate::model::{
     RuntimeCollectionReceipt, SecurityPath, Snapshot, VerificationDecision,
 };
 
+/// Version of the exported WebAssembly calling convention.
+///
+/// This is independent of [`DECISION_INPUT_V1`]: the ABI version describes
+/// memory exchange with a host, while the schema version describes JSON data.
 pub const ABI_VERSION: u32 = 1;
 #[cfg(target_arch = "wasm32")]
 pub(crate) const MAX_INPUT_BYTES: usize = 8 << 20;
@@ -30,6 +34,17 @@ const MAX_RUNTIME_RECEIPTS: usize = 256;
 const MAX_REQUESTED_PATH_IDS: usize = 256;
 const MAX_STRING_BYTES: usize = 4_096;
 
+/// Validates a content-bound request and evaluates its decision operation.
+///
+/// The supplied `input_digest` must match the canonical digest of `request`.
+/// Callers that are constructing a new request should use
+/// [`bind_decision_input`] instead of calculating the digest themselves.
+///
+/// # Errors
+///
+/// Returns [`KernelError::UnsupportedSchemaVersion`] for an unknown schema,
+/// [`KernelError::InputDigestMismatch`] when the request was changed after it
+/// was bound, or an operation-specific validation error.
 pub fn evaluate(request: EvaluationRequest) -> Result<EvaluationResponse, KernelError> {
     if request.schema_version != DECISION_INPUT_V1 {
         return Err(KernelError::UnsupportedSchemaVersion);
@@ -70,6 +85,15 @@ pub(crate) fn evaluate_verified(
     })
 }
 
+/// Validates an operation and binds its complete input to a canonical digest.
+///
+/// The returned envelope is ready for [`evaluate`]. Binding makes mutation or
+/// substitution of any decision input detectable at the evaluation boundary.
+///
+/// # Errors
+///
+/// Returns a validation error when the operation exceeds kernel limits or
+/// contains an invalid snapshot, path, receipt, timestamp, or identifier.
 pub fn bind_decision_input(request: DecisionRequest) -> Result<EvaluationRequest, KernelError> {
     validate_decision_request(&request)?;
     let input_digest = decision_input_digest(&request)?;
@@ -89,6 +113,17 @@ impl ValidatedDecisionRequest {
     }
 }
 
+/// Compares two observations of the same detector scope.
+///
+/// With no `before` snapshot the result is `initial_observation` and does not
+/// classify any path as newly observed. With two complete snapshots, paths are
+/// compared by route and path identity. If either snapshot is incomplete, the
+/// result is `indeterminate`; absence is never inferred from partial evidence.
+///
+/// # Errors
+///
+/// Returns an error when a snapshot is invalid, the scopes or detector revisions
+/// differ, or `after.observed_at` does not strictly follow the earlier snapshot.
 pub fn compare(
     before: Option<&Snapshot>,
     after: &Snapshot,
@@ -151,6 +186,19 @@ pub fn compare(
     Ok(decision)
 }
 
+/// Determines whether requested reference paths are absent from a later scan.
+///
+/// Verification is route-based: if any path for a requested path's route remains,
+/// the result is `still_observed`. `observed_absent` requires a complete later
+/// snapshot produced by `graph_reset_full_scan`, current and complete runtime
+/// receipts for every relevant source runtime, and compatible provider/config
+/// identity. Any missing authority produces `indeterminate` with reason codes.
+///
+/// # Errors
+///
+/// Returns an error when either snapshot is invalid, the snapshots do not share
+/// scope, time does not advance, no path is requested, or a requested identifier
+/// is absent from the reference snapshot.
 pub fn verify_observed_absent(
     reference: &Snapshot,
     after: &Snapshot,
@@ -232,6 +280,13 @@ pub fn verify_observed_absent(
     Ok(decision)
 }
 
+/// Ranks proof edges by how many distinct routes and paths they cover.
+///
+/// Ranking is deterministic: route coverage descends first, then path coverage,
+/// relation priority, and edge identifier. Duplicate edge identifiers within a
+/// path count once. Results are always marked `candidate_only`; they are planning
+/// hints, not authorization to mutate infrastructure and not verification that a
+/// cut preserves intended access.
 pub fn rank_candidate_cuts(paths: &[SecurityPath]) -> Vec<CandidateEdgeCut> {
     struct Coverage {
         edge: ProofEdge,
