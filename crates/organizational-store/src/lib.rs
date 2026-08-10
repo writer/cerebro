@@ -1,6 +1,28 @@
 #![forbid(unsafe_code)]
 
-//! Durable organizational ledger and Neo4j current-state projection.
+//! Durable organizational ledger and rebuildable current-state projections.
+//!
+//! PostgreSQL is the source of truth for admitted graph revisions, source
+//! collection receipts, and the projection outbox. Neo4j is a derived read
+//! model. [`DurableGraphStore`] commits a delta and its exact projection payload
+//! atomically to the ledger before attempting Neo4j, so a projection outage
+//! cannot erase or cause a source collection to be repeated.
+//!
+//! # Commit outcomes
+//!
+//! A successful graph-sink call means both the ledger commit and its immediate
+//! projection completed. [`StoreError::ProjectionPending`] means the ledger
+//! commit succeeded but Neo4j did not: its embedded [`GraphWriteReceipt`] is the
+//! durable commit receipt, and the outbox must be replayed rather than collecting
+//! the provider again. [`DurableGraphStore::replay_pending`] and
+//! [`DurableGraphStore::resume_collection`] perform that recovery.
+//!
+//! # Read authority
+//!
+//! Lifecycle reads are served only when the projection declares the expected
+//! schema and exactly matches the ledger graph revision. Stale, rebuilding, or
+//! absent projection state returns [`StoreError::LifecycleProjectionUnavailable`]
+//! instead of presenting derived data as current truth.
 
 mod credential_vault;
 mod cutover;
@@ -34,17 +56,31 @@ use cerebro_source_runtime_next::{
 };
 
 #[derive(Debug)]
+/// A durable ledger, projection, or stored-contract failure.
 pub enum StoreError {
+    /// PostgreSQL rejected or could not complete a ledger operation.
     Postgres(tokio_postgres::Error),
+    /// Neo4j rejected or could not complete a projection operation.
     Neo4j(::neo4rs::Error),
+    /// A validated commit could not be encoded for durable storage.
     Serialization(serde_json::Error),
+    /// Stored or supplied values violated an organizational-store invariant.
     Conflict(String),
+    /// The lifecycle read projection is not current at the ledger revision.
     LifecycleProjectionUnavailable {
+        /// Authoritative graph revision the read would need to represent.
         graph_revision: u64,
+        /// Revision currently projected, or `None` when no ready revision exists.
         projection_revision: Option<u64>,
     },
+    /// The ledger committed successfully but immediate projection failed.
+    ///
+    /// Callers must retain the receipt and replay the outbox; retrying source
+    /// collection would mistake a projection failure for an uncommitted write.
     ProjectionPending {
+        /// Receipt proving the durable ledger commit.
         receipt: GraphWriteReceipt,
+        /// Projection failure detail suitable for operational diagnosis.
         message: String,
     },
 }
@@ -78,6 +114,12 @@ impl fmt::Display for StoreError {
 impl Error for StoreError {}
 
 impl StoreError {
+    /// Returns whether retrying the failed storage or projection operation is safe.
+    ///
+    /// Serialization and invariant conflicts are permanent for the supplied
+    /// input. Backend failures, stale projection reads, and pending projections
+    /// may succeed after recovery. A pending projection must be replayed from
+    /// its durable outbox entry, not recollected from the provider.
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
@@ -116,10 +158,21 @@ pub struct DurableGraphStore {
 }
 
 impl DurableGraphStore {
+    /// Combines an authoritative PostgreSQL ledger with its Neo4j projector.
     pub fn new(ledger: PostgresLedger, projector: Neo4jProjector) -> Self {
         Self { ledger, projector }
     }
 
+    /// Projects up to `limit` oldest pending outbox commits for one tenant.
+    ///
+    /// Each outbox row is marked projected only after Neo4j accepts its exact
+    /// durable payload. Processing stops at the first error, leaving that and
+    /// later rows available for another replay.
+    ///
+    /// # Errors
+    ///
+    /// Returns a backend or stored-contract error while loading, projecting, or
+    /// marking an outbox commit.
     pub async fn replay_pending(&self, tenant_id: &str, limit: usize) -> Result<usize, StoreError> {
         let pending = self.ledger.pending(tenant_id, limit).await?;
         let mut projected = 0;
@@ -133,8 +186,16 @@ impl DurableGraphStore {
         Ok(projected)
     }
 
-    /// Returns an existing collection receipt and, when necessary, projects
-    /// the exact durable outbox payload originally committed with it.
+    /// Resumes an already committed collection without recollecting its source.
+    ///
+    /// Returns `None` when no matching durable collection exists. When its
+    /// projection is pending, this method projects the exact stored outbox
+    /// payload, marks that revision projected, and returns the original receipt.
+    ///
+    /// # Errors
+    ///
+    /// Returns a backend or stored-contract error while loading or completing
+    /// the collection's projection.
     pub async fn resume_collection(
         &self,
         tenant_id: &TenantId,
