@@ -40,7 +40,7 @@ A Deep source is exempt from the flat LOC ceiling but is instead held to the **D
 | `grc` | 1195 | Keep control/evidence shaping out of source orchestration and push common mapping into shared helpers. |
 | `okta` | 2254 | Extract client, pagination, and identity/group/application readers into smaller units. |
 | `panopticon` | 763 | Separate request plumbing from emitted record construction. |
-| `sentinelone` | 2108 | Extract API paging, agent/application readers, and shared response normalization. |
+| `sentinelone` | 2097 | Extract API paging, agent/application readers, and shared response normalization. |
 | `vulnview` | 1002 | Split feed/client access from vulnerability record normalization. |
 
 ## Cross-Source Duplication Guardrail

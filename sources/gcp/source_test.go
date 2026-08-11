@@ -1057,7 +1057,7 @@ func TestReadLiveGCPAuditLogsWithCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadWithCheckpoint(%s) error = %v", familyAudit, err)
 	}
-	if len(pull.Events) != 1 || pull.Events[0].GetId() != "gcp-audit-new-audit" {
+	if len(pull.Events) != 1 || !strings.HasPrefix(pull.Events[0].GetId(), "gcp-audit-") {
 		t.Fatalf("events = %#v, want only new audit", pull.Events)
 	}
 	if pull.ShortCircuitReason != sourcecdk.PullShortCircuitReasonWatermarkReached {

@@ -146,8 +146,9 @@ func RepositoryKnowledge(ctx context.Context, st Settings, repositoryID int) ([]
 	return response.Entries, true
 }
 
-func VulnerabilitiesForScans(ctx context.Context, st Settings, scans []Scan) ([][]Vulnerability, error) {
+func VulnerabilitiesForScans(ctx context.Context, st Settings, scans []Scan) ([][]Vulnerability, []bool, error) {
 	out := make([][]Vulnerability, len(scans))
+	unavailable := make([]bool, len(scans))
 	group, groupCtx := errgroup.WithContext(ctx)
 	fanout := st.FanoutConcurrency
 	if fanout <= 0 {
@@ -159,11 +160,29 @@ func VulnerabilitiesForScans(ctx context.Context, st Settings, scans []Scan) ([]
 		group.Go(func() error {
 			var vulns []Vulnerability
 			if err := Get(groupCtx, st, fmt.Sprintf("/scans/%d/vulnerabilities", scan.ID), &vulns); err != nil {
+				// Archetype returns 400 when a retained scan no longer has a
+				// queryable vulnerability result. Preserve the scan as evidence,
+				// but mark its vulnerability collection unavailable instead of
+				// aborting every other scan in the page.
+				if sourcecdk.IsHTTPStatus(err, http.StatusBadRequest) {
+					unavailable[i] = true
+					return nil
+				}
 				return err
 			}
 			out[i] = vulns
 			return nil
 		})
 	}
-	return out, group.Wait()
+	return out, unavailable, group.Wait()
+}
+
+func VulnerabilityCollectionState(requested bool, unavailable bool) string {
+	if !requested {
+		return "not_requested"
+	}
+	if unavailable {
+		return "unavailable"
+	}
+	return "complete"
 }

@@ -112,10 +112,10 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 		return sourcecdk.NotModifiedPull(checkpoint), nil
 	}
 	repos := archetypeclient.Repositories(ctx, clientSettings)
-	vulnerabilities := make([][]vulnerabilityRecord, len(newScans))
+	vulnerabilities, vulnerabilitiesUnavailable := make([][]vulnerabilityRecord, len(newScans)), make([]bool, len(newScans))
 	if st.family != "scan" {
 		var err error
-		vulnerabilities, err = archetypeclient.VulnerabilitiesForScans(ctx, clientSettings, newScans)
+		vulnerabilities, vulnerabilitiesUnavailable, err = archetypeclient.VulnerabilitiesForScans(ctx, clientSettings, newScans)
 		if err != nil {
 			return sourcecdk.Pull{}, err
 		}
@@ -123,7 +123,7 @@ func (s *Source) ReadWithCheckpoint(ctx context.Context, cfg sourcecdk.Config, c
 	knowledgeRepos := map[int]bool{}
 	events := []*primitives.Event{}
 	for i, scan := range newScans {
-		events = append(events, scanEvent(st, scan, repos[scan.RepositoryID]))
+		events = append(events, scanEvent(st, scan, repos[scan.RepositoryID], archetypeclient.VulnerabilityCollectionState(st.family != "scan", vulnerabilitiesUnavailable[i])))
 		if st.family == "scan" {
 			continue
 		}
@@ -221,8 +221,8 @@ func parseFanoutConcurrency(raw string) (int, error) {
 	}
 	return value, nil
 }
-func scanEvent(st settings, scan scanRecord, repo repositoryRecord) *primitives.Event {
-	attrs := map[string]string{"scan_id": strconv.Itoa(scan.ID), "repository_id": strconv.Itoa(scan.RepositoryID), "status": scan.Status, "owner": repo.Owner, "repo": repo.Name, "source_product": sourceID}
+func scanEvent(st settings, scan scanRecord, repo repositoryRecord, vulnerabilityCollectionState string) *primitives.Event {
+	attrs := map[string]string{"scan_id": strconv.Itoa(scan.ID), "repository_id": strconv.Itoa(scan.RepositoryID), "status": scan.Status, "owner": repo.Owner, "repo": repo.Name, "source_product": sourceID, "vulnerability_collection_state": vulnerabilityCollectionState}
 	return event(st, "archetype.scan", "archetype-scan-"+strconv.Itoa(scan.ID), "archetype/scan/v1", archetypeclient.ScanTime(scan, time.Now().UTC()), attrs, scan)
 }
 func vulnerabilityEvent(st settings, scan scanRecord, vuln vulnerabilityRecord, repo repositoryRecord) *primitives.Event {

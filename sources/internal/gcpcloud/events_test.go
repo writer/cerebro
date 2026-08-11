@@ -2,6 +2,44 @@ package gcpcloud
 
 import "testing"
 
+func TestAuditEventIdentityDisambiguatesProviderInsertID(t *testing.T) {
+	settings := Settings{ProjectID: "writer-prod", TenantID: "writer"}
+	first := AuditRecord{
+		InsertID:  "shared-insert-id",
+		LogName:   "projects/writer-prod/logs/cloudaudit.googleapis.com%2Factivity",
+		Timestamp: "2026-08-11T00:00:00Z",
+		ProtoPayload: AuditProto{
+			MethodName:   "storage.buckets.update",
+			ResourceName: "projects/_/buckets/one",
+		},
+	}
+	second := first
+	second.Timestamp = "2026-08-11T00:00:01Z"
+	second.ProtoPayload.ResourceName = "projects/_/buckets/two"
+
+	firstEvent, err := AuditEvent(settings, first)
+	if err != nil {
+		t.Fatalf("AuditEvent(first) error = %v", err)
+	}
+	repeated, err := AuditEvent(settings, first)
+	if err != nil {
+		t.Fatalf("AuditEvent(repeated) error = %v", err)
+	}
+	secondEvent, err := AuditEvent(settings, second)
+	if err != nil {
+		t.Fatalf("AuditEvent(second) error = %v", err)
+	}
+	if firstEvent.GetId() != repeated.GetId() {
+		t.Fatalf("repeated id = %q, want %q", repeated.GetId(), firstEvent.GetId())
+	}
+	if firstEvent.GetId() == secondEvent.GetId() {
+		t.Fatalf("distinct audit events share id %q", firstEvent.GetId())
+	}
+	if firstEvent.GetAttributes()["log_insert_id"] != first.InsertID || firstEvent.GetAttributes()["log_name"] != first.LogName {
+		t.Fatalf("audit identity attributes = %#v", firstEvent.GetAttributes())
+	}
+}
+
 func TestGCSObjectEventDoesNotDowngradeMetadataClassification(t *testing.T) {
 	event, err := GCSObjectEvent(Settings{ProjectID: "writer-prod"}, GCSObjectRecord{
 		ID:       "data/training.csv/1",

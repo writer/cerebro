@@ -10,6 +10,8 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
+const applicationCursorPrefix = "cerebro-sentinelone-application-v1:"
+
 func (s *Source) listThreats(ctx context.Context, settings settings, cursor string, limit int) ([]threatRecord, string, error) {
 	query := buildPagedQuery(cursor, limit)
 	sourcecdk.AddQueryParam(query, "createdAt__gte", settings.since)
@@ -53,49 +55,36 @@ func (s *Source) listActivities(ctx context.Context, settings settings, cursor s
 }
 
 func (s *Source) listApplications(ctx context.Context, settings settings, cursor string, limit int) ([]applicationRecord, string, error) {
-	if strings.TrimSpace(settings.agentID) == "" {
-		agents, next, err := s.listAgents(ctx, settings, cursor, limit)
-		if err != nil {
-			return nil, "", err
-		}
-		records := make([]applicationRecord, 0)
-		for _, agent := range agents {
-			agentID := strings.TrimSpace(agent.ID)
-			if agentID == "" {
-				continue
+	return sourcecdk.PageFanoutRecords(cursor, applicationCursorPrefix, limit, settings.agentID,
+		func(parentCursor string) (string, string, error) {
+			agents, next, err := s.listAgents(ctx, settings, parentCursor, 1)
+			if err != nil || len(agents) == 0 {
+				return "", next, err
 			}
-			applications, _, err := s.listApplicationsForAgent(ctx, settings, agentID)
-			if err != nil {
-				return nil, "", err
-			}
-			records = append(records, applications...)
-		}
-		return records, next, nil
-	}
-	if cursor != "" {
-		return nil, "", nil
-	}
-	return s.listApplicationsForAgent(ctx, settings, settings.agentID)
+			return strings.TrimSpace(agents[0].ID), next, nil
+		}, func(agentID string) ([]applicationRecord, error) {
+			return s.listApplicationsForAgent(ctx, settings, agentID)
+		}, func(record applicationRecord) string { return applicationID(settings, record) })
 }
 
-func (s *Source) listApplicationsForAgent(ctx context.Context, settings settings, agentID string) ([]applicationRecord, string, error) {
+func (s *Source) listApplicationsForAgent(ctx context.Context, settings settings, agentID string) ([]applicationRecord, error) {
 	query := url.Values{}
 	sourcecdk.AddQueryParam(query, "ids", agentID)
 	var resp struct {
 		Data []json.RawMessage `json:"data"`
 	}
 	if err := s.getJSON(ctx, settings, "/web/api/v2.1/agents/applications", query, &resp); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	records := make([]applicationRecord, 0, len(resp.Data))
 	for _, item := range resp.Data {
 		var record applicationRecord
 		if err := json.Unmarshal(item, &record); err != nil {
-			return nil, "", fmt.Errorf("decode sentinelone application record: %w", err)
+			return nil, fmt.Errorf("decode sentinelone application record: %w", err)
 		}
 		record.AgentID = agentID
 		record.setRaw(cloneRaw(item))
 		records = append(records, record)
 	}
-	return records, "", nil
+	return records, nil
 }

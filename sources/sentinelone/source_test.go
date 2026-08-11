@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -218,6 +219,71 @@ func TestApplicationFamilyKeepsAgentCursorWhenPageHasNoApplications(t *testing.T
 	}
 	if got := second.Events[0].Attributes["agent_id"]; got != "A-2" {
 		t.Fatalf("second agent_id = %q, want A-2", got)
+	}
+}
+
+func TestApplicationFamilyBoundsExpandedAgentInventory(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/web/api/v2.1/agents":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":       []map[string]any{{"id": "A-1", "computerName": "host-A-1"}},
+				"pagination": map[string]any{},
+			})
+		case "/web/api/v2.1/agents/applications":
+			applications := make([]map[string]any, 0, 5)
+			for index := 5; index >= 1; index-- {
+				applications = append(applications, map[string]any{
+					"name":      fmt.Sprintf("Application %d", index),
+					"publisher": "Example Inc",
+					"version":   "1.0.0",
+				})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": applications})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   "application",
+		"per_page": "2",
+		"token":    fixtureToken,
+	})
+
+	var cursor *cerebrov1.SourceCursor
+	ids := make([]string, 0, 5)
+	for page := 0; page < 3; page++ {
+		pull, err := source.Read(context.Background(), cfg, cursor)
+		if err != nil {
+			t.Fatalf("Read(page %d) error = %v", page+1, err)
+		}
+		if len(pull.Events) > 2 {
+			t.Fatalf("len(page %d Events) = %d, want at most 2", page+1, len(pull.Events))
+		}
+		for _, event := range pull.Events {
+			ids = append(ids, event.GetId())
+		}
+		cursor = pull.NextCursor
+	}
+	if len(ids) != 5 {
+		t.Fatalf("event ids = %q, want five applications", ids)
+	}
+	if cursor != nil {
+		t.Fatalf("final cursor = %#v, want nil", cursor)
+	}
+	for index := 1; index < len(ids); index++ {
+		if ids[index-1] >= ids[index] {
+			t.Fatalf("event ids = %q, want stable ascending pages", ids)
+		}
 	}
 }
 
