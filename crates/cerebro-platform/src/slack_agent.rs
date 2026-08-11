@@ -215,7 +215,7 @@ impl SlackAgentService {
         let catalog = super::load_catalog()?;
         let mcp_configured = McpAgentTools::is_configured();
         let mcp_authority_policy_configured = McpAgentTools::authority_policy_configured();
-        let mcp = match McpAgentTools::from_env().await {
+        let mcp = match retry_mcp_startup(McpAgentTools::from_env).await {
             Ok(mcp) => mcp.map(Arc::new),
             Err(error) if mcp_authority_policy_configured => {
                 return Err(format!(
@@ -1624,6 +1624,20 @@ where
         }
     }
     unreachable!("a positive attempt count must return from the retry loop")
+}
+
+async fn retry_mcp_startup<T, E, F, Fut>(operation: F) -> Result<T, E>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, E>>,
+{
+    retry_startup(
+        STARTUP_DEPENDENCY_ATTEMPTS,
+        STARTUP_DEPENDENCY_RETRY_DELAY,
+        STARTUP_DEPENDENCY_RETRY_DELAY,
+        operation,
+    )
+    .await
 }
 
 fn next_startup_retry_delay(current: StdDuration, maximum: StdDuration) -> StdDuration {
@@ -6521,6 +6535,55 @@ mod tests {
             result,
             Err(ContextError::BackendUnavailable(
                 "dependency failure 5".to_owned()
+            ))
+        );
+        assert_eq!(
+            attempts.load(Ordering::Relaxed),
+            STARTUP_DEPENDENCY_ATTEMPTS
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_startup_recovers_within_the_dependency_retry_budget() {
+        let attempts = AtomicUsize::new(0);
+        let result = retry_mcp_startup(|| {
+            let attempt = attempts.fetch_add(1, Ordering::Relaxed) + 1;
+            async move {
+                if attempt < STARTUP_DEPENDENCY_ATTEMPTS {
+                    Err(ContextError::BackendUnavailable(format!(
+                        "transient MCP failure {attempt}"
+                    )))
+                } else {
+                    Ok("catalog ready")
+                }
+            }
+        })
+        .await;
+
+        assert_eq!(result.unwrap(), "catalog ready");
+        assert_eq!(
+            attempts.load(Ordering::Relaxed),
+            STARTUP_DEPENDENCY_ATTEMPTS
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_startup_fails_closed_after_the_dependency_retry_budget() {
+        let attempts = AtomicUsize::new(0);
+        let result: Result<(), ContextError> = retry_mcp_startup(|| {
+            let attempt = attempts.fetch_add(1, Ordering::Relaxed) + 1;
+            async move {
+                Err(ContextError::BackendUnavailable(format!(
+                    "persistent MCP failure {attempt}"
+                )))
+            }
+        })
+        .await;
+
+        assert_eq!(
+            result,
+            Err(ContextError::BackendUnavailable(
+                "persistent MCP failure 5".to_owned()
             ))
         );
         assert_eq!(
