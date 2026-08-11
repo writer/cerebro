@@ -1,3 +1,4 @@
+use crate::apoc::{is_safe_function, is_safe_procedure};
 use crate::lexer::{Token, TokenKind, lex_cypher, scrub_cypher};
 use crate::syntax::{
     all_node_patterns_tenant_scoped, function_name_token, has_variable_length_relationship_pattern,
@@ -28,10 +29,10 @@ pub fn validate(query: &str, max_rows: u64) -> Validation {
     if has_forbidden_apoc_call(&tokens) {
         return Validation::refuse(Decision::UnsafeApoc);
     }
-    if has_apoc_invocation(&tokens) {
+    if has_unsupported_apoc_invocation(&tokens) {
         return Validation::refuse(Decision::ApocNotAllowed);
     }
-    if has_procedure_call(&tokens) {
+    if has_unsupported_procedure_call(&tokens) {
         return Validation::refuse(Decision::ProcedureCallNotAllowed);
     }
     if has_variable_length_relationship_pattern(&safe_query) {
@@ -80,11 +81,21 @@ fn has_forbidden_apoc_call(tokens: &[Token]) -> bool {
     })
 }
 
-fn has_apoc_invocation(tokens: &[Token]) -> bool {
+fn has_unsupported_apoc_invocation(tokens: &[Token]) -> bool {
     tokens.iter().enumerate().any(|(i, token)| {
-        function_name_token(token)
-            && token.text.to_ascii_lowercase().starts_with("apoc.")
-            && symbol_token_at(tokens, i + 1, "(")
+        if !function_name_token(token)
+            || !token.text.to_ascii_lowercase().starts_with("apoc.")
+            || !symbol_token_at(tokens, i + 1, "(")
+        {
+            return false;
+        }
+        if i.checked_sub(1)
+            .is_some_and(|previous| keyword_token_at(tokens, previous, "CALL"))
+        {
+            !is_safe_procedure(&token.text)
+        } else {
+            !is_safe_function(&token.text)
+        }
     })
 }
 
@@ -170,11 +181,15 @@ fn limit_value_terminated(tokens: &[Token], index: usize) -> bool {
             )
 }
 
-fn has_procedure_call(tokens: &[Token]) -> bool {
-    tokens
-        .iter()
-        .enumerate()
-        .any(|(i, token)| keyword_token(token, "CALL") && !symbol_token_at(tokens, i + 1, "{"))
+fn has_unsupported_procedure_call(tokens: &[Token]) -> bool {
+    tokens.iter().enumerate().any(|(i, token)| {
+        if !keyword_token(token, "CALL") || symbol_token_at(tokens, i + 1, "{") {
+            return false;
+        }
+        tokens
+            .get(i + 1)
+            .is_none_or(|procedure| !is_safe_procedure(&procedure.text))
+    })
 }
 
 fn has_forbidden_expansion(tokens: &[Token]) -> bool {
@@ -283,7 +298,7 @@ mod tests {
                 0,
             ),
             (
-                "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.convert.fromJsonMap(e.x) LIMIT 1",
+                "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.util.sleep(5000) LIMIT 1",
                 Decision::ApocNotAllowed,
                 0,
             ),
@@ -327,6 +342,52 @@ mod tests {
             let result = validate(query, 100);
             assert_eq!(result.decision, decision, "{query}");
             assert_eq!(result.detail, detail, "{query}");
+        }
+    }
+
+    #[test]
+    fn supports_allowlisted_apoc_functions_and_procedures() {
+        let accepted = [
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.convert.fromJsonMap(e.attributes_json) AS attributes LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.text.join(e.tags, ',') AS tags LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.coll.elements(e.tags, 25, 0) YIELD value RETURN value LIMIT 25",
+            "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.node.degree.out(e, 'RELATION>') AS degree LIMIT 25",
+        ];
+        for query in accepted {
+            assert_eq!(validate(query, 100).decision, Decision::Allow, "{query}");
+        }
+    }
+
+    #[test]
+    fn rejects_unsafe_or_unclassified_apoc_surfaces() {
+        let rejected = [
+            (
+                "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.util.sleep(5000) LIMIT 1",
+                Decision::ApocNotAllowed,
+            ),
+            (
+                "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.cypher.runFirstColumn('MATCH (n) RETURN n', {}, false) LIMIT 1",
+                Decision::ApocNotAllowed,
+            ),
+            (
+                "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.map.fromNodes('Entity', 'urn') LIMIT 1",
+                Decision::ApocNotAllowed,
+            ),
+            (
+                "MATCH (e:Entity {tenant_id:$tenant_id}) RETURN apoc.coll.fill('x', 1000000000) LIMIT 1",
+                Decision::ApocNotAllowed,
+            ),
+            (
+                "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.path.expandConfig(e, {}) YIELD path RETURN path LIMIT 1",
+                Decision::ApocNotAllowed,
+            ),
+            (
+                "MATCH (e:Entity {tenant_id:$tenant_id}) CALL apoc.periodic.iterate('a','b',{}) RETURN e LIMIT 1",
+                Decision::UnsafeApoc,
+            ),
+        ];
+        for (query, decision) in rejected {
+            assert_eq!(validate(query, 100).decision, decision, "{query}");
         }
     }
 

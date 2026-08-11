@@ -193,7 +193,11 @@ pub(crate) fn all_node_patterns_tenant_scoped(query: &str) -> bool {
         }
         if keyword_at(query, i, "CALL") {
             let Some(brace) = subquery_start_brace(query, i + 4) else {
-                return false;
+                // Procedure calls are classified before tenant-scope analysis.
+                // The admitted procedures cannot introduce graph nodes, so the
+                // already-scoped variables remain the only node authority.
+                i += 4;
+                continue;
             };
             let Some(end) = matching_brace(query, brace) else {
                 return false;

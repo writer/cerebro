@@ -1296,8 +1296,8 @@ func TestOntologyMutationDiagnosticsCatchNonCanonicalDrafts(t *testing.T) {
 			want:   "relation_alias_canonicalized",
 		},
 		{
-			name:   "apoc call",
-			cypher: "MATCH (f:Entity) RETURN apoc.convert.fromJsonMap(f.attributes_json) LIMIT 10",
+			name:   "unsupported apoc call",
+			cypher: "MATCH (f:Entity) CALL apoc.path.expandConfig(f, {}) YIELD path RETURN path LIMIT 10",
 			want:   "apoc_not_allowed",
 		},
 		{

@@ -206,6 +206,9 @@ func TestValidateReadOnlyCypherRejectsMutatingClauses(t *testing.T) {
 		"MATCH (n) DETACH DELETE n",
 		"MERGE (n:Entity {urn: $urn}) RETURN n",
 		"CALL db.labels()",
+		"CALL apoc.periodic.iterate('MATCH (n)', 'RETURN n', {})",
+		"CALL apoc.path.expandConfig(n, {}) YIELD path RETURN path",
+		"CALL `apoc.coll.elements`([], 1, 0) YIELD value RETURN value",
 	} {
 		if err := validateReadOnlyCypher(query); err == nil {
 			t.Fatalf("validateReadOnlyCypher(%q) error = nil, want non-nil", query)
@@ -219,6 +222,8 @@ func TestValidateReadOnlyCypherRejectsMutatingClauses(t *testing.T) {
 		"MATCH (n) RETURN 'SET password remediation by creating a ticket' AS remediation",
 		`MATCH (n) RETURN "DELETE stale permissions" AS remediation`,
 		"MATCH (n) RETURN `CREATE` AS quoted_identifier",
+		"MATCH (n) CALL apoc.coll.elements(n.items, 25, 0) YIELD value RETURN value",
+		"MATCH (n) CALL/* read transform */apoc.convert.toTree([n]) YIELD value RETURN value",
 	} {
 		if err := validateReadOnlyCypher(query); err != nil {
 			t.Fatalf("validateReadOnlyCypher(%q) error = %v, want nil", query, err)

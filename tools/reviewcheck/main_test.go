@@ -27,6 +27,19 @@ func TestSuspiciousCypherTokenFlagsWriteQueryLiterals(t *testing.T) {
 	}
 }
 
+func TestSuspiciousCypherTokenAllowsBoundedAPOCProcedure(t *testing.T) {
+	query := "MATCH (n) CALL apoc.coll.elements(n.items, 25, 0) YIELD value RETURN value LIMIT 25"
+
+	if got := suspiciousCypherToken(query); got != "" {
+		t.Fatalf("suspiciousCypherToken() = %q, want no finding", got)
+	}
+
+	query = "MATCH (n) CALL apoc.path.expandConfig(n, {}) YIELD path RETURN path LIMIT 25"
+	if got := suspiciousCypherToken(query); got != "CALL APOC" {
+		t.Fatalf("suspiciousCypherToken() = %q, want CALL APOC", got)
+	}
+}
+
 func TestClassifyReviewSkipsDocsOnly(t *testing.T) {
 	result := classifyReview([]string{"docs/notes.md", ".factory/templates/example.md"})
 

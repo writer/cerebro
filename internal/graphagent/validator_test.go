@@ -34,16 +34,6 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			reason: "apoc",
 		},
 		{
-			name:   "apoc function",
-			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN apoc.convert.fromJsonMap(e.attributes_json).source_family AS source_family LIMIT 25`,
-			reason: "APOC",
-		},
-		{
-			name:   "escaped apoc function",
-			cypher: "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN `apoc.convert.fromJsonMap`(e.attributes_json).source_family AS source_family LIMIT 25",
-			reason: "APOC",
-		},
-		{
 			name:   "escaped apoc sleep function",
 			cypher: "MATCH (e:Entity {tenant_id: $tenant_id}) RETURN `apoc.util.sleep`(5000) AS x LIMIT 1",
 			reason: "APOC",
@@ -266,7 +256,7 @@ func TestValidatorStaticContract(t *testing.T) {
 		{name: "empty", cypher: " \n ", wantResult: validatorRefusal("cypher_required", "cypher is required")},
 		{name: "unsafe clause takes precedence", cypher: `CREATE (e) RETURN e`, wantResult: validatorRefusal("unsafe_clause", "write or bulk-load Cypher clauses are forbidden")},
 		{name: "forbidden apoc takes precedence", cypher: `CALL apoc.periodic.iterate('a','b',{}) LIMIT 1`, wantResult: validatorRefusal("unsafe_apoc", "apoc trigger and periodic procedures are forbidden")},
-		{name: "other apoc", cypher: `RETURN apoc.convert.fromJsonMap('{}') LIMIT 1`, wantResult: validatorRefusal("apoc_not_allowed", "APOC functions and procedures are not available in Ask Cerebro")},
+		{name: "unsupported apoc", cypher: `RETURN apoc.util.sleep(5000) LIMIT 1`, wantResult: validatorRefusal("apoc_not_allowed", "APOC function or procedure is not in the read-only allowlist")},
 		{name: "procedure call", cypher: `CALL db.labels() YIELD label RETURN label LIMIT 1`, wantResult: validatorRefusal("procedure_call_not_allowed", "procedure CALL clauses are forbidden")},
 		{name: "variable relationship", cypher: `MATCH (a:Entity {tenant_id:$tenant_id})-[r:R*]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1`, wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
 		{name: "nested relationship property list cannot hide variable relationship", cypher: `MATCH (a:Entity {tenant_id:$tenant_id})-[r:R*1..9999 {x:[1]}]->(b:Entity {tenant_id:$tenant_id}) RETURN b LIMIT 1`, wantResult: validatorRefusal("variable_length_relationship_not_allowed", "variable-length relationship traversals are forbidden")},
@@ -419,6 +409,38 @@ LIMIT 25`, map[string]any{"tenant_id": "example"})
 	}
 	if limit != 25 {
 		t.Fatalf("limit = %d, want 25", limit)
+	}
+}
+
+func TestValidatorAcceptsReadOnlyAPOCAllowlist(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	for _, cypher := range []string{
+		`MATCH (e:Entity {tenant_id: $tenant_id}) RETURN apoc.convert.fromJsonMap(e.attributes_json) AS attributes LIMIT 25`,
+		`MATCH (e:Entity {tenant_id: $tenant_id}) CALL apoc.coll.elements(e.items, 25, 0) YIELD value RETURN value LIMIT 25`,
+	} {
+		result, limit, err := validator.validate(context.Background(), cypher, map[string]any{"tenant_id": "example"})
+		if err != nil {
+			t.Fatalf("Validate(%q) error = %v", cypher, err)
+		}
+		if !result.OK || limit != 25 {
+			t.Fatalf("Validate(%q) = (%#v, %d), want ok with limit 25", cypher, result, limit)
+		}
+	}
+}
+
+func TestValidatorRejectsUnallowlistedAPOC(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	for _, cypher := range []string{
+		`MATCH (e:Entity {tenant_id: $tenant_id}) RETURN apoc.util.sleep(5000) LIMIT 1`,
+		`MATCH (e:Entity {tenant_id: $tenant_id}) CALL apoc.path.expandConfig(e, {}) YIELD path RETURN path LIMIT 1`,
+	} {
+		result, _, err := validator.validate(context.Background(), cypher, map[string]any{"tenant_id": "example"})
+		if err != nil {
+			t.Fatalf("Validate(%q) error = %v", cypher, err)
+		}
+		if result.OK || result.Code != "apoc_not_allowed" {
+			t.Fatalf("Validate(%q) = %#v, want apoc_not_allowed", cypher, result)
+		}
 	}
 }
 
