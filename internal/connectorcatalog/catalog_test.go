@@ -279,13 +279,28 @@ func TestBuiltinOktaCatalogDeclaresComplianceIdentityEvidenceDepth(t *testing.T)
 	if !hasString(groupMemberships.Notes, "The hand-written Okta runtime supplies the group identifier while reading each group's members.") {
 		t.Fatalf("group_memberships notes = %#v, want source projection support note", groupMemberships.Notes)
 	}
+	var group *connectordefinitions.ResourceFamily
 	var application *connectordefinitions.ResourceFamily
 	for index := range okta.Definition.ResourceFamilies {
 		family := &okta.Definition.ResourceFamilies[index]
+		if family.ID == "group" {
+			group = family
+		}
 		if family.ID == "application" {
 			application = family
-			break
 		}
+	}
+	if group == nil {
+		t.Fatal("okta group compatibility family not found")
+	}
+	if group.DefaultEnabled {
+		t.Fatal("okta group compatibility family must not start a second collector")
+	}
+	if group.Event.Kind != "okta.group" || group.Event.SchemaRef != "okta/group/v1" {
+		t.Fatalf("okta group event = %#v, want durable hand-written runtime contract", group.Event)
+	}
+	if group.Projection == nil || group.Projection.Template != "identity_group" {
+		t.Fatalf("okta group projection = %#v, want native group entity", group.Projection)
 	}
 	if application == nil {
 		t.Fatal("okta application compatibility family not found")

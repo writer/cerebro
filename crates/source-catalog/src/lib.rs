@@ -1679,7 +1679,7 @@ mod tests {
         .unwrap();
         let summary = catalog.summary();
         assert_eq!(summary.sources, 794);
-        assert_eq!(summary.families, 3_893);
+        assert_eq!(summary.families, 3_894);
         assert_eq!(
             summary.projection_classes.values().sum::<usize>(),
             summary.families

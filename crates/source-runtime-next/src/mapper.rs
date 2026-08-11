@@ -806,6 +806,55 @@ mod tests {
     }
 
     #[test]
+    fn okta_runtime_group_becomes_a_native_group_entity() {
+        let root = repository_root();
+        let catalog = SourceCatalog::load(
+            root.join("internal/connectorcatalog/catalog"),
+            root.join("sources"),
+        )
+        .unwrap();
+        let source = catalog.get("okta").unwrap().clone();
+        let collection = CompleteCollection::new(
+            TenantId::parse("tenant-a").unwrap(),
+            SourceRuntimeId::parse("okta-prod").unwrap(),
+            CollectionId::parse("collection-okta-group-1").unwrap(),
+            "okta.group",
+            10,
+        )
+        .unwrap();
+        let batch = CollectedBatch {
+            scope: CollectedScope::Complete(collection),
+            records: vec![SourceRecord {
+                observation_id: ObservationId::parse("observation-okta-group-1").unwrap(),
+                family: "group".to_owned(),
+                provider_kind: "okta.group".to_owned(),
+                provider_id: "group-1".to_owned(),
+                fields: BTreeMap::from([
+                    ("group_id".to_owned(), "group-1".to_owned()),
+                    ("group_name".to_owned(), "Security".to_owned()),
+                ]),
+                payload: serde_json::json!({
+                    "id": "group-1",
+                    "profile": {"name": "Security"},
+                    "type": "OKTA_GROUP"
+                }),
+            }],
+            next_cursor: None,
+        };
+
+        let delta = CatalogGraphMapper::new(source, "v1")
+            .unwrap()
+            .map(&batch)
+            .unwrap();
+
+        assert_eq!(delta.entities().len(), 1);
+        assert!(delta.assertions().is_empty());
+        let group = &delta.entities()[0];
+        assert_eq!(group.kind(), &EntityKind::Group);
+        assert_eq!(group.label(), "Security");
+    }
+
+    #[test]
     fn okta_runtime_application_becomes_a_native_application_entity() {
         let root = repository_root();
         let catalog = SourceCatalog::load(

@@ -170,6 +170,45 @@ entries:
           record_selector: $.data[*]
         - coverage:
             - control_domains:
+                - asset_inventory
+                - identity_access
+              evidence_types:
+                - access_review
+                - identity_configuration
+                - source_snapshot
+              families:
+                - group
+              high_value: true
+              id: group_projection
+              notes:
+                - The hand-written Okta runtime emits one okta.group event per group; this exact family keeps durable events projectable during replay and forwarding.
+              support: supported
+              title: Group event projection
+              type: entity_family
+          default_enabled: false
+          event:
+            kind: okta.group
+            required_payload_fields:
+              - id
+            schema_ref: okta/group/v1
+            urn_kind: okta_group
+          id: group
+          id_field: id
+          label: Group
+          method: GET
+          name_field: profile.name
+          pagination:
+            link_header: Link
+            type: link
+          path: /api/v1/groups
+          projection:
+            fields:
+              group_id: group_id|id
+              group_name: group_name|profile.name|name
+            template: identity_group
+          record_selector: $[*]
+        - coverage:
+            - control_domains:
                 - identity_access
               evidence_types:
                 - access_review
